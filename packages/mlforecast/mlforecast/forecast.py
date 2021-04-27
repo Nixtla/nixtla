@@ -6,6 +6,7 @@ __all__ = ['Forecast']
 from typing import Callable, Dict
 
 import pandas as pd
+
 from .core import predictions_flow, preprocessing_flow
 
 # Cell

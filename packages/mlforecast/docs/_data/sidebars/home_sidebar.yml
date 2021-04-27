@@ -13,6 +13,15 @@ entries:
       title: Core
       url: core.html
     - output: web,pdf
+      title: Distributed
+      url: distributed.core.html
+    - output: web,pdf
+      title: Distributed Forecast
+      url: distributed.forecast.html
+    - output: web,pdf
+      title: Distributed models
+      url: distributed.models.html
+    - output: web,pdf
       title: Forecast
       url: forecast.html
     - output: web,pdf

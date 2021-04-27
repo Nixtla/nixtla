@@ -11,10 +11,18 @@ index = {"date_features_dtypes": "core.ipynb",
          "TimeSeries.get_predictions": "core.ipynb",
          "preprocessing_flow": "core.ipynb",
          "predictions_flow": "core.ipynb",
+         "distributed_preprocess": "distributed.core.ipynb",
+         "DistributedForecast": "distributed.forecast.ipynb",
+         "BaseDistributedModel": "distributed.models.ipynb",
+         "LGBMForecast": "distributed.models.ipynb",
+         "XGBForecast": "distributed.models.ipynb",
          "Forecast": "forecast.ipynb",
          "generate_daily_series": "utils.ipynb"}
 
 modules = ["core.py",
+           "distributed/core.py",
+           "distributed/forecast.py",
+           "distributed/models.py",
            "forecast.py",
            "utils.py"]
 

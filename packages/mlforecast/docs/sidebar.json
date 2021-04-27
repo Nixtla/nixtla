@@ -2,6 +2,9 @@
   "mlforecast": {
     "Overview": "/",
     "Core": "core.html",
+    "Distributed": "distributed.core.html",
+    "Distributed Forecast": "distributed.forecast.html",
+    "Distributed models": "distributed.models.html",
     "Forecast": "forecast.html",
     "Utils": "utils.html"
   }

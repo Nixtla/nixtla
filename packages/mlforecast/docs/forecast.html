@@ -47,10 +47,11 @@ nb_path: "nbs/forecast.ipynb"
 <span class="kn">import</span> <span class="nn">xgboost</span> <span class="k">as</span> <span class="nn">xgb</span>
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">from</span> <span class="nn">mlforecast.utils</span> <span class="kn">import</span> <span class="n">generate_daily_series</span>
 <span class="kn">from</span> <span class="nn">window_ops.rolling</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">window_ops.expanding</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">window_ops.ewm</span> <span class="kn">import</span> <span class="n">ewm_mean</span>
+
+<span class="kn">from</span> <span class="nn">mlforecast.utils</span> <span class="kn">import</span> <span class="n">generate_daily_series</span>
 </pre></div>
 
     </div>
@@ -71,7 +72,7 @@ nb_path: "nbs/forecast.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Forecast" class="doc_header"><code>class</code> <code>Forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L12" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Forecast</code>(<strong><code>model</code></strong>, <strong><code>flow_config</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>])</p>
+<h2 id="Forecast" class="doc_header"><code>class</code> <code>Forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L13" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Forecast</code>(<strong><code>model</code></strong>, <strong><code>flow_config</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>])</p>
 </blockquote>
 <p>Full pipeline encapsulation.</p>
 <p>Takes a model (scikit-learn compatible regressor) and a flow configuration.</p>
@@ -345,7 +346,7 @@ nb_path: "nbs/forecast.ipynb"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>Forecast(model=LGBMRegressor(), flow_config={&#39;freq&#39;: &#39;D&#39;, &#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7f5eba71d160&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7f5eba7c3d30&gt;), 7), (CPUDispatcher(&lt;function rolling_std at 0x7f5eba7cb0d0&gt;), 7)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;], &#39;num_threads&#39;: 2})</pre>
+<pre>Forecast(model=LGBMRegressor(), flow_config={&#39;freq&#39;: &#39;D&#39;, &#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7feffbf43ca0&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7feffbf46820&gt;), 7), (CPUDispatcher(&lt;function rolling_std at 0x7feffbf46b80&gt;), 7)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;], &#39;num_threads&#39;: 2})</pre>
 </div>
 
 </div>
