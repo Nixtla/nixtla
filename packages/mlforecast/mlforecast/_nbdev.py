@@ -10,9 +10,12 @@ index = {"date_features_dtypes": "core.ipynb",
          "TimeSeries.update_features": "core.ipynb",
          "TimeSeries.get_predictions": "core.ipynb",
          "preprocessing_flow": "core.ipynb",
+         "predictions_flow": "core.ipynb",
+         "Forecast": "forecast.ipynb",
          "generate_daily_series": "utils.ipynb"}
 
 modules = ["core.py",
+           "forecast.py",
            "utils.py"]
 
 doc_url = "https://Nixtla.github.io/mlforecast/"

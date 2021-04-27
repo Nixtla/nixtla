@@ -13,6 +13,9 @@ entries:
       title: Core
       url: core.html
     - output: web,pdf
+      title: Forecast
+      url: forecast.html
+    - output: web,pdf
       title: Utils
       url: utils.html
     output: web

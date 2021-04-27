@@ -2,6 +2,7 @@
   "mlforecast": {
     "Overview": "/",
     "Core": "core.html",
+    "Forecast": "forecast.html",
     "Utils": "utils.html"
   }
 }

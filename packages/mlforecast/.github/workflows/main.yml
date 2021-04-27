@@ -35,7 +35,7 @@ jobs:
           use-only-tar-bz2: true
 
       - name: Install action requirements and the library
-        run: pip install nbdev mypy pyflakes ./
+        run: pip install nbdev mypy pyflakes matplotlib ./
 
       - name: Lint
         run: pyflakes mlforecast/ && mypy mlforecast/
