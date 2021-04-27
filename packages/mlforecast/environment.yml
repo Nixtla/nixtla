@@ -1,0 +1,14 @@
+name: mlforecast
+channels:
+  - conda-forge
+dependencies:
+  - python=3.8.8
+  - fastparquet
+  - lightgbm
+  - numba
+  - pandas
+  - pip
+  - xgboost
+  - pip:
+    - fastcore
+    - window-ops

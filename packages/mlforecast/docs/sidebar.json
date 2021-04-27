@@ -1,5 +1,7 @@
 {
   "mlforecast": {
-    "Overview": "/"
+    "Overview": "/",
+    "Core": "core.html",
+    "Utils": "utils.html"
   }
 }

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+defaults:
+  run:
+    shell: bash -l {0}
+
 jobs:
   run-tests:
     runs-on: ubuntu-latest
@@ -13,13 +17,28 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@v2
 
-      - name: Set up python
-        uses: actions/setup-python@v2
+      - name: Cache conda
+        uses: actions/cache@v2
+        env:
+          CACHE_NUMBER: 0
         with:
-          python-version: 3.7
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
+
+      - name: Set up environment
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          mamba-version: 0.7.14
+          channels: conda-forge
+          activate-environment: mlforecast
+          environment-file: environment.yml
+          use-only-tar-bz2: true
 
       - name: Install action requirements and the library
-        run: pip install nbdev ./
+        run: pip install nbdev mypy pyflakes ./
+
+      - name: Lint
+        run: pyflakes mlforecast/ && mypy mlforecast/
 
       - name: Read all notebooks
         run: nbdev_read_nbs

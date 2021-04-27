@@ -9,6 +9,12 @@ entries:
     - output: web,pdf
       title: Overview
       url: /
+    - output: web,pdf
+      title: Core
+      url: core.html
+    - output: web,pdf
+      title: Utils
+      url: utils.html
     output: web
     title: mlforecast
   output: web
