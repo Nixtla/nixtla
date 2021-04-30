@@ -3,12 +3,15 @@ channels:
   - conda-forge
 dependencies:
   - python=3.8.8
+  - boto3
   - dask
-  - fastparquet
   - lightgbm
   - numba
   - pandas
   - pip
+  - pyarrow
+  - pydantic
+  - s3path
   - xgboost
   - pip:
     - fastcore

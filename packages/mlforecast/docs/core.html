@@ -380,7 +380,7 @@ nb_path: "nbs/core.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="GroupedArray" class="doc_header"><code>class</code> <code>GroupedArray</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L60" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>GroupedArray</code>(<strong><code>data</code></strong>:<code>ndarray</code>, <strong><code>indptr</code></strong>:<code>ndarray</code>)</p>
+<h2 id="GroupedArray" class="doc_header"><code>class</code> <code>GroupedArray</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L59" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>GroupedArray</code>(<strong><code>data</code></strong>:<code>ndarray</code>, <strong><code>indptr</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
 <p>Array made up from different groups. Can be thought of as a list of arrays.</p>
 <p>All the data is stored in a single 1d array <code>data</code>.
@@ -450,7 +450,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="TimeSeries" class="doc_header"><code>class</code> <code>TimeSeries</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L132" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>TimeSeries</code>(<strong><code>series_df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>)</p>
+<h2 id="TimeSeries" class="doc_header"><code>class</code> <code>TimeSeries</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L131" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>TimeSeries</code>(<strong><code>series_df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>)</p>
 </blockquote>
 <p>Utility class for storing and transforming time series data.</p>
 
@@ -564,7 +564,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.compute_transforms" class="doc_header"><code>TimeSeries.compute_transforms</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L206" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.compute_transforms</code>()</p>
+<h4 id="TimeSeries.compute_transforms" class="doc_header"><code>TimeSeries.compute_transforms</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L205" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.compute_transforms</code>()</p>
 </blockquote>
 <p>Compute the transformations defined in the constructor.</p>
 <p>If <code>num_threads &gt; 1</code> these are computed using multithreading.</p>
@@ -630,7 +630,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.update_y" class="doc_header"><code>TimeSeries.update_y</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L216" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_y</code>(<strong><code>new</code></strong>:<code>ndarray</code>)</p>
+<h4 id="TimeSeries.update_y" class="doc_header"><code>TimeSeries.update_y</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L215" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_y</code>(<strong><code>new</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
 <p>Updates the value of y for the predictions and for the features updates.</p>
 
@@ -685,7 +685,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.update_features" class="doc_header"><code>TimeSeries.update_features</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L226" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_features</code>()</p>
+<h4 id="TimeSeries.update_features" class="doc_header"><code>TimeSeries.update_features</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L225" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_features</code>()</p>
 </blockquote>
 <p>Compute the current values of all the features using the latest values of the target.</p>
 
@@ -750,7 +750,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.get_predictions" class="doc_header"><code>TimeSeries.get_predictions</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L251" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.get_predictions</code>()</p>
+<h4 id="TimeSeries.get_predictions" class="doc_header"><code>TimeSeries.get_predictions</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L250" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.get_predictions</code>()</p>
 </blockquote>
 <p>Get all the predicted values with their corresponding ids and datestamps.</p>
 
@@ -782,7 +782,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="preprocessing_flow" class="doc_header"><code>preprocessing_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L263" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>preprocessing_flow</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>dropna</code></strong>:<code>bool</code>=<em><code>True</code></em>, <strong><code>keep_last_n</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>8</code></em>)</p>
+<h4 id="preprocessing_flow" class="doc_header"><code>preprocessing_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L262" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>preprocessing_flow</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>dropna</code></strong>:<code>bool</code>=<em><code>True</code></em>, <strong><code>keep_last_n</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>8</code></em>)</p>
 </blockquote>
 <p>Standard preprocessing flow.</p>
 
@@ -860,6 +860,8 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="predictions_flow" class="doc_header"><code>predictions_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L294" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>predictions_flow</code>(<strong><code>series</code></strong>:<a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a>, <strong><code>model</code></strong>, <strong><code>horizon</code></strong>:<code>int</code>)</p>
 </blockquote>
+<p>Standard predictions flow.</p>
+<p>Uses <code>model</code> to compute the predictions for the next <code>horizon</code> steps for every serie in <code>series</code>.</p>
 
 </div>
 

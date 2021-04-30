@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 from fastcore.foundation import patch, tuplify
 from numba import njit
 from window_ops.shift import shift_array
@@ -252,7 +251,7 @@ def update_features(self: TimeSeries) -> pd.DataFrame:
 def get_predictions(self: TimeSeries) -> pd.DataFrame:
     """Get all the predicted values with their corresponding ids and datestamps."""
     n_preds = len(self.y_pred)
-    idx = pd.Index(chain.from_iterable([uid] * n_preds for uid in self.uids), name='unique_id')
+    idx = pd.Index(chain.from_iterable([uid] * n_preds for uid in self.uids), name='unique_id', dtype=self.uids.dtype)
     df = pd.DataFrame({
         'ds': np.array(self.test_dates).ravel('F'),
         'y_pred': np.array(self.y_pred).ravel('F')},
@@ -265,13 +264,14 @@ def preprocessing_flow(df: pd.DataFrame,
                        lags: List[int] = [],
                        lag_transforms: Dict[int, List[Tuple]] = {},
                        date_features: List[str] = [],
+                       static_features: Optional[List[str]] = None,
                        dropna: bool = True,
                        keep_last_n: Optional[int] = None,
                        num_threads: Optional[int] = os.cpu_count()) -> Tuple[TimeSeries, pd.DataFrame]:
     """Standard preprocessing flow."""
     df = df.set_index('ds', append=True).sort_index()
     series = TimeSeries(df, freq, lags, lag_transforms, date_features,
-                        num_threads=num_threads)
+                        static_features, num_threads)
     df = df.reset_index('ds')
 
     features = series.compute_transforms()  # type: ignore
@@ -294,10 +294,16 @@ def preprocessing_flow(df: pd.DataFrame,
 def predictions_flow(series: TimeSeries,
                      model,
                      horizon: int) -> pd.DataFrame:
+    """Standard predictions flow.
+
+    Uses `model` to compute the predictions for the next `horizon` steps for every serie in `series`."""
     series = copy.copy(series)
+    # this avoids installing xgboost only to check if the model is instance of xgb.Booster
+    model_is_xgb_booster = type(model).__module__ == 'xgboost.core' and type(model).__name__ == 'Booster'
     for _ in range(horizon):
         new_x = series.update_features()  # type: ignore
-        if isinstance(model, xgb.Booster):
+        if model_is_xgb_booster:
+            import xgboost as xgb
             new_x = xgb.DMatrix(new_x)
         predictions = model.predict(new_x)
         series.update_y(predictions)  # type: ignore

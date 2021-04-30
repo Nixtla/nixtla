@@ -40,6 +40,12 @@ class BaseDistributedModel:
         meta = self.client.submit(lambda x: x.head(), predictions_futures[0]).result()
         return dd.from_delayed(predictions_futures, meta=meta, divisions=divisions)
 
+    def get_params(self, deep=True):
+        return self.model.get_params(deep)
+
+    def set_params(self, **params):
+        self.model.set_params(**params)
+
     def __repr__(self) -> str:
         return self.model.__repr__()
 
