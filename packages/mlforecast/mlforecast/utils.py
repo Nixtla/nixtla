@@ -10,6 +10,7 @@ from math import ceil, log10
 import numpy as np
 import pandas as pd
 
+
 # Cell
 def generate_daily_series(n_series: int,
                           min_length: int = 50,

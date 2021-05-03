@@ -73,7 +73,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="validate_data_format" class="doc_header"><code>validate_data_format</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L46" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>validate_data_format</code>(<strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>])</p>
+<h4 id="validate_data_format" class="doc_header"><code>validate_data_format</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L48" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>validate_data_format</code>(<strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>])</p>
 </blockquote>
 <p>Checks whether data is in the correct format and tries to fix it if possible.</p>
 
@@ -142,7 +142,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="read_data" class="doc_header"><code>read_data</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L77" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>read_data</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Data"><code>Data</code></a>, <strong><code>is_distributed</code></strong>:<code>bool</code>)</p>
+<h4 id="read_data" class="doc_header"><code>read_data</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L79" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>read_data</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Data"><code>Data</code></a>, <strong><code>is_distributed</code></strong>:<code>bool</code>)</p>
 </blockquote>
 <p>Read data from <code>config.prefix/config.input</code>.</p>
 <p>If we're in distributed mode dask is used for IO, else pandas.</p>
@@ -229,7 +229,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="fcst_from_config" class="doc_header"><code>fcst_from_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L148" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>fcst_from_config</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Config"><code>Config</code></a>)</p>
+<h4 id="fcst_from_config" class="doc_header"><code>fcst_from_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L170" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>fcst_from_config</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Config"><code>Config</code></a>)</p>
 </blockquote>
 <p>Instantiate Forecast class from config.</p>
 
@@ -282,8 +282,23 @@ nb_path: "nbs/api.ipynb"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="n">client</span> <span class="o">=</span> <span class="n">Client</span><span class="p">(</span><span class="n">n_workers</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</pre></div>
 
-<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/distributed.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/distributed.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
     <span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
 
 <span class="n">fcst</span> <span class="o">=</span> <span class="n">fcst_from_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
@@ -311,7 +326,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="perform_backtest" class="doc_header"><code>perform_backtest</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L168" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>perform_backtest</code>(<strong><code>fcst</code></strong>:<code>Union</code>[<a href="/mlforecast/forecast.html#Forecast"><code>Forecast</code></a>, <a href="/mlforecast/distributed.forecast.html#DistributedForecast"><code>DistributedForecast</code></a>], <strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>], <strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Config"><code>Config</code></a>, <strong><code>output_path</code></strong>:<code>Union</code>[<code>Path</code>, <code>S3Path</code>])</p>
+<h4 id="perform_backtest" class="doc_header"><code>perform_backtest</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L181" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>perform_backtest</code>(<strong><code>fcst</code></strong>:<code>Union</code>[<a href="/mlforecast/forecast.html#Forecast"><code>Forecast</code></a>, <a href="/mlforecast/distributed.forecast.html#DistributedForecast"><code>DistributedForecast</code></a>], <strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>], <strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Config"><code>Config</code></a>, <strong><code>output_path</code></strong>:<code>Union</code>[<code>Path</code>, <code>S3Path</code>])</p>
 </blockquote>
 <p>Performs backtesting of <code>fcst</code> using <code>data</code> and the strategy defined in <code>config</code>.
 Writes the results to <code>output_path</code>.</p>
@@ -358,8 +373,8 @@ Writes the results to <code>output_path</code>.</p>
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0217
-Split 2 MSE: 0.0248
+<pre>Split 1 MSE: 0.0219
+Split 2 MSE: 0.0244
 </pre>
 </div>
 </div>
@@ -435,7 +450,7 @@ Split 2 MSE: 0.0322
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="parse_config" class="doc_header"><code>parse_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L195" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>parse_config</code>(<strong><code>config_file</code></strong>:<code>str</code>)</p>
+<h4 id="parse_config" class="doc_header"><code>parse_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L208" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>parse_config</code>(<strong><code>config_file</code></strong>:<code>str</code>)</p>
 </blockquote>
 <p>Create a <a href="/mlforecast/data_model.html#Config"><code>Config</code></a> object using the contents of <code>config_file</code></p>
 
@@ -460,7 +475,7 @@ Split 2 MSE: 0.0322
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="setup_client" class="doc_header"><code>setup_client</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L201" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>setup_client</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Cluster"><code>Cluster</code></a>)</p>
+<h4 id="setup_client" class="doc_header"><code>setup_client</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L214" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>setup_client</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Cluster"><code>Cluster</code></a>)</p>
 </blockquote>
 <p>Spins up a cluster and returns a client connected to it.</p>
 
@@ -511,7 +526,7 @@ Split 2 MSE: 0.0322
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="run_forecast" class="doc_header"><code>run_forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L212" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>run_forecast</code>(<strong><code>config_file</code></strong>:"Configuration file")</p>
+<h4 id="run_forecast" class="doc_header"><code>run_forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L225" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>run_forecast</code>(<strong><code>config_file</code></strong>:"Configuration file")</p>
 </blockquote>
 <p>Run the forecasting pipeline using the configuration defined in <code>config_file</code>.</p>
 
@@ -572,12 +587,12 @@ Split 2 MSE: 0.0322
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0218
-Split 2 MSE: 0.0246
+<pre>Split 1 MSE: 0.0227
+Split 2 MSE: 0.0243
 Split 1 MSE: 0.0313
 Split 2 MSE: 0.0322
-Split 1 MSE: 0.0214
-Split 2 MSE: 0.0240
+Split 1 MSE: 0.0207
+Split 2 MSE: 0.0231
 Split 1 MSE: 0.0313
 Split 2 MSE: 0.0322
 </pre>
@@ -612,8 +627,8 @@ Split 2 MSE: 0.0322
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0215
-Split 2 MSE: 0.0237
+<pre>Split 1 MSE: 0.0208
+Split 2 MSE: 0.0249
 </pre>
 </div>
 </div>

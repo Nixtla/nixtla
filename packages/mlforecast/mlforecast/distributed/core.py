@@ -7,9 +7,10 @@ import operator
 from typing import Callable, Dict, List, Optional, Tuple
 
 import dask.dataframe as dd
-from dask.distributed import Client, default_client, Future, futures_of, wait
+from dask.distributed import Client, Future, default_client, futures_of, wait
 
 from ..core import preprocessing_flow
+
 
 # Cell
 def distributed_preprocess(data: dd.DataFrame,

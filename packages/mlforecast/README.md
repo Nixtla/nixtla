@@ -6,6 +6,15 @@
 
 `pip install mlforecast`
 
+### Optional dependencies
+If you want more functionality you can instead use `pip install mlforecast[extra1, extra2, ...]`. The current extra dependencies are:
+
+* **aws**: adds the functionality to use S3 as the storage in the CLI.
+* **cli**: includes the validations necessary to use the CLI.
+* **distributed**: installs `dask` to perform distributed training. Note that you'll also need to install either `lightgbm` or `xgboost`.
+
+For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: `pip install mlforecast[aws, cli, distributed]`.
+
 ## How to use
 
 ### Programmatic API
@@ -70,7 +79,7 @@ fcst.fit(series)
 
 
 
-    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7f145d8691f0>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7f145d8d3ee0>), 7), (CPUDispatcher(<function rolling_mean at 0x7f145d8d3ee0>), 14)]}, 'date_features': ['dayofweek', 'month']})
+    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7fac9f73f280>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7fac9f7a8f70>), 7), (CPUDispatcher(<function rolling_mean at 0x7fac9f7a8f70>), 14)]}, 'date_features': ['dayofweek', 'month']})
 
 
 
@@ -85,11 +94,11 @@ display_df(predictions.head())
 
 | unique_id   | ds                  |   y_pred |
 |:------------|:--------------------|---------:|
-| id_00       | 2000-08-10 00:00:00 | 5.26783  |
-| id_00       | 2000-08-11 00:00:00 | 6.2507   |
-| id_00       | 2000-08-12 00:00:00 | 0.214484 |
-| id_00       | 2000-08-13 00:00:00 | 1.25304  |
-| id_00       | 2000-08-14 00:00:00 | 2.29772  |
+| id_00       | 2000-08-10 00:00:00 | 5.2325   |
+| id_00       | 2000-08-11 00:00:00 | 6.26395  |
+| id_00       | 2000-08-12 00:00:00 | 0.196386 |
+| id_00       | 2000-08-13 00:00:00 | 1.25263  |
+| id_00       | 2000-08-14 00:00:00 | 2.2988   |
 
 
 ### CLI
@@ -137,8 +146,8 @@ This will use the data in `prefix/input` and write the results to `prefix/output
 !mlforecast sample_configs/local.yaml
 ```
 
-    Split 1 MSE: 0.0226
-    Split 2 MSE: 0.0179
+    Split 1 MSE: 0.0240
+    Split 2 MSE: 0.0187
     [0m
 
 ```python

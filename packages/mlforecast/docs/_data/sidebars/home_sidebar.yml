@@ -10,17 +10,26 @@ entries:
       title: Overview
       url: /
     - output: web,pdf
+      title: API
+      url: api.html
+    - output: web,pdf
       title: Core
       url: core.html
     - output: web,pdf
-      title: Distributed
+      title: Data model
+      url: data_model.html
+    - output: web,pdf
+      title: Distributed core
       url: distributed.core.html
     - output: web,pdf
-      title: Distributed Forecast
+      title: Distributed forecast
       url: distributed.forecast.html
     - output: web,pdf
-      title: Distributed models
-      url: distributed.models.html
+      title: LGBMForecast
+      url: distributed.models.lgb.html
+    - output: web,pdf
+      title: XGBForecast
+      url: distributed.models.xgb.html
     - output: web,pdf
       title: Forecast
       url: forecast.html

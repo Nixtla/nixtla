@@ -47,7 +47,7 @@ nb_path: "nbs/utils.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="generate_daily_series" class="doc_header"><code>generate_daily_series</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L14" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>generate_daily_series</code>(<strong><code>n_series</code></strong>:<code>int</code>, <strong><code>min_length</code></strong>:<code>int</code>=<em><code>50</code></em>, <strong><code>max_length</code></strong>:<code>int</code>=<em><code>500</code></em>, <strong><code>n_static_features</code></strong>:<code>int</code>=<em><code>0</code></em>, <strong><code>equal_ends</code></strong>:<code>bool</code>=<em><code>False</code></em>, <strong><code>seed</code></strong>:<code>int</code>=<em><code>0</code></em>)</p>
+<h4 id="generate_daily_series" class="doc_header"><code>generate_daily_series</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L15" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>generate_daily_series</code>(<strong><code>n_series</code></strong>:<code>int</code>, <strong><code>min_length</code></strong>:<code>int</code>=<em><code>50</code></em>, <strong><code>max_length</code></strong>:<code>int</code>=<em><code>500</code></em>, <strong><code>n_static_features</code></strong>:<code>int</code>=<em><code>0</code></em>, <strong><code>equal_ends</code></strong>:<code>bool</code>=<em><code>False</code></em>, <strong><code>seed</code></strong>:<code>int</code>=<em><code>0</code></em>)</p>
 </blockquote>
 <p>Generates <code>n_series</code> of different lengths in the interval [<code>min_length</code>, <code>max_length</code>].</p>
 <p>If <code>n_static_features &gt; 0</code>, then each serie gets static features with random values.
@@ -453,7 +453,7 @@ If <code>equal_ends == True</code> then all series end at the same date.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="get_last_n_mask" class="doc_header"><code>get_last_n_mask</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L54" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>get_last_n_mask</code>(<strong><code>serie</code></strong>, <strong><code>n</code></strong>)</p>
+<h4 id="get_last_n_mask" class="doc_header"><code>get_last_n_mask</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L55" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>get_last_n_mask</code>(<strong><code>serie</code></strong>, <strong><code>n</code></strong>)</p>
 </blockquote>
 <p>Return a boolean mask where the last <code>n</code> values are True.</p>
 

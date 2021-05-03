@@ -44,6 +44,19 @@ nb_path: "nbs/index.ipynb"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Optional-dependencies">Optional dependencies<a class="anchor-link" href="#Optional-dependencies"> </a></h3><p>If you want more functionality you can instead use <code>pip install mlforecast[extra1, extra2, ...]</code>. The current extra dependencies are:</p>
+<ul>
+<li><strong>aws</strong>: adds the functionality to use S3 as the storage in the CLI.</li>
+<li><strong>cli</strong>: includes the validations necessary to use the CLI.</li>
+<li><strong>distributed</strong>: installs <code>dask</code> to perform distributed training. Note that you'll also need to install either <code>lightgbm</code> or <code>xgboost</code>.</li>
+</ul>
+<p>For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: <code>pip install mlforecast[aws, cli, distributed]</code>.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
 <h2 id="How-to-use">How to use<a class="anchor-link" href="#How-to-use"> </a></h2>
 </div>
 </div>
@@ -167,7 +180,7 @@ nb_path: "nbs/index.ipynb"
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p>Next define a model, if you're on a single machine this can be any regressor that follows the scikit-learn API. For distributed training there are <a href="/mlforecast/distributed.models.html#LGBMForecast"><code>LGBMForecast</code></a> and <a href="/mlforecast/distributed.models.html#XGBForecast"><code>XGBForecast</code></a>.</p>
+<p>Next define a model, if you're on a single machine this can be any regressor that follows the scikit-learn API. For distributed training there are <a href="/mlforecast/distributed.models.lgb.html#LGBMForecast"><code>LGBMForecast</code></a> and <a href="/mlforecast/distributed.models.xgb.html#XGBForecast"><code>XGBForecast</code></a>.</p>
 
 </div>
 </div>
@@ -246,7 +259,7 @@ nb_path: "nbs/index.ipynb"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>Forecast(model=RandomForestRegressor(), flow_config={&#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7f145d8691f0&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7f145d8d3ee0&gt;), 7), (CPUDispatcher(&lt;function rolling_mean at 0x7f145d8d3ee0&gt;), 14)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;]})</pre>
+<pre>Forecast(model=RandomForestRegressor(), flow_config={&#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7fac9f73f280&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7fac9f7a8f70&gt;), 7), (CPUDispatcher(&lt;function rolling_mean at 0x7fac9f7a8f70&gt;), 14)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;]})</pre>
 </div>
 
 </div>
@@ -298,27 +311,27 @@ nb_path: "nbs/index.ipynb"
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-10 00:00:00</td>
-<td style="text-align:right">5.26783</td>
+<td style="text-align:right">5.2325</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-11 00:00:00</td>
-<td style="text-align:right">6.2507</td>
+<td style="text-align:right">6.26395</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-12 00:00:00</td>
-<td style="text-align:right">0.214484</td>
+<td style="text-align:right">0.196386</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-13 00:00:00</td>
-<td style="text-align:right">1.25304</td>
+<td style="text-align:right">1.25263</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-14 00:00:00</td>
-<td style="text-align:right">2.29772</td>
+<td style="text-align:right">2.2988</td>
 </tr>
 </tbody>
 </table>
@@ -432,8 +445,8 @@ local:
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0226
-Split 2 MSE: 0.0179
+<pre>Split 1 MSE: 0.0240
+Split 2 MSE: 0.0187
 </pre>
 </div>
 </div>

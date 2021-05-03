@@ -51,7 +51,7 @@ nb_path: "nbs/forecast.ipynb"
 <span class="kn">from</span> <span class="nn">window_ops.expanding</span> <span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span> <span class="nn">window_ops.ewm</span> <span class="kn">import</span> <span class="n">ewm_mean</span>
 
-<span class="kn">from</span> <span class="nn">mlforecast.utils</span> <span class="kn">import</span> <span class="n">generate_daily_series</span>
+<span class="kn">from</span> <span class="nn">mlforecast.utils</span> <span class="kn">import</span> <span class="n">generate_daily_series</span><span class="p">,</span> <span class="n">get_last_n_mask</span>
 </pre></div>
 
     </div>
@@ -72,7 +72,7 @@ nb_path: "nbs/forecast.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Forecast" class="doc_header"><code>class</code> <code>Forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L13" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Forecast</code>(<strong><code>model</code></strong>, <strong><code>flow_config</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>])</p>
+<h2 id="Forecast" class="doc_header"><code>class</code> <code>Forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L14" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Forecast</code>(<strong><code>model</code></strong>, <strong><code>flow_config</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>])</p>
 </blockquote>
 <p>Full pipeline encapsulation.</p>
 <p>Takes a model (scikit-learn compatible regressor) and a flow configuration.</p>
@@ -346,7 +346,7 @@ nb_path: "nbs/forecast.ipynb"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>Forecast(model=LGBMRegressor(), flow_config={&#39;freq&#39;: &#39;D&#39;, &#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7feffbf43ca0&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7feffbf46820&gt;), 7), (CPUDispatcher(&lt;function rolling_std at 0x7feffbf46b80&gt;), 7)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;], &#39;num_threads&#39;: 2})</pre>
+<pre>Forecast(model=LGBMRegressor(), flow_config={&#39;freq&#39;: &#39;D&#39;, &#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7fe94abeba60&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7fe94abf45e0&gt;), 7), (CPUDispatcher(&lt;function rolling_std at 0x7fe94abf4940&gt;), 7)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;], &#39;num_threads&#39;: 2})</pre>
 </div>
 
 </div>
@@ -509,12 +509,7 @@ nb_path: "nbs/forecast.ipynb"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">get_last_n_mask</span><span class="p">(</span><span class="n">serie</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
-    <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full_like</span><span class="p">(</span><span class="n">serie</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-    <span class="n">mask</span><span class="p">[</span><span class="o">-</span><span class="n">n</span><span class="p">:]</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="k">return</span> <span class="n">mask</span>
-
-<span class="n">test_size</span> <span class="o">=</span> <span class="mi">14</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">test_size</span> <span class="o">=</span> <span class="mi">14</span>
 <span class="n">valid_mask</span> <span class="o">=</span> <span class="n">series</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)[</span><span class="s1">&#39;y&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">get_last_n_mask</span><span class="p">,</span> <span class="n">test_size</span><span class="p">)</span>
 <span class="n">train</span> <span class="o">=</span> <span class="n">series</span><span class="p">[</span><span class="o">~</span><span class="n">valid_mask</span><span class="p">]</span>
 <span class="n">y_valid</span> <span class="o">=</span> <span class="n">series</span><span class="p">[</span><span class="n">valid_mask</span><span class="p">]</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="kc">True</span><span class="p">)[[</span><span class="s1">&#39;y&#39;</span><span class="p">]]</span>

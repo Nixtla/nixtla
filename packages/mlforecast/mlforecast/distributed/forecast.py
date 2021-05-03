@@ -8,30 +8,44 @@ from typing import Callable, Dict, Optional
 import dask.dataframe as dd
 from dask.distributed import Client, default_client
 
-from ..core import preprocessing_flow
+from ..core import predictions_flow, preprocessing_flow
 from .core import distributed_preprocess
+
 
 # Cell
 class DistributedForecast:
+    """Full pipeline encapsulation.
+
+    Takes a model (`LGBMForecast` or `XGBForecast`), a flow configuration and a client."""
 
     def __init__(self, model, flow_config: Dict, client: Optional[Client] = None):
         self.model = model
         self.flow_config = flow_config
         self.client = client or default_client()
+        self.model.client = self.client
 
     def preprocess(self, data: dd.DataFrame, prep_fn: Callable = preprocessing_flow) -> dd.DataFrame:
+        """Apply the transformations defined in the flow configuration."""
         self.data_divisions = data.divisions
-        self.ts, train_ddf = distributed_preprocess(data, self.flow_config, self.client, prep_fn)
-        return train_ddf
+        self.ts, series_ddf = distributed_preprocess(data, self.flow_config, self.client, prep_fn)
+        return series_ddf
 
-    def fit(self, data: dd.DataFrame, **kwargs) -> 'DistributedForecast':
-        train_ddf = self.preprocess(data)
+    def fit(self, data: dd.DataFrame, prep_fn: Callable = preprocessing_flow, **kwargs) -> 'DistributedForecast':
+        """Perform the preprocessing and fit the model."""
+        train_ddf = self.preprocess(data, prep_fn)
         X, y = train_ddf.drop(columns=['ds', 'y']), train_ddf.y
         self.model.fit(X, y, **kwargs)
         return self
 
-    def predict(self, horizon: int) -> dd.DataFrame:
-        return self.model.predict(self.ts, horizon, self.data_divisions)
+    def predict(self, horizon: int, predict_fn: Callable = predictions_flow) -> dd.DataFrame:
+        """Compute the predictions for the next `horizon` steps using `predict_fn`."""
+        model_future = self.client.scatter(self.model.model_, broadcast=True)
+        predictions_futures = self.client.map(predict_fn,
+                                              self.ts,
+                                              model=model_future,
+                                              horizon=horizon)
+        meta = self.client.submit(lambda x: x.head(), predictions_futures[0]).result()
+        return dd.from_delayed(predictions_futures, meta=meta, divisions=self.data_divisions)
 
     def __repr__(self) -> str:
         return f'DistributedForecast(model={self.model}, flow_config={self.flow_config})'

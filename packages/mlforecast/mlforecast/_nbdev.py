@@ -36,9 +36,8 @@ index = {"Frame": "api.ipynb",
          "Transforms": "data_model.ipynb",
          "distributed_preprocess": "distributed.core.ipynb",
          "DistributedForecast": "distributed.forecast.ipynb",
-         "BaseDistributedModel": "distributed.models.ipynb",
-         "LGBMForecast": "distributed.models.ipynb",
-         "XGBForecast": "distributed.models.ipynb",
+         "LGBMForecast": "distributed.models.lgb.ipynb",
+         "XGBForecast": "distributed.models.xgb.ipynb",
          "generate_daily_series": "utils.ipynb",
          "get_last_n_mask": "utils.ipynb"}
 
@@ -47,7 +46,8 @@ modules = ["api.py",
            "data_model.py",
            "distributed/core.py",
            "distributed/forecast.py",
-           "distributed/models.py",
+           "distributed/models/lgb.py",
+           "distributed/models/xgb.py",
            "forecast.py",
            "utils.py"]
 

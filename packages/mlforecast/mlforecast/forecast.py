@@ -9,6 +9,7 @@ import pandas as pd
 
 from .core import predictions_flow, preprocessing_flow
 
+
 # Cell
 class Forecast:
     """Full pipeline encapsulation.
