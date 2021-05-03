@@ -59,3 +59,43 @@ jobs:
 
       - name: Run tests
         run: nbdev_test_nbs --n_workers 1
+
+  test-cli-extra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Set up python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+
+      - name: Install library with extra
+        run: pip install ".[cli]" pyarrow scikit-learn
+
+      - name: Run CLI
+        run: |
+          python action_files/create_data.py
+          mlforecast sample_configs/local.yaml
+          if [ ! -f 'data/outputs/forecast.parquet' ]; then false; fi
+
+  test-cli-and-distributed-extras:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Set up python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+
+      - name: Install library with extra
+        run: pip install ".[cli, distributed]" pyarrow scikit-learn xgboost
+
+      - name: Run CLI
+        run: |
+          python action_files/create_data.py --distributed
+          mlforecast sample_configs/distributed.yaml
+          if [ ! -d 'data/outputs/forecast/' ]; then false; fi

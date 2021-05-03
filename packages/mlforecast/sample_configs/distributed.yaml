@@ -1,5 +1,5 @@
 data:
-  prefix: s3://bucket/
+  prefix: data  # remote storage recommended
   input: train
   output: outputs
   format: parquet
