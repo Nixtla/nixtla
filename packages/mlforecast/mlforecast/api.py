@@ -162,7 +162,7 @@ def _fcst_from_distributed(model_config: DistributedModelConfig,
         model_cls = LGBMForecast
     else:
         from .distributed.models.xgb import XGBForecast
-        model_cls = XGBForecast
+        model_cls = XGBForecast  # type: ignore
     model = model_cls(**(model_config.params or {}))
     return DistributedForecast(model, flow_config)
 
