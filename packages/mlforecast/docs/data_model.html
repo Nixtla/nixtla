@@ -43,7 +43,9 @@ nb_path: "nbs/data_model.ipynb"
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">yaml</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">from</span> <span class="nn">pprint</span> <span class="kn">import</span> <span class="n">pprint</span>
+
+<span class="kn">import</span> <span class="nn">yaml</span>
 <span class="kn">from</span> <span class="nn">nbdev</span> <span class="kn">import</span> <span class="n">test_fail</span>
 </pre></div>
 
@@ -65,9 +67,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="DataFreq" class="doc_header"><code>DataFreq</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L34" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Enum</code> = [B, C, D, W, M, SM, BM, CBM, MS, SMS, BMS, CBMS, Q, BQ, QS, BQS, A, Y, BA, BY, AS, YS, BAS, BYS, BH, H, T, S, L, U, N, W_MON, W_TUE, W_WED, W_THU, W_FRI, W_SAT, Q_JAN, Q_FEB, Q_MAR, Q_APR, Q_MAY, Q_JUN, Q_JUL, Q_AUG, Q_SEP, Q_OCT, Q_NOV, A_JAN, A_FEB, A_MAR, A_APR, A_MAY, A_JUN, A_JUL, A_AUG, A_SEP, A_OCT, A_NOV]</p>
+<h2 id="DataFreq" class="doc_header"><code>DataFreq</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L35" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Enum</code> = [B, C, D, W, M, SM, BM, CBM, MS, SMS, BMS, CBMS, Q, BQ, QS, BQS, A, Y, BA, BY, AS, YS, BAS, BYS, BH, H, T, S, L, U, N, W_MON, W_TUE, W_WED, W_THU, W_FRI, W_SAT, Q_JAN, Q_FEB, Q_MAR, Q_APR, Q_MAY, Q_JUN, Q_JUL, Q_AUG, Q_SEP, Q_OCT, Q_NOV, A_JAN, A_FEB, A_MAR, A_APR, A_MAY, A_JUN, A_JUL, A_AUG, A_SEP, A_OCT, A_NOV]</p>
 </blockquote>
-<p>An enumeration.</p>
+<p>Pandas frequencies.</p>
 
 </div>
 
@@ -90,9 +92,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="DataFormat" class="doc_header"><code>DataFormat</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L95" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Enum</code> = [csv, parquet]</p>
+<h2 id="DataFormat" class="doc_header"><code>DataFormat</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L97" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Enum</code> = [csv, parquet]</p>
 </blockquote>
-<p>An enumeration.</p>
+<p>Allowed data formats.</p>
 
 </div>
 
@@ -115,8 +117,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Data" class="doc_header"><code>class</code> <code>Data</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L99" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Data</code>(<strong><code>prefix</code></strong>:<code>str</code>, <strong><code>input</code></strong>:<code>str</code>, <strong><code>output</code></strong>:<code>str</code>, <strong><code>format</code></strong>:<a href="/mlforecast/data_model.html#DataFormat"><code>DataFormat</code></a>) :: <code>BaseModel</code></p>
+<h2 id="DataConfig" class="doc_header"><code>class</code> <code>DataConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L102" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>DataConfig</code>(<strong><code>prefix</code></strong>:<code>str</code>, <strong><code>input</code></strong>:<code>str</code>, <strong><code>output</code></strong>:<code>str</code>, <strong><code>format</code></strong>:<a href="/mlforecast/data_model.html#DataFormat"><code>DataFormat</code></a>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Data configuration.</p>
 
 </div>
 
@@ -139,8 +142,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Backtest" class="doc_header"><code>class</code> <code>Backtest</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L105" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Backtest</code>(<strong><code>n_windows</code></strong>:<code>int</code>, <strong><code>window_size</code></strong>:<code>int</code>) :: <code>BaseModel</code></p>
+<h2 id="BacktestConfig" class="doc_header"><code>class</code> <code>BacktestConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L109" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>BacktestConfig</code>(<strong><code>n_windows</code></strong>:<code>int</code>, <strong><code>window_size</code></strong>:<code>int</code>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Backtest configuration.</p>
 
 </div>
 
@@ -163,8 +167,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Features" class="doc_header"><code>class</code> <code>Features</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L109" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Features</code>(<strong><code>freq</code></strong>:<a href="/mlforecast/data_model.html#DataFreq"><code>DataFreq</code></a>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Union</code>[<code>Literal</code>[<code>rolling_mean</code>, <code>rolling_std</code>, <code>rolling_max</code>, <code>rolling_min</code>, <code>seasonal_rolling_mean</code>, <code>seasonal_rolling_std</code>, <code>seasonal_rolling_max</code>, <code>seasonal_rolling_min</code>, <code>expanding_mean</code>, <code>expanding_std</code>, <code>expanding_max</code>, <code>expanding_min</code>, <code>seasonal_expanding_mean</code>, <code>seasonal_expanding_std</code>, <code>seasonal_expanding_min</code>, <code>seasonal_expanding_max</code>, <code>ewm_mean</code>], <code>Dict</code>[<code>Literal</code>[<code>rolling_mean</code>, <code>rolling_std</code>, <code>rolling_max</code>, <code>rolling_min</code>, <code>seasonal_rolling_mean</code>, <code>seasonal_rolling_std</code>, <code>seasonal_rolling_max</code>, <code>seasonal_rolling_min</code>, <code>expanding_mean</code>, <code>expanding_std</code>, <code>expanding_max</code>, <code>expanding_min</code>, <code>seasonal_expanding_mean</code>, <code>seasonal_expanding_std</code>, <code>seasonal_expanding_min</code>, <code>seasonal_expanding_max</code>, <code>ewm_mean</code>], <code>Dict</code>[<code>KT</code>, <code>VT</code>]]]]]=<em><code>None</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>Literal</code>[<code>Literal</code>[<code>year</code>, <code>month</code>, <code>day</code>, <code>hour</code>, <code>minute</code>, <code>second</code>, <code>dayofyear</code>, <code>day_of_year</code>, <code>weekofyear</code>, <code>week</code>, <code>dayofweek</code>, <code>day_of_week</code>, <code>weekday</code>, <code>quarter</code>, <code>daysinmonth</code>, <code>is_month_start</code>, <code>is_month_end</code>, <code>is_quarter_start</code>, <code>is_quarter_end</code>, <code>is_year_start</code>, <code>is_year_end</code>]]]=<em><code>None</code></em>, <strong><code>static_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>int</code>=<em><code>None</code></em>) :: <code>BaseModel</code></p>
+<h2 id="FeaturesConfig" class="doc_header"><code>class</code> <code>FeaturesConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L114" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>FeaturesConfig</code>(<strong><code>freq</code></strong>:<a href="/mlforecast/data_model.html#DataFreq"><code>DataFreq</code></a>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Union</code>[<code>Literal</code>[<code>rolling_mean</code>, <code>rolling_std</code>, <code>rolling_max</code>, <code>rolling_min</code>, <code>seasonal_rolling_mean</code>, <code>seasonal_rolling_std</code>, <code>seasonal_rolling_max</code>, <code>seasonal_rolling_min</code>, <code>expanding_mean</code>, <code>expanding_std</code>, <code>expanding_max</code>, <code>expanding_min</code>, <code>seasonal_expanding_mean</code>, <code>seasonal_expanding_std</code>, <code>seasonal_expanding_min</code>, <code>seasonal_expanding_max</code>, <code>ewm_mean</code>], <code>Dict</code>[<code>Literal</code>[<code>rolling_mean</code>, <code>rolling_std</code>, <code>rolling_max</code>, <code>rolling_min</code>, <code>seasonal_rolling_mean</code>, <code>seasonal_rolling_std</code>, <code>seasonal_rolling_max</code>, <code>seasonal_rolling_min</code>, <code>expanding_mean</code>, <code>expanding_std</code>, <code>expanding_max</code>, <code>expanding_min</code>, <code>seasonal_expanding_mean</code>, <code>seasonal_expanding_std</code>, <code>seasonal_expanding_min</code>, <code>seasonal_expanding_max</code>, <code>ewm_mean</code>], <code>Dict</code>[<code>KT</code>, <code>VT</code>]]]]]=<em><code>None</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>Literal</code>[<code>year</code>, <code>month</code>, <code>day</code>, <code>hour</code>, <code>minute</code>, <code>second</code>, <code>dayofyear</code>, <code>day_of_year</code>, <code>weekofyear</code>, <code>week</code>, <code>dayofweek</code>, <code>day_of_week</code>, <code>weekday</code>, <code>quarter</code>, <code>daysinmonth</code>, <code>is_month_start</code>, <code>is_month_end</code>, <code>is_quarter_start</code>, <code>is_quarter_end</code>, <code>is_year_start</code>, <code>is_year_end</code>]]=<em><code>None</code></em>, <strong><code>static_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>int</code>=<em><code>None</code></em>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Features configuration.</p>
 
 </div>
 
@@ -187,8 +192,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Forecast" class="doc_header"><code>class</code> <code>Forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L117" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Forecast</code>(<strong><code>horizon</code></strong>:<code>int</code>) :: <code>BaseModel</code></p>
+<h2 id="ForecastConfig" class="doc_header"><code>class</code> <code>ForecastConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L123" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>ForecastConfig</code>(<strong><code>horizon</code></strong>:<code>int</code>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Forecast configuration.</p>
 
 </div>
 
@@ -211,8 +217,10 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="ModelConfig" class="doc_header"><code>class</code> <code>ModelConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L120" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>ModelConfig</code>(<strong><code>name</code></strong>:<code>str</code>, <strong><code>params</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>]=<em><code>None</code></em>) :: <code>BaseModel</code></p>
+<h2 id="ModelConfig" class="doc_header"><code>class</code> <code>ModelConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L127" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>ModelConfig</code>(<strong><code>name</code></strong>:<code>str</code>, <strong><code>params</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>]=<em><code>None</code></em>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Model configuration.</p>
+<p>name must include the modules i.e. sklearn.ensemble.RandomForestRegressor.</p>
 
 </div>
 
@@ -235,8 +243,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Local" class="doc_header"><code>class</code> <code>Local</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L124" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Local</code>(<strong><code>model</code></strong>:<a href="/mlforecast/data_model.html#ModelConfig"><code>ModelConfig</code></a>) :: <code>BaseModel</code></p>
+<h2 id="LocalConfig" class="doc_header"><code>class</code> <code>LocalConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L134" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>LocalConfig</code>(<strong><code>model</code></strong>:<a href="/mlforecast/data_model.html#ModelConfig"><code>ModelConfig</code></a>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Configuration for local pipeline.</p>
 
 </div>
 
@@ -259,8 +268,10 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Cluster" class="doc_header"><code>class</code> <code>Cluster</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L127" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Cluster</code>(<strong><code>class_name</code></strong>:<code>str</code>, <strong><code>class_kwargs</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>]) :: <code>BaseModel</code></p>
+<h2 id="ClusterConfig" class="doc_header"><code>class</code> <code>ClusterConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L138" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>ClusterConfig</code>(<strong><code>class_name</code></strong>:<code>str</code>, <strong><code>class_kwargs</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>]) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Cluter configuration.</p>
+<p>class_name must include the modules i.e. dask.distributed.LocalCluster</p>
 
 </div>
 
@@ -283,9 +294,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="DistributedModelName" class="doc_header"><code>DistributedModelName</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L131" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Enum</code> = [XGBoost, LightGBM]</p>
+<h2 id="DistributedModelName" class="doc_header"><code>DistributedModelName</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L145" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Enum</code> = [XGBoost, LightGBM]</p>
 </blockquote>
-<p>An enumeration.</p>
+<p>Available models for distributed training.</p>
 
 </div>
 
@@ -308,8 +319,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="DistributedModelConfig" class="doc_header"><code>class</code> <code>DistributedModelConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L135" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>DistributedModelConfig</code>(<strong><code>name</code></strong>:<a href="/mlforecast/data_model.html#DistributedModelName"><code>DistributedModelName</code></a>, <strong><code>params</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>]=<em><code>None</code></em>) :: <code>BaseModel</code></p>
+<h2 id="DistributedModelConfig" class="doc_header"><code>class</code> <code>DistributedModelConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L150" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>DistributedModelConfig</code>(<strong><code>name</code></strong>:<a href="/mlforecast/data_model.html#DistributedModelName"><code>DistributedModelName</code></a>, <strong><code>params</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>]=<em><code>None</code></em>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Configuration for distributed models.</p>
 
 </div>
 
@@ -332,8 +344,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Distributed" class="doc_header"><code>class</code> <code>Distributed</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L139" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Distributed</code>(<strong><code>model</code></strong>:<a href="/mlforecast/data_model.html#DistributedModelConfig"><code>DistributedModelConfig</code></a>, <strong><code>cluster</code></strong>:<a href="/mlforecast/data_model.html#Cluster"><code>Cluster</code></a>) :: <code>BaseModel</code></p>
+<h2 id="DistributedConfig" class="doc_header"><code>class</code> <code>DistributedConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L155" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>DistributedConfig</code>(<strong><code>model</code></strong>:<a href="/mlforecast/data_model.html#DistributedModelConfig"><code>DistributedModelConfig</code></a>, <strong><code>cluster</code></strong>:<a href="/mlforecast/data_model.html#ClusterConfig"><code>ClusterConfig</code></a>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Configuration for distributed training.</p>
 
 </div>
 
@@ -356,8 +369,9 @@ nb_path: "nbs/data_model.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="Config" class="doc_header"><code>class</code> <code>Config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L143" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>Config</code>(<strong><code>data</code></strong>:<a href="/mlforecast/data_model.html#Data"><code>Data</code></a>, <strong><code>features</code></strong>:<a href="/mlforecast/data_model.html#Features"><code>Features</code></a>, <strong><code>backtest</code></strong>:<a href="/mlforecast/data_model.html#Backtest"><code>Backtest</code></a>=<em><code>None</code></em>, <strong><code>forecast</code></strong>:<a href="/mlforecast/forecast.html#Forecast"><code>Forecast</code></a>=<em><code>None</code></em>, <strong><code>local</code></strong>:<a href="/mlforecast/data_model.html#Local"><code>Local</code></a>=<em><code>None</code></em>, <strong><code>distributed</code></strong>:<a href="/mlforecast/data_model.html#Distributed"><code>Distributed</code></a>=<em><code>None</code></em>) :: <code>BaseModel</code></p>
+<h2 id="FlowConfig" class="doc_header"><code>class</code> <code>FlowConfig</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/data_model.py#L160" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>FlowConfig</code>(<strong><code>data</code></strong>:<a href="/mlforecast/data_model.html#DataConfig"><code>DataConfig</code></a>, <strong><code>features</code></strong>:<a href="/mlforecast/data_model.html#FeaturesConfig"><code>FeaturesConfig</code></a>, <strong><code>backtest</code></strong>:<a href="/mlforecast/data_model.html#BacktestConfig"><code>BacktestConfig</code></a>=<em><code>None</code></em>, <strong><code>forecast</code></strong>:<a href="/mlforecast/data_model.html#ForecastConfig"><code>ForecastConfig</code></a>=<em><code>None</code></em>, <strong><code>local</code></strong>:<a href="/mlforecast/data_model.html#LocalConfig"><code>LocalConfig</code></a>=<em><code>None</code></em>, <strong><code>distributed</code></strong>:<a href="/mlforecast/data_model.html#DistributedConfig"><code>DistributedConfig</code></a>=<em><code>None</code></em>) :: <code>BaseModel</code></p>
 </blockquote>
+<p>Flow configuration.</p>
 
 </div>
 
@@ -384,8 +398,8 @@ nb_path: "nbs/data_model.ipynb"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/local.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-    <span class="n">config</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
-<span class="n">config</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">FlowConfig</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+<span class="n">pprint</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">dict</span><span class="p">())</span>
 </pre></div>
 
     </div>
@@ -397,12 +411,26 @@ nb_path: "nbs/data_model.ipynb"
 
 <div class="output_area">
 
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>Config(data=Data(prefix=&#39;data&#39;, input=&#39;train&#39;, output=&#39;outputs&#39;, format=&lt;DataFormat.parquet: &#39;parquet&#39;&gt;), features=Features(freq=&lt;DataFreq.D: &#39;D&#39;&gt;, lags=[7, 14], lag_transforms={1: [&#39;expanding_mean&#39;], 7: [{&#39;rolling_mean&#39;: {&#39;window_size&#39;: 7}}, {&#39;rolling_min&#39;: {&#39;window_size&#39;: 7}}]}, date_features=[&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;], static_features=None, num_threads=2), backtest=Backtest(n_windows=2, window_size=7), forecast=Forecast(horizon=7), local=Local(model=ModelConfig(name=&#39;sklearn.ensemble.RandomForestRegressor&#39;, params={&#39;n_estimators&#39;: 10, &#39;max_depth&#39;: 7})), distributed=None)</pre>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>{&#39;backtest&#39;: {&#39;n_windows&#39;: 2, &#39;window_size&#39;: 7},
+ &#39;data&#39;: {&#39;format&#39;: &lt;DataFormat.parquet: &#39;parquet&#39;&gt;,
+          &#39;input&#39;: &#39;train&#39;,
+          &#39;output&#39;: &#39;outputs&#39;,
+          &#39;prefix&#39;: &#39;data&#39;},
+ &#39;distributed&#39;: None,
+ &#39;features&#39;: {&#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;],
+              &#39;freq&#39;: &lt;DataFreq.D: &#39;D&#39;&gt;,
+              &#39;lag_transforms&#39;: {1: [&#39;expanding_mean&#39;],
+                                 7: [{&#39;rolling_mean&#39;: {&#39;window_size&#39;: 7}},
+                                     {&#39;rolling_mean&#39;: {&#39;window_size&#39;: 14}}]},
+              &#39;lags&#39;: [7, 14],
+              &#39;num_threads&#39;: 2,
+              &#39;static_features&#39;: None},
+ &#39;forecast&#39;: {&#39;horizon&#39;: 7},
+ &#39;local&#39;: {&#39;model&#39;: {&#39;name&#39;: &#39;sklearn.ensemble.RandomForestRegressor&#39;,
+                     &#39;params&#39;: {&#39;max_depth&#39;: 7, &#39;n_estimators&#39;: 10}}}}
+</pre>
 </div>
-
 </div>
 
 </div>
@@ -419,8 +447,8 @@ nb_path: "nbs/data_model.ipynb"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/distributed.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-    <span class="n">config</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
-<span class="n">config</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">FlowConfig</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+<span class="n">pprint</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">dict</span><span class="p">())</span>
 </pre></div>
 
     </div>
@@ -432,12 +460,30 @@ nb_path: "nbs/data_model.ipynb"
 
 <div class="output_area">
 
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>Config(data=Data(prefix=&#39;s3://bucket/&#39;, input=&#39;train&#39;, output=&#39;outputs&#39;, format=&lt;DataFormat.parquet: &#39;parquet&#39;&gt;), features=Features(freq=&lt;DataFreq.D: &#39;D&#39;&gt;, lags=[7, 14], lag_transforms={1: [&#39;expanding_mean&#39;], 7: [{&#39;rolling_mean&#39;: {&#39;window_size&#39;: 7}}, {&#39;rolling_min&#39;: {&#39;window_size&#39;: 7}}]}, date_features=[&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;], static_features=None, num_threads=2), backtest=Backtest(n_windows=2, window_size=7), forecast=Forecast(horizon=7), local=None, distributed=Distributed(model=DistributedModelConfig(name=&lt;DistributedModelName.XGBoost: &#39;XGBForecast&#39;&gt;, params={&#39;max_depth&#39;: 7, &#39;eta&#39;: 0.3}), cluster=Cluster(class_name=&#39;dask.distributed.LocalCluster&#39;, class_kwargs={&#39;n_workers&#39;: 2, &#39;threads_per_worker&#39;: 2, &#39;memory_limit&#39;: &#39;4 GiB&#39;})))</pre>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>{&#39;backtest&#39;: {&#39;n_windows&#39;: 2, &#39;window_size&#39;: 7},
+ &#39;data&#39;: {&#39;format&#39;: &lt;DataFormat.parquet: &#39;parquet&#39;&gt;,
+          &#39;input&#39;: &#39;train&#39;,
+          &#39;output&#39;: &#39;outputs&#39;,
+          &#39;prefix&#39;: &#39;data&#39;},
+ &#39;distributed&#39;: {&#39;cluster&#39;: {&#39;class_kwargs&#39;: {&#39;memory_limit&#39;: &#39;4 GiB&#39;,
+                                              &#39;n_workers&#39;: 2,
+                                              &#39;threads_per_worker&#39;: 2},
+                             &#39;class_name&#39;: &#39;dask.distributed.LocalCluster&#39;},
+                 &#39;model&#39;: {&#39;name&#39;: &lt;DistributedModelName.XGBoost: &#39;XGBForecast&#39;&gt;,
+                           &#39;params&#39;: {&#39;eta&#39;: 0.3, &#39;max_depth&#39;: 7}}},
+ &#39;features&#39;: {&#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;, &#39;year&#39;],
+              &#39;freq&#39;: &lt;DataFreq.D: &#39;D&#39;&gt;,
+              &#39;lag_transforms&#39;: {1: [&#39;expanding_mean&#39;],
+                                 7: [{&#39;rolling_mean&#39;: {&#39;window_size&#39;: 7}},
+                                     {&#39;rolling_min&#39;: {&#39;window_size&#39;: 7}}]},
+              &#39;lags&#39;: [7, 14],
+              &#39;num_threads&#39;: 2,
+              &#39;static_features&#39;: None},
+ &#39;forecast&#39;: {&#39;horizon&#39;: 7},
+ &#39;local&#39;: None}
+</pre>
 </div>
-
 </div>
 
 </div>
@@ -458,7 +504,7 @@ nb_path: "nbs/data_model.ipynb"
 
 <span class="k">def</span> <span class="nf">test_specifying_both_local_and_distributed_fails</span><span class="p">():</span>
     <span class="n">cfg</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;model&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;lgb.LGBMRegressor&#39;</span><span class="p">}}</span>
-    <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">cfg</span><span class="p">)</span>
+    <span class="n">FlowConfig</span><span class="p">(</span><span class="o">**</span><span class="n">cfg</span><span class="p">)</span>
     
 <span class="n">test_fail</span><span class="p">(</span><span class="n">test_specifying_both_local_and_distributed_fails</span><span class="p">,</span> <span class="n">contains</span><span class="o">=</span><span class="s1">&#39;not both&#39;</span><span class="p">)</span>
 </pre></div>
@@ -482,7 +528,7 @@ nb_path: "nbs/data_model.ipynb"
 
 <span class="k">def</span> <span class="nf">test_not_specifying_local_nor_distributed_fails</span><span class="p">():</span>
     <span class="k">del</span> <span class="n">cfg</span><span class="p">[</span><span class="s1">&#39;distributed&#39;</span><span class="p">]</span>
-    <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">cfg</span><span class="p">)</span>
+    <span class="n">FlowConfig</span><span class="p">(</span><span class="o">**</span><span class="n">cfg</span><span class="p">)</span>
     
 <span class="n">test_fail</span><span class="p">(</span><span class="n">test_not_specifying_local_nor_distributed_fails</span><span class="p">,</span> <span class="n">contains</span><span class="o">=</span><span class="s1">&#39;either local or distributed&#39;</span><span class="p">)</span>
 </pre></div>

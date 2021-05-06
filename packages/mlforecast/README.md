@@ -11,7 +11,7 @@ If you want more functionality you can instead use `pip install mlforecast[extra
 
 * **aws**: adds the functionality to use S3 as the storage in the CLI.
 * **cli**: includes the validations necessary to use the CLI.
-* **distributed**: installs `dask` to perform distributed training. Note that you'll also need to install either `lightgbm` or `xgboost`.
+* **distributed**: installs [dask](https://dask.org/) to perform distributed training. Note that you'll also need to install either [lightgbm](https://github.com/microsoft/LightGBM/tree/master/python-package) or [xgboost](https://xgboost.readthedocs.io/en/latest/install.html#python).
 
 For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: `pip install mlforecast[aws, cli, distributed]`.
 
@@ -19,7 +19,7 @@ For example, if you want to perform distributed training through the CLI using S
 
 ### Programmatic API
 
-Store your time series in a pandas dataframe with an index named **unique_id** that is the identifier of each serie, a column **ds** that contains the datestamps and a column **y** with the values.
+Store your time series in a pandas dataframe with an index named **unique_id** that identifies each time serie, a column **ds** that contains the datestamps and a column **y** with the values.
 
 ```python
 from mlforecast.utils import generate_daily_series
@@ -38,7 +38,7 @@ display_df(series.head())
 | id_00       | 2000-01-05 00:00:00 | 4.04356  |
 
 
-Then you define your flow configuration. These include lags, transformations on the lags and date features. The transformations are defined as `numba` jitted functions that transform an array. If they have additional arguments you supply a tuple (`transform_func`, `arg1`, `arg2`, ...)
+Then define your flow configuration. This includes lags, transformations on the lags and date features. The lag transformations are defined as [numba](http://numba.pydata.org/) *jitted* functions that transform an array, if they have additional arguments you supply a tuple (`transform_func`, `arg1`, `arg2`, ...).
 
 ```python
 from window_ops.expanding import expanding_mean
@@ -54,7 +54,7 @@ flow_config = dict(
 )
 ```
 
-Next define a model, if you're on a single machine this can be any regressor that follows the scikit-learn API. For distributed training there are `LGBMForecast` and `XGBForecast`.
+Next define a model. If you want to use the local interface this can be any regressor that follows the scikit-learn API. For distributed training there are `LGBMForecast` and `XGBForecast`.
 
 ```python
 from sklearn.ensemble import RandomForestRegressor
@@ -62,7 +62,7 @@ from sklearn.ensemble import RandomForestRegressor
 model = RandomForestRegressor()
 ```
 
-Now instantiate your forecast object with the model and the flow configuration. There are two types of forecasters, `Forecast` and `DistributedForecast`. Since this is a single machine example we'll use the first.
+Now instantiate your forecast object with the model and the flow configuration. There are two types of forecasters, `Forecast` which is local and `DistributedForecast` which performs the whole process in a distributed way.
 
 ```python
 from mlforecast.forecast import Forecast
@@ -70,7 +70,7 @@ from mlforecast.forecast import Forecast
 fcst = Forecast(model, flow_config)
 ```
 
-To compute the transformations and train the model on the data you call `.fit` on your `Forecast` object.
+To compute the features and train the model using them call `.fit` on your `Forecast` object.
 
 ```python
 fcst.fit(series)
@@ -79,11 +79,11 @@ fcst.fit(series)
 
 
 
-    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7fac9f73f280>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7fac9f7a8f70>), 7), (CPUDispatcher(<function rolling_mean at 0x7fac9f7a8f70>), 14)]}, 'date_features': ['dayofweek', 'month']})
+    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7fd7456808b0>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7fd745675700>), 7), (CPUDispatcher(<function rolling_mean at 0x7fd745675700>), 14)]}, 'date_features': ['dayofweek', 'month']})
 
 
 
-To get the forecasts for the next 14 days you just call `.predict(14)` on the forecaster.
+To get the forecasts for the next 14 days call `.predict(14)` on the forecaster. This will update the target with each prediction and recompute the features to get the next one.
 
 ```python
 predictions = fcst.predict(14)
@@ -94,11 +94,11 @@ display_df(predictions.head())
 
 | unique_id   | ds                  |   y_pred |
 |:------------|:--------------------|---------:|
-| id_00       | 2000-08-10 00:00:00 | 5.2325   |
-| id_00       | 2000-08-11 00:00:00 | 6.26395  |
-| id_00       | 2000-08-12 00:00:00 | 0.196386 |
-| id_00       | 2000-08-13 00:00:00 | 1.25263  |
-| id_00       | 2000-08-14 00:00:00 | 2.2988   |
+| id_00       | 2000-08-10 00:00:00 | 5.23864  |
+| id_00       | 2000-08-11 00:00:00 | 6.2306   |
+| id_00       | 2000-08-12 00:00:00 | 0.216553 |
+| id_00       | 2000-08-13 00:00:00 | 1.2501   |
+| id_00       | 2000-08-14 00:00:00 | 2.28829  |
 
 
 ### CLI
@@ -123,8 +123,8 @@ If you're looking for computing quick baselines, want to avoid some boilerplate 
         7: 
         - rolling_mean:
             window_size: 7
-        - rolling_min:
-            window_size: 7
+        - rolling_mean:
+            window_size: 14
       date_features: ["dayofweek", "month", "year"]
       num_threads: 2
     backtest:
@@ -140,19 +140,26 @@ If you're looking for computing quick baselines, want to avoid some boilerplate 
           max_depth: 7
 
 
-This will use the data in `prefix/input` and write the results to `prefix/output`.
+The configuration is validated using `FlowConfig`.
+
+This configuration will use the data in `data.prefix/data.input` to train and write the results to `data.prefix/data.output` both with `data.format`.
 
 ```python
 !mlforecast sample_configs/local.yaml
 ```
 
-    Split 1 MSE: 0.0240
-    Split 2 MSE: 0.0187
-    [0m
+    Split 1 MSE: 0.0239
+    Split 2 MSE: 0.0191
 
 ```python
-!ls data/outputs/
+list((data_path/'outputs').iterdir())
 ```
 
-    forecast.parquet  valid_0.parquet  valid_1.parquet
+
+
+
+    [PosixPath('data/outputs/valid_1.parquet'),
+     PosixPath('data/outputs/valid_0.parquet'),
+     PosixPath('data/outputs/forecast.parquet')]
+
 

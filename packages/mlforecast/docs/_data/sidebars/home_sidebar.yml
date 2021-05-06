@@ -10,26 +10,33 @@ entries:
       title: Overview
       url: /
     - output: web,pdf
-      title: API
-      url: api.html
-    - output: web,pdf
       title: Core
       url: core.html
-    - output: web,pdf
-      title: Data model
-      url: data_model.html
-    - output: web,pdf
-      title: Distributed core
-      url: distributed.core.html
-    - output: web,pdf
-      title: Distributed forecast
-      url: distributed.forecast.html
-    - output: web,pdf
-      title: LGBMForecast
-      url: distributed.models.lgb.html
-    - output: web,pdf
-      title: XGBForecast
-      url: distributed.models.xgb.html
+      subfolders:
+      - output: web
+        subfolderitems:
+        - output: web,pdf
+          title: API
+          url: api.html
+        - output: web,pdf
+          title: Data model
+          url: data_model.html
+        title: CLI
+      - output: web
+        subfolderitems:
+        - output: web,pdf
+          title: Core
+          url: distributed.core.html
+        - output: web,pdf
+          title: Forecast
+          url: distributed.forecast.html
+        - output: web,pdf
+          title: LGBMForecast
+          url: distributed.models.lgb.html
+        - output: web,pdf
+          title: XGBForecast
+          url: distributed.models.xgb.html
+        title: Distributed
     - output: web,pdf
       title: Forecast
       url: forecast.html

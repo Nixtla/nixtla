@@ -32,11 +32,12 @@ import yaml
 from fastcore.script import Param, call_parse
 from pandas.api.types import is_datetime64_dtype
 
-from .data_model import (Backtest, Cluster, Config, Data, DataFormat,
-                         DistributedModelConfig, DistributedModelName,
-                         Features, ModelConfig, _available_tfms)
+from .core import predictions_flow
+from .data_model import (BacktestConfig, ClusterConfig, DataConfig, DataFormat,
+                         FlowConfig, DistributedModelConfig, DistributedModelName,
+                         FeaturesConfig, ModelConfig, _available_tfms)
 from .forecast import Forecast
-from .utils import get_last_n_mask
+from .utils import backtest_splits
 
 # Internal Cell
 Frame = Union[pd.DataFrame, dd_Frame]
@@ -76,7 +77,7 @@ def _path_as_str(path: Union[Path, S3Path]) -> str:
     return str(path)
 
 # Cell
-def read_data(config: Data, is_distributed: bool) -> Frame:
+def read_data(config: DataConfig, is_distributed: bool) -> Frame:
     """Read data from `config.prefix/config.input`.
 
     If we're in distributed mode dask is used for IO, else pandas."""
@@ -99,33 +100,7 @@ def read_data(config: Data, is_distributed: bool) -> Frame:
     return validate_data_format(data)
 
 # Internal Cell
-def _get_pandas_mask(data: pd.DataFrame, n: int) -> pd.Series:
-    return data.groupby('unique_id')['y'].transform(get_last_n_mask, n)
-
-
-def _split_frame(data: Frame, n_windows: int, window: int, valid_size: int) -> Tuple[Frame, Frame]:
-    full_valid_size = (n_windows - window) * valid_size
-    extra_valid_size = full_valid_size - valid_size
-    if isinstance(data, pd.DataFrame):
-        full_valid_mask = _get_pandas_mask(data, full_valid_size)
-        train_mask = ~full_valid_mask
-        extra_valid_mask = _get_pandas_mask(data, extra_valid_size)
-    else:
-        full_valid_mask = data.map_partitions(_get_pandas_mask, full_valid_size, meta=bool)
-        train_mask = ~full_valid_mask
-        extra_valid_mask = data.map_partitions(_get_pandas_mask, extra_valid_size, meta=bool)
-    valid_mask = full_valid_mask & ~extra_valid_mask
-    return data[train_mask], data[valid_mask]
-
-# Internal Cell
-def _backtest_splits(data: Frame, config: Backtest) -> Generator[Frame, None, None]:
-    """Returns a generator for train, valid splits of `data` using `config`"""
-    for window in range(config.n_windows):
-        train, valid = _split_frame(data, config.n_windows, window, config.window_size)
-        yield train, valid
-
-# Internal Cell
-def _instantiate_transforms(config: Features) -> Dict:
+def _instantiate_transforms(config: FeaturesConfig) -> Dict:
     """Turn the function names into the actual functions and make sure their positional arguments are in order."""
     if config.lag_transforms is None:
         return {}
@@ -167,7 +142,7 @@ def _fcst_from_distributed(model_config: DistributedModelConfig,
     return DistributedForecast(model, flow_config)
 
 # Cell
-def fcst_from_config(config: Config) -> Union[Forecast, DistributedForecast]:
+def fcst_from_config(config: FlowConfig) -> Union[Forecast, DistributedForecast]:
     """Instantiate Forecast class from config."""
     flow_config = config.features.dict()
     flow_config['lag_transforms'] = _instantiate_transforms(config.features)
@@ -180,39 +155,39 @@ def fcst_from_config(config: Config) -> Union[Forecast, DistributedForecast]:
 # Cell
 def perform_backtest(fcst: Union[Forecast, DistributedForecast],
                      data: Frame,
-                     config: Config,
+                     config: FlowConfig,
                      output_path: Union[Path, S3Path]):
     """Performs backtesting of `fcst` using `data` and the strategy defined in `config`.
     Writes the results to `output_path`."""
     if config.backtest is None:
         return
-    splits = _backtest_splits(data, config.backtest)
     data_is_dask = isinstance(data, dd_Frame)
-    for split, (train, valid) in enumerate(splits):
-        fcst.fit(train)
-        preds = fcst.predict(config.backtest.window_size)
-        todo = valid.merge(preds, on=['unique_id', 'ds'], how='left')
-        todo['y_pred'] = todo['y_pred'].fillna(0)
-        split_path = _path_as_str(output_path/f'valid_{split}')
+    results = fcst.backtest(data,
+                            config.backtest.n_windows,
+                            config.backtest.window_size,
+                            predictions_flow)
+    for i, result in enumerate(results):
+        result = result.fillna(0)
+        split_path = _path_as_str(output_path/f'valid_{i}')
         if not data_is_dask:
             split_path += f'.{config.data.format}'
-        writer = getattr(todo, f'to_{config.data.format}')
+        writer = getattr(result, f'to_{config.data.format}')
         writer(split_path)
-        todo['sq_err'] = (todo['y'] - todo['y_pred'])**2
-        mse = todo.groupby("unique_id")["sq_err"].mean().mean()
+        result['sq_err'] = (result['y'] - result['y_pred'])**2
+        mse = result.groupby("unique_id")["sq_err"].mean().mean()
         if data_is_dask:
             mse = mse.compute()
-        print(f'Split {split+1} MSE: {mse:.4f}')
+        print(f'Split {i+1} MSE: {mse:.4f}')
 
 # Cell
-def parse_config(config_file: str):
-    """Create a `Config` object using the contents of `config_file`"""
+def parse_config(config_file: str) -> FlowConfig:
+    """Create a `FlowConfig` object using the contents of `config_file`"""
     with open(config_file, 'r') as f:
-        config = Config(**yaml.safe_load(f))
+        config = FlowConfig(**yaml.safe_load(f))
     return config
 
-def setup_client(config: Cluster) -> Client:
-    """Spins up a cluster and returns a client connected to it."""
+def setup_client(config: ClusterConfig) -> Client:
+    """Spins up a cluster with the specifications defined in `config` and returns a client connected to it."""
     module_name, cluster_cls = config.class_name.rsplit('.', maxsplit=1)
     module = importlib.import_module(module_name)
     cluster = getattr(module, cluster_cls)(**config.class_kwargs)

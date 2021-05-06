@@ -39,6 +39,23 @@ nb_path: "nbs/utils.ipynb"
     {% raw %}
     
 <div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">dask.dataframe</span> <span class="k">as</span> <span class="nn">dd</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
 
 <div class="output_wrapper">
 <div class="output">
@@ -453,9 +470,10 @@ If <code>equal_ends == True</code> then all series end at the same date.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="get_last_n_mask" class="doc_header"><code>get_last_n_mask</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L55" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>get_last_n_mask</code>(<strong><code>serie</code></strong>, <strong><code>n</code></strong>)</p>
+<h4 id="backtest_splits" class="doc_header"><code>backtest_splits</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L83" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>backtest_splits</code>(<strong><code>data</code></strong>, <strong><code>n_windows</code></strong>, <strong><code>window_size</code></strong>)</p>
 </blockquote>
-<p>Return a boolean mask where the last <code>n</code> values are True.</p>
+<p>Returns a generator of <code>n_windows</code> for train, valid splits of
+<code>data</code> where each valid has <code>window_size</code> samples.</p>
 
 </div>
 
@@ -481,8 +499,35 @@ If <code>equal_ends == True</code> then all series end at the same date.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">get_last_n_mask</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]),</span> <span class="mi">2</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">True</span><span class="p">]))</span>
-<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">get_last_n_mask</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]),</span> <span class="mi">4</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="kc">True</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">True</span><span class="p">]))</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">n_windows</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">window_size</span> <span class="o">=</span> <span class="mi">14</span>
+<span class="n">max_dates</span> <span class="o">=</span> <span class="n">series</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+<span class="n">day_offset</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">tseries</span><span class="o">.</span><span class="n">frequencies</span><span class="o">.</span><span class="n">Day</span><span class="p">()</span>
+<span class="n">series_ddf</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">npartitions</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">df</span> <span class="ow">in</span> <span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">series_ddf</span><span class="p">):</span>
+    <span class="n">splits</span> <span class="o">=</span> <span class="n">backtest_splits</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">n_windows</span><span class="p">,</span> <span class="n">window_size</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">window</span><span class="p">,</span> <span class="p">(</span><span class="n">train</span><span class="p">,</span> <span class="n">valid</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">splits</span><span class="p">):</span>
+        <span class="n">expected_max_train_dates</span> <span class="o">=</span> <span class="n">max_dates</span> <span class="o">-</span> <span class="n">day_offset</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_windows</span> <span class="o">-</span> <span class="n">window</span><span class="p">)</span> <span class="o">*</span> <span class="n">window_size</span>
+        <span class="n">max_train_dates</span> <span class="o">=</span> <span class="n">train</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="n">max_train_dates</span> <span class="o">=</span> <span class="n">max_train_dates</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">max_train_dates</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">expected_max_train_dates</span><span class="p">)</span>
+
+        <span class="n">expected_min_valid_dates</span> <span class="o">=</span> <span class="n">expected_max_train_dates</span> <span class="o">+</span> <span class="n">day_offset</span>
+        <span class="n">min_valid_dates</span> <span class="o">=</span> <span class="n">valid</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="n">min_valid_dates</span> <span class="o">=</span> <span class="n">min_valid_dates</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">min_valid_dates</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">expected_min_valid_dates</span><span class="p">)</span>
+
+        <span class="n">expected_max_valid_dates</span> <span class="o">=</span> <span class="n">expected_max_train_dates</span> <span class="o">+</span> <span class="n">day_offset</span> <span class="o">*</span> <span class="n">window_size</span>
+        <span class="n">max_valid_dates</span> <span class="o">=</span> <span class="n">valid</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="n">max_valid_dates</span> <span class="o">=</span> <span class="n">max_valid_dates</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">max_valid_dates</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">expected_max_valid_dates</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">window</span> <span class="o">==</span> <span class="n">n_windows</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">max_valid_dates</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">max_dates</span><span class="p">)</span>
 </pre></div>
 
     </div>

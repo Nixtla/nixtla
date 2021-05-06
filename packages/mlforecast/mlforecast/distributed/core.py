@@ -19,7 +19,7 @@ def distributed_preprocess(data: dd.DataFrame,
                            flow: Callable = preprocessing_flow) -> Tuple[List[Future], dd.DataFrame]:
     """Applies `flow(partition, **config)` to every partition of `data`.
 
-    Returns futures pointing to the TimeSeries objects generated from each partition
+    Returns futures pointing to the `TimeSeries` objects generated from each partition
     and a dask dataframe for training a distributed model."""
     client = client or default_client()
 

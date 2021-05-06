@@ -73,7 +73,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="validate_data_format" class="doc_header"><code>validate_data_format</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L48" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>validate_data_format</code>(<strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>])</p>
+<h4 id="validate_data_format" class="doc_header"><code>validate_data_format</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L49" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>validate_data_format</code>(<strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>])</p>
 </blockquote>
 <p>Checks whether data is in the correct format and tries to fix it if possible.</p>
 
@@ -142,7 +142,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="read_data" class="doc_header"><code>read_data</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L79" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>read_data</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Data"><code>Data</code></a>, <strong><code>is_distributed</code></strong>:<code>bool</code>)</p>
+<h4 id="read_data" class="doc_header"><code>read_data</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L80" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>read_data</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#DataConfig"><code>DataConfig</code></a>, <strong><code>is_distributed</code></strong>:<code>bool</code>)</p>
 </blockquote>
 <p>Read data from <code>config.prefix/config.input</code>.</p>
 <p>If we're in distributed mode dask is used for IO, else pandas.</p>
@@ -172,43 +172,22 @@ nb_path: "nbs/api.ipynb"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="n">series</span> <span class="o">=</span> <span class="n">generate_daily_series</span><span class="p">(</span><span class="mi">20</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">series_ddf</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">npartitions</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 
 <span class="k">for</span> <span class="n">data_format</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;csv&#39;</span><span class="p">,</span> <span class="s1">&#39;parquet&#39;</span><span class="p">):</span>
-    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
-        <span class="n">tmpdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">)</span>
-        <span class="n">writer</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;to_</span><span class="si">{</span><span class="n">data_format</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="n">writer</span><span class="p">(</span><span class="n">tmpdir</span><span class="o">/</span><span class="sa">f</span><span class="s1">&#39;single_file.</span><span class="si">{</span><span class="n">data_format</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="n">data_cfg</span> <span class="o">=</span> <span class="n">Data</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">),</span> <span class="nb">input</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;single_file.</span><span class="si">{</span><span class="n">data_format</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="n">data_format</span><span class="p">)</span>
-        <span class="n">df</span> <span class="o">=</span> <span class="n">read_data</span><span class="p">(</span><span class="n">data_cfg</span><span class="p">,</span> <span class="n">is_distributed</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-        <span class="k">assert</span> <span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">series</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_allclose</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">series</span><span class="o">.</span><span class="n">y</span><span class="p">)</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">series_ddf</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">npartitions</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-
-<span class="k">for</span> <span class="n">data_format</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;csv&#39;</span><span class="p">,</span> <span class="s1">&#39;parquet&#39;</span><span class="p">):</span>
-    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
-        <span class="n">tmpdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">)</span>
-        <span class="n">writer</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">series_ddf</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;to_</span><span class="si">{</span><span class="n">data_format</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-        <span class="n">writer</span><span class="p">(</span><span class="n">tmpdir</span><span class="o">/</span><span class="s1">&#39;partitions&#39;</span><span class="p">)</span>
-        <span class="n">data_cfg</span> <span class="o">=</span> <span class="n">Data</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">),</span> <span class="nb">input</span><span class="o">=</span><span class="s1">&#39;partitions&#39;</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="n">data_format</span><span class="p">)</span>
-        <span class="n">df</span> <span class="o">=</span> <span class="n">read_data</span><span class="p">(</span><span class="n">data_cfg</span><span class="p">,</span> <span class="n">is_distributed</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="k">assert</span> <span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">series</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_allclose</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">compute</span><span class="p">(),</span> <span class="n">series</span><span class="o">.</span><span class="n">y</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">df</span> <span class="ow">in</span> <span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">series_ddf</span><span class="p">):</span>
+        <span class="n">is_distributed</span> <span class="o">=</span> <span class="n">df</span> <span class="ow">is</span> <span class="n">series_ddf</span>
+        <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
+            <span class="n">tmpdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">)</span>
+            <span class="n">writer</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;to_</span><span class="si">{</span><span class="n">data_format</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">writer</span><span class="p">(</span><span class="n">tmpdir</span><span class="o">/</span><span class="s1">&#39;train&#39;</span><span class="p">)</span>
+            <span class="n">data_cfg</span> <span class="o">=</span> <span class="n">DataConfig</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">),</span> <span class="nb">input</span><span class="o">=</span><span class="s1">&#39;train&#39;</span><span class="p">,</span> 
+                                  <span class="n">output</span><span class="o">=</span><span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="n">data_format</span><span class="p">)</span>
+            <span class="n">read_df</span> <span class="o">=</span> <span class="n">read_data</span><span class="p">(</span><span class="n">data_cfg</span><span class="p">,</span> <span class="n">is_distributed</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">is_distributed</span><span class="p">:</span>
+                <span class="n">read_df</span><span class="p">,</span> <span class="n">df</span> <span class="o">=</span> <span class="n">read_df</span><span class="o">.</span><span class="n">compute</span><span class="p">(),</span> <span class="n">df</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+            <span class="k">assert</span> <span class="n">read_df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_allclose</span><span class="p">(</span><span class="n">read_df</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">df</span><span class="o">.</span><span class="n">y</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -229,7 +208,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="fcst_from_config" class="doc_header"><code>fcst_from_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L170" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>fcst_from_config</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Config"><code>Config</code></a>)</p>
+<h4 id="fcst_from_config" class="doc_header"><code>fcst_from_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L145" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>fcst_from_config</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#FlowConfig"><code>FlowConfig</code></a>)</p>
 </blockquote>
 <p>Instantiate Forecast class from config.</p>
 
@@ -258,7 +237,7 @@ nb_path: "nbs/api.ipynb"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/local.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-    <span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">FlowConfig</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
 
 <span class="n">fcst</span> <span class="o">=</span> <span class="n">fcst_from_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
 <span class="n">test_eq</span><span class="p">(</span><span class="n">fcst</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
@@ -299,7 +278,7 @@ nb_path: "nbs/api.ipynb"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/distributed.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-    <span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">FlowConfig</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
 
 <span class="n">fcst</span> <span class="o">=</span> <span class="n">fcst_from_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
 <span class="n">test_eq</span><span class="p">(</span><span class="n">fcst</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
@@ -326,7 +305,7 @@ nb_path: "nbs/api.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="perform_backtest" class="doc_header"><code>perform_backtest</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L181" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>perform_backtest</code>(<strong><code>fcst</code></strong>:<code>Union</code>[<a href="/mlforecast/forecast.html#Forecast"><code>Forecast</code></a>, <a href="/mlforecast/distributed.forecast.html#DistributedForecast"><code>DistributedForecast</code></a>], <strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>], <strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Config"><code>Config</code></a>, <strong><code>output_path</code></strong>:<code>Union</code>[<code>Path</code>, <code>S3Path</code>])</p>
+<h4 id="perform_backtest" class="doc_header"><code>perform_backtest</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L156" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>perform_backtest</code>(<strong><code>fcst</code></strong>:<code>Union</code>[<a href="/mlforecast/forecast.html#Forecast"><code>Forecast</code></a>, <a href="/mlforecast/distributed.forecast.html#DistributedForecast"><code>DistributedForecast</code></a>], <strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>], <strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#FlowConfig"><code>FlowConfig</code></a>, <strong><code>output_path</code></strong>:<code>Union</code>[<code>Path</code>, <code>S3Path</code>])</p>
 </blockquote>
 <p>Performs backtesting of <code>fcst</code> using <code>data</code> and the strategy defined in <code>config</code>.
 Writes the results to <code>output_path</code>.</p>
@@ -355,12 +334,12 @@ Writes the results to <code>output_path</code>.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/local.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-    <span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
-
-<span class="n">fcst</span> <span class="o">=</span> <span class="n">fcst_from_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
-<span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
-    <span class="n">perform_backtest</span><span class="p">(</span><span class="n">fcst</span><span class="p">,</span> <span class="n">series</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">))</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">for</span> <span class="n">mode</span><span class="p">,</span> <span class="n">df</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">((</span><span class="s1">&#39;local&#39;</span><span class="p">,</span> <span class="s1">&#39;distributed&#39;</span><span class="p">),</span> <span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">series_ddf</span><span class="p">)):</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;../sample_configs/</span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s1">.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">cfg</span> <span class="o">=</span> <span class="n">FlowConfig</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+    <span class="n">fcst</span> <span class="o">=</span> <span class="n">fcst_from_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
+        <span class="n">perform_backtest</span><span class="p">(</span><span class="n">fcst</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">))</span>
 </pre></div>
 
     </div>
@@ -373,44 +352,9 @@ Writes the results to <code>output_path</code>.</p>
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0219
-Split 2 MSE: 0.0244
-</pre>
-</div>
-</div>
-
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;../sample_configs/distributed.yaml&#39;</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-    <span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="o">**</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
-
-<span class="n">fcst</span> <span class="o">=</span> <span class="n">fcst_from_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
-<span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
-    <span class="n">perform_backtest</span><span class="p">(</span><span class="n">fcst</span><span class="p">,</span> <span class="n">series_ddf</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">))</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-<div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0313
+<pre>Split 1 MSE: 0.0225
+Split 2 MSE: 0.0248
+Split 1 MSE: 0.0313
 Split 2 MSE: 0.0322
 </pre>
 </div>
@@ -450,9 +394,9 @@ Split 2 MSE: 0.0322
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="parse_config" class="doc_header"><code>parse_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L208" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>parse_config</code>(<strong><code>config_file</code></strong>:<code>str</code>)</p>
+<h4 id="parse_config" class="doc_header"><code>parse_config</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L183" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>parse_config</code>(<strong><code>config_file</code></strong>:<code>str</code>)</p>
 </blockquote>
-<p>Create a <a href="/mlforecast/data_model.html#Config"><code>Config</code></a> object using the contents of <code>config_file</code></p>
+<p>Create a <a href="/mlforecast/data_model.html#FlowConfig"><code>FlowConfig</code></a> object using the contents of <code>config_file</code></p>
 
 </div>
 
@@ -475,9 +419,9 @@ Split 2 MSE: 0.0322
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="setup_client" class="doc_header"><code>setup_client</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L214" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>setup_client</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#Cluster"><code>Cluster</code></a>)</p>
+<h4 id="setup_client" class="doc_header"><code>setup_client</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L189" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>setup_client</code>(<strong><code>config</code></strong>:<a href="/mlforecast/data_model.html#ClusterConfig"><code>ClusterConfig</code></a>)</p>
 </blockquote>
-<p>Spins up a cluster and returns a client connected to it.</p>
+<p>Spins up a cluster with the specifications defined in <code>config</code> and returns a client connected to it.</p>
 
 </div>
 
@@ -526,7 +470,7 @@ Split 2 MSE: 0.0322
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="run_forecast" class="doc_header"><code>run_forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L225" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>run_forecast</code>(<strong><code>config_file</code></strong>:"Configuration file")</p>
+<h4 id="run_forecast" class="doc_header"><code>run_forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/api.py#L200" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>run_forecast</code>(<strong><code>config_file</code></strong>:"Configuration file")</p>
 </blockquote>
 <p>Run the forecasting pipeline using the configuration defined in <code>config_file</code>.</p>
 
@@ -587,12 +531,12 @@ Split 2 MSE: 0.0322
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0227
-Split 2 MSE: 0.0243
+<pre>Split 1 MSE: 0.0220
+Split 2 MSE: 0.0242
 Split 1 MSE: 0.0313
 Split 2 MSE: 0.0322
-Split 1 MSE: 0.0207
-Split 2 MSE: 0.0231
+Split 1 MSE: 0.0229
+Split 2 MSE: 0.0242
 Split 1 MSE: 0.0313
 Split 2 MSE: 0.0322
 </pre>
@@ -612,9 +556,12 @@ Split 2 MSE: 0.0322
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="o">!</span>mkdir data
-<span class="n">series</span><span class="o">.</span><span class="n">to_parquet</span><span class="p">(</span><span class="s1">&#39;data/train&#39;</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">data_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s1">&#39;data&#39;</span><span class="p">)</span>
+<span class="n">data_path</span><span class="o">.</span><span class="n">mkdir</span><span class="p">()</span>
+<span class="n">series</span><span class="o">.</span><span class="n">to_parquet</span><span class="p">(</span><span class="n">data_path</span><span class="o">/</span><span class="s1">&#39;train&#39;</span><span class="p">)</span>
 <span class="o">!</span>mlforecast ../sample_configs/local.yaml
+<span class="k">assert</span> <span class="s1">&#39;forecast.parquet&#39;</span> <span class="ow">in</span> <span class="p">[</span><span class="n">file</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="p">(</span><span class="n">data_path</span><span class="o">/</span><span class="s1">&#39;outputs&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()]</span>
+<span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">data_path</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -627,60 +574,12 @@ Split 2 MSE: 0.0322
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0208
-Split 2 MSE: 0.0249
+<pre>Split 1 MSE: 0.0211
+Split 2 MSE: 0.0248
 </pre>
 </div>
 </div>
 
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="o">!</span>ls data/outputs/
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-<div class="output_subarea output_stream output_stdout output_text">
-<pre>forecast.parquet  valid_0.parquet  valid_1.parquet
-</pre>
-</div>
-</div>
-
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="o">!</span>rm -rf data
-</pre></div>
-
-    </div>
 </div>
 </div>
 

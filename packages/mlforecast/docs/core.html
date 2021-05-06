@@ -66,7 +66,7 @@ nb_path: "nbs/core.ipynb"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p>The required input format is a dataframe with an index named <code>unique_id</code> with an unique identifier for each time serie, a column <code>ds</code> with the datestamp and a column <code>y</code> with the values of the serie. Every other column is considered a static feature unless stated otherwise.</p>
+<p>The required input format is a dataframe with an index named <code>unique_id</code> with a unique identifier for each time serie, a column <code>ds</code> with the datestamp and a column <code>y</code> with the values of the serie. Every other column is considered a static feature unless stated otherwise in the flow configuration for <a href="/mlforecast/core.html#preprocessing_flow"><code>preprocessing_flow</code></a>.</p>
 
 </div>
 </div>
@@ -380,9 +380,9 @@ nb_path: "nbs/core.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="GroupedArray" class="doc_header"><code>class</code> <code>GroupedArray</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L59" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>GroupedArray</code>(<strong><code>data</code></strong>:<code>ndarray</code>, <strong><code>indptr</code></strong>:<code>ndarray</code>)</p>
+<h2 id="GroupedArray" class="doc_header"><code>class</code> <code>GroupedArray</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L61" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>GroupedArray</code>(<strong><code>data</code></strong>:<code>ndarray</code>, <strong><code>indptr</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
-<p>Array made up from different groups. Can be thought of as a list of arrays.</p>
+<p>Array made up of different groups. Can be thought of (and iterated) as a list of arrays.</p>
 <p>All the data is stored in a single 1d array <code>data</code>.
 The indices for the group boundaries are stored in another 1d array <code>indptr</code>.</p>
 
@@ -420,14 +420,82 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 <div class=" highlight hl-ipython3"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
 <span class="n">indptr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>  <span class="c1"># group 1: [0, 1], group 2: [2..9]</span>
 <span class="n">ga</span> <span class="o">=</span> <span class="n">GroupedArray</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">indptr</span><span class="p">)</span>
+</pre></div>
 
-<span class="c1"># take the last two observations from every group</span>
-<span class="n">last_2</span> <span class="o">=</span> <span class="n">ga</span><span class="o">.</span><span class="n">take_from_groups</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Iterate through the groups</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">ga_iter</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">ga</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">ga_iter</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]))</span>
+<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">ga_iter</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Take the last two observations from every group</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">last_2</span> <span class="o">=</span> <span class="n">ga</span><span class="o">.</span><span class="n">take_from_groups</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
 <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">last_2</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]))</span>
 <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">last_2</span><span class="o">.</span><span class="n">indptr</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">]))</span>
+</pre></div>
 
-<span class="c1"># take the last four observations from every group</span>
-<span class="n">last_4</span> <span class="o">=</span> <span class="n">ga</span><span class="o">.</span><span class="n">take_from_groups</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Take the last four observations from every group. Note that since group 1 only has two elements, only these are returned.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">last_4</span> <span class="o">=</span> <span class="n">ga</span><span class="o">.</span><span class="n">take_from_groups</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
 <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">last_4</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]))</span>
 <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">last_4</span><span class="o">.</span><span class="n">indptr</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">6</span><span class="p">]))</span>
 </pre></div>
@@ -450,7 +518,119 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="TimeSeries" class="doc_header"><code>class</code> <code>TimeSeries</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L131" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>TimeSeries</code>(<strong><code>series_df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>)</p>
+<h4 id="transform_series" class="doc_header"><code>transform_series</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L104" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>transform_series</code>(<strong><code>data</code></strong>, <strong><code>indptr</code></strong>, <strong><code>updates_only</code></strong>, <strong><code>lag</code></strong>, <strong><code>func</code></strong>, <strong>*<code>args</code></strong>)</p>
+</blockquote>
+<p>Shifts every group in <code>data</code> by <code>lag</code> and computes <code>func(shifted, *args)</code>.</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>This is the function that is used to compute the transformations, both for training and inference. <code>func</code> has to be a jitted function.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nd">@njit</span>
+<span class="k">def</span> <span class="nf">mycumsum</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">actual</span> <span class="o">=</span> <span class="n">transform_series</span><span class="p">(</span><span class="n">ga</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">ga</span><span class="o">.</span><span class="n">indptr</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">mycumsum</span><span class="p">)</span>
+<span class="n">expected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ga</span><span class="o">.</span><span class="n">data</span><span class="p">[:</span><span class="n">ga</span><span class="o">.</span><span class="n">indptr</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="n">ga</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">ga</span><span class="o">.</span><span class="n">indptr</span><span class="p">[</span><span class="mi">1</span><span class="p">]:]</span><span class="o">.</span><span class="n">sum</span><span class="p">()])</span>
+<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">actual</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="build_transform_name" class="doc_header"><code>build_transform_name</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L121" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>build_transform_name</code>(<strong><code>lag</code></strong>, <strong><code>tfm</code></strong>, <strong>*<code>args</code></strong>)</p>
+</blockquote>
+<p>Creates a name for a transformation based on <code>lag</code>, the name of the function and its arguments.</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">test_eq</span><span class="p">(</span><span class="n">build_transform_name</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">expanding_mean</span><span class="p">),</span> <span class="s1">&#39;expanding_mean_lag-1&#39;</span><span class="p">)</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">build_transform_name</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span> <span class="s1">&#39;rolling_mean_lag-2_window_size-7&#39;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h2 id="TimeSeries" class="doc_header"><code>class</code> <code>TimeSeries</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L133" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>TimeSeries</code>(<strong><code>series_df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>)</p>
 </blockquote>
 <p>Utility class for storing and transforming time series data.</p>
 
@@ -473,7 +653,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p>The <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> class has to extract each series values and store it in a contiguous numpy 1d-array. In order to achieve this, the input dataframe must be sorted by <code>unique_id</code> and <code>ds</code>. To achieve this we set both as indices and make sure they're sorted.</p>
+<p>The <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> class has to extract each series values and store it in a contiguous numpy 1d-array. Before doing that, we must ensure that the input dataframe is sorted by <code>unique_id</code> and <code>ds</code>, so we make them both indices and check if the index is sorted, otherwise it is sorted before storing the values in the array.</p>
 
 </div>
 </div>
@@ -536,14 +716,6 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 <span class="n">date_features</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;dayofweek&#39;</span><span class="p">]</span>
 
 <span class="n">ts</span> <span class="o">=</span> <span class="n">TimeSeries</span><span class="p">(</span><span class="n">serie</span><span class="p">,</span> <span class="n">lags</span><span class="o">=</span><span class="n">lags</span><span class="p">,</span> <span class="n">lag_transforms</span><span class="o">=</span><span class="n">lag_transforms</span><span class="p">,</span> <span class="n">date_features</span><span class="o">=</span><span class="n">date_features</span><span class="p">)</span>
-
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">uids</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;id_00&#39;</span><span class="p">])</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">last_dates</span><span class="p">,</span> <span class="p">[</span><span class="n">serie</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()])</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">date_features</span><span class="p">,</span> <span class="n">date_features</span><span class="p">)</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">transforms</span><span class="p">,</span> <span class="p">{</span><span class="s1">&#39;lag-7&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="n">_identity</span><span class="p">),</span> 
-                        <span class="s1">&#39;expanding_mean_lag-1&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">expanding_mean</span><span class="p">),</span> 
-                        <span class="s1">&#39;rolling_mean_lag-1_window_size-7&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">)})</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">static_features</span><span class="p">,</span> <span class="n">serie</span><span class="o">.</span><span class="n">tail</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">,</span> <span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="s1">&#39;y&#39;</span><span class="p">))</span>
 </pre></div>
 
     </div>
@@ -553,6 +725,211 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 </div>
     {% endraw %}
 
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The series values are stored as a <a href="/mlforecast/core.html#GroupedArray"><code>GroupedArray</code></a> in an attribute <code>ga</code>. If the data type of the series values is an int then it is converted to <code>np.float32</code>, this is because lags generate <code>np.nan</code>s so we need a float data type for them.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">ga</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">serie</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The series ids are stored in <a href="/mlforecast/core.html#TimeSeries.uids"><code>TimeSeries.uids</code></a></p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">uids</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;id_00&#39;</span><span class="p">])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>For each time serie, the last observed date is stored so that predictions start from the last date + the frequency.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">last_dates</span><span class="p">,</span> <span class="p">[</span><span class="n">serie</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The frequency is converted to an offset.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">freq</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">tseries</span><span class="o">.</span><span class="n">frequencies</span><span class="o">.</span><span class="n">to_offset</span><span class="p">(</span><span class="s1">&#39;D&#39;</span><span class="p">))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The last row of every serie without the <code>y</code> column is taken as static features. The <code>ds</code> index level is dropped as well because these will be replicated in every update and the datestamps will be updated.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">assert</span> <span class="n">ts</span><span class="o">.</span><span class="n">static_features</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">serie</span><span class="o">.</span><span class="n">tail</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">,</span> <span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="s1">&#39;y&#39;</span><span class="p">))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>If you pass <code>static_features</code> to the <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> constructor then only these are kept.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">ts2</span> <span class="o">=</span> <span class="n">TimeSeries</span><span class="p">(</span><span class="n">serie</span><span class="p">,</span> <span class="n">static_features</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;static_0&#39;</span><span class="p">])</span>
+
+<span class="n">test_eq</span><span class="p">(</span><span class="n">ts2</span><span class="o">.</span><span class="n">static_features</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;static_0&#39;</span><span class="p">])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The date features are stored as they were passed to the constructor.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">date_features</span><span class="p">,</span> <span class="n">date_features</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The transformations are stored as a dictionary where the key is the name of the transformation (name of the column in the dataframe with the computed features), which is built using <a href="/mlforecast/core.html#build_transform_name"><code>build_transform_name</code></a> and the value is a tuple where the first element is the lag it is applied to, then the function and then the function arguments.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">transforms</span><span class="p">,</span> 
+        <span class="p">{</span><span class="s1">&#39;lag-7&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="n">_identity</span><span class="p">),</span> 
+        <span class="s1">&#39;expanding_mean_lag-1&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">expanding_mean</span><span class="p">),</span> 
+        <span class="s1">&#39;rolling_mean_lag-1_window_size-7&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">)</span>
+        <span class="p">})</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Note that for <code>lags</code> we define the transformation as the identity function applied to its corresponding lag. This is because <a href="/mlforecast/core.html#transform_series"><code>transform_series</code></a> takes the lag as an argument and shifts the array before computing the transformation.</p>
+
+</div>
+</div>
+</div>
     {% raw %}
     
 <div class="cell border-box-sizing code_cell rendered">
@@ -564,7 +941,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.compute_transforms" class="doc_header"><code>TimeSeries.compute_transforms</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L205" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.compute_transforms</code>()</p>
+<h4 id="TimeSeries.compute_transforms" class="doc_header"><code>TimeSeries.compute_transforms</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L207" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.compute_transforms</code>()</p>
 </blockquote>
 <p>Compute the transformations defined in the constructor.</p>
 <p>If <code>num_threads &gt; 1</code> these are computed using multithreading.</p>
@@ -588,7 +965,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p>After we instantiate a <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> class we can call <code>compute_transforms</code> to get the values of all the transformations. These are returned in a dictionary where the keys are the name that was assigned the each transformation and the values are the result of the transformation applied to the time serie.</p>
+<p>After we instantiate a <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> class we can call <code>compute_transforms</code> to get the values of all the transformations. These are returned in a dictionary where the keys are the name that was assigned the each transformation and the values are the result of the transformation applied to the time series.</p>
 
 </div>
 </div>
@@ -630,9 +1007,10 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.update_y" class="doc_header"><code>TimeSeries.update_y</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L215" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_y</code>(<strong><code>new</code></strong>:<code>ndarray</code>)</p>
+<h4 id="TimeSeries.update_y" class="doc_header"><code>TimeSeries.update_y</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L217" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_y</code>(<strong><code>new</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
-<p>Updates the value of y for the predictions and for the features updates.</p>
+<p>Appends the elements of <code>new</code> to every time serie.</p>
+<p>These values are used to update the transformations and are stored as predictions.</p>
 
 </div>
 
@@ -685,9 +1063,9 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.update_features" class="doc_header"><code>TimeSeries.update_features</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L225" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_features</code>()</p>
+<h4 id="TimeSeries.update_features" class="doc_header"><code>TimeSeries.update_features</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L229" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_features</code>()</p>
 </blockquote>
-<p>Compute the current values of all the features using the latest values of the target.</p>
+<p>Compute the current values of all the features using the latest values of the time series.</p>
 
 </div>
 
@@ -718,18 +1096,20 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 <span class="c1"># these have an offset becase we can now &quot;see&quot; our last y value</span>
 <span class="n">last_date</span> <span class="o">=</span> <span class="n">serie</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
-<span class="n">expected_idx</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="o">.</span><span class="n">from_tuples</span><span class="p">([(</span><span class="n">ts</span><span class="o">.</span><span class="n">uids</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">last_date</span> <span class="o">+</span> <span class="n">ts</span><span class="o">.</span><span class="n">freq</span><span class="p">)],</span> <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;unique_id&#39;</span><span class="p">,</span> <span class="s1">&#39;ds&#39;</span><span class="p">])</span>
+<span class="n">first_prediction_date</span> <span class="o">=</span> <span class="n">last_date</span> <span class="o">+</span> <span class="n">ts</span><span class="o">.</span><span class="n">freq</span>
+<span class="n">expected_idx</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="o">.</span><span class="n">from_tuples</span><span class="p">([(</span><span class="n">ts</span><span class="o">.</span><span class="n">uids</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">first_prediction_date</span><span class="p">)],</span>
+                                         <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;unique_id&#39;</span><span class="p">,</span> <span class="s1">&#39;ds&#39;</span><span class="p">])</span>
 <span class="n">expected</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
     <span class="s1">&#39;lag-7&#39;</span><span class="p">:</span> <span class="n">shift_array</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="mi">6</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
     <span class="s1">&#39;expanding_mean_lag-1&#39;</span><span class="p">:</span> <span class="n">expanding_mean</span><span class="p">(</span><span class="n">y</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
     <span class="s1">&#39;rolling_mean_lag-1_window_size-7&#39;</span><span class="p">:</span> <span class="n">rolling_mean</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="mi">7</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
-    <span class="s1">&#39;dayofweek&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">([</span><span class="nb">getattr</span><span class="p">(</span><span class="n">last_date</span> <span class="o">+</span> <span class="n">pd</span><span class="o">.</span><span class="n">tseries</span><span class="o">.</span><span class="n">offsets</span><span class="o">.</span><span class="n">Day</span><span class="p">(),</span> <span class="s1">&#39;dayofweek&#39;</span><span class="p">)])},</span>
+    <span class="s1">&#39;dayofweek&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">([</span><span class="nb">getattr</span><span class="p">(</span><span class="n">first_prediction_date</span><span class="p">,</span> <span class="s1">&#39;dayofweek&#39;</span><span class="p">)])},</span>
     <span class="n">index</span><span class="o">=</span><span class="n">expected_idx</span>
 <span class="p">)</span>
 <span class="n">statics</span> <span class="o">=</span> <span class="n">serie</span><span class="o">.</span><span class="n">tail</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">,</span> <span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">assert</span> <span class="n">updates</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">statics</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">expected</span><span class="p">))</span>
 
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">curr_dates</span><span class="p">,</span> <span class="n">serie</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">)[[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">+</span> <span class="n">pd</span><span class="o">.</span><span class="n">tseries</span><span class="o">.</span><span class="n">offsets</span><span class="o">.</span><span class="n">Day</span><span class="p">())</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">curr_dates</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">first_prediction_date</span><span class="p">)</span>  <span class="c1"># current dates of the series (last_dates + num_preds * freq)</span>
 </pre></div>
 
     </div>
@@ -750,41 +1130,9 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.get_predictions" class="doc_header"><code>TimeSeries.get_predictions</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L250" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.get_predictions</code>()</p>
+<h4 id="TimeSeries.get_predictions" class="doc_header"><code>TimeSeries.get_predictions</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L257" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.get_predictions</code>()</p>
 </blockquote>
 <p>Get all the predicted values with their corresponding ids and datestamps.</p>
-
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<h4 id="preprocessing_flow" class="doc_header"><code>preprocessing_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L262" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>preprocessing_flow</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>dropna</code></strong>:<code>bool</code>=<em><code>True</code></em>, <strong><code>keep_last_n</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>8</code></em>)</p>
-</blockquote>
-<p>Standard preprocessing flow.</p>
 
 </div>
 
@@ -810,34 +1158,18 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">config</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
-    <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;D&#39;</span><span class="p">,</span>
-    <span class="n">lags</span><span class="o">=</span><span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span>
-    <span class="n">lag_transforms</span><span class="o">=</span><span class="p">{</span>
-        <span class="mi">1</span><span class="p">:</span> <span class="p">[</span>
-            <span class="p">(</span><span class="n">expanding_mean</span><span class="p">,),</span>
-            <span class="p">(</span><span class="n">expanding_std</span><span class="p">,),</span>
-        <span class="p">],</span>
-        <span class="mi">2</span><span class="p">:</span> <span class="p">[</span>
-            <span class="p">(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span>
-            <span class="p">(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">14</span><span class="p">),</span>
-        <span class="p">]</span>
-    <span class="p">},</span>
-    <span class="n">date_features</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;dayofweek&#39;</span><span class="p">,</span> <span class="s1">&#39;month&#39;</span><span class="p">,</span> <span class="s1">&#39;year&#39;</span><span class="p">],</span>
-    <span class="n">keep_last_n</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
-    <span class="n">num_threads</span><span class="o">=</span><span class="mi">2</span>
-<span class="p">)</span>
-<span class="n">ts</span><span class="p">,</span> <span class="n">df</span> <span class="o">=</span> <span class="n">preprocessing_flow</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">ts</span> <span class="o">=</span> <span class="n">TimeSeries</span><span class="p">(</span><span class="n">serie</span><span class="p">)</span>
+<span class="n">ts</span><span class="o">.</span><span class="n">update_features</span><span class="p">()</span>
+<span class="n">ts</span><span class="o">.</span><span class="n">update_y</span><span class="p">([</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">preds</span> <span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">get_predictions</span><span class="p">()</span>
 
-<span class="n">expected_lags</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;lag-7&#39;</span><span class="p">,</span> <span class="s1">&#39;lag-14&#39;</span><span class="p">]</span>
-<span class="n">expected_transforms</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;expanding_mean_lag-1&#39;</span><span class="p">,</span> <span class="s1">&#39;expanding_std_lag-1&#39;</span><span class="p">,</span> <span class="s1">&#39;rolling_mean_lag-2_window_size-7&#39;</span><span class="p">,</span> <span class="s1">&#39;rolling_mean_lag-2_window_size-14&#39;</span><span class="p">]</span>
-<span class="n">expected_date_features</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;dayofweek&#39;</span><span class="p">,</span> <span class="s1">&#39;month&#39;</span><span class="p">,</span> <span class="s1">&#39;year&#39;</span><span class="p">]</span>
-
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">expected_lags</span> <span class="o">+</span> <span class="n">expected_transforms</span> <span class="o">+</span> <span class="n">expected_date_features</span><span class="p">)</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">static_features</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span> <span class="o">+</span> <span class="n">ts</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">drop</span><span class="p">([</span><span class="s1">&#39;ds&#39;</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
-<span class="c1"># we dropped 2 rows because of the lag 2 and 13 more to have the window of size 14</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">series</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">+</span> <span class="mi">13</span><span class="p">)</span> <span class="o">*</span> <span class="n">ts</span><span class="o">.</span><span class="n">n_series</span><span class="p">)</span>
-<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">ga</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">ts</span><span class="o">.</span><span class="n">ga</span><span class="o">.</span><span class="n">ngroups</span> <span class="o">*</span> <span class="n">config</span><span class="p">[</span><span class="s1">&#39;keep_last_n&#39;</span><span class="p">])</span>
+<span class="n">uid</span><span class="p">,</span> <span class="n">last_ds</span> <span class="o">=</span> <span class="n">serie</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">expected</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;unique_id&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">uid</span><span class="p">],</span>
+    <span class="s1">&#39;ds&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">last_ds</span> <span class="o">+</span> <span class="n">ts</span><span class="o">.</span><span class="n">freq</span><span class="p">],</span>
+    <span class="s1">&#39;y_pred&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="p">})</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">preds</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">expected</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -858,7 +1190,132 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="predictions_flow" class="doc_header"><code>predictions_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L294" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>predictions_flow</code>(<strong><code>series</code></strong>:<a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a>, <strong><code>model</code></strong>, <strong><code>horizon</code></strong>:<code>int</code>)</p>
+<h4 id="preprocessing_flow" class="doc_header"><code>preprocessing_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L269" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>preprocessing_flow</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>dropna</code></strong>:<code>bool</code>=<em><code>True</code></em>, <strong><code>keep_last_n</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>8</code></em>)</p>
+</blockquote>
+<p>Standard preprocessing flow.</p>
+<p>Returns a <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> object for the forecasting step and a pandas DataFrame for training.</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Since this function has a lot of arguments we define them in a dict than then gets unpacked in the function call. This pattern is used both in <a href="/mlforecast/forecast.html#Forecast"><code>Forecast</code></a> and <a href="/mlforecast/distributed.forecast.html#DistributedForecast"><code>DistributedForecast</code></a> to specify the flow configuration.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">config</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+    <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;D&#39;</span><span class="p">,</span>
+    <span class="n">lags</span><span class="o">=</span><span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span>
+    <span class="n">lag_transforms</span><span class="o">=</span><span class="p">{</span>
+        <span class="mi">1</span><span class="p">:</span> <span class="p">[</span>
+            <span class="n">expanding_mean</span><span class="p">,</span>
+            <span class="n">expanding_std</span>
+        <span class="p">],</span>
+        <span class="mi">2</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">14</span><span class="p">),</span>
+        <span class="p">]</span>
+    <span class="p">},</span>
+    <span class="n">date_features</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;dayofweek&#39;</span><span class="p">,</span> <span class="s1">&#39;month&#39;</span><span class="p">,</span> <span class="s1">&#39;year&#39;</span><span class="p">],</span>
+    <span class="n">keep_last_n</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+    <span class="n">num_threads</span><span class="o">=</span><span class="mi">2</span>
+<span class="p">)</span>
+<span class="n">ts</span><span class="p">,</span> <span class="n">df</span> <span class="o">=</span> <span class="n">preprocessing_flow</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">)</span>
+
+<span class="n">expected_lags</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;lag-7&#39;</span><span class="p">,</span> <span class="s1">&#39;lag-14&#39;</span><span class="p">]</span>
+<span class="n">expected_transforms</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;expanding_mean_lag-1&#39;</span><span class="p">,</span> 
+                       <span class="s1">&#39;expanding_std_lag-1&#39;</span><span class="p">,</span> 
+                       <span class="s1">&#39;rolling_mean_lag-2_window_size-7&#39;</span><span class="p">,</span> 
+                       <span class="s1">&#39;rolling_mean_lag-2_window_size-14&#39;</span><span class="p">]</span>
+<span class="n">expected_date_features</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;dayofweek&#39;</span><span class="p">,</span> <span class="s1">&#39;month&#39;</span><span class="p">,</span> <span class="s1">&#39;year&#39;</span><span class="p">]</span>
+
+<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">expected_lags</span> <span class="o">+</span> <span class="n">expected_transforms</span> <span class="o">+</span> <span class="n">expected_date_features</span><span class="p">)</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">static_features</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span> <span class="o">+</span> <span class="n">ts</span><span class="o">.</span><span class="n">features</span><span class="p">,</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">drop</span><span class="p">([</span><span class="s1">&#39;ds&#39;</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+<span class="c1"># we dropped 2 rows because of the lag 2 and 13 more to have the window of size 14</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">series</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">+</span> <span class="mi">13</span><span class="p">)</span> <span class="o">*</span> <span class="n">ts</span><span class="o">.</span><span class="n">n_series</span><span class="p">)</span>
+<span class="n">test_eq</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">ga</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">ts</span><span class="o">.</span><span class="n">ga</span><span class="o">.</span><span class="n">ngroups</span> <span class="o">*</span> <span class="n">config</span><span class="p">[</span><span class="s1">&#39;keep_last_n&#39;</span><span class="p">])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Note that we define <code>keep_last_n=15</code> here, which means that after computing the features for training we want to keep only the last 15 samples of each time serie. This saves both memory and time, since the updates are performed by running the transformation functions on all time series again and keeping only the last value (the update).</p>
+<p>If you have very long time series and your updates only require a small sample it's recommended that you set <code>keep_last_n</code> to the minimum number of samples required to compute the updates, which in this case is 15 since we have a rolling mean of size 14 over the lag 2 and in the first update the lag 2 becomes the lag 1. This is because in the first update the lag 1 is the last value of the series (or the lag 0), the lag 2 is the lag 1 and so on.</p>
+<p>If you get the minimum number of samples that your transformation needs wrong i.e. you generate <code>np.nan</code>s in the update, you'll get a warning.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">bad_config</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+    <span class="n">lag_transforms</span><span class="o">=</span><span class="p">{</span><span class="mi">2</span><span class="p">:</span> <span class="p">[(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">14</span><span class="p">)]},</span>
+    <span class="n">keep_last_n</span><span class="o">=</span><span class="mi">14</span>
+<span class="p">)</span>
+<span class="n">ts</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">preprocessing_flow</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="o">**</span><span class="n">bad_config</span><span class="p">)</span>
+<span class="n">test_warns</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">ts</span><span class="o">.</span><span class="n">update_features</span><span class="p">())</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>As a rule of thumb the minimal number of samples you need is max(lags) + max(window size for that lag) - 1 for rolling operations. <strong>If you have expanding features you need all samples to get the correct value</strong>. This won't raise a warning because there won't be null values, however the feature value will be wrong.</p>
+
+</div>
+</div>
+</div>
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="predictions_flow" class="doc_header"><code>predictions_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L303" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>predictions_flow</code>(<strong><code>series</code></strong>:<a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a>, <strong><code>model</code></strong>, <strong><code>horizon</code></strong>:<code>int</code>)</p>
 </blockquote>
 <p>Standard predictions flow.</p>
 <p>Uses <code>model</code> to compute the predictions for the next <code>horizon</code> steps for every serie in <code>series</code>.</p>
@@ -894,131 +1351,16 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
     
 <span class="n">horizon</span> <span class="o">=</span> <span class="mi">7</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">DummyModel</span><span class="p">()</span>
+<span class="n">ts</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">preprocessing_flow</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">)</span>
 <span class="n">predictions</span> <span class="o">=</span> <span class="n">predictions_flow</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">horizon</span><span class="p">)</span>
-<span class="n">predictions</span>
-</pre></div>
 
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_html rendered_html output_subarea output_execute_result">
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>ds</th>
-      <th>y_pred</th>
-    </tr>
-    <tr>
-      <th>unique_id</th>
-      <th></th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-10</td>
-      <td>48.093697</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-11</td>
-      <td>54.969785</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-12</td>
-      <td>4.263168</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-13</td>
-      <td>12.288851</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-14</td>
-      <td>19.142737</td>
-    </tr>
-    <tr>
-      <th>...</th>
-      <td>...</td>
-      <td>...</td>
-    </tr>
-    <tr>
-      <th>id_19</th>
-      <td>2000-04-01</td>
-      <td>8.175649</td>
-    </tr>
-    <tr>
-      <th>id_19</th>
-      <td>2000-04-02</td>
-      <td>10.995813</td>
-    </tr>
-    <tr>
-      <th>id_19</th>
-      <td>2000-04-03</td>
-      <td>12.657186</td>
-    </tr>
-    <tr>
-      <th>id_19</th>
-      <td>2000-04-04</td>
-      <td>0.420927</td>
-    </tr>
-    <tr>
-      <th>id_19</th>
-      <td>2000-04-05</td>
-      <td>2.888024</td>
-    </tr>
-  </tbody>
-</table>
-<p>140 rows × 2 columns</p>
-</div>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">grouped_series</span> <span class="o">=</span> <span class="n">series</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)</span>
-<span class="n">expected_preds</span> <span class="o">=</span> <span class="n">grouped_series</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tail</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
-<span class="n">expected_dsmin</span> <span class="o">=</span> <span class="n">grouped_series</span><span class="p">[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">ts</span><span class="o">.</span><span class="n">freq</span>
-<span class="n">expected_dsmax</span> <span class="o">=</span> <span class="n">grouped_series</span><span class="p">[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">horizon</span> <span class="o">*</span> <span class="n">ts</span><span class="o">.</span><span class="n">freq</span>
-
+<span class="n">grouped_series</span> <span class="o">=</span> <span class="n">series</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)</span>
+<span class="n">expected_preds</span> <span class="o">=</span> <span class="n">grouped_series</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tail</span><span class="p">(</span><span class="n">horizon</span><span class="p">)</span>
+<span class="n">last_dates</span> <span class="o">=</span> <span class="n">grouped_series</span><span class="p">[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+<span class="n">expected_dsmin</span> <span class="o">=</span> <span class="n">last_dates</span> <span class="o">+</span> <span class="n">ts</span><span class="o">.</span><span class="n">freq</span>
+<span class="n">expected_dsmax</span> <span class="o">=</span> <span class="n">last_dates</span> <span class="o">+</span> <span class="n">horizon</span> <span class="o">*</span> <span class="n">ts</span><span class="o">.</span><span class="n">freq</span>
 <span class="n">grouped_preds</span> <span class="o">=</span> <span class="n">predictions</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)</span>
+
 <span class="k">assert</span> <span class="n">predictions</span><span class="p">[</span><span class="s1">&#39;y_pred&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">expected_preds</span><span class="p">)</span>
 <span class="k">assert</span> <span class="n">grouped_preds</span><span class="p">[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">expected_dsmin</span><span class="p">)</span>
 <span class="k">assert</span> <span class="n">grouped_preds</span><span class="p">[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">expected_dsmax</span><span class="p">)</span>

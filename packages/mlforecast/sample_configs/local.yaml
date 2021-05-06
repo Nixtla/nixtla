@@ -12,8 +12,8 @@ features:
     7: 
     - rolling_mean:
         window_size: 7
-    - rolling_min:
-        window_size: 7
+    - rolling_mean:
+        window_size: 14
   date_features: ["dayofweek", "month", "year"]
   num_threads: 2
 backtest:

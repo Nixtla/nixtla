@@ -1,13 +1,21 @@
 {
   "mlforecast": {
     "Overview": "/",
-    "API": "api.html",
     "Core": "core.html",
-    "Data model": "data_model.html",
-    "Distributed core": "distributed.core.html",
-    "Distributed forecast": "distributed.forecast.html",
-    "LGBMForecast": "distributed.models.lgb.html",
-    "XGBForecast": "distributed.models.xgb.html",
+    "": {
+      "CLI": {
+        "API": "api.html",
+        "Data model": "data_model.html"
+      }
+    },
+    "empty1": {
+      "Distributed": {
+        "Core": "distributed.core.html",
+        "Forecast": "distributed.forecast.html",
+        "LGBMForecast": "distributed.models.lgb.html",
+        "XGBForecast": "distributed.models.xgb.html"
+      }
+    },
     "Forecast": "forecast.html",
     "Utils": "utils.html"
   }

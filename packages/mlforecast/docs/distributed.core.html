@@ -71,7 +71,7 @@ nb_path: "nbs/distributed.core.ipynb"
 <h4 id="distributed_preprocess" class="doc_header"><code>distributed_preprocess</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/distributed/core.py#L16" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>distributed_preprocess</code>(<strong><code>data</code></strong>:<code>DataFrame</code>, <strong><code>config</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>], <strong><code>client</code></strong>:<code>Optional</code>[<code>Client</code>]=<em><code>None</code></em>, <strong><code>flow</code></strong>:<code>Callable</code>=<em><code>preprocessing_flow</code></em>)</p>
 </blockquote>
 <p>Applies <code>flow(partition, **config)</code> to every partition of <code>data</code>.</p>
-<p>Returns futures pointing to the TimeSeries objects generated from each partition
+<p>Returns futures pointing to the <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> objects generated from each partition
 and a dask dataframe for training a distributed model.</p>
 
 </div>
