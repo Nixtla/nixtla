@@ -8,7 +8,7 @@ import importlib
 import inspect
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, Generator, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 try:
     import dask.dataframe as dd
@@ -33,11 +33,11 @@ from fastcore.script import Param, call_parse
 from pandas.api.types import is_datetime64_dtype
 
 from .core import predictions_flow
-from .data_model import (BacktestConfig, ClusterConfig, DataConfig, DataFormat,
-                         FlowConfig, DistributedModelConfig, DistributedModelName,
-                         FeaturesConfig, ModelConfig, _available_tfms)
+from .data_model import (ClusterConfig, DataConfig, DataFormat,
+                         DistributedModelConfig, DistributedModelName,
+                         FeaturesConfig, FlowConfig, ModelConfig,
+                         _available_tfms)
 from .forecast import Forecast
-from .utils import backtest_splits
 
 # Internal Cell
 Frame = Union[pd.DataFrame, dd_Frame]
@@ -202,7 +202,7 @@ def run_forecast(config_file: Param('Configuration file', str)):  # type: ignore
     """Run the forecasting pipeline using the configuration defined in `config_file`."""
     config = parse_config(config_file)
     is_distributed = config.distributed is not None
-    if is_distributed:
+    if config.distributed is not None:  # mypy
         client = setup_client(config.distributed.cluster)
     try:
         data = read_data(config.data, is_distributed)
