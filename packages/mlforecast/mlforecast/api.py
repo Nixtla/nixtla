@@ -13,11 +13,12 @@ from typing import Any, Dict, Tuple, Union
 try:
     import dask.dataframe as dd
     from dask.dataframe import DataFrame as dd_Frame
-    from dask.distributed import Client
+    from dask.distributed import Client, LocalCluster
 except ImportError:
     class dd: pass  # type: ignore
     dd_Frame = type(None)
     class Client: pass  # type: ignore
+    class LocalCluster: pass  # type: ignore
 try:
     from s3path import S3Path
 except ImportError:
