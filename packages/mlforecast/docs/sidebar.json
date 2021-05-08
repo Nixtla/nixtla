@@ -5,6 +5,7 @@
     "": {
       "CLI": {
         "API": "api.html",
+        "CLI": "cli.html",
         "Data model": "data_model.html"
       }
     },

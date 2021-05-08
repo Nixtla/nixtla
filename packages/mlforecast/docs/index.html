@@ -31,6 +31,16 @@ nb_path: "nbs/index.ipynb"
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
+<p><img src="https://img.shields.io/github/workflow/status/Nixtla/mlforecast/CI" alt="CI">
+<img src="https://img.shields.io/pypi/pyversions/mlforecast" alt="Python">
+<img src="https://img.shields.io/pypi/v/mlforecast" alt="PyPi">
+<img src="https://img.shields.io/github/license/Nixtla/mlforecast" alt="License"></p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
 <h2 id="Install">Install<a class="anchor-link" href="#Install"> </a></h2>
 </div>
 </div>
@@ -88,56 +98,6 @@ nb_path: "nbs/index.ipynb"
 </pre></div>
 
     </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<table>
-<thead><tr>
-<th style="text-align:left">unique_id</th>
-<th style="text-align:left">ds</th>
-<th style="text-align:right">y</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-01-01 00:00:00</td>
-<td style="text-align:right">0.264447</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-01-02 00:00:00</td>
-<td style="text-align:right">1.28402</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-01-03 00:00:00</td>
-<td style="text-align:right">2.4628</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-01-04 00:00:00</td>
-<td style="text-align:right">3.03552</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-01-05 00:00:00</td>
-<td style="text-align:right">4.04356</td>
-</tr>
-</tbody>
-</table>
-
-</div>
-
-</div>
-
 </div>
 </div>
 
@@ -251,22 +211,6 @@ nb_path: "nbs/index.ipynb"
 </div>
 </div>
 
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>Forecast(model=RandomForestRegressor(), flow_config={&#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7fd7456808b0&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7fd745675700&gt;), 7), (CPUDispatcher(&lt;function rolling_mean at 0x7fd745675700&gt;), 14)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;]})</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
 </div>
     {% endraw %}
 
@@ -290,56 +234,6 @@ nb_path: "nbs/index.ipynb"
 </pre></div>
 
     </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-<div class="output_markdown rendered_html output_subarea ">
-<table>
-<thead><tr>
-<th style="text-align:left">unique_id</th>
-<th style="text-align:left">ds</th>
-<th style="text-align:right">y_pred</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-08-10 00:00:00</td>
-<td style="text-align:right">5.23864</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-08-11 00:00:00</td>
-<td style="text-align:right">6.2306</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-08-12 00:00:00</td>
-<td style="text-align:right">0.216553</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-08-13 00:00:00</td>
-<td style="text-align:right">1.2501</td>
-</tr>
-<tr>
-<td style="text-align:left">id_00</td>
-<td style="text-align:left">2000-08-14 00:00:00</td>
-<td style="text-align:right">2.28829</td>
-</tr>
-</tbody>
-</table>
-
-</div>
-
-</div>
-
 </div>
 </div>
 
@@ -373,48 +267,6 @@ nb_path: "nbs/index.ipynb"
 </div>
 </div>
 
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-<div class="output_subarea output_stream output_stdout output_text">
-<pre>data:
-  prefix: data
-  input: train
-  output: outputs
-  format: parquet
-features:
-  freq: D
-  lags: [7, 14]
-  lag_transforms:
-    1: 
-    - expanding_mean
-    7: 
-    - rolling_mean:
-        window_size: 7
-    - rolling_mean:
-        window_size: 14
-  date_features: [&#34;dayofweek&#34;, &#34;month&#34;, &#34;year&#34;]
-  num_threads: 2
-backtest:
-  n_windows: 2
-  window_size: 7
-forecast:
-  horizon: 7
-local:
-  model:
-    name: sklearn.ensemble.RandomForestRegressor
-    params:
-      n_estimators: 10
-      max_depth: 7
-</pre>
-</div>
-</div>
-
-</div>
-</div>
-
 </div>
     {% endraw %}
 
@@ -440,21 +292,6 @@ local:
 </div>
 </div>
 
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-<div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0239
-Split 2 MSE: 0.0191
-</pre>
-</div>
-</div>
-
-</div>
-</div>
-
 </div>
     {% endraw %}
 
@@ -469,24 +306,6 @@ Split 2 MSE: 0.0191
 </pre></div>
 
     </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>[PosixPath(&#39;data/outputs/valid_1.parquet&#39;),
- PosixPath(&#39;data/outputs/valid_0.parquet&#39;),
- PosixPath(&#39;data/outputs/forecast.parquet&#39;)]</pre>
-</div>
-
-</div>
-
 </div>
 </div>
 

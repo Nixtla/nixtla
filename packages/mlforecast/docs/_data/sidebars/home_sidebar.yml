@@ -19,6 +19,9 @@ entries:
           title: API
           url: api.html
         - output: web,pdf
+          title: CLI
+          url: cli.html
+        - output: web,pdf
           title: Data model
           url: data_model.html
         title: CLI

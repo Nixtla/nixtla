@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from fastcore.foundation import patch, tuplify
 from numba import njit
 from window_ops.shift import shift_array
 
@@ -100,6 +99,11 @@ def _identity(x: np.ndarray) -> np.ndarray:
     """Do nothing to the input."""
     return x
 
+def _as_tuple(x):
+    if isinstance(x, tuple):
+        return x
+    return (x,)
+
 # Cell
 @njit(nogil=True)
 def transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
@@ -167,7 +171,7 @@ class TimeSeries:
             self.transforms[f'lag-{lag}'] = (lag, _identity)
         for lag in lag_transforms.keys():
             for tfm_args in lag_transforms[lag]:
-                tfm, *args = tuplify(tfm_args)
+                tfm, *args = _as_tuple(tfm_args)
                 tfm_name = build_transform_name(lag, tfm, *args)
                 self.transforms[tfm_name] = (lag, tfm, *args)
 
@@ -206,67 +210,59 @@ class TimeSeries:
                 results[tfm_name] = future.result()
         return results
 
-# Cell
-@patch
-def compute_transforms(self: TimeSeries) -> Dict[str, np.ndarray]:
-    """Compute the transformations defined in the constructor.
+    def compute_transforms(self) -> Dict[str, np.ndarray]:
+        """Compute the transformations defined in the constructor.
 
-    If `num_threads > 1` these are computed using multithreading."""
-    if self.num_threads == 1 or len(self.transforms) == 1:
-        return self._apply_transforms()
-    return self._apply_multithreaded_transforms()
+        If `num_threads > 1` these are computed using multithreading."""
+        if self.num_threads == 1 or len(self.transforms) == 1:
+            return self._apply_transforms()
+        return self._apply_multithreaded_transforms()
 
-# Cell
-@patch
-def update_y(self: TimeSeries, new: np.ndarray) -> None:
-    """Appends the elements of `new` to every time serie.
+    def update_y(self, new: np.ndarray) -> None:
+        """Appends the elements of `new` to every time serie.
 
-    These values are used to update the transformations and are stored as predictions."""
-    if len(self.y_pred) == 0:
-        self.y_pred = []
-    self.y_pred.append(new)
-    new_arr = np.asarray(new)
-    self.ga = self.ga.append(new_arr)
+        These values are used to update the transformations and are stored as predictions."""
+        if len(self.y_pred) == 0:
+            self.y_pred = []
+        self.y_pred.append(new)
+        new_arr = np.asarray(new)
+        self.ga = self.ga.append(new_arr)
 
-# Cell
-@patch
-def update_features(self: TimeSeries) -> pd.DataFrame:
-    """Compute the current values of all the features using the latest values of the time series."""
-    if self.curr_dates.equals(self.last_dates):
-        self.curr_dates = self.last_dates.copy()
-        self.test_dates = []
-    self.curr_dates += self.freq
-    self.test_dates.append(self.curr_dates)
+    def update_features(self) -> pd.DataFrame:
+        """Compute the current values of all the features using the latest values of the time series."""
+        if self.curr_dates.equals(self.last_dates):
+            self.curr_dates = self.last_dates.copy()
+            self.test_dates = []
+        self.curr_dates += self.freq
+        self.test_dates.append(self.curr_dates)
 
-    if self.num_threads == 1 or len(self.transforms) == 1:
-        features = self._apply_transforms(updates_only=True)
-    else:
-        features = self._apply_multithreaded_transforms(updates_only=True)
+        if self.num_threads == 1 or len(self.transforms) == 1:
+            features = self._apply_transforms(updates_only=True)
+        else:
+            features = self._apply_multithreaded_transforms(updates_only=True)
 
-    for feature in self.date_features:
-        feat_vals = getattr(self.curr_dates, feature).values
-        features[feature] = feat_vals.astype(date_features_dtypes[feature])
+        for feature in self.date_features:
+            feat_vals = getattr(self.curr_dates, feature).values
+            features[feature] = feat_vals.astype(date_features_dtypes[feature])
 
-    features_df = pd.DataFrame(features, columns=self.features, index=self.uids)
-    nulls_in_cols = features_df.isnull().any()
-    if any(nulls_in_cols):
-        warnings.warn(f'Found null values in {", ".join(nulls_in_cols[nulls_in_cols].index)}.')
-    results_df = self.static_features.join(features_df)
-    results_df['ds'] = self.curr_dates
-    results_df = results_df.set_index('ds', append=True)
-    return results_df
+        features_df = pd.DataFrame(features, columns=self.features, index=self.uids)
+        nulls_in_cols = features_df.isnull().any()
+        if any(nulls_in_cols):
+            warnings.warn(f'Found null values in {", ".join(nulls_in_cols[nulls_in_cols].index)}.')
+        results_df = self.static_features.join(features_df)
+        results_df['ds'] = self.curr_dates
+        results_df = results_df.set_index('ds', append=True)
+        return results_df
 
-# Cell
-@patch
-def get_predictions(self: TimeSeries) -> pd.DataFrame:
-    """Get all the predicted values with their corresponding ids and datestamps."""
-    n_preds = len(self.y_pred)
-    idx = pd.Index(chain.from_iterable([uid] * n_preds for uid in self.uids), name='unique_id', dtype=self.uids.dtype)
-    df = pd.DataFrame({
-        'ds': np.array(self.test_dates).ravel('F'),
-        'y_pred': np.array(self.y_pred).ravel('F')},
-        index=idx)
-    return df
+    def get_predictions(self) -> pd.DataFrame:
+        """Get all the predicted values with their corresponding ids and datestamps."""
+        n_preds = len(self.y_pred)
+        idx = pd.Index(chain.from_iterable([uid] * n_preds for uid in self.uids), name='unique_id', dtype=self.uids.dtype)
+        df = pd.DataFrame({
+            'ds': np.array(self.test_dates).ravel('F'),
+            'y_pred': np.array(self.y_pred).ravel('F')},
+            index=idx)
+        return df
 
 # Cell
 def preprocessing_flow(df: pd.DataFrame,
