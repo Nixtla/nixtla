@@ -4,21 +4,32 @@
 
 [![CI](https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml/badge.svg)](https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml)
 [![Lint](https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml/badge.svg)](https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml)
-![PyPi](https://img.shields.io/pypi/v/mlforecast)
-![License](https://img.shields.io/github/license/Nixtla/mlforecast)
+[![Python](https://img.shields.io/pypi/pyversions/mlforecast)](https://pypi.org/project/mlforecast/)
+[![PyPi](https://img.shields.io/pypi/v/mlforecast?color=blue)](https://pypi.org/project/mlforecast/)
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/mlforecast?color=blue)](https://anaconda.org/conda-forge/mlforecast)
+[![License](https://img.shields.io/github/license/Nixtla/mlforecast)](https://github.com/Nixtla/mlforecast/blob/main/LICENSE)
 
 ## Install
 
+### PyPI
+
 `pip install mlforecast`
 
-### Optional dependencies
+#### Optional dependencies
 If you want more functionality you can instead use `pip install mlforecast[extra1, extra2, ...]`. The current extra dependencies are:
 
 * **aws**: adds the functionality to use S3 as the storage in the CLI.
 * **cli**: includes the validations necessary to use the CLI.
-* **distributed**: installs [dask](https://dask.org/) to perform distributed training. Note that you'll also need to install either [lightgbm](https://github.com/microsoft/LightGBM/tree/master/python-package) or [xgboost](https://xgboost.readthedocs.io/en/latest/install.html#python).
+* **distributed**: installs [dask](https://dask.org/) to perform distributed training. Note that you'll also need to install either [LightGBM](https://github.com/microsoft/LightGBM/tree/master/python-package) or [XGBoost](https://xgboost.readthedocs.io/en/latest/install.html#python).
 
 For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: `pip install mlforecast[aws, cli, distributed]`.
+
+### conda-forge
+`conda install -c conda-forge mlforecast`
+
+Note that this installation comes with the required dependencies for the local interface. If you want to:
+* Use s3 as storage: `conda install -c conda-forge boto3 s3path`
+* Perform distributed training: `conda install -c conda-forge dask` and either [LightGBM](https://github.com/microsoft/LightGBM/tree/master/python-package) or [XGBoost](https://xgboost.readthedocs.io/en/latest/install.html#python).
 
 ## How to use
 
@@ -84,7 +95,7 @@ fcst.fit(series)
 
 
 
-    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7ff490468700>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7ff490462430>), 7), (CPUDispatcher(<function rolling_mean at 0x7ff490462430>), 14)]}, 'date_features': ['dayofweek', 'month']})
+    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7f1264fe6700>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7f1264fe0430>), 7), (CPUDispatcher(<function rolling_mean at 0x7f1264fe0430>), 14)]}, 'date_features': ['dayofweek', 'month']})
 
 
 
@@ -99,11 +110,11 @@ display_df(predictions.head())
 
 | unique_id   | ds                  |   y_pred |
 |:------------|:--------------------|---------:|
-| id_00       | 2000-08-10 00:00:00 | 5.21971  |
-| id_00       | 2000-08-11 00:00:00 | 6.24782  |
-| id_00       | 2000-08-12 00:00:00 | 0.199796 |
-| id_00       | 2000-08-13 00:00:00 | 1.2382   |
-| id_00       | 2000-08-14 00:00:00 | 2.28017  |
+| id_00       | 2000-08-10 00:00:00 | 5.21542  |
+| id_00       | 2000-08-11 00:00:00 | 6.26993  |
+| id_00       | 2000-08-12 00:00:00 | 0.232467 |
+| id_00       | 2000-08-13 00:00:00 | 1.23008  |
+| id_00       | 2000-08-14 00:00:00 | 2.29878  |
 
 
 ### CLI
@@ -153,7 +164,7 @@ This configuration will use the data in `data.prefix/data.input` to train and wr
 !mlforecast sample_configs/local.yaml
 ```
 
-    Split 1 MSE: 0.0236
+    Split 1 MSE: 0.0239
     Split 2 MSE: 0.0183
 
 ```python

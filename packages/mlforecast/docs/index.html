@@ -33,8 +33,10 @@ nb_path: "nbs/index.ipynb"
 <div class="text_cell_render border-box-sizing rendered_html">
 <p><a href="https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml"><img src="https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
 <a href="https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml"><img src="https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml/badge.svg" alt="Lint"></a>
-<img src="https://img.shields.io/pypi/v/mlforecast" alt="PyPi">
-<img src="https://img.shields.io/github/license/Nixtla/mlforecast" alt="License"></p>
+<a href="https://pypi.org/project/mlforecast/"><img src="https://img.shields.io/pypi/pyversions/mlforecast" alt="Python"></a>
+<a href="https://pypi.org/project/mlforecast/"><img src="https://img.shields.io/pypi/v/mlforecast?color=blue" alt="PyPi"></a>
+<a href="https://anaconda.org/conda-forge/mlforecast"><img src="https://img.shields.io/conda/vn/conda-forge/mlforecast?color=blue" alt="conda-forge"></a>
+<a href="https://github.com/Nixtla/mlforecast/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Nixtla/mlforecast" alt="License"></a></p>
 
 </div>
 </div>
@@ -47,20 +49,26 @@ nb_path: "nbs/index.ipynb"
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p><code>pip install mlforecast</code></p>
+<h3 id="PyPI">PyPI<a class="anchor-link" href="#PyPI"> </a></h3><p><code>pip install mlforecast</code></p>
+<h4 id="Optional-dependencies">Optional dependencies<a class="anchor-link" href="#Optional-dependencies"> </a></h4><p>If you want more functionality you can instead use <code>pip install mlforecast[extra1, extra2, ...]</code>. The current extra dependencies are:</p>
+<ul>
+<li><strong>aws</strong>: adds the functionality to use S3 as the storage in the CLI.</li>
+<li><strong>cli</strong>: includes the validations necessary to use the CLI.</li>
+<li><strong>distributed</strong>: installs <a href="https://dask.org/">dask</a> to perform distributed training. Note that you'll also need to install either <a href="https://github.com/microsoft/LightGBM/tree/master/python-package">LightGBM</a> or <a href="https://xgboost.readthedocs.io/en/latest/install.html#python">XGBoost</a>.</li>
+</ul>
+<p>For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: <code>pip install mlforecast[aws, cli, distributed]</code>.</p>
 
 </div>
 </div>
 </div>
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<h3 id="Optional-dependencies">Optional dependencies<a class="anchor-link" href="#Optional-dependencies"> </a></h3><p>If you want more functionality you can instead use <code>pip install mlforecast[extra1, extra2, ...]</code>. The current extra dependencies are:</p>
+<h3 id="conda-forge">conda-forge<a class="anchor-link" href="#conda-forge"> </a></h3><p><code>conda install -c conda-forge mlforecast</code></p>
+<p>Note that this installation comes with the required dependencies for the local interface. If you want to:</p>
 <ul>
-<li><strong>aws</strong>: adds the functionality to use S3 as the storage in the CLI.</li>
-<li><strong>cli</strong>: includes the validations necessary to use the CLI.</li>
-<li><strong>distributed</strong>: installs <a href="https://dask.org/">dask</a> to perform distributed training. Note that you'll also need to install either <a href="https://github.com/microsoft/LightGBM/tree/master/python-package">lightgbm</a> or <a href="https://xgboost.readthedocs.io/en/latest/install.html#python">xgboost</a>.</li>
+<li>Use s3 as storage: <code>conda install -c conda-forge boto3 s3path</code></li>
+<li>Perform distributed training: <code>conda install -c conda-forge dask</code> and either <a href="https://github.com/microsoft/LightGBM/tree/master/python-package">LightGBM</a> or <a href="https://xgboost.readthedocs.io/en/latest/install.html#python">XGBoost</a>.</li>
 </ul>
-<p>For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: <code>pip install mlforecast[aws, cli, distributed]</code>.</p>
 
 </div>
 </div>
@@ -269,7 +277,7 @@ nb_path: "nbs/index.ipynb"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>Forecast(model=RandomForestRegressor(), flow_config={&#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7ff490468700&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7ff490462430&gt;), 7), (CPUDispatcher(&lt;function rolling_mean at 0x7ff490462430&gt;), 14)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;]})</pre>
+<pre>Forecast(model=RandomForestRegressor(), flow_config={&#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7f1264fe6700&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7f1264fe0430&gt;), 7), (CPUDispatcher(&lt;function rolling_mean at 0x7f1264fe0430&gt;), 14)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;]})</pre>
 </div>
 
 </div>
@@ -321,27 +329,27 @@ nb_path: "nbs/index.ipynb"
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-10 00:00:00</td>
-<td style="text-align:right">5.21971</td>
+<td style="text-align:right">5.21542</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-11 00:00:00</td>
-<td style="text-align:right">6.24782</td>
+<td style="text-align:right">6.26993</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-12 00:00:00</td>
-<td style="text-align:right">0.199796</td>
+<td style="text-align:right">0.232467</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-13 00:00:00</td>
-<td style="text-align:right">1.2382</td>
+<td style="text-align:right">1.23008</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-14 00:00:00</td>
-<td style="text-align:right">2.28017</td>
+<td style="text-align:right">2.29878</td>
 </tr>
 </tbody>
 </table>
@@ -456,7 +464,7 @@ local:
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0236
+<pre>Split 1 MSE: 0.0239
 Split 2 MSE: 0.0183
 </pre>
 </div>
