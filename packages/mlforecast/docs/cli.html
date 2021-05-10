@@ -47,7 +47,7 @@ nb_path: "nbs/cli.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="run_forecast" class="doc_header"><code>run_forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/cli.py#L25" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>run_forecast</code>(<strong><code>config_file</code></strong>:<code>str</code>)</p>
+<h4 id="run_forecast" class="doc_header"><code>run_forecast</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/cli.py#L26" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>run_forecast</code>(<strong><code>config_file</code></strong>:<code>str</code>)</p>
 </blockquote>
 <p>Run the forecasting pipeline using the configuration defined in <code>config_file</code>.</p>
 
@@ -208,7 +208,7 @@ nb_path: "nbs/cli.ipynb"
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>Split 1 MSE: 0.0229
+<pre>Split 1 MSE: 0.0228
 Split 2 MSE: 0.0246
 </pre>
 </div>
@@ -249,9 +249,9 @@ Split 2 MSE: 0.0246
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>[Path(&#39;data/outputs/valid_1.parquet&#39;),
- Path(&#39;data/outputs/valid_0.parquet&#39;),
- Path(&#39;data/outputs/forecast.parquet&#39;)]</pre>
+<pre>[PosixPath(&#39;data/outputs/valid_1.parquet&#39;),
+ PosixPath(&#39;data/outputs/valid_0.parquet&#39;),
+ PosixPath(&#39;data/outputs/forecast.parquet&#39;)]</pre>
 </div>
 
 </div>
@@ -355,10 +355,10 @@ Split 2 MSE: 0.0246
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>[Path(&#39;data/train/part.1.parquet&#39;),
- Path(&#39;data/train/_common_metadata&#39;),
- Path(&#39;data/train/_metadata&#39;),
- Path(&#39;data/train/part.0.parquet&#39;)]</pre>
+<pre>[PosixPath(&#39;data/train/part.1.parquet&#39;),
+ PosixPath(&#39;data/train/_common_metadata&#39;),
+ PosixPath(&#39;data/train/_metadata&#39;),
+ PosixPath(&#39;data/train/part.0.parquet&#39;)]</pre>
 </div>
 
 </div>
@@ -397,14 +397,14 @@ Split 2 MSE: 0.0246
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>[19:04:09] task [xgboost.dask]:tcp://127.0.0.1:37117 got new rank 0
-[19:04:09] task [xgboost.dask]:tcp://127.0.0.1:39825 got new rank 1
+<pre>[13:56:07] task [xgboost.dask]:tcp://127.0.0.1:38305 got new rank 0
+[13:56:07] task [xgboost.dask]:tcp://127.0.0.1:38083 got new rank 1
 Split 1 MSE: 0.0313
-[19:04:11] task [xgboost.dask]:tcp://127.0.0.1:37117 got new rank 0
-[19:04:11] task [xgboost.dask]:tcp://127.0.0.1:39825 got new rank 1
+[13:56:09] task [xgboost.dask]:tcp://127.0.0.1:38305 got new rank 0
+[13:56:09] task [xgboost.dask]:tcp://127.0.0.1:38083 got new rank 1
 Split 2 MSE: 0.0322
-[19:04:12] task [xgboost.dask]:tcp://127.0.0.1:37117 got new rank 0
-[19:04:12] task [xgboost.dask]:tcp://127.0.0.1:39825 got new rank 1
+[13:56:11] task [xgboost.dask]:tcp://127.0.0.1:38305 got new rank 0
+[13:56:11] task [xgboost.dask]:tcp://127.0.0.1:38083 got new rank 1
 </pre>
 </div>
 </div>
@@ -444,9 +444,9 @@ Split 2 MSE: 0.0322
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>[Path(&#39;data/outputs/valid_1&#39;),
- Path(&#39;data/outputs/valid_0&#39;),
- Path(&#39;data/outputs/forecast&#39;)]</pre>
+<pre>[PosixPath(&#39;data/outputs/valid_1&#39;),
+ PosixPath(&#39;data/outputs/valid_0&#39;),
+ PosixPath(&#39;data/outputs/forecast&#39;)]</pre>
 </div>
 
 </div>

@@ -13,10 +13,12 @@ from ..core import preprocessing_flow
 
 
 # Cell
-def distributed_preprocess(data: dd.DataFrame,
-                           config: Dict,
-                           client: Optional[Client] = None,
-                           flow: Callable = preprocessing_flow) -> Tuple[List[Future], dd.DataFrame]:
+def distributed_preprocess(
+    data: dd.DataFrame,
+    config: Dict,
+    client: Optional[Client] = None,
+    flow: Callable = preprocessing_flow,
+) -> Tuple[List[Future], dd.DataFrame]:
     """Applies `flow(partition, **config)` to every partition of `data`.
 
     Returns futures pointing to the `TimeSeries` objects generated from each partition

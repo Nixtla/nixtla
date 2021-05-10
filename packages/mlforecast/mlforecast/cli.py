@@ -8,8 +8,16 @@ from pathlib import Path
 import pandas as pd
 import typer
 
-from .api import (S3Path, _is_s3_path, _path_as_str, fcst_from_config,
-                  parse_config, perform_backtest, read_data, setup_client)
+from .api import (
+    S3Path,
+    _is_s3_path,
+    _path_as_str,
+    fcst_from_config,
+    parse_config,
+    perform_backtest,
+    read_data,
+    setup_client,
+)
 
 # Internal Cell
 app = typer.Typer()
@@ -26,7 +34,7 @@ def run_forecast(config_file: str):
         data = read_data(config.data, is_distributed)
         prefix = config.data.prefix
         path = S3Path.from_uri(prefix) if _is_s3_path(prefix) else Path(prefix)
-        output_path = path/config.data.output
+        output_path = path / config.data.output
         output_path.mkdir(exist_ok=True)
 
         fcst = fcst_from_config(config)
@@ -36,7 +44,7 @@ def run_forecast(config_file: str):
             fcst.fit(data)
             preds = fcst.predict(config.forecast.horizon)
             writer = getattr(preds, f'to_{config.data.format}')
-            write_path = _path_as_str(output_path/'forecast')
+            write_path = _path_as_str(output_path / 'forecast')
             if isinstance(data, pd.DataFrame):
                 write_path += f'.{config.data.format}'
             writer(write_path)

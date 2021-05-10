@@ -513,7 +513,7 @@ Returns a `TimeSeries` object for the forecasting step and a pandas DataFrame fo
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>Forecast(model=LGBMRegressor(), flow_config={&#39;freq&#39;: &#39;D&#39;, &#39;lags&#39;: [7], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7f6e0e7f1280&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7f6e0e893f70&gt;), 7)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;], &#39;num_threads&#39;: 2})</pre>
+<pre>Forecast(model=LGBMRegressor(), flow_config={&#39;freq&#39;: &#39;D&#39;, &#39;lags&#39;: [7], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7efe2df78c10&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7efe2e02d940&gt;), 7)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;], &#39;num_threads&#39;: 2})</pre>
 </div>
 
 </div>
@@ -860,7 +860,7 @@ for the forecasting step and returns the <code>data</code> with the features add
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="Forecast.predict" class="doc_header"><code>Forecast.predict</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L47" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>Forecast.predict</code>(<strong><code>horizon</code></strong>:<code>int</code>, <strong><code>predict_fn</code></strong>:<code>Callable</code>=<em><code>predictions_flow</code></em>, <strong>**<code>predict_fn_kwargs</code></strong>)</p>
+<h4 id="Forecast.predict" class="doc_header"><code>Forecast.predict</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L46" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>Forecast.predict</code>(<strong><code>horizon</code></strong>:<code>int</code>, <strong><code>predict_fn</code></strong>:<code>Callable</code>=<em><code>predictions_flow</code></em>, <strong>**<code>predict_fn_kwargs</code></strong>)</p>
 </blockquote>
 <p>Compute the predictions for the next <code>horizon</code> steps.</p>
 
@@ -1022,7 +1022,7 @@ for the forecasting step and returns the <code>data</code> with the features add
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="Forecast.backtest" class="doc_header"><code>Forecast.backtest</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L54" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>Forecast.backtest</code>(<strong><code>data</code></strong>, <strong><code>n_windows</code></strong>:<code>int</code>, <strong><code>window_size</code></strong>:<code>int</code>, <strong><code>predict_fn</code></strong>:<code>Callable</code>=<em><code>predictions_flow</code></em>, <strong>**<code>predict_fn_kwargs</code></strong>)</p>
+<h4 id="Forecast.backtest" class="doc_header"><code>Forecast.backtest</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/forecast.py#L52" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>Forecast.backtest</code>(<strong><code>data</code></strong>, <strong><code>n_windows</code></strong>:<code>int</code>, <strong><code>window_size</code></strong>:<code>int</code>, <strong><code>predict_fn</code></strong>:<code>Callable</code>=<em><code>predictions_flow</code></em>, <strong>**<code>predict_fn_kwargs</code></strong>)</p>
 </blockquote>
 <p>Creates <code>n_windows</code> splits of <code>window_size</code> from <code>data</code>, trains the model
 on the training set, predicts the window and merges the actuals and the predictions

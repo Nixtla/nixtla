@@ -26,39 +26,45 @@ class DistributedForecast(Forecast):
         self.model.client = self.client
 
     def __repr__(self) -> str:
-        return f'DistributedForecast(model={self.model}, flow_config={self.flow_config})'
+        return (
+            f'DistributedForecast(model={self.model}, flow_config={self.flow_config})'
+        )
 
-    def preprocess(self,
-                   data: dd.DataFrame,
-                   prep_fn: Callable = preprocessing_flow) -> dd.DataFrame:
+    def preprocess(
+        self, data: dd.DataFrame, prep_fn: Callable = preprocessing_flow
+    ) -> dd.DataFrame:
         """Applies `prep_fn(partition, **self.flow_config)` on each partition of `data`.
 
         Saves the resulting `TimeSeries` objects as well as the divisions in `data` for the forecasting step.
         Returns a dask dataframe with the computed features."""
         self.data_divisions = data.divisions
-        self.ts, series_ddf = distributed_preprocess(data, self.flow_config, self.client, prep_fn)
+        self.ts, series_ddf = distributed_preprocess(
+            data, self.flow_config, self.client, prep_fn
+        )
         return series_ddf
 
-    def fit(self,
-            data: dd.DataFrame,
-            prep_fn: Callable = preprocessing_flow,
-            **fit_kwargs) -> 'DistributedForecast':
+    def fit(
+        self, data: dd.DataFrame, prep_fn: Callable = preprocessing_flow, **fit_kwargs
+    ) -> 'DistributedForecast':
         """Perform the preprocessing and fit the model."""
         train_ddf = self.preprocess(data, prep_fn)
         X, y = train_ddf.drop(columns=['ds', 'y']), train_ddf.y
         self.model.fit(X, y, **fit_kwargs)
         return self
 
-    def predict(self,
-                horizon: int,
-                predict_fn: Callable = predictions_flow,
-                **predict_fn_kwargs) -> dd.DataFrame:
+    def predict(
+        self, horizon: int, predict_fn: Callable = predictions_flow, **predict_fn_kwargs
+    ) -> dd.DataFrame:
         """Compute the predictions for the next `horizon` steps using `predict_fn`."""
         model_future = self.client.scatter(self.model.model_, broadcast=True)
-        predictions_futures = self.client.map(predict_fn,
-                                              self.ts,
-                                              model=model_future,
-                                              horizon=horizon,
-                                              **predict_fn_kwargs)
+        predictions_futures = self.client.map(
+            predict_fn,
+            self.ts,
+            model=model_future,
+            horizon=horizon,
+            **predict_fn_kwargs,
+        )
         meta = self.client.submit(lambda x: x.head(), predictions_futures[0]).result()
-        return dd.from_delayed(predictions_futures, meta=meta, divisions=self.data_divisions)
+        return dd.from_delayed(
+            predictions_futures, meta=meta, divisions=self.data_divisions
+        )

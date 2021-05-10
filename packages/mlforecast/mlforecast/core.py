@@ -52,9 +52,12 @@ def _append_new(data, indptr, new):
     new_indptr = indptr.copy()
     new_indptr[1:] += np.arange(1, n_series + 1)
     for i in range(n_series):
-        new_data[new_indptr[i] : new_indptr[i+1] - 1] = data[indptr[i] : indptr[i + 1]]
-        new_data[new_indptr[i+1] - 1] = new[i]
+        prev_slice = slice(indptr[i], indptr[i + 1])
+        new_slice = slice(new_indptr[i], new_indptr[i + 1] - 1)
+        new_data[new_slice] = data[prev_slice]
+        new_data[new_indptr[i + 1] - 1] = new[i]
     return new_data, new_indptr
+
 
 # Cell
 class GroupedArray:
@@ -72,11 +75,13 @@ class GroupedArray:
         return self.ngroups
 
     def __getitem__(self, idx: int) -> np.ndarray:
-        return self.data[self.indptr[idx]:self.indptr[idx+1]]
+        return self.data[self.indptr[idx] : self.indptr[idx + 1]]
 
     def take_from_groups(self, idx: Union[int, slice]) -> 'GroupedArray':
         """Takes `idx` from each group in the array."""
-        ranges = [range(self.indptr[i], self.indptr[i+1])[idx] for i in range(self.ngroups)]
+        ranges = [
+            range(self.indptr[i], self.indptr[i + 1])[idx] for i in range(self.ngroups)
+        ]
         items = [self.data[rng] for rng in ranges]
         sizes = np.array([item.size for item in items])
         data = np.hstack(items)
@@ -93,16 +98,19 @@ class GroupedArray:
     def __repr__(self) -> str:
         return f'GroupedArray(ndata={self.data.size}, ngroups={self.ngroups})'
 
+
 # Internal Cell
 @njit
 def _identity(x: np.ndarray) -> np.ndarray:
     """Do nothing to the input."""
     return x
 
+
 def _as_tuple(x):
     if isinstance(x, tuple):
         return x
     return (x,)
+
 
 # Cell
 @njit(nogil=True)
@@ -115,14 +123,15 @@ def transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarray
     if updates_only:
         out = np.empty_like(data[:n_series])
         for i in range(n_series):
-            lagged = shift_array(data[indptr[i]:indptr[i+1]], lag)
+            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
             out[i] = func(lagged, *args)[-1]
     else:
         out = np.empty_like(data)
         for i in range(n_series):
-            lagged = shift_array(data[indptr[i]:indptr[i+1]], lag)
-            out[indptr[i]:indptr[i+1]] = func(lagged, *args)
+            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
+            out[indptr[i] : indptr[i + 1]] = func(lagged, *args)
     return out
+
 
 # Cell
 def build_transform_name(lag, tfm, *args) -> str:
@@ -130,24 +139,32 @@ def build_transform_name(lag, tfm, *args) -> str:
     if lag == 0:
         return f'lag-{args[0]}'
     tfm_name = f'{tfm.__name__}_lag-{lag}'
-    func_params = list(inspect.signature(tfm).parameters.items())[1:]  # remove input array argument
-    changed_params = [f'{name}-{value}' for value, (name, param) in zip(args, func_params) if param.default != value]
+    func_params = inspect.signature(tfm).parameters
+    func_args = list(func_params.items())[1:]  # remove input array argument
+    changed_params = [
+        f'{name}-{value}'
+        for value, (name, arg) in zip(args, func_args)
+        if arg.default != value
+    ]
     if changed_params:
         tfm_name += '_' + '_'.join(changed_params)
     return tfm_name
+
 
 # Cell
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
-    def __init__(self,
-                 series_df: pd.DataFrame,
-                 freq: str = 'D',
-                 lags: List[int] = [],
-                 lag_transforms: Dict[int, List[Tuple]] = {},
-                 date_features: List[str] = [],
-                 static_features: Optional[List[str]] = None,
-                 num_threads: Optional[int] = None):
+    def __init__(
+        self,
+        series_df: pd.DataFrame,
+        freq: str = 'D',
+        lags: List[int] = [],
+        lag_transforms: Dict[int, List[Tuple]] = {},
+        date_features: List[str] = [],
+        static_features: Optional[List[str]] = None,
+        num_threads: Optional[int] = None,
+    ):
         if not series_df.index.is_monotonic_increasing:
             series_df = series_df.sort_index()
         data = series_df.y.values
@@ -160,7 +177,9 @@ class TimeSeries:
         self.uids = series_df.index.unique(level='unique_id')
         self.last_dates = series_df.index.get_level_values('ds')[cumsizes - 1]
         self.freq = pd.tseries.frequencies.to_offset(freq)
-        self.static_features = series_df.iloc[cumsizes - 1].reset_index('ds', drop=True).drop(columns='y')
+        self.static_features = (
+            series_df.iloc[cumsizes - 1].reset_index('ds', drop=True).drop(columns='y')
+        )
         if static_features is not None:
             self.static_features = self.static_features[static_features]
         self.num_threads = num_threads or os.cpu_count()
@@ -194,7 +213,9 @@ class TimeSeries:
         results = {}
         offset = 1 if updates_only else 0
         for tfm_name, (lag, tfm, *args) in self.transforms.items():
-            results[tfm_name] =  transform_series(self.ga.data, self.ga.indptr, updates_only, lag - offset, tfm, *args)
+            results[tfm_name] = transform_series(
+                self.ga.data, self.ga.indptr, updates_only, lag - offset, tfm, *args
+            )
         return results
 
     def _apply_multithreaded_transforms(self, updates_only: bool = False):
@@ -203,7 +224,15 @@ class TimeSeries:
         offset = 1 if updates_only else 0
         with concurrent.futures.ThreadPoolExecutor(self.num_threads) as executor:
             for tfm_name, (lag, tfm, *args) in self.transforms.items():
-                future = executor.submit(transform_series, self.ga.data, self.ga.indptr, updates_only, lag - offset, tfm, *args)
+                future = executor.submit(
+                    transform_series,
+                    self.ga.data,
+                    self.ga.indptr,
+                    updates_only,
+                    lag - offset,
+                    tfm,
+                    *args,
+                )
                 future_to_result[future] = tfm_name
             for future in concurrent.futures.as_completed(future_to_result):
                 tfm_name = future_to_result[future]
@@ -248,7 +277,9 @@ class TimeSeries:
         features_df = pd.DataFrame(features, columns=self.features, index=self.uids)
         nulls_in_cols = features_df.isnull().any()
         if any(nulls_in_cols):
-            warnings.warn(f'Found null values in {", ".join(nulls_in_cols[nulls_in_cols].index)}.')
+            warnings.warn(
+                'Found null values in {", ".join(nulls_in_cols[nulls_in_cols].index)}.'
+            )
         results_df = self.static_features.join(features_df)
         results_df['ds'] = self.curr_dates
         results_df = results_df.set_index('ds', append=True)
@@ -257,29 +288,40 @@ class TimeSeries:
     def get_predictions(self) -> pd.DataFrame:
         """Get all the predicted values with their corresponding ids and datestamps."""
         n_preds = len(self.y_pred)
-        idx = pd.Index(chain.from_iterable([uid] * n_preds for uid in self.uids), name='unique_id', dtype=self.uids.dtype)
-        df = pd.DataFrame({
-            'ds': np.array(self.test_dates).ravel('F'),
-            'y_pred': np.array(self.y_pred).ravel('F')},
-            index=idx)
+        idx = pd.Index(
+            chain.from_iterable([uid] * n_preds for uid in self.uids),
+            name='unique_id',
+            dtype=self.uids.dtype,
+        )
+        df = pd.DataFrame(
+            {
+                'ds': np.array(self.test_dates).ravel('F'),
+                'y_pred': np.array(self.y_pred).ravel('F'),
+            },
+            index=idx,
+        )
         return df
 
+
 # Cell
-def preprocessing_flow(df: pd.DataFrame,
-                       freq: str = 'D',
-                       lags: List[int] = [],
-                       lag_transforms: Dict[int, List[Tuple]] = {},
-                       date_features: List[str] = [],
-                       static_features: Optional[List[str]] = None,
-                       dropna: bool = True,
-                       keep_last_n: Optional[int] = None,
-                       num_threads: Optional[int] = os.cpu_count()) -> Tuple[TimeSeries, pd.DataFrame]:
+def preprocessing_flow(
+    df: pd.DataFrame,
+    freq: str = 'D',
+    lags: List[int] = [],
+    lag_transforms: Dict[int, List[Tuple]] = {},
+    date_features: List[str] = [],
+    static_features: Optional[List[str]] = None,
+    dropna: bool = True,
+    keep_last_n: Optional[int] = None,
+    num_threads: Optional[int] = os.cpu_count(),
+) -> Tuple[TimeSeries, pd.DataFrame]:
     """Standard preprocessing flow.
 
     Returns a `TimeSeries` object for the forecasting step and a pandas DataFrame for training."""
     df = df.set_index('ds', append=True).sort_index()
-    series = TimeSeries(df, freq, lags, lag_transforms, date_features,
-                        static_features, num_threads)
+    series = TimeSeries(
+        df, freq, lags, lag_transforms, date_features, static_features, num_threads
+    )
     df = df.reset_index('ds')
 
     features = series.compute_transforms()
@@ -298,20 +340,22 @@ def preprocessing_flow(df: pd.DataFrame,
 
     return series, df
 
+
 # Cell
-def predictions_flow(series: TimeSeries,
-                     model,
-                     horizon: int) -> pd.DataFrame:
+def predictions_flow(series: TimeSeries, model, horizon: int) -> pd.DataFrame:
     """Standard predictions flow.
 
     Uses `model` to compute the predictions for the next `horizon` steps for every serie in `series`."""
     series = copy.copy(series)
     # this avoids installing xgboost only to check if the model is instance of xgb.Booster
-    model_is_xgb_booster = type(model).__module__ == 'xgboost.core' and type(model).__name__ == 'Booster'
+    model_is_xgb_booster = (
+        type(model).__module__ == 'xgboost.core' and type(model).__name__ == 'Booster'
+    )
     for _ in range(horizon):
         new_x = series.update_features()
         if model_is_xgb_booster:
             import xgboost as xgb
+
             new_x = xgb.DMatrix(new_x)
         predictions = model.predict(new_x)
         series.update_y(predictions)

@@ -2,8 +2,8 @@
 > Scalable machine learning based time series forecasting.
 
 
-![CI](https://img.shields.io/github/workflow/status/Nixtla/mlforecast/CI)
-![Python](https://img.shields.io/pypi/pyversions/mlforecast)
+[![CI](https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml/badge.svg)](https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml)
+[![Lint](https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml/badge.svg)](https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml)
 ![PyPi](https://img.shields.io/pypi/v/mlforecast)
 ![License](https://img.shields.io/github/license/Nixtla/mlforecast)
 
@@ -84,7 +84,7 @@ fcst.fit(series)
 
 
 
-    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7f82cab498b0>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7f82cab3c700>), 7), (CPUDispatcher(<function rolling_mean at 0x7f82cab3c700>), 14)]}, 'date_features': ['dayofweek', 'month']})
+    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7ff490468700>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7ff490462430>), 7), (CPUDispatcher(<function rolling_mean at 0x7ff490462430>), 14)]}, 'date_features': ['dayofweek', 'month']})
 
 
 
@@ -99,11 +99,11 @@ display_df(predictions.head())
 
 | unique_id   | ds                  |   y_pred |
 |:------------|:--------------------|---------:|
-| id_00       | 2000-08-10 00:00:00 | 5.22102  |
-| id_00       | 2000-08-11 00:00:00 | 6.24853  |
-| id_00       | 2000-08-12 00:00:00 | 0.220037 |
-| id_00       | 2000-08-13 00:00:00 | 1.2348   |
-| id_00       | 2000-08-14 00:00:00 | 2.3001   |
+| id_00       | 2000-08-10 00:00:00 | 5.21971  |
+| id_00       | 2000-08-11 00:00:00 | 6.24782  |
+| id_00       | 2000-08-12 00:00:00 | 0.199796 |
+| id_00       | 2000-08-13 00:00:00 | 1.2382   |
+| id_00       | 2000-08-14 00:00:00 | 2.28017  |
 
 
 ### CLI
@@ -153,8 +153,8 @@ This configuration will use the data in `data.prefix/data.input` to train and wr
 !mlforecast sample_configs/local.yaml
 ```
 
-    Split 1 MSE: 0.0240
-    Split 2 MSE: 0.0193
+    Split 1 MSE: 0.0236
+    Split 2 MSE: 0.0183
 
 ```python
 list((data_path/'outputs').iterdir())

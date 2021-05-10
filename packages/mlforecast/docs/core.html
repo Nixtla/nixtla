@@ -379,7 +379,7 @@ nb_path: "nbs/core.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="GroupedArray" class="doc_header"><code>class</code> <code>GroupedArray</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L60" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>GroupedArray</code>(<strong><code>data</code></strong>:<code>ndarray</code>, <strong><code>indptr</code></strong>:<code>ndarray</code>)</p>
+<h2 id="GroupedArray" class="doc_header"><code>class</code> <code>GroupedArray</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L63" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>GroupedArray</code>(<strong><code>data</code></strong>:<code>ndarray</code>, <strong><code>indptr</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
 <p>Array made up of different groups. Can be thought of (and iterated) as a list of arrays.</p>
 <p>All the data is stored in a single 1d array <code>data</code>.
@@ -517,7 +517,7 @@ The indices for the group boundaries are stored in another 1d array <code>indptr
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="transform_series" class="doc_header"><code>transform_series</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L108" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>transform_series</code>(<strong><code>data</code></strong>, <strong><code>indptr</code></strong>, <strong><code>updates_only</code></strong>, <strong><code>lag</code></strong>, <strong><code>func</code></strong>, <strong>*<code>args</code></strong>)</p>
+<h4 id="transform_series" class="doc_header"><code>transform_series</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L116" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>transform_series</code>(<strong><code>data</code></strong>, <strong><code>indptr</code></strong>, <strong><code>updates_only</code></strong>, <strong><code>lag</code></strong>, <strong><code>func</code></strong>, <strong>*<code>args</code></strong>)</p>
 </blockquote>
 <p>Shifts every group in <code>data</code> by <code>lag</code> and computes <code>func(shifted, *args)</code>.</p>
 <p>If <code>updates_only=True</code> only last value of the transformation for each group is returned,
@@ -581,7 +581,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="build_transform_name" class="doc_header"><code>build_transform_name</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L128" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>build_transform_name</code>(<strong><code>lag</code></strong>, <strong><code>tfm</code></strong>, <strong>*<code>args</code></strong>)</p>
+<h4 id="build_transform_name" class="doc_header"><code>build_transform_name</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L137" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>build_transform_name</code>(<strong><code>lag</code></strong>, <strong><code>tfm</code></strong>, <strong>*<code>args</code></strong>)</p>
 </blockquote>
 <p>Creates a name for a transformation based on <code>lag</code>, the name of the function and its arguments.</p>
 
@@ -631,7 +631,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="TimeSeries" class="doc_header"><code>class</code> <code>TimeSeries</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L140" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>TimeSeries</code>(<strong><code>series_df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>)</p>
+<h2 id="TimeSeries" class="doc_header"><code>class</code> <code>TimeSeries</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L155" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>TimeSeries</code>(<strong><code>series_df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>)</p>
 </blockquote>
 <p>Utility class for storing and transforming time series data.</p>
 
@@ -942,7 +942,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.compute_transforms" class="doc_header"><code>TimeSeries.compute_transforms</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L213" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.compute_transforms</code>()</p>
+<h4 id="TimeSeries.compute_transforms" class="doc_header"><code>TimeSeries.compute_transforms</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L242" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.compute_transforms</code>()</p>
 </blockquote>
 <p>Compute the transformations defined in the constructor.</p>
 <p>If <code>num_threads &gt; 1</code> these are computed using multithreading.</p>
@@ -1001,7 +1001,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.update_y" class="doc_header"><code>TimeSeries.update_y</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L221" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_y</code>(<strong><code>new</code></strong>:<code>ndarray</code>)</p>
+<h4 id="TimeSeries.update_y" class="doc_header"><code>TimeSeries.update_y</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L250" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_y</code>(<strong><code>new</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
 <p>Appends the elements of <code>new</code> to every time serie.</p>
 <p>These values are used to update the transformations and are stored as predictions.</p>
@@ -1050,7 +1050,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.update_features" class="doc_header"><code>TimeSeries.update_features</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L231" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_features</code>()</p>
+<h4 id="TimeSeries.update_features" class="doc_header"><code>TimeSeries.update_features</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L260" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.update_features</code>()</p>
 </blockquote>
 <p>Compute the current values of all the features using the latest values of the time series.</p>
 
@@ -1110,7 +1110,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="TimeSeries.get_predictions" class="doc_header"><code>TimeSeries.get_predictions</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L257" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.get_predictions</code>()</p>
+<h4 id="TimeSeries.get_predictions" class="doc_header"><code>TimeSeries.get_predictions</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L288" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TimeSeries.get_predictions</code>()</p>
 </blockquote>
 <p>Get all the predicted values with their corresponding ids and datestamps.</p>
 
@@ -1161,7 +1161,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="preprocessing_flow" class="doc_header"><code>preprocessing_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L268" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>preprocessing_flow</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>dropna</code></strong>:<code>bool</code>=<em><code>True</code></em>, <strong><code>keep_last_n</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>8</code></em>)</p>
+<h4 id="preprocessing_flow" class="doc_header"><code>preprocessing_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L307" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>preprocessing_flow</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>freq</code></strong>:<code>str</code>=<em><code>'D'</code></em>, <strong><code>lags</code></strong>:<code>List</code>[<code>int</code>]=<em><code>[]</code></em>, <strong><code>lag_transforms</code></strong>:<code>Dict</code>[<code>int</code>, <code>List</code>[<code>Tuple</code>]]=<em><code>{}</code></em>, <strong><code>date_features</code></strong>:<code>List</code>[<code>str</code>]=<em><code>[]</code></em>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>dropna</code></strong>:<code>bool</code>=<em><code>True</code></em>, <strong><code>keep_last_n</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>, <strong><code>num_threads</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>8</code></em>)</p>
 </blockquote>
 <p>Standard preprocessing flow.</p>
 <p>Returns a <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> object for the forecasting step and a pandas DataFrame for training.</p>
@@ -1282,7 +1282,7 @@ otherwise the full transformation is returned</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="predictions_flow" class="doc_header"><code>predictions_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L302" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>predictions_flow</code>(<strong><code>series</code></strong>:<a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a>, <strong><code>model</code></strong>, <strong><code>horizon</code></strong>:<code>int</code>)</p>
+<h4 id="predictions_flow" class="doc_header"><code>predictions_flow</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/core.py#L345" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>predictions_flow</code>(<strong><code>series</code></strong>:<a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a>, <strong><code>model</code></strong>, <strong><code>horizon</code></strong>:<code>int</code>)</p>
 </blockquote>
 <p>Standard predictions flow.</p>
 <p>Uses <code>model</code> to compute the predictions for the next <code>horizon</code> steps for every serie in <code>series</code>.</p>

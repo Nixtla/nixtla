@@ -12,36 +12,45 @@ import pandas as pd
 
 
 # Cell
-def generate_daily_series(n_series: int,
-                          min_length: int = 50,
-                          max_length: int = 500,
-                          n_static_features: int = 0,
-                          equal_ends: bool = False,
-                          seed: int = 0):
+def generate_daily_series(
+    n_series: int,
+    min_length: int = 50,
+    max_length: int = 500,
+    n_static_features: int = 0,
+    equal_ends: bool = False,
+    seed: int = 0,
+) -> pd.DataFrame:
     """Generates `n_series` of different lengths in the interval [`min_length`, `max_length`].
 
     If `n_static_features > 0`, then each serie gets static features with random values.
     If `equal_ends == True` then all series end at the same date."""
     rng = np.random.RandomState(seed)
     random.seed(seed)
-    series_lengths = rng.randint(min_length, max_length+1, n_series)
+    series_lengths = rng.randint(min_length, max_length + 1, n_series)
     total_length = series_lengths.sum()
     n_digits = ceil(log10(n_series))
 
     dates = pd.date_range('2000-01-01', periods=max_length, freq='D').values
-    uids = [[f'id_{i:0{n_digits}}'] * serie_length for i, serie_length in enumerate(series_lengths)]
+    uids = [
+        [f'id_{i:0{n_digits}}'] * serie_length
+        for i, serie_length in enumerate(series_lengths)
+    ]
     if equal_ends:
         ds = [dates[-serie_length:] for serie_length in series_lengths]
     else:
         ds = [dates[:serie_length] for serie_length in series_lengths]
     y = np.arange(total_length) % 7 + rng.rand(total_length) * 0.5
-    series = pd.DataFrame({
-        'unique_id': list(chain.from_iterable(uids)),
-        'ds': list(chain.from_iterable(ds)),
-        'y': y
-    })
+    series = pd.DataFrame(
+        {
+            'unique_id': list(chain.from_iterable(uids)),
+            'ds': list(chain.from_iterable(ds)),
+            'y': y,
+        }
+    )
     for i in range(n_static_features):
-        static_values = [[random.randint(0, 100)] * serie_length for serie_length in series_lengths]
+        static_values = [
+            [random.randint(0, 100)] * serie_length for serie_length in series_lengths
+        ]
         series[f'static_{i}'] = list(chain.from_iterable(static_values))
         series[f'static_{i}'] = series[f'static_{i}'].astype('category')
         if i == 0:
@@ -51,14 +60,16 @@ def generate_daily_series(n_series: int,
     series = series.set_index('unique_id')
     return series
 
+
 # Internal Cell
 def _get_last_n_mask(serie: pd.Series, n: int) -> np.ndarray:
     """Return a boolean mask where the last `n` values are True."""
     mask = np.full_like(serie, True, dtype=bool)
     n_samples = serie.shape[0]
-    n_first = max(0, n_samples -  n)
+    n_first = max(0, n_samples - n)
     mask[:n_first] = False
     return mask
+
 
 # Internal Cell
 def _get_dataframe_mask(df: pd.DataFrame, n: int) -> pd.Series:
@@ -73,11 +84,16 @@ def _split_frame(data, n_windows, window, valid_size):
         train_mask = ~full_valid_mask
         extra_valid_mask = _get_dataframe_mask(data, extra_valid_size)
     else:
-        full_valid_mask = data.map_partitions(_get_dataframe_mask, full_valid_size, meta=bool)
+        full_valid_mask = data.map_partitions(
+            _get_dataframe_mask, full_valid_size, meta=bool
+        )
         train_mask = ~full_valid_mask
-        extra_valid_mask = data.map_partitions(_get_dataframe_mask, extra_valid_size, meta=bool)
+        extra_valid_mask = data.map_partitions(
+            _get_dataframe_mask, extra_valid_size, meta=bool
+        )
     valid_mask = full_valid_mask & ~extra_valid_mask
     return data[train_mask], data[valid_mask]
+
 
 # Cell
 def backtest_splits(data, n_windows, window_size):

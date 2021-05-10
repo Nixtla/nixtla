@@ -14,5 +14,3 @@ dependencies:
   - typer
   - window_ops
   - xgboost
-  - pip:
-    - fastcore

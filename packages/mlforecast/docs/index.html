@@ -31,8 +31,8 @@ nb_path: "nbs/index.ipynb"
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p><img src="https://img.shields.io/github/workflow/status/Nixtla/mlforecast/CI" alt="CI">
-<img src="https://img.shields.io/pypi/pyversions/mlforecast" alt="Python">
+<p><a href="https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml"><img src="https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+<a href="https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml"><img src="https://github.com/Nixtla/mlforecast/actions/workflows/lint.yaml/badge.svg" alt="Lint"></a>
 <img src="https://img.shields.io/pypi/v/mlforecast" alt="PyPi">
 <img src="https://img.shields.io/github/license/Nixtla/mlforecast" alt="License"></p>
 
@@ -269,7 +269,7 @@ nb_path: "nbs/index.ipynb"
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>Forecast(model=RandomForestRegressor(), flow_config={&#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7fe836dad5e0&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7fe836c44430&gt;), 7), (CPUDispatcher(&lt;function rolling_mean at 0x7fe836c44430&gt;), 14)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;]})</pre>
+<pre>Forecast(model=RandomForestRegressor(), flow_config={&#39;lags&#39;: [7, 14], &#39;lag_transforms&#39;: {1: [CPUDispatcher(&lt;function expanding_mean at 0x7ff490468700&gt;)], 7: [(CPUDispatcher(&lt;function rolling_mean at 0x7ff490462430&gt;), 7), (CPUDispatcher(&lt;function rolling_mean at 0x7ff490462430&gt;), 14)]}, &#39;date_features&#39;: [&#39;dayofweek&#39;, &#39;month&#39;]})</pre>
 </div>
 
 </div>
@@ -321,27 +321,27 @@ nb_path: "nbs/index.ipynb"
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-10 00:00:00</td>
-<td style="text-align:right">5.25072</td>
+<td style="text-align:right">5.21971</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-11 00:00:00</td>
-<td style="text-align:right">6.23182</td>
+<td style="text-align:right">6.24782</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-12 00:00:00</td>
-<td style="text-align:right">0.217161</td>
+<td style="text-align:right">0.199796</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-13 00:00:00</td>
-<td style="text-align:right">1.24374</td>
+<td style="text-align:right">1.2382</td>
 </tr>
 <tr>
 <td style="text-align:left">id_00</td>
 <td style="text-align:left">2000-08-14 00:00:00</td>
-<td style="text-align:right">2.30039</td>
+<td style="text-align:right">2.28017</td>
 </tr>
 </tbody>
 </table>
@@ -457,7 +457,7 @@ local:
 
 <div class="output_subarea output_stream output_stdout output_text">
 <pre>Split 1 MSE: 0.0236
-Split 2 MSE: 0.0179
+Split 2 MSE: 0.0183
 </pre>
 </div>
 </div>

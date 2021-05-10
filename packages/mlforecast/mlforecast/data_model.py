@@ -32,8 +32,10 @@ DateFeatures = Literal[tuple(date_features_dtypes.keys())]
 
 Transforms = Literal[tuple(_available_tfms.keys())]
 
+
 class DataFreq(str, Enum):
     """Pandas frequencies."""
+
     B = 'B'
     C = 'C'
     D = 'D'
@@ -94,25 +96,33 @@ class DataFreq(str, Enum):
     A_OCT = 'A-OCT'
     A_NOV = 'A-NOV'
 
+
 class DataFormat(str, Enum):
     """Allowed data formats."""
+
     csv = 'csv'
     parquet = 'parquet'
 
+
 class DataConfig(BaseModel):
     """Data configuration."""
+
     prefix: str
     input: str
     output: str
     format: DataFormat
 
+
 class BacktestConfig(BaseModel):
     """Backtest configuration."""
+
     n_windows: int
     window_size: int
 
+
 class FeaturesConfig(BaseModel):
     """Features configuration."""
+
     freq: DataFreq
     lags: Optional[List[int]]
     lag_transforms: Optional[Dict[int, List[Union[Transforms, Dict[Transforms, Dict]]]]]
@@ -120,45 +130,61 @@ class FeaturesConfig(BaseModel):
     static_features: Optional[List[str]]
     num_threads: Optional[int]
 
+
 class ForecastConfig(BaseModel):
     """Forecast configuration."""
+
     horizon: int
+
 
 class ModelConfig(BaseModel):
     """Model configuration.
 
     name must include the modules i.e. sklearn.ensemble.RandomForestRegressor."""
+
     name: str
     params: Optional[Dict]
 
+
 class LocalConfig(BaseModel):
     """Configuration for local pipeline."""
+
     model: ModelConfig
+
 
 class ClusterConfig(BaseModel):
     """Cluter configuration.
 
     class_name must include the modules i.e. dask.distributed.LocalCluster"""
+
     class_name: str
     class_kwargs: Dict
 
+
 class DistributedModelName(str, Enum):
     """Available models for distributed training."""
+
     XGBoost = 'XGBForecast'
     LightGBM = 'LGBMForecast'
 
+
 class DistributedModelConfig(BaseModel):
     """Configuration for distributed models."""
+
     name: DistributedModelName
     params: Optional[Dict]
 
+
 class DistributedConfig(BaseModel):
     """Configuration for distributed training."""
+
     model: DistributedModelConfig
     cluster: ClusterConfig
 
+
 class FlowConfig(BaseModel):
     """Flow configuration."""
+
     data: DataConfig
     features: FeaturesConfig
     backtest: Optional[BacktestConfig]

@@ -14,36 +14,62 @@ try:
     from dask.dataframe import DataFrame as dd_Frame
     from dask.distributed import Client, LocalCluster
 except ImportError:
-    class dd: pass  # type: ignore
+
+    class dd:  # type: ignore
+        pass
+
     dd_Frame = type(None)
-    class Client: pass  # type: ignore
-    class LocalCluster: pass  # type: ignore
+
+    class Client:  # type: ignore
+        pass
+
+    class LocalCluster:  # type: ignore
+        pass
+
+
 import pandas as pd
 from pandas.api.types import is_categorical_dtype, is_datetime64_dtype
 
 try:
     from s3path import S3Path
 except ImportError:
-    class S3Path: pass  # type: ignore
+
+    class S3Path:  # type: ignore
+        pass
+
+
 import yaml
 
 from .core import predictions_flow
-from .data_model import (ClusterConfig, DataConfig, DataFormat,
-                         DistributedModelConfig, DistributedModelName,
-                         FeaturesConfig, FlowConfig, ModelConfig,
-                         _available_tfms)
+from .data_model import (
+    ClusterConfig,
+    DataConfig,
+    DataFormat,
+    DistributedModelConfig,
+    DistributedModelName,
+    FeaturesConfig,
+    FlowConfig,
+    ModelConfig,
+    _available_tfms,
+)
 
 try:
     from .distributed.forecast import DistributedForecast
 except ImportError:
-    class DistributedForecast: pass  # type: ignore
+
+    class DistributedForecast:  # type: ignore
+        pass
+
+
 from .forecast import Forecast
 
 # Internal Cell
 Frame = Union[pd.DataFrame, dd_Frame]
 
-_available_tfms_kwargs = {name: list(inspect.signature(tfm).parameters)[1:]
-                          for name, tfm in _available_tfms.items()}
+_available_tfms_kwargs = {
+    name: list(inspect.signature(tfm).parameters)[1:]
+    for name, tfm in _available_tfms.items()
+}
 
 # Cell
 def validate_data_format(data: Frame) -> Frame:
@@ -66,15 +92,18 @@ def validate_data_format(data: Frame) -> Frame:
         raise ValueError('y column not found in data.')
     return data
 
+
 # Internal Cell
 def _is_s3_path(path: str) -> bool:
     return path.startswith('s3://')
+
 
 # Internal Cell
 def _path_as_str(path: Union[Path, S3Path]) -> str:
     if isinstance(path, S3Path):
         return path.as_uri()
     return str(path)
+
 
 # Cell
 def read_data(config: DataConfig, is_distributed: bool) -> Frame:
@@ -83,7 +112,7 @@ def read_data(config: DataConfig, is_distributed: bool) -> Frame:
     If we're in distributed mode dask is used for IO, else pandas."""
     prefix = config.prefix
     path = S3Path.from_uri(prefix) if _is_s3_path(prefix) else Path(prefix)
-    input_path = path/config.input
+    input_path = path / config.input
     io_module = dd if is_distributed else pd
     reader = getattr(io_module, f'read_{config.format}')
     read_path = _path_as_str(input_path)
@@ -98,6 +127,7 @@ def read_data(config: DataConfig, is_distributed: bool) -> Frame:
     ):
         data.index = data.index.cat.as_known().as_ordered()
     return validate_data_format(data)
+
 
 # Internal Cell
 def _instantiate_transforms(config: FeaturesConfig) -> Dict:
@@ -117,29 +147,33 @@ def _instantiate_transforms(config: FeaturesConfig) -> Dict:
             tfm_args: Tuple[Any, ...] = ()
             for kwarg in _available_tfms_kwargs[tfm_name]:
                 if kwarg in tfm_kwargs:
-                    tfm_args += (tfm_kwargs[kwarg], )
+                    tfm_args += (tfm_kwargs[kwarg],)
             lag_tfms[lag].append((tfm_func, *tfm_args))
     return lag_tfms
 
+
 # Internal Cell
-def _fcst_from_local(model_config: ModelConfig,
-                     flow_config: Dict) -> Forecast:
+def _fcst_from_local(model_config: ModelConfig, flow_config: Dict) -> Forecast:
     module_name, model_cls = model_config.name.rsplit('.', maxsplit=1)
     module = importlib.import_module(module_name)
     model = getattr(module, model_cls)(**(model_config.params or {}))
     return Forecast(model, flow_config)
 
 
-def _fcst_from_distributed(model_config: DistributedModelConfig,
-                           flow_config: Dict) -> DistributedForecast:
+def _fcst_from_distributed(
+    model_config: DistributedModelConfig, flow_config: Dict
+) -> DistributedForecast:
     model_params = model_config.params or {}
     if model_config.name is DistributedModelName.LightGBM:
         from .distributed.models.lgb import LGBMForecast
+
         model = LGBMForecast(**model_params)
     else:
         from .distributed.models.xgb import XGBForecast
+
         model = XGBForecast(**model_params)
     return DistributedForecast(model, flow_config)
+
 
 # Cell
 def fcst_from_config(config: FlowConfig) -> Union[Forecast, DistributedForecast]:
@@ -154,23 +188,25 @@ def fcst_from_config(config: FlowConfig) -> Union[Forecast, DistributedForecast]
     assert config.distributed is not None
     return _fcst_from_distributed(config.distributed.model, flow_config)
 
+
 # Cell
-def perform_backtest(fcst: Union[Forecast, DistributedForecast],
-                     data: Frame,
-                     config: FlowConfig,
-                     output_path: Union[Path, S3Path]):
+def perform_backtest(
+    fcst: Union[Forecast, DistributedForecast],
+    data: Frame,
+    config: FlowConfig,
+    output_path: Union[Path, S3Path],
+) -> None:
     """Performs backtesting of `fcst` using `data` and the strategy defined in `config`.
     Writes the results to `output_path`."""
     if config.backtest is None:
         return
     data_is_dask = isinstance(data, dd_Frame)
-    results = fcst.backtest(data,
-                            config.backtest.n_windows,
-                            config.backtest.window_size,
-                            predictions_flow)
+    results = fcst.backtest(
+        data, config.backtest.n_windows, config.backtest.window_size, predictions_flow
+    )
     for i, result in enumerate(results):
         result = result.fillna(0)
-        split_path = _path_as_str(output_path/f'valid_{i}')
+        split_path = _path_as_str(output_path / f'valid_{i}')
         if not data_is_dask:
             split_path += f'.{config.data.format}'
         writer = getattr(result, f'to_{config.data.format}')
@@ -181,12 +217,14 @@ def perform_backtest(fcst: Union[Forecast, DistributedForecast],
             mse = mse.compute()
         print(f'Split {i+1} MSE: {mse:.4f}')
 
+
 # Cell
 def parse_config(config_file: str) -> FlowConfig:
     """Create a `FlowConfig` object using the contents of `config_file`"""
     with open(config_file, 'r') as f:
         config = FlowConfig(**yaml.safe_load(f))
     return config
+
 
 def setup_client(config: ClusterConfig) -> Client:
     """Spins up a cluster with the specifications defined in `config` and returns a client connected to it."""

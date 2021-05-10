@@ -1,0 +1,27 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Set up python
+        uses: actions/setup-python@v2
+
+      - name: Install linters
+        run: pip install black mypy flake8 isort
+
+      - name: Lint
+        run: |
+          flake8 --select=F mlforecast/
+          mypy mlforecast/
+          isort --check-only mlforecast/
+          action_files/black.sh

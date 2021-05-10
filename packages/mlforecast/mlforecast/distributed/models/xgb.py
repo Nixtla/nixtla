@@ -8,7 +8,6 @@ import xgboost as xgb
 
 # Cell
 class XGBForecast(xgb.dask.DaskXGBRegressor):
-
     @property
     def model_(self):
         return self.get_booster()
