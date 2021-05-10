@@ -282,7 +282,7 @@ def preprocessing_flow(df: pd.DataFrame,
                         static_features, num_threads)
     df = df.reset_index('ds')
 
-    features = series.compute_transforms()  # type: ignore
+    features = series.compute_transforms()
     for k in series.transforms.keys():
         df[k] = features[k]
 
@@ -309,10 +309,10 @@ def predictions_flow(series: TimeSeries,
     # this avoids installing xgboost only to check if the model is instance of xgb.Booster
     model_is_xgb_booster = type(model).__module__ == 'xgboost.core' and type(model).__name__ == 'Booster'
     for _ in range(horizon):
-        new_x = series.update_features()  # type: ignore
+        new_x = series.update_features()
         if model_is_xgb_booster:
             import xgboost as xgb
             new_x = xgb.DMatrix(new_x)
         predictions = model.predict(new_x)
-        series.update_y(predictions)  # type: ignore
-    return series.get_predictions()  # type: ignore
+        series.update_y(predictions)
+    return series.get_predictions()

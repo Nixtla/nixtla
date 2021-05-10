@@ -1266,7 +1266,7 @@ otherwise the full transformation is returned</p>
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p>As a rule of thumb the minimal number of samples you need is max(lags) + max(window size for that lag) - 1 for rolling operations. <strong>If you have expanding features you need all samples to get the correct value</strong>. This won't raise a warning because there won't be null values, however the feature value will be wrong.</p>
+<p>As a rule of thumb the minimal number of samples you need is max(lag + window_size) - 1 for rolling operations. <strong>If you have expanding features you need all samples to get the correct value</strong>. This won't raise a warning because there won't be null values, however the feature value will be wrong.</p>
 
 </div>
 </div>

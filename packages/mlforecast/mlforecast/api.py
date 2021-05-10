@@ -18,24 +18,25 @@ except ImportError:
     dd_Frame = type(None)
     class Client: pass  # type: ignore
     class LocalCluster: pass  # type: ignore
+import pandas as pd
+from pandas.api.types import is_categorical_dtype, is_datetime64_dtype
+
 try:
     from s3path import S3Path
 except ImportError:
     class S3Path: pass  # type: ignore
-try:
-    from .distributed.forecast import DistributedForecast
-except ImportError:
-    class DistributedForecast: pass  # type: ignore
-
-import pandas as pd
 import yaml
-from pandas.api.types import is_datetime64_dtype
 
 from .core import predictions_flow
 from .data_model import (ClusterConfig, DataConfig, DataFormat,
                          DistributedModelConfig, DistributedModelName,
                          FeaturesConfig, FlowConfig, ModelConfig,
                          _available_tfms)
+
+try:
+    from .distributed.forecast import DistributedForecast
+except ImportError:
+    class DistributedForecast: pass  # type: ignore
 from .forecast import Forecast
 
 # Internal Cell
@@ -93,7 +94,7 @@ def read_data(config: DataConfig, is_distributed: bool) -> Frame:
         io_module is dd
         and config.format is DataFormat.parquet
         and data.index.name == 'unique_id'
-        and pd.api.types.is_categorical_dtype(data.index)
+        and is_categorical_dtype(data.index)
     ):
         data.index = data.index.cat.as_known().as_ordered()
     return validate_data_format(data)
@@ -131,13 +132,13 @@ def _fcst_from_local(model_config: ModelConfig,
 
 def _fcst_from_distributed(model_config: DistributedModelConfig,
                            flow_config: Dict) -> DistributedForecast:
+    model_params = model_config.params or {}
     if model_config.name is DistributedModelName.LightGBM:
         from .distributed.models.lgb import LGBMForecast
-        model_cls = LGBMForecast
+        model = LGBMForecast(**model_params)
     else:
         from .distributed.models.xgb import XGBForecast
-        model_cls = XGBForecast  # type: ignore
-    model = model_cls(**(model_config.params or {}))
+        model = XGBForecast(**model_params)
     return DistributedForecast(model, flow_config)
 
 # Cell
@@ -149,7 +150,9 @@ def fcst_from_config(config: FlowConfig) -> Union[Forecast, DistributedForecast]
     if config.local is not None:
         return _fcst_from_local(config.local.model, flow_config)
     # because of the config validation, either local or distributed will be not None
-    return _fcst_from_distributed(config.distributed.model, flow_config)  # type: ignore
+    # however mypy can't see this, hence the next assert
+    assert config.distributed is not None
+    return _fcst_from_distributed(config.distributed.model, flow_config)
 
 # Cell
 def perform_backtest(fcst: Union[Forecast, DistributedForecast],
@@ -172,7 +175,7 @@ def perform_backtest(fcst: Union[Forecast, DistributedForecast],
             split_path += f'.{config.data.format}'
         writer = getattr(result, f'to_{config.data.format}')
         writer(split_path)
-        result['sq_err'] = (result['y'] - result['y_pred'])**2
+        result['sq_err'] = (result['y'] - result['y_pred']).pow(2)
         mse = result.groupby("unique_id")["sq_err"].mean().mean()
         if data_is_dask:
             mse = mse.compute()
