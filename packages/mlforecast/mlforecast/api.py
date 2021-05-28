@@ -40,7 +40,7 @@ except ImportError:
 
 import yaml
 
-from .core import predictions_flow
+from .core import TimeSeries
 from .data_model import (
     ClusterConfig,
     DataConfig,
@@ -54,10 +54,14 @@ from .data_model import (
 )
 
 try:
+    from .distributed.core import DistributedTimeSeries
     from .distributed.forecast import DistributedForecast
 except ImportError:
 
     class DistributedForecast:  # type: ignore
+        pass
+
+    class DistributedTimeSeries:  # type: ignore
         pass
 
 
@@ -157,14 +161,15 @@ def _fcst_from_local(model_config: ModelConfig, flow_config: Dict) -> Forecast:
     module_name, model_cls = model_config.name.rsplit('.', maxsplit=1)
     module = importlib.import_module(module_name)
     model = getattr(module, model_cls)(**(model_config.params or {}))
-    return Forecast(model, flow_config)
+    ts = TimeSeries(**flow_config)
+    return Forecast(model, ts)
 
 
 def _fcst_from_distributed(
     model_config: DistributedModelConfig, flow_config: Dict
 ) -> DistributedForecast:
     model_params = model_config.params or {}
-    if model_config.name is DistributedModelName.LightGBM:
+    if model_config.name is DistributedModelName.LGBMForecast:
         from .distributed.models.lgb import LGBMForecast
 
         model = LGBMForecast(**model_params)
@@ -172,7 +177,8 @@ def _fcst_from_distributed(
         from .distributed.models.xgb import XGBForecast
 
         model = XGBForecast(**model_params)
-    return DistributedForecast(model, flow_config)
+    ts = TimeSeries(**flow_config)
+    return DistributedForecast(model, ts)
 
 
 # Cell
@@ -202,7 +208,7 @@ def perform_backtest(
         return
     data_is_dask = isinstance(data, dd_Frame)
     results = fcst.backtest(
-        data, config.backtest.n_windows, config.backtest.window_size, predictions_flow
+        data, config.backtest.n_windows, config.backtest.window_size
     )
     for i, result in enumerate(results):
         result = result.fillna(0)

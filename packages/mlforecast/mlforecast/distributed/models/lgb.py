@@ -10,7 +10,7 @@ import lightgbm as lgb
 
 # Cell
 class LGBMForecast(lgb.dask.DaskLGBMRegressor):
-    if lgb.__version__ > '2.3.1' and lgb.__version__ <= '3.2.1':
+    if lgb.__version__ <= '3.2.1':
         warnings.warn(
             "It is recommended to build LightGBM from source following the instructions here: "
             "https://github.com/microsoft/LightGBM/tree/master/python-package#install-from-github, since "

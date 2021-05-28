@@ -3,68 +3,92 @@
 __all__ = ['DistributedForecast']
 
 # Cell
-from typing import Callable, Dict, Optional
+from typing import Callable, Generator, List, Optional
 
 import dask.dataframe as dd
 from dask.distributed import Client, default_client
 
-from ..core import predictions_flow, preprocessing_flow
-from ..forecast import Forecast
-from .core import distributed_preprocess
+from ..core import TimeSeries, simple_predict
+from ..utils import backtest_splits
+from .core import DistributedTimeSeries
 
 
 # Cell
-class DistributedForecast(Forecast):
-    """Full pipeline encapsulation.
+class DistributedForecast:
+    """Distributed pipeline encapsulation."""
 
-    Takes a model (`LGBMForecast` or `XGBForecast`), a flow configuration and a client."""
-
-    def __init__(self, model, flow_config: Dict, client: Optional[Client] = None):
+    def __init__(self, model, ts: TimeSeries, client: Optional[Client] = None):
         self.model = model
-        self.flow_config = flow_config
         self.client = client or default_client()
+        self.dts = DistributedTimeSeries(ts, self.client)
         self.model.client = self.client
 
     def __repr__(self) -> str:
-        return (
-            f'DistributedForecast(model={self.model}, flow_config={self.flow_config})'
-        )
+        return f'DistributedForecast(model={self.model}, dts={self.dts})'
 
     def preprocess(
-        self, data: dd.DataFrame, prep_fn: Callable = preprocessing_flow
+        self,
+        data: dd.DataFrame,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
     ) -> dd.DataFrame:
-        """Applies `prep_fn(partition, **self.flow_config)` on each partition of `data`.
+        """Computes the transformations on each partition of `data`.
 
         Saves the resulting `TimeSeries` objects as well as the divisions in `data` for the forecasting step.
         Returns a dask dataframe with the computed features."""
         self.data_divisions = data.divisions
-        self.ts, series_ddf = distributed_preprocess(
-            data, self.flow_config, self.client, prep_fn
-        )
-        return series_ddf
+        return self.dts.fit_transform(data, static_features, dropna, keep_last_n)
 
     def fit(
-        self, data: dd.DataFrame, prep_fn: Callable = preprocessing_flow, **fit_kwargs
+        self,
+        data: dd.DataFrame,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
+        **fit_kwargs,
     ) -> 'DistributedForecast':
         """Perform the preprocessing and fit the model."""
-        train_ddf = self.preprocess(data, prep_fn)
+        train_ddf = self.preprocess(data, static_features, dropna, keep_last_n)
         X, y = train_ddf.drop(columns=['ds', 'y']), train_ddf.y
+        self.train_features_ = X.columns
         self.model.fit(X, y, **fit_kwargs)
         return self
 
     def predict(
-        self, horizon: int, predict_fn: Callable = predictions_flow, **predict_fn_kwargs
+        self, horizon: int, predict_fn: Callable = simple_predict, **predict_fn_kwargs
     ) -> dd.DataFrame:
-        """Compute the predictions for the next `horizon` steps using `predict_fn`."""
-        model_future = self.client.scatter(self.model.model_, broadcast=True)
-        predictions_futures = self.client.map(
-            predict_fn,
-            self.ts,
-            model=model_future,
-            horizon=horizon,
-            **predict_fn_kwargs,
+        """Compute the predictions for the next `horizon` steps.
+
+        `predict_fn(model, new_x, features_order, **predict_fn_kwargs)` is called in every timestep, where:
+        `model` is the trained model.
+        `new_x` is a dataframe with the same format as the input plus the computed features.
+        `features_order` is the list of column names that were used in the training step.
+        """
+        return self.dts.predict(
+            self.model.model_, horizon, predict_fn, **predict_fn_kwargs
         )
-        meta = self.client.submit(lambda x: x.head(), predictions_futures[0]).result()
-        return dd.from_delayed(
-            predictions_futures, meta=meta, divisions=self.data_divisions
-        )
+
+    def backtest(
+        self,
+        data: dd.DataFrame,
+        n_windows: int,
+        window_size: int,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
+        predict_fn: Callable = simple_predict,
+        **predict_fn_kwargs,
+    ) -> Generator[dd.DataFrame, None, None]:
+        """Creates `n_windows` splits of `window_size` from `data`, trains the model
+        on the training set, predicts the window and merges the actuals and the predictions
+        in a dataframe.
+
+        Returns a generator to the dataframes containing the datestamps, actual values
+        and predictions."""
+        for train, valid in backtest_splits(data, n_windows, window_size):
+            self.fit(train, static_features, dropna, keep_last_n)
+            y_pred = self.predict(window_size, predict_fn, **predict_fn_kwargs)
+            y_valid = valid[['ds', 'y']]
+            result = y_valid.merge(y_pred, on=['unique_id', 'ds'], how='left')
+            yield result

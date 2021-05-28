@@ -32,23 +32,6 @@ nb_path: "nbs/distributed.core.ipynb"
     {% raw %}
     
 <div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span> 
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
 
 </div>
     {% endraw %}
@@ -61,10 +44,27 @@ nb_path: "nbs/distributed.core.ipynb"
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
-<span class="kn">from</span> <span class="nn">nbdev</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">nbdev</span> <span class="kn">import</span> <span class="n">show_doc</span>
 <span class="kn">from</span> <span class="nn">window_ops.rolling</span> <span class="kn">import</span> <span class="n">rolling_mean</span>
 
 <span class="kn">from</span> <span class="nn">mlforecast.utils</span> <span class="kn">import</span> <span class="n">generate_daily_series</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">client</span> <span class="o">=</span> <span class="n">Client</span><span class="p">(</span><span class="n">n_workers</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -85,11 +85,9 @@ nb_path: "nbs/distributed.core.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="distributed_preprocess" class="doc_header"><code>distributed_preprocess</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/distributed/core.py#L16" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>distributed_preprocess</code>(<strong><code>data</code></strong>:<code>DataFrame</code>, <strong><code>config</code></strong>:<code>Dict</code>[<code>KT</code>, <code>VT</code>], <strong><code>client</code></strong>:<code>Optional</code>[<code>Client</code>]=<em><code>None</code></em>, <strong><code>flow</code></strong>:<code>Callable</code>=<em><code>preprocessing_flow</code></em>)</p>
+<h2 id="DistributedTimeSeries" class="doc_header"><code>class</code> <code>DistributedTimeSeries</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/distributed/core.py#L26" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>DistributedTimeSeries</code>(<strong><code>ts</code></strong>:<a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a>, <strong><code>client</code></strong>:<code>Optional</code>[<code>Client</code>]=<em><code>None</code></em>)</p>
 </blockquote>
-<p>Applies <code>flow(partition, **config)</code> to every partition of <code>data</code>.</p>
-<p>Returns futures pointing to the <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> objects generated from each partition
-and a dask dataframe for training a distributed model.</p>
+<p>TimeSeries for distributed forecasting.</p>
 
 </div>
 
@@ -110,8 +108,7 @@ and a dask dataframe for training a distributed model.</p>
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p>The <a href="/mlforecast/distributed.core.html#distributed_preprocess"><code>distributed_preprocess</code></a> takes a <code>dask.dataframe</code> and applies the preprocessing function (<a href="/mlforecast/core.html#preprocessing_flow"><code>preprocessing_flow</code></a> by default) to each partition independently, generating as many <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> objects as there are partitions in the dataframe and another <code>dask.dataframe</code> with the features included in order to perform distributed training using <code>dask</code>.</p>
-<p>It is recommended that you have as many partitions as you have workers, so each worker performs one preprocessing task (optionally using multi-threading).</p>
+<p>The <a href="/mlforecast/distributed.core.html#DistributedTimeSeries"><code>DistributedTimeSeries</code></a> class takes a <a href="/mlforecast/core.html#TimeSeries"><code>TimeSeries</code></a> object which specifies the desired features. If you have more partitions than workers it's recommended to set <code>num_threads=1</code> to avoid colliding with dask's parallelism (dask could schedule several tasks on each worker).</p>
 
 </div>
 </div>
@@ -123,10 +120,38 @@ and a dask dataframe for training a distributed model.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">client</span> <span class="o">=</span> <span class="n">Client</span><span class="p">(</span><span class="n">n_workers</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">config</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+    <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;D&#39;</span><span class="p">,</span>
+    <span class="n">lags</span><span class="o">=</span><span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span>
+    <span class="n">lag_transforms</span><span class="o">=</span><span class="p">{</span>
+        <span class="mi">7</span> <span class="p">:</span> <span class="p">[(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">)],</span>
+        <span class="mi">14</span><span class="p">:</span> <span class="p">[(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">)],</span>
+    <span class="p">},</span>
+    <span class="n">date_features</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;dayofweek&#39;</span><span class="p">],</span>
+    <span class="n">num_threads</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">ts</span> <span class="o">=</span> <span class="n">TimeSeries</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
+<span class="n">dts</span> <span class="o">=</span> <span class="n">DistributedTimeSeries</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+<span class="n">dts</span>
 </pre></div>
 
     </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>DistributedTimeSeries(freq=&lt;Day&gt;, transforms=[&#39;lag-7&#39;, &#39;lag-14&#39;, &#39;rolling_mean_lag-7_window_size-7&#39;, &#39;rolling_mean_lag-14_window_size-7&#39;], date_features=[&#39;dayofweek&#39;], num_threads=1)</pre>
+</div>
+
+</div>
+
 </div>
 </div>
 
@@ -285,7 +310,7 @@ and a dask dataframe for training a distributed model.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">partitioned_series</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">npartitions</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">partitioned_series</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">npartitions</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
 <span class="n">partitioned_series</span>
 </pre></div>
 
@@ -325,7 +350,7 @@ and a dask dataframe for training a distributed model.</p>
       <th>static_1</th>
     </tr>
     <tr>
-      <th>npartitions=2</th>
+      <th>npartitions=6</th>
       <th></th>
       <th></th>
       <th></th>
@@ -341,7 +366,21 @@ and a dask dataframe for training a distributed model.</p>
       <td>category[known]</td>
     </tr>
     <tr>
-      <th>id_50</th>
+      <th>id_18</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>id_84</th>
       <td>...</td>
       <td>...</td>
       <td>...</td>
@@ -357,7 +396,32 @@ and a dask dataframe for training a distributed model.</p>
   </tbody>
 </table>
 </div>
-<div>Dask Name: from_pandas, 2 tasks</div>
+<div>Dask Name: from_pandas, 6 tasks</div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="DistributedTimeSeries.fit_transform" class="doc_header"><code>DistributedTimeSeries.fit_transform</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/distributed/core.py#L37" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>DistributedTimeSeries.fit_transform</code>(<strong><code>data</code></strong>:<code>DataFrame</code>, <strong><code>static_features</code></strong>:<code>Optional</code>[<code>List</code>[<code>str</code>]]=<em><code>None</code></em>, <strong><code>dropna</code></strong>:<code>bool</code>=<em><code>True</code></em>, <strong><code>keep_last_n</code></strong>:<code>Optional</code>[<code>int</code>]=<em><code>None</code></em>)</p>
+</blockquote>
+<p>Applies the transformations to each partition of <code>data</code>.</p>
+
 </div>
 
 </div>
@@ -375,17 +439,10 @@ and a dask dataframe for training a distributed model.</p>
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">config</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
-    <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;D&#39;</span><span class="p">,</span>
-    <span class="n">lags</span><span class="o">=</span><span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span>
-    <span class="n">lag_transforms</span><span class="o">=</span><span class="p">{</span>
-        <span class="mi">7</span><span class="p">:</span> <span class="p">[(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">)],</span>
-        <span class="mi">14</span><span class="p">:</span> <span class="p">[(</span><span class="n">rolling_mean</span><span class="p">,</span> <span class="mi">7</span><span class="p">)],</span>
-    <span class="p">},</span>
-    <span class="n">date_features</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;dayofweek&#39;</span><span class="p">],</span>
-    <span class="n">num_threads</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-    <span class="n">keep_last_n</span><span class="o">=</span><span class="mi">20</span>
-<span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">train_ddf</span> <span class="o">=</span> <span class="n">dts</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">partitioned_series</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+
+<span class="n">local_df</span> <span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">series</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">train_ddf</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">local_df</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -398,17 +455,49 @@ and a dask dataframe for training a distributed model.</p>
     {% raw %}
     
 <div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="DistributedTimeSeries.predict" class="doc_header"><code>DistributedTimeSeries.predict</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/distributed/core.py#L68" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>DistributedTimeSeries.predict</code>(<strong><code>model</code></strong>, <strong><code>horizon</code></strong>:<code>int</code>, <strong><code>predict_fn</code></strong>:<code>Callable</code>=<em><code>simple_predict</code></em>, <strong>**<code>predict_fn_kwargs</code></strong>)</p>
+</blockquote>
+<p>Broadcasts <code>model</code> across all workers and computes the next <code>horizon</code> timesteps.</p>
+<p><code>predict_fn(model, new_x, features_order, **predict_fn_kwargs)</code> is called on each timestep.</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
 <div class="input">
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">ts_futures</span><span class="p">,</span> <span class="n">train_ddf</span> <span class="o">=</span> <span class="n">distributed_preprocess</span><span class="p">(</span><span class="n">partitioned_series</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">class</span> <span class="nc">DummyModel</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">X</span><span class="p">[</span><span class="s1">&#39;lag-7&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+    
+<span class="n">horizon</span> <span class="o">=</span> <span class="mi">7</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">DummyModel</span><span class="p">()</span>
+<span class="n">preds</span> <span class="o">=</span> <span class="n">dts</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">horizon</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
 
-<span class="n">local_ts</span><span class="p">,</span> <span class="n">local_df</span> <span class="o">=</span> <span class="n">preprocessing_flow</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="p">)</span>
-<span class="k">assert</span> <span class="n">train_ddf</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">local_df</span><span class="p">)</span>
-<span class="n">next_feats_futures</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">update_features</span><span class="p">(),</span> <span class="n">ts_futures</span><span class="p">)</span>
-<span class="n">next_feats</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">next_feats_futures</span><span class="p">))</span>
-<span class="k">assert</span> <span class="n">next_feats</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">local_ts</span><span class="o">.</span><span class="n">update_features</span><span class="p">())</span>
+<span class="n">ts</span> <span class="o">=</span> <span class="n">TimeSeries</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
+<span class="n">ts</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">series</span><span class="p">)</span>
+<span class="n">local_preds</span> <span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">horizon</span><span class="p">)</span>
+
+<span class="k">assert</span> <span class="n">preds</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">local_preds</span><span class="p">)</span>
 </pre></div>
 
     </div>

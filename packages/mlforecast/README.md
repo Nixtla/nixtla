@@ -16,19 +16,19 @@
 `pip install mlforecast`
 
 #### Optional dependencies
-If you want more functionality you can instead use `pip install mlforecast[extra1, extra2, ...]`. The current extra dependencies are:
+If you want more functionality you can instead use `pip install mlforecast[extra1,extra2,...]`. The current extra dependencies are:
 
 * **aws**: adds the functionality to use S3 as the storage in the CLI.
 * **cli**: includes the validations necessary to use the CLI.
 * **distributed**: installs [dask](https://dask.org/) to perform distributed training. Note that you'll also need to install either [LightGBM](https://github.com/microsoft/LightGBM/tree/master/python-package) or [XGBoost](https://xgboost.readthedocs.io/en/latest/install.html#python).
 
-For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: `pip install mlforecast[aws, cli, distributed]`.
+For example, if you want to perform distributed training through the CLI using S3 as your storage you'll need all three extras, which you can get using: `pip install mlforecast[aws,cli,distributed]`.
 
 ### conda-forge
 `conda install -c conda-forge mlforecast`
 
 Note that this installation comes with the required dependencies for the local interface. If you want to:
-* Use s3 as storage: `conda install -c conda-forge boto3 s3path`
+* Use s3 as storage: `conda install -c conda-forge s3path`
 * Perform distributed training: `conda install -c conda-forge dask` and either [LightGBM](https://github.com/microsoft/LightGBM/tree/master/python-package) or [XGBoost](https://xgboost.readthedocs.io/en/latest/install.html#python).
 
 ## How to use
@@ -54,13 +54,14 @@ display_df(series.head())
 | id_00       | 2000-01-05 00:00:00 | 4.04356  |
 
 
-Then define your flow configuration. This includes lags, transformations on the lags and date features. The lag transformations are defined as [numba](http://numba.pydata.org/) *jitted* functions that transform an array, if they have additional arguments you supply a tuple (`transform_func`, `arg1`, `arg2`, ...).
+Then create a `TimeSeries` object with the features that you want to use. These include lags, transformations on the lags and date features. The lag transformations are defined as [numba](http://numba.pydata.org/) *jitted* functions that transform an array, if they have additional arguments you supply a tuple (`transform_func`, `arg1`, `arg2`, ...).
 
 ```python
+from mlforecast.core import TimeSeries
 from window_ops.expanding import expanding_mean
 from window_ops.rolling import rolling_mean
 
-flow_config = dict(
+ts = TimeSeries(
     lags=[7, 14],
     lag_transforms={
         1: [expanding_mean],
@@ -68,7 +69,15 @@ flow_config = dict(
     },
     date_features=['dayofweek', 'month']
 )
+ts
 ```
+
+
+
+
+    TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=8)
+
+
 
 Next define a model. If you want to use the local interface this can be any regressor that follows the scikit-learn API. For distributed training there are `LGBMForecast` and `XGBForecast`.
 
@@ -78,12 +87,12 @@ from sklearn.ensemble import RandomForestRegressor
 model = RandomForestRegressor()
 ```
 
-Now instantiate your forecast object with the model and the flow configuration. There are two types of forecasters, `Forecast` which is local and `DistributedForecast` which performs the whole process in a distributed way.
+Now instantiate your forecast object with the model and the time series. There are two types of forecasters, `Forecast` which is local and `DistributedForecast` which performs the whole process in a distributed way.
 
 ```python
 from mlforecast.forecast import Forecast
 
-fcst = Forecast(model, flow_config)
+fcst = Forecast(model, ts)
 ```
 
 To compute the features and train the model using them call `.fit` on your `Forecast` object.
@@ -95,7 +104,7 @@ fcst.fit(series)
 
 
 
-    Forecast(model=RandomForestRegressor(), flow_config={'lags': [7, 14], 'lag_transforms': {1: [CPUDispatcher(<function expanding_mean at 0x7f1264fe6700>)], 7: [(CPUDispatcher(<function rolling_mean at 0x7f1264fe0430>), 7), (CPUDispatcher(<function rolling_mean at 0x7f1264fe0430>), 14)]}, 'date_features': ['dayofweek', 'month']})
+    Forecast(model=RandomForestRegressor(), ts=TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=8))
 
 
 
@@ -110,11 +119,11 @@ display_df(predictions.head())
 
 | unique_id   | ds                  |   y_pred |
 |:------------|:--------------------|---------:|
-| id_00       | 2000-08-10 00:00:00 | 5.21542  |
-| id_00       | 2000-08-11 00:00:00 | 6.26993  |
-| id_00       | 2000-08-12 00:00:00 | 0.232467 |
-| id_00       | 2000-08-13 00:00:00 | 1.23008  |
-| id_00       | 2000-08-14 00:00:00 | 2.29878  |
+| id_00       | 2000-08-10 00:00:00 | 5.23798  |
+| id_00       | 2000-08-11 00:00:00 | 6.2492   |
+| id_00       | 2000-08-12 00:00:00 | 0.238271 |
+| id_00       | 2000-08-13 00:00:00 | 1.23278  |
+| id_00       | 2000-08-14 00:00:00 | 2.26742  |
 
 
 ### CLI
@@ -161,11 +170,17 @@ The configuration is validated using `FlowConfig`.
 This configuration will use the data in `data.prefix/data.input` to train and write the results to `data.prefix/data.output` both with `data.format`.
 
 ```python
+data_path = Path('data')
+data_path.mkdir()
+series.to_parquet(data_path/'train')
+```
+
+```python
 !mlforecast sample_configs/local.yaml
 ```
 
     Split 1 MSE: 0.0239
-    Split 2 MSE: 0.0183
+    Split 2 MSE: 0.0190
 
 ```python
 list((data_path/'outputs').iterdir())

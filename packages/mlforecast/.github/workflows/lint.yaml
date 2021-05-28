@@ -19,9 +19,14 @@ jobs:
       - name: Install linters
         run: pip install black mypy flake8 isort
 
-      - name: Lint
-        run: |
-          flake8 --select=F mlforecast/
-          mypy mlforecast/
-          isort --check-only mlforecast/
-          action_files/black.sh
+      - name: black
+        run: action_files/black.sh
+
+      - name: mypy
+        run: mypy mlforecast/
+
+      - name: flake8
+        run: flake8 --select=F mlforecast/
+
+      - name: isort
+        run: isort --check-only mlforecast/

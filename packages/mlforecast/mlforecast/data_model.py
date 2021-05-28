@@ -127,7 +127,6 @@ class FeaturesConfig(BaseModel):
     lags: Optional[List[int]]
     lag_transforms: Optional[Dict[int, List[Union[Transforms, Dict[Transforms, Dict]]]]]
     date_features: Optional[List[DateFeatures]]
-    static_features: Optional[List[str]]
     num_threads: Optional[int]
 
 
@@ -164,8 +163,8 @@ class ClusterConfig(BaseModel):
 class DistributedModelName(str, Enum):
     """Available models for distributed training."""
 
-    XGBoost = 'XGBForecast'
-    LightGBM = 'LGBMForecast'
+    XGBForecast = 'XGBForecast'
+    LGBMForecast = 'LGBMForecast'
 
 
 class DistributedModelConfig(BaseModel):
