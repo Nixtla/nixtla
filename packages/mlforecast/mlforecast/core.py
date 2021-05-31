@@ -368,9 +368,12 @@ class TimeSeries:
         return self._transform(data, dropna, keep_last_n)
 
     def _predict_setup(self) -> None:
+        if not hasattr(self, '_ga'):
+            self._ga = GroupedArray(self.ga.data, self.ga.indptr)
         self.curr_dates = self.last_dates.copy()
         self.test_dates = []
         self.y_pred = []
+        self.ga = GroupedArray(self._ga.data, self._ga.indptr)
 
     def predict(
         self,
