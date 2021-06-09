@@ -15,9 +15,11 @@ jobs:
 
       - name: Set up python
         uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
 
       - name: Install linters
-        run: pip install black mypy flake8 isort
+        run: pip install black "mypy<0.900" flake8 isort
 
       - name: black
         run: action_files/black.sh
