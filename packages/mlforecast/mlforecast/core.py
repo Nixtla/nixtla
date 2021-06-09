@@ -345,6 +345,7 @@ class TimeSeries:
         if keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
 
+        self._ga = GroupedArray(self.ga.data, self.ga.indptr)
         self.features_order_ = df.columns.drop(['ds', 'y'])
         return df
 
@@ -368,8 +369,6 @@ class TimeSeries:
         return self._transform(data, dropna, keep_last_n)
 
     def _predict_setup(self) -> None:
-        if not hasattr(self, '_ga'):
-            self._ga = GroupedArray(self.ga.data, self.ga.indptr)
         self.curr_dates = self.last_dates.copy()
         self.test_dates = []
         self.y_pred = []

@@ -2,7 +2,6 @@ name: mlforecast
 channels:
   - conda-forge
 dependencies:
-  - boto3
   - dask
   - lightgbm
   - numba
@@ -11,7 +10,6 @@ dependencies:
   - pyarrow
   - pydantic
   - s3path
-  - smart_open
   - typer
-  - window_ops
+  - window-ops
   - xgboost

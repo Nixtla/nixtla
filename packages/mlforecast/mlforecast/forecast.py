@@ -45,7 +45,6 @@ class Forecast:
         """Preprocesses `data` and fits `model` to it."""
         series_df = self.preprocess(data, static_features, dropna, keep_last_n)
         X, y = series_df.drop(columns=['ds', 'y']), series_df.y.values
-        self.train_features_ = X.columns
         del series_df
         self.model.fit(X, y, **fit_kwargs)
         return self

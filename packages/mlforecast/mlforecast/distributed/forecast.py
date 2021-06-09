@@ -37,7 +37,6 @@ class DistributedForecast:
 
         Saves the resulting `TimeSeries` objects as well as the divisions in `data` for the forecasting step.
         Returns a dask dataframe with the computed features."""
-        self.data_divisions = data.divisions
         return self.dts.fit_transform(data, static_features, dropna, keep_last_n)
 
     def fit(
@@ -51,7 +50,6 @@ class DistributedForecast:
         """Perform the preprocessing and fit the model."""
         train_ddf = self.preprocess(data, static_features, dropna, keep_last_n)
         X, y = train_ddf.drop(columns=['ds', 'y']), train_ddf.y
-        self.train_features_ = X.columns
         self.model.fit(X, y, **fit_kwargs)
         return self
 
