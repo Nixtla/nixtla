@@ -362,6 +362,8 @@ class TimeSeries:
         If you don't want to drop rows with null values after the transformations set `dropna=False`.
         If you want to keep only the last `n` values of each time serie set `keep_last_n=n`.
         """
+        if data['y'].isnull().any():
+            raise ValueError('y column contains null values.')
         data = data.set_index('ds', append=True)
         if not data.index.is_monotonic_increasing:
             data = data.sort_index()
