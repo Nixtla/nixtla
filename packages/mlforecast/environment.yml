@@ -4,12 +4,16 @@ channels:
 dependencies:
   - dask
   - lightgbm
+  - matplotlib
   - numba
   - pandas
   - pip
   - pyarrow
   - pydantic
   - s3path
+  - tabulate
   - typer
   - window-ops
   - xgboost
+  - pip:
+    - nbdev

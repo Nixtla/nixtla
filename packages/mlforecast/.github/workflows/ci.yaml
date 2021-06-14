@@ -64,8 +64,8 @@ jobs:
         if: matrix.os == 'windows-latest' && matrix.python-version == '3.8'
         run: conda install -y pywin32
 
-      - name: Install action requirements and the library
-        run: pip install nbdev matplotlib tabulate ./
+      - name: Install the library
+        run: pip install ./
 
       - name: Run all tests
         if: matrix.os == 'ubuntu-latest'
@@ -114,3 +114,29 @@ jobs:
           python action_files/create_data.py --distributed
           mlforecast sample_configs/distributed.yaml
           if [ ! -d 'data/outputs/forecast/' ]; then false; fi
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Set up python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+
+      - name: Install requirements and the library
+        run: |
+          pip install lightgbm matplotlib nbdev pyarrow pytest-cov tabulate xgboost
+          pip install -e ".[aws,cli,distributed]"
+
+      - name: Run coverage
+        run: pytest action_files/test_nbs.py --cov=mlforecast --cov-report xml
+        env:
+          NUMBA_DISABLE_JIT: 1
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v1
+        with:
+          files: ./coverage.xml
