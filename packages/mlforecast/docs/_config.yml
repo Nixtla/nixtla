@@ -2,7 +2,7 @@ repository: Nixtla/mlforecast
 output: web
 topnav_title: mlforecast
 site_title: mlforecast
-company_name: Grupo Abraxas
+company_name: Nixtla
 description: Scalable machine learning based time series forecasting
 # Set to false to disable KaTeX math
 use_math: true

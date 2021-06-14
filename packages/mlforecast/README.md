@@ -7,6 +7,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/mlforecast)](https://pypi.org/project/mlforecast/)
 [![PyPi](https://img.shields.io/pypi/v/mlforecast?color=blue)](https://pypi.org/project/mlforecast/)
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/mlforecast?color=blue)](https://anaconda.org/conda-forge/mlforecast)
+[![codecov](https://codecov.io/gh/Nixtla/mlforecast/branch/main/graph/badge.svg?token=XxVZK0oG7x)](https://codecov.io/gh/Nixtla/mlforecast)
 [![License](https://img.shields.io/github/license/Nixtla/mlforecast)](https://github.com/Nixtla/mlforecast/blob/main/LICENSE)
 
 ## Install
@@ -32,6 +33,7 @@ Note that this installation comes with the required dependencies for the local i
 * Perform distributed training: `conda install -c conda-forge dask` and either [LightGBM](https://github.com/microsoft/LightGBM/tree/master/python-package) or [XGBoost](https://xgboost.readthedocs.io/en/latest/install.html#python).
 
 ## How to use
+The following provides a very basic overview, for a more detailed description see the [documentation](https://nixtla.github.io/mlforecast/).
 
 ### Programmatic API
 
@@ -84,7 +86,7 @@ Next define a model. If you want to use the local interface this can be any regr
 ```python
 from sklearn.ensemble import RandomForestRegressor
 
-model = RandomForestRegressor()
+model = RandomForestRegressor(random_state=0)
 ```
 
 Now instantiate your forecast object with the model and the time series. There are two types of forecasters, `Forecast` which is local and `DistributedForecast` which performs the whole process in a distributed way.
@@ -104,7 +106,7 @@ fcst.fit(series)
 
 
 
-    Forecast(model=RandomForestRegressor(), ts=TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=8))
+    Forecast(model=RandomForestRegressor(random_state=0), ts=TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=8))
 
 
 
@@ -119,11 +121,11 @@ display_df(predictions.head())
 
 | unique_id   | ds                  |   y_pred |
 |:------------|:--------------------|---------:|
-| id_00       | 2000-08-10 00:00:00 | 5.23798  |
-| id_00       | 2000-08-11 00:00:00 | 6.2492   |
-| id_00       | 2000-08-12 00:00:00 | 0.238271 |
-| id_00       | 2000-08-13 00:00:00 | 1.23278  |
-| id_00       | 2000-08-14 00:00:00 | 2.26742  |
+| id_00       | 2000-08-10 00:00:00 | 5.24484  |
+| id_00       | 2000-08-11 00:00:00 | 6.25861  |
+| id_00       | 2000-08-12 00:00:00 | 0.225484 |
+| id_00       | 2000-08-13 00:00:00 | 1.22896  |
+| id_00       | 2000-08-14 00:00:00 | 2.30246  |
 
 
 ### CLI
@@ -179,8 +181,8 @@ series.to_parquet(data_path/'train')
 !mlforecast sample_configs/local.yaml
 ```
 
-    Split 1 MSE: 0.0239
-    Split 2 MSE: 0.0190
+    Split 1 MSE: 0.0251
+    Split 2 MSE: 0.0180
 
 ```python
 list((data_path/'outputs').iterdir())
