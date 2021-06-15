@@ -9,37 +9,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Tuple, Union
 
-try:
-    import dask.dataframe as dd
-    from dask.dataframe import DataFrame as dd_Frame
-    from dask.distributed import Client, LocalCluster
-except ImportError:
-
-    class dd:  # type: ignore
-        pass
-
-    dd_Frame = type(None)
-
-    class Client:  # type: ignore
-        pass
-
-    class LocalCluster:  # type: ignore
-        pass
-
-
 import pandas as pd
+import yaml
 from pandas.api.types import is_categorical_dtype, is_datetime64_dtype
 
-try:
-    from s3path import S3Path
-except ImportError:
-
-    class S3Path:  # type: ignore
-        pass
-
-
-import yaml
-
+from .compat import Client, DistributedForecast, S3Path, dd, dd_Frame
 from .core import TimeSeries
 from .data_model import (
     ClusterConfig,
@@ -52,19 +26,6 @@ from .data_model import (
     ModelConfig,
     _available_tfms,
 )
-
-try:
-    from .distributed.core import DistributedTimeSeries
-    from .distributed.forecast import DistributedForecast
-except ImportError:
-
-    class DistributedForecast:  # type: ignore
-        pass
-
-    class DistributedTimeSeries:  # type: ignore
-        pass
-
-
 from .forecast import Forecast
 
 # Internal Cell
@@ -145,8 +106,6 @@ def _instantiate_transforms(config: FeaturesConfig) -> Dict:
                 [(tfm_name, tfm_kwargs)] = tfm.items()
             else:
                 tfm_name, tfm_kwargs = tfm, ()
-            if tfm_name not in _available_tfms:
-                raise NotImplementedError(tfm_name)
             tfm_func = _available_tfms[tfm_name]
             tfm_args: Tuple[Any, ...] = ()
             for kwarg in _available_tfms_kwargs[tfm_name]:

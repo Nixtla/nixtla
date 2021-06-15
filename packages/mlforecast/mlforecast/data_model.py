@@ -8,15 +8,11 @@ __all__ = ['DataFreq', 'DataFormat', 'DataConfig', 'BacktestConfig', 'FeaturesCo
 from enum import Enum
 from typing import Dict, List, Optional, Union
 
-try:
-    from typing import Literal  # python>=3.8
-except ImportError:
-    from typing_extensions import Literal
-
 import window_ops.ewm
 import window_ops.expanding
 import window_ops.rolling
 from pydantic import BaseModel, root_validator
+from typing_extensions import Literal
 
 from .core import date_features_dtypes
 
