@@ -2,8 +2,7 @@
 
 __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
-index = {"Frame": "api.ipynb",
-         "validate_data_format": "api.ipynb",
+index = {"validate_data_format": "api.ipynb",
          "read_data": "api.ipynb",
          "fcst_from_config": "api.ipynb",
          "perform_backtest": "api.ipynb",
@@ -11,7 +10,7 @@ index = {"Frame": "api.ipynb",
          "setup_client": "api.ipynb",
          "app": "cli.ipynb",
          "run_forecast": "cli.ipynb",
-         "GARBAGE": "compat.ipynb",
+         "Frame": "compat.ipynb",
          "date_features_dtypes": "core.ipynb",
          "GroupedArray": "core.ipynb",
          "simple_predict": "core.ipynb",
@@ -38,6 +37,7 @@ index = {"Frame": "api.ipynb",
          "Forecast": "forecast.ipynb",
          "generate_daily_series": "utils.ipynb",
          "data_indptr_from_sorted_df": "utils.ipynb",
+         "ensure_sorted": "utils.ipynb",
          "backtest_splits": "utils.ipynb"}
 
 modules = ["api.py",

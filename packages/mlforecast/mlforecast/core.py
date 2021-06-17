@@ -16,7 +16,7 @@ import pandas as pd
 from numba import njit
 from window_ops.shift import shift_array
 
-from .utils import data_indptr_from_sorted_df
+from .utils import data_indptr_from_sorted_df, ensure_sorted
 
 # Internal Cell
 date_features_dtypes = {
@@ -364,9 +364,8 @@ class TimeSeries:
         """
         if data['y'].isnull().any():
             raise ValueError('y column contains null values.')
+        data = ensure_sorted(data)
         data = data.set_index('ds', append=True)
-        if not data.index.is_monotonic_increasing:
-            data = data.sort_index()
         self._fit(data, static_features)
         return self._transform(data, dropna, keep_last_n)
 

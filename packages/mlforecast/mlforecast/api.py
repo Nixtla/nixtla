@@ -13,7 +13,7 @@ import pandas as pd
 import yaml
 from pandas.api.types import is_categorical_dtype, is_datetime64_dtype
 
-from .compat import Client, DistributedForecast, S3Path, dd, dd_Frame
+from .compat import Client, DistributedForecast, Frame, S3Path, dd, dd_Frame
 from .core import TimeSeries
 from .data_model import (
     ClusterConfig,
@@ -29,8 +29,6 @@ from .data_model import (
 from .forecast import Forecast
 
 # Internal Cell
-Frame = Union[pd.DataFrame, dd_Frame]
-
 _available_tfms_kwargs = {
     name: list(inspect.signature(tfm).parameters)[1:]
     for name, tfm in _available_tfms.items()

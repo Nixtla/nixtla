@@ -64,7 +64,7 @@ nb_path: "nbs/utils.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="generate_daily_series" class="doc_header"><code>generate_daily_series</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L17" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>generate_daily_series</code>(<strong><code>n_series</code></strong>:<code>int</code>, <strong><code>min_length</code></strong>:<code>int</code>=<em><code>50</code></em>, <strong><code>max_length</code></strong>:<code>int</code>=<em><code>500</code></em>, <strong><code>n_static_features</code></strong>:<code>int</code>=<em><code>0</code></em>, <strong><code>equal_ends</code></strong>:<code>bool</code>=<em><code>False</code></em>, <strong><code>seed</code></strong>:<code>int</code>=<em><code>0</code></em>)</p>
+<h4 id="generate_daily_series" class="doc_header"><code>generate_daily_series</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L19" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>generate_daily_series</code>(<strong><code>n_series</code></strong>:<code>int</code>, <strong><code>min_length</code></strong>:<code>int</code>=<em><code>50</code></em>, <strong><code>max_length</code></strong>:<code>int</code>=<em><code>500</code></em>, <strong><code>n_static_features</code></strong>:<code>int</code>=<em><code>0</code></em>, <strong><code>equal_ends</code></strong>:<code>bool</code>=<em><code>False</code></em>, <strong><code>seed</code></strong>:<code>int</code>=<em><code>0</code></em>)</p>
 </blockquote>
 <p>Generates <code>n_series</code> of different lengths in the interval [<code>min_length</code>, <code>max_length</code>].</p>
 <p>If <code>n_static_features &gt; 0</code>, then each serie gets static features with random values.
@@ -470,7 +470,7 @@ If <code>equal_ends == True</code> then all series end at the same date.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="data_indptr_from_sorted_df" class="doc_header"><code>data_indptr_from_sorted_df</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L77" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>data_indptr_from_sorted_df</code>(<strong><code>df</code></strong>:<code>DataFrame</code>)</p>
+<h4 id="data_indptr_from_sorted_df" class="doc_header"><code>data_indptr_from_sorted_df</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L79" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>data_indptr_from_sorted_df</code>(<strong><code>df</code></strong>:<code>DataFrame</code>)</p>
 </blockquote>
 
 </div>
@@ -501,7 +501,31 @@ If <code>equal_ends == True</code> then all series end at the same date.</p>
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="backtest_splits" class="doc_header"><code>backtest_splits</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L120" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>backtest_splits</code>(<strong><code>data</code></strong>, <strong><code>n_windows</code></strong>, <strong><code>window_size</code></strong>)</p>
+<h4 id="ensure_sorted" class="doc_header"><code>ensure_sorted</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L122" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>ensure_sorted</code>(<strong><code>df</code></strong>:<code>DataFrame</code>)</p>
+</blockquote>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+
+<div class="output_markdown rendered_html output_subarea ">
+<h4 id="backtest_splits" class="doc_header"><code>backtest_splits</code><a href="https://github.com/Nixtla/mlforecast/tree/main/mlforecast/utils.py#L129" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>backtest_splits</code>(<strong><code>data</code></strong>:<code>Union</code>[<code>DataFrame</code>, <code>DataFrame</code>], <strong><code>n_windows</code></strong>:<code>int</code>, <strong><code>window_size</code></strong>:<code>int</code>)</p>
 </blockquote>
 <p>Returns a generator of <code>n_windows</code> for train, valid splits of
 <code>data</code> where each valid has <code>window_size</code> samples.</p>
@@ -537,7 +561,12 @@ If <code>equal_ends == True</code> then all series end at the same date.</p>
 <span class="n">series_ddf</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">npartitions</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 
 <span class="k">for</span> <span class="n">df</span> <span class="ow">in</span> <span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">series_ddf</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="n">permuted_df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">frac</span><span class="o">=</span><span class="mf">1.</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">permuted_df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">map_partitions</span><span class="p">(</span><span class="k">lambda</span> <span class="n">part</span><span class="p">:</span> <span class="n">part</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">frac</span><span class="o">=</span><span class="mf">1.</span><span class="p">))</span>    
     <span class="n">splits</span> <span class="o">=</span> <span class="n">backtest_splits</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">n_windows</span><span class="p">,</span> <span class="n">window_size</span><span class="p">)</span>
+    <span class="n">splits_on_permuted</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">backtest_splits</span><span class="p">(</span><span class="n">permuted_df</span><span class="p">,</span> <span class="n">n_windows</span><span class="p">,</span> <span class="n">window_size</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">window</span><span class="p">,</span> <span class="p">(</span><span class="n">train</span><span class="p">,</span> <span class="n">valid</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">splits</span><span class="p">):</span>
         <span class="n">expected_max_train_dates</span> <span class="o">=</span> <span class="n">max_dates</span> <span class="o">-</span> <span class="n">day_offset</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_windows</span> <span class="o">-</span> <span class="n">window</span><span class="p">)</span> <span class="o">*</span> <span class="n">window_size</span>
         <span class="n">max_train_dates</span> <span class="o">=</span> <span class="n">train</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;unique_id&#39;</span><span class="p">)[</span><span class="s1">&#39;ds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
@@ -559,6 +588,15 @@ If <code>equal_ends == True</code> then all series end at the same date.</p>
 
         <span class="k">if</span> <span class="n">window</span> <span class="o">==</span> <span class="n">n_windows</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">assert</span> <span class="n">max_valid_dates</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">max_dates</span><span class="p">)</span>
+            
+        <span class="n">permuted_train</span><span class="p">,</span> <span class="n">permuted_valid</span> <span class="o">=</span> <span class="n">splits_on_permuted</span><span class="p">[</span><span class="n">window</span><span class="p">]</span>            
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="n">train</span> <span class="o">=</span> <span class="n">train</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+            <span class="n">valid</span> <span class="o">=</span> <span class="n">valid</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+            <span class="n">permuted_train</span> <span class="o">=</span> <span class="n">permuted_train</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+            <span class="n">permuted_valid</span> <span class="o">=</span> <span class="n">permuted_valid</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+        <span class="n">pd</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_frame_equal</span><span class="p">(</span><span class="n">train</span><span class="p">,</span> <span class="n">permuted_train</span><span class="p">)</span>
+        <span class="n">pd</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_frame_equal</span><span class="p">(</span><span class="n">valid</span><span class="p">,</span> <span class="n">permuted_valid</span><span class="p">)</span>
 </pre></div>
 
     </div>
