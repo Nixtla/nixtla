@@ -1,0 +1,3 @@
+[submodule "docs/styles"]
+	path = docs/styles
+	url = https://github.com/Nixtla/styles.git
