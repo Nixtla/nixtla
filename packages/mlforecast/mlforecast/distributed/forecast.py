@@ -6,6 +6,7 @@ __all__ = ['DistributedForecast']
 from typing import Callable, Generator, List, Optional
 
 import dask.dataframe as dd
+import pandas as pd
 from dask.distributed import Client, default_client
 
 from ..core import TimeSeries, simple_predict
@@ -54,7 +55,11 @@ class DistributedForecast:
         return self
 
     def predict(
-        self, horizon: int, predict_fn: Callable = simple_predict, **predict_fn_kwargs
+        self,
+        horizon: int,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+        predict_fn: Optional[Callable] = None,
+        **predict_fn_kwargs,
     ) -> dd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
@@ -64,7 +69,7 @@ class DistributedForecast:
         `features_order` is the list of column names that were used in the training step.
         """
         return self.dts.predict(
-            self.model.model_, horizon, predict_fn, **predict_fn_kwargs
+            self.model.model_, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
         )
 
     def backtest(
@@ -75,6 +80,7 @@ class DistributedForecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         predict_fn: Callable = simple_predict,
         **predict_fn_kwargs,
     ) -> Generator[dd.DataFrame, None, None]:
@@ -86,7 +92,9 @@ class DistributedForecast:
         and predictions."""
         for train, valid in backtest_splits(data, n_windows, window_size):
             self.fit(train, static_features, dropna, keep_last_n)
-            y_pred = self.predict(window_size, predict_fn, **predict_fn_kwargs)
+            y_pred = self.predict(
+                window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            )
             y_valid = valid[['ds', 'y']]
             result = y_valid.merge(y_pred, on=['unique_id', 'ds'], how='left')
             yield result

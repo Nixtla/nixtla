@@ -31,7 +31,7 @@ nb_path: "nbs/distributed.models.xgb.ipynb"
 
 <div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
 <div class="text_cell_render border-box-sizing rendered_html">
-<p>Wrapper of <code>xgboost.dask.DaskXGBRegressor</code> that adds a <code>model_</code> property that contains the fitted booster and is sent to the workers to in the forecasting step.</p>
+<p>Wrapper of <code>xgboost.dask.DaskXGBRegressor</code> that adds a <code>model_</code> property that contains the fitted model and is sent to the workers in the forecasting step.</p>
 
 </div>
 </div>
@@ -81,14 +81,14 @@ tree_method: string
 n_jobs : int
     Number of parallel threads used to run xgboost.  When used with other Scikit-Learn
     algorithms like grid search, you may choose which algorithm to parallelize and
-    balance the threads.  Creating thread contention will significantly slow dowm both
+    balance the threads.  Creating thread contention will significantly slow down both
     algorithms.
 gamma : float
     Minimum loss reduction required to make a further partition on a leaf
     node of the tree.
 min_child_weight : float
     Minimum sum of instance weight(hessian) needed in a child.
-max_delta_step : int
+max_delta_step : float
     Maximum delta step we allow each tree's weight estimation to be.
 subsample : float
     Subsample ratio of the training instance.
@@ -130,6 +130,10 @@ interaction_constraints : str
 importance_type: string, default "gain"
     The feature importance type for the feature_importances\_ property:
     either "gain", "weight", "cover", "total_gain" or "total_cover".
+gpu_id :
+    Device ordinal.
+validate_parameters :
+    Give warnings for unknown parameter.
 
 \*\*kwargs : dict, optional
     Keyword arguments for XGBoost Booster object.  Full documentation of
@@ -157,6 +161,100 @@ importance_type: string, default "gain"
     {% raw %}
     
 <div class="cell border-box-sizing code_cell rendered">
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">dask</span>
+<span class="kn">import</span> <span class="nn">dask.dataframe</span> <span class="k">as</span> <span class="nn">dd</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="kn">from</span> <span class="nn">dask.distributed</span> <span class="kn">import</span> <span class="n">Client</span>
+<span class="kn">from</span> <span class="nn">mlforecast.core</span> <span class="kn">import</span> <span class="n">TimeSeries</span>
+<span class="kn">from</span> <span class="nn">mlforecast.distributed.forecast</span> <span class="kn">import</span> <span class="n">DistributedForecast</span>
+<span class="kn">from</span> <span class="nn">mlforecast.utils</span> <span class="kn">import</span> <span class="n">generate_daily_series</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">client</span> <span class="o">=</span> <span class="n">Client</span><span class="p">(</span><span class="n">n_workers</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">series</span> <span class="o">=</span> <span class="n">generate_daily_series</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+<span class="n">distr_series</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">npartitions</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">fcst</span> <span class="o">=</span> <span class="n">DistributedForecast</span><span class="p">(</span>
+    <span class="n">XGBForecast</span><span class="p">(),</span>
+    <span class="n">TimeSeries</span><span class="p">(</span><span class="n">lags</span><span class="o">=</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span>
+<span class="p">)</span>
+<span class="n">fcst</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">distr_series</span><span class="p">)</span>
+<span class="n">actual</span> <span class="o">=</span> <span class="n">fcst</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">get_updates</span><span class="p">(</span><span class="n">ts</span><span class="p">):</span>
+    <span class="n">ts</span><span class="o">.</span><span class="n">_predict_setup</span><span class="p">()</span>
+    <span class="n">upd</span> <span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">_update_features</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">upd</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s1">&#39;ds&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="n">upd_futures</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">get_updates</span><span class="p">,</span> <span class="n">fcst</span><span class="o">.</span><span class="n">dts</span><span class="o">.</span><span class="n">ts</span><span class="p">)</span>
+<span class="n">upd_ddf</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">from_delayed</span><span class="p">(</span><span class="n">upd_futures</span><span class="p">)</span>
+<span class="n">expected</span> <span class="o">=</span> <span class="n">fcst</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">upd_ddf</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_equal</span><span class="p">(</span><span class="n">actual</span><span class="p">[</span><span class="s1">&#39;y_pred&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+    {% endraw %}
+
+    {% raw %}
+    
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">client</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
 
 </div>
     {% endraw %}

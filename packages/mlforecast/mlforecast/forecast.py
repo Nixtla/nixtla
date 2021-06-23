@@ -7,7 +7,7 @@ from typing import Callable, Generator, List, Optional
 
 import pandas as pd
 
-from .core import TimeSeries, simple_predict
+from .core import TimeSeries
 from .utils import backtest_splits
 
 
@@ -50,7 +50,11 @@ class Forecast:
         return self
 
     def predict(
-        self, horizon: int, predict_fn: Callable = simple_predict, **predict_fn_kwargs
+        self,
+        horizon: int,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+        predict_fn: Optional[Callable] = None,
+        **predict_fn_kwargs,
     ) -> pd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
@@ -59,7 +63,9 @@ class Forecast:
         `new_x` is a dataframe with the same format as the input plus the computed features.
         `features_order` is the list of column names that were used in the training step.
         """
-        return self.ts.predict(self.model, horizon, predict_fn, **predict_fn_kwargs)
+        return self.ts.predict(
+            self.model, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
+        )
 
     def backtest(
         self,
@@ -69,7 +75,8 @@ class Forecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
-        predict_fn: Callable = simple_predict,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+        predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
     ) -> Generator[pd.DataFrame, None, None]:
         """Creates `n_windows` splits of `window_size` from `data`, trains the model
@@ -80,7 +87,9 @@ class Forecast:
         and predictions."""
         for train, valid in backtest_splits(data, n_windows, window_size):
             self.fit(train, static_features, dropna, keep_last_n)
-            y_pred = self.predict(window_size, predict_fn, **predict_fn_kwargs)
+            y_pred = self.predict(
+                window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            )
             y_valid = valid[['ds', 'y']]
             result = y_valid.merge(y_pred, on=['unique_id', 'ds'], how='left')
             yield result

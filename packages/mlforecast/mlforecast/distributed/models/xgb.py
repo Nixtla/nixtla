@@ -10,4 +10,6 @@ import xgboost as xgb
 class XGBForecast(xgb.dask.DaskXGBRegressor):
     @property
     def model_(self):
-        return self.get_booster()
+        local = xgb.XGBRegressor(**self.get_params())
+        local._Booster = self._Booster
+        return local

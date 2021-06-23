@@ -7,7 +7,7 @@ import importlib
 import inspect
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import yaml
@@ -68,13 +68,16 @@ def _path_as_str(path: Union[Path, S3Path]) -> str:
     return str(path)
 
 
+def _prefix_as_path(prefix: str) -> Union[Path, S3Path]:
+    return S3Path.from_uri(prefix) if _is_s3_path(prefix) else Path(prefix)
+
+
 # Cell
 def read_data(config: DataConfig, is_distributed: bool) -> Frame:
     """Read data from `config.prefix/config.input`.
 
     If we're in distributed mode dask is used for IO, else pandas."""
-    prefix = config.prefix
-    path = S3Path.from_uri(prefix) if _is_s3_path(prefix) else Path(prefix)
+    path = _prefix_as_path(config.prefix)
     input_path = path / config.input
     io_module = dd if is_distributed else pd
     reader = getattr(io_module, f'read_{config.format}')
@@ -89,7 +92,42 @@ def read_data(config: DataConfig, is_distributed: bool) -> Frame:
         and is_categorical_dtype(data.index)
     ):
         data.index = data.index.cat.as_known().as_ordered()
+        for col in data.select_dtypes(include='category'):
+            data[col] = data[col].cat.as_known()
+
     return validate_data_format(data)
+
+
+# Internal Cell
+def _read_dynamic(config: DataConfig) -> Optional[List[pd.DataFrame]]:
+    if config.dynamic is None:
+        return None
+    reader = getattr(pd, f'read_{config.format}')
+    input_path = _prefix_as_path(config.prefix)
+    dynamic_dfs = []
+    for fname in config.dynamic:
+        path = _path_as_str(input_path / fname)
+        kwargs = {}
+        if config.format is DataFormat.csv:
+            kwargs['parse_dates'] = ['ds']
+        df = reader(path, **kwargs)
+        dynamic_dfs.append(df)
+    return dynamic_dfs
+
+
+def _paste_dynamic(
+    data: Frame, dynamic_dfs: Optional[List[pd.DataFrame]], is_distributed: bool
+) -> pd.DataFrame:
+    if dynamic_dfs is None:
+        return data
+    data = data.reset_index()
+    for df in dynamic_dfs:
+        data = data.merge(df, how='left')
+    kwargs = {}
+    if is_distributed:
+        kwargs['sorted'] = True
+    data = data.set_index('unique_id', **kwargs)
+    return data
 
 
 # Internal Cell
@@ -143,6 +181,8 @@ def fcst_from_config(config: FlowConfig) -> Union[Forecast, DistributedForecast]
     """Instantiate Forecast class from config."""
     flow_config = config.features.dict()
     flow_config['lag_transforms'] = _instantiate_transforms(config.features)
+    remove_keys = {'static_features', 'keep_last_n'}
+    flow_config = {k: v for k, v in flow_config.items() if k not in remove_keys}
 
     if config.local is not None:
         return _fcst_from_local(config.local.model, flow_config)
@@ -158,6 +198,7 @@ def perform_backtest(
     data: Frame,
     config: FlowConfig,
     output_path: Union[Path, S3Path],
+    dynamic_dfs: Optional[List[pd.DataFrame]] = None,
 ) -> None:
     """Performs backtesting of `fcst` using `data` and the strategy defined in `config`.
     Writes the results to `output_path`."""
@@ -165,7 +206,11 @@ def perform_backtest(
         return
     data_is_dask = isinstance(data, dd_Frame)
     results = fcst.backtest(
-        data, config.backtest.n_windows, config.backtest.window_size
+        data,
+        config.backtest.n_windows,
+        config.backtest.window_size,
+        static_features=config.features.static_features,
+        dynamic_dfs=dynamic_dfs,
     )
     for i, result in enumerate(results):
         result = result.fillna(0)

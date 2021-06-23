@@ -7,9 +7,10 @@ import operator
 from typing import Callable, List, Optional
 
 import dask.dataframe as dd
+import pandas as pd
 from dask.distributed import Client, default_client, futures_of, wait
 
-from ..core import TimeSeries, simple_predict
+from ..core import TimeSeries
 
 
 # Internal Cell
@@ -18,8 +19,8 @@ def _fit_transform(ts, data, **kwargs):
     return ts, df
 
 
-def _predict(ts, model, horizon, predict_fn, **predict_fn_kwargs):
-    return ts.predict(model, horizon, predict_fn, **predict_fn_kwargs)
+def _predict(ts, model, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs):
+    return ts.predict(model, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs)
 
 
 # Cell
@@ -69,7 +70,8 @@ class DistributedTimeSeries:
         self,
         model,
         horizon: int,
-        predict_fn: Callable = simple_predict,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+        predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
     ) -> dd.DataFrame:
         """Broadcasts `model` across all workers and computes the next `horizon` timesteps.
@@ -77,12 +79,17 @@ class DistributedTimeSeries:
         `predict_fn(model, new_x, features_order, **predict_fn_kwargs)` is called on each timestep.
         """
         model_future = self.client.scatter(model, broadcast=True)
+        if dynamic_dfs is not None:
+            dynamic_dfs_futures = self.client.scatter(dynamic_dfs, broadcast=True)
+        else:
+            dynamic_dfs_futures = None
         predictions_futures = [
             self.client.submit(
                 _predict,
                 ts_future,
                 model_future,
                 horizon,
+                dynamic_dfs=dynamic_dfs_futures,
                 predict_fn=predict_fn,
                 **predict_fn_kwargs,
             )

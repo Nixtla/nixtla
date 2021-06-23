@@ -107,6 +107,7 @@ class DataConfig(BaseModel):
     input: str
     output: str
     format: DataFormat
+    dynamic: Optional[List[str]]
 
 
 class BacktestConfig(BaseModel):
@@ -123,6 +124,8 @@ class FeaturesConfig(BaseModel):
     lags: Optional[List[int]]
     lag_transforms: Optional[Dict[int, List[Union[Transforms, Dict[Transforms, Dict]]]]]
     date_features: Optional[List[DateFeatures]]
+    static_features: Optional[List[str]]
+    keep_last_n: Optional[int]
     num_threads: Optional[int]
 
 
