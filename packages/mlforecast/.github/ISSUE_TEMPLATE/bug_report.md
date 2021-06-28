@@ -24,9 +24,9 @@ Minimal example to reproduce the bug. If you're not sure how to do this, check o
 <details>
     <summary>Error message</summary>
 
-    ```python
-    # Stacktrace
-    ```
+```python
+# Stacktrace
+```
 </details>
 
 ## Environment info
