@@ -49,6 +49,9 @@ Before doing any changes to the code, please install the git hooks that run auto
 nbdev_install_git_hooks
 ```
 
+### Building the library
+The library is built using the notebooks contained in the `nbs` folder. If you want to make any changes to the library you have to find the relevant notebook, make your changes and then call `nbdev_build_lib`.
+
 ### Running tests
 
 * If you're working on the local interface you can just use `nbdev_test_nbs`. If you're modifying the distributed interface run the tests using `nbdev_test_nbs --n_workers 1 --flags distributed`.
