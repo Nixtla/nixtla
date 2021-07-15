@@ -92,8 +92,8 @@ def read_data(config: DataConfig, is_distributed: bool) -> Frame:
         and is_categorical_dtype(data.index)
     ):
         data.index = data.index.cat.as_known().as_ordered()
-        for col in data.select_dtypes(include='category'):
-            data[col] = data[col].cat.as_known()
+        cat_cols = data.select_dtypes(include='category').columns
+        data = data.categorize(columns=cat_cols)
 
     return validate_data_format(data)
 
