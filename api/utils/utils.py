@@ -2,14 +2,11 @@ from pydantic import BaseModel
 
 
 def parse_args(args: BaseModel):
-    dict_args = args.dict()
+    dict_args = args.dict(exclude_none=True)
 
     outputs_args = []
 
     for key, value in dict_args.items():
-        if value is None:
-            continue
-
         key = key.replace('_', '-')
         key = f'--{key}'
 
