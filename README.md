@@ -8,6 +8,11 @@ Build a ...
 
 # Create AWS resources
 
+## Create S3 buckets
+
+For each service:
+1. Create a s3 bucket. The code of each lambda function will be uploaded here.
+
 ## Create ECR repositorires
 
 For each service:
