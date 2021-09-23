@@ -49,7 +49,7 @@ jobs:
       - name: Upload outputs
         uses: actions/upload-artifact@v2
         with:
-          name: calendar-features
+          name: tsfeatures-outputs
           path: data/outputs/
 
   continuous-deployment-docker-image-ecr:
