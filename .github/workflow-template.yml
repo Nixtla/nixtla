@@ -36,6 +36,7 @@ jobs:
 
       - name: Test scripts
         run: |
+          mkdir data/outputs
           cd {{ROUTE}}
           make test_{{ROUTE}}
 
@@ -164,7 +165,7 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
 
       - name: Deploy new Lambda
-        run: aws lambda update-function-code --function-name {{ROUTE}} --s3-bucket {{ROUTE}}-api --s3-key api.zip
+        run: aws lambda update-function-code --function-name nixtla-{{ROUTE}} --s3-bucket {{ROUTE}}-api --s3-key api.zip
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
