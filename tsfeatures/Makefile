@@ -35,6 +35,7 @@ test_features:
 			--ds-column timestamp \
 			--y-column demand"
 
+test_tsfeatures: test_calendar test_features
 
 
 .require-module:
