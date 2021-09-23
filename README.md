@@ -54,3 +54,12 @@ For each service:
 ## Api Keys
 
 1. Generate API keys as needed.
+
+# Deployment
+
+## GitHub secrets
+
+1. Set the following secrets in your repo:
+	- `AWS_ACCESS_KEY_ID`
+	- `AWS_SECRET_ACCESS_KEY`
+	- `AWS_DEFAULT_REGION`
