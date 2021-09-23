@@ -146,11 +146,13 @@ class CalendarFeatures:
     """
 
     def __init__(self, filename: str,
+                 filename_output: str,
                  country: str,
                  events: Dict[str, List[str]],
                  unique_id_column: str,
                  ds_column: str, y_column: str) -> 'CalendarFeatures':
         self.filename = filename
+        self.filename_output = filename_output
         self.country = country
         self.events = events
         self.unique_id_column = unique_id_column
@@ -163,7 +165,7 @@ class CalendarFeatures:
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
         df = pd.read_csv(f'/opt/ml/processing/input/{self.filename}')
-        logger.info('File readed.')
+        logger.info('File read.')
         renamer = {self.unique_id_column: 'unique_id',
                    self.ds_column: 'ds',
                    self.y_column: 'y'}
@@ -188,7 +190,7 @@ class CalendarFeatures:
         logger.info('Merging finished...')
 
         logger.info('Writing file...')
-        features.to_csv('/opt/ml/processing/output/calendar-features.csv',
+        features.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
                         index=False)
         logger.info('File written...')
 
@@ -204,6 +206,7 @@ if __name__ == '__main__':
     parser.add_argument('--events', type=str,
                         metavar='KEY1=VALUE1/KEY2=VALUE2', 
                         default=None)
+    parser.add_argument('--filename-output', type=str, default='calendar-features.csv')
     parser.add_argument('--unique-id-column', type=str, default='unique_id')
     parser.add_argument('--ds-column', type=str, default='ds')
     parser.add_argument('--y-column', type=str, default='y')

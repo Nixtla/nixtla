@@ -15,11 +15,13 @@ class TSFeatures:
     """Computes static or temporal features."""
 
     def __init__(self, freq: int, filename: str,
+                 filename_output: str,
                  unique_id_column: str,
                  ds_column: str, y_column: str,
                  kind: str) -> 'TSFeatures':
         self.freq = freq
         self.filename = filename
+        self.filename_output = filename_output if filename_output is not None else f'{kind}-features.csv'
         self.unique_id_column = unique_id_column
         self.ds_column = ds_column
         self.y_column = y_column
@@ -31,7 +33,7 @@ class TSFeatures:
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
         df = pd.read_csv(f'/opt/ml/processing/input/{self.filename}')
-        logger.info('File readed.')
+        logger.info('File read.')
         renamer = {self.unique_id_column: 'unique_id',
                    self.ds_column: 'ds',
                    self.y_column: 'y'}
@@ -93,7 +95,7 @@ class TSFeatures:
             raise ValueError('Kink must be either "static" or "temporal".')
 
         logger.info('Writing file...')
-        features.to_csv(f'/opt/ml/processing/output/{self.kind}-features.csv',
+        features.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
                         index=False)
         logger.info('File written...')
 
@@ -106,6 +108,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--freq', type=int, required=True)
     parser.add_argument('--filename', type=str, required=True)
+    parser.add_argument('--filename-output', type=str, default=None)
     parser.add_argument('--unique-id-column', type=str, default='unique_id')
     parser.add_argument('--ds-column', type=str, default='ds')
     parser.add_argument('--y-column', type=str, default='y')
