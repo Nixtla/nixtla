@@ -2,6 +2,14 @@
 Nixtla is an open-source time series forecasting library for the AWS cloud. 
 
 
+# Current wraped functionalities
+
+- tsfeatures: library for automatic feature extraction
+- ts_preprocessing: library for Time Series preprocessing
+- ts_benchamring: library for Benchmarking
+- ts_forecast: library for Time series forecasting
+
+
 # Why?
 We want to contribute to open source and help data scientists and developers to achieve great forecasting results without the need to implement complex pipelines.
 
