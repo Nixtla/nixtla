@@ -78,11 +78,11 @@ class TSForecast:
         if self.filename_static is not None:
             static = pd.read_csv(f'{self.dir}/input/{self.filename_static}')
             static.rename(columns=renamer, inplace=True)
-            static_features = list(static.columns)
-            static_features.remove('unique_id')
+            static.set_index('unique_id', inplace=True)
+
+            static_features = static.select_dtypes('object').columns.to_list()
             static[static_features] = static[static_features].astype('category')
             
-            static = static.set_index('unique_id')
             df = df.merge(static, how='left', left_on=['unique_id'], 
                           right_index=True)
         
