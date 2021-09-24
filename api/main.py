@@ -40,8 +40,8 @@ class TSFeaturesArgs(BaseArgs):
 @app.post('/tsfeatures')
 def compute_tsfeatures(file_args: FileArgs, args: TSFeaturesArgs):
     """Calculates features using sagemaker."""
-    sagemaker_response = run_sagemaker(url=file_args.url,
-                                       dest_url=file_args.dest_url,
+    sagemaker_response = run_sagemaker(url=file_args.s3_url,
+                                       dest_url=file_args.s3_dest_url,
                                        output_name=f'{file_args.filename}-features.csv',
                                        script='make_features.py',
                                        arguments=parse_args(args))
@@ -62,8 +62,8 @@ class CalendarTSFeaturesArgs(BaseArgs):
 @app.post('/calendartsfeatures')
 def compute_tsfeatures(file_args: FileArgs, args: CalendarTSFeaturesArgs):
     """Calculates features using sagemaker."""
-    sagemaker_response = run_sagemaker(url=file_args.url,
-                                       dest_url=file_args.dest_url,
+    sagemaker_response = run_sagemaker(url=file_args.s3_url,
+                                       dest_url=file_args.s3_dest_url,
                                        output_name=f'{file_args.filename}-features.csv',
                                        script='make_holidays.py',
                                        arguments=parse_args(args))

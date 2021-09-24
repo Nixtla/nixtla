@@ -4,6 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
+      - api/**
       - "tsfeatures/**"
       - ".github/workflows/tsfeatures.yml"
   pull_request:

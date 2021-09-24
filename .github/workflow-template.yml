@@ -4,6 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
+      - api/**
       - "{{ROUTE}}/**"
       - ".github/workflows/{{ROUTE}}.yml"
   pull_request:
