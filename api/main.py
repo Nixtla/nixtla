@@ -51,6 +51,7 @@ class CalendarTSFeaturesArgs(BaseArgs):
     """Arguments to compute feature at scale."""
     country: str
     events: Optional[str] = None
+    scale: Optional[bool] = False
 
 @app.post('/calendartsfeatures')
 def compute_calendartsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
