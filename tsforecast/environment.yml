@@ -1,0 +1,16 @@
+name: fasttsfeatures_entrypoint
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7
+  - pip==20.3.3
+  - rpy2==3.4.1
+  - r-base==3.6.3
+  - r-forecast==8.13
+  - r-data.table==1.13.6
+  - r-tsfeatures==1.0.2
+  - pip:
+    - mlforecast
+    - lightgbm
+    - fastcore
