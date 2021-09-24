@@ -18,7 +18,7 @@ If you want to deploy Nixtla on your own AWS Cloud you will need:
 
 You will end with an architecture that looks like the following diagram
 
-<img src="https://raw.githubusercontent.com/nixtla/tsfeatures/main/.github/images/Architecture.png" width="152">
+<img src="https://raw.githubusercontent.com/nixtla/fasttsfeatures/main/.github/images/Architecture.png" width="152">
 
 The idea is that every module of the forecasting suite is an independent API endpoint that invokes a Lambda function that turns on a dedicated Sagemaker instance to run the specific processing job. 
 
