@@ -67,9 +67,19 @@ def compute_calendartsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
 class TSForecastArgs(BaseArgs):
     """Arguments to compute feature at scale."""
     freq: str
+    horizon: int = 28
     filename_static: Optional[str] = None
     filename_temporal: Optional[str] = None
     filename_temporal_future: Optional[str] = None
+    # Model args
+    objective: Optional[str] = 'l2'
+    learning_rate: Optional[float] = 0.1
+    n_estimators: Optional[int] = 100
+    num_leaves: Optional[int] = 128
+    min_data_in_leaf: Optional[int] = 20
+    bagging_freq: Optional[int] = 0
+    bagging_fraction: Optional[float] = 1.
+
 
 @app.post('/tsforecast')
 def compute_tsforecast(s3_args: S3Args, args: TSForecastArgs):
