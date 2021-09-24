@@ -134,6 +134,7 @@ def make_holidays_distance_df(dates, year_list, country, events=None):
         distance_dict[holiday] = distance_to_holiday(holiday_dates, dates)
 
     holidays_distance_df = pd.DataFrame(distance_dict)
+    holidays_distance_df.set_index('ds', inplace=True)
 
     return holidays_distance_df
 
@@ -184,9 +185,13 @@ class CalendarFeatures:
                                              year_list=list(range(1990, 2025)),
                                              country=self.country,
                                              events=self.events)
-
+        
         logger.info('Merging features...')
-        features = self.df.merge(holidays, how='left', on=['ds'])
+        features = self.df.set_index('ds').merge(holidays, 
+                                                 how='left', 
+                                                 left_on=['ds'],
+                                                 right_index=True)
+        features.reset_index(inplace=True)
         logger.info('Merging finished...')
 
         logger.info('Writing file...')
