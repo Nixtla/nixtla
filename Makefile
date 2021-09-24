@@ -10,4 +10,4 @@ app:
 		cd api && uvicorn main:app --reload
 
 workflow:
-	. ./workflows.sh 
+	./workflows.sh docker-image && ./workflows.sh lambda

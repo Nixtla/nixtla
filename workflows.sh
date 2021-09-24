@@ -1,5 +1,5 @@
 # read the workflow template
-WORKFLOW_TEMPLATE=$(cat .github/workflow-template.yml)
+WORKFLOW_TEMPLATE=$(cat .github/workflow-template-$1.yml)
 
 # iterate each route in routes directory
 for ROUTE in tsfeatures tsforecast tsbenchmarks tspreprocess; do
@@ -9,5 +9,5 @@ for ROUTE in tsfeatures tsforecast tsbenchmarks tspreprocess; do
     WORKFLOW=$(echo "${WORKFLOW_TEMPLATE}" | sed "s/{{ROUTE}}/${ROUTE}/g")
 
     # save workflow to .github/workflows/{ROUTE}
-    echo "${WORKFLOW}" > .github/workflows/${ROUTE}.yml
+    echo "${WORKFLOW}" > .github/workflows/${ROUTE}-$1.yml
 done
