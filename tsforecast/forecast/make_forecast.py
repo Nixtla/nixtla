@@ -50,7 +50,7 @@ class TSForecast:
                  freq: str,
                  unique_id_column: str,
                  ds_column: str, y_column: str,
-                 horizon: int, objective: int,
+                 horizon: int, objective: str, metric: str,
                  learning_rate: int, n_estimators: int,
                  num_leaves: int, min_data_in_leaf: int,
                  bagging_freq: int, bagging_fraction: float) -> 'TSForecast':
@@ -128,7 +128,7 @@ class TSForecast:
             bagging_freq=self.bagging_freq,
             bagging_fraction=self.bagging_fraction,
             random_state=0,
-            metric='rmse',
+            metric=self.metric,
         )
 
         flow_config = freq2config[self.freq[0]]
@@ -193,6 +193,7 @@ if __name__ == '__main__':
 
     # hparams
     parser.add_argument('--objective', type=str, default='l2')
+    parser.add_argument('--metric', type=str, default='rmse')
     parser.add_argument('--learning-rate', type=float, default=0.1)
     parser.add_argument('--n-estimators', type=int, default=100)
     parser.add_argument('--num-leaves', type=int, default=128)

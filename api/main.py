@@ -73,6 +73,7 @@ class TSForecastArgs(BaseArgs):
     filename_temporal_future: Optional[str] = None
     # Model args
     objective: Optional[str] = 'l2'
+    metric: Optional[str] = 'rmse'
     learning_rate: Optional[float] = 0.1
     n_estimators: Optional[int] = 100
     num_leaves: Optional[int] = 128
