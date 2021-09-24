@@ -1,10 +1,8 @@
 import json
-import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
-from uuid import uuid4
 
 import boto3
 import pandas as pd
