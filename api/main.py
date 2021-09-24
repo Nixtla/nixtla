@@ -94,6 +94,20 @@ def compute_tsforecast(s3_args: S3Args, args: TSForecastArgs):
     
     return sagemaker_response
 
+class TSBenchmarksArgs(BaseArgs):
+    """Arguments to compute benchmarks."""
+    dataset: str
+
+@app.post('/tsbenchmarks')
+def compute_tsforecast(s3_args: S3Args, args: TSBenchmarksArgs):
+    """Calculates forecast using sagemaker."""
+    sagemaker_response = run_sagemaker(url=s3_args.s3_url,
+                                       dest_url=s3_args.s3_dest_url,
+                                       output_name=f'benchmarks.csv',
+                                       script='benchmarks/compute_benchmarks.py',
+                                       arguments=parse_args(args))
+    
+    return sagemaker_response
 
 @app.get('/jobs/')
 async def get_status_job(job_id: str):
