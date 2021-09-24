@@ -72,15 +72,19 @@ class TSForecast:
                    self.y_column: 'y'}
 
         df.rename(columns=renamer, inplace=True)
+        df.set_index(['unique_id', 'ds'], inplace=True)
 
         static_features = None
         if self.filename_static is not None:
             static = pd.read_csv(f'{self.dir}/input/{self.filename_static}')
             static.rename(columns=renamer, inplace=True)
-            static_features = list(static.columns)
-            static_features.remove('unique_id')
+            static.set_index('unique_id', inplace=True)
+
+            static_features = static.select_dtypes('object').columns.to_list()
             static[static_features] = static[static_features].astype('category')
-            df = df.merge(static, how='left', on=['unique_id'])
+            
+            df = df.merge(static, how='left', left_on=['unique_id'], 
+                          right_index=True)
         
         df_temporal_future = None
         if self.filename_temporal is not None:
@@ -91,14 +95,16 @@ class TSForecast:
                 )
             temporal = pd.read_csv(f'{self.dir}/input/{self.filename_temporal}')
             temporal.rename(columns=renamer, inplace=True)
-            df = df.merge(temporal, how='left', on=['unique_id', 'ds'])
+
+            temporal.set_index(['unique_id', 'ds'], inplace=True)
+            df = df.merge(temporal, how='left', left_on=['unique_id', 'ds'],
+                          right_index=True)
 
             df_temporal_future = pd.read_csv(f'{self.dir}/input/{self.filename_temporal_future}')
             df_temporal_future.rename(columns=renamer, inplace=True)
-            df_temporal_future.set_index('unique_id', inplace=True)
-            df_temporal_future['ds'] = pd.to_datetime(df['ds'])
+            df_temporal_future['ds'] = pd.to_datetime(df_temporal_future['ds'])
 
-        df.set_index('unique_id', inplace=True)
+        df.reset_index('ds', inplace=True)
         df['ds'] = pd.to_datetime(df['ds'])
 
         return df, df_temporal_future, static_features
@@ -154,7 +160,7 @@ class TSForecast:
         )
 
         logger.info('Writing forecasts...')
-        preds.to_csv(f'{self.dir}/output/outputs/forecasts.csv')
+        preds.to_csv(f'{self.dir}/output/forecasts.csv')
         logger.info('File written...')
 
 

@@ -37,7 +37,7 @@ jobs:
 
       - name: Test scripts
         run: |
-          mkdir data/outputs
+          mkdir data/output
           cd tsforecast
           make test_tsforecast
 
@@ -50,8 +50,8 @@ jobs:
       - name: Upload outputs
         uses: actions/upload-artifact@v2
         with:
-          name: tsforecast-outputs
-          path: data/outputs/
+          name: tsforecast-output
+          path: data/output/
 
   continuous-deployment-docker-image-ecr:
     runs-on: ubuntu-latest
