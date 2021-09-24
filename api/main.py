@@ -41,7 +41,7 @@ def compute_tsfeatures(file_args: FileArgs, args: TSFeaturesArgs):
     sagemaker_response = run_sagemaker(url=file_args.s3_url,
                                        dest_url=file_args.s3_dest_url,
                                        output_name=f'{file_args.filename}-features.csv',
-                                       script='make_features.py',
+                                       script='features/make_features.py',
                                        arguments=parse_args(args))
 
     response = {'status': 200,
@@ -63,7 +63,7 @@ def compute_tsfeatures(file_args: FileArgs, args: CalendarTSFeaturesArgs):
     sagemaker_response = run_sagemaker(url=file_args.s3_url,
                                        dest_url=file_args.s3_dest_url,
                                        output_name=f'{file_args.filename}-features.csv',
-                                       script='make_holidays.py',
+                                       script='calendar/make_holidays.py',
                                        arguments=parse_args(args))
 
     response = {'status': 200,
