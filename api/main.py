@@ -45,7 +45,7 @@ def compute_tsfeatures(s3_args: S3Args, args: TSFeaturesArgs):
                                        arguments=parse_args(args))
 
     response = {'status': 200,
-                'message': 'Check job status at GET /tsfeatures/jobs/{job_id}'}
+                'message': 'Check job status at GET /jobs/{job_id}'}
 
     response = {**response, **sagemaker_response}
 
@@ -58,7 +58,7 @@ class CalendarTSFeaturesArgs(BaseArgs):
     events: Optional[str] = None
 
 @app.post('/calendartsfeatures')
-def compute_tsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
+def compute_calendartsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
     """Calculates features using sagemaker."""
     sagemaker_response = run_sagemaker(url=s3_args.s3_url,
                                        dest_url=s3_args.s3_dest_url,
@@ -67,7 +67,31 @@ def compute_tsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
                                        arguments=parse_args(args))
 
     response = {'status': 200,
-                'message': 'Check job status at GET /tsfeatures/jobs/{job_id}'}
+                'message': 'Check job status at GET /jobs/{job_id}'}
+
+    response = {**response, **sagemaker_response}
+
+    return response
+
+
+class TSForecastArgs(BaseArgs):
+    """Arguments to compute feature at scale."""
+    freq: str
+    filename_static: Optional[str] = None
+    filename_temporal: Optional[str] = None
+    filename_temporal_future: Optional[str] = None
+
+@app.post('/tsforecast')
+def compute_tsforecast(s3_args: S3Args, args: TSForecastArgs):
+    """Calculates forecast using sagemaker."""
+    sagemaker_response = run_sagemaker(url=s3_args.s3_url,
+                                       dest_url=s3_args.s3_dest_url,
+                                       output_name=f'outputs/forecasts.csv',
+                                       script='forecast/make_forecast.py',
+                                       arguments=parse_args(args))
+
+    response = {'status': 200,
+                'message': 'Check job status at GET /jobs/{job_id}'}
 
     response = {**response, **sagemaker_response}
 

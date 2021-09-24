@@ -43,7 +43,7 @@ freq2config = {
 class TSForecast:
     """Computes forecast at scale."""
 
-    def __init__(self, filename_target: str,
+    def __init__(self, filename: str,
                  filename_static: str,
                  filename_temporal: str,
                  filename_temporal_future: str,
@@ -65,7 +65,7 @@ class TSForecast:
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
-        df = pd.read_csv(f'{self.dir}/input/{self.filename_target}')
+        df = pd.read_csv(f'{self.dir}/input/{self.filename}')
         logger.info('File read.')
         renamer = {self.unique_id_column: 'unique_id',
                    self.ds_column: 'ds',
@@ -165,7 +165,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # data config
-    parser.add_argument('--filename-target', type=str)
+    parser.add_argument('--filename', type=str)
     parser.add_argument('--filename-static', type=str, default=None)
     parser.add_argument('--filename-temporal', type=str, default=None)
     parser.add_argument('--filename-temporal-future', type=str, default=None)
