@@ -192,6 +192,8 @@ class CalendarFeatures:
             holidays /= (holidays.max(axis=0) - holidays.min(axis=0)) 
             holidays = holidays.round(4)
         
+        holidays = (holidays == 0).astype(int)
+        
         logger.info('Merging features...')
         features = self.df.set_index('ds').merge(holidays, 
                                                  how='left', 
@@ -201,8 +203,8 @@ class CalendarFeatures:
         logger.info('Merging finished...')
 
         logger.info('Writing file...')
-        features.to_parquet(f'/opt/ml/processing/output/{self.filename_output}',
-                            index=False)
+        features.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
+                        index=False)
         logger.info('File written...')
 
 
@@ -218,7 +220,7 @@ if __name__ == '__main__':
                         metavar='KEY1=VALUE1/KEY2=VALUE2', 
                         default=None)
     parser.add_argument('--scale', type=bool, default=False)
-    parser.add_argument('--filename-output', type=str, default='calendar-features.parquet')
+    parser.add_argument('--filename-output', type=str, default='calendar-features.csv')
     parser.add_argument('--unique-id-column', type=str, default='unique_id')
     parser.add_argument('--ds-column', type=str, default='ds')
     parser.add_argument('--y-column', type=str, default='y')
