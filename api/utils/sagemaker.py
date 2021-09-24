@@ -59,6 +59,8 @@ def run_sagemaker(url: str, dest_url: str,
     )
 
     output = {'id_job': id_job,
-              'dest_url': f'{dest_url}/{output_name}'}
+              'dest_url': f'{dest_url}/{output_name}',
+              'status': 200,
+              'message': 'Check job status at GET /jobs/{job_id}'}
 
     return output

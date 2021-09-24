@@ -44,12 +44,7 @@ def compute_tsfeatures(s3_args: S3Args, args: TSFeaturesArgs):
                                        script='features/make_features.py',
                                        arguments=parse_args(args))
 
-    response = {'status': 200,
-                'message': 'Check job status at GET /jobs/{job_id}'}
-
-    response = {**response, **sagemaker_response}
-
-    return response
+    return sagemaker_response
 
 
 class CalendarTSFeaturesArgs(BaseArgs):
@@ -66,12 +61,7 @@ def compute_calendartsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
                                        script='calendar/make_holidays.py',
                                        arguments=parse_args(args))
 
-    response = {'status': 200,
-                'message': 'Check job status at GET /jobs/{job_id}'}
-
-    response = {**response, **sagemaker_response}
-
-    return response
+    return sagemaker_response
 
 
 class TSForecastArgs(BaseArgs):
@@ -89,13 +79,8 @@ def compute_tsforecast(s3_args: S3Args, args: TSForecastArgs):
                                        output_name=f'outputs/forecasts.csv',
                                        script='forecast/make_forecast.py',
                                        arguments=parse_args(args))
-
-    response = {'status': 200,
-                'message': 'Check job status at GET /jobs/{job_id}'}
-
-    response = {**response, **sagemaker_response}
-
-    return response
+    
+    return sagemaker_response
 
 
 @app.get('/jobs/')
