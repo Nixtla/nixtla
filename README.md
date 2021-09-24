@@ -1,7 +1,38 @@
 # Nixtla
-Build a ...
+Nixtla is an open-source time series forecasting library for the AWS cloud. 
 
-# Test the api locally
+
+# Current wraped functionalities
+
+- tsfeatures: library for automatic feature extraction
+- ts_preprocessing: library for Time Series preprocessing
+- ts_benchamring: library for Benchmarking
+- ts_forecast: library for Time series forecasting
+
+
+# Why?
+We want to contribute to open source and help data scientists and developers to achieve great forecasting results without the need to implement complex pipelines.
+
+# How?
+
+We are testing the concept and are eager to gain Beta users for the hosted version of Nixtla. If you want to test the hosted Nixtla version of Nixtla, ask for API Keys.
+
+If you want to deploy Nixtla on your own AWS Cloud you will need:
+
+- API Gateway (to handle API calls)
+- Lambda (or some computantional unit)
+- Sagemaker (or some bigger computational unit)
+- S3 (for inputs and outputs)
+
+You will end with an architecture that looks like the following diagram
+
+<img src="https://raw.githubusercontent.com/nixtla/fasttsfeatures/main/.github/images/Architecture.png">
+
+
+The idea is that every module of the forecasting suite is an independent API endpoint that invokes a Lambda function that turns on a dedicated Sagemaker instance to run the specific processing job. 
+
+
+# Run the API locally
 
 1. Create the environment using `make init`.
 2. Launch the app using `make app`.
@@ -11,7 +42,7 @@ Build a ...
 ## Create S3 buckets
 
 For each service:
-1. Create a s3 bucket. The code of each lambda function will be uploaded here.
+1. Create an S3 bucket. The code of each lambda function will be uploaded here.
 
 ## Create ECR repositorires
 
@@ -23,26 +54,26 @@ For each service:
 
 For each service:
 
-1. Create a lambda function from scrath and `Python 3.7` runtime.
+1. Create a lambda function with `Python 3.7` runtime.
 2. Modify the runtime setting and enter `main.handler` in the handler.
-3. Go to configuration:
+3. Go to the configuration:
 	- Edit the general configuration and add a timeout of `9:59`.
-	- Add an existing role capable of reading/writing from/to S3 and also running sagemaker services.
+	- Add an existing role capable of reading/writing from/to S3 and running Sagemaker services.
 4. Add the following environment variables:
-	- `PROCESSING_REPOSITORY_URI`: ECR URI of the docker image particular for the service.
-	- `ROLE`: An existing role capable of reading/writing from/to S3 and also running sagemaker services.
+	- `PROCESSING_REPOSITORY_URI`: ECR URI of the docker image corresponding to the service.
+	- `ROLE`: A  role capable of reading/writing from/to S3 and also running Sagemaker services.
  	- `INSTANCE_COUNT`
 	- `INSTANCE_TYPE`
 
 ## API Gateway
 
 1. Create a public REST API (Regional).
-2. For each enpoint in `api/main.py` add a resource.
+2. For each endpoint in `api/main.py`… add a resource.
 3. For each created method add an ANY method:
 	- Select lambda function.
 	- Select Use Lambda Proxy Integration.
 	- Introduce the name of the lambda function linked to that resource.
-	- Once the method is created select Method Request and set API key requiered to true.
+	- Once the method is created select Method Request and set API key required to true.
 4. Deploy the API.
 
 
@@ -51,7 +82,7 @@ For each service:
 1. Create a usage plan based on your needs.
 2. Add your API stage.
 
-## Api Keys
+## API Keys
 
 1. Generate API keys as needed.
 
