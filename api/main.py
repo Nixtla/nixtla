@@ -17,14 +17,14 @@ from utils.utils import parse_args
 app = FastAPI()
 
 
-class FileArgs(BaseModel):
+class S3Args(BaseModel):
     """File arguments."""
     s3_url: str
-    filename: str
     s3_dest_url: Optional[str] = None
 
 class BaseArgs(BaseModel):
     """Base model arguments."""
+    filename: str
     unique_id_column: Optional[str] = 'unique_id'
     ds_column: Optional[str] = 'ds'
     y_column: Optional[str] = 'y'
@@ -36,11 +36,11 @@ class TSFeaturesArgs(BaseArgs):
     kind: str
 
 @app.post('/tsfeatures')
-def compute_tsfeatures(file_args: FileArgs, args: TSFeaturesArgs):
+def compute_tsfeatures(s3_args: S3Args, args: TSFeaturesArgs):
     """Calculates features using sagemaker."""
-    sagemaker_response = run_sagemaker(url=file_args.s3_url,
-                                       dest_url=file_args.s3_dest_url,
-                                       output_name=f'{file_args.filename}-features.csv',
+    sagemaker_response = run_sagemaker(url=s3_args.s3_url,
+                                       dest_url=s3_args.s3_dest_url,
+                                       output_name=f'{args.kind}-features.csv',
                                        script='features/make_features.py',
                                        arguments=parse_args(args))
 
@@ -58,11 +58,11 @@ class CalendarTSFeaturesArgs(BaseArgs):
     events: Optional[str] = None
 
 @app.post('/calendartsfeatures')
-def compute_tsfeatures(file_args: FileArgs, args: CalendarTSFeaturesArgs):
+def compute_tsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
     """Calculates features using sagemaker."""
-    sagemaker_response = run_sagemaker(url=file_args.s3_url,
-                                       dest_url=file_args.s3_dest_url,
-                                       output_name=f'{file_args.filename}-features.csv',
+    sagemaker_response = run_sagemaker(url=s3_args.s3_url,
+                                       dest_url=s3_args.s3_dest_url,
+                                       output_name=f'calendar-features.csv',
                                        script='calendar/make_holidays.py',
                                        arguments=parse_args(args))
 
