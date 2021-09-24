@@ -37,7 +37,7 @@ jobs:
 
       - name: Test scripts
         run: |
-          mkdir data/outputs
+          mkdir data/output
           cd {{ROUTE}}
           make test_{{ROUTE}}
 
@@ -50,8 +50,8 @@ jobs:
       - name: Upload outputs
         uses: actions/upload-artifact@v2
         with:
-          name: {{ROUTE}}-outputs
-          path: data/outputs/
+          name: {{ROUTE}}-output
+          path: data/output/
 
   continuous-deployment-docker-image-ecr:
     runs-on: ubuntu-latest

@@ -154,7 +154,7 @@ class TSForecast:
         )
 
         logger.info('Writing forecasts...')
-        preds.to_csv(f'{self.dir}/output/outputs/forecasts.csv')
+        preds.to_csv(f'{self.dir}/output/forecasts.csv')
         logger.info('File written...')
 
 

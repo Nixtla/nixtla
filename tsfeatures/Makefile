@@ -14,14 +14,13 @@ init:
 run_module: .require-module
 	docker run -i --rm ${DOCKER_PARAMETERS} \
 		-v ${PARENT_ROOT}/data/:/opt/ml/processing/input/ \
-		-v ${PARENT_ROOT}/data/:/opt/ml/processing/output/ \
-		tsfeatures ${module}
+		-v ${PARENT_ROOT}/data/output/:/opt/ml/processing/output/ \
+		${IMAGE} ${module}
 
 test_calendar: 
 	$(MAKE) run_module \
 		module="calendar/make_holidays.py \
 			--filename train/target-dummy.csv \
-			--filename-output outputs/calendar-features-dummy.csv \
 			--country USA \
 			--unique-id-column item_id \
 			--ds-column timestamp \
@@ -31,7 +30,6 @@ test_features:
 	$(MAKE) run_module \
 		module="features/make_features.py \
 			--filename train/target-dummy.csv \
-			--filename-output outputs/static-features-dummy.csv \
 			--freq 7 \
 			--kind static \
 			--unique-id-column item_id \
