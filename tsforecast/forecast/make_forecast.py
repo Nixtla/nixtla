@@ -102,6 +102,14 @@ class TSForecast:
 
             df_temporal_future = pd.read_csv(f'{self.dir}/input/{self.filename_temporal_future}')
             df_temporal_future.rename(columns=renamer, inplace=True)
+            # Check size of temporal future variables
+            n_uids = df_temporal_future['unique_id'].nunique()
+            if n_uids * self.horizon < df_temporal_future.shape[0]:
+                raise ValueError(
+                    f'Each time series should have at least {self.horizon} '
+                    'observations (forecast horizon) for temporal future '
+                    'variables.'
+                )
             df_temporal_future['ds'] = pd.to_datetime(df_temporal_future['ds'])
 
         df.reset_index('ds', inplace=True)
