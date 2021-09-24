@@ -13,7 +13,7 @@ load_dotenv()
 def run_sagemaker(url: str, dest_url: str,
                   output_name: str,
                   script: str, arguments: List[str]) -> None:
-    """Run sagemaker'k ScriptProcessor.
+    """Run sagemaker ScriptProcessor.
 
     Parameters
     ----------
@@ -28,6 +28,7 @@ def run_sagemaker(url: str, dest_url: str,
     arguments: List[str]
         Arguments for the `script`.
     """
+    dest_url_ = url if dest_url is None else dest_url
     # Setting ScriptProcessor job
     id_job = str(uuid4())
     script_processor = ScriptProcessor(
@@ -51,7 +52,7 @@ def run_sagemaker(url: str, dest_url: str,
         outputs=[
             ProcessingOutput(
                 source='/opt/ml/processing/output',
-                destination=dest_url
+                destination=dest_url_
             )
         ],
         arguments=arguments,
@@ -59,7 +60,7 @@ def run_sagemaker(url: str, dest_url: str,
     )
 
     output = {'id_job': id_job,
-              'dest_url': f'{dest_url}/{output_name}',
+              'dest_url': f'{dest_url_}/{output_name}',
               'status': 200,
               'message': 'Check job status at GET /jobs/{job_id}'}
 

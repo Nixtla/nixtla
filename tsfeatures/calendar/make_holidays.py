@@ -134,6 +134,7 @@ def make_holidays_distance_df(dates, year_list, country, events=None):
         distance_dict[holiday] = distance_to_holiday(holiday_dates, dates)
 
     holidays_distance_df = pd.DataFrame(distance_dict)
+    holidays_distance_df.set_index('ds', inplace=True)
 
     return holidays_distance_df
 
@@ -149,12 +150,14 @@ class CalendarFeatures:
                  filename_output: str,
                  country: str,
                  events: Dict[str, List[str]],
+                 scale: bool,
                  unique_id_column: str,
                  ds_column: str, y_column: str) -> 'CalendarFeatures':
         self.filename = filename
         self.filename_output = filename_output
         self.country = country
         self.events = events
+        self.scale = scale
         self.unique_id_column = unique_id_column
         self.ds_column = ds_column
         self.y_column = y_column
@@ -184,14 +187,22 @@ class CalendarFeatures:
                                              year_list=list(range(1990, 2025)),
                                              country=self.country,
                                              events=self.events)
-
+        if self.scale:
+            holidays -= holidays.min(axis=0)
+            holidays /= (holidays.max(axis=0) - holidays.min(axis=0)) 
+            holidays = holidays.round(4)
+        
         logger.info('Merging features...')
-        features = self.df.merge(holidays, how='left', on=['ds'])
+        features = self.df.set_index('ds').merge(holidays, 
+                                                 how='left', 
+                                                 left_on=['ds'],
+                                                 right_index=True)
+        features.reset_index(inplace=True)
         logger.info('Merging finished...')
 
         logger.info('Writing file...')
-        features.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
-                        index=False)
+        features.to_parquet(f'/opt/ml/processing/output/{self.filename_output}',
+                            index=False)
         logger.info('File written...')
 
 
@@ -206,7 +217,8 @@ if __name__ == '__main__':
     parser.add_argument('--events', type=str,
                         metavar='KEY1=VALUE1/KEY2=VALUE2', 
                         default=None)
-    parser.add_argument('--filename-output', type=str, default='calendar-features.csv')
+    parser.add_argument('--scale', type=bool, default=False)
+    parser.add_argument('--filename-output', type=str, default='calendar-features.parquet')
     parser.add_argument('--unique-id-column', type=str, default='unique_id')
     parser.add_argument('--ds-column', type=str, default='ds')
     parser.add_argument('--y-column', type=str, default='y')
