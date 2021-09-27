@@ -134,7 +134,7 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                         {
                             'Name': 'n-estimators',
                             'MinValue': '50',
-                            'MaxValue': '150',
+                            'MaxValue': '200',
                             'ScalingType': 'Linear',
                         },
                         {
@@ -173,7 +173,7 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                     'CategoricalParameterRanges': [
                         {
                             'Name': 'objective',
-                            'Values': ['l2', 'poisson', 'tweedie'],
+                            'Values': ['poisson', 'tweedie'],
                         },
                     ]
                 },
