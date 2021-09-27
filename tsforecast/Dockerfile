@@ -9,3 +9,5 @@ RUN conda install -n base -c conda-forge mamba && \
 COPY ./forecast/make_forecast.py /opt/ml/code/train.py
 
 ENV SAGEMAKER_PROGRAM train.py 
+
+ENTRYPOINT ["python", "/opt/ml/code/train.py"]

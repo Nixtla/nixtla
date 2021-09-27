@@ -73,7 +73,6 @@ def run_sagemaker(url: str, dest_url: str,
     else:
         processor = Processor(
             **processor_args,
-            entrypoint=['python', '/opt/ml/code/train.py'],
         )
 
         # Running job
@@ -105,6 +104,8 @@ def run_sagemaker_hpo(url: str, dest_url: str,
     """
     now = datetime.datetime.now()
     id_job = now.strftime('%Y-%m-%d-%H-%M-%S')
+    s3_output = url if dest_url is None else dest_url
+    s3_output = f'{s3_output}/{id_job}'
 
     sagemaker = boto3.client('sagemaker')
     
@@ -117,8 +118,8 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                     'MetricName': 'validation:error',
                 },
                 'ResourceLimits': {
-                    'MaxNumberOfTrainingJobs': 10,
-                    'MaxParallelTrainingJobs': 2,
+                    'MaxNumberOfTrainingJobs': 1,
+                    'MaxParallelTrainingJobs': 1,
                 },
                 'ParameterRanges': {
                     'IntegerParameterRanges': [
@@ -196,7 +197,7 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                     },
                 ],
                 'OutputDataConfig': {
-                    'S3OutputPath': url if dest_url is None else dest_url,
+                    'S3OutputPath': s3_output,
                 },
                 'ResourceConfig': {
                     'InstanceType': os.environ['INSTANCE_TYPE'],

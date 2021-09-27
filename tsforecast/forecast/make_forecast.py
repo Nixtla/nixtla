@@ -57,7 +57,8 @@ class TSForecast:
                  num_leaves: int, min_data_in_leaf: int,
                  bagging_freq: int, bagging_fraction: float) -> 'TSForecast':
         store_attr()
-        self.dir = '/opt/ml/processing'
+        self.dir = '/opt/ml'
+        self.dir_train = '/opt/ml/input/data/train'
         self.df: pd.DataFrame
         self.df_temporal_future: pd.DataFrame
         self.fcst: Forecast
@@ -67,7 +68,7 @@ class TSForecast:
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
-        df = pd.read_csv(f'{self.dir}/input/{self.filename}')
+        df = pd.read_csv(f'{self.dir_train}/{self.filename}')
         logger.info('File read.')
         renamer = {self.unique_id_column: 'unique_id',
                    self.ds_column: 'ds',
@@ -78,7 +79,7 @@ class TSForecast:
 
         static_features = None
         if self.filename_static is not None:
-            static = pd.read_csv(f'{self.dir}/input/{self.filename_static}')
+            static = pd.read_csv(f'{self.dir_train}/{self.filename_static}')
             static.rename(columns=renamer, inplace=True)
             static.set_index('unique_id', inplace=True)
 
@@ -95,14 +96,14 @@ class TSForecast:
                     'You should pass `filename_temporal_future` '
                     'when using temporal variables'
                 )
-            temporal = pd.read_csv(f'{self.dir}/input/{self.filename_temporal}')
+            temporal = pd.read_csv(f'{self.dir_train}/{self.filename_temporal}')
             temporal.rename(columns=renamer, inplace=True)
 
             temporal.set_index(['unique_id', 'ds'], inplace=True)
             df = df.merge(temporal, how='left', left_on=['unique_id', 'ds'],
                           right_index=True)
 
-            df_temporal_future = pd.read_csv(f'{self.dir}/input/{self.filename_temporal_future}')
+            df_temporal_future = pd.read_csv(f'{self.dir_train}/{self.filename_temporal_future}')
             df_temporal_future.rename(columns=renamer, inplace=True)
             # Check size of temporal future variables
             n_uids = df_temporal_future['unique_id'].nunique()
