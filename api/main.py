@@ -104,7 +104,7 @@ class TSForecastHPOArgs(TSForecastDataArgs):
 def compute_tsforecast_hpo(s3_args: S3Args, data_args: TSForecastHPOArgs):
     """calculates forecast using sagemaker."""
     args = data_args.dict()
-    args = {f'--{key.replace("_", "-")}': str(value) for key, value in args.items() if value is not None}
+    args = {key.replace("_", "-"): str(value) for key, value in args.items() if value is not None}
     sagemaker_response = run_sagemaker_hpo(url=s3_args.s3_url,
                                            dest_url=s3_args.s3_dest_url,
                                            dict_arguments=args)
