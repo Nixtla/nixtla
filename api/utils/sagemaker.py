@@ -79,6 +79,7 @@ def run_sagemaker(url: str, dest_url: str,
         )
     else:
         processor = Processor(
+            entrypoint=['python', '/opt/ml/code/train.py'],
             **processor_args,
         )
 
