@@ -49,6 +49,8 @@ class TSForecast:
                  filename_static: str,
                  filename_temporal: str,
                  filename_temporal_future: str,
+                 dir_train: str,
+                 dir_output: str, 
                  freq: str,
                  unique_id_column: str,
                  ds_column: str, y_column: str,
@@ -59,8 +61,6 @@ class TSForecast:
                  num_leaves: int, min_data_in_leaf: int,
                  bagging_freq: int, bagging_fraction: float) -> 'TSForecast':
         store_attr()
-        self.dir = '/opt/ml'
-        self.dir_train = '/opt/ml/input/data/train'
         self.df: pd.DataFrame
         self.df_temporal_future: pd.DataFrame
         self.fcst: Forecast
@@ -161,7 +161,7 @@ class TSForecast:
                 rmse = sqrt(sq_errs.groupby('unique_id').mean().mean())
                 rmses.append(rmse)
                 
-                result.to_csv(f'{self.dir}/output/data/valid_{i}.csv')
+                result.to_csv(f'{self.dir_output}/valid_{i}.csv')
 
             print(f'RMSE: {np.mean(rmses):.4f}')
 
@@ -193,7 +193,7 @@ class TSForecast:
         )
 
         logger.info('Writing forecasts...')
-        preds.to_csv(f'{self.dir}/output/data/forecasts.csv')
+        preds.to_csv(f'{self.dir_output}/forecasts.csv')
         logger.info('File written...')
 
 
@@ -202,7 +202,7 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
 
     parser = argparse.ArgumentParser()
-
+    
     # data config
     parser.add_argument('--filename', type=str, required=True)
     parser.add_argument('--filename-static', type=str, default=None)
@@ -212,6 +212,10 @@ if __name__ == '__main__':
     parser.add_argument('--unique-id-column', type=str, default='unique_id')
     parser.add_argument('--ds-column', type=str, default='ds')
     parser.add_argument('--y-column', type=str, default='y')
+
+    # path config
+    parser.add_argument('--dir-train', type=str, default='/opt/ml/input/data/train')
+    parser.add_argument('--dir-output', type=str, default='/opt/ml/output/data')
 
     # forecast
     parser.add_argument('--horizon', type=int, default=28)
