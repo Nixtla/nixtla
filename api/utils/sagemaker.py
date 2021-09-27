@@ -32,62 +32,51 @@ def run_sagemaker(url: str, dest_url: str,
     dest_url_ = url if dest_url is None else dest_url
     # Setting ScriptProcessor job
     id_job = str(uuid4())
+    processor_args = dict(
+        image_uri=os.environ['PROCESSING_REPOSITORY_URI'],
+        role=os.environ['ROLE'],
+        instance_count=int(os.environ['INSTANCE_COUNT']),
+        instance_type=os.environ['INSTANCE_TYPE'],
+        base_job_name=id_job,
+    )
+    run_args = dict(
+        inputs=[
+            ProcessingInput(
+                source=url,
+                destination='/opt/ml/processing/input'
+            )
+        ],
+        outputs=[
+            ProcessingOutput(
+                source='/opt/ml/processing/output',
+                destination=dest_url_
+            )
+        ],
+        arguments=arguments,
+        wait=False,
+        logs=False,
+    )
 
     if script is not None:
         script_processor = ScriptProcessor(
             command=['python3'],
-            image_uri=os.environ['PROCESSING_REPOSITORY_URI'],
-            role=os.environ['ROLE'],
-            instance_count=int(os.environ['INSTANCE_COUNT']),
-            instance_type=os.environ['INSTANCE_TYPE'],
-            base_job_name=id_job,
+            **processor_args,
         )
 
         # Running job
         script_processor.run(
             code=script,
-            inputs=[
-                ProcessingInput(
-                    source=url,
-                    destination='/opt/ml/processing/input'
-                )
-            ],
-            outputs=[
-                ProcessingOutput(
-                    source='/opt/ml/processing/output',
-                    destination=dest_url_
-                )
-            ],
-            arguments=arguments,
-            wait=False,
+            **run_args,
         )
     else:
         processor = Processor(
-            image_uri=os.environ['PROCESSING_REPOSITORY_URI'],
-            role=os.environ['ROLE'],
-            instance_count=int(os.environ['INSTANCE_COUNT']),
-            instance_type=os.environ['INSTANCE_TYPE'],
-            base_job_name=id_job,
+            **processor_args,
             entrypoint=['python', '/opt/ml/code/train.py'],
         )
 
         # Running job
         processor.run(
-            inputs=[
-                ProcessingInput(
-                    source=url,
-                    destination='/opt/ml/processing/input'
-                )
-            ],
-            outputs=[
-                ProcessingOutput(
-                    source='/opt/ml/processing/output',
-                    destination=dest_url_
-                )
-            ],
-            arguments=arguments,
-            wait=False,
-            logs=False,
+            **run_args,
         )
 
 
