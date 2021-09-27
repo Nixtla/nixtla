@@ -1,3 +1,4 @@
+import datetime
 import os
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -102,7 +103,8 @@ def run_sagemaker_hpo(url: str, dest_url: str,
     dict_arguments: Dict[str, str]
         Static Arguments.
     """
-    id_job = str(uuid4())
+    now = datetime.datetime.now()
+    id_job = now.strftime('%Y-%m-%d-%H-%M-%S')
 
     sagemaker = boto3.client('sagemaker')
     
@@ -206,7 +208,8 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                 },
             },
         )
+
     output = {'id_job': id_job,
-                  'status': 200}
+              'status': 200}
 
     return output
