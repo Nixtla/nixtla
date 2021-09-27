@@ -27,7 +27,7 @@ jobs:
         with:
           file: tsfeatures/Dockerfile
           tags: tsfeatures:latest
-          build-args: ENV_YML=tsfeatures/environment.yml
+          context: ./tsfeatures/
           outputs: type=docker, dest=/tmp/dockerimage.tar
 
       - name: Load Docker image

@@ -26,9 +26,8 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           file: tsforecast/Dockerfile
-          context: ./tsforecast/
           tags: tsforecast:latest
-          build-args: ENV_YML=tsforecast/environment.yml
+          context: ./tsforecast/
           outputs: type=docker, dest=/tmp/dockerimage.tar
 
       - name: Load Docker image

@@ -27,7 +27,7 @@ jobs:
         with:
           file: {{ROUTE}}/Dockerfile
           tags: {{ROUTE}}:latest
-          build-args: ENV_YML={{ROUTE}}/environment.yml
+          context: ./{{ROUTE}}/
           outputs: type=docker, dest=/tmp/dockerimage.tar
 
       - name: Load Docker image

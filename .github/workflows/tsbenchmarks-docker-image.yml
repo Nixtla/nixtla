@@ -27,7 +27,7 @@ jobs:
         with:
           file: tsbenchmarks/Dockerfile
           tags: tsbenchmarks:latest
-          build-args: ENV_YML=tsbenchmarks/environment.yml
+          context: ./tsbenchmarks/
           outputs: type=docker, dest=/tmp/dockerimage.tar
 
       - name: Load Docker image

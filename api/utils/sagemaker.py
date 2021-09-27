@@ -68,7 +68,7 @@ def run_sagemaker(url: str, dest_url: str,
             instance_count=int(os.environ['INSTANCE_COUNT']),
             instance_type=os.environ['INSTANCE_TYPE'],
             base_job_name=id_job,
-            entry_point=['python', '/opt/ml/code/train.py'],
+            entrypoint=['python', '/opt/ml/code/train.py'],
         )
 
         # Running job

@@ -2,7 +2,7 @@
 WORKFLOW_TEMPLATE=$(cat .github/workflow-template-$1.yml)
 
 # iterate each route in routes directory
-for ROUTE in tsfeatures tsforecast; do
+for ROUTE in tsfeatures tsforecast tsbenchmarks; do
     echo "generating workflow for ${ROUTE}"
 
     # replace template route placeholder with route name
