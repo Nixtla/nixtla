@@ -41,16 +41,23 @@ def run_sagemaker(url: str, dest_url: str,
         instance_type=os.environ['INSTANCE_TYPE'],
         base_job_name=id_job,
     )
+    if script is not None:
+        dest_input = '/opt/ml/input/data/train'
+        source_output = '/opt/ml/output'
+    else:
+        dest_input = '/opt/ml/processing/input'
+        source_output = '/opt/ml/processing/output'
+
     run_args = dict(
         inputs=[
             ProcessingInput(
                 source=url,
-                destination='/opt/ml/processing/input'
+                destination=dest_input
             )
         ],
         outputs=[
             ProcessingOutput(
-                source='/opt/ml/processing/output',
+                source=source_output,
                 destination=dest_url_
             )
         ],
