@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from fastapi import FastAPI
 from mangum import Mangum
 
-from utils.sagemaker import run_sagemaker
+from utils.sagemaker import run_sagemaker, run_sagemaker_hpo
 from utils.utils import parse_args
 
 
@@ -65,14 +65,8 @@ def compute_calendartsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
     return sagemaker_response
 
 
-class TSForecastArgs(BaseArgs):
-    """Arguments to compute feature at scale."""
-    freq: str
-    horizon: int = 28
-    filename_static: Optional[str] = None
-    filename_temporal: Optional[str] = None
-    filename_temporal_future: Optional[str] = None
-    # Model args
+class LGBArgs(BaseModel):
+    """Arguments fo LGB Model."""
     objective: Optional[str] = 'l2'
     metric: Optional[str] = 'rmse'
     learning_rate: Optional[float] = 0.1
@@ -82,16 +76,41 @@ class TSForecastArgs(BaseArgs):
     bagging_freq: Optional[int] = 0
     bagging_fraction: Optional[float] = 1.
 
-
+class TSForecastDataArgs(BaseArgs):
+    """Data Arguments for LGB model."""
+    freq: str
+    horizon: int = 28
+    filename_static: Optional[str] = None
+    filename_temporal: Optional[str] = None
+    filename_temporal_future: Optional[str] = None
+   
 @app.post('/tsforecast')
-def compute_tsforecast(s3_args: S3Args, args: TSForecastArgs):
-    """Calculates forecast using sagemaker."""
+def compute_tsforecast(s3_args: S3Args, data_args: TSForecastDataArgs,
+                       model_args: LGBArgs):
+    """calculates forecast using sagemaker."""
+    args = {**data_args, **model_args}
     sagemaker_response = run_sagemaker(url=s3_args.s3_url,
                                        dest_url=s3_args.s3_dest_url,
                                        output_name=f'forecasts.csv',
                                        arguments=parse_args(args))
     
     return sagemaker_response
+
+class TSForecastHPOArgs(TSForecastDataArgs):
+    """HPO arguments."""
+    backtest_windows: int = 1
+
+@app.post('/tsforecasthpo')
+def compute_tsforecast_hpo(s3_args: S3Args, data_args: TSForecastHPOArgs):
+    """calculates forecast using sagemaker."""
+    args = data_args.dict()
+    args = {key.replace('_', '-'): value for key, value in args.items() if value is not None}
+    sagemaker_response = run_sagemaker_hpo(url=s3_args.s3_url,
+                                           dest_url=s3_args.s3_dest_url,
+                                           dict_arguments=args)
+    
+    return sagemaker_response
+
 
 class TSBenchmarksArgs(BaseArgs):
     """Arguments to compute benchmarks."""

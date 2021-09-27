@@ -1,7 +1,8 @@
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
+import boto3
 from dotenv import load_dotenv
 from sagemaker.processing import (
     Processor, ScriptProcessor, ProcessingInput, ProcessingOutput
@@ -84,5 +85,128 @@ def run_sagemaker(url: str, dest_url: str,
               'dest_url': f'{dest_url_}/{output_name}',
               'status': 200,
               'message': 'Check job status at GET /jobs/{job_id}'}
+
+    return output
+
+
+def run_sagemaker_hpo(url: str, dest_url: str,
+                      dict_arguments: Dict[str, str]):
+    """Run sagemaker HPO.
+
+    Parameters
+    ----------
+    url: str
+        S3 uri of the files to process.
+    dest_url: str
+        S3 uri for output.
+    dict_arguments: Dict[str, str]
+        Static Arguments.
+    """
+    id_job = str(uuid4())
+
+    sagemaker = boto3.client('sagemaker')
+    
+    sagemaker.create_hyper_parameter_tuning_job(
+            HyperParameterTuningJobName=id_job,
+            HyperParameterTuningJobConfig={
+                'Strategy': 'Bayesian',
+                'HyperParameterTuningJobObjective': {
+                    'Type': 'Minimize',
+                    'MetricName': 'validation:error',
+                },
+                'ResourceLimits': {
+                    'MaxNumberOfTrainingJobs': 10,
+                    'MaxParallelTrainingJobs': 2,
+                },
+                'ParameterRanges': {
+                    'IntegerParameterRanges': [
+                        {
+                            'Name': 'n-estimators',
+                            'MinValue': '100',
+                            'MaxValue': '1000',
+                            'ScalingType': 'Linear',
+                        },
+                        {
+                            'Name': 'num-leaves',
+                            'MinValue': '30',
+                            'MaxValue': '200',
+                            'ScalingType': 'Linear',
+                        },
+                        {
+                            'Name': 'min-data-in-leaf',
+                            'MinValue': '20',
+                            'MaxValue': '200',
+                            'ScalingType': 'Linear',
+                        },
+                        {
+                            'Name': 'bagging-freq',
+                            'MinValue': '1',
+                            'MaxValue': '5',
+                            'ScalingType': 'Linear',
+                        }
+                    ],
+                    'ContinuousParameterRanges': [
+                        {
+                            'Name': 'learning-rate',
+                            'MinValue': '0.01',
+                            'MaxValue': '0.2',
+                            'ScalingType': 'Logarithmic',
+                        },
+                        {
+                            'Name': 'bagging-fraction',
+                            'MinValue': '0.5',
+                            'MaxValue': '0.95',
+                            'ScalingType': 'Linear',
+                        },
+                    ],
+                    'CategoricalParameterRanges': [
+                        {
+                            'Name': 'objective',
+                            'Values': ['l2', 'poisson', 'tweedie'],
+                        },
+                    ]
+                },
+                'TrainingJobEarlyStoppingType': 'Off',
+            },
+            TrainingJobDefinition={
+                'StaticHyperParameters': dict_arguments,
+                'AlgorithmSpecification': {
+                    'TrainingImage': os.environ['PROCESSING_REPOSITORY_URI'],
+                    'TrainingInputMode': 'File',
+                    'MetricDefinitions': [
+                        {
+                            'Name': 'validation:error',
+                            'Regex': 'RMSE: (\d*\.\d*)',
+                        }
+                    ]
+                },
+                'RoleArn': os.environ['ROLE'],
+                'InputDataConfig': [
+                    {
+                        'ChannelName': 'train',
+                        'DataSource': {
+                            'S3DataSource':
+                                {
+                                    'S3DataType': 'S3Prefix',
+                                    'S3Uri': url,
+                                }
+                        }
+                    },
+                ],
+                'OutputDataConfig': {
+                    'S3OutputPath': url if dest_url is None else dest_url,
+                },
+                'ResourceConfig': {
+                    'InstanceType': os.environ['INSTANCE_TYPE'],
+                    'InstanceCount': int(os.environ['INSTANCE_COUNT']),
+                    'VolumeSizeInGB': 20,
+                },
+                'StoppingCondition': {
+                    'MaxRuntimeInSeconds': 60 * 60,
+                },
+            },
+        )
+    output = {'id_job': id_job,
+                  'status': 200}
 
     return output
