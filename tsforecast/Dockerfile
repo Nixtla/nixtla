@@ -7,6 +7,6 @@ RUN conda install -n base -c conda-forge mamba && \
     mamba env update -n base -f ./environment.yml && \
     conda clean -afy
 
-ENV PYTHONUNBUFFERED=TRUE
+COPY forecast/make_forecast.py /opt/ml/code/train.py
 
-ENTRYPOINT ["python"]
+ENV SAGEMAKER_PROGRAM train.py 

@@ -89,7 +89,6 @@ def compute_tsforecast(s3_args: S3Args, args: TSForecastArgs):
     sagemaker_response = run_sagemaker(url=s3_args.s3_url,
                                        dest_url=s3_args.s3_dest_url,
                                        output_name=f'forecasts.csv',
-                                       script='forecast/make_forecast.py',
                                        arguments=parse_args(args))
     
     return sagemaker_response

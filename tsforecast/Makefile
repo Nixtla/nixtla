@@ -19,7 +19,7 @@ run_module: .require-module
 
 test_tsforecast: 
 	$(MAKE) run_module \
-		module="forecast/make_forecast.py \
+		module="python forecast/make_forecast.py \
 			--filename train/target-dummy.csv \
 			--filename-static train/static-dummy.csv \
 			--filename-temporal train/temporal-dummy.csv \

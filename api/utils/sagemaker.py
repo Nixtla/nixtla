@@ -1,10 +1,10 @@
 import os
-from typing import List
+from typing import List, Optional
 from uuid import uuid4
 
 from dotenv import load_dotenv
 from sagemaker.processing import (
-    ScriptProcessor, ProcessingInput, ProcessingOutput
+    Processor, ScriptProcessor, ProcessingInput, ProcessingOutput
 )
 
 
@@ -12,7 +12,8 @@ load_dotenv()
 
 def run_sagemaker(url: str, dest_url: str,
                   output_name: str,
-                  script: str, arguments: List[str]) -> None:
+                  arguments: List[str],
+                  script: Optional[str] = None) -> None:
     """Run sagemaker ScriptProcessor.
 
     Parameters
@@ -31,33 +32,63 @@ def run_sagemaker(url: str, dest_url: str,
     dest_url_ = url if dest_url is None else dest_url
     # Setting ScriptProcessor job
     id_job = str(uuid4())
-    script_processor = ScriptProcessor(
-        command=['python3'],
-        image_uri=os.environ['PROCESSING_REPOSITORY_URI'],
-        role=os.environ['ROLE'],
-        instance_count=int(os.environ['INSTANCE_COUNT']),
-        instance_type=os.environ['INSTANCE_TYPE'],
-        base_job_name=id_job,
-    )
 
-    # Running job
-    script_processor.run(
-        code=script,
-        inputs=[
-            ProcessingInput(
-                source=url,
-                destination='/opt/ml/processing/input'
-            )
-        ],
-        outputs=[
-            ProcessingOutput(
-                source='/opt/ml/processing/output',
-                destination=dest_url_
-            )
-        ],
-        arguments=arguments,
-        wait=False,
-    )
+    if script is not None:
+        script_processor = ScriptProcessor(
+            command=['python3'],
+            image_uri=os.environ['PROCESSING_REPOSITORY_URI'],
+            role=os.environ['ROLE'],
+            instance_count=int(os.environ['INSTANCE_COUNT']),
+            instance_type=os.environ['INSTANCE_TYPE'],
+            base_job_name=id_job,
+        )
+
+        # Running job
+        script_processor.run(
+            code=script,
+            inputs=[
+                ProcessingInput(
+                    source=url,
+                    destination='/opt/ml/processing/input'
+                )
+            ],
+            outputs=[
+                ProcessingOutput(
+                    source='/opt/ml/processing/output',
+                    destination=dest_url_
+                )
+            ],
+            arguments=arguments,
+            wait=False,
+        )
+    else:
+        processor = Processor(
+            image_uri=os.environ['PROCESSING_REPOSITORY_URI'],
+            role=os.environ['ROLE'],
+            instance_count=int(os.environ['INSTANCE_COUNT']),
+            instance_type=os.environ['INSTANCE_TYPE'],
+            base_job_name=id_job,
+            entry_point=['python', '/opt/ml/code/train.py'],
+        )
+
+        # Running job
+        processor.run(
+            inputs=[
+                ProcessingInput(
+                    source=url,
+                    destination='/opt/ml/processing/input'
+                )
+            ],
+            outputs=[
+                ProcessingOutput(
+                    source='/opt/ml/processing/output',
+                    destination=dest_url_
+                )
+            ],
+            arguments=arguments,
+            wait=False,
+        )
+
 
     output = {'id_job': id_job,
               'dest_url': f'{dest_url_}/{output_name}',
