@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse
 import json
 import logging
@@ -202,7 +204,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # data config
-    parser.add_argument('--filename', type=str)
+    parser.add_argument('--filename', type=str, required=True)
     parser.add_argument('--filename-static', type=str, default=None)
     parser.add_argument('--filename-temporal', type=str, default=None)
     parser.add_argument('--filename-temporal-future', type=str, default=None)
