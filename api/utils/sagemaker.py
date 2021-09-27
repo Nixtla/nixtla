@@ -87,6 +87,7 @@ def run_sagemaker(url: str, dest_url: str,
             ],
             arguments=arguments,
             wait=False,
+            logs=False,
         )
 
 
