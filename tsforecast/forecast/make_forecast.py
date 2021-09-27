@@ -50,7 +50,9 @@ class TSForecast:
                  freq: str,
                  unique_id_column: str,
                  ds_column: str, y_column: str,
-                 horizon: int, objective: str, metric: str,
+                 horizon: int, 
+                 backtest_windows: int,
+                 objective: str, metric: str,
                  learning_rate: int, n_estimators: int,
                  num_leaves: int, min_data_in_leaf: int,
                  bagging_freq: int, bagging_fraction: float) -> 'TSForecast':
@@ -140,6 +142,26 @@ class TSForecast:
 
         fcst = Forecast(model, ts)
 
+        if self.backtest_windows > 0:
+            dynamic_dfs = self.df.reset_index().drop('y', axis=1) if self.df_temporal_future is not None else None
+            results = fcst.backtest(
+                self.df,
+                self.backtest_windows,
+                self.horizon,
+                static_features=self.static_features,
+                dynamic_dfs=[dynamic_dfs],
+            )
+            rmses = []
+            for i, result in enumerate(results):
+                result = result.fillna(0)
+                sq_errs = (result['y'] - result['y_pred']).pow(2)
+                rmse = sqrt(sq_errs.groupby('unique_id').mean().mean())
+                rmses.append(rmse)
+                
+                result.to_csv(f'{self.dir}/output/valid_{i}.csv')
+
+            print(f'RMSE: {np.mean(rmses):.4f}')
+
         prep_df = fcst.preprocess(self.df,
                                   static_features=self.static_features)
         rng = np.random.RandomState(0)
@@ -190,6 +212,7 @@ if __name__ == '__main__':
 
     # forecast
     parser.add_argument('--horizon', type=int, default=28)
+    parser.add_argument('--backtest-windows', type=int, default=0)
 
     # hparams
     parser.add_argument('--objective', type=str, default='l2')
