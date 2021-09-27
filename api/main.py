@@ -88,11 +88,11 @@ class TSForecastDataArgs(BaseArgs):
 def compute_tsforecast(s3_args: S3Args, data_args: TSForecastDataArgs,
                        model_args: LGBArgs):
     """calculates forecast using sagemaker."""
-    args = {**data_args, **model_args}
+    args = parse_args(data_args) + parse_args(model_args)
     sagemaker_response = run_sagemaker(url=s3_args.s3_url,
                                        dest_url=s3_args.s3_dest_url,
                                        output_name=f'forecasts.csv',
-                                       arguments=parse_args(args))
+                                       arguments=args)
     
     return sagemaker_response
 
