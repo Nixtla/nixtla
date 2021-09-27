@@ -14,7 +14,7 @@ init:
 run_module: .require-module
 	docker run -i --rm ${DOCKER_PARAMETERS} \
 		-v ${PARENT_ROOT}/data/:/opt/ml/input/data/train/ \
-		-v ${PARENT_ROOT}/data/output/:/opt/ml/output/ \
+		-v ${PARENT_ROOT}/data/output/:/opt/ml/output/data/ \
 		${IMAGE} ${module}
 
 test_tsforecast: 
