@@ -161,7 +161,7 @@ class TSForecast:
                 rmse = sqrt(sq_errs.groupby('unique_id').mean().mean())
                 rmses.append(rmse)
                 
-                result.to_csv(f'{self.dir}/output/valid_{i}.csv')
+                result.to_csv(f'{self.dir}/output/data/valid_{i}.csv')
 
             print(f'RMSE: {np.mean(rmses):.4f}')
 
@@ -193,7 +193,7 @@ class TSForecast:
         )
 
         logger.info('Writing forecasts...')
-        preds.to_csv(f'{self.dir}/output/forecasts.csv')
+        preds.to_csv(f'{self.dir}/output/data/forecasts.csv')
         logger.info('File written...')
 
 
