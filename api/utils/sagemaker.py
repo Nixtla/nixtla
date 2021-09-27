@@ -112,7 +112,7 @@ def run_sagemaker_hpo(url: str, dest_url: str,
     now = datetime.datetime.now()
     id_job = now.strftime('%Y-%m-%d-%H-%M-%S')
     s3_output = url if dest_url is None else dest_url
-    s3_output = f'{s3_output}/{id_job}'
+    s3_output = f'{s3_output}{id_job}'
 
     sagemaker = boto3.client('sagemaker')
     
@@ -126,14 +126,14 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                 },
                 'ResourceLimits': {
                     'MaxNumberOfTrainingJobs': 10,
-                    'MaxParallelTrainingJobs': 5,
+                    'MaxParallelTrainingJobs': 2,
                 },
                 'ParameterRanges': {
                     'IntegerParameterRanges': [
                         {
                             'Name': 'n-estimators',
-                            'MinValue': '100',
-                            'MaxValue': '200',
+                            'MinValue': '50',
+                            'MaxValue': '150',
                             'ScalingType': 'Linear',
                         },
                         {
