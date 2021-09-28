@@ -20,8 +20,8 @@ run_module: .require-module
 test_compute_benchmarks: 
 	$(MAKE) run_module \
 		module="benchmarks/compute_benchmarks.py \
-			--dataset M4-Daily \
-			--filename train/M4-forecasts-dummy.csv \
+			--dataset M5 \
+			--filename train/M5-forecasts-benchmark.csv \
 			--unique-id-column unique_id \
 			--ds-column ds \
 			--y-column y"
