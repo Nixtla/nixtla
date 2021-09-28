@@ -66,6 +66,7 @@ class TSForecast:
         self.static_features: List[str]
 
         self.df, self.df_temporal, self.static_features = self._read_file()
+        print(self.df.head(), self.df_temporal.head(), sep='\n')
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
@@ -152,6 +153,7 @@ class TSForecast:
 
         prep_df = fcst.preprocess(self.df,
                                   static_features=self.static_features)
+        print(prep_df.head())
         rng = np.random.RandomState(0)
         train_mask = rng.rand(prep_df.shape[0]) < 0.9
         train_df, valid_df = prep_df[train_mask], prep_df[~train_mask]
