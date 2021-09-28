@@ -70,7 +70,7 @@ class TSForecast:
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
-        df = pd.read_csv(f'{self.dir_train}/{self.filename}')
+        df = pd.read_parquet(f'{self.dir_train}/{self.filename}')
         logger.info('File read.')
         renamer = {self.unique_id_column: 'unique_id',
                    self.ds_column: 'ds',
@@ -81,7 +81,7 @@ class TSForecast:
 
         static_features = None
         if self.filename_static is not None:
-            static = pd.read_csv(f'{self.dir_train}/{self.filename_static}')
+            static = pd.read_parquet(f'{self.dir_train}/{self.filename_static}')
             static.rename(columns=renamer, inplace=True)
             static.set_index('unique_id', inplace=True)
 
@@ -93,7 +93,7 @@ class TSForecast:
         
         df_temporal = None
         if self.filename_temporal is not None:
-            df_temporal = pd.read_csv(f'{self.dir_train}/{self.filename_temporal}')
+            df_temporal = pd.read_parquet(f'{self.dir_train}/{self.filename_temporal}')
             df_temporal.rename(columns=renamer, inplace=True)
 
             df_temporal.set_index(['unique_id', 'ds'], inplace=True)
@@ -147,7 +147,7 @@ class TSForecast:
                 rmse = sqrt(sq_errs.groupby('unique_id').mean().mean())
                 rmses.append(rmse)
                 
-                result.to_csv(f'{self.dir_output}/valid_{i}.csv')
+                result.to_parquet(f'{self.dir_output}/valid_{i}.parquet')
 
             print(f'RMSE: {np.mean(rmses):.4f}')
 

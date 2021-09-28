@@ -19,9 +19,9 @@ run_module: .require-module
 
 test_tsforecast: 
 	$(MAKE) run_module \
-		module="python /opt/ml/code/train.py --filename train/target-dummy.csv \
-			--filename-static train/static-dummy.csv \
-			--filename-temporal train/temporal-dummy.csv \
+		module="python /opt/ml/code/train.py --filename train/target-dummy.parquet \
+			--filename-static train/static-dummy.parquet \
+			--filename-temporal train/temporal-dummy.parquet \
 			--backtest-windows 2 \
 			--unique-id-column item_id \
 			--ds-column timestamp \
