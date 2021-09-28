@@ -8,7 +8,7 @@ import warnings
 import argparse
 import json
 import logging
-from typing import Dict, List
+from typing import Callable, Dict, List
 
 #import hdays as hdays_part2
 import holidays as hdays_part1
@@ -168,13 +168,17 @@ class CalendarFeatures:
         self.unique_id_column = unique_id_column
         self.ds_column = ds_column
         self.y_column = y_column
+        
+        self.ext: str = self.filename.split('/')[-1].split('.')[-1]
+        self.reader: Callable = getattr(pd, f'read_{self.ext}')
+        self.writer: Callable = getattr(pd.DataFrame, f'to_{self.ext}')
+        
         self.df: pd.DataFrame
-
         self.df = self._read_file()
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
-        df = pd.read_csv(f'/opt/ml/processing/input/{self.filename}')
+        df = self.reader(f'/opt/ml/processing/input/{self.filename}')
         logger.info('File read.')
         renamer = {self.unique_id_column: 'unique_id',
                    self.ds_column: 'ds',
@@ -217,8 +221,8 @@ class CalendarFeatures:
         logger.info('Merging finished...')
 
         logger.info('Writing file...')
-        features.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
-                        index=False)
+        self.writer(features, f'/opt/ml/processing/output/{self.filename_output}',
+                    index=False)
         logger.info('File written...')
 
 
@@ -234,7 +238,7 @@ if __name__ == '__main__':
                         metavar='KEY1=VALUE1/KEY2=VALUE2 or txt file', 
                         default=None)
     parser.add_argument('--scale', type=bool, default=False)
-    parser.add_argument('--filename-output', type=str, default='calendar-features.csv')
+    parser.add_argument('--filename-output', type=str, default='calendar-features.parquet')
     parser.add_argument('--unique-id-column', type=str, default='unique_id')
     parser.add_argument('--ds-column', type=str, default='ds')
     parser.add_argument('--y-column', type=str, default='y')

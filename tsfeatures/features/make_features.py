@@ -21,18 +21,22 @@ class TSFeatures:
                  kind: str) -> 'TSFeatures':
         self.freq = freq
         self.filename = filename
-        self.filename_output = filename_output if filename_output is not None else f'{kind}-features.csv'
+        self.filename_output = filename_output if filename_output is not None else f'{kind}-features.parquet'
         self.unique_id_column = unique_id_column
         self.ds_column = ds_column
         self.y_column = y_column
         self.kind = kind
-        self.df: pd.DataFrame
+        
+        self.ext: str = self.filename.split('/')[-1].split('.')[-1]
+        self.reader: Callable = getattr(pd, f'read_{self.ext}')
+        self.writer: Callable = getattr(pd.DataFrame, f'to_{self.ext}')
 
+        self.df: pd.DataFrame
         self.df = self._read_file()
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
-        df = pd.read_csv(f'/opt/ml/processing/input/{self.filename}')
+        df = self.reader(f'/opt/ml/processing/input/{self.filename}')
         logger.info('File read.')
         renamer = {self.unique_id_column: 'unique_id',
                    self.ds_column: 'ds',
@@ -95,8 +99,8 @@ class TSFeatures:
             raise ValueError('Kink must be either "static" or "temporal".')
 
         logger.info('Writing file...')
-        features.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
-                        index=False)
+        self.writer(features, f'/opt/ml/processing/output/{self.filename_output}',
+                    index=False)
         logger.info('File written...')
 
 

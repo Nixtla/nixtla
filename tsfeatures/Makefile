@@ -20,7 +20,7 @@ run_module: .require-module
 test_calendar: 
 	$(MAKE) run_module \
 		module="calendar/make_holidays.py \
-			--filename train/temporal-dummy.csv \
+			--filename train/temporal-dummy.parquet \
 			--country USA \
 			--events calendar-holidays.txt \
 			--unique-id-column item_id \
@@ -30,7 +30,7 @@ test_calendar:
 test_features: 
 	$(MAKE) run_module \
 		module="features/make_features.py \
-			--filename train/target-dummy.csv \
+			--filename train/target-dummy.parquet \
 			--freq 7 \
 			--kind static \
 			--unique-id-column item_id \
