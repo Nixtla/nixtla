@@ -502,192 +502,9 @@ import matplotlib.pyplot as plt
 
 #from data import M4Evaluation
 
-METRICS = {'sMAPE', 'MASE'}
-
-LOSSES_DICT = {
-                'M4-Daily':{'sMAPE':{'ESRNN':3.170,
-                                        'FFORMA':3.097,
-                                        'Theta':3.053,
-                                        'ARIMA': 3.193,
-                                        'ETS': 3.046,
-                                        'Naive1': 3.045,
-                                        'Naive2': 3.045,
-                                        'RNN': 5.964,
-                                        'MLP': 9.321},
-                            'MASE':{'ESRNN': 3.446,
-                                        'FFORMA': 3.344,
-                                        'Theta': 3.262,
-                                        'ARIMA': 3.410,
-                                        'ETS': 3.253,
-                                        'Naive1': 3.278,
-                                        'Naive2': 3.278,
-                                        'RNN': 6.232,
-                                        'MLP': 12.973},
-                            'time':{'ESRNN': 210,
-                                            'FFORMA': 368,
-                                            'Theta': 12,
-                                            'ARIMA': 32,
-                                            'ETS': 30,
-                                            'Naive1': 1,
-                                            'Naive2': 5,
-                                            'RNN': 89,
-                                            'MLP': 56}},
-                'M4-Yearly':{'sMAPE':{'NBEATS': 13.114,
-                                        'ESRNN': 13.176,
-                                        'FFORMA': 13.528,
-                                        'Theta': 14.593,
-                                        'ARIMA': 15.168,
-                                        'ETS': 15.356,
-                                        'Naive1': 16.342,
-                                        'Naive2': 16.342,
-                                        'RNN': 22.398,
-                                        'MLP': 21.764},
-                            'MASE':{'ESRNN': 2.980,
-                                        'FFORMA': 3.060,
-                                        'Theta': 3.382,
-                                        'ARIMA': 3.402,
-                                        'ETS': 3.444,
-                                        'Naive1': 3.974,
-                                        'Naive2': 3.974,
-                                        'RNN': 4.946,
-                                        'MLP': 4.946},
-                            'time':{'ESRNN': 210,
-                                            'FFORMA': 368,
-                                            'Theta': 12,
-                                            'ARIMA': 32,
-                                            'ETS': 30,
-                                            'Naive1': 1,
-                                            'Naive2': 5,
-                                            'RNN': 89,
-                                            'MLP': 56}},
-                'M4-Quarterly':{'sMAPE':{'NBEATS': 9.154,
-                                        'ESRNN': 9.679,
-                                        'FFORMA': 9.733,
-                                        'Theta': 10.311,
-                                        'ARIMA': 10.431,
-                                        'ETS': 10.291,
-                                        'Naive1': 11.610,
-                                        'Naive2': 11.012,
-                                        'RNN': 17.027,
-                                        'MLP': 18.500},
-                                'MASE':{'ESRNN': 1.118,
-                                        'FFORMA': 1.111,
-                                        'Theta': 1.232,
-                                        'ARIMA': 1.165,
-                                        'ETS': 1.161,
-                                        'Naive1': 1.477,
-                                        'Naive2': 1.371,
-                                        'RNN': 2.016,
-                                        'MLP': 2.314},
-                                'time':{'NBEATS': 120,
-                                            'ESRNN': 210,
-                                            'FFORMA': 368,
-                                            'Theta': 12,
-                                            'ARIMA': 32,
-                                            'ETS': 30,
-                                            'Naive1': 1,
-                                            'Naive2': 5,
-                                            'RNN': 89,
-                                            'MLP': 56}},
-                'M4-Monthly':{'sMAPE':{'NBEATS': 12.041,
-                                        'ESRNN': 12.126,
-                                        'FFORMA': 12.639,
-                                        'Theta': 13.002,
-                                        'ARIMA': 13.443,
-                                        'ETS': 13.525,
-                                        'Naive1': 15.256,
-                                        'Naive2': 14.427,
-                                        'RNN': 24.056,
-                                        'MLP': 24.333},
-                              'MASE':{'ESRNN': 0.884,
-                                        'FFORMA': 0.893,
-                                        'Theta': 0.970,
-                                        'ARIMA': 0.930,
-                                        'ETS': 0.948,
-                                        'Naive1': 1.205,
-                                        'Naive2': 1.063,
-                                        'RNN': 1.601,
-                                        'MLP': 1.925},
-                               'time':{'NBEATS': 120,
-                                            'ESRNN': 210,
-                                            'FFORMA': 368,
-                                            'Theta': 12,
-                                            'ARIMA': 32,
-                                            'ETS': 30,
-                                            'Naive1': 1,
-                                            'Naive2': 5,
-                                            'RNN': 89,
-                                            'MLP': 56}},
-                'M4-Weekly':{'sMAPE':{'ESRNN': 7.817,
-                                        'FFORMA': 7.625,
-                                        'Theta': 9.093,
-                                        'ARIMA': 8.653,
-                                        'ETS': 8.727,
-                                        'Naive1': 9.161,
-                                        'Naive2': 9.161,
-                                        'RNN': 15.220,
-                                        'MLP': 21.349},
-                              'MASE':{'ESRNN': 2.356, 
-                                        'FFORMA': 2.108,
-                                        'Theta': 2.637,
-                                        'ARIMA': 2.556,
-                                        'ETS': 2.527,
-                                        'Naive1': 2.777,
-                                        'Naive2': 2.777,
-                                        'RNN': 5.132,
-                                        'MLP': 13.568},
-                               'time':{'ESRNN': 210,
-                                            'FFORMA': 368,
-                                            'Theta': 12,
-                                            'ARIMA': 32,
-                                            'ETS': 30,
-                                            'Naive1': 1,
-                                            'Naive2': 5,
-                                            'RNN': 89,
-                                            'MLP': 56}},
-                'M4-Hourly':{'sMAPE':{'ESRNN': 9.328,
-                                        'FFORMA': 11.506,
-                                        'Theta': 18.138,
-                                        'ARIMA': 13.980,
-                                        'ETS': 17.307,
-                                        'Naive1': 43.003,
-                                        'Naive2': 18.383,
-                                        'RNN': 14.698,
-                                        'MLP': 13.842},
-                              'MASE':{'ESRNN': 0.893,
-                                        'FFORMA': 0.819,
-                                        'Theta': 2.455,
-                                        'ARIMA': 0.943,
-                                        'ETS': 1.824,
-                                        'Naive1': 11.608,
-                                        'Naive2': 2.395,
-                                        'RNN': 3.048,
-                                        'MLP': 2.607},
-                               'time':{'ESRNN': 210,
-                                            'FFORMA': 368,
-                                            'Theta': 12,
-                                            'ARIMA': 32,
-                                            'ETS': 30,
-                                            'Naive1': 1,
-                                            'Naive2': 5,
-                                            'RNN': 89,
-                                            'MLP': 56}}
-            }
-
-def evaluate_my_model(forecasts, dataset, root_dir, train_time=None):
-    assert dataset in ['M4-Daily', 'M4-Yearly', 'M4-Quarterly', 'M4-Monthly', 'M4-Weekly', 'M4-Hourly'], 'Dataset {} not supported!'.format(dataset)
-
-    # Evaluation
-    # TODO: not only M4, also other datasets
-    if 'M4' in dataset:
-        group = dataset.split('-')[1]
-        print('DATASET: M4 dataset, GROUP: ', group)
-        evaluation, mases_y_hat, smape_ts = M4Evaluation.evaluate(y_hat=forecasts, directory='./data', group=group)
-        model_losses = {'sMAPE': evaluation['SMAPE'][0], 'MASE': evaluation['MASE'][0], 'time':train_time}
-
-    # Plots
-    for metric in METRICS:
-        loss_dict = LOSSES_DICT[dataset][metric]
+def loss_benchmark(metrics, model_losses, losses_dict, root_dir):
+    for metric in metrics:
+        loss_dict = losses_dict[metric]
         loss_dict['YourModel'] = model_losses[metric]
         final_dict = dict(sorted(loss_dict.items(), key=lambda item: item[1]))
 
@@ -701,43 +518,165 @@ def evaluate_my_model(forecasts, dataset, root_dir, train_time=None):
         plt.grid()
         plt.savefig(root_dir+f'{metric}.pdf')
 
-    if train_time is not None:
-        time_dict = LOSSES_DICT[dataset]['time']
-        time_dict['YourModel'] = model_losses['time']
-
-        loss_dict = LOSSES_DICT[dataset]['MASE']
-        loss_dict['YourModel'] = model_losses['MASE']
-
-        times = list(time_dict.values())
-        mases = list(loss_dict.values())
-
-        plt.figure(figsize=(15,7))
-        plt.scatter(times, mases)
-        for i, name in enumerate(time_dict.keys()):
-            plt.annotate(name, (times[i], mases[i]))
-
-        plt.xlabel('MASE')
-        plt.ylabel('TIME')
-        plt.grid()
-        plt.savefig(root_dir+'time.pdf')
-
-    # Histogram of MASE by time serie
+def loss_per_serie(losses, root_dir):
     plt.figure(figsize=(15,7))
-    plt.hist(mases_y_hat, bins=50, color='#6e8e9e')
+    plt.hist(losses, bins=50, color='#6e8e9e')
     plt.grid()
     plt.ylabel('Number of series')
-    plt.xlabel('MASE')
-    plt.savefig(root_dir+'mase_per_serie.pdf')
+    plt.xlabel('LOSS')
+    plt.savefig(root_dir+'loss_per_serie.pdf')
 
-    # SMAPE by horizon
+def loss_per_timestamp(losses, root_dir):
     plt.figure(figsize=(15,7))
-    plt.plot(smape_ts)
+    plt.plot(losses)
     plt.xlabel('H')
     plt.ylabel('SMAPE')
     plt.grid()
     plt.savefig(root_dir+'smape_per_timestamp.pdf')
 
-    return model_losses
+
+def evaluate_M4(dataset, forecasts, root_dir):
+    METRICS = {'sMAPE', 'MASE'}
+
+    LOSSES_DICT = {
+                    'M4-Daily':{'sMAPE':{'ESRNN':3.170,
+                                            'FFORMA':3.097,
+                                            'Theta':3.053,
+                                            'ARIMA': 3.193,
+                                            'ETS': 3.046,
+                                            'Naive1': 3.045,
+                                            'Naive2': 3.045,
+                                            'RNN': 5.964,
+                                            'MLP': 9.321},
+                                'MASE':{'ESRNN': 3.446,
+                                            'FFORMA': 3.344,
+                                            'Theta': 3.262,
+                                            'ARIMA': 3.410,
+                                            'ETS': 3.253,
+                                            'Naive1': 3.278,
+                                            'Naive2': 3.278,
+                                            'RNN': 6.232,
+                                            'MLP': 12.973}},
+                    'M4-Yearly':{'sMAPE':{'NBEATS': 13.114,
+                                            'ESRNN': 13.176,
+                                            'FFORMA': 13.528,
+                                            'Theta': 14.593,
+                                            'ARIMA': 15.168,
+                                            'ETS': 15.356,
+                                            'Naive1': 16.342,
+                                            'Naive2': 16.342,
+                                            'RNN': 22.398,
+                                            'MLP': 21.764},
+                                'MASE':{'ESRNN': 2.980,
+                                            'FFORMA': 3.060,
+                                            'Theta': 3.382,
+                                            'ARIMA': 3.402,
+                                            'ETS': 3.444,
+                                            'Naive1': 3.974,
+                                            'Naive2': 3.974,
+                                            'RNN': 4.946,
+                                            'MLP': 4.946}},
+                    'M4-Quarterly':{'sMAPE':{'NBEATS': 9.154,
+                                            'ESRNN': 9.679,
+                                            'FFORMA': 9.733,
+                                            'Theta': 10.311,
+                                            'ARIMA': 10.431,
+                                            'ETS': 10.291,
+                                            'Naive1': 11.610,
+                                            'Naive2': 11.012,
+                                            'RNN': 17.027,
+                                            'MLP': 18.500},
+                                    'MASE':{'ESRNN': 1.118,
+                                            'FFORMA': 1.111,
+                                            'Theta': 1.232,
+                                            'ARIMA': 1.165,
+                                            'ETS': 1.161,
+                                            'Naive1': 1.477,
+                                            'Naive2': 1.371,
+                                            'RNN': 2.016,
+                                            'MLP': 2.314}},
+                    'M4-Monthly':{'sMAPE':{'NBEATS': 12.041,
+                                            'ESRNN': 12.126,
+                                            'FFORMA': 12.639,
+                                            'Theta': 13.002,
+                                            'ARIMA': 13.443,
+                                            'ETS': 13.525,
+                                            'Naive1': 15.256,
+                                            'Naive2': 14.427,
+                                            'RNN': 24.056,
+                                            'MLP': 24.333},
+                                'MASE':{'ESRNN': 0.884,
+                                            'FFORMA': 0.893,
+                                            'Theta': 0.970,
+                                            'ARIMA': 0.930,
+                                            'ETS': 0.948,
+                                            'Naive1': 1.205,
+                                            'Naive2': 1.063,
+                                            'RNN': 1.601,
+                                            'MLP': 1.925}},
+                    'M4-Weekly':{'sMAPE':{'ESRNN': 7.817,
+                                            'FFORMA': 7.625,
+                                            'Theta': 9.093,
+                                            'ARIMA': 8.653,
+                                            'ETS': 8.727,
+                                            'Naive1': 9.161,
+                                            'Naive2': 9.161,
+                                            'RNN': 15.220,
+                                            'MLP': 21.349},
+                                'MASE':{'ESRNN': 2.356, 
+                                            'FFORMA': 2.108,
+                                            'Theta': 2.637,
+                                            'ARIMA': 2.556,
+                                            'ETS': 2.527,
+                                            'Naive1': 2.777,
+                                            'Naive2': 2.777,
+                                            'RNN': 5.132,
+                                            'MLP': 13.568}},
+                    'M4-Hourly':{'sMAPE':{'ESRNN': 9.328,
+                                            'FFORMA': 11.506,
+                                            'Theta': 18.138,
+                                            'ARIMA': 13.980,
+                                            'ETS': 17.307,
+                                            'Naive1': 43.003,
+                                            'Naive2': 18.383,
+                                            'RNN': 14.698,
+                                            'MLP': 13.842},
+                                'MASE':{'ESRNN': 0.893,
+                                            'FFORMA': 0.819,
+                                            'Theta': 2.455,
+                                            'ARIMA': 0.943,
+                                            'ETS': 1.824,
+                                            'Naive1': 11.608,
+                                            'Naive2': 2.395,
+                                            'RNN': 3.048,
+                                            'MLP': 2.607}}
+                  }
+
+    group = dataset.split('-')[1]
+    losses_dict = LOSSES_DICT[dataset]
+    print('DATASET: M4 dataset, GROUP: ', group)
+    evaluation, mases_y_hat, smape_ts = M4Evaluation.evaluate(y_hat=forecasts, directory='./data', group=group)
+    model_losses = {'sMAPE': evaluation['SMAPE'][0], 'MASE': evaluation['MASE'][0]}
+
+    # Bar plot comparing models
+    loss_benchmark(metrics= METRICS, model_losses=model_losses, losses_dict=losses_dict, root_dir=root_dir)
+
+    # Histogram of MASE by time serie
+    loss_per_serie(losses=mases_y_hat, root_dir=root_dir)
+
+    # SMAPE by horizon
+    loss_per_timestamp(losses=smape_ts, root_dir=root_dir)
+
+
+#def evaluate_M5():
+    
+def evaluate_my_model(forecasts, dataset, root_dir, train_time=None):
+    assert dataset in ['M4-Daily', 'M4-Yearly', 'M4-Quarterly', 'M4-Monthly', 'M4-Weekly', 'M4-Hourly'], 'Dataset {} not supported!'.format(dataset)
+
+    # M4
+    if 'M4' in dataset:
+        evaluate_M4(dataset=dataset, forecasts=forecasts, root_dir=root_dir)
+
 ###############################################################################
 
 class TSBenchmarks:
