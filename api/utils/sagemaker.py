@@ -126,15 +126,15 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                     'MetricName': 'validation:error',
                 },
                 'ResourceLimits': {
-                    'MaxNumberOfTrainingJobs': 10,
-                    'MaxParallelTrainingJobs': 2,
+                    'MaxNumberOfTrainingJobs': 50,
+                    'MaxParallelTrainingJobs': 50,
                 },
                 'ParameterRanges': {
                     'IntegerParameterRanges': [
                         {
                             'Name': 'n-estimators',
-                            'MinValue': '50',
-                            'MaxValue': '200',
+                            'MinValue': '100',
+                            'MaxValue': '1000',
                             'ScalingType': 'Linear',
                         },
                         {
