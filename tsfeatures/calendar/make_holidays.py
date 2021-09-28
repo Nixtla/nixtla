@@ -245,7 +245,7 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args()
-    if args.events.endswith('.txt'):
+    if args.events is not None and args.events.endswith('.txt'):
         events_file = f'/opt/ml/processing/input/{args.events}'
         with open(events_file) as f:
             args.events = f.readlines()[0]
