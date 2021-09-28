@@ -531,7 +531,7 @@ LOSSES_DICT = {
                                             'Naive1': 1,
                                             'Naive2': 5,
                                             'RNN': 89,
-                                            'MLP': 56},
+                                            'MLP': 56}},
                 'M4-Yearly':{'sMAPE':{'NBEATS': 13.114,
                                         'ESRNN': 13.176,
                                         'FFORMA': 13.528,
@@ -559,7 +559,7 @@ LOSSES_DICT = {
                                             'Naive1': 1,
                                             'Naive2': 5,
                                             'RNN': 89,
-                                            'MLP': 56},
+                                            'MLP': 56}},
                 'M4-Quarterly':{'sMAPE':{'NBEATS': 9.154,
                                         'ESRNN': 9.679,
                                         'FFORMA': 9.733,
@@ -588,7 +588,7 @@ LOSSES_DICT = {
                                             'Naive1': 1,
                                             'Naive2': 5,
                                             'RNN': 89,
-                                            'MLP': 56},
+                                            'MLP': 56}},
                 'M4-Monthly':{'sMAPE':{'NBEATS': 12.041,
                                         'ESRNN': 12.126,
                                         'FFORMA': 12.639,
@@ -617,7 +617,7 @@ LOSSES_DICT = {
                                             'Naive1': 1,
                                             'Naive2': 5,
                                             'RNN': 89,
-                                            'MLP': 56},
+                                            'MLP': 56}},
                 'M4-Weekly':{'sMAPE':{'ESRNN': 7.817,
                                         'FFORMA': 7.625,
                                         'Theta': 9.093,
@@ -644,7 +644,7 @@ LOSSES_DICT = {
                                             'Naive1': 1,
                                             'Naive2': 5,
                                             'RNN': 89,
-                                            'MLP': 56},
+                                            'MLP': 56}},
                 'M4-Hourly':{'sMAPE':{'ESRNN': 9.328,
                                         'FFORMA': 11.506,
                                         'Theta': 18.138,
@@ -671,8 +671,7 @@ LOSSES_DICT = {
                                             'Naive1': 1,
                                             'Naive2': 5,
                                             'RNN': 89,
-                                            'MLP': 56}
-                }
+                                            'MLP': 56}}
             }
 
 def evaluate_my_model(forecasts, dataset, root_dir, train_time=None):
