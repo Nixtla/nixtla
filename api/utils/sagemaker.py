@@ -123,7 +123,7 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                 },
                 'ResourceLimits': {
                     'MaxNumberOfTrainingJobs': 50,
-                    'MaxParallelTrainingJobs': 10,
+                    'MaxParallelTrainingJobs': 8,
                 },
                 'ParameterRanges': {
                     'IntegerParameterRanges': [
