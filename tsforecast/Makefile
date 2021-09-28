@@ -13,17 +13,15 @@ init:
 
 run_module: .require-module
 	docker run -i --rm ${DOCKER_PARAMETERS} \
-		-v ${PARENT_ROOT}/data/:/opt/ml/processing/input/ \
-		-v ${PARENT_ROOT}/data/output/:/opt/ml/processing/output/ \
+		-v ${PARENT_ROOT}/data/:/opt/ml/input/data/train/ \
+		-v ${PARENT_ROOT}/data/output/:/opt/ml/output/data/ \
 		${IMAGE} ${module}
 
 test_tsforecast: 
 	$(MAKE) run_module \
-		module="python forecast/make_forecast.py \
-			--filename train/target-dummy.csv \
+		module="python /opt/ml/code/train.py --filename train/target-dummy.csv \
 			--filename-static train/static-dummy.csv \
 			--filename-temporal train/temporal-dummy.csv \
-			--filename-temporal-future test/temporal-future-dummy.csv \
 			--backtest-windows 2 \
 			--unique-id-column item_id \
 			--ds-column timestamp \

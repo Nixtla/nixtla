@@ -22,6 +22,7 @@ test_calendar:
 		module="calendar/make_holidays.py \
 			--filename train/target-dummy.csv \
 			--country USA \
+			--events calendar-holidays.txt \
 			--unique-id-column item_id \
 			--ds-column timestamp \
 			--y-column demand"

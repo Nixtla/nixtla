@@ -135,6 +135,13 @@ def make_holidays_distance_df(dates, year_list, country, events=None):
 
     holidays_distance_df = pd.DataFrame(distance_dict)
     holidays_distance_df.set_index('ds', inplace=True)
+    
+    # Clean columns
+    new_cols = holidays_distance_df.columns
+    new_cols = new_cols.str.replace(' ', '_')
+    new_cols = new_cols.str.replace("'|\.|\(|\)|-", '', regex=True)
+    new_cols = new_cols.str.lower()
+    holidays_distance_df.columns = new_cols
 
     return holidays_distance_df
 
@@ -187,12 +194,18 @@ class CalendarFeatures:
                                              year_list=list(range(1990, 2025)),
                                              country=self.country,
                                              events=self.events)
+        # hack, it should be an argument
+        holidays = (holidays == 0).astype(int)
+
+        # remove duplicated columns
+        holidays = holidays[holidays.index.isin(dates)]
+        holidays = holidays.loc[:,~holidays.T.duplicated(keep='first')]
+
+        # scale if requested
         if self.scale:
             holidays -= holidays.min(axis=0)
             holidays /= (holidays.max(axis=0) - holidays.min(axis=0)) 
             holidays = holidays.round(4)
-        
-        holidays = (holidays == 0).astype(int)
         
         logger.info('Merging features...')
         features = self.df.set_index('ds').merge(holidays, 
@@ -217,7 +230,7 @@ if __name__ == '__main__':
     parser.add_argument('--filename', type=str, required=True)
     parser.add_argument('--country', type=str, required=True)
     parser.add_argument('--events', type=str,
-                        metavar='KEY1=VALUE1/KEY2=VALUE2', 
+                        metavar='KEY1=VALUE1/KEY2=VALUE2 or txt file', 
                         default=None)
     parser.add_argument('--scale', type=bool, default=False)
     parser.add_argument('--filename-output', type=str, default='calendar-features.csv')
@@ -227,6 +240,10 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args()
+    if args.events.endswith('.txt'):
+        events_file = f'/opt/ml/processing/input/{args.events}'
+        with open(events_file) as f:
+            args.events = f.readlines()[0]
 
     def parse_var(s):
         """

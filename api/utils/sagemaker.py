@@ -41,16 +41,19 @@ def run_sagemaker(url: str, dest_url: str,
         instance_type=os.environ['INSTANCE_TYPE'],
         base_job_name=id_job,
     )
+    dest_input = '/opt/ml/processing/input'
+    source_output = '/opt/ml/processing/output'
+
     run_args = dict(
         inputs=[
             ProcessingInput(
                 source=url,
-                destination='/opt/ml/processing/input'
+                destination=dest_input
             )
         ],
         outputs=[
             ProcessingOutput(
-                source='/opt/ml/processing/output',
+                source=source_output,
                 destination=dest_url_
             )
         ],
@@ -72,8 +75,8 @@ def run_sagemaker(url: str, dest_url: str,
         )
     else:
         processor = Processor(
-            **processor_args,
             entrypoint=['python', '/opt/ml/code/train.py'],
+            **processor_args,
         )
 
         # Running job
@@ -105,6 +108,8 @@ def run_sagemaker_hpo(url: str, dest_url: str,
     """
     now = datetime.datetime.now()
     id_job = now.strftime('%Y-%m-%d-%H-%M-%S')
+    s3_output = url if dest_url is None else dest_url
+    s3_output = f'{s3_output}{id_job}'
 
     sagemaker = boto3.client('sagemaker')
     
@@ -117,8 +122,8 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                     'MetricName': 'validation:error',
                 },
                 'ResourceLimits': {
-                    'MaxNumberOfTrainingJobs': 10,
-                    'MaxParallelTrainingJobs': 2,
+                    'MaxNumberOfTrainingJobs': 50,
+                    'MaxParallelTrainingJobs': 8,
                 },
                 'ParameterRanges': {
                     'IntegerParameterRanges': [
@@ -164,7 +169,7 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                     'CategoricalParameterRanges': [
                         {
                             'Name': 'objective',
-                            'Values': ['l2', 'poisson', 'tweedie'],
+                            'Values': ['poisson', 'tweedie'],
                         },
                     ]
                 },
@@ -196,7 +201,7 @@ def run_sagemaker_hpo(url: str, dest_url: str,
                     },
                 ],
                 'OutputDataConfig': {
-                    'S3OutputPath': url if dest_url is None else dest_url,
+                    'S3OutputPath': s3_output,
                 },
                 'ResourceConfig': {
                     'InstanceType': os.environ['INSTANCE_TYPE'],

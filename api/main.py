@@ -82,17 +82,19 @@ class TSForecastDataArgs(BaseArgs):
     horizon: int = 28
     filename_static: Optional[str] = None
     filename_temporal: Optional[str] = None
-    filename_temporal_future: Optional[str] = None
    
 @app.post('/tsforecast')
 def compute_tsforecast(s3_args: S3Args, data_args: TSForecastDataArgs,
                        model_args: LGBArgs):
     """calculates forecast using sagemaker."""
-    args = {**data_args, **model_args}
+    args = parse_args(data_args) + parse_args(model_args)
+    args += ['--dir-train', '/opt/ml/processing/input']
+    args += ['--dir-output', '/opt/ml/processing/output']
+
     sagemaker_response = run_sagemaker(url=s3_args.s3_url,
                                        dest_url=s3_args.s3_dest_url,
                                        output_name=f'forecasts.csv',
-                                       arguments=parse_args(args))
+                                       arguments=args)
     
     return sagemaker_response
 
@@ -104,7 +106,7 @@ class TSForecastHPOArgs(TSForecastDataArgs):
 def compute_tsforecast_hpo(s3_args: S3Args, data_args: TSForecastHPOArgs):
     """calculates forecast using sagemaker."""
     args = data_args.dict()
-    args = {key.replace('_', '-'): str(value) for key, value in args.items() if value is not None}
+    args = {key.replace("_", "-"): str(value) for key, value in args.items() if value is not None}
     sagemaker_response = run_sagemaker_hpo(url=s3_args.s3_url,
                                            dest_url=s3_args.s3_dest_url,
                                            dict_arguments=args)
@@ -126,6 +128,7 @@ def compute_tsforecast(s3_args: S3Args, args: TSBenchmarksArgs):
                                        arguments=parse_args(args))
     
     return sagemaker_response
+
 
 @app.get('/jobs/')
 async def get_status_job(job_id: str):
