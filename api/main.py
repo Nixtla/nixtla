@@ -82,7 +82,6 @@ class TSForecastDataArgs(BaseArgs):
     horizon: int = 28
     filename_static: Optional[str] = None
     filename_temporal: Optional[str] = None
-    filename_temporal_future: Optional[str] = None
    
 @app.post('/tsforecast')
 def compute_tsforecast(s3_args: S3Args, data_args: TSForecastDataArgs,
@@ -129,6 +128,7 @@ def compute_tsforecast(s3_args: S3Args, args: TSBenchmarksArgs):
                                        arguments=parse_args(args))
     
     return sagemaker_response
+
 
 @app.get('/jobs/')
 async def get_status_job(job_id: str):

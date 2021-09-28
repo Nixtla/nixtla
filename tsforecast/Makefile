@@ -22,7 +22,6 @@ test_tsforecast:
 		module="python /opt/ml/code/train.py --filename train/target-dummy.csv \
 			--filename-static train/static-dummy.csv \
 			--filename-temporal train/temporal-dummy.csv \
-			--filename-temporal-future test/temporal-future-dummy.csv \
 			--backtest-windows 2 \
 			--unique-id-column item_id \
 			--ds-column timestamp \

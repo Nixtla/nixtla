@@ -48,7 +48,6 @@ class TSForecast:
     def __init__(self, filename: str,
                  filename_static: str,
                  filename_temporal: str,
-                 filename_temporal_future: str,
                  dir_train: str,
                  dir_output: str, 
                  freq: str,
@@ -62,11 +61,11 @@ class TSForecast:
                  bagging_freq: int, bagging_fraction: float) -> 'TSForecast':
         store_attr()
         self.df: pd.DataFrame
-        self.df_temporal_future: pd.DataFrame
+        self.df_temporal: pd.DataFrame
         self.fcst: Forecast
         self.static_features: List[str]
 
-        self.df, self.df_temporal_future, self.static_features = self._read_file()
+        self.df, self.df_temporal, self.static_features = self._read_file()
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
@@ -91,36 +90,22 @@ class TSForecast:
             df = df.merge(static, how='left', left_on=['unique_id'], 
                           right_index=True)
         
-        df_temporal_future = None
+        df_temporal = None
         if self.filename_temporal is not None:
-            if self.filename_temporal_future is None:
-                raise ValueError(
-                    'You should pass `filename_temporal_future` '
-                    'when using temporal variables'
-                )
-            temporal = pd.read_csv(f'{self.dir_train}/{self.filename_temporal}')
-            temporal.rename(columns=renamer, inplace=True)
+            df_temporal = pd.read_csv(f'{self.dir_train}/{self.filename_temporal}')
+            df_temporal.rename(columns=renamer, inplace=True)
 
-            temporal.set_index(['unique_id', 'ds'], inplace=True)
-            df = df.merge(temporal, how='left', left_on=['unique_id', 'ds'],
+            df_temporal.set_index(['unique_id', 'ds'], inplace=True)
+            df = df.merge(df_temporal, how='left', left_on=['unique_id', 'ds'],
                           right_index=True)
+            df_temporal.reset_index(inplace=True)
 
-            df_temporal_future = pd.read_csv(f'{self.dir_train}/{self.filename_temporal_future}')
-            df_temporal_future.rename(columns=renamer, inplace=True)
-            # Check size of temporal future variables
-            n_uids = df_temporal_future['unique_id'].nunique()
-            if n_uids * self.horizon < df_temporal_future.shape[0]:
-                raise ValueError(
-                    f'Each time series should have at least {self.horizon} '
-                    'observations (forecast horizon) for temporal future '
-                    'variables.'
-                )
-            df_temporal_future['ds'] = pd.to_datetime(df_temporal_future['ds'])
+            df_temporal['ds'] = pd.to_datetime(df_temporal['ds'])
 
         df.reset_index('ds', inplace=True)
         df['ds'] = pd.to_datetime(df['ds'])
 
-        return df, df_temporal_future, static_features
+        return df, df_temporal, static_features
 
     def train(self) -> 'TSForecast':
         """Train LGB model."""
@@ -146,13 +131,13 @@ class TSForecast:
         fcst = Forecast(model, ts)
 
         if self.backtest_windows > 0:
-            dynamic_dfs = self.df.reset_index().drop('y', axis=1) if self.df_temporal_future is not None else None
+            dynamic_dfs = [self.df_temporal] if self.df_temporal is not None else None
             results = fcst.backtest(
                 self.df,
                 self.backtest_windows,
                 self.horizon,
                 static_features=self.static_features,
-                dynamic_dfs=[dynamic_dfs],
+                dynamic_dfs=dynamic_dfs,
             )
             rmses = []
             for i, result in enumerate(results):
@@ -189,7 +174,7 @@ class TSForecast:
         """Gets forecast."""
         preds = self.fcst.predict(
             self.horizon, 
-            dynamic_dfs=[self.df_temporal_future] if self.df_temporal_future is not None else None
+            dynamic_dfs=[self.df_temporal] if self.df_temporal is not None else None
         )
 
         logger.info('Writing forecasts...')
@@ -206,8 +191,8 @@ if __name__ == '__main__':
     # data config
     parser.add_argument('--filename', type=str, required=True)
     parser.add_argument('--filename-static', type=str, default=None)
-    parser.add_argument('--filename-temporal', type=str, default=None)
-    parser.add_argument('--filename-temporal-future', type=str, default=None)
+    parser.add_argument('--filename-temporal', type=str, default=None,
+                        help='Must have train+test')
     parser.add_argument('--freq', type=str, default='D')
     parser.add_argument('--unique-id-column', type=str, default='unique_id')
     parser.add_argument('--ds-column', type=str, default='ds')
