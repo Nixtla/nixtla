@@ -1,3 +1,6 @@
+import argparse
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -138,6 +141,96 @@ def temporal_preprocessing(temporal, unique_id, ds,
         balanced_df['ds_in_range'] = (balanced_df[ds] >= balanced_df['min_ds']) & \
                                      (balanced_df[ds] <= balanced_df['max_ds'])
         balanced_df = balanced_df[balanced_df['ds_in_range']]
-        del balanced_df['ds_in_range']
+        balanced_df.drop(['ds_in_range', 'min_ds', 'max_ds'], axis=1, inplace=True) 
+
     return balanced_df
 
+
+class TSPreprocess:
+    """Preprocess time series."""
+
+    def __init__(self, filename: str,
+                 filename_output: str,
+                 kind: str,
+                 unique_id_column: str,
+                 ds_column: str, y_column: str) -> 'TSPreprocess':
+        self.filename = filename
+        if filename_output is None:
+            self.filename_output = f'{kind}-preprocessed.csv'
+        else:
+            self.filename_output = filename_output
+        self.kind = kind
+        self.unique_id_column = unique_id_column
+        self.ds_column = ds_column
+        self.y_column = y_column
+        self.df: pd.DataFrame
+
+        self.df = self._read_file()
+
+    def _read_file(self) -> pd.DataFrame:
+        logger.info('Reading file...')
+        df = pd.read_csv(f'/opt/ml/processing/input/{self.filename}')
+        logger.info('File read.')
+        renamer = {self.unique_id_column: 'unique_id',
+                   self.ds_column: 'ds',
+                   self.y_column: 'y'}
+
+        df.rename(columns=renamer, inplace=True)
+        
+        if self.kind == 'balance':
+            df['ds'] = pd.to_datetime(df['ds'])
+
+        return df
+
+    def get_one_hot_encoded(self) -> None:
+        """One-hot encodes."""
+        logger.info('One hot encoding...')
+        df_ohe = one_hot_encoding(self.df, 'unique_id')
+        logger.info('OHE finished.')
+        
+        logger.info('Writing file...')
+        df_ohe.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
+                        index=False)
+        logger.info('File written...')
+    
+    def get_balanced_data(self) -> None:
+        """Balance data."""
+        logger.info('Balancing data...')
+        balanced_data = temporal_preprocessing(self.df, 'unique_id', 'ds', 
+                                               ['y'])
+        logger.info('Finished.')
+        
+        logger.info('Writing file...')
+        balanced_data.to_csv(f'/opt/ml/processing/output/{self.filename_output}',
+                             index=False)
+        logger.info('File written...')
+
+    def preprocess(self) -> None:
+        if self.kind == 'onehot':
+            self.get_one_hot_encoded()
+        elif self.kind == 'balance':
+            self.get_balanced_data()
+        else:
+            raise ValueError(
+                '`kind` only accepts "onehot" or "balance"'
+                ' as input'
+            )
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--filename', type=str, required=True)
+    parser.add_argument('--kind', type=str, required=True,
+                        help='onehot or balance')
+    parser.add_argument('--filename-output', type=str, default=None)
+    parser.add_argument('--unique-id-column', type=str, default='unique_id')
+    parser.add_argument('--ds-column', type=str, default='ds')
+    parser.add_argument('--y-column', type=str, default='y')
+
+    args = parser.parse_args()
+    tspreprocess = TSPreprocess(**vars(args))
+
+    tspreprocess.preprocess()
