@@ -194,8 +194,11 @@ class CalendarFeatures:
         """Computes calendar features."""
         logger.info('Computing features...')
         dates = self.df['ds'].unique()
+        years = dates.astype('datetime64[Y]').astype(int) + 1970
+        min_year = years.min()
+        max_year = years.max()
         holidays = make_holidays_distance_df(dates=dates,
-                                             year_list=list(range(1990, 2025)),
+                                             year_list=list(range(min_year, max_year)),
                                              country=self.country,
                                              events=self.events)
         # hack, it should be an argument
