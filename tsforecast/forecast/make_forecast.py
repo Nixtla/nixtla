@@ -66,7 +66,6 @@ class TSForecast:
         self.static_features: List[str]
 
         self.df, self.df_temporal, self.static_features = self._read_file()
-        print(self.df.head(), self.df_temporal.head(), sep='\n')
 
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
@@ -81,18 +80,22 @@ class TSForecast:
 
         static_features = None
         if self.filename_static is not None:
+            logger.info('Processing static features')
             static = pd.read_parquet(f'{self.dir_train}/{self.filename_static}')
             static.rename(columns=renamer, inplace=True)
             static.set_index('unique_id', inplace=True)
+            static_features = static.columns.to_list()
 
-            static_features = static.select_dtypes('object').columns.to_list()
-            static[static_features] = static[static_features].astype('category')
+            obj_features = static.select_dtypes('object').columns.to_list()
+            static[obj_features] = static[obj_features].astype('category')
             
             df = df.merge(static, how='left', left_on=['unique_id'], 
                           right_index=True)
+            logger.info('Done')
         
         df_temporal = None
         if self.filename_temporal is not None:
+            logger.info('Processing temporal features')
             df_temporal = pd.read_parquet(f'{self.dir_train}/{self.filename_temporal}')
             df_temporal.rename(columns=renamer, inplace=True)
 
@@ -102,6 +105,7 @@ class TSForecast:
             df_temporal.reset_index(inplace=True)
 
             df_temporal['ds'] = pd.to_datetime(df_temporal['ds'])
+            logger.info('Done')
 
         df.reset_index('ds', inplace=True)
         df['ds'] = pd.to_datetime(df['ds'])
@@ -110,6 +114,7 @@ class TSForecast:
 
     def train(self) -> 'TSForecast':
         """Train LGB model."""
+        lgb.register_logger(logger)
         model = lgb.LGBMRegressor(
             objective=self.objective,
             n_estimators=self.n_estimators,
@@ -132,6 +137,7 @@ class TSForecast:
         fcst = Forecast(model, ts)
 
         if self.backtest_windows > 0:
+            logger.info('Starting backtest')
             dynamic_dfs = [self.df_temporal] if self.df_temporal is not None else None
             results = fcst.backtest(
                 self.df,
@@ -150,16 +156,20 @@ class TSForecast:
                 result.to_parquet(f'{self.dir_output}/valid_{i}.parquet')
 
             print(f'RMSE: {np.mean(rmses):.4f}')
+            logger.info(f'RMSE: {np.mean(rmses):.4f}')
+            logger.info('Done')
 
+        logger.info('Starting preprocessing')
         prep_df = fcst.preprocess(self.df,
                                   static_features=self.static_features)
-        print(prep_df.head())
+        logger.info('Done')
         rng = np.random.RandomState(0)
         train_mask = rng.rand(prep_df.shape[0]) < 0.9
         train_df, valid_df = prep_df[train_mask], prep_df[~train_mask]
         del prep_df
         X_train, y_train = train_df.drop(columns=['ds', 'y']), train_df['y']
         X_valid, y_valid = valid_df.drop(columns=['ds', 'y']), valid_df['y']
+        logger.info('Starting training')
         fcst.model.fit(
             X_train,
             y_train,
@@ -167,6 +177,7 @@ class TSForecast:
             eval_names=['train', 'valid'],
             verbose=20,
         )
+        logger.info('Done')
 
         self.fcst = fcst
 
