@@ -200,7 +200,7 @@ class CalendarFeatures:
                                              events=self.events)
         # hack, it should be an argument
         holidays = (holidays == 0).astype(int)
-        holidays.dropna(axis=1, inplace=True)
+        holidays = holidays.dropna(axis=1, inplace=True)
 
         # remove duplicated columns
         holidays = holidays[holidays.index.isin(dates)]
