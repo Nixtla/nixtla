@@ -692,6 +692,8 @@ class M5Evaluation:
         M5.download(directory)
 
         # Merge with s_df
+        y_hat = y_hat.set_index(['unique_id', 'ds']).unstack()
+        y_hat = y_hat.droplevel(0, 1).reset_index()
         *_, s_df = M5.load(directory)
         y_hat = y_hat.merge(s_df, how='left', on=['unique_id'])
 
