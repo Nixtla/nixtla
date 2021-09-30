@@ -220,6 +220,8 @@ class CalendarFeatures:
                                                  how='left', 
                                                  left_on=['ds'],
                                                  right_index=True)
+        if not self.scale:
+            features[holidays.columns] = features[holidays.columns].astype(int)
         features.reset_index(inplace=True)
         logger.info('Merging finished...')
 
