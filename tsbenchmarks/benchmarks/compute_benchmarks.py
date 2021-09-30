@@ -925,7 +925,10 @@ def evaluate_M5(forecasts, root_dir):
     
     LOSSES_DICT['WRMSSE']['YourModel'] = model_losses['WRMSSE']
 
-    return LOSSES_DICT
+    losses_df = pd.DataFrame.from_dict(LOSSES_DICT).rename_axis('model').reset_index()
+    losses_df.sort_values(by='WRMSSE', inplace=True)
+
+    return losses_df
 
     
 def evaluate_my_model(forecasts, dataset, root_dir, train_time=None):
@@ -975,7 +978,6 @@ class TSBenchmarks:
         logger.info('Computing metrics...')
         root_dir = '/opt/ml/processing/output/'
         model_metrics = evaluate_my_model(forecasts=self.df, dataset=self.dataset, root_dir=root_dir,train_time=None)
-        model_metrics = pd.DataFrame.from_dict(model_metrics).rename_axis('model').reset_index()
 
         model_metrics.to_csv(root_dir+'benchmarks.csv', index=False)
         logger.info('File written...')
