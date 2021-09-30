@@ -910,8 +910,11 @@ def evaluate_M5(forecasts, root_dir):
                              'sNaive': 0.847,
                              'MLP': 0.977,
                              'RF': 1.010,
-                             'YJ_STU': 0.520,
-                             'Matthias': 0.528}
+                             'YJ_STU_1st': 0.520,
+                             'Matthias_2nd': 0.528,
+                             'mf_3rd': 0.536,
+                             'Rp_50th': 0.576,
+                             'AmazonF': 0.789085,}
                   }
 
     wrmsse = M5Evaluation.evaluate(y_hat=forecasts, directory='./data')
@@ -920,6 +923,14 @@ def evaluate_M5(forecasts, root_dir):
 
     # Bar plot comparing models
     loss_benchmark(metrics= METRICS, model_losses=model_losses, losses_dict=LOSSES_DICT, root_dir=root_dir)
+    
+    LOSSES_DICT['WRMSSE']['YourModel'] = model_losses['WRMSSE']
+
+    losses_df = pd.DataFrame.from_dict(LOSSES_DICT).rename_axis('model').reset_index()
+    losses_df.sort_values(by='WRMSSE', inplace=True)
+    losses_df['WRMSSE'] =losses_df['WRMSSE'].round(3)
+
+    return losses_df
 
     
 def evaluate_my_model(forecasts, dataset, root_dir, train_time=None):
@@ -929,7 +940,9 @@ def evaluate_my_model(forecasts, dataset, root_dir, train_time=None):
         evaluate_M4(dataset=dataset, forecasts=forecasts, root_dir=root_dir)
 
     if 'M5' in dataset:
-        evaluate_M5(forecasts=forecasts, root_dir=root_dir)
+        output = evaluate_M5(forecasts=forecasts, root_dir=root_dir)
+        
+        return output
 
 
 ###############################################################################
@@ -967,7 +980,6 @@ class TSBenchmarks:
         logger.info('Computing metrics...')
         root_dir = '/opt/ml/processing/output/'
         model_metrics = evaluate_my_model(forecasts=self.df, dataset=self.dataset, root_dir=root_dir,train_time=None)
-        model_metrics = pd.DataFrame(model_metrics, index=[0])
 
         model_metrics.to_csv(root_dir+'benchmarks.csv', index=False)
         logger.info('File written...')

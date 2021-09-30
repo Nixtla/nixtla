@@ -11,3 +11,9 @@ app:
 
 workflow:
 	./workflows.sh docker-image && ./workflows.sh lambda
+
+
+init_dockers:
+	for ROUTE in tsfeatures tsforecast tsbenchmarks tspreprocess; do \
+		make -C $$ROUTE init; \
+	done

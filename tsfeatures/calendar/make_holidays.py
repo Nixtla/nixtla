@@ -210,11 +210,11 @@ class CalendarFeatures:
         holidays = holidays.loc[:,~holidays.T.duplicated(keep='first')]
 
         # scale if requested
-        if self.scale:
-            holidays -= holidays.min(axis=0)
-            holidays /= (holidays.max(axis=0) - holidays.min(axis=0)) 
-            holidays = holidays.round(4)
-        
+        #if self.scale:
+        #    holidays -= holidays.min(axis=0)
+        #    holidays /= (holidays.max(axis=0) - holidays.min(axis=0)) 
+        #    holidays = holidays.round(4)
+        #
         logger.info('Merging features...')
         features = self.df.set_index('ds').merge(holidays, 
                                                  how='left', 

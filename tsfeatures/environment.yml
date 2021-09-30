@@ -4,6 +4,7 @@ channels:
 dependencies:
   - python=3.7
   - pip==20.3.3
+  - numpy==1.20.3
   - rpy2==3.4.1
   - r-base==3.6.3
   - r-forecast==8.13
