@@ -85,16 +85,12 @@ def read_data(config: DataConfig, is_distributed: bool) -> Frame:
     if io_module is dd and config.format is DataFormat.csv:
         read_path += '/*'
     data = reader(read_path)
-    if (
-        io_module is dd
-        and config.format is DataFormat.parquet
-        and data.index.name == 'unique_id'
-        and is_categorical_dtype(data.index)
-    ):
-        data.index = data.index.cat.as_known().as_ordered()
+    if io_module is dd and config.format is DataFormat.parquet:
+        if data.index.name == 'unique_id' and is_categorical_dtype(data.index):
+            data.index = data.index.cat.as_known().as_ordered()
         cat_cols = data.select_dtypes(include='category').columns
-        data = data.categorize(columns=cat_cols)
-
+        if not cat_cols.empty:
+            data = data.categorize(columns=cat_cols)
     return validate_data_format(data)
 
 
@@ -199,12 +195,15 @@ def perform_backtest(
     config: FlowConfig,
     output_path: Union[Path, S3Path],
     dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+    client: Optional[Client] = None,
 ) -> None:
     """Performs backtesting of `fcst` using `data` and the strategy defined in `config`.
     Writes the results to `output_path`."""
     if config.backtest is None:
         return
     data_is_dask = isinstance(data, dd_Frame)
+    if data_is_dask and client is None:
+        raise ValueError('Must provide a client when data is a dask Dataframe.')
     results = fcst.backtest(
         data,
         config.backtest.n_windows,
@@ -218,12 +217,12 @@ def perform_backtest(
         if not data_is_dask:
             split_path += f'.{config.data.format}'
         writer = getattr(result, f'to_{config.data.format}')
-        writer(split_path)
-        result['sq_err'] = (result['y'] - result['y_pred']).pow(2)
-        mse = result.groupby("unique_id")["sq_err"].mean().mean()
         if data_is_dask:
-            mse = mse.compute()
-        print(f'Split {i+1} MSE: {mse:.4f}')
+            write_futures = writer(split_path, compute=False)
+            assert client is not None  # mypy
+            client.compute(write_futures)
+        else:
+            writer(split_path)
 
 
 # Cell

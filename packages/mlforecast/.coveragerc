@@ -1,2 +1,4 @@
 [run]
-omit = */compat.py
+omit =
+	*/compat.py
+	*/distributed/models/*

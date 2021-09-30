@@ -22,7 +22,7 @@ from pathlib import Path
 import time
 import glob
 import nbformat
-from nbdev.imports import Config,parallel
+from nbdev.imports import get_config, parallel
 from nbdev.export import read_nb,find_default_export,is_export,split_flags_and_code
 from nbdev.test import get_all_flags,NoExportPreprocessor
 
@@ -51,7 +51,7 @@ def before_test(nb):
     for export in {export[0] for export in exports if export}:
         export_parts=export.split('.')
         b=export_parts.pop()
-        export_parts.insert(0,Config().lib_name)
+        export_parts.insert(0, get_config().lib_name)
         a='.'.join(export_parts)
         src=f"""
 from {a} import {b}
@@ -108,12 +108,12 @@ def nbdev_test_nbs(fname=None,flags=None,n_workers=None,verbose=True,timing=Fals
     "Test in parallel the notebooks matching `fname`, passing along `flags`"
     if flags is not None: flags = flags.split(' ')
     if fname is None: 
-        files = [f for f in Path(Config().nbs_path).glob('*.ipynb') if not f.name.startswith('_')]
+        files = [f for f in Path(get_config().nbs_path).glob('*.ipynb') if not f.name.startswith('_')]
     else: files = glob.glob(fname)
     files = [Path(f).absolute() for f in sorted(files)]
     if len(files)==1 and n_workers is None: n_workers=0
     # make sure we are inside the notebook folder of the project
-    os.chdir(Config().nbs_path)
+    os.chdir(get_config().nbs_path)
     results = parallel(_test_one, files, flags=flags, verbose=verbose, n_workers=n_workers)
     passed,times = [r[0] for r in results],[r[1] for r in results]
     if all(passed): print("All tests are passing!")
