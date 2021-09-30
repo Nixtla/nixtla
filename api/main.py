@@ -168,10 +168,11 @@ async def get_status_job(job_id: str):
     logs = boto3.client('logs')
 
     query = f"""
-        fields @message
+        fields @timestamp, @message
             | parse @message "*:__main__:*" as loggingType, loggingMessage
             | filter loggingType = "INFO"
             | filter @logStream like /{job_id}*/
+            | sort @timestamp
             | display @timestamp, loggingMessage
         """
 
