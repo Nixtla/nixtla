@@ -913,7 +913,8 @@ def evaluate_M5(forecasts, root_dir):
                              'YJ_STU_1st': 0.520,
                              'Matthias_2nd': 0.528,
                              'mf_3rd': 0.536,
-                             'Random_prediction_50th': 0.576,}
+                             'Rp_50th': 0.576,
+                             'AmazonF': 0.789085,}
                   }
 
     wrmsse = M5Evaluation.evaluate(y_hat=forecasts, directory='./data')
