@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import re
 from math import sqrt
 from pathlib import Path
 from typing import List, Optional
@@ -67,6 +68,14 @@ class TSForecast:
 
         self.df, self.df_temporal, self.static_features = self._read_file()
 
+    def _clean_columns(self, df: pd.DataFrame) -> None:
+        new_columns = []
+        for column in df.columns:
+            new_column = re.sub(r'[",:{}[\]]', '', column)
+            new_columns.append(new_column)
+
+        df.columns = new_columns
+
     def _read_file(self) -> pd.DataFrame:
         logger.info('Reading file...')
         df = pd.read_parquet(f'{self.dir_train}/{self.filename}')
@@ -77,6 +86,7 @@ class TSForecast:
 
         df.rename(columns=renamer, inplace=True)
         df.set_index(['unique_id', 'ds'], inplace=True)
+        self._clean_columns(df)
 
         static_features = None
         if self.filename_static is not None:
@@ -84,6 +94,7 @@ class TSForecast:
             static = pd.read_parquet(f'{self.dir_train}/{self.filename_static}')
             static.rename(columns=renamer, inplace=True)
             static.set_index('unique_id', inplace=True)
+            self._clean_columns(static)
             static_features = static.columns.to_list()
 
             obj_features = static.select_dtypes('object').columns.to_list()
@@ -98,8 +109,9 @@ class TSForecast:
             logger.info('Processing temporal features')
             df_temporal = pd.read_parquet(f'{self.dir_train}/{self.filename_temporal}')
             df_temporal.rename(columns=renamer, inplace=True)
-
             df_temporal.set_index(['unique_id', 'ds'], inplace=True)
+            self._clean_columns(df_temporal)
+
             df = df.merge(df_temporal, how='left', left_on=['unique_id', 'ds'],
                           right_index=True)
             df_temporal.reset_index(inplace=True)
