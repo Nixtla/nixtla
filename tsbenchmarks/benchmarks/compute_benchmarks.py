@@ -927,6 +927,7 @@ def evaluate_M5(forecasts, root_dir):
 
     losses_df = pd.DataFrame.from_dict(LOSSES_DICT).rename_axis('model').reset_index()
     losses_df.sort_values(by='WRMSSE', inplace=True)
+    losses_df['WRMSSE'] =losses_df['WRMSSE'].round(3)
 
     return losses_df
 
