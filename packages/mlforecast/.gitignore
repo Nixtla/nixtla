@@ -141,3 +141,6 @@ checklink/cookies.txt
 
 # dask
 dask-worker-space
+
+# gemfiles
+Gemfile*
