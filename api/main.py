@@ -169,8 +169,7 @@ async def get_status_job(job_id: str):
 
     query = f"""
         fields @timestamp, @message
-            | parse @message "*:__main__:*" as loggingType, loggingMessage
-            | filter (loggingType like /INFO/) or (@message like /ERROR|Error/)
+            | filter @message like /ERROR|Error|error|INFO/
             | filter @logStream like /{job_id}*/
             | sort @timestamp
             | display @timestamp, @message
