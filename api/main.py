@@ -170,10 +170,10 @@ async def get_status_job(job_id: str):
     query = f"""
         fields @timestamp, @message
             | parse @message "*:__main__:*" as loggingType, loggingMessage
-            | filter loggingType = "INFO"
+            | filter (loggingType like /INFO/) or (@message like /ERROR|Error/)
             | filter @logStream like /{job_id}*/
             | sort @timestamp
-            | display @timestamp, loggingMessage
+            | display @timestamp, @message
         """
 
     start_query_response = logs.start_query(
@@ -194,7 +194,7 @@ async def get_status_job(job_id: str):
     logs = []
     for event in query_response['results']:
         for field in event:
-            if field['field'] == 'loggingMessage':
+            if field['field'] == '@message':
                 logs.append(field['value'])
 
     response = {'status': status, 'processing_time_seconds': processing_time,
