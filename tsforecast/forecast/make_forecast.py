@@ -193,7 +193,7 @@ class TSForecast:
 
             naive_df = pd.concat(naive_df)
             naive_df.sort_values(['unique_id', 'ds'], inplace=True)
-            naive_df = naive_df.groupby('unique_id').tail(self.horizon)
+            naive_df = naive_df.groupby('unique_id').head(self.horizon)
             # preprocessing data
             ts_naive = TimeSeries(
                 freq=self.freq,
