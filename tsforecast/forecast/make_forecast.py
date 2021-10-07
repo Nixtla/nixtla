@@ -192,9 +192,12 @@ class TSForecast:
             naive_df = Forecast(model, ts_naive).preprocess(naive_df, 
                                                             static_features=self.static_features)
             if self.df_temporal is not None:
-                naive_df = naive_df.merge(self.df_temporal, how='left', on=['unique_id', 'ds'])
+                naive_df = naive_df.merge(self.df_temporal, 
+                                          how='left', 
+                                          on=['unique_id', 'ds'])
+                naive_df.set_index('unique_id', inplace=True)
 
-            self.naive_df = naive_df.set_index('unique_id')
+            self.naive_df = naive_df
 
         logger.info('Done')
         rng = np.random.RandomState(0)
