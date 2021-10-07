@@ -11,17 +11,19 @@ def parse_args(args: BaseModel):
         key = f'--{key}'
 
         outputs_args.append(key)
-        outputs_args.append(str(value))
+        if not isinstance(value, bool):
+            # store true behavior
+            outputs_args.append(str(value))
 
     return outputs_args
 
 if __name__ == '__main__':
 
     args = BaseModel.construct(arg_1='arg1', arg_2='arg2', 
-                               argn='argn', arg_3=None)
+                               argn='argn', arg_3=None, arg_4=True)
 
     expected = ['--arg-1', 'arg1', '--arg-2', 'arg2', 
-                '--argn', 'argn']
+                '--argn', 'argn', '--arg-4']
 
     parsed_args = parse_args(args)
 
