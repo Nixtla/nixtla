@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from datetime import datetime
 from math import sqrt
 from pathlib import Path
 from typing import List, Optional
@@ -245,7 +246,8 @@ class TSForecast:
             )
 
         logger.info('Writing forecasts...')
-        preds.to_csv(f'{self.dir_output}/forecasts.csv')
+        now = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        preds.to_csv(f'{self.dir_output}/forecasts_{now}.csv')
         logger.info('File written...')
 
 
