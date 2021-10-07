@@ -179,8 +179,11 @@ class TSForecast:
         if self.naive_forecast:
             naive_df = prep_df.groupby('unique_id').tail(self.horizon)
             naive_df['ds'] += self.horizon * ts.freq
-            naive_transforms = list(ts.transforms.keys())
-            naive_df = naive_df.filter(items=['ds', 'y'] + naive_transforms + self.static_features)
+            naive_cols = list(ts.transforms.keys())
+            naive_cols += ['ds', 'y']
+            if self.static_features is not None:
+                naive_cols += self.static_features
+            naive_df = naive_df.filter(items=naive_cols)
             ts_naive = TimeSeries(
                 freq=self.freq,
                 num_threads=os.cpu_count(),
