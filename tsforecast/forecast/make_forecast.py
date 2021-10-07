@@ -141,6 +141,7 @@ class TSForecast:
         )
 
         flow_config = freq2config[self.freq[0]]
+        seasonality = flow_config['lags'][0]
         ts = TimeSeries(
             freq=self.freq,
             num_threads=os.cpu_count(),
@@ -177,13 +178,23 @@ class TSForecast:
                                   static_features=self.static_features)
 
         if self.naive_forecast:
-            naive_df = prep_df.groupby('unique_id').tail(self.horizon)
-            naive_df['ds'] += self.horizon * ts.freq
+            naive_df = prep_df.groupby('unique_id').tail(seasonality)
+            # columns of interest
             naive_cols = list(ts.transforms.keys())
             naive_cols += ['ds', 'y']
             if self.static_features is not None:
                 naive_cols += self.static_features
             naive_df = naive_df.filter(items=naive_cols)
+            # adjusting dates
+            reps = int(np.ceil(self.horizon / seasonality))
+            naive_df = [naive_df.copy() for _ in range(reps)]
+            for rep, df in enumerate(naive_df, start=1):
+                naive_df[rep-1]['ds'] += rep * seasonality * ts.freq
+
+            naive_df = pd.concat(naive_df)
+            naive_df.sort_values(['unique_id', 'ds'], inplace=True)
+            naive_df = naive_df.groupby('unique_id').tail(self.horizon)
+            # preprocessing data
             ts_naive = TimeSeries(
                 freq=self.freq,
                 num_threads=os.cpu_count(),
