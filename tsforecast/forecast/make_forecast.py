@@ -55,6 +55,7 @@ class TSForecast:
                  unique_id_column: str,
                  ds_column: str, y_column: str,
                  horizon: int, 
+                 naive_forecast: bool,
                  backtest_windows: int,
                  objective: str, metric: str,
                  learning_rate: int, n_estimators: int,
@@ -174,6 +175,24 @@ class TSForecast:
         logger.info('Starting preprocessing')
         prep_df = fcst.preprocess(self.df,
                                   static_features=self.static_features)
+
+        if self.naive_forecast:
+            naive_df = prep_df.groupby('unique_id').tail(self.horizon)
+            naive_df['ds'] += self.horizon * ts.freq
+            naive_transforms = list(ts.transforms.keys())
+            naive_df = naive_df.filter(items=['ds', 'y'] + naive_transforms + self.static_features)
+            ts_naive = TimeSeries(
+                freq=self.freq,
+                num_threads=os.cpu_count(),
+                date_features=ts.date_features
+            ) 
+            naive_df = Forecast(model, ts_naive).preprocess(naive_df, 
+                                                            static_features=self.static_features)
+            if self.df_temporal is not None:
+                naive_df = naive_df.merge(self.df_temporal, how='left', on=['unique_id', 'ds'])
+
+            self.naive_df = naive_df.set_index('unique_id')
+
         logger.info('Done')
         rng = np.random.RandomState(0)
         train_mask = rng.rand(prep_df.shape[0]) < 0.9
@@ -197,10 +216,16 @@ class TSForecast:
 
     def predict(self) -> None:
         """Gets forecast."""
-        preds = self.fcst.predict(
-            self.horizon, 
-            dynamic_dfs=[self.df_temporal] if self.df_temporal is not None else None
-        )
+        if self.naive_forecast:
+            preds_np = self.fcst.model.predict(self.naive_df.drop(columns=['ds', 'y']))
+            preds = self.naive_df[['ds']]
+            preds['y_pred'] = preds_np
+            
+        else:
+            preds = self.fcst.predict(
+                self.horizon, 
+                dynamic_dfs=[self.df_temporal] if self.df_temporal is not None else None
+            )
 
         logger.info('Writing forecasts...')
         preds.to_csv(f'{self.dir_output}/forecasts.csv')
@@ -230,6 +255,7 @@ if __name__ == '__main__':
     # forecast
     parser.add_argument('--horizon', type=int, default=28)
     parser.add_argument('--backtest-windows', type=int, default=0)
+    parser.add_argument('--naive-forecast', action='store_true')
 
     # hparams
     parser.add_argument('--objective', type=str, default='l2')
