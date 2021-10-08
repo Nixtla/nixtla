@@ -7,6 +7,8 @@ def parse_args(args: BaseModel):
     outputs_args = []
 
     for key, value in dict_args.items():
+        if not value:
+            continue
         key = key.replace('_', '-')
         key = f'--{key}'
 
@@ -20,7 +22,8 @@ def parse_args(args: BaseModel):
 if __name__ == '__main__':
 
     args = BaseModel.construct(arg_1='arg1', arg_2='arg2', 
-                               argn='argn', arg_3=None, arg_4=True)
+                               argn='argn', arg_3=None, arg_4=True,
+                               arg_5=False)
 
     expected = ['--arg-1', 'arg1', '--arg-2', 'arg2', 
                 '--argn', 'argn', '--arg-4']
