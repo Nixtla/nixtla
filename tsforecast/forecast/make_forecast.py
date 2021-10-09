@@ -23,9 +23,11 @@ from window_ops.rolling import rolling_mean, seasonal_rolling_mean
 
 freq2config = {
     'D': dict(
-        lags=[7, 28],
+        lags=[3, 4, 5, 6, 7, 14, 28],
         lag_transforms={
             7: [(rolling_mean, 7), (rolling_mean, 28)],
+            3: [(expanding_mean), (ewm_mean, 0.1), (ewm_mean, 0.3)],
+            14: [(expanding_mean), (ewm_mean, 0.1), (ewm_mean, 0.3)],
             28: [
                 (rolling_mean, 7),
                 (rolling_mean, 28),
@@ -89,6 +91,8 @@ class TSForecast:
         df.rename(columns=renamer, inplace=True)
         df.set_index(['unique_id', 'ds'], inplace=True)
         self._clean_columns(df)
+        
+        cat_dtypes = ['object', 'int64', 'int32'] #assuming these are cats
 
         static_features = None
         if self.filename_static is not None:
@@ -98,8 +102,8 @@ class TSForecast:
             static.set_index('unique_id', inplace=True)
             self._clean_columns(static)
             static_features = static.columns.to_list()
-
-            obj_features = static.select_dtypes('object').columns.to_list()
+            
+            obj_features = static.select_dtypes(cat_dtypes).columns.to_list()
             static[obj_features] = static[obj_features].astype('category')
             
             df = df.merge(static, how='left', left_on=['unique_id'], 
@@ -113,6 +117,9 @@ class TSForecast:
             df_temporal.rename(columns=renamer, inplace=True)
             df_temporal.set_index(['unique_id', 'ds'], inplace=True)
             self._clean_columns(df_temporal)
+
+            obj_features = df_temporal.select_dtypes(cat_dtypes).columns.to_list()
+            df_temporal[obj_features] = df_temporal[obj_features].astype('category')
 
             df = df.merge(df_temporal, how='left', left_on=['unique_id', 'ds'],
                           right_index=True)
