@@ -23,11 +23,9 @@ from window_ops.rolling import rolling_mean, seasonal_rolling_mean
 
 freq2config = {
     'D': dict(
-        lags=[3, 4, 5, 6, 7, 14, 28],
+        lags=[7, 28],
         lag_transforms={
             7: [(rolling_mean, 7), (rolling_mean, 28)],
-            3: [(expanding_mean), (ewm_mean, 0.1), (ewm_mean, 0.3)],
-            14: [(expanding_mean), (ewm_mean, 0.1), (ewm_mean, 0.3)],
             28: [
                 (rolling_mean, 7),
                 (rolling_mean, 28),
