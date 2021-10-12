@@ -96,7 +96,7 @@ class TSForecastDataArgs(BaseArgs):
     """Data Arguments for LGB model."""
     freq: str
     horizon: int = 28
-    naive_forecast: Optional[bool] = True
+    naive_forecast: Optional[bool] = False
     filename_static: Optional[str] = None
     filename_temporal: Optional[str] = None
    
