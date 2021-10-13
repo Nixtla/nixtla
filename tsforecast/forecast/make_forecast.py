@@ -252,8 +252,9 @@ class TSForecast:
 
         logger.info('Writing forecasts...')
         now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        preds.to_csv(f'{self.dir_output}/forecasts_{now}.csv')
-        logger.info('File written...')
+        forecast_file = f'{self.dir_output}/forecasts_{now}.csv')
+        preds.to_csv(forecast_file)
+        logger.info(f'File written... {forecast_file}')
 
 
 if __name__ == '__main__':
