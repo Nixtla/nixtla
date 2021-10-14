@@ -1,6 +1,17 @@
 # Nixtla
-Nixtla is an open-source time series forecasting library for the AWS cloud. 
+> Nixtla is an open-source time series forecasting library for the AWS cloud. 
 
+[![CI/CD tspreprocess Lambda](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-lambda.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-lambda.yml)
+[![CI/CD tspreprocess docker image](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-docker-image.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-docker-image.yml)
+
+[![CI/CD tsfeatures Lambda](https://github.com/Nixtla/nixtla/actions/workflows/tsfeatures-lambda.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tsfeatures-lambda.yml)
+[![CI/CD tsfeatures docker image](https://github.com/Nixtla/nixtla/actions/workflows/tsfeatures-docker-image.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tsfeatures-docker-image.yml)
+
+[![CI/CD tsbenchmarks Lambda](https://github.com/Nixtla/nixtla/actions/workflows/tsbenchmarks-lambda.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tsbenchmarks-lambda.yml)
+[![CI/CD tsbenchmarks docker image](https://github.com/Nixtla/nixtla/actions/workflows/tsbenchmarks-docker-image.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tsbenchmarks-docker-image.yml)
+
+[![CI/CD tsforecast Lambda](https://github.com/Nixtla/nixtla/actions/workflows/tsforecast-lambda.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tsforecast-lambda.yml)
+[![CI/CD tsforecast docker image](https://github.com/Nixtla/nixtla/actions/workflows/tsforecast-docker-image.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tsforecast-docker-image.yml)
 
 # Current wraped functionalities
 
