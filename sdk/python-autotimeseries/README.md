@@ -5,7 +5,7 @@
 [![CI python sdk](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml)
 [![Python](https://img.shields.io/pypi/pyversions/autotimeseries)](https://pypi.org/project/autotimeseries/)
 [![PyPi](https://img.shields.io/pypi/v/autotimeseries?color=blue)](https://pypi.org/project/autotimeseries/)
-[![License](https://img.shields.io/github/license/Nixtla/autotimeseries)](https://github.com/Nixtla/nixtla/sdk/python-autotimeseries/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/Nixtla/nixtla/blob/main/sdk/python-autotimeseries/LICENSE)
 
 **autotimeseries** is a python SDK to consume the APIs developed in https://github.com/Nixtla/nixtla.
 
