@@ -9,7 +9,7 @@ from prophet import Prophet
 
 def fit_and_predict(index, ts, horizon): 
     model = Prophet(uncertainty_samples=False)
-    model = model.fit(ts)
+    model = model.fit(ts.drop('unique_id', 1))
     forecast = model.make_future_dataframe(periods=horizon, include_history=False)
     forecast = model.predict(forecast)
     forecast['unique_id'] = index
@@ -21,9 +21,8 @@ def main() -> None:
     train = pd.read_parquet('../../data/m5/parquet/train/target.parquet')
     renamer = {'item_id': 'unique_id', 'timestamp': 'ds', 'demand': 'y'}
     train = train.rename(columns=renamer)
-
-    uids = train['unique_id'].unique()[:100]
-    train = train.query('unique_id in @uids')
+    train['unique_id'] = train['unique_id'].astype(object)
+    print(train.info())
     
     partial_fit_and_predict = partial(fit_and_predict, horizon=28)
     start = time.time()
