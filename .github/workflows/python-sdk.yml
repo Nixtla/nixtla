@@ -16,8 +16,6 @@ jobs:
     steps:
       - name: Clone autotimeseries
         uses: actions/checkout@v2
-        with:
-          path: sdk/python-autotimeseries
 
       - name: Cache conda
         uses: actions/cache@v1
