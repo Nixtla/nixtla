@@ -66,8 +66,8 @@ jobs:
         shell: bash -l {0}
         working-directory: sdk/python-autotimeseries
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_SDK }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_SDK }}
           API_ID: ${{ secrets.API_ID }}
           API_KEY: ${{ secrets.API_KEY }}
           BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
