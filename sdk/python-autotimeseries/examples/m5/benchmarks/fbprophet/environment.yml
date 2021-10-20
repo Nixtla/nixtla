@@ -1,0 +1,12 @@
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7
+  - pip==20.3.3
+  - numpy==1.20.3
+  - dask
+  - prophet
+  - pip:
+    - nixtlats
+    - pyarrow

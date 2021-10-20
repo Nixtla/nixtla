@@ -1,0 +1,5 @@
+autotimeseries
+nixtlats
+numba
+jupyterlab
+pyarrow
