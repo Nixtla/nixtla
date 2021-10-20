@@ -134,3 +134,4 @@ opt
 *.parquet
 *.ipynb
 *.csv
+*.tar.gz
