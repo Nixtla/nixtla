@@ -2,10 +2,10 @@
 > Nixtla SDK. Time Series Forecasting pipeline at scale.
 
 
-[![CI](https://github.com/Nixtla/autotimeseries/actions/workflows/ci.yml/badge.svg)](https://github.com/Nixtla/autotimeseries/actions/workflows/ci.yml)
+[![CI python sdk](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml)
 [![Python](https://img.shields.io/pypi/pyversions/autotimeseries)](https://pypi.org/project/autotimeseries/)
 [![PyPi](https://img.shields.io/pypi/v/autotimeseries?color=blue)](https://pypi.org/project/autotimeseries/)
-[![License](https://img.shields.io/github/license/Nixtla/autotimeseries)](https://github.com/Nixtla/autotimeseries/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/Nixtla/autotimeseries)](https://github.com/Nixtla/nixtla/sdk/python-autotimeseries/blob/main/LICENSE)
 
 **autotimeseries** is a python SDK to consume the APIs developed in https://github.com/Nixtla/nixtla.
 
