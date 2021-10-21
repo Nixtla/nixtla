@@ -1,7 +1,7 @@
 # Nixtla
 > Nixtla is an open-source time series forecasting library.
 
-We are trying to help any data scientist or developer to have access to state-of-the-art forecasting pipelines. Either by setting up their own infrastructure in AWS by following the instructions in the repository. Or using our fully hosted version ([python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/)python-autotimeseries) which is in private beta right now. Just ask for free tokens to test the solution by sending an email to federico@nixtla.io or opening a GitHub issue.
+We are trying to help data scientist or developer to have access to state-of-the-art forecasting pipelines. Either by setting up their own infrastructure in AWS by following the instructions in the repository, or using our fully hosted version ([python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/) python-autotimeseries) which is in private beta right now. Ask for free tokens to test the solution by sending an email to federico@nixtla.io or opening a GitHub issue.
 
 We built a fully open-source time-series pipeline capable of achieving 1% of the performance in the [M5 competition](https://en.wikipedia.org/wiki/Makridakis_Competitions). Our open source solution has a 25% better accuracy than Amazon Forecast and is 20% more accurate than fbprophet. It also perfoms 4 times faster than Amazon Forecast and is less expensive.
 
