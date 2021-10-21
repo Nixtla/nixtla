@@ -12,6 +12,7 @@ To reproduce the results: [![Open In Colab](https://colab.research.google.com/as
 At Nixtla we strongly believe in open-source, so we have released all the necessary code to set up your own time-series processing service in the cloud (using AWS, Azure is WIP). This repository uses continuous integration and deployment to deploy the APIs on our infrastructure.
 
 # Python SDK Basic Usage
+[![CI python sdk](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml)
 
 ## Install
 
