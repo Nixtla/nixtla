@@ -1,13 +1,13 @@
 # Nixtla
 > Nixtla is an open-source time series forecasting library.
 
-With our solution, any data scientist or developer can set up their forecasting service on AWS by following the instructions in the repository. Or, if you prefer, you can ask us for free trial keys to test the solution on Nixtla’s infrastructure (just send an email to federico@nixtla.io or open a GitHub issue) using our [python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/python-autotimeseries).
+We are trying to help any data scientist or developer to have access to state-of-the-art forecasting pipelines. Either by settingg up their own infrastructure in AWS by following the instructions in the repository. Or using our fully hosted version ([python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/)python-autotimeseries) which is in private beta right now. Just ask for free tokens to test the solution by sending an email to federico@nixtla.io or opening a GitHub issue.
 
-We built a fully open-source time-series pipeline capable of achieving 1% of the performance in the M5 competition, performing 25% better than Amazon Forecast in less than an hour and 20% better than fbprophet. To reproduce the results:
+We built a fully open-source time-series pipeline capable of achieving 1% of the performance in the [M5 competition](https://en.wikipedia.org/wiki/Makridakis_Competitions). Our open source solution has a 25% better accuracy than Amazon Forecast and is 20% more accurate than fbprophet. It also perfoms 4 times faster than Amazon Forecast and is less expensive.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4)
+To reproduce the results: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4)
 
-At Nixtla we strongly believe in open-source, so we have released all the necessary code so that anyone can set up their time-series processing service in the cloud (using AWS). This repository uses continuous integration and deployment to deploy the APIs on our infrastructure.
+At Nixtla we strongly believe in open-source, so we have released all the necessary code to set up your own time-series processing service in the cloud (using AWS, Azure is WIP). This repository uses continuous integration and deployment to deploy the APIs on our infrastructure.
 
 # Forecasting Pipeline as a Service
 
@@ -18,7 +18,7 @@ Our forecasting pipeline is modular and built upon simple APIs:
 [![CI/CD tspreprocess Lambda](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-lambda.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-lambda.yml)
 [![CI/CD tspreprocess docker image](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-docker-image.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/tspreprocess-docker-image.yml)
 
-Time series usually contains missing values. This is the case for sales data where only the events that happened are recorded. In these cases it is convenient to balance the panel, i.e., to include the missing values to correctly determine the value of future sales.
+Time series usually contain missing values. This is the case for sales data where only the events that happened are recorded. In these cases it is convenient to balance the panel, i.e., to include the missing values to correctly determine the value of future sales.
 
 The [tspreprocess](https://github.com/Nixtla/nixtla/tree/main/tspreprocess) API allows you to do this quickly and easily. In addition, it allows one-hot encoding of static variables (specific to each time series, such as the product family in case of sales) automatically.
 
@@ -50,18 +50,18 @@ In future iterations, the user will be able to choose different Deep Learning mo
 The [tsbenchmarks](https://github.com/Nixtla/nixtla/tree/main/tsbenchmarks) API is designed to easily compare the performance of models based on time series competition datasets. In particular, the API offers the possibility to evaluate forecasts of any frequency of the M4 competition and also of the M5 competition.
 
 
-These APIs, written in Python, can be consumed through an [SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/python-autotimeseries) also written in Python. The following diagram summarizes the structure of our pipeline:
+These APIs, written in Python and can be consumed through an [SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/python-autotimeseries) also written in Python. The following diagram summarizes the structure of our pipeline:
 
 <img src="https://raw.githubusercontent.com/Nixtla/nixtla/main/.github/images/sdk.png">
 
 # Build your own time-series processing service using AWS
 
-## Why?
+## Why ?
 We want to contribute to open source and help data scientists and developers to achieve great forecasting results without the need to implement complex pipelines.
 
 ## How?
 
-We are testing the concept and are eager to gain Beta users for the hosted version of Nixtla. If you want to test the hosted Nixtla version of Nixtla, ask for API Keys.
+If you want to use our hosted version send us an email or open a github issue and ask for API Keys.
 
 If you want to deploy Nixtla on your own AWS Cloud you will need:
 
