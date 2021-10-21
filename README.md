@@ -1,11 +1,11 @@
 # Nixtla
 > Nixtla is an open-source time series forecasting library.
 
-We are trying to help data scientist or developer to have access to state-of-the-art forecasting pipelines. For that purpose we built a complete pipeline that can be mounted in the cloud using AWS and consumed via API. They can set up their own infrastructure in AWS by following the instructions in the repository.
+We are trying to help data scientists and developers to have access to open source state-of-the-art forecasting pipelines. For that purpose, we built a complete pipeline that can be deployed in the cloud using AWS and consumed via APIs or consumed as a service. If you want to set up your own infrastructure follow the instructions in the repository. (Azure coming soon)
 
-On the other hand, these APIs are currently running in production on our infrastructure. Thus, data scientists and developers interested in using the APIs can do so through the [python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/) ([autotimeseries](https://pypi.org/project/autotimeseries/)) we have developed for that purpose. To consume the APIs on our infrastructure it is necessary to request tokens by sending an email to federico@nixtla.io or opening a GitHub issue. **We currently have free resources available for anyone interested.**
+You can use our fully hosted version as a service through our [python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/) ([autotimeseries](https://pypi.org/project/autotimeseries/)). To consume the APIs on our own infrastructure just request tokens by sending an email to federico@nixtla.io or opening a GitHub issue. **We currently have free resources available for anyone interested.**
 
-We built a fully open-source time-series pipeline capable of achieving 1% of the performance in the [M5 competition](https://en.wikipedia.org/wiki/Makridakis_Competitions). Our open source solution has a 25% better accuracy than Amazon Forecast and is 20% more accurate than fbprophet. It also perfoms 4 times faster than Amazon Forecast and is less expensive.
+We built a fully open-source time-series pipeline capable of achieving 1% of the performance in the [M5 competition](https://en.wikipedia.org/wiki/Makridakis_Competitions). Our open-source solution has a 25% better accuracy than Amazon Forecast and is 20% more accurate than fbprophet. It also performs 4x faster than Amazon Forecast and is less expensive.
 
 To reproduce the results: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4) or you can read this [Medium Post](https://aws.plainenglish.io/automated-time-series-forecasting-pipeline-662e0feadd98).
 
