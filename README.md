@@ -5,7 +5,7 @@ We are trying to help any data scientist or developer to have access to state-of
 
 We built a fully open-source time-series pipeline capable of achieving 1% of the performance in the [M5 competition](https://en.wikipedia.org/wiki/Makridakis_Competitions). Our open source solution has a 25% better accuracy than Amazon Forecast and is 20% more accurate than fbprophet. It also perfoms 4 times faster than Amazon Forecast and is less expensive.
 
-To reproduce the results: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4)
+To reproduce the results: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4) or you can read this [Medium Post](https://aws.plainenglish.io/automated-time-series-forecasting-pipeline-662e0feadd98)
 
 At Nixtla we strongly believe in open-source, so we have released all the necessary code to set up your own time-series processing service in the cloud (using AWS, Azure is WIP). This repository uses continuous integration and deployment to deploy the APIs on our infrastructure.
 
