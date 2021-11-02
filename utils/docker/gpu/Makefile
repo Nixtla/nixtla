@@ -1,4 +1,4 @@
-IMAGE := informer
+IMAGE := gpucontainer
 ROOT := $(shell dirname $(realpath $(firstword ${MAKEFILE_LIST})))
 PARENT_ROOT := $(shell dirname ${ROOT})
 PORT := 8888
