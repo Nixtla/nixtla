@@ -7,9 +7,6 @@ dependencies:
   - pip
   - numpy
   - pandas
-  - cudatoolkit=10.2
-  - pytorch
-  - torchvision
-  - torchaudio
   - pip:
+    - torch
     - jupyterlab
