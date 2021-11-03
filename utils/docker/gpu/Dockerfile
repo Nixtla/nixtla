@@ -1,4 +1,4 @@
-FROM nvidia/cuda:10.2-cudnn7-devel
+FROM nvidia/cuda:11.2.0-devel-ubuntu18.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -9,9 +9,6 @@ RUN apt-get update  -y --fix-missing && \
     curl \
     unrar \
     unzip \
-    libnvinfer6=6.0.1-1+cuda10.2 \
-    libnvinfer-dev=6.0.1-1+cuda10.2 \
-    libnvinfer-plugin6=6.0.1-1+cuda10.2 \
     git && \
     apt-get clean -y
 
