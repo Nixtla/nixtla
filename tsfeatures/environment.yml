@@ -16,3 +16,4 @@ dependencies:
     - tsfresh
     - holidays
     - pyarrow
+    - statsmodels==0.12.2
