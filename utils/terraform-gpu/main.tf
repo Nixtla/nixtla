@@ -33,7 +33,8 @@ resource "aws_instance" "ec2_gpu" {
     rm -rf Miniconda3-latest-Linux-x86_64.sh
     echo 'export PATH="/miniconda/bin:$PATH"' >> /home/ubuntu/.bashrc
     PATH="/miniconda/bin:$PATH"
-    conda init bash
+    conda init
+
   EOL
 
   tags = {
