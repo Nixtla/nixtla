@@ -20,7 +20,6 @@ init_dockers:
 		make -C $$ROUTE init; \
 	done
 
-
 create_api_zip:
 	if [ -d "$(ROOT)/package" ]; then rm -Rf $(ROOT)/package; fi && mkdir $(ROOT)/package
 	if [ -f "$(ROOT)/api.zip" ]; then rm $(ROOT)/api.zip; fi
@@ -57,8 +56,12 @@ upload_api_zip:
 	aws s3 cp tsforecast_api.zip s3://${s3_bucket}/functions/tsforecast/api.zip
 	aws s3 cp tspreprocess_api.zip s3://${s3_bucket}/functions/tspreprocess/api.zip
 
-create_docker_image:
+create_docker_image: .require-route
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${src_docker_image}
 	docker build -t ${src_docker_image}/${route}:latest ./${route}
 	docker push ${src_docker_image}/${route}:latest
 	
+.require-route:
+ifndef route
+	$(error route is required)
+endif
