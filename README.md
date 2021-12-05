@@ -155,7 +155,7 @@ To create that infrastructue you can use our own Terraform code (infrastructure 
 
 ## 1. Terraform (infrastructure as Code)
 
-The Terraform code to create your infrastructure can be found [at this link](https://github.com/Nixtla/nixtla/tree/main/iac/terraform/aws). Just follow the next steps:
+Terraform is an open-source Infrastructure as Code tool that allows you to synthesize all the manual development into an automatic script. We have written all the needed steps to facilitate the deployment of Nixlta in your infrastructure. The Terraform code to create your infrastructure can be found [at this link](https://github.com/Nixtla/nixtla/tree/main/iac/terraform/aws). Just follow the next steps:
 
 1. Define your AWS credentials. You can define them using:
 
