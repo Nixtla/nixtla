@@ -151,12 +151,30 @@ You will end with an architecture that looks like the following diagram
 
 Each call to the API executes a particular Lambda function depending on the endpoint. That particular lambda function instantiates a SageMaker job using a predefined type of instance. Finally, SageMaker reads the input data from S3 and writes the processed data to S3, using a predefined Docker image stored in ECR.
 
-## Run the API locally
+To create that infrastructue you can use our own Terraform code (infrastructure as code) or you can create the services from the console.
 
-1. Create the environment using `make init`.
-2. Launch the app using `make app`.
+## 1. Terraform (infrastructure as Code)
 
-## Create AWS resources
+The Terraform code to create your infrastructure can be found [at this link](https://github.com/Nixtla/nixtla/tree/main/iac/terraform/aws). Just follow the next steps:
+
+1. Define your AWS credentials. You can define them using:
+
+```
+export AWS_ACCESS_KEY_ID="anaccesskey"
+export AWS_SECRET_ACCESS_KEY="asecretkey"
+```
+
+These credentials require permissions to use the S3, ECR, lambda and API Gateway services; in addition, you must be able to create IAM users.
+
+2. To use Terraform, you must install it. [Here is an excellent guide](https://learn.hashicorp.com/tutorials/terraform/install-cli) to do so.
+
+3. Position yourself in the `iac/terraform/aws` folder.
+
+4. Run the command `terraform init`. This command will initialize the working directory with the necessary configuration.
+
+5. Finally, you just need to use `terraform apply`. First, the list of services to be built will be displayed. You will have to accept to start the build. Once finished, you will get the API key needed to run the process, as well as the addresses of each of the APIs.
+
+## 2. Create AWS resources using the console
 
 ### Create S3 buckets
 
@@ -195,13 +213,12 @@ For each service:
 	- Once the method is created select Method Request and set API key required to true.
 4. Deploy the API.
 
-
-## Usage plan
+### Usage plan
 
 1. Create a usage plan based on your needs.
 2. Add your API stage.
 
-## API Keys
+### API Keys
 
 1. Generate API keys as needed.
 
@@ -213,3 +230,8 @@ For each service:
 	- `AWS_ACCESS_KEY_ID`
 	- `AWS_SECRET_ACCESS_KEY`
 	- `AWS_DEFAULT_REGION`
+
+## Run the API locally
+
+  1. Create the environment using `make init`.
+  2. Launch the app using `make app`.
