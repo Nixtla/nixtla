@@ -1,7 +1,7 @@
 # Nixtla
 > Nixtla is an open-source time series forecasting library.
 
-We are helping data scientists and developers to have access to open source state-of-the-art forecasting pipelines. For that purpose, we built a complete pipeline that can be deployed in the cloud using AWS and consumed via APIs or consumed as a service. If you want to set up your own infrastructure, follow the instructions in the repository (Azure coming soon).
+We are helping data scientists and developers to have access to open source state-of-the-art forecasting pipelines. For that purpose, we built a complete pipeline that can be deployed in the cloud using AWS and consumed via APIs or consumed as a service. If you want to set up your own infrastructure, follow the instructions in the repository (Azure coming soon). With our Infrastructure as Code written in Terraform, you can deploy our solution in minutes without much effort.
 
 You can use our fully hosted version as a service through our [python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/) ([autotimeseries](https://pypi.org/project/autotimeseries/)). To consume the APIs on our own infrastructure just request tokens by sending an email to federico@nixtla.io or opening a GitHub issue. **We currently have free resources available for anyone interested.**
 
