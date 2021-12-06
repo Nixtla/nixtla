@@ -3,7 +3,7 @@
 
 ## TLDR
 
-Recently there has been controversy in the data science community about the zillow case. There has been [speculation that the Zillow team may have used](https://ryxcommar.com/2021/11/06/zillow-prophet-time-series-and-prices/) [Prophet](https://github.com/facebook/prophet) to generate forecasts of their time series. Although we do not (and will not) know if the above is true, we contribute to the discussion by showing that it is fundamental in forecasting tasks to create benchmarks. Furthermore, that `Prophet` does not turn out to be a good benchmark on [Zillow Home Value Index data](https://www.zillow.com/research/data/) data. Better alternatives to create benchmarks are [auto.arima](https://github.com/robjhyndman/forecast) or [statsforecast](https://github.com/Nixtla/statsforecast).
+Recently there has been controversy in the data science community about the Zillow case. There has been [speculation that the Zillow team may have used](https://ryxcommar.com/2021/11/06/zillow-prophet-time-series-and-prices/) [Prophet](https://github.com/facebook/prophet) to generate forecasts of their time series. Although we do not (and will not) know if the above is true, we contribute to the discussion by showing that it is fundamental in forecasting tasks to create benchmarks. Furthermore, that `Prophet` does not turn out to be a good benchmark on [Zillow Home Value Index](https://www.zillow.com/research/data/) data. Better alternatives to create benchmarks are [auto.arima](https://github.com/robjhyndman/forecast) or [statsforecast](https://github.com/Nixtla/statsforecast).
 
 ## Introduction
 
@@ -16,7 +16,7 @@ That `Prophet` does not perform well compared to other models is consistent with
 
 ## Dataset
 
-The dataset we use to evaluate Prophet is the Zillow Home Value Index (ZHVI), which can be downloaded directly from the [Zillow research website](https://www.zillow.com/research/data/). According to the page, the ZHVI is "a smoothed, seasonally adjusted measure of typical home value and market changes for a given region and housing type. It reflects the typical value of homes in the 35th to 65th percentile range".
+The dataset we use to evaluate `Prophet` is the Zillow Home Value Index (ZHVI), which can be downloaded directly from the [Zillow research website](https://www.zillow.com/research/data/). According to the page, the ZHVI is "a smoothed, seasonally adjusted measure of typical home value and market changes for a given region and housing type. It reflects the typical value of homes in the 35th to 65th percentile range".
 
 We chose this data set as it reflects changes in prices that can potentially be used to make decisions. The dataset consists of 909 Monthly series for different aggregations of regions and states. The data version was downloaded on November 4, 2021 and a copy can be found [here](https://github.com/FedericoGarza/zillow/tree/main/data).
 
