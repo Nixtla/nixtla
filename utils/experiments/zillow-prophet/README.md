@@ -1,10 +1,10 @@
-# Prophet vs Linear Regression on Real Estate: The Zillow Case
+## Prophet vs Linear Regression on Real Estate: The Zillow Case
 
-## TL;DR
+### TL;DR
 
 Recently there has been controversy in the data science community about the Zillow case. There has been [speculation that the Zillow team may have used](https://ryxcommar.com/2021/11/06/zillow-prophet-time-series-and-prices/) [Prophet](https://github.com/facebook/prophet) to generate forecasts of their time series. Although we do not know if the above is true, we contribute to the discussion by showing that creating good benchmarks is fundamental in forecasting tasks. Furthermore we show that `Prophet` does not turn out to be a good benchmark on [Zillow Home Value Index](https://www.zillow.com/research/data/) data. Better alternatives to create benchmarks are simpler and faster models like [auto.arima](https://github.com/robjhyndman/forecast) or [statsforecast](https://github.com/Nixtla/statsforecast), and to improve those benchmarks [mlforecast](https://github.com/Nixtla/mlforecast) is an excellent option because it makes forecasting with machine learning fast and easy and it allows practitioners to focus on the model and features instead of implementation details.
 
-## Introduction
+### Introduction
 
 Recently, Zillow announced that it would close its [home-buying business](https://www.cnbc.com/2021/11/02/zillow-shares-plunge-after-announcing-it-will-close-home-buying-business.html) because its models were not being able to correctly anticipate price changes. The Zillow CEO Rich Barton said *"We’ve determined the unpredictability in forecasting home prices far exceeds what we anticipated"*. Since this news, [several opinions](https://twitter.com/vhranger/status/1456064415845990408) have been published about the alleged technology used by them for forecasting. In particular, opinions criticize the fact that they requested `Prophet` in their job offers.
 
@@ -12,19 +12,19 @@ Forecasting time series is a complicated task, and there is no single model that
 
 In this blog post, we have set ourselves the goal of empirically determining whether `Prophet` is a good choice (or at least a good benchmark) for modeling the data used in the context of Zillow. As we will see, `auto.arima` and even the [`naive`](https://otexts.com/fpp2/simple-methods.html#na%C3%AFve-method) model turn out to be better baseline strategies than `Prophet` for the particular dataset we use. We reveal that `Prophet` does not perform well compared to other models, which is consistent with the evidence found by other practitioners (for example [here](https://www.microprediction.com/blog/prophet) and [here](https://kourentzes.com/forecasting/2017/07/29/benchmarking-facebooks-prophet/)). Also, we show how using `mlforecast` (and [`LinearRegression` from `sklearn`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html) as training model) can beat `auto.arima` and `Prophet` in no more than 3 seconds.
 
-## Dataset
+### Dataset
 
 The dataset we use to evaluate `Prophet` is the Zillow Home Value Index (ZHVI), which can be downloaded directly from the [Zillow research website](https://www.zillow.com/research/data/). According to the page, the ZHVI is *"a smoothed, seasonally adjusted measure of typical home value and market changes for a given region and housing type. It reflects the typical value of homes in the 35th to 65th percentile range"* and [*"represents the “typical” home value for a region"*](https://www.zillow.com/research/zhvi-user-guide/).
 
 The dataset reflects price changes, so we decided to experiment with it because a stakeholder can potentially use it to make decisions. The dataset consists of 909 Monthly series for different aggregations of regions and states. We downloaded it on November 4, 2021 and anybody interested can find a copy of it [here](https://github.com/FedericoGarza/zillow/tree/main/data).
 
-## Experiments
+### Experiments
 
 To test the effectiveness of `Prophet` in forecasting the ZHVI, we use the last 4 observations as the test set and the remaining observations as the training set. We performed a hyperparameter optimization over each time series using the last 4 observations of the training set as a validation for `Prophet`. In addition to `Prophet`, we ran `auto.arima` of R, some models of `statsforecast` (random walk with drift, naive, simple exponential smoothing, window average, seasonal naive and historic average) and `mlforecast`.
 
 `mlforeast` is a framework that helps practitioners forecast time series using machine learning models. They need to give it a model (in this case, we use `LinearRegression` from `sklearn`), define which features to use and let `mlforecast` do the rest.
 
-### Reproducing results
+#### Reproducing results
 
 Just follow the next steps. The whole process is automized using Docker, conda and Make.
 
@@ -35,9 +35,9 @@ Just follow the next steps. The whole process is automized using Docker, conda a
 5. `make run_module module="Rscript src/forecast_arima.R"`. Fits `auto.arima` model (forecasts in `data/arima-forecasts.csv`).
 6. `make run_module module="python -m src.forecast_mlforecast"`. Fits `mlforecast` model using `LinearRegression` (forecasts in `data/mlforecast-forecasts.csv`).
 
-## Results
+### Results
 
-### Performance
+#### Performance
 
 The following table summarizes the results in terms of performance.
 
@@ -56,7 +56,7 @@ The following table summarizes the results in terms of performance.
 
 As can we see, the best model is `mlforecast.linear_regression` for `mape`, `rmse`, `smape`, and `mae` metrics. Surprisingly, a very simple model such as `naive` (takes the last value as forecasts) turns out to be better in this experiment than `Prophet`.
 
-### Computational cost
+#### Computational cost
 
 The following table summarizes the results in terms of computational cost.
 
@@ -69,7 +69,7 @@ The following table summarizes the results in terms of computational cost.
 
 To run our experiments we used a [c5d.24xlarge AWS instance (96 vCPU, 192 RAM)](https://aws.amazon.com/ec2/instance-types/c5/). It costs 4.608 USD each hour. As can we see, `mlforecast` takes no more than 3 seconds and beats `Prophet` and `auto.arima` in performance.
 
-## Conclusion
+### Conclusion
 
 This post showed in the context of the Zillow controversy that doing benchmarks is fundamental to addressing any time series forecasting problem. Those benchmarks must be computationally efficient to iterate fast and build more complex models on top of them. The libraries [statsforecast](https://github.com/Nixtla/statsforecast) and [mlforecast](https://github.com/Nixtla/mlforecast) are excellent tools for the task. We also showed better options than `Prophet` to run benchmarks, which is consistent with previous findings by the data science community. 
 
