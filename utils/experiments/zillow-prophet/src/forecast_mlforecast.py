@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from mlforecast.core import TimeSeries
 from mlforecast.forecast import Forecast
-from sklearn.linear_model import LinearRegression, Lasso
+from sklearn.linear_model import LinearRegression
 from window_ops.ewm import ewm_mean
 from window_ops.expanding import expanding_mean
 
