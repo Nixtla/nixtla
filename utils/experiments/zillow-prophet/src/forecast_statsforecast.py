@@ -16,12 +16,8 @@ from statsforecast.models import (
 
 def main() -> None:
     train = pd.read_csv('data/prepared-data-train.csv')
-    print(train.head())
     train['ds'] = pd.to_datetime(train['ds']) 
-    print(train['ds'].dt.freq)
     train = train.set_index('unique_id')
-    print(train.info())
-    print(train.head())
     
     models = [
 	historic_average,
@@ -32,11 +28,12 @@ def main() -> None:
         (window_average, 4)
     ]
 
+    start = time.time()
     fcst = StatsForecast(train, models=models, freq='M', n_jobs=cpu_count())
     fcst.last_dates = pd.DatetimeIndex(fcst.last_dates)
-    start = time.time()
     forecasts = fcst.forecast(4)
     end = time.time()
+    print(end - start)
 
     forecasts = forecasts.reset_index()
     forecasts.to_csv('data/statsforecast-forecasts.csv', index=False)
