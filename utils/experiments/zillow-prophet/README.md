@@ -38,15 +38,27 @@ Just follow the next steps. The whole process is automized using Docker, conda a
 
 The following table summarizes the results.
 
-|                                 |     mape |     rmse |    smape |      mae |
-|:--------------------------------|---------:|---------:|---------:|---------:|
-| `auto.arima`                      |  **1.01637** |  **6135.36** |  **1.0273**  | **2702.71** |
-| `random_walk_with_drift`          |  2.70799 | 14246    |  2.77414 |  7848.35 |
-| `naive`                           |  3.1611  | 15758.5  |  3.24514 |  8967.52 |
-| `ses_alpha-0.9`                   |  3.27845 | 16238.7  |  3.36773 |  9296.87 |
-| `prophet`                    |  4.42807 | 23444.3  |  4.59759 | 12941.3  |
-| `window_average_window_size-4`    |  4.66278 | 21675    |  4.82723 | 13080    |
-| `seasonal_naive_season_length-12` | 10.7527  | 42875.8  | 11.5389  | 28783.9  |
-| `historic_average`                | 27.0533  | 96878.2  | 32.008   | 68741.7  |
+|                                 |      mape |     rmse |     smape |      mae |
+|:--------------------------------|----------:|---------:|----------:|---------:|
+| `mlforecast_lr`                   |  **0.942855** |  **3037.31** |  **0.951257** |  **2595.47** |
+| `auto.arima`                      |  1.01637  |  3221.03 |  1.0273   |  2702.71 |
+| `random_walk_with_drift`          |  2.70799  |  8624.85 |  2.77414  |  7848.35 |
+| `naive`                           |  3.1611   |  9842.39 |  3.24514  |  8967.52 |
+| `ses_alpha-0.9`                   |  3.27845  | 10145.1  |  3.36773  |  9296.87 |
+| `prophet`                         |  4.26159  | 13491.6  |  4.42465  | 12429.4  |
+| `window_average_window_size-4`    |  4.66278  | 13707.7  |  4.82723  | 13080    |
+| `seasonal_naive_season_length-12` | 10.7527   | 28986.9  | 11.5389   | 28783.9  |
+| `historic_average`                | 27.0533   | 68887.4  | 32.008    | 68741.7  |
+
 
 As can we see, the best model is `auto.arima` for `mape`, `rmse`, `smape`, and `mae` metrics. Surprisingly, a very simple model such as `naive` (takes the last value as forecasts) turns out to be better in this experiment than `Prophet`.
+
+
+Computational cost
+
+| model          | time (segs)  | 
+|:---------------|-------------:|
+|`mlforecast`    | **2.68**     |
+|`statsforecast` | 3.99         |
+|`auto.arima`    | 957.6        |
+|`prophet`       | 46,980       |
