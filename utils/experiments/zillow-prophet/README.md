@@ -1,9 +1,9 @@
-# Using Prophet on Zillow data: exploring better options
+# Prophet vs Linear Regression on Real Estate (Zillow) data.
 
 
-## TLDR
+## TL;DR
 
-Recently there has been controversy in the data science community about the Zillow case. There has been [speculation that the Zillow team may have used](https://ryxcommar.com/2021/11/06/zillow-prophet-time-series-and-prices/) [Prophet](https://github.com/facebook/prophet) to generate forecasts of their time series. Although we do not (and will not) know if the above is true, we contribute to the discussion by showing that it is fundamental in forecasting tasks to create benchmarks. Furthermore, that `Prophet` does not turn out to be a good benchmark on [Zillow Home Value Index](https://www.zillow.com/research/data/) data. Better alternatives to create benchmarks are [auto.arima](https://github.com/robjhyndman/forecast) or [statsforecast](https://github.com/Nixtla/statsforecast).
+Recently there has been controversy in the data science community about the Zillow case. There has been [speculation that the Zillow team may have used](https://ryxcommar.com/2021/11/06/zillow-prophet-time-series-and-prices/) [Prophet](https://github.com/facebook/prophet) to generate forecasts of their time series. Although we do not know if the above is true, we contribute to the discussion by showing that creating good benchmarks is fundamental in forecasting tasks. Furthermore we show that `Prophet` does not turn out to be a good benchmark on [Zillow Home Value Index](https://www.zillow.com/research/data/) data. Better alternatives to create benchmarks are simpler and faster models like [auto.arima](https://github.com/robjhyndman/forecast) or [statsforecast](https://github.com/Nixtla/statsforecast).
 
 ## Introduction
 
