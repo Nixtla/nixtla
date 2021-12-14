@@ -7,3 +7,4 @@ dependencies:
   - pip:
     - streamlit
     - autotimeseries
+    - matplotlib
