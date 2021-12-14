@@ -75,19 +75,21 @@ def read_benchmarks(autotimeseries):
     return filename_output
 
 def main():
-    BUCKET_NAME = st.sidebar.text_input('Enter bucket name', type='password', 
-                                        value='m5example')
-    API_ID = st.sidebar.text_input('Enter API_ID', type='password')
     API_KEY = st.sidebar.text_input('Enter API_KEY', type='password')
-    AWS_ACCESS_KEY_ID = st.sidebar.text_input('Enter AWS_ACCESS_KEY_ID', type='password')
-    AWS_SECRET_ACCESS_KEY = st.sidebar.text_input('Enter AWS_SECRET_ACCESS_KEY', type='password')
+    
+    BUCKET_NAME = st.secrets['BUCKET_NAME'] 
+    API_ID = st.secrets['API_ID']
+    AWS_ACCESS_KEY_ID = st.secrets['AWS_ACCESS_KEY_ID']
+    AWS_SECRET_ACCESS_KEY = st.secrets['AWS_SECRET_ACCESS_KEY']
 
     autotimeseries = AutoTS(bucket_name=BUCKET_NAME,
                             api_id=API_ID, 
                             api_key=API_KEY,
                             aws_access_key_id=AWS_ACCESS_KEY_ID, 
                             aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
-
+    
+    st.session_state.file_forecast = read_forecasts(autotimeseries)
+    st.session_state.file_benchmark = read_benchmarks(autotimeseries)
 
     st.subheader('Forecast your data')
 
@@ -131,9 +133,6 @@ def main():
                                                           **columns)
             st.session_state.id_job = response_forecast['id_job']
 
-            st.session_state.file_forecast = read_forecasts(autotimeseries)
-            st.session_state.file_benchmark = read_benchmarks(autotimeseries)
-
         st.write(response_forecast)
 
     st.subheader('Get status')
@@ -173,11 +172,4 @@ def main():
         st.pyplot(fig)
 
 if __name__ == '__main__':
-    st.session_state.file_forecast = 'downloads/forecasts.csv'
-    st.session_state.file_benchmark = 'downloads/benchmarks.csv'
     main()
-
-
-
-
-
