@@ -2,13 +2,28 @@ from autotimeseries.core import AutoTS
 import streamlit as st
 
 
-st.title('Time Series Forecasting at Scale by Nixtla')
+'''
+# Time Series Forecasting at Scale by Nixtla
 
-BUCKET_NAME = st.sidebar.text_input('Enter bucket name', type='password')
+:fire::fire::fire: With this App you can  easly build you own forecasts at scale in under 5 minutes leveragin the power of [Nixtla](https://github.com/Nixtla/nixtla) :fire::fire::fire:
+
+You can use our fully hosted version as a service through this App or through [python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/) ([autotimeseries](https://pypi.org/project/autotimeseries/)). 
+To consume the APIs on our own infrastructure just request tokens by sending an email to federico@nixtla.io or opening a GitHub issue. 
+**We currently have free resources available for anyone interested.**
+
+'''
+
+
+
+BUCKET_NAME = st.sidebar.text_input('Enter bucket name', type='password', value="TEST", help="Type your bla bla bla")
 API_ID = st.sidebar.text_input('Enter API_ID', type='password')
 API_KEY = st.sidebar.text_input('Enter API_KEY', type='password')
 AWS_ACCESS_KEY_ID = st.sidebar.text_input('Enter AWS_ACCESS_KEY_ID', type='password')
 AWS_SECRET_ACCESS_KEY = st.sidebar.text_input('Enter AWS_SECRET_ACCESS_KEY', type='password')
+
+st.subheader('Select what service you want to use')
+
+
 
 service = st.selectbox(
     "Services",
@@ -22,7 +37,7 @@ autotimeseries = AutoTS(bucket_name=BUCKET_NAME,
                         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
 if 'Calendar' in service:
-    st.header('Add calendar variables to your data')
+    st.subheader('Add calendar variables to your data')
     
     filename_temporal = st.text_input('Enter temporal file')
 
@@ -46,6 +61,7 @@ if 'Calendar' in service:
         st.write(response_calendar)
 
     st.subheader('Get status')
+    
     id_job = st.text_input('Enter id Job')
 
     if st.button('Get status'):
@@ -62,7 +78,7 @@ if 'Calendar' in service:
         st.write(f'Data downloaded at {filename_output}')
 
 elif 'Forecast' in service:
-    st.header('Forecast your data')
+    st.subheader('Forecast your data')
 
     filename_target = st.text_input('Enter target file')
     filename_temporal = st.text_input('Enter temporal file')
