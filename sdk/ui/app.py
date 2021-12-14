@@ -8,6 +8,9 @@ import pandas as pd
 import streamlit as st
 
 
+st.image('https://raw.githubusercontent.com/Nixtla/nixtlats/master/nbs/indx_imgs/nixtla_logo.png')
+st.sidebar.image('https://avatars.githubusercontent.com/u/79945230?s=400&u=6d3dd56a7957fb80a719bad86b29e3feb0e3a7a6&v=4')
+
 """
 # Time Series Forecasting at Scale by Nixtla
 
