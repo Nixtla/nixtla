@@ -4,9 +4,6 @@ import streamlit as st
 
 st.title('Time Series Forecasting at Scale by Nixtla')
 
-
-
-
 BUCKET_NAME = st.sidebar.text_input('Enter bucket name', type='password')
 API_ID = st.sidebar.text_input('Enter API_ID', type='password')
 API_KEY = st.sidebar.text_input('Enter API_KEY', type='password')
@@ -25,8 +22,9 @@ autotimeseries = AutoTS(bucket_name=BUCKET_NAME,
                         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
 if 'Calendar' in service:
+    st.header('Add calendar variables to your data')
+    
     filename_temporal = st.text_input('Enter temporal file')
-    filename_calendar_holidays = st.text_input('Enter holidays file')
 
     unique_id_column = st.text_input('Enter unique_id column', value='item_id')
     ds_column = st.text_input('Enter date column', value='timestamp')
@@ -47,16 +45,14 @@ if 'Calendar' in service:
                                                           **columns)
         st.write(response_calendar)
 
-    st.write('======================')
-    st.write('Get status')
+    st.subheader('Get status')
     id_job = st.text_input('Enter id Job')
 
     if st.button('Get status'):
         status = autotimeseries.get_status(id_job)
         st.write(status)
     
-    st.write('======================')
-    st.write('Download file')
+    st.subheader('Download file')
     filename = st.text_input('Enter filename')
     filename_output = st.text_input('Enter filename output')
     
@@ -66,6 +62,8 @@ if 'Calendar' in service:
         st.write(f'Data downloaded at {filename_output}')
 
 elif 'Forecast' in service:
+    st.header('Forecast your data')
+
     filename_target = st.text_input('Enter target file')
     filename_temporal = st.text_input('Enter temporal file')
     filename_static = st.text_input('Enter static file')
@@ -96,16 +94,14 @@ elif 'Forecast' in service:
                                                       **columns)
         st.write(response_forecast)
 
-    st.write('======================')
-    st.write('Get status')
+    st.subheader('Get status')
     id_job = st.text_input('Enter id Job')
 
     if st.button('Get status'):
         status = autotimeseries.get_status(id_job)
         st.write(status)
     
-    st.write('======================')
-    st.write('Download file')
+    st.subheader('Download file')
     filename = st.text_input('Enter filename')
     filename_output = st.text_input('Enter filename output')
     
