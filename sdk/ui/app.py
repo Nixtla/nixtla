@@ -166,6 +166,30 @@ def main():
             status = autotimeseries.get_status(st.session_state.id_job)
         st.write(status)
 
+
+
+    st.subheader('Benchmark forecasts')
+    st.write('Compare your forecasts against other solutions')
+    
+    if st.button('Benchmark'):
+        benchmark = pd.read_csv(st.session_state.file_benchmark)
+        st.dataframe(benchmark)
+
+    st.subheader('Plot forecasts')
+
+    if st.button('Plot forecasts'):
+        forecast = pd.read_csv(st.session_state.file_forecast)
+        forecast.rename({'y_pred': 'Nixtla'}, axis=1, inplace=True)
+        target = pd.read_csv(st.session_state.file_target)
+        uids = ['FOODS_3_638_TX_1', 'HOBBIES_2_038_WI_1',
+                'HOBBIES_1_191_TX_3', 'FOODS_3_780_TX_2']
+        fig = plot_grid_prediction(target, 
+                                   forecast,
+                                   models=['Nixtla'],
+                                   plot_random=False,
+                                   unique_ids=uids)
+        st.pyplot(fig)
+
     st.subheader('Export results')
 
     col1, col2, col3= st.columns(3)
@@ -193,29 +217,6 @@ def main():
         st.download_button('Oracle', 
                         data=forecast.to_csv(),
                         file_name='forecast.csv')
-
-
-    st.subheader('Benchmark forecasts')
-    st.write('Compare your forecasts against other solutions')
-    
-    if st.button('Benchmark'):
-        benchmark = pd.read_csv(st.session_state.file_benchmark)
-        st.dataframe(benchmark)
-
-    st.subheader('Plot forecasts')
-
-    if st.button('Plot forecasts'):
-        forecast = pd.read_csv(st.session_state.file_forecast)
-        forecast.rename({'y_pred': 'Nixtla'}, axis=1, inplace=True)
-        target = pd.read_csv(st.session_state.file_target)
-        uids = ['FOODS_3_638_TX_1', 'HOBBIES_2_038_WI_1',
-                'HOBBIES_1_191_TX_3', 'FOODS_3_780_TX_2']
-        fig = plot_grid_prediction(target, 
-                                   forecast,
-                                   models=['Nixtla'],
-                                   plot_random=False,
-                                   unique_ids=uids)
-        st.pyplot(fig)
-
+        
 if __name__ == '__main__':
     main()
