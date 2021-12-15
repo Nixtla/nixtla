@@ -113,17 +113,25 @@ def main():
     #                                     help='Local file with temporal exogenous variables')
     #filename_static = st.file_uploader('Enter static exogenous file',
     #                                   help='Local file wih static exogenous variables')
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        unique_id_column = st.text_input('Enter unique_id column', value='item_id')
 
-    unique_id_column = st.text_input('Enter unique_id column', value='item_id')
-    ds_column = st.text_input('Enter date column', value='timestamp')
-    y_column = st.text_input('Enter target column', value='demand')
+    with col2:
+        ds_column = st.text_input('Enter date column', value='timestamp')
+
+    with col3:
+        y_column = st.text_input('Enter target column', value='demand')
 
     columns = dict(unique_id_column=unique_id_column,
                    ds_column=ds_column,
                    y_column=y_column)
 
-    freq = st.text_input('Enter frequency of your data', value='D')
-    horizon = st.text_input('Enter horizon to forecast', value=28)
+    col1, col2, = st.columns(2)
+    with col1:
+        freq = st.text_input('Enter frequency of your data', value='D')
+    with col2:
+        horizon = st.text_input('Enter horizon to forecast', value=28)
 
     add_calendar = st.checkbox('Add calendar variables')
     if add_calendar:
@@ -150,6 +158,7 @@ def main():
 
         st.write(response_forecast)
 
+
     st.subheader('Get status')
     st.write('Check the progress of your job')
     if st.button('Get status'):
@@ -157,13 +166,33 @@ def main():
             status = autotimeseries.get_status(st.session_state.id_job)
         st.write(status)
 
-    st.subheader('Download results')
-    st.write('Get your forecasts in csv format')
-    forecast = pd.read_csv(st.session_state.file_forecast)
-    #st.dataframe(forecast)
-    st.download_button('Download data', 
-                       data=forecast.to_csv(),
-                       file_name='forecast.csv')
+    st.subheader('Export results')
+
+    col1, col2, col3= st.columns(3)
+    with col1:
+        st.image('https://es.seaicons.com/wp-content/uploads/2015/10/File-CSV-icon.png')
+        st.write('Download in csv format')
+        forecast = pd.read_csv(st.session_state.file_forecast)
+        #st.dataframe(forecast)
+        st.download_button('Download data', 
+                        data=forecast.to_csv(),
+                        file_name='forecast.csv')
+    with col2:
+        st.image('https://www.iconhot.com/icon/png/rrze/720/database-postgres.png')
+        st.write('Export to Postgress')
+        forecast = pd.read_csv(st.session_state.file_forecast)
+        #st.dataframe(forecast)
+        st.download_button('Postgress', 
+                        data=forecast.to_csv(),
+                        file_name='forecast.csv')
+    with col3:
+        st.image('https://basededatosparadummies.files.wordpress.com/2019/02/forbidden.png')
+        st.write('Connect with System')
+        forecast = pd.read_csv(st.session_state.file_forecast)
+        #st.dataframe(forecast)
+        st.download_button('Oracle', 
+                        data=forecast.to_csv(),
+                        file_name='forecast.csv')
 
 
     st.subheader('Benchmark forecasts')
