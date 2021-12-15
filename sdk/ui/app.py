@@ -22,7 +22,7 @@ To consume the APIs on our own infrastructure just request tokens by sending an 
 
 """
 
-def plot_grid_prediction(y, plot_random=True, unique_ids=None):
+def plot_grid_prediction(y, y_hat, models, plot_random=True, unique_ids=None):
     """
     y: pandas df
         panel with columns unique_id, ds, y
@@ -45,12 +45,12 @@ def plot_grid_prediction(y, plot_random=True, unique_ids=None):
 
     for i, (idx, idy) in enumerate(product(range(4), range(1))):
         y_uid = y[y.unique_id == unique_ids[i]]
-        #y_uid_hat = y_hat[y_hat.unique_id == unique_ids[i]]
+        y_uid_hat = y_hat[y_hat.unique_id == unique_ids[i]]
 
-        axes[idx].plot(y_uid.ds, y_uid.y_pred, label = 'y', marker='.')
+        axes[idx].plot(y_uid.ds, y_uid.y, label = 'y', marker='.')
         plt.subplots_adjust(hspace = 1)
-        #for model in models:
-        #    axes[idx].plot(y_uid_hat.ds, y_uid_hat[model], label=model, marker='.')
+        for model in models:
+            axes[idx].plot(y_uid_hat.ds, y_uid_hat[model], label=model, marker='.')
         axes[idx].set_title(unique_ids[i])
         axes[idx].legend(loc='upper left')
         axes[idx].tick_params(axis='x', rotation=90, length=5)
@@ -62,8 +62,18 @@ def read_forecasts(autotimeseries):
     save_dest.mkdir(exist_ok=True)
     filename_output = str(save_dest / 'forecasts.csv')
 
-    autotimeseries.download_from_s3(filename='forecasts_2021-10-12_21-50-08.csv',
-                                    filename_output=filename_output)
+    #autotimeseries.download_from_s3(filename='forecasts_2021-10-12_21-50-08.csv',
+    #                                filename_output=filename_output)
+
+    return filename_output
+
+def read_target(autotimeseries):
+    save_dest = Path('downloads')
+    save_dest.mkdir(exist_ok=True)
+    filename_output = str(save_dest / 'target.csv')
+
+    #autotimeseries.download_from_s3(filename='target.csv',
+    #                                filename_output=filename_output)
 
     return filename_output
 
@@ -72,8 +82,8 @@ def read_benchmarks(autotimeseries):
     save_dest.mkdir(exist_ok=True)
     filename_output = str(save_dest / 'benchmarks.csv')
 
-    autotimeseries.download_from_s3(filename='benchmarks.csv',
-                                    filename_output=filename_output)
+    #autotimeseries.download_from_s3(filename='benchmarks.csv',
+    #                                filename_output=filename_output)
 
     return filename_output
 
@@ -93,15 +103,16 @@ def main():
     
     st.session_state.file_forecast = read_forecasts(autotimeseries)
     st.session_state.file_benchmark = read_benchmarks(autotimeseries)
+    st.session_state.file_target = read_target(autotimeseries)
 
     st.subheader('Forecast your data')
 
     filename_target = st.file_uploader('Enter target file', 
                                        help='Local file with the time series you want to forecast')
-    filename_temporal = st.file_uploader('Enter temporal exogenous file',
-                                         help='Local file with temporal exogenous variables')
-    filename_static = st.file_uploader('Enter static exogenous file',
-                                       help='Local file wih static exogenous variables')
+    #filename_temporal = st.file_uploader('Enter temporal exogenous file',
+    #                                     help='Local file with temporal exogenous variables')
+    #filename_static = st.file_uploader('Enter static exogenous file',
+    #                                   help='Local file wih static exogenous variables')
 
     unique_id_column = st.text_input('Enter unique_id column', value='item_id')
     ds_column = st.text_input('Enter date column', value='timestamp')
@@ -117,12 +128,13 @@ def main():
     add_calendar = st.checkbox('Add calendar variables')
     if add_calendar:
         st.text_input('Enter country', value='USA')
+    add_static = st.checkbox('Add static exogenous variables')
 
     if st.button('Forecast'):
         with st.spinner('Uploading data'):
             filename_target_u = autotimeseries.upload_to_s3(filename_target.name)
-            filename_temporal_u = autotimeseries.upload_to_s3(filename_temporal.name)
-            filename_static_u = autotimeseries.upload_to_s3(filename_static.name)
+            filename_temporal_u = 'temporal.parquet'#autotimeseries.upload_to_s3(filename_temporal.name)
+            filename_static_u = 'static.parquet'#autotimeseries.upload_to_s3(filename_static.name)
         
         with st.spinner('Calling Nixtla API'):
             response_forecast = autotimeseries.tsforecast(filename_target=filename_target_u,
@@ -147,10 +159,7 @@ def main():
 
     st.subheader('Download results')
     st.write('Get your forecasts in csv format')
-    if st.session_state.file_forecast == '':
-        forecast = pd.DataFrame()
-    else:
-        forecast = pd.read_csv(st.session_state.file_forecast)
+    forecast = pd.read_csv(st.session_state.file_forecast)
     #st.dataframe(forecast)
     st.download_button('Download data', 
                        data=forecast.to_csv(),
@@ -161,17 +170,22 @@ def main():
     st.write('Compare your forecasts against other solutions')
     
     if st.button('Benchmark'):
-        if st.session_state.file_benchmark == '':
-            benchmark = pd.DataFrame()
-        else:
-            benchmark = pd.read_csv(st.session_state.file_benchmark)
+        benchmark = pd.read_csv(st.session_state.file_benchmark)
         st.dataframe(benchmark)
 
     st.subheader('Plot forecasts')
 
     if st.button('Plot forecasts'):
-        forecast = pd.read_csv('downloads/forecasts.csv')
-        fig = plot_grid_prediction(forecast)
+        forecast = pd.read_csv(st.session_state.file_forecast)
+        forecast.rename({'y_pred': 'Nixtla'}, axis=1, inplace=True)
+        target = pd.read_csv(st.session_state.file_target)
+        uids = ['FOODS_3_638_TX_1', 'HOBBIES_2_038_WI_1',
+                'HOBBIES_1_191_TX_3', 'FOODS_3_780_TX_2']
+        fig = plot_grid_prediction(target, 
+                                   forecast,
+                                   models=['Nixtla'],
+                                   plot_random=False,
+                                   unique_ids=uids)
         st.pyplot(fig)
 
 if __name__ == '__main__':
