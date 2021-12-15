@@ -62,8 +62,8 @@ def read_forecasts(autotimeseries):
     save_dest.mkdir(exist_ok=True)
     filename_output = str(save_dest / 'forecasts.csv')
 
-    #autotimeseries.download_from_s3(filename='forecasts_2021-10-12_21-50-08.csv',
-    #                                filename_output=filename_output)
+    autotimeseries.download_from_s3(filename='forecasts_2021-10-12_21-50-08.csv',
+                                    filename_output=filename_output)
 
     return filename_output
 
@@ -72,8 +72,8 @@ def read_target(autotimeseries):
     save_dest.mkdir(exist_ok=True)
     filename_output = str(save_dest / 'target.csv')
 
-    #autotimeseries.download_from_s3(filename='target.csv',
-    #                                filename_output=filename_output)
+    autotimeseries.download_from_s3(filename='target.csv',
+                                    filename_output=filename_output)
 
     return filename_output
 
@@ -82,8 +82,8 @@ def read_benchmarks(autotimeseries):
     save_dest.mkdir(exist_ok=True)
     filename_output = str(save_dest / 'benchmarks.csv')
 
-    #autotimeseries.download_from_s3(filename='benchmarks.csv',
-    #                                filename_output=filename_output)
+    autotimeseries.download_from_s3(filename='benchmarks.csv',
+                                    filename_output=filename_output)
 
     return filename_output
 
