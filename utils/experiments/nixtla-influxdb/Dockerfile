@@ -1,6 +1,11 @@
 FROM telegraf
 
-FROM continuumio/miniconda3:4.7.12
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    bash Miniconda3-latest-Linux-x86_64.sh -p /miniconda -b  && \
+    rm -rf Miniconda3-latest-Linux-x86_64.sh
+
+ENV PATH=/miniconda/bin:${PATH}
+RUN conda update -y conda
 
 ADD ./environment.yml ./environment.yml
 
