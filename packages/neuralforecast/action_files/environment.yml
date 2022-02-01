@@ -1,0 +1,25 @@
+name: neuralforecast
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - hyperopt
+  - matplotlib
+  - numba
+  - pandas
+  - pip
+  - pytorch
+  - requests
+  - statsmodels
+  - scikit-learn
+  - tqdm
+  - xlrd
+  - openpyxl
+  - pip:
+    - nbdev
+    - pytorch-lightning>=1.3.0
+    - torchinfo
+    - py7zr
+    - gdown
+    - jupyterlab
