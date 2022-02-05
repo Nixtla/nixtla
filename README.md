@@ -1,5 +1,3 @@
-<img align"center" src="https://github.com/Nixtla/nixtla/blob/main/utils/logos%20-01.png">
-
 # Nixtla
 > Nixtla is an open-source time series forecasting library.
 
