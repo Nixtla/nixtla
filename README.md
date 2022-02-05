@@ -1,33 +1,64 @@
-# Nixtla
-> Nixtla is an open-source time series forecasting library.
 
-We are helping data scientists and developers to have access to open source state-of-the-art forecasting pipelines. For that purpose, we built a complete pipeline that can be deployed in the cloud using AWS and consumed via APIs or consumed as a service. If you want to set up your own infrastructure, follow the instructions in the repository (Azure coming soon). With our Infrastructure as Code written in Terraform, you can deploy our solution in minutes without much effort.
 
+<div align="center">
+<h1> 
+Open source time series forecasting suite  
+</h1>
+<img src="utils/misc/BannerGit.png">
+
+[Features](#Features) •
+[Where](#How?) •
+[Getting Started ](#Getting-Started-(SDK))
+
+</div >
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4)
+
+Open-source time-series pipeline capable of achieving 1% of the performance in the [M5 competition](https://en.wikipedia.org/wiki/Makridakis_Competitions). 
+
+Our open-source solution has a 25% better accuracy than Amazon Forecast and is 20% more accurate than fbprophet. It also performs 4x faster than Amazon Forecast and is less expensive.
+
+Read this [Medium Post](https://aws.plainenglish.io/automated-time-series-forecasting-pipeline-662e0feadd98) for a Step-by-Step guide .
+
+
+## 🧰 Features 
+
+>[tspreprocess](#tspreprocess) to preprocess time-series data such as missing values imputation
+
+>[tsfeatures](#tsfeatures) to generate features to include in the models, 
+
+>[tsforecast](#tsforecast) to perform forecast at scale
+
+>[tsbenchmarks](#tsbenchmarks) to easily calculate accuracy baselines.
+
+>[NeurosalForecast](github.com/nixtla/neuralforecast)
+
+
+## ✨ Purpose?
+Help data scientists and developers to have access to open source state-of-the-art forecasting pipelines. 
+
+## How?
+We built a complete pipeline that can be deployed in the cloud ☁️  using AWS and consumed via APIs or consumed as a service. 
+
+### Build your own Infra [![Terraform](https://img.shields.io/badge/terraform-%235835CC.svg?style=for-the-badge&logo=terraform&logoColor=white)](#Build-your-own-Nixtla-in-AWS)
+If you want to set up your own infrastructure, follow the instructions in the repository (Azure coming soon). With our Infrastructure as Code written in Terraform, you can deploy our solution in minutes without much effort.
+
+### Use our APIs [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4)
 You can use our fully hosted version as a service through our [python SDK](https://github.com/Nixtla/nixtla/tree/main/sdk/) ([autotimeseries](https://pypi.org/project/autotimeseries/)). To consume the APIs on our own infrastructure just request tokens by sending an email to federico@nixtla.io or opening a GitHub issue. **We currently have free resources available for anyone interested.**
 
-We built a fully open-source time-series pipeline capable of achieving 1% of the performance in the [M5 competition](https://en.wikipedia.org/wiki/Makridakis_Competitions). Our open-source solution has a 25% better accuracy than Amazon Forecast and is 20% more accurate than fbprophet. It also performs 4x faster than Amazon Forecast and is less expensive.
 
-To reproduce the results: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4) or you can read this [Medium Post](https://aws.plainenglish.io/automated-time-series-forecasting-pipeline-662e0feadd98).
 
-At Nixtla we strongly believe in open-source, so we have released all the necessary code to set up your own time-series processing service in the cloud (using AWS, Azure is WIP). This repository uses continuous integration and deployment to deploy the APIs on our infrastructure.
-
-# Python SDK Basic Usage
+# Getting Started (SDK)
 [![CI python sdk](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml)
 
-## Install
+Check the following [example](https://github.com/Nixtla/autotimeseries/tree/main/examples/m5) for a full pipeline:
 
-### PyPI
-
+>Install with
 `pip install autotimeseries`
 
-## How to use
 
-Check the following examples for a full pipeline:
-
-- [M5 state-of-the-art reproduction](https://github.com/Nixtla/autotimeseries/tree/main/examples/m5).
-- [M5 state-of-the-art reproduction in Colab](https://colab.research.google.com/drive/1pmp4rqiwiPL-ambxTrJGBiNMS-7vm3v6?ts=616700c4)
-
-### Basic usage
+<details>
+ <summary markdown="span">Import libraries and config AWS </summary>
 
 ```python
 import os
@@ -40,8 +71,11 @@ autotimeseries = AutoTS(bucket_name=os.environ['BUCKET_NAME'],
                         aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
                         aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
 ```
+</details>
 
-#### Upload dataset to S3
+<details>
+
+<summary> Upload dataset to S3 </summary>
 
 ```python
 train_dir = '../data/m5/parquet/train'
@@ -53,6 +87,7 @@ filename_static = autotimeseries.upload_to_s3(f'{train_dir}/static.parquet')
 filename_temporal = autotimeseries.upload_to_s3(f'{train_dir}/temporal.parquet')
 ```
 
+
 Each time series of the uploaded datasets is defined by the column `item_id`. Meanwhile the time column is defined by `timestamp` and the target column by `demand`. We need to pass this arguments to each call.
 
 ```python
@@ -60,8 +95,10 @@ columns = dict(unique_id_column='item_id',
                ds_column='timestamp',
                y_column='demand')
 ```
+</details>
 
-#### Send the job to make forecasts
+<details>
+<summary> Send the job to make forecasts and Download </summary>
 
 ```python
 response_forecast = autotimeseries.tsforecast(filename_target=filename_target,
@@ -80,6 +117,7 @@ response_forecast = autotimeseries.tsforecast(filename_target=filename_target,
 ```python
 autotimeseries.download_from_s3(filename='forecasts_2021-10-12_19-04-32.csv', filename_output='../data/forecasts.csv')
 ```
+</details>
 
 
 # Forecasting Pipeline as a Service
@@ -127,7 +165,7 @@ These APIs, written in Python and can be consumed through an [SDK](https://githu
 
 <img src="https://raw.githubusercontent.com/Nixtla/nixtla/main/.github/images/sdk.png">
 
-# Build your own time-series processing service using AWS
+# Build your own Nixtla in AWS
 
 ## Why ?
 We want to contribute to open source and help data scientists and developers to achieve great forecasting results without the need to implement complex pipelines.
