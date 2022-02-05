@@ -6,6 +6,15 @@
   "commit": false,
   "contributors": [
     {
+      "login": "mergenthaler",
+      "name": "mergenthaler",
+      "avatar_url": "https://avatars.githubusercontent.com/u/4086186?v=4",
+      "profile": "https://github.com/mergenthaler",
+      "contributions": [
+        "ideas"
+      ]
+    },
+    {
       "login": "FedericoGarza",
       "name": "fede",
       "avatar_url": "https://avatars.githubusercontent.com/u/10517170?v=4",
