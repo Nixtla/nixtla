@@ -1,0 +1,24 @@
+{
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "contributors": [
+    {
+      "login": "KielRodriguez",
+      "name": "Kiel Rodríguez",
+      "avatar_url": "https://avatars.githubusercontent.com/u/5693853?v=4",
+      "profile": "http://www.kielrodriguez.com/",
+      "contributions": [
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "projectName": "nixtla",
+  "projectOwner": "Nixtla",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "skipCi": true
+}
