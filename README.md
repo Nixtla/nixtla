@@ -29,7 +29,7 @@ Read this [Medium Post](https://aws.plainenglish.io/automated-time-series-foreca
 
 >[tsbenchmarks](#tsbenchmarks) to easily calculate accuracy baselines.
 
->[NeurosalForecast](github.com/nixtla/neuralforecast)
+>[NeurosalForecast](github.com/nixtla/neuralforecast) for state of the art deap learning models
 
 
 ## ✨ Purpose?
