@@ -1,8 +1,3 @@
-
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-2-orange.svg?style=flat-square)](#contributors-)
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
-
 <div align="center">
 <h1> 
 Open source time series forecasting suite  
@@ -34,7 +29,7 @@ Read this [Medium Post](https://aws.plainenglish.io/automated-time-series-foreca
 
 >[tsbenchmarks](#tsbenchmarks) to easily calculate accuracy baselines.
 
->[NeurosalForecast](github.com/nixtla/neuralforecast)
+>[NeurosalForecast](github.com/nixtla/neuralforecast) for state of the art deap learning models
 
 
 ## ✨ Purpose?
@@ -287,6 +282,9 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 <table>
   <tr>
     <td align="center"><a href="https://github.com/mergenthaler"><img src="https://avatars.githubusercontent.com/u/4086186?v=4?s=100" width="100px;" alt=""/><br /><sub><b>mergenthaler</b></sub></a><br /><a href="#ideas-mergenthaler" title="Ideas, Planning, & Feedback">🤔</a> <a href="https://github.com/Nixtla/nixtla/commits?author=mergenthaler" title="Code">💻</a></td>
+    <td align="center"><a href="http://www.kielrodriguez.com/"><img src="https://avatars.githubusercontent.com/u/5693853?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Kiel Rodríguez</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=KielRodriguez" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/kdgutier"><img src="https://avatars.githubusercontent.com/u/19935241?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Kin</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=kdgutier" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/mergenthaler"><img src="https://avatars.githubusercontent.com/u/4086186?v=4?s=100" width="100px;" alt=""/><br /><sub><b>mergenthaler</b></sub></a><br /><a href="#ideas-mergenthaler" title="Ideas, Planning, & Feedback">🤔</a></td>
     <td align="center"><a href="https://github.com/FedericoGarza"><img src="https://avatars.githubusercontent.com/u/10517170?v=4?s=100" width="100px;" alt=""/><br /><sub><b>fede</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=FedericoGarza" title="Code">💻</a></td>
   </tr>
 </table>
