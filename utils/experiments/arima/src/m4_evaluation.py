@@ -16,11 +16,16 @@ def evaluate(lib: str, group: str):
         horizon = M4Info[group].horizon
         if lib == 'statsforecast':
             col = 'auto_arima_nixtla'
+        elif lib == 'prophet':
+            col = 'prophet'
         else:
             col = 'auto_arima_pmdarima'
         forecast = forecast[col].values.reshape(-1, horizon)
     else:
-        forecast = np.loadtxt(f'data/{lib}-forecasts-M4-{group}.txt')
+        try:
+            forecast = np.loadtxt(f'data/{lib}-forecasts-M4-{group}.txt')
+        except:
+            return None
     evals = M4Evaluation.evaluate('data', group, forecast)
     times = pd.read_csv(f'data/{lib}-time-M4-{group}.csv')
     evals = evals.rename_axis('dataset').reset_index()
@@ -32,7 +37,7 @@ def evaluate(lib: str, group: str):
 if __name__ == '__main__':
     groups = ['Monthly', 'Quarterly', 'Yearly', 'Hourly', 'Weekly', 'Daily']
     groups = ['Weekly', 'Hourly', 'Daily']
-    lib = ['statsforecast', 'arima-r', 'pmdarima']
+    lib = ['statsforecast', 'arima-r', 'pmdarima', 'prophet']
     evaluation = [evaluate(lib, group) for lib, group in product(lib, groups)]
     evaluation = [eval_ for eval_ in evaluation if eval_ is not None]
     evaluation = pd.concat(evaluation).sort_values(['dataset', 'model']).reset_index(drop=True)
