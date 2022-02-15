@@ -9,7 +9,10 @@ from src.data import get_data
 
 def evaluate(lib: str, group: str):
     if lib != 'arima-r':
-        forecast = pd.read_csv(f'data/{lib}-forecasts-M4-{group}.csv')
+        try:
+            forecast = pd.read_csv(f'data/{lib}-forecasts-M4-{group}.csv')
+        except:
+            return None
         horizon = M4Info[group].horizon
         if lib == 'statsforecast':
             col = 'auto_arima_nixtla'
@@ -28,9 +31,10 @@ def evaluate(lib: str, group: str):
 
 if __name__ == '__main__':
     groups = ['Monthly', 'Quarterly', 'Yearly', 'Hourly', 'Weekly', 'Daily']
-    groups = ['Weekly', 'Hourly']
-    lib = ['statsforecast', 'arima-r']#, 'pmdarima']
+    groups = ['Weekly', 'Hourly', 'Daily']
+    lib = ['statsforecast', 'arima-r', 'pmdarima']
     evaluation = [evaluate(lib, group) for lib, group in product(lib, groups)]
+    evaluation = [eval_ for eval_ in evaluation if eval_ is not None]
     evaluation = pd.concat(evaluation).sort_values(['dataset', 'model']).reset_index(drop=True)
 
     evaluation.to_csv('data/m4-evaluation.csv')
