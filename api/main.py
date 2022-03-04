@@ -81,31 +81,16 @@ def compute_calendartsfeatures(s3_args: S3Args, args: CalendarTSFeaturesArgs):
     return sagemaker_response
 
 
-class LGBArgs(BaseModel):
-    """Arguments fo LGB Model."""
-    objective: Optional[str] = 'l2'
-    metric: Optional[str] = 'rmse'
-    learning_rate: Optional[float] = 0.1
-    n_estimators: Optional[int] = 100
-    num_leaves: Optional[int] = 128
-    min_data_in_leaf: Optional[int] = 20
-    bagging_freq: Optional[int] = 0
-    bagging_fraction: Optional[float] = 1.
-
 class TSForecastDataArgs(BaseArgs):
     """Data Arguments for LGB model."""
     freq: str
+    seasonality: int
     horizon: int = 28
-    backtest_windows: Optional[int] = None
-    naive_forecast: Optional[bool] = False
-    filename_static: Optional[str] = None
-    filename_temporal: Optional[str] = None
    
 @app.post('/tsforecast')
-def compute_tsforecast(s3_args: S3Args, data_args: TSForecastDataArgs,
-                       model_args: LGBArgs):
+def compute_tsforecast(s3_args: S3Args, data_args: TSForecastDataArgs):
     """calculates forecast using sagemaker."""
-    args = parse_args(data_args) + parse_args(model_args)
+    args = parse_args(data_args)
     args += ['--dir-train', '/opt/ml/processing/input']
     args += ['--dir-output', '/opt/ml/processing/output']
 
