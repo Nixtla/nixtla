@@ -1,6 +1,7 @@
-IMAGE := tsforecast
+IMAGE := nixtla-influxdb
 ROOT := $(shell dirname $(realpath $(firstword ${MAKEFILE_LIST})))
 PARENT_ROOT := $(shell dirname ${ROOT})
+PORT := 8888
 
 DOCKER_PARAMETERS := \
 	--user $(shell id -u) \
@@ -11,18 +12,18 @@ DOCKER_PARAMETERS := \
 init:
 	docker build -t ${IMAGE} .
 
+get_dataset:
+	mkdir -p dataset/ && \
+		wget https://raw.githubusercontent.com/influxdata/tg-brew-anomaly/master/data/temps.txt.gz -O dataset/temps.txt.gz && \
+		gunzip dataset/temps.txt.gz 
+
 run_module: .require-module
 	docker run -i --rm ${DOCKER_PARAMETERS} \
-		-v ${PARENT_ROOT}/data/:/opt/ml/input/data/train/ \
-		-v ${PARENT_ROOT}/data/output/:/opt/ml/output/data/ \
 		${IMAGE} ${module}
 
-test_tsforecast: 
-	$(MAKE) run_module \
-		module="python /opt/ml/code/train.py --filename train/target-dummy.parquet \
-			--unique-id-column item_id \
-			--ds-column timestamp \
-			--y-column demand"
+jupyter:
+	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
+		bash -c "jupyter lab --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
 
 .require-module:
 ifndef module
