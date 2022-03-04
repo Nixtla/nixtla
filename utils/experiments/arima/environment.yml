@@ -1,0 +1,32 @@
+name: arima
+channels:
+  - conda-forge
+  - defaults
+  - anaconda
+dependencies:
+  - python=3.7
+  - pip==20.3.3
+  - numpy==1.21.4
+  - prophet
+  - numba
+  - r-base==3.6.3
+  - r-feasts
+  - r-tsibble
+  - r-fable
+  - r-urca
+  - r-tidyverse
+  - r-future
+  - r-future.apply
+  - r-forecast
+  - r-furrr
+  - tabulate
+  - scikit-learn
+  - mlforecast
+  - pmdarima
+  - fire
+  - pip:
+    - neuralforecast
+    - statsforecast
+    - lightgbm==3.2.1
+    - jupyterlab
+    - nbdev
