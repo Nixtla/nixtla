@@ -47,7 +47,7 @@ nb_path: "nbs/core.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="AutoTS" class="doc_header"><code>class</code> <code>AutoTS</code><a href="https://github.com/Nixtla/autotimeseries/tree/main/autotimeseries/core.py#L19" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>AutoTS</code>(<strong><code>bucket_name</code></strong>:<code>str</code>, <strong><code>api_id</code></strong>:<code>str</code>, <strong><code>api_key</code></strong>:<code>str</code>, <strong><code>aws_access_key_id</code></strong>:<code>str</code>, <strong><code>aws_secret_access_key</code></strong>:<code>str</code>)</p>
+<h2 id="AutoTS" class="doc_header"><code>class</code> <code>AutoTS</code><a href="https://github.com/Nixtla/nixtla/tree/main/sdk/python-autotimeseriesautotimeseries/core.py#L19" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>AutoTS</code>(<strong><code>bucket_name</code></strong>:<code>str</code>, <strong><code>api_id</code></strong>:<code>str</code>, <strong><code>api_key</code></strong>:<code>str</code>, <strong><code>aws_access_key_id</code></strong>:<code>str</code>, <strong><code>aws_secret_access_key</code></strong>:<code>str</code>)</p>
 </blockquote>
 <p>Compute time series features at scale.
 Send an email to fede.garza.ramirez@gmail.com to request access.</p>
@@ -128,6 +128,19 @@ aws_secret_access_key: str
 </div>
 </div>
 
+<div class="output_wrapper">
+<div class="output">
+
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[==================================================]</pre>
+</div>
+</div>
+
+</div>
+</div>
+
 </div>
     {% endraw %}
 
@@ -151,7 +164,7 @@ aws_secret_access_key: str
 <div class="output_area">
 
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>target.parquet
+<pre>target-1.parquet
 static.parquet
 temporal.parquet
 </pre>
@@ -311,31 +324,6 @@ temporal.parquet
 
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">response_forecast</span> <span class="o">=</span> <span class="n">autotimeseries</span><span class="o">.</span><span class="n">tsforecast</span><span class="p">(</span><span class="n">filename_target</span><span class="o">=</span><span class="n">filename_target</span><span class="p">,</span>
-                                              <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;D&#39;</span><span class="p">,</span>
-                                              <span class="n">horizon</span><span class="o">=</span><span class="mi">28</span><span class="p">,</span> 
-                                              <span class="n">filename_static</span><span class="o">=</span><span class="n">filename_static</span><span class="p">,</span> 
-                                              <span class="n">filename_temporal</span><span class="o">=</span><span class="s1">&#39;calendar-features.parquet&#39;</span><span class="p">,</span>
-                                              <span class="n">objective</span><span class="o">=</span><span class="s1">&#39;tweedie&#39;</span><span class="p">,</span>
-                                              <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;rmse&#39;</span><span class="p">,</span>
-                                              <span class="n">n_estimators</span><span class="o">=</span><span class="mi">170</span><span class="p">,</span>
-                                              <span class="o">**</span><span class="n">columns</span><span class="p">)</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
 <div class=" highlight hl-ipython3"><pre><span></span><span class="n">response_forecast</span>
 </pre></div>
 
@@ -351,73 +339,10 @@ temporal.parquet
 
 
 <div class="output_text output_subarea output_execute_result">
-<pre>{&#39;id_job&#39;: &#39;32af92e4-d6ce-49e6-9eb1-98b7a5bb58c1&#39;,
- &#39;dest_url&#39;: &#39;s3://nixtla-user-test/forecasts.csv&#39;,
+<pre>{&#39;id_job&#39;: &#39;736ffa02-763d-4554-bcea-8a62a7081a70&#39;,
+ &#39;dest_url&#39;: &#39;s3://m5example/forecasts.csv&#39;,
  &#39;status&#39;: 200,
  &#39;message&#39;: &#39;Check job status at GET /jobs/{job_id}&#39;}</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-    {% endraw %}
-
-    {% raw %}
-    
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-ipython3"><pre><span></span><span class="n">autotimeseries</span><span class="o">.</span><span class="n">get_status</span><span class="p">(</span><span class="n">response_forecast</span><span class="p">[</span><span class="s1">&#39;id_job&#39;</span><span class="p">])</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-<div class="output_area">
-
-<div class="output_subarea output_stream output_stdout output_text">
-<pre>File written...
-Writing forecasts...
-Done
-[160]#011train&#39;s rmse: 2.43179#011valid&#39;s rmse: 2.40628
-[140]#011train&#39;s rmse: 2.44148#011valid&#39;s rmse: 2.41407
-[120]#011train&#39;s rmse: 2.45217#011valid&#39;s rmse: 2.42326
-[100]#011train&#39;s rmse: 2.46383#011valid&#39;s rmse: 2.43394
-[80]#011train&#39;s rmse: 2.47793#011valid&#39;s rmse: 2.44711
-[60]#011train&#39;s rmse: 2.49882#011valid&#39;s rmse: 2.46724
-[40]#011train&#39;s rmse: 2.5633#011valid&#39;s rmse: 2.53035
-[20]#011train&#39;s rmse: 3.07992#011valid&#39;s rmse: 3.05776
-[LightGBM] [Warning] bagging_fraction is set=1.0, subsample=1.0 will be ignored. Current value: bagging_fraction=1.0
-[LightGBM] [Warning] min_data_in_leaf is set=20, min_child_samples=20 will be ignored. Current value: min_data_in_leaf=20
-[LightGBM] [Warning] bagging_freq is set=0, subsample_freq=0 will be ignored. Current value: bagging_freq=0
-Starting training
-Done
-Starting preprocessing
-Done
-Done
-Processing temporal features
-Processing static features
-Reading file...
-File read.
-</pre>
-</div>
-</div>
-
-<div class="output_area">
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>{&#39;status&#39;: &#39;Completed&#39;, &#39;processing_time_seconds&#39;: 908}</pre>
 </div>
 
 </div>

@@ -332,17 +332,8 @@ class AutoTS:
     def tsforecast(self,
                    filename_target: str,
                    freq: str,
+                   seasonality: int,
                    horizon: int,
-                   filename_static: str,
-                   filename_temporal: str,
-                   objective: Optional[str] = 'tweedie',
-                   metric: Optional[str] = 'tweedie',
-                   learning_rate: Optional[float] = 0.1,
-                   n_estimators: Optional[int] = 100,
-                   num_leaves: Optional[int] = 128,
-                   min_data_in_leaf: Optional[int] = 20,
-                   bagging_freq: Optional[int] = 0,
-                   bagging_fraction: Optional[float] = 1.,
                    unique_id_column: str = 'unique_id',
                    ds_column: str = 'ds',
                    y_column: str = 'y') -> Dict:
@@ -361,10 +352,6 @@ class AutoTS:
             Only 'D' supported.
         horizon: int
             Forcast horizon.
-        filename_static: str
-            Filename of the dataset with static features.
-        filename_temporal: str
-            Filename of the dataset with temporal features.
         unique_id_column: str
             Column name identifying each time series.
         ds_column: str
@@ -379,22 +366,11 @@ class AutoTS:
             data_args = dict(
                 filename=filename_target,
                 freq=freq,
+                seasonality=seasonality,
                 horizon=horizon,
-                filename_static=filename_static,
-                filename_temporal=filename_temporal,
                 unique_id_column=unique_id_column,
                 ds_column=ds_column,
                 y_column=y_column,
-            ),
-            model_args = dict(
-                objective=objective,
-                metric=metric,
-                learning_rate=learning_rate,
-                n_estimators=n_estimators,
-                num_leaves=num_leaves,
-                min_data_in_leaf=min_data_in_leaf,
-                bagging_freq=bagging_freq,
-                bagging_fraction=bagging_fraction,
             )
         )
 
@@ -469,16 +445,16 @@ class AutoTS:
         """Waits untile `job_id` is done and prints logs."""
         sys.stdout.write(
             """
-            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-            @@@@.####.@@(.@@/((((.@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-            @@@@@.####.&(@.,((((.@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-            @@@@@@*####....((((.@@@@@@@@@@..*@@@@@@@.@@@@@@@@/.@@@@@@@@..@@@@@..@@@@@@..........@@@@@@..@@@@@@@@@@@@@@@@@.../@@@@@@@
-            @@@@@@@(###.%@.(((.@@@@@@@@@@@.@*.(@@@@@.@@@@@@@@/.@@@@@@@@@@..@..@@@@@@@@@@@@..@@@@@@@@@@..@@@@@@@@@@@@@@@@..@@.,@@@@@@
-            @@@@@@@@/#.....,(.@@@@@@@@@@@@.@@@,./@@@.@@@@@@@@/.@@@@@@@@@@@...@@@@@@@@@@@@@..@@@@@@@@@@..@@@@@@@@@@@@@@@.*@@@@..@@@@@
-            @@@@@@@(###(.%*(((.@@@@@@@@@@@.@@@@@/.(@.@@@@@@@@/.@@@@@@@@@*.@@&.,@@@@@@@@@@@..@@@@@@@@@@..@@@@@@@@@@@@@@..........@@@@
-            @@@@@@,####....((((.@@@@@@@@@@.@@@@@@@...@@@@@@@@/.@@@@@@@(./@@@@@..&@@@@@@@@@..@@@@@@@@@@......@@@@@@@@/.@@@@@@@@@,.@@@
-            @@@@@.####.@,&.,((((.@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-            @@@@.####.@@@*@@/((((.@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            @@..*@@@@@@@.@@@@@@@@/.@@@@@@@@..@@@@@..@@@@@@..........@@@@@@..@@@@@@@@@@@@@@@@@.../@@@@@@@
+            @@.@*.(@@@@@.@@@@@@@@/.@@@@@@@@@@..@..@@@@@@@@@@@@..@@@@@@@@@@..@@@@@@@@@@@@@@@@..@@.,@@@@@@
+            @@.@@@,./@@@.@@@@@@@@/.@@@@@@@@@@@...@@@@@@@@@@@@@..@@@@@@@@@@..@@@@@@@@@@@@@@@.*@@@@..@@@@@
+            @@.@@@@@/.(@.@@@@@@@@/.@@@@@@@@@*.@@&.,@@@@@@@@@@@..@@@@@@@@@@..@@@@@@@@@@@@@@..........@@@@
+            @@.@@@@@@@...@@@@@@@@/.@@@@@@@(./@@@@@..&@@@@@@@@@..@@@@@@@@@@......@@@@@@@@/.@@@@@@@@@,.@@@
+            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
             Have some coffee while you wait...
                ( (
