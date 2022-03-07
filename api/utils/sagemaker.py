@@ -61,34 +61,37 @@ def run_sagemaker(url: str, dest_url: str,
         wait=False,
         logs=False,
     )
+	try:
+		if script is not None:
+			script_processor = ScriptProcessor(
+				command=['python3'],
+				**processor_args,
+			)
 
-    if script is not None:
-        script_processor = ScriptProcessor(
-            command=['python3'],
-            **processor_args,
-        )
+			# Running job
+			script_processor.run(
+				code=script,
+				**run_args,
+			)
+		else:
+			processor = Processor(
+				entrypoint=['python', '/opt/ml/code/train.py'],
+				**processor_args,
+			)
 
-        # Running job
-        script_processor.run(
-            code=script,
-            **run_args,
-        )
-    else:
-        processor = Processor(
-            entrypoint=['python', '/opt/ml/code/train.py'],
-            **processor_args,
-        )
-
-        # Running job
-        processor.run(
-            **run_args,
-        )
+			# Running job
+			processor.run(
+				**run_args,
+			)
 
 
-    output = {'id_job': id_job,
-              'dest_url': f'{dest_url_}/{output_name}',
-              'status': 200,
-              'message': 'Check job status at GET /jobs/{job_id}'}
+		output = {'id_job': id_job,
+				  'dest_url': f'{dest_url_}/{output_name}',
+				  'status': 200,
+				  'message': 'Check job status at GET /jobs/{job_id}'}
+	except:
+		output = {'status': 403, 
+				  'message': 'This demo service is full at the moment, please try later or contact federico AT nixtla.io'}
 
     return output
 
