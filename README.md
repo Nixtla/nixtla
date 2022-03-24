@@ -29,7 +29,7 @@ Read this [Medium Post](https://aws.plainenglish.io/automated-time-series-foreca
 
 >[tsbenchmarks](#tsbenchmarks) to easily calculate accuracy baselines.
 
->[NeurosalForecast](github.com/nixtla/neuralforecast) for state of the art deap learning models
+>[NeuralForecast](https://github.com/nixtla/neuralforecast) for state of the art deap learning models
 
 
 ## ✨ Purpose?
@@ -49,7 +49,7 @@ You can use our fully hosted version as a service through our [python SDK](https
 # Getting Started (SDK)
 [![CI python sdk](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/python-sdk.yml)
 
-Check the following [example](https://github.com/Nixtla/autotimeseries/tree/main/examples/m5) for a full pipeline:
+Check the following [example](https://github.com/Nixtla/nixtla/tree/main/sdk/python-autotimeseries/examples/m5) for a full pipeline:
 
 >Install with
 `pip install autotimeseries`
@@ -149,7 +149,7 @@ With this API the user can also generate holiday variables. Just enter the count
 
 The [tsforecast](https://github.com/Nixtla/nixtla/tree/main/tsforecast) API is responsible for generating the time series forecasts. It receives as input the target data and can also receive static variables and time variables. At the moment, the API uses the [mlforecast](https://github.com/Nixtla/mlforecast) library developed by the Nixtla team using LightGBM as a model.
 
-In future iterations, the user will be able to choose different Deep Learning models based on the [nixtlats](https://github.com/Nixtla/nixtlats) library developed by the Nixtla team.
+In future iterations, the user will be able to choose different Deep Learning models based on the [NeuralForecast](https://github.com/nixtla/neuralforecast) library developed by the Nixtla team.
 
 ## tsbenchmarks
 
