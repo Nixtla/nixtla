@@ -98,13 +98,11 @@ def distance_to_holiday(holiday_dates, dates):
 
     # Compute day distance to holiday
     distance = np.expand_dims(dates_np, axis=1) - np.expand_dims(holiday_dates_np, axis=0)
+    # convert to distance in days
+    distance = distance / np.timedelta64(1, 'D')
     distance = np.abs(distance)
     distance = np.min(distance, axis=1)
-    distance[distance>183] = 365 - distance[distance>183]
-    # Convert to minutes
-    distance = distance.astype(float)
-    distance /= 6e10
-    distance = distance.astype(int)
+    distance[distance > 183] = 365 - distance[distance > 183]
 
     return distance
 
