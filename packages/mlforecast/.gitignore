@@ -144,3 +144,6 @@ dask-worker-space
 
 # gemfiles
 Gemfile*
+
+# jekyll
+.jekyll-cache
