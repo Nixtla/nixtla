@@ -2,13 +2,17 @@
 
 __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
-index = {"bottom_up": "core.ipynb",
-         "top_down": "core.ipynb",
-         "crossprod": "core.ipynb",
-         "min_trace": "core.ipynb",
-         "HierarchicalReconciliation": "core.ipynb"}
+index = {"HierarchicalReconciliation": "core.ipynb",
+         "bottom_up": "methods.ipynb",
+         "top_down": "methods.ipynb",
+         "crossprod": "methods.ipynb",
+         "min_trace": "methods.ipynb",
+         "empirical_risk_minimization": "methods.ipynb",
+         "hierarchize": "utils.ipynb"}
 
-modules = ["core.py"]
+modules = ["core.py",
+           "methods.py",
+           "utils.py"]
 
 doc_url = "https://Nixtla.github.io/hierarchicalforecast/"
 

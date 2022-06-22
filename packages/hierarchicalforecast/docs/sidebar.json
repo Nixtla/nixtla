@@ -1,6 +1,8 @@
 {
   "hierarchicalforecast": {
     "Overview": "/",
-    "Core Hierarchical ": "core.html"
+    "Core Hierarchical ": "core.html",
+    "Hierachical Reconciliation Methods": "methods.html",
+    "Utils for Hierarchical Time Series Forecasting": "utils.html"
   }
 }

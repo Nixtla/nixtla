@@ -12,6 +12,12 @@ entries:
     - output: web,pdf
       title: 'Core Hierarchical '
       url: core.html
+    - output: web,pdf
+      title: Hierachical Reconciliation Methods
+      url: methods.html
+    - output: web,pdf
+      title: Utils for Hierarchical Time Series Forecasting
+      url: utils.html
     output: web
     title: hierarchicalforecast
   output: web
