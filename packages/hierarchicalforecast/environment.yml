@@ -6,6 +6,7 @@ dependencies:
   - numpy
   - pandas
   - scikit-learn
+  - statsmodels
   - pip
   - pip:
     - nbdev
