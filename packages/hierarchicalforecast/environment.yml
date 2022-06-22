@@ -1,0 +1,11 @@
+name: hierarchicalforecast
+channels:
+  - conda-forge
+dependencies:
+  - jupyterlab
+  - numpy
+  - pandas
+  - scikit-learn
+  - pip
+  - pip:
+    - nbdev
