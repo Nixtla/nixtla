@@ -61,4 +61,4 @@ def hierarchize(df: pd.DataFrame, hiers: List[List[str]], agg_fn: Callable = np.
     y_df = df_hiers[['unique_id', 'ds', 'y']].set_index('unique_id')
     #S definition
     S = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
-    return y_df, S
+    return y_df, S, S_df
