@@ -15,7 +15,7 @@ import pandas as pd
 from numba import njit
 from window_ops.shift import shift_array
 
-from .utils import data_indptr_from_sorted_df, ensure_sorted
+from .utils import data_indptr_from_sorted_df
 
 # Internal Cell
 date_features_dtypes = {
@@ -308,23 +308,15 @@ class TimeSeries:
         )
         return df
 
-    def _fit(
-        self,
-        df: pd.DataFrame,
-        static_features: Optional[List[str]] = None,
-    ) -> 'TimeSeries':
-        """Save the series values, ids, last dates and static features."""
+    def _fit(self, df: pd.DataFrame) -> 'TimeSeries':
+        """Save the series values, ids and last dates."""
         data, indptr = data_indptr_from_sorted_df(df)
         if data.dtype not in (np.float32, np.float64):
             # since all transformations generate nulls, we need a float dtype
             data = data.astype(np.float32)
         self.ga = GroupedArray(data, indptr)
         self.uids = df.index.unique(level='unique_id')
-        last_obs = df.iloc[indptr[1:] - 1]
-        self.last_dates = last_obs.index.get_level_values('ds')
-        self.static_features = last_obs.reset_index('ds').drop(columns=['ds', 'y'])
-        if static_features is not None:
-            self.static_features = self.static_features[static_features]
+        self.last_dates = df.index.get_level_values('ds')[indptr[1:] - 1]
         return self
 
     def _transform(
@@ -337,10 +329,10 @@ class TimeSeries:
 
         if `dropna=True` then all the null rows are dropped.
         if `keep_last_n` is not None then that number of observations is kept across all series."""
-        df = df.reset_index('ds')
+        df = df.copy()
         features = self._compute_transforms()
         for feat in self.transforms.keys():
-            df[feat] = features[feat]
+            df[feat] = features[feat][self.restore_idxs]
 
         if dropna:
             df.dropna(inplace=True)
@@ -365,15 +357,26 @@ class TimeSeries:
     ) -> pd.DataFrame:
         """Add the features to `data` and save the required information for the predictions step.
 
-        If not all features are static, specif which ones are in `static_features`.
+        If not all features are static, specify which ones are in `static_features`.
         If you don't want to drop rows with null values after the transformations set `dropna=False`.
         If you want to keep only the last `n` values of each time serie set `keep_last_n=n`.
         """
+        if data.index.name != 'unique_id' or 'ds' not in data or 'y' not in data:
+            raise ValueError(
+                'data must have an index named unique_id and ds and y columns.'
+            )
         if data['y'].isnull().any():
             raise ValueError('y column contains null values.')
-        data = ensure_sorted(data)
-        data = data.set_index('ds', append=True)
-        self._fit(data, static_features)
+        if static_features is None:
+            static_features = data.columns.drop(['ds', 'y'])
+        self.static_features = (
+            data[static_features].reset_index().drop_duplicates().set_index('unique_id')
+        )
+        sort_idxs = pd.core.sorting.lexsort_indexer([data.index, data['ds']])
+        sorted_data = data[['ds', 'y']].set_index('ds', append=True).iloc[sort_idxs]
+        self.restore_idxs = np.empty(data.shape[0], dtype=np.int32)
+        self.restore_idxs[sort_idxs] = np.arange(data.shape[0])
+        self._fit(sorted_data)
         return self._transform(data, dropna, keep_last_n)
 
     def _predict_setup(self) -> None:

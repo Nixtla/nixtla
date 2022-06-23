@@ -77,7 +77,7 @@ ts
 
 
 
-    TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=8)
+    TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=1)
 
 
 
@@ -106,7 +106,7 @@ fcst.fit(series)
 
 
 
-    Forecast(model=RandomForestRegressor(random_state=0), ts=TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=8))
+    Forecast(model=RandomForestRegressor(random_state=0), ts=TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=1))
 
 
 
@@ -181,8 +181,7 @@ series.to_parquet(data_path/'train')
 !mlforecast sample_configs/local.yaml
 ```
 
-    Split 1 MSE: 0.0251
-    Split 2 MSE: 0.0180
+    [0m
 
 ```python
 list((data_path/'outputs').iterdir())

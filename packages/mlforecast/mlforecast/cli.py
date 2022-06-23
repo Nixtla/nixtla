@@ -30,7 +30,7 @@ def run_forecast(config_file: str):
     if config.distributed is not None:  # mypy
         client = setup_client(config.distributed.cluster)
     else:
-        client = None
+        client = None  # type: ignore
     try:
         data = read_data(config.data, is_distributed)
         dynamic_dfs = _read_dynamic(config.data)

@@ -18,7 +18,7 @@ except ImportError:
     class dd:  # type: ignore
         pass
 
-    dd_Frame = type(None)
+    dd_Frame = type(None)  # type: ignore
 
     class Client:  # type: ignore
         pass
