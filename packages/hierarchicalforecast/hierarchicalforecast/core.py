@@ -22,8 +22,8 @@ def _build_fn_name(fn) -> str:
 # Cell
 class HierarchicalReconciliation:
 
-    def __init__(self, reconcile_fns: List[Callable]):
-        self.reconcile_fns = reconcile_fns
+    def __init__(self, reconcilers: List[Callable]):
+        self.reconcilers = reconcilers
 
     def reconcile(self, Y_h: pd.DataFrame, Y_df: pd.DataFrame, S: pd.DataFrame):
         """Reconcile base forecasts.
@@ -49,7 +49,7 @@ class HierarchicalReconciliation:
             idx_bottom = [S.index.get_loc(col) for col in S.columns]
         )
         fcsts = Y_h.copy()
-        for reconcile_fn in self.reconcile_fns:
+        for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_res = 'residuals' in signature(reconcile_fn).parameters
             for model_name in model_names:
