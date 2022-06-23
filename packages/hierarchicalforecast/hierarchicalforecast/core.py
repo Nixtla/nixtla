@@ -11,26 +11,13 @@ import numpy as np
 import pandas as pd
 
 # Internal Cell
-def _build_fn_name(fn, *args, inner_args) -> str:
-    fn_name = fn.__name__
-    func_params = signature(fn).parameters
-    func_args = list(func_params.items())
-    func_args = [(name, arg) for (name, arg) in func_args if arg.name not in inner_args]
-    changed_kwargs = {
-        name: value
-        for value, (name, arg) in zip(args, func_args)
-        if arg.default != value
-    }
-    if changed_kwargs:
-        changed_params = [f'{name}-{value}' for name, value in changed_kwargs.items()]
-        fn_name += '_' + '_'.join(changed_params)
-    return fn_name, changed_kwargs
-
-# Internal Cell
-def _as_tuple(x):
-    if isinstance(x, tuple):
-        return x
-    return (x,)
+def _build_fn_name(fn) -> str:
+    fn_name = type(fn).__name__
+    func_params = fn.__dict__
+    func_params = [f'{name}-{value}' for name, value in func_params.items()]
+    if func_params:
+        fn_name += '_' + '_'.join(func_params)
+    return fn_name
 
 # Cell
 class HierarchicalReconciliation:
@@ -62,12 +49,8 @@ class HierarchicalReconciliation:
             idx_bottom = [S.index.get_loc(col) for col in S.columns]
         )
         fcsts = Y_h.copy()
-        for reconcile_fn_args in self.reconcile_fns:
-            reconcile_fn, *args = _as_tuple(reconcile_fn_args)
-            reconcile_fn_name, fn_kwargs = _build_fn_name(
-                reconcile_fn, *args,
-                inner_args=['y', 'S', 'idx_bottom', 'y_hat', 'residuals']
-            )
+        for reconcile_fn in self.reconcile_fns:
+            reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_res = 'residuals' in signature(reconcile_fn).parameters
             for model_name in model_names:
                 y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[S.index].values
@@ -75,8 +58,7 @@ class HierarchicalReconciliation:
                     common_vals['residuals'] = Y_df.pivot(columns='ds', values=model_name).loc[S.index].values.T
                 kwargs = [key for key in signature(reconcile_fn).parameters if key in common_vals.keys()]
                 kwargs = {key: common_vals[key] for key in kwargs}
-                p_reconcile_fn = partial(reconcile_fn, y_hat=y_hat_model, **kwargs)
-                fcsts_model = p_reconcile_fn(**fn_kwargs)
+                fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)
                 fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model.flatten()
                 if has_res:
                     del common_vals['residuals']

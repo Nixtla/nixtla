@@ -4,10 +4,14 @@ __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
 index = {"HierarchicalReconciliation": "core.ipynb",
          "bottom_up": "methods.ipynb",
+         "BottomUp": "methods.ipynb",
          "top_down": "methods.ipynb",
+         "TopDown": "methods.ipynb",
          "crossprod": "methods.ipynb",
          "min_trace": "methods.ipynb",
-         "empirical_risk_minimization": "methods.ipynb",
+         "MinTrace": "methods.ipynb",
+         "erm": "methods.ipynb",
+         "ERM": "methods.ipynb",
          "hierarchize": "utils.ipynb"}
 
 modules = ["core.py",
