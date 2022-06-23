@@ -55,7 +55,13 @@ class HierarchicalReconciliation:
             for model_name in model_names:
                 y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[S.index].values
                 if has_res:
-                    common_vals['residuals'] = Y_df.pivot(columns='ds', values=model_name).loc[S.index].values.T
+                    if model_name in Y_df:
+                        common_vals['residuals'] = Y_df.pivot(columns='ds', values=model_name).loc[S.index].values.T
+                    else:
+                        # some methods have the residuals argument
+                        # but they don't need them
+                        # ej MinTrace(method='ols')
+                        common_vals['residuals'] = None
                 kwargs = [key for key in signature(reconcile_fn).parameters if key in common_vals.keys()]
                 kwargs = {key: common_vals[key] for key in kwargs}
                 fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)
