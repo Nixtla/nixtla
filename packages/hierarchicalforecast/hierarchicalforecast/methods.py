@@ -17,9 +17,12 @@ def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray,
 
 # Cell
 def bottom_up(S: np.ndarray,
-              y_hat: np.ndarray):
+              y_hat: np.ndarray,
+              idx_bottom: List[int]):
     n_hiers, n_bottom = S.shape
-    P = np.eye(n_bottom, n_hiers, k=(n_hiers - n_bottom), dtype=np.float32)
+    P = np.zeros_like(S, dtype=np.float32)
+    P[idx_bottom] = S[idx_bottom]
+    P = P.T
     W = np.eye(n_hiers, dtype=np.float32)
     return _reconcile(S, P, W, y_hat)
 
@@ -28,8 +31,9 @@ class BottomUp:
 
     def reconcile(self,
                   S: np.ndarray,
-                  y_hat: np.ndarray):
-        return bottom_up(S=S, y_hat=y_hat)
+                  y_hat: np.ndarray,
+                  idx_bottom: np.ndarray):
+        return bottom_up(S=S, y_hat=y_hat, idx_bottom=idx_bottom)
 
     __call__ = reconcile
 
