@@ -43,20 +43,24 @@ class HierarchicalReconciliation:
         """
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
+        uids = Y_h.index.unique()
+        # same order of Y_h to prevent errors
+        S_ = S.loc[uids]
         common_vals = dict(
-            y = Y_df.pivot(columns='ds', values='y').loc[S.index].values,
-            S = S.values,
-            idx_bottom = [S.index.get_loc(col) for col in S.columns]
+            y = Y_df.pivot(columns='ds', values='y').loc[uids].values,
+            S = S_.values,
+            idx_bottom = [S_.index.get_loc(col) for col in S.columns]
         )
         fcsts = Y_h.copy()
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_res = 'residuals' in signature(reconcile_fn).parameters
             for model_name in model_names:
-                y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[S.index].values
+                # Remember: pivot sorts uid
+                y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[uids].values
                 if has_res:
                     if model_name in Y_df:
-                        common_vals['residuals'] = Y_df.pivot(columns='ds', values=model_name).loc[S.index].values.T
+                        common_vals['residuals'] = Y_df.pivot(columns='ds', values=model_name).loc[uids].values.T
                     else:
                         # some methods have the residuals argument
                         # but they don't need them
