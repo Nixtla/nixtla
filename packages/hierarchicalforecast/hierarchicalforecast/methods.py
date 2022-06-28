@@ -21,7 +21,7 @@ def bottom_up(S: np.ndarray,
               idx_bottom: List[int]):
     n_hiers, n_bottom = S.shape
     P = np.zeros_like(S, dtype=np.float32)
-    P[idx_bottom] = np.eye(n_bottom, dtype=np.float32)
+    P[idx_bottom] = S[idx_bottom]
     P = P.T
     W = np.eye(n_hiers, dtype=np.float32)
     return _reconcile(S, P, W, y_hat)
