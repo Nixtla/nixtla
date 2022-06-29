@@ -19,7 +19,9 @@ def _to_summing_matrix(S_df: pd.DataFrame):
     cats_bottom = categories[idx_bottom]
     encoder = OneHotEncoder(categories=categories, sparse=False, dtype=np.float32)
     S = encoder.fit_transform(S_df).T
-    return pd.DataFrame(S, index=chain(*categories), columns=cats_bottom)
+    S = pd.DataFrame(S, index=chain(*categories), columns=cats_bottom)
+    tags = dict(zip(S_df.columns, categories))
+    return S, tags
 
 # Cell
 def hierarchize(df: pd.DataFrame, hiers: List[List[str]], agg_fn: Callable = np.sum):
@@ -45,7 +47,7 @@ def hierarchize(df: pd.DataFrame, hiers: List[List[str]], agg_fn: Callable = np.
     df_hiers = []
     for hier in hiers:
         df_hier = df.groupby(hier + ['ds'])['y'].apply(agg_fn).reset_index()
-        df_hier['unique_id'] = df_hier[hier].agg('_'.join, axis=1)
+        df_hier['unique_id'] = df_hier[hier].agg('/'.join, axis=1)
         if hier == bottom_comb:
             bottom_hier = df_hier['unique_id'].unique()
         df_hiers.append(df_hier)
@@ -55,10 +57,10 @@ def hierarchize(df: pd.DataFrame, hiers: List[List[str]], agg_fn: Callable = np.
     S_df = S_df.fillna('agg')
     hiers_cols = []
     for hier in hiers:
-        hier_col = '_'.join(hier)
-        S_df[hier_col] = S_df[hier].agg('_'.join, axis=1)
+        hier_col = '/'.join(hier)
+        S_df[hier_col] = S_df[hier].agg('/'.join, axis=1)
         hiers_cols.append(hier_col)
     y_df = df_hiers[['unique_id', 'ds', 'y']].set_index('unique_id')
     #S definition
-    S = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
-    return y_df, S, S_df
+    S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
+    return y_df, S, tags
