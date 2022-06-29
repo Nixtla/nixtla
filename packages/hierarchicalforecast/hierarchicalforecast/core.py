@@ -122,8 +122,8 @@ class HierarchicalEvaluation:
                         scale = fn(y_test_cats, Y_h_cats[benchmark].values)
                         if np.isclose(scale, 0., atol=np.finfo(float).eps):
                             scale += np.finfo(float).eps
-                        if np.isclose(scale, loss, atol=1e-8):
-                            scale = 1.
+                            if np.isclose(scale, loss, atol=1e-8):
+                                scale = 1.
                         loss /= scale
                     evaluation.loc[(level, fn_name), model] = loss
         return evaluation
