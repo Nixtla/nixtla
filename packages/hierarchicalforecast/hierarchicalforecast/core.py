@@ -109,9 +109,11 @@ class HierarchicalEvaluation:
         fn_names = [fn.__name__ for fn in self.evaluators]
         if benchmark is not None:
             fn_names = [f'{fn_name}-scaled' for fn_name in fn_names]
-        index = pd.MultiIndex.from_product([tags.keys(), fn_names], names=['level', 'metric'])
+        tags_ = {'Overall': np.concatenate(list(tags.values()))}
+        tags_ = {**tags_, **tags}
+        index = pd.MultiIndex.from_product([tags_.keys(), fn_names], names=['level', 'metric'])
         evaluation = pd.DataFrame(columns=model_names, index=index)
-        for level, cats in tags.items():
+        for level, cats in tags_.items():
             Y_h_cats = Y_h.loc[cats]
             y_test_cats = Y_test.loc[cats, 'y'].values
             for i_fn, fn in enumerate(self.evaluators):
