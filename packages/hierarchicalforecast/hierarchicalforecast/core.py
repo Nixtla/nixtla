@@ -25,7 +25,8 @@ class HierarchicalReconciliation:
     def __init__(self, reconcilers: List[Callable]):
         self.reconcilers = reconcilers
 
-    def reconcile(self, Y_h: pd.DataFrame, Y_df: pd.DataFrame, S: pd.DataFrame):
+    def reconcile(self, Y_h: pd.DataFrame, Y_df: pd.DataFrame, S: pd.DataFrame,
+                  tags: Dict[str, np.ndarray]):
         """Reconcile base forecasts.
 
             Parameters
@@ -49,7 +50,8 @@ class HierarchicalReconciliation:
         common_vals = dict(
             y = Y_df.pivot(columns='ds', values='y').loc[uids].values,
             S = S_.values,
-            idx_bottom = [S_.index.get_loc(col) for col in S.columns]
+            idx_bottom = S_.index.get_indexer(S.columns),
+            levels={key: S_.index.get_indexer(val) for key, val in tags.items()}
         )
         fcsts = Y_h.copy()
         for reconcile_fn in self.reconcilers:
