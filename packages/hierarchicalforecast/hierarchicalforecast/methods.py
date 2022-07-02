@@ -57,6 +57,42 @@ def is_strictly_hierarchical(S: np.ndarray,
     return paths == nodes
 
 # Cell
+def _get_nodes(S: np.ndarray, levels: Dict[str, np.ndarray]):
+    childs = {}
+    level_names = list(levels.keys())
+    nodes = {}
+    for i_level, level in enumerate(level_names[:-1]):
+        parent = levels[level]
+        child = np.zeros_like(S)
+        idx_child = levels[level_names[i_level+1]]
+        child[idx_child] = S[idx_child]
+        nodes_level = {}
+        for idx_parent_node in parent:
+            parent_node = S[idx_parent_node]
+            idx_node = child * parent_node.astype(bool)
+            idx_node, = np.where(idx_node.sum(axis=1) > 0)
+            nodes_level[idx_parent_node] = idx_node
+        nodes[level] = nodes_level
+    return nodes
+
+# Cell
+def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
+                                levels: Dict[str, np.ndarray],
+                                nodes: Dict[str, Dict[int, np.ndarray]],
+                                idx_top: int):
+    reconciled = np.zeros_like(y_hat)
+    reconciled[idx_top] = y_hat[idx_top]
+    level_names = list(levels.keys())
+    for i_level, level in enumerate(level_names[:-1]):
+        nodes_level = nodes[level]
+        for idx_parent, idx_childs in nodes_level.items():
+            fcst_parent = reconciled[idx_parent]
+            childs_sum = y_hat[idx_childs].sum()
+            for idx_child in idx_childs:
+                reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
+    return reconciled
+
+# Cell
 def top_down(S: np.ndarray,
              y_hat: np.ndarray,
              y: np.ndarray,
@@ -71,7 +107,14 @@ def top_down(S: np.ndarray,
     idx_bottom = levels_[list(levels_)[-1]]
 
     if method == 'forecast_proportions':
-        raise NotImplementedError(f'Method {method} not implemented yet')
+        nodes = _get_nodes(S=S, levels=levels)
+        reconciled = [_reconcile_fcst_proportions(S=S, y_hat=y_hat_[:, None],
+                                                  levels=levels_,
+                                                  nodes=nodes,
+                                                  idx_top=idx_top) \
+                      for y_hat_ in y_hat.T]
+        reconciled = np.hstack(reconciled)
+        return reconciled
     else:
         y_top = y[idx_top]
         y_btm = y[idx_bottom]
