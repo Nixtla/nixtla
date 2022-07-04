@@ -172,7 +172,7 @@ def middle_out(S: np.ndarray,
     #bottom up forecasts
     bu = bottom_up(S=np.unique(S[idxs_bu], axis=1),
                    y_hat=y_hat[idxs_bu],
-                   idx_bottom=cut_nodes)
+                   idx_bottom=np.arange(len(idxs_bu))[-len(cut_nodes):])
     reconciled[idxs_bu] = bu
 
     #top down
