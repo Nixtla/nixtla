@@ -124,7 +124,7 @@ def top_down(S: np.ndarray,
             prop = np.mean(y_btm, axis=1) / np.mean(y_top)
         else:
             raise Exception(f'Unknown method {method}')
-    P = np.zeros_like(S).T
+    P = np.zeros_like(S, np.float64).T #float 64 if prop is too small, happens with wiki2
     P[:, idx_top] = prop
     W = np.eye(n_hiers, dtype=np.float32)
     return _reconcile(S, P, W, y_hat)
