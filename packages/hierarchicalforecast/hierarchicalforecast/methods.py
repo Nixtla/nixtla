@@ -199,7 +199,7 @@ def middle_out(S: np.ndarray,
                       y_hat[idxs_node],
                       y[idxs_node],
                       levels_node_,
-                      method=method)
+                      method=top_down_method)
         reconciled[idxs_node] = td
     return reconciled
 
