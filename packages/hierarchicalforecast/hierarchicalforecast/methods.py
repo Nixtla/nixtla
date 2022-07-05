@@ -109,7 +109,7 @@ def top_down(S: np.ndarray,
     idx_bottom = levels_[list(levels_)[-1]]
 
     if method == 'forecast_proportions':
-        nodes = _get_child_nodes(S=S, levels=levels)
+        nodes = _get_child_nodes(S=S, levels=levels_)
         reconciled = [_reconcile_fcst_proportions(S=S, y_hat=y_hat_[:, None],
                                                   levels=levels_,
                                                   nodes=nodes,
@@ -178,7 +178,7 @@ def middle_out(S: np.ndarray,
     #top down
     child_nodes = _get_child_nodes(S, levels_)
     parents = {node: {level: np.array([node])} for node in cut_nodes}
-    level_names = list(levels.keys())
+    level_names = list(levels_.keys())
     for lv, lv_child in zip(level_names[:-1], level_names[1:]):
         for idx_parent, idxs_child in child_nodes[lv].items():
             for idx_level_parent in parents.keys():
