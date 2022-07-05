@@ -177,13 +177,23 @@ def middle_out(S: np.ndarray,
 
     #top down
     child_nodes = _get_child_nodes(S, levels_)
+    # parents contains each node in the middle out level
+    # as key. The values of each node are the levels that
+    # are conected to that node.
     parents = {node: {level: np.array([node])} for node in cut_nodes}
     level_names = list(levels_.keys())
     for lv, lv_child in zip(level_names[:-1], level_names[1:]):
-        for idx_parent, idxs_child in child_nodes[lv].items():
-            for idx_level_parent in parents.keys():
-                if any(idx_parent in val for val in parents[idx_level_parent].values()):
-                    parents[idx_level_parent][lv_child] = idxs_child
+        # if lv is not part of the middle out to bottom
+        # structure we continue
+        if lv not in list(parents.values())[0].keys():
+            continue
+        for idx_middle_out in parents.keys():
+            idxs_parents = parents[idx_middle_out].values()
+            complete_idxs_child = []
+            for idx_parent, idxs_child in child_nodes[lv].items():
+                if any(idx_parent in val for val in idxs_parents):
+                    complete_idxs_child.append(idxs_child)
+            parents[idx_middle_out][lv_child] = np.hstack(complete_idxs_child)
 
     for node, levels_node in parents.items():
         idxs_node = np.hstack(list(levels_node.values()))
