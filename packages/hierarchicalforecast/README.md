@@ -5,7 +5,7 @@
 <h1 align="center">Hierarchical 👑 Forecast</h1>
 <h3 align="center">Hierarchical forecasting with statistical and econometric methods</h3>
     
-[![CI](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yaml)
+[![CI](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml/badge.svg)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/hierarchicalforecast)](https://pypi.org/project/hierarchicalforecast/)
 [![PyPi](https://img.shields.io/pypi/v/hierarchicalforecast?color=blue)](https://pypi.org/project/hierarchicalforecast/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE)
