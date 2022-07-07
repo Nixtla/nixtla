@@ -2,10 +2,10 @@
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/indx_imgs/branding/logo_mid.png">
-<h1 align="center">Hierarchical 🪜  Forecast</h1>
+<h1 align="center">Hierarchical 👑 Forecast</h1>
 <h3 align="center">Hierarchical forecasting with statistical and econometric methods</h3>
     
-[![CI](https://github.com/Nixtla/hierarchical/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yaml)
+[![CI](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yaml)
 [![Python](https://img.shields.io/pypi/pyversions/hierarchicalforecast)](https://pypi.org/project/hierarchicalforecast/)
 [![PyPi](https://img.shields.io/pypi/v/hierarchicalforecast?color=blue)](https://pypi.org/project/hierarchicalforecast/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE)
@@ -27,7 +27,9 @@ Missing something? Please open an issue or write us in [![Slack](https://img.shi
 
 ## 📖 Why? 
 
-Given the widespread adoption of Python in the ML field, we identified that the community struggled with finding reliable baselines and benchmarks for their own hierarchical forecasting research.
+**Short**: We want to contribute to the ML field by providing reliable baselines and benchmarks for hierarchical forecasting task in industry and academia. Here's the complete [paper]().
+
+**Verbose**: `HierarchicalForecast` integrates publicly available processed datasets, evaluation metrics, and a curated set of statistical baselines. In this [paper]() we provide usage examples and references to extensive experiments where we showcase the baseline's use and evaluate the accuracy of their predictions. With this work, we hope to contribute to Machine Learning forecasting by bridging the gap to statistical and econometric modeling, as well as providing tools for the development of novel hierarchical forecasting algorithms rooted in a thorough comparison of these well-established models. We intend to continue maintaining and increasing the repository, promoting collaboration across the forecasting community.
 
 ## 💻 Installation
 
@@ -71,15 +73,16 @@ from datasetsforecast.hierarchical import HierarchicalData
 from hierarchicalforecast.core import HierarchicalReconciliation
 from hierarchicalforecast.methods import BottomUp, MinTrace, ERM
 from statsforecast.core import StatsForecast
-from statsforecast.models import auto_arima
+from statsforecast.models import auto_arima, naive
 
 # Load TourismL dataset
 Y_df, S, tags = HierarchicalData.load('./data', 'TourismLarge')
 Y_df = Y_df.set_index('unique_id')
 
 # Compute base auto-ARIMA predictions
-fcst = StatsForecast(df=Y_df, models=[(auto_arima,12)], freq='M', n_jobs=-1)
-Y_hat_df = fcst.forecast(h=12)
+fcst = StatsForecast(df=Y_df, models=[(auto_arima,12), naive], freq='M', n_jobs=-1)
+Y_hat_df = fcst.forecast(h=12, residuals=True)
+Y_res_df = fcst.forecast_residuals()
 
 # Reconcile the base predictions
 reconcilers = [
@@ -91,15 +94,19 @@ reconcilers = [
     ERM(method='lasso'),
 ]
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
-Y_rec_df = hrec.reconcile(Y_hat_df, Y_df, S, tags)
+Y_rec_df = hrec.reconcile(Y_hat_df, Y_res_df, S, tags)
 ```
 
 ### Evaluation
 
 ```python
-from hierarchicalforecast.core import HierarchicalEvaluation, mase
+import numpy as np
+from hierarchicalforecast.core import HierarchicalEvaluation
 
-evaluator = HierarchicalEvaluation(evaluators=[mase])
+def mse(y, y_hat):
+    return np.mean((y-y_hat)**2)
+
+evaluator = HierarchicalEvaluation(evaluators=[mse])
 evaluator.evaluate(Y_h=Y_hat_df, Y_test=Y_test, 
                    tags=tags, benchmark='naive')
 ```
@@ -111,7 +118,7 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 
 ```bibtex
 @article{hierarchicalforecast_arxiv,
-  author  = {XXXX},
+  author  = {Kin G. Olivares; Federico Garza; David Luo; Cristian Challú; Max Mergenthaler; ; ; ;},
   title   = {{HierarchicalForecast: A Python Benchmarking Framework for Hierarchical Forecasting}},
   journal = {arXiv preprint arXiv:XXX.XXX},
   year    = {2022}
