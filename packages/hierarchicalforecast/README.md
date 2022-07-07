@@ -108,7 +108,10 @@ evaluator.evaluate(Y_h=Y_hat_df, Y_test=Y_test,
                    tags=tags, benchmark='naive')
 ```
 
-##  📃 How to cite
+## 📃 License
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/Nixtla/neuralforecast/blob/main/LICENSE) file for details.
+
+##  How to cite
 
 ```bibtex
 @article{hierarchicalforecast_arxiv,
