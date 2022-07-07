@@ -30,8 +30,8 @@ Missing something? Please open an issue or write us in [![Slack](https://img.shi
 Given the widespread adoption of Python in the ML field, we identified that the community struggled with finding reliable baselines and benchmarks for their own hierarchical forecasting research.
 
 ## 💻 Installation
-<details>
-<summary>PyPI</summary>
+
+### PyPI
 
 You can install the *released version* of `HierarchicalForecast` from the [Python package index](https://pypi.org) with:
 
@@ -40,11 +40,9 @@ pip install hierarchicalforecast
 ```
 
 (Installing inside a python virtualenvironment or a conda environment is recommended.)
-</details>
 
-<details>
-<summary>Conda</summary>
-  
+### Conda
+
 Also you can install the *released version* of `HierarchicalForecast` from [conda](https://anaconda.org) with:
 
 ```python
@@ -52,10 +50,9 @@ conda install -c conda-forge hierarchicalforecast
 ```
 
 (Installing inside a python virtualenvironment or a conda environment is recommended.)
-</details>
 
-<details>
-<summary>Dev Mode</summary>
+### Dev Mode
+
 If you want to make some modifications to the code and see the effects in real time (without reinstalling), follow the steps below:
 
 ```bash
@@ -63,7 +60,6 @@ git clone https://github.com/Nixtla/hierarchicalforecast.git
 cd hierarchicalforecast
 pip install -e .
 ```
-</details>
 
 ## 🧬 How to use
 
