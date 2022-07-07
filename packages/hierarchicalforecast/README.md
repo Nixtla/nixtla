@@ -16,12 +16,12 @@
 ## 🎊 Features 
 
 * Classic reconciliation methods:
-- `BottomUp`: Simple addition to the upper levels.
-- `TopDown`: Distributes the top levels forecasts trough the hierarchies.
+    - `BottomUp`: Simple addition to the upper levels.
+    - `TopDown`: Distributes the top levels forecasts trough the hierarchies.
 * Alternative reconciliation methods:
-- `MiddleOut`: It anchors the base predictions in a middle level. The levels above the base predictions use the bottom-up approach, while the levels below use a top-down.
-- `MinTrace`: Minimizes the total forecast variance of the space of coherent forecasts, with the Minimum Trace reconciliation.
-- `ERM`: Optimizes the reconciliation matrix minimizing an L1 regularized objective.
+    - `MiddleOut`: It anchors the base predictions in a middle level. The levels above the base predictions use the bottom-up approach, while the levels below use a top-down.
+    - `MinTrace`: Minimizes the total forecast variance of the space of coherent forecasts, with the Minimum Trace reconciliation.
+    - `ERM`: Optimizes the reconciliation matrix minimizing an L1 regularized objective.
 
 Missing something? Please open an issue or write us in [![Slack](https://img.shields.io/badge/Slack-4A154B?&logo=slack&logoColor=white)](https://join.slack.com/t/nixtlaworkspace/shared_invite/zt-135dssye9-fWTzMpv2WBthq8NK0Yvu6A)
 
