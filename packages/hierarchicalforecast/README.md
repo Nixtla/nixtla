@@ -107,3 +107,14 @@ evaluator = HierarchicalEvaluation(evaluators=[mase])
 evaluator.evaluate(Y_h=Y_hat_df, Y_test=Y_test, 
                    tags=tags, benchmark='naive')
 ```
+
+##  📃 How to cite
+
+```bibtex
+@article{hierarchicalforecast_arxiv,
+  author  = {XXXX},
+  title   = {{HierarchicalForecast: A Python Benchmarking Framework for Hierarchical Forecasting}},
+  journal = {arXiv preprint arXiv:XXX.XXX},
+  year    = {2022}
+}
+```
