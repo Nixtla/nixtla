@@ -117,10 +117,17 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 ##  How to cite
 
 ```bibtex
-@article{hierarchicalforecast_arxiv,
-  author  = {Kin G. Olivares; Federico Garza; David Luo; Cristian Challú; Max Mergenthaler; ; ; ;},
-  title   = {{HierarchicalForecast: A Python Benchmarking Framework for Hierarchical Forecasting}},
-  journal = {arXiv preprint arXiv:XXX.XXX},
-  year    = {2022}
+@article{olivares2022hierarchicalforecast,
+    author    = {Kin G. Olivares and
+                 Federico Garza and 
+                 David Luo and 
+                 Cristian Challú and
+                 Max Mergenthaler},
+    title     = {HierarchicalForecast: A Python Benchmarking Framework for Hierarchical Forecasting},
+    journal   = {Computing Research Repository},
+    volume    = {abs/2207.03517},
+    year      = {2022},
+    url       = {https://arxiv.org/abs/2207.03517},
+    archivePrefix = {arXiv}
 }
 ```
