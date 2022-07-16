@@ -48,32 +48,34 @@ class HierarchicalReconciliation:
         # same order of Y_h to prevent errors
         S_ = S.loc[uids]
         common_vals = dict(
-            y = Y_df.pivot(columns='ds', values='y').loc[uids].values,
-            S = S_.values,
+            y_insample = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32),
+            S = S_.values.astype(np.float32),
             idx_bottom = S_.index.get_indexer(S.columns),
             levels={key: S_.index.get_indexer(val) for key, val in tags.items()}
         )
         fcsts = Y_h.copy()
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
-            has_res = 'residuals' in signature(reconcile_fn).parameters
+            has_res = 'residuals_insample' in signature(reconcile_fn).parameters
             for model_name in model_names:
                 # Remember: pivot sorts uid
                 y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[uids].values
                 if has_res:
                     if model_name in Y_df:
-                        common_vals['residuals'] = Y_df.pivot(columns='ds', values=model_name).loc[uids].values.T
+                        resids = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
+                        resids = resids.astype(np.float32)
+                        common_vals['residuals_insample'] = resids
                     else:
                         # some methods have the residuals argument
                         # but they don't need them
                         # ej MinTrace(method='ols')
-                        common_vals['residuals'] = None
+                        common_vals['residuals_insample'] = None
                 kwargs = [key for key in signature(reconcile_fn).parameters if key in common_vals.keys()]
                 kwargs = {key: common_vals[key] for key in kwargs}
                 fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)
                 fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model.flatten()
                 if has_res:
-                    del common_vals['residuals']
+                    del common_vals['residuals_insample']
         return fcsts
 
 # Cell

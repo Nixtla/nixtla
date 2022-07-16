@@ -14,6 +14,8 @@ index = {"HierarchicalReconciliation": "core.ipynb",
          "crossprod": "methods.ipynb",
          "min_trace": "methods.ipynb",
          "MinTrace": "methods.ipynb",
+         "kron": "methods.ipynb",
+         "lasso": "methods.ipynb",
          "erm": "methods.ipynb",
          "ERM": "methods.ipynb",
          "hierarchize": "utils.ipynb"}
