@@ -4,6 +4,7 @@ channels:
 dependencies:
   - jupyterlab
   - numpy
+  - numba
   - pandas
   - scikit-learn
   - statsmodels
