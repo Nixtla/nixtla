@@ -27,7 +27,7 @@ Missing something? Please open an issue here or write us in [![Slack](https://im
 
 ## 📖 Why? 
 
-**Short**: We want to contribute to the ML field by providing reliable baselines and benchmarks for hierarchical forecasting task in industry and academia. Here's the complete [paper]().
+**Short**: We want to contribute to the ML field by providing reliable baselines and benchmarks for hierarchical forecasting task in industry and academia. Here's the complete [paper](https://arxiv.org/abs/2207.03517).
 
 **Verbose**: `HierarchicalForecast` integrates publicly available processed datasets, evaluation metrics, and a curated set of statistical baselines. In this library we provide usage examples and references to extensive experiments where we showcase the baseline's use and evaluate the accuracy of their predictions. With this work, we hope to contribute to Machine Learning forecasting by bridging the gap to statistical and econometric modeling, as well as providing tools for the development of novel hierarchical forecasting algorithms rooted in a thorough comparison of these well-established models. We intend to continue maintaining and increasing the repository, promoting collaboration across the forecasting community.
 
@@ -123,7 +123,7 @@ evaluator.evaluate(Y_h=Y_rec_df, Y_test=Y_df_test,
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/Nixtla/neuralforecast/blob/main/LICENSE) file for details.
 
 ##  How to cite
-
+Here's the complete [paper](https://arxiv.org/abs/2207.03517)
 ```bibtex
 @article{olivares2022hierarchicalforecast,
     author    = {Kin G. Olivares and
