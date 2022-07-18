@@ -3,7 +3,7 @@
 __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
 index = {"HierarchicalReconciliation": "core.ipynb",
-         "HierarchicalEvaluation": "core.ipynb",
+         "HierarchicalEvaluation": "evaluation.ipynb",
          "bottom_up": "methods.ipynb",
          "BottomUp": "methods.ipynb",
          "is_strictly_hierarchical": "methods.ipynb",
@@ -20,6 +20,7 @@ index = {"HierarchicalReconciliation": "core.ipynb",
          "hierarchize": "utils.ipynb"}
 
 modules = ["core.py",
+           "evaluation.py",
            "methods.py",
            "utils.py"]
 
