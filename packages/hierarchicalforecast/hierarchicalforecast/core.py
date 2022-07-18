@@ -38,7 +38,7 @@ class HierarchicalReconciliation:
                 Training set of base time series with columns
                 ['ds', 'y'] indexed by 'unique_id'
                 If a function of `self.reconcile_fns` receives
-                residuals, `Y_df` must include them as columns.
+                y_hat_insample, `Y_df` must include them as columns.
             S: pd.DataFrame
                 Summing matrix of size (hierarchies, bottom).
         """
@@ -56,26 +56,26 @@ class HierarchicalReconciliation:
         fcsts = Y_h.copy()
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
-            has_res = 'residuals_insample' in signature(reconcile_fn).parameters
+            has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
             for model_name in model_names:
                 # Remember: pivot sorts uid
                 y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[uids].values
-                if has_res:
+                if has_fitted:
                     if model_name in Y_df:
-                        resids = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
-                        resids = resids.astype(np.float32)
-                        common_vals['residuals_insample'] = resids
+                        y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
+                        y_hat_insample = y_hat_insample.astype(np.float32)
+                        common_vals['y_hat_insample'] = y_hat_insample
                     else:
                         # some methods have the residuals argument
                         # but they don't need them
                         # ej MinTrace(method='ols')
-                        common_vals['residuals_insample'] = None
+                        common_vals['y_hat_insample'] = None
                 kwargs = [key for key in signature(reconcile_fn).parameters if key in common_vals.keys()]
                 kwargs = {key: common_vals[key] for key in kwargs}
                 fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)
                 fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model.flatten()
-                if has_res:
-                    del common_vals['residuals_insample']
+                if has_fitted:
+                    del common_vals['y_hat_insample']
         return fcsts
 
 # Cell
