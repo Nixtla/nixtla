@@ -69,45 +69,51 @@ The following example needs `statsforecast` and `datasetsforecast` as additional
 The `datasetsforecast` library allows us to download hierarhical datasets and we will use `statsforecast` to compute base forecasts to be reconciled.
 
 ```python
+import numpy as np
+import pandas as pd
+
+#obtain hierarchical dataset
 from datasetsforecast.hierarchical import HierarchicalData
+#obtain hierarchical reconciliation methods and evaluation
 from hierarchicalforecast.core import HierarchicalReconciliation
-from hierarchicalforecast.methods import BottomUp, MinTrace, ERM
+from hierarchicalforecast.evaluation import HierarchicalEvaluation
+from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
+# compute base forecast no coherent
 from statsforecast.core import StatsForecast
 from statsforecast.models import auto_arima, naive
 
-# Load TourismL dataset
-Y_df, S, tags = HierarchicalData.load('./data', 'TourismLarge')
-Y_df = Y_df.set_index('unique_id')
+# Load TourismSmall dataset
+Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
+Y_df['ds'] = pd.to_datetime(Y_df['ds'])
+
+#split train/test sets
+Y_df_test = Y_df.groupby('unique_id').tail(12)
+Y_df_train = Y_df.drop(Y_df_test.index)
+Y_df_test = Y_df_test.set_index('unique_id')
+Y_df_train = Y_df_train.set_index('unique_id')
 
 # Compute base auto-ARIMA predictions
-fcst = StatsForecast(df=Y_df, models=[(auto_arima,12), naive], freq='M', n_jobs=-1)
-Y_hat_df = fcst.forecast(h=12, residuals=True)
-Y_res_df = fcst.forecast_residuals()
+fcst = StatsForecast(df=Y_df_train, models=[(auto_arima,12), naive], freq='M', n_jobs=-1)
+Y_hat_df = fcst.forecast(h=12)
 
 # Reconcile the base predictions
 reconcilers = [
     BottomUp(),
-    MinTrace(method='ols'),
-    MinTrace(method='wls_struct'),
-    MinTrace(method='wls_var'),
-    MinTrace(method='mint_shrink'),
-    ERM(method='lasso'),
+    TopDown(method='forecast_proportions'),
+    MiddleOut(level='Country/Purpose/State', top_down_method='forecast_proportions')
 ]
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
-Y_rec_df = hrec.reconcile(Y_hat_df, Y_res_df, S, tags)
+Y_rec_df = hrec.reconcile(Y_hat_df, Y_df_train, S, tags)
 ```
 
 ### Evaluation
 
 ```python
-import numpy as np
-from hierarchicalforecast.core import HierarchicalEvaluation
-
 def mse(y, y_hat):
     return np.mean((y-y_hat)**2)
 
 evaluator = HierarchicalEvaluation(evaluators=[mse])
-evaluator.evaluate(Y_h=Y_hat_df, Y_test=Y_test, 
+evaluator.evaluate(Y_h=Y_rec_df, Y_test=Y_df_test, 
                    tags=tags, benchmark='naive')
 ```
 
