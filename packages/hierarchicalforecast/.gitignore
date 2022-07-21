@@ -132,3 +132,5 @@ dmypy.json
 *.p
 *.zip
 */data/*
+
+Gemfile.lock

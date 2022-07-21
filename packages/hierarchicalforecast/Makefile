@@ -18,6 +18,10 @@ docs: $(SRC)
 	nbdev_build_docs
 	touch docs
 
+build_docs:
+	nbdev_build_docs --mk_readme False
+	nbdev_build_docs --fname "examples/*.ipynb" --mk_readme False
+
 test:
 	nbdev_test_nbs
 
