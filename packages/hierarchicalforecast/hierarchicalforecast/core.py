@@ -22,26 +22,21 @@ def _build_fn_name(fn) -> str:
 # Cell
 class HierarchicalReconciliation:
 
-    def __init__(self, reconcilers: List[Callable]):
+    def __init__(
+            self,
+            reconcilers: List[Callable] # Reconciliation classes of the `methods` module
+        ):
         self.reconcilers = reconcilers
 
-    def reconcile(self, Y_h: pd.DataFrame, Y_df: pd.DataFrame, S: pd.DataFrame,
-                  tags: Dict[str, np.ndarray]):
-        """Reconcile base forecasts.
-
-            Parameters
-            ----------
-            Y_h: pd.DataFrame
-                Base forecasts with columns ['ds']
-                and models to reconcile indexed by 'unique_id'.
-            Y_df: pd.DataFrame
-                Training set of base time series with columns
-                ['ds', 'y'] indexed by 'unique_id'
-                If a function of `self.reconcile_fns` receives
-                y_hat_insample, `Y_df` must include them as columns.
-            S: pd.DataFrame
-                Summing matrix of size (hierarchies, bottom).
-        """
+    def reconcile(
+            self,
+            Y_h: pd.DataFrame, # Base forecasts with columns `ds` and models to reconcile indexed by `unique_id`.
+            Y_df: pd.DataFrame, # Training set of base time series with columns `['ds', 'y']` indexed by `unique_id`
+                                # If a class of `self.reconciles` receives
+                                # `y_hat_insample`, `Y_df` must include them as columns.
+            S: pd.DataFrame,    #  Summing matrix of size `(base, bottom)`.
+            tags: Dict[str, np.ndarray] # Each key is a level and its value contains tags associated to that level.
+        ):
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
         uids = Y_h.index.unique()

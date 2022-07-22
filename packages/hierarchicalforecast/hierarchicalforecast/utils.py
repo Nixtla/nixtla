@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
 
-# Cell
+# Internal Cell
 def _to_summing_matrix(S_df: pd.DataFrame):
     """Transforms the DataFrame `df` of hierarchies to a summing matrix S."""
     categories = [S_df[col].unique() for col in S_df.columns]
@@ -24,23 +24,12 @@ def _to_summing_matrix(S_df: pd.DataFrame):
     return S, tags
 
 # Cell
-def hierarchize(df: pd.DataFrame, hiers: List[List[str]], agg_fn: Callable = np.sum):
-    """Aggregates `df` according to `hiers` using `agg_fn`.
-
-        Parameters
-        ----------
-
-        df: pd.DataFrame
-            Frame with columns ['ds', 'y'] and
-            columns to hierarchize.
-        hiers: List[List[str]]
-            List of hierarchies.
-            Each element of the list contains
-            a list of columns of `df` to
-            hierarchize.
-        agg_fn: Callable
-            Function used to aggregate 'y'.
-    """
+def hierarchize(
+        df: pd.DataFrame, # DataFrame with columns `['ds', 'y']` and columns to hierarchize
+        hiers: List[List[str]], # List of hierarchies. Each element of the list contains a list of columns of `df` to hierarchize.
+        agg_fn: Callable = np.sum# Function used to aggregate `'y'`.
+    ):
+    """Aggregates `df` according to `hiers` using `agg_fn`."""
     max_len_idx = np.argmax([len(hier) for hier in hiers])
     bottom_comb = hiers[max_len_idx]
     orig_cols = df.drop(labels=['ds', 'y'], axis=1).columns.to_list()

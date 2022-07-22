@@ -10,15 +10,24 @@ entries:
       title: Overview
       url: /
     - output: web,pdf
-      title: 'Core Hierarchical '
+      title: Hierarchical Reconciliation
       url: core.html
     - output: web,pdf
       title: Hierachical Reconciliation Methods
       url: methods.html
     - output: web,pdf
-      title: Utils for Hierarchical Time Series Forecasting
+      title: 'Hierarchical Evaluation '
+      url: evaluation.html
+    - output: web,pdf
+      title: Utils
       url: utils.html
     output: web
-    title: hierarchicalforecast
+    title: Documentation
+  - folderitems:
+    - output: web,pdf
+      title: Reconcile Tourism Small Dataset
+      url: TourismSmall.html
+    output: web
+    title: Examples
   output: web
   title: Sidebar

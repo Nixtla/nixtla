@@ -1,7 +1,7 @@
-repository: Nixtla/datasetsforecast
+repository: Nixtla/hierarchicalforecast
 output: web
-topnav_title: datasetsforecast
-site_title: datasetsforecast
+topnav_title: hierarchicalforecast
+site_title: hierarchicalforecast
 company_name: Nixtla Inc.
 description: Datasets for Time series forecasting
 # Set to false to disable KaTeX math
