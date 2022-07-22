@@ -1,8 +1,12 @@
 {
-  "hierarchicalforecast": {
+  "Documentation": {
     "Overview": "/",
-    "Core Hierarchical ": "core.html",
+    "Hierarchical Reconciliation": "core.html",
     "Hierachical Reconciliation Methods": "methods.html",
-    "Utils for Hierarchical Time Series Forecasting": "utils.html"
+    "Hierarchical Evaluation ": "evaluation.html",
+    "Utils": "utils.html"
+  },
+  "Examples": {
+	"Reconcile Tourism Small Dataset": "TourismSmall.html"
   }
 }

@@ -11,33 +11,19 @@ import pandas as pd
 # Cell
 class HierarchicalEvaluation:
 
-    def __init__(self, evaluators: List[Callable]):
+    def __init__(
+            self,
+            evaluators: List[Callable] # functions with arguments `y`, `y_hat`
+        ):
         self.evaluators = evaluators
 
-    def evaluate(self,
-                 Y_h: pd.DataFrame,
-                 Y_test: pd.DataFrame,
-                 tags: Dict[str, np.ndarray],
-                 benchmark: Optional[str] = None):
-        """Evaluate hierarchical forecasts.
-
-            Parameters
-            ----------
-            Y_h: pd.DataFrame
-                Forecasts with columns ['ds']
-                and models to evaluate.
-            Y_test: pd.DataFrame
-                True values with columns ['ds', 'y']
-            tags: Dict[str, np.ndarray]
-                Dictionary of levels.
-                Each key is a level and its value
-                contains tags associated to that level.
-            benchmark: Optional[str]
-                Optional benchmark model.
-                When passed, the evaluators are scaled by
-                the error of this benchark.
-                If passed, should be part of `Y_h`.
-        """
+    def evaluate(
+            self,
+            Y_h: pd.DataFrame, # Forecasts with columns `['ds']` and models to evaluate.
+            Y_test: pd.DataFrame, # True values with columns `['ds', 'y']`
+            tags: Dict[str, np.ndarray], # Each key is a level and its value contains tags associated to that level.
+            benchmark: Optional[str] = None # If passed, evaluators are scaled by the error of this benchark.
+        ):
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
         fn_names = [fn.__name__ for fn in self.evaluators]
