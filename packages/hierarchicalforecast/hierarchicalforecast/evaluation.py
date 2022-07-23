@@ -25,6 +25,7 @@ class HierarchicalEvaluation:
             benchmark: Optional[str] = None # If passed, evaluators are scaled by the error of this benchark.
         ):
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
+        h = len(Y_h.loc[Y_h.index[0]])
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
         fn_names = [fn.__name__ for fn in self.evaluators]
         if benchmark is not None:
@@ -35,13 +36,13 @@ class HierarchicalEvaluation:
         evaluation = pd.DataFrame(columns=model_names, index=index)
         for level, cats in tags_.items():
             Y_h_cats = Y_h.loc[cats]
-            y_test_cats = Y_test.loc[cats, 'y'].values
+            y_test_cats = Y_test.loc[cats, 'y'].values.reshape(-1, h)
             for i_fn, fn in enumerate(self.evaluators):
                 fn_name = fn_names[i_fn]
                 for model in model_names:
-                    loss = fn(y_test_cats, Y_h_cats[model].values)
+                    loss = fn(y_test_cats, Y_h_cats[model].values.reshape(-1, h))
                     if benchmark is not None:
-                        scale = fn(y_test_cats, Y_h_cats[benchmark].values)
+                        scale = fn(y_test_cats, Y_h_cats[benchmark].values.reshape(-1, h))
                         if np.isclose(scale, 0., atol=np.finfo(float).eps):
                             scale += np.finfo(float).eps
                             if np.isclose(scale, loss, atol=1e-8):
