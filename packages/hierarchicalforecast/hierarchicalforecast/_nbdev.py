@@ -17,7 +17,7 @@ index = {"HierarchicalReconciliation": "core.ipynb",
          "lasso": "methods.ipynb",
          "erm": "methods.ipynb",
          "ERM": "methods.ipynb",
-         "hierarchize": "utils.ipynb"}
+         "aggregate": "utils.ipynb"}
 
 modules = ["core.py",
            "evaluation.py",
