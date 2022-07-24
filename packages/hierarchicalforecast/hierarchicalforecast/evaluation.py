@@ -3,6 +3,7 @@
 __all__ = ['HierarchicalEvaluation']
 
 # Cell
+from inspect import signature
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
@@ -22,12 +23,16 @@ class HierarchicalEvaluation:
             Y_h: pd.DataFrame, # Forecasts with columns `['ds']` and models to evaluate.
             Y_test: pd.DataFrame, # True values with columns `['ds', 'y']`
             tags: Dict[str, np.ndarray], # Each key is a level and its value contains tags associated to that level.
+            Y_df: Optional[pd.DataFrame] = None,# Training set of base time series with columns `['ds', 'y']` indexed by `unique_id`
             benchmark: Optional[str] = None # If passed, evaluators are scaled by the error of this benchark.
         ):
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
         h = len(Y_h.loc[Y_h.index[0]])
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
         fn_names = [fn.__name__ for fn in self.evaluators]
+        has_y_insample = any(['y_insample' in signature(fn).parameters for fn in self.evaluators])
+        if has_y_insample and Y_df is None:
+            raise Exception('At least one evaluator needs y insample, please pass `Y_df`')
         if benchmark is not None:
             fn_names = [f'{fn_name}-scaled' for fn_name in fn_names]
         tags_ = {'Overall': np.concatenate(list(tags.values()))}
@@ -37,12 +42,18 @@ class HierarchicalEvaluation:
         for level, cats in tags_.items():
             Y_h_cats = Y_h.loc[cats]
             y_test_cats = Y_test.loc[cats, 'y'].values.reshape(-1, h)
+            if has_y_insample:
+                y_insample = Y_df.pivot(columns='ds', values='y').loc[cats].values
             for i_fn, fn in enumerate(self.evaluators):
+                if 'y_insample' in signature(fn).parameters:
+                    kwargs = {'y_insample': y_insample}
+                else:
+                    kwargs = {}
                 fn_name = fn_names[i_fn]
                 for model in model_names:
-                    loss = fn(y_test_cats, Y_h_cats[model].values.reshape(-1, h))
+                    loss = fn(y_test_cats, Y_h_cats[model].values.reshape(-1, h), **kwargs)
                     if benchmark is not None:
-                        scale = fn(y_test_cats, Y_h_cats[benchmark].values.reshape(-1, h))
+                        scale = fn(y_test_cats, Y_h_cats[benchmark].values.reshape(-1, h), **kwargs)
                         if np.isclose(scale, 0., atol=np.finfo(float).eps):
                             scale += np.finfo(float).eps
                             if np.isclose(scale, loss, atol=1e-8):
