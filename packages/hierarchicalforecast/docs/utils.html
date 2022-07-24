@@ -54,9 +54,9 @@ nb_path: "nbs/utils.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h4 id="hierarchize" class="doc_header"><code>hierarchize</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/utils.py#L27" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>hierarchize</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>hiers</code></strong>:<code>List</code>[<code>typing.List[str]</code>], <strong><code>agg_fn</code></strong>:<code>typing.Callable</code>=<em><code>sum</code></em>)</p>
+<h4 id="aggregate" class="doc_header"><code>aggregate</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/utils.py#L27" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>aggregate</code>(<strong><code>df</code></strong>:<code>DataFrame</code>, <strong><code>spec</code></strong>:<code>List</code>[<code>typing.List[str]</code>], <strong><code>agg_fn</code></strong>:<code>typing.Callable</code>=<em><code>sum</code></em>)</p>
 </blockquote>
-<p>Aggregates <code>df</code> according to <code>hiers</code> using <code>agg_fn</code>.</p>
+<p>Aggregates <code>df</code> according to <code>spec</code> using <code>agg_fn</code>.</p>
 <table>
 <thead><tr>
 <th></th>
@@ -70,13 +70,13 @@ nb_path: "nbs/utils.ipynb"
 <td><strong><code>df</code></strong></td>
 <td><code>DataFrame</code></td>
 <td></td>
-<td>DataFrame with columns <code>['ds', 'y']</code> and columns to hierarchize</td>
+<td>DataFrame with columns <code>['ds', 'y']</code> and columns to aggregate</td>
 </tr>
 <tr>
-<td><strong><code>hiers</code></strong></td>
+<td><strong><code>spec</code></strong></td>
 <td><code>typing.List[typing.List[str]]</code></td>
 <td></td>
-<td>List of hierarchies. Each element of the list contains a list of columns of <code>df</code> to hierarchize.</td>
+<td>List of levels. Each element of the list contains a list of columns of <code>df</code> to aggregate.</td>
 </tr>
 <tr>
 <td><strong><code>agg_fn</code></strong></td>
