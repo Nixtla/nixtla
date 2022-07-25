@@ -7,6 +7,8 @@
     "Utils": "utils.html"
   },
   "Examples": {
-	"Reconcile Tourism Small Dataset": "TourismSmall.html"
+	"Reconcile Tourism Small Dataset": "TourismSmall.html",
+	"Forecasting Australian domestic tourism": "AustralianDomesticTourism.html",
+	"Forecasting Australian prison population": "AustralianPrisonPopulation.html"
   }
 }

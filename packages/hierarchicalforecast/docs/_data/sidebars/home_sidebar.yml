@@ -27,6 +27,12 @@ entries:
     - output: web,pdf
       title: Reconcile Tourism Small Dataset
       url: TourismSmall.html
+    - output: web,pdf
+      title: Forecasting Australian domestic tourism
+      url: AustralianDomesticTourism.html
+    - output: web,pdf
+      title: Forecasting Australian prison population
+      url: AustralianPrisonPopulation.html
     output: web
     title: Examples
   output: web
