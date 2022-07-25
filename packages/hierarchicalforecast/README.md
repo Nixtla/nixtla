@@ -131,7 +131,7 @@ Here's the complete [paper](https://arxiv.org/abs/2207.03517)
                  David Luo and 
                  Cristian Challú and
                  Max Mergenthaler},
-    title     = {HierarchicalForecast: A Python Benchmarking Framework for Hierarchical Forecasting},
+    title     = {HierarchicalForecast: A Reference Framework for Hierarchical Forecasting in Python},
     journal   = {Computing Research Repository},
     volume    = {abs/2207.03517},
     year      = {2022},
