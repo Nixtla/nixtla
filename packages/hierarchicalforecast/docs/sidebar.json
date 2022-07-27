@@ -1,14 +1,20 @@
 {
-  "Documentation": {
+  "HierarchicalForecast": {
     "Overview": "/",
-    "Hierarchical Reconciliation": "core.html",
-    "Hierachical Reconciliation Methods": "methods.html",
-    "Hierarchical Evaluation ": "evaluation.html",
-    "Utils": "utils.html"
-  },
-  "Examples": {
-	"Reconcile Tourism Small Dataset": "TourismSmall.html",
-	"Forecasting Australian domestic tourism": "AustralianDomesticTourism.html",
-	"Forecasting Australian prison population": "AustralianPrisonPopulation.html"
+	"": {
+		"Reference": {
+			"Hierarchical Reconciliation": "/core",
+			"Hierachical Reconciliation Methods": "/methods",
+			"Hierarchical Evaluation ": "/evaluation",
+			"Utils": "/utils"
+		}
+	},
+	"empty2": {
+		"Quick Start": {
+			"Reconcile Tourism Small Dataset": "/TourismSmall",
+			"Forecasting Australian domestic tourism": "/AustralianDomesticTourism",
+			"Forecasting Australian prison population": "/AustralianPrisonPopulation"
+		  }
+	}
   }
 }

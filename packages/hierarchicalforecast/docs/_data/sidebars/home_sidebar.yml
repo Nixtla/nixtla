@@ -9,31 +9,35 @@ entries:
     - output: web,pdf
       title: Overview
       url: /
-    - output: web,pdf
-      title: Hierarchical Reconciliation
-      url: core.html
-    - output: web,pdf
-      title: Hierachical Reconciliation Methods
-      url: methods.html
-    - output: web,pdf
-      title: 'Hierarchical Evaluation '
-      url: evaluation.html
-    - output: web,pdf
-      title: Utils
-      url: utils.html
+      subfolders:
+      - output: web
+        subfolderitems:
+        - output: web,pdf
+          title: Hierarchical Reconciliation
+          url: /core
+        - output: web,pdf
+          title: Hierachical Reconciliation Methods
+          url: /methods
+        - output: web,pdf
+          title: 'Hierarchical Evaluation '
+          url: /evaluation
+        - output: web,pdf
+          title: Utils
+          url: /utils
+        title: Reference
+      - output: web
+        subfolderitems:
+        - output: web,pdf
+          title: Reconcile Tourism Small Dataset
+          url: /TourismSmall
+        - output: web,pdf
+          title: Forecasting Australian domestic tourism
+          url: /AustralianDomesticTourism
+        - output: web,pdf
+          title: Forecasting Australian prison population
+          url: /AustralianPrisonPopulation
+        title: Quick Start
     output: web
-    title: Documentation
-  - folderitems:
-    - output: web,pdf
-      title: Reconcile Tourism Small Dataset
-      url: TourismSmall.html
-    - output: web,pdf
-      title: Forecasting Australian domestic tourism
-      url: AustralianDomesticTourism.html
-    - output: web,pdf
-      title: Forecasting Australian prison population
-      url: AustralianPrisonPopulation.html
-    output: web
-    title: Examples
+    title: HierarchicalForecast
   output: web
   title: Sidebar
