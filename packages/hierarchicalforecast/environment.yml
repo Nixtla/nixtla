@@ -10,4 +10,4 @@ dependencies:
   - statsmodels
   - pip
   - pip:
-    - nbdev
+    - nbdev==1.2.10
