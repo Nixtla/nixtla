@@ -29,7 +29,7 @@ Missing something? Please open an issue here or write us in [![Slack](https://im
 
 **Short**: We want to contribute to the ML field by providing reliable baselines and benchmarks for hierarchical forecasting task in industry and academia. Here's the complete [paper](https://arxiv.org/abs/2207.03517).
 
-**Verbose**: `HierarchicalForecast` integrates publicly available processed datasets, evaluation metrics, and a curated set of statistical baselines. In this library we provide usage examples and references to extensive experiments where we showcase the baseline's use and evaluate the accuracy of their predictions. With this work, we hope to contribute to Machine Learning forecasting by bridging the gap to statistical and econometric modeling, as well as providing tools for the development of novel hierarchical forecasting algorithms rooted in a thorough comparison of these well-established models. We intend to continue maintaining and increasing the repository, promoting collaboration across the forecasting community.
+**Verbose**: `HierarchicalForecast` integrates publicly available processed datasets, evaluation metrics, and a curated set of standard statistical baselines. In this library we provide usage examples and references to extensive experiments where we showcase the baseline's use and evaluate the accuracy of their predictions. With this work, we hope to contribute to Machine Learning forecasting by bridging the gap to statistical and econometric modeling, as well as providing tools for the development of novel hierarchical forecasting algorithms rooted in a thorough comparison of these well-established models. We intend to continue maintaining and increasing the repository, promoting collaboration across the forecasting community.
 
 ## 💻 Installation
 
@@ -122,8 +122,15 @@ evaluator.evaluate(Y_h=Y_rec_df, Y_test=Y_df_test,
 ## 📃 License
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/Nixtla/neuralforecast/blob/main/LICENSE) file for details.
 
-##  How to cite
-We encourage users also to cite the original papers that we include in our references and are available in this [literature review](https://otexts.com/fpp3/hierarchical-reading.html).
+## 🏟 HTS projects
+In the R ecosystem, we recommend checking out [fable](http://fable.tidyverts.org/), and the now-retired [hts](https://github.com/earowang/hts).
+In Python we want to acknowledge the following libraries [sktime](https://github.com/sktime/sktime-tutorial-pydata-berlin-2022), [darts](https://github.com/unit8co/darts), [pyhts](https://github.com/AngelPone/pyhts), [scikit-hts](https://github.com/carlomazzaferro/scikit-hts).
+
+## 📚 References and Acknowledgements
+This work is highly influenced by the fantastic work of previous contributors and other scholars who previously proposed the reconciliation methods presented here. We want to highlight the work of Rob Hyndman, George Athanasopoulos, Shanika L. Wickramasuriya, Souhaib Ben Taieb, and Bonsoo Koo. For a full reference link, please visit the Reference section of this [paper](https://arxiv.org/pdf/2207.03517.pdf).
+We encourage users to explore this further [literature review] by Rob H. (https://otexts.com/fpp3/hierarchical-reading.html).
+
+## 🙏 How to cite
 If you enjoy or benefit from using these Python implementations, a citation to this [hierarchical forecasting reference paper](https://arxiv.org/abs/2207.03517) will be greatly appreciated.
 ```bibtex
 @article{olivares2022hierarchicalforecast,
