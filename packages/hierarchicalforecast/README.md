@@ -128,7 +128,7 @@ In Python we want to acknowledge the following libraries [sktime](https://github
 
 ## 📚 References and Acknowledgements
 This work is highly influenced by the fantastic work of previous contributors and other scholars who previously proposed the reconciliation methods presented here. We want to highlight the work of Rob Hyndman, George Athanasopoulos, Shanika L. Wickramasuriya, Souhaib Ben Taieb, and Bonsoo Koo. For a full reference link, please visit the Reference section of this [paper](https://arxiv.org/pdf/2207.03517.pdf).
-We encourage users to explore this further [literature review] by Rob H. (https://otexts.com/fpp3/hierarchical-reading.html).
+We encourage users to explore this further [literature review] (https://otexts.com/fpp3/hierarchical-reading.html).
 
 ## 🙏 How to cite
 If you enjoy or benefit from using these Python implementations, a citation to this [hierarchical forecasting reference paper](https://arxiv.org/abs/2207.03517) will be greatly appreciated.
