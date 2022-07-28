@@ -123,7 +123,7 @@ evaluator.evaluate(Y_h=Y_rec_df, Y_test=Y_df_test,
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/Nixtla/neuralforecast/blob/main/LICENSE) file for details.
 
 ##  How to cite
-Here's the complete [paper](https://arxiv.org/abs/2207.03517)
+We encourage users also to cite the original papers that we include in our references and are available in this [literature review](https://otexts.com/fpp3/hierarchical-reading.html). If you enjoy or benefit from using these Python implementations, a citation to this [paper](https://arxiv.org/abs/2207.03517) will be appreciated.
 ```bibtex
 @article{olivares2022hierarchicalforecast,
     author    = {Kin G. Olivares and
