@@ -124,7 +124,7 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 
 ## 🏟 HTS projects
 In the R ecosystem, we recommend checking out [fable](http://fable.tidyverts.org/), and the now-retired [hts](https://github.com/earowang/hts).
-In Python we want to acknowledge the following libraries [sktime](https://github.com/sktime/sktime-tutorial-pydata-berlin-2022), [darts](https://github.com/unit8co/darts), [pyhts](https://github.com/AngelPone/pyhts), [scikit-hts](https://github.com/carlomazzaferro/scikit-hts).
+In Python we want to acknowledge the following libraries [hiere2e](https://github.com/rshyamsundar/gluonts-hierarchical-ICML-2021), [sktime](https://github.com/sktime/sktime-tutorial-pydata-berlin-2022), [darts](https://github.com/unit8co/darts), [pyhts](https://github.com/AngelPone/pyhts), [scikit-hts](https://github.com/carlomazzaferro/scikit-hts).
 
 ## 📚 References and Acknowledgements
 This work is highly influenced by the fantastic work of previous contributors and other scholars who previously proposed the reconciliation methods presented here. We want to highlight the work of Rob Hyndman, George Athanasopoulos, Shanika L. Wickramasuriya, Souhaib Ben Taieb, and Bonsoo Koo. For a full reference link, please visit the Reference section of this [paper](https://arxiv.org/pdf/2207.03517.pdf).
