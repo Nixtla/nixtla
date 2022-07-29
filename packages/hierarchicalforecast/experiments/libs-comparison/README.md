@@ -18,9 +18,9 @@ Notes:
 
 | Dataset      |   statsforecast |   fable |   sktime |
 |:-------------|----------------:|--------:|---------:|
-| Labour       |           1.982 |  11.233 |   44.51  |
-| TourismSmall |           0.627 |   7.61  |   19.294 |
-| Wiki2        |           1.822 |  47.626 |  118.772 |
+| Labour       |           1.982 |  11.233 |   44.368  |
+| TourismSmall |           0.627 |   7.61  |   19.120 |
+| Wiki2        |           1.822 |  47.626 |  119.941 |
 
 Notes:
 - Fitting time for base forecasts.
