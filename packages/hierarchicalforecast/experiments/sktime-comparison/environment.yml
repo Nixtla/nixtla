@@ -1,4 +1,4 @@
-name: sktime-comparison
+name: hts-comparison
 channels:
   - conda-forge
 dependencies:
@@ -22,3 +22,4 @@ dependencies:
     - hierarchicalforecast
     - datasetsforecast
     - sktime
+    - tabulate
