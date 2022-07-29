@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from datasetsforecast.hierarchical import HierarchicalData, HierarchicalInfo
 from sktime.forecasting.ets import AutoETS
+from sktime.forecasting.reconcile import ReconcilerForecaster
 from sktime.transformations.hierarchical.aggregate import Aggregator
 from sktime.transformations.hierarchical.reconcile import Reconciler
 
@@ -67,13 +68,20 @@ def pipeline(group: str):
         reconciler = Reconciler(method=method)
         prds_recon = reconciler.fit_transform(prds[['base']]).rename(columns={'base': method})
         prds = prds.merge(prds_recon, how='left', left_index=True, right_index=True)
+    #methods based on residuals
+    methods_res = ['wls_var', 'mint_shrink']
+    for method in methods_res:
+        reconciler = ReconcilerForecaster(forecaster, method=method)
+        reconciler.fit(Y_df_train)
+        prds_recon = reconciler.predict(fh=np.arange(1, h + 1)).rename(columns={'y': method})
+        prds = prds.merge(prds_recon, how='left', left_index=True, right_index=True)
     #adding y_test for evaluation
     prds = prds.merge(Y_df_test, how='left', left_index=True, right_index=True)
     #evaluation
     y_test = prds['y'].values.reshape(-1, h)
     y_insample = Y_df_train['y'].values.reshape(n_series, -1)
     evals = {}
-    for method in ['base'] + methods:
+    for method in ['base'] + methods + methods_res:
         y_hat = prds[method].values.reshape(-1, h)
         evals[method] = rmsse(y_test, y_hat, y_insample)
     evals = pd.DataFrame(evals, index=[group])
