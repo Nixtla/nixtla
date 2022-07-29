@@ -1,0 +1,24 @@
+name: sktime-comparison
+channels:
+  - conda-forge
+dependencies:
+  - python=3.7
+  - pip==20.3.3
+  - fire
+  - jupyterlab
+  - r-base==3.6.3
+  - r-urca
+  - r-tidyverse
+  - r-future
+  - r-future.apply
+  - r-forecast
+  - r-furrr
+  - r-fable
+  - r-tsibble
+  - r-tsibbledata
+  - pip:
+    - pyarrow
+    - statsforecast
+    - hierarchicalforecast
+    - datasetsforecast
+    - sktime
