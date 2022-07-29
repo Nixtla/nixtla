@@ -4,7 +4,7 @@
 
 ### Performance
 
-[!image](./results.png)
+![image](./results.png)
 
 ### Time
 
