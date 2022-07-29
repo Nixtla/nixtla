@@ -6,6 +6,9 @@
 
 ![image](./results.png)
 
+Notes:
+- [fable](https://github.com/tidyverts/fable) also contains `TopDown` and `MiddleOut` methods, but they arise an eror. A [PR](https://github.com/tidyverts/fabletools/pull/362) was opened to fix the issue.
+
 ### Time
 
 | Dataset      |   statsforecast |   fable |   sktime |
@@ -13,6 +16,9 @@
 | Labour       |           1.982 |  11.233 |   44.51  |
 | TourismSmall |           0.627 |   7.61  |   19.294 |
 | Wiki2        |           1.822 |  47.626 |  118.772 |
+
+Notes:
+- Fitting time for base forecasts.
 
 ## Reproducibility
 
