@@ -7,7 +7,7 @@
 ![image](./results.png)
 
 Notes:
-- [fable](https://github.com/tidyverts/fable) also contains `TopDown` and `MiddleOut` methods, but they arise an eror. A [PR](https://github.com/tidyverts/fabletools/pull/362) was opened to fix the issue.
+- [fable](https://github.com/tidyverts/fable) also contains `TopDown` and `MiddleOut` methods, but they rise an error. A [Pull Request](https://github.com/tidyverts/fabletools/pull/362) was opened to fix the issue.
 
 ### Time
 
