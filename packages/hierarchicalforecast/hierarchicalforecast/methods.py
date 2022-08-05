@@ -158,44 +158,37 @@ class TopDown:
 
 # Internal Cell
 def optimal_combination(S: np.ndarray,
-              y_hat: np.ndarray,
-              weighting: Union[str, np.ndarray, None]):
-    n_hiers, n_bottom = S.shape
-    W = np.eye(n_hiers, dtype=np.float32)
+                        y_hat: np.ndarray,
+                        method: str,
+                        y_insample: np.ndarray = None,
+                        y_hat_insample: np.ndarray = None):
 
-    if weighting == "OLS":
-        # Ordinary Least Squares
-        # P = inv(S'S)*S'
-        diag = np.eye(n_hiers)
-    elif weighting == "WLSS":
-        # Structural Weighted Least Squares
-        diag = np.diag(np.transpose(np.sum(S, axis=1)))
-    elif isinstance(weighting, np.ndarray):
-        # Custom Weighted Least Squares
-        diag = weighting
-    else:
-        raise ValueError("Invalid least squares weighting parameter")
-
-    # P = inv(S'inv(E)S)S'inv(E)
-    P = np.linalg.inv(((S.T @ np.linalg.pinv(diag)) @ S)) @ S.T @ np.linalg.pinv(diag)
-
-    return _reconcile(S, P, W, y_hat)
+    return min_trace(S=S, y_hat=y_hat,
+                         y_insample=y_insample,
+                         y_hat_insample=y_hat_insample,
+                         method=method)
 
 # Cell
 class OptimalCombination:
 
     def __init__(
             self,
-            weighting: str # Least Squares Weighting Method
+            method: str # Least Squares Weighting Method
         ):
-        self.weighting= weighting
+        self.method = method
 
     def reconcile(
             self,
             S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
             y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
+            y_insample: np.ndarray = None, # Insample values of size (`base`, `insample_size`)
+            y_hat_insample: np.ndarray = None # Insample forecasts of size (`base`, `insample_size`)
         ):
-        return optimal_combination(S=S, y_hat=y_hat, weighting=self.weighting)
+        return optimal_combination(S=S,
+                                   y_hat=y_hat,
+                                   y_insample=y_insample,
+                                   y_hat_insample=y_hat_insample,
+                                   method=self.method)
 
     __call__ = reconcile
 
