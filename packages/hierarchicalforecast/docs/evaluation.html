@@ -54,25 +54,8 @@ nb_path: "nbs/evaluation.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="HierarchicalEvaluation" class="doc_header"><code>class</code> <code>HierarchicalEvaluation</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/evaluation.py#L13" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>HierarchicalEvaluation</code>(<strong><code>evaluators</code></strong>:<code>List</code>[<code>typing.Callable</code>])</p>
+<h2 id="HierarchicalEvaluation" class="doc_header"><code>class</code> <code>HierarchicalEvaluation</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/evaluation.py#L13" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>HierarchicalEvaluation</code>(<strong><code>evaluators</code></strong>:<code>List</code>[<code>Callable</code>])</p>
 </blockquote>
-<table>
-<thead><tr>
-<th></th>
-<th>Type</th>
-<th>Default</th>
-<th>Details</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong><code>evaluators</code></strong></td>
-<td><code>typing.List[typing.Callable]</code></td>
-<td></td>
-<td>functions with arguments <code>y</code>, <code>y_hat</code></td>
-</tr>
-</tbody>
-</table>
 
 </div>
 
@@ -97,47 +80,6 @@ nb_path: "nbs/evaluation.ipynb"
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="HierarchicalEvaluation.evaluate" class="doc_header"><code>HierarchicalEvaluation.evaluate</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/evaluation.py#L21" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>HierarchicalEvaluation.evaluate</code>(<strong><code>Y_h</code></strong>:<code>DataFrame</code>, <strong><code>Y_test</code></strong>:<code>DataFrame</code>, <strong><code>tags</code></strong>:<code>Dict</code>[<code>str</code>, <code>ndarray</code>], <strong><code>Y_df</code></strong>:<code>Optional</code>[<code>DataFrame</code>]=<em><code>None</code></em>, <strong><code>benchmark</code></strong>:<code>Optional</code>[<code>str</code>]=<em><code>None</code></em>)</p>
 </blockquote>
-<table>
-<thead><tr>
-<th></th>
-<th>Type</th>
-<th>Default</th>
-<th>Details</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong><code>Y_h</code></strong></td>
-<td><code>DataFrame</code></td>
-<td></td>
-<td>Forecasts with columns <code>['ds']</code> and models to evaluate.</td>
-</tr>
-<tr>
-<td><strong><code>Y_test</code></strong></td>
-<td><code>DataFrame</code></td>
-<td></td>
-<td>True values with columns <code>['ds', 'y']</code></td>
-</tr>
-<tr>
-<td><strong><code>tags</code></strong></td>
-<td><code>typing.Dict[str, numpy.ndarray]</code></td>
-<td></td>
-<td>Each key is a level and its value contains tags associated to that level.</td>
-</tr>
-<tr>
-<td><strong><code>Y_df</code></strong></td>
-<td><code>typing.Optional[pandas.core.frame.DataFrame]</code></td>
-<td><code>None</code></td>
-<td>Training set of base time series with columns <code>['ds', 'y']</code> indexed by <code>unique_id</code></td>
-</tr>
-<tr>
-<td><strong><code>benchmark</code></strong></td>
-<td><code>typing.Optional[str]</code></td>
-<td><code>None</code></td>
-<td>If passed, evaluators are scaled by the error of this benchark.</td>
-</tr>
-</tbody>
-</table>
 
 </div>
 
@@ -202,5 +144,5 @@ nb_path: "nbs/evaluation.ipynb"
     {% endraw %}
 
 </div>
-
+ 
 

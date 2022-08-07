@@ -341,8 +341,12 @@ class OptimalCombination:
 
     def __init__(
             self,
-            method: str # Least Squares Weighting Method
+            method: str # Allowed Optimal Combination Methods: 'ols', 'wls_struct'
         ):
+        comb_methods = ['ols', 'wls_struct']
+        if method not in comb_methods:
+            raise ValueError(f"Optimal Combination class does not support method: \"{method}\"")
+
         self.method = method
 
     def reconcile(
