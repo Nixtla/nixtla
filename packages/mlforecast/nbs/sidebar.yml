@@ -1,0 +1,15 @@
+website:
+  sidebar:
+    contents:
+      - forecast.ipynb
+      - utils.ipynb
+      - section: Distributed
+        contents:
+        - distributed.forecast.ipynb
+        - distributed.core.ipynb
+        - distributed.models.lgb.ipynb
+        - distributed.models.xgb.ipynb
+      - section: API details
+        contents:
+        - core.ipynb
+        - distributed.core.ipynb

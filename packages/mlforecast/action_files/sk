@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+for file in nbs/*.ipynb
+do
+  sed -i 's/Python 3.*,$/Python 3\",/g' $file
+done

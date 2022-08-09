@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 defaults:
   run:
@@ -23,22 +24,15 @@ jobs:
       - name: Install nbdev
         run: pip install nbdev
 
-      - name: Read all notebooks
-        run: nbdev_read_nbs
-
       - name: Check if all notebooks are cleaned
         run: |
           echo "Check we are starting with clean git checkout"
           if [ -n "$(git status -uno -s)" ]; then echo "git status is not clean"; false; fi
           echo "Trying to strip out notebooks"
-          nbdev_clean_nbs
+          nbdev_clean
           echo "Check that strip out was unnecessary"
           git status -s # display the status to see which nbs need cleaning up
-          if [ -n "$(git status -uno -s)" ]; then echo -e "!!! Detected unstripped out notebooks\n!!!Remember to run nbdev_install_git_hooks"; false; fi
-
-      - name: Check if there is no diff library/notebooks
-        run: |
-          if [ -n "$(nbdev_diff_nbs)" ]; then echo -e "!!! Detected difference between the notebooks and the library"; false; fi
+          if [ -n "$(git status -uno -s)" ]; then echo -e "!!! Detected unstripped out notebooks\n!!!Remember to run nbdev_install_hooks"; false; fi
 
   run-tests:
     runs-on: ${{ matrix.os }}
@@ -65,13 +59,13 @@ jobs:
 
       - name: Run all tests
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test_nbs --n_workers 1 --flags distributed
+        run: nbdev_test --n_workers 1
 
       - name: Run local tests
         if: matrix.os != 'ubuntu-latest'
-        run: nbdev_test_nbs
+        run: nbdev_test --skip_file_re distributed*
 
-  test-cli-extra:
+  test-distributed-extra:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
@@ -83,56 +77,8 @@ jobs:
           python-version: 3.7
 
       - name: Install library with extra
-        run: pip install ".[cli]" pyarrow scikit-learn
+        run: pip install ".[distributed]" lightgbm matplotlib scikit-learn xgboost nbdev
 
-      - name: Run CLI
+      - name: Run test
         run: |
-          python action_files/create_data.py
-          mlforecast sample_configs/local.yaml
-          if [ ! -f 'data/outputs/forecast.parquet' ]; then false; fi
-
-  test-cli-and-distributed-extras:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@v2
-
-      - name: Set up python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.7
-
-      - name: Install library with extra
-        run: pip install ".[cli, distributed]" pyarrow scikit-learn xgboost
-
-      - name: Run CLI
-        run: |
-          python action_files/create_data.py --distributed
-          mlforecast sample_configs/distributed.yaml
-          if [ ! -d 'data/outputs/forecast/' ]; then false; fi
-
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@v2
-
-      - name: Set up python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.7
-
-      - name: Install requirements and the library
-        run: |
-          pip install lightgbm matplotlib nbdev pyarrow pytest-cov tabulate xgboost
-          pip install -e ".[aws,cli,distributed]"
-
-      - name: Run coverage
-        run: pytest action_files/test_nbs.py --cov=mlforecast --cov-report xml
-        env:
-          NUMBA_DISABLE_JIT: 1
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v1
-        with:
-          files: ./coverage.xml
+          nbdev_test --fname nbs/distributed.forecast.ipynb
