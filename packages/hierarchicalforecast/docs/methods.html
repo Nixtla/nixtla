@@ -87,6 +87,35 @@ nb_path: "nbs/methods.ipynb"
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="BottomUp.reconcile" class="doc_header"><code>BottomUp.reconcile</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L35" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>BottomUp.reconcile</code>(<strong><code>S</code></strong>:<code>ndarray</code>, <strong><code>y_hat</code></strong>:<code>ndarray</code>, <strong><code>idx_bottom</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>S</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Summing matrix of size (<code>base</code>, <code>bottom</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Forecast values of size (<code>base</code>, <code>horizon</code>)</td>
+</tr>
+<tr>
+<td><strong><code>idx_bottom</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Indices corresponding to the bottom level of <code>S</code>, size (<code>bottom</code>)</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -132,6 +161,23 @@ $$\mathbf{P}_{\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathr
 <div class="output_markdown rendered_html output_subarea ">
 <h2 id="TopDown" class="doc_header"><code>class</code> <code>TopDown</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L137" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>TopDown</code>(<strong><code>method</code></strong>:<code>str</code>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>method</code></strong></td>
+<td><code>str</code></td>
+<td></td>
+<td>One of <code>forecast_proportions</code>, <code>average_proportions</code> and <code>proportion_averages</code></td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -156,6 +202,41 @@ $$\mathbf{P}_{\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathr
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="TopDown.reconcile" class="doc_header"><code>TopDown.reconcile</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L145" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>TopDown.reconcile</code>(<strong><code>S</code></strong>:<code>ndarray</code>, <strong><code>y_hat</code></strong>:<code>ndarray</code>, <strong><code>y_insample</code></strong>:<code>ndarray</code>, <strong><code>levels</code></strong>:<code>Dict</code>[<code>str</code>, <code>ndarray</code>])</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>S</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Summing matrix of size (<code>base</code>, <code>bottom</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Forecast values of size (<code>base</code>, <code>horizon</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Insample values of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+<tr>
+<td><strong><code>levels</code></strong></td>
+<td><code>typing.Dict[str, numpy.ndarray]</code></td>
+<td></td>
+<td>Each key is a level and each value its <code>S</code> indices</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -201,6 +282,29 @@ $$\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]$
 <div class="output_markdown rendered_html output_subarea ">
 <h2 id="MiddleOut" class="doc_header"><code>class</code> <code>MiddleOut</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L226" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>MiddleOut</code>(<strong><code>level</code></strong>:<code>str</code>, <strong><code>top_down_method</code></strong>:<code>str</code>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>level</code></strong></td>
+<td><code>str</code></td>
+<td></td>
+<td>Middle level</td>
+</tr>
+<tr>
+<td><strong><code>top_down_method</code></strong></td>
+<td><code>str</code></td>
+<td></td>
+<td>One of <code>forecast_proportions</code>, <code>average_proportions</code> and <code>proportion_averages</code></td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -225,6 +329,41 @@ $$\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]$
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="MiddleOut.reconcile" class="doc_header"><code>MiddleOut.reconcile</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L236" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>MiddleOut.reconcile</code>(<strong><code>S</code></strong>:<code>ndarray</code>, <strong><code>y_hat</code></strong>:<code>ndarray</code>, <strong><code>y_insample</code></strong>:<code>ndarray</code>, <strong><code>levels</code></strong>:<code>Dict</code>[<code>str</code>, <code>ndarray</code>])</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>S</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Summing matrix of size (<code>base</code>, <code>bottom</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Forecast values of size (<code>base</code>, <code>horizon</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Insample values of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+<tr>
+<td><strong><code>levels</code></strong></td>
+<td><code>typing.Dict[str, numpy.ndarray]</code></td>
+<td></td>
+<td>Each key is a level and each value its <code>S</code> indices</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -263,6 +402,23 @@ $$\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]$
 <div class="output_markdown rendered_html output_subarea ">
 <h2 id="MinTrace" class="doc_header"><code>class</code> <code>MinTrace</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L305" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>MinTrace</code>(<strong><code>method</code></strong>:<code>str</code>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>method</code></strong></td>
+<td><code>str</code></td>
+<td></td>
+<td>One of <code>ols</code>, <code>wls_struct</code>, <code>wls_var</code>, <code>mint_shrink</code>, <code>mint_co</code></td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -287,6 +443,41 @@ $$\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]$
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="MinTrace.reconcile" class="doc_header"><code>MinTrace.reconcile</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L313" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>MinTrace.reconcile</code>(<strong><code>S</code></strong>:<code>ndarray</code>, <strong><code>y_hat</code></strong>:<code>ndarray</code>, <strong><code>y_insample</code></strong>:<code>ndarray</code>, <strong><code>y_hat_insample</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>S</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Summing matrix of size (<code>base</code>, <code>bottom</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Forecast values of size (<code>base</code>, <code>horizon</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Insample values of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Insample forecasts of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -331,6 +522,23 @@ $$\mathbf{P}_{\text{MinT}} = \left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S
 <div class="output_markdown rendered_html output_subarea ">
 <h2 id="OptimalCombination" class="doc_header"><code>class</code> <code>OptimalCombination</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L340" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>OptimalCombination</code>(<strong><code>method</code></strong>:<code>str</code>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>method</code></strong></td>
+<td><code>str</code></td>
+<td></td>
+<td>Allowed Optimal Combination Methods: 'ols', 'wls_struct'</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -355,6 +563,41 @@ $$\mathbf{P}_{\text{MinT}} = \left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="OptimalCombination.reconcile" class="doc_header"><code>OptimalCombination.reconcile</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L352" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>OptimalCombination.reconcile</code>(<strong><code>S</code></strong>:<code>ndarray</code>, <strong><code>y_hat</code></strong>:<code>ndarray</code>, <strong><code>y_insample</code></strong>:<code>ndarray</code>=<em><code>None</code></em>, <strong><code>y_hat_insample</code></strong>:<code>ndarray</code>=<em><code>None</code></em>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>S</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Summing matrix of size (<code>base</code>, <code>bottom</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Forecast values of size (<code>base</code>, <code>horizon</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td><code>None</code></td>
+<td>Insample values of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td><code>None</code></td>
+<td>Insample forecasts of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -401,6 +644,29 @@ $$ \mathbf{P} = \left(\mathbf{S}^{\intercal}\Sigma_{h}^{\dagger}\mathbf{S}\right
 <div class="output_markdown rendered_html output_subarea ">
 <h2 id="ERM" class="doc_header"><code>class</code> <code>ERM</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L444" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>ERM</code>(<strong><code>method</code></strong>:<code>str</code>, <strong><code>lambda_reg</code></strong>:<code>float</code>=<em><code>0.01</code></em>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>method</code></strong></td>
+<td><code>str</code></td>
+<td></td>
+<td>one of <code>closed</code>, <code>reg</code> and <code>reg_bu</code></td>
+</tr>
+<tr>
+<td><strong><code>lambda_reg</code></strong></td>
+<td><code>float</code></td>
+<td><code>0.01</code></td>
+<td>l1 regularizer for <code>reg</code> and <code>reg_bu</code></td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -425,6 +691,47 @@ $$ \mathbf{P} = \left(\mathbf{S}^{\intercal}\Sigma_{h}^{\dagger}\mathbf{S}\right
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="ERM.reconcile" class="doc_header"><code>ERM.reconcile</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/methods.py#L454" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>ERM.reconcile</code>(<strong><code>S</code></strong>:<code>ndarray</code>, <strong><code>y_hat</code></strong>:<code>ndarray</code>, <strong><code>y_insample</code></strong>:<code>ndarray</code>, <strong><code>y_hat_insample</code></strong>:<code>ndarray</code>, <strong><code>idx_bottom</code></strong>:<code>ndarray</code>)</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>S</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Summing matrix of size (<code>base</code>, <code>bottom</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Forecast values of size (<code>base</code>, <code>horizon</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Insample values of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+<tr>
+<td><strong><code>y_hat_insample</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Insample forecasts of size (<code>base</code>, <code>insample_size</code>)</td>
+</tr>
+<tr>
+<td><strong><code>idx_bottom</code></strong></td>
+<td><code>ndarray</code></td>
+<td></td>
+<td>Indices corresponding to the bottom level of <code>S</code>, size (<code>bottom</code>)</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -458,5 +765,5 @@ $$\mathbf{P}^{*} = \text{argmin}_{\mathbf{P}} ||\mathbf{Y}-\mathbf{S} \mathbf{P}
 </div>
 </div>
 </div>
- 
+
 

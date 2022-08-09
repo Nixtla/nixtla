@@ -54,8 +54,25 @@ nb_path: "nbs/core.ipynb"
 
 
 <div class="output_markdown rendered_html output_subarea ">
-<h2 id="HierarchicalReconciliation" class="doc_header"><code>class</code> <code>HierarchicalReconciliation</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/core.py#L23" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>HierarchicalReconciliation</code>(<strong><code>reconcilers</code></strong>:<code>List</code>[<code>Callable</code>])</p>
+<h2 id="HierarchicalReconciliation" class="doc_header"><code>class</code> <code>HierarchicalReconciliation</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/core.py#L23" class="source_link" style="float:right">[source]</a></h2><blockquote><p><code>HierarchicalReconciliation</code>(<strong><code>reconcilers</code></strong>:<code>List</code>[<code>typing.Callable</code>])</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>reconcilers</code></strong></td>
+<td><code>typing.List[typing.Callable]</code></td>
+<td></td>
+<td>Reconciliation classes of the <a href="/hierarchicalforecast/methods.html"><code>methods</code></a> module</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -80,6 +97,41 @@ nb_path: "nbs/core.ipynb"
 <div class="output_markdown rendered_html output_subarea ">
 <h4 id="HierarchicalReconciliation.reconcile" class="doc_header"><code>HierarchicalReconciliation.reconcile</code><a href="https://github.com/Nixtla/hierarchicalforecast/tree/main/hierarchicalforecast/core.py#L31" class="source_link" style="float:right">[source]</a></h4><blockquote><p><code>HierarchicalReconciliation.reconcile</code>(<strong><code>Y_h</code></strong>:<code>DataFrame</code>, <strong><code>Y_df</code></strong>:<code>DataFrame</code>, <strong><code>S</code></strong>:<code>DataFrame</code>, <strong><code>tags</code></strong>:<code>Dict</code>[<code>str</code>, <code>ndarray</code>])</p>
 </blockquote>
+<table>
+<thead><tr>
+<th></th>
+<th>Type</th>
+<th>Default</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>Y_h</code></strong></td>
+<td><code>DataFrame</code></td>
+<td></td>
+<td>Base forecasts with columns <code>ds</code> and models to reconcile indexed by <code>unique_id</code>.</td>
+</tr>
+<tr>
+<td><strong><code>Y_df</code></strong></td>
+<td><code>DataFrame</code></td>
+<td></td>
+<td>Training set of base time series with columns <code>['ds', 'y']</code> indexed by <code>unique_id</code></td>
+</tr>
+<tr>
+<td><strong><code>S</code></strong></td>
+<td><code>DataFrame</code></td>
+<td></td>
+<td>Summing matrix of size <code>(base, bottom)</code>.</td>
+</tr>
+<tr>
+<td><strong><code>tags</code></strong></td>
+<td><code>typing.Dict[str, numpy.ndarray]</code></td>
+<td></td>
+<td>Each key is a level and its value contains tags associated to that level.</td>
+</tr>
+</tbody>
+</table>
 
 </div>
 
@@ -92,5 +144,5 @@ nb_path: "nbs/core.ipynb"
     {% endraw %}
 
 </div>
- 
+
 
