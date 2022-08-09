@@ -12,9 +12,11 @@ format:
     theme: cosmo
     css: styles.css
     toc: true
+    toc-depth: 4
 
 website:
   title: "mlforecast"
+  site-url: "https://Nixtla.github.io/mlforecast/"
   description: "Scalable machine learning based time series forecasting"
   execute: 
     enabled: false
@@ -22,14 +24,14 @@ website:
   open-graph: true
   reader-mode: true
   repo-branch: main
-  repo-url: https://github.com/Nixtla/mlforecast/tree/main/
+  repo-url: "https://github.com/Nixtla/mlforecast/tree/main/"
   repo-actions: [issue]
   navbar:
     background: primary
     search: true
     right:
       - icon: github
-        href: https://github.com/Nixtla/mlforecast/tree/main/
+        href: "https://github.com/Nixtla/mlforecast/tree/main/"
   sidebar:
     style: "floating"
 
