@@ -64,21 +64,3 @@ jobs:
       - name: Run local tests
         if: matrix.os != 'ubuntu-latest'
         run: nbdev_test --skip_file_re distributed*
-
-  test-distributed-extra:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@v2
-
-      - name: Set up python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.7
-
-      - name: Install library with extra
-        run: pip install ".[distributed]" lightgbm matplotlib scikit-learn xgboost nbdev
-
-      - name: Run test
-        run: |
-          nbdev_test --fname nbs/distributed.forecast.ipynb

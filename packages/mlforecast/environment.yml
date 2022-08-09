@@ -8,7 +8,6 @@ dependencies:
   - numba
   - pandas
   - pip
-  - pyarrow
   - window-ops
   - xgboost
   - pip:
