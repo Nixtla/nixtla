@@ -93,7 +93,9 @@ def generate_prices_for_series(
 def _get_last_n_mask(x: np.ndarray, n: int) -> np.ndarray:
     n_samples = x.size
     mask = np.full(n_samples, True)
-    n_first = max(0, n_samples - n)
+    if n >= n_samples:
+        raise ValueError("Series too short for window")
+    n_first = n_samples - n
     mask[:n_first] = False
     return mask
 
