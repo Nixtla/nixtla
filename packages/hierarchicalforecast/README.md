@@ -74,7 +74,7 @@ from hierarchicalforecast.evaluation import HierarchicalEvaluation
 from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
 # compute base forecast no coherent
 from statsforecast.core import StatsForecast
-from statsforecast.models import auto_arima, naive
+from statsforecast.models import AutoARIMA, Naive
 
 # Load TourismSmall dataset
 Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
@@ -87,7 +87,12 @@ Y_df_test = Y_df_test.set_index('unique_id')
 Y_df_train = Y_df_train.set_index('unique_id')
 
 # Compute base auto-ARIMA predictions
-fcst = StatsForecast(df=Y_df_train, models=[(auto_arima,12), naive], freq='M', n_jobs=-1)
+fcst = StatsForecast(
+    df=Y_df_train, 
+    models=[AutoARIMA(season_length=12), Naive()], 
+    freq='M', 
+    n_jobs=-1
+)
 Y_hat_df = fcst.forecast(h=12)
 
 # Reconcile the base predictions
@@ -108,7 +113,7 @@ def mse(y, y_hat):
 
 evaluator = HierarchicalEvaluation(evaluators=[mse])
 evaluator.evaluate(Y_h=Y_rec_df, Y_test=Y_df_test, 
-                   tags=tags, benchmark='naive')
+                   tags=tags, benchmark='Naive')
 ```
 
 ##  How to cite
