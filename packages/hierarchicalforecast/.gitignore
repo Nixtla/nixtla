@@ -134,3 +134,5 @@ dmypy.json
 */data/*
 
 Gemfile.lock
+_docs/
+sidebar.yml
