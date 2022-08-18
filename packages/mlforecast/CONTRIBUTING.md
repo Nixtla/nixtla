@@ -32,51 +32,38 @@ Bug fixes and features are added through pull requests (PRs).
 * SSH: `git clone git@github.com:Nixtla/mlforecast.git`
 * GitHub CLI: `gh repo clone Nixtla/mlforecast`
 
-#### 2. Set up a conda environment
-The repo comes with an `environment.yml` file which contains the libraries needed to run all the tests (please note that the distributed interface is only available on Linux). In order to set up the environment you must have `conda` installed, we recommend [miniconda](https://docs.conda.io/en/latest/miniconda.html).
+#### 2. Install the required dependencies for development
+##### conda/mamba
+The repo comes with an `environment.yml` file which contains the libraries needed to run all the tests (please note that the distributed interface is only available on Linux). In order to set up the environment you must have `conda/mamba` installed, we recommend [mambaforge](https://github.com/conda-forge/miniforge#mambaforge).
 
-Once you have `conda` go to the top level directory of the repository and run:
+Once you have `conda/mamba` go to the top level directory of the repository and run:
 ```
-conda env create -f environment.yml
+{conda|mamba} env create -f environment.yml
 ```
+
+Once you have your environment setup, activate it using `conda activate mlforecast`.
+##### PyPI
+From the top level directory of the repository run: `pip install .[dev]`
 
 #### 3. Install the library
-Once you have your environment setup, activate it using `conda activate mlforecast` and then install the library in editable mode using `pip install -e .`
-
-#### 4. Install git hooks
-Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
-```
-nbdev_install_git_hooks
-```
+From the top level directory of the repository run: `pip install -e .`
 
 ### Building the library
-The library is built using the notebooks contained in the `nbs` folder. If you want to make any changes to the library you have to find the relevant notebook, make your changes and then call `nbdev_build_lib`.
+The library is built using the notebooks contained in the `nbs` folder. If you want to make any changes to the library you have to find the relevant notebook, make your changes and then call `nbdev_export`.
 
 ### Running tests
 
-* If you're working on the local interface you can just use `nbdev_test_nbs`. If you're modifying the distributed interface run the tests using `nbdev_test_nbs --n_workers 1 --flags distributed`.
-* In order to get the tests coverage you need `pytest-cov`, which you can get using `conda install -c conda-forge pytest-cov`. Once you have `pytest-cov` installed, run `NUMBA_DISABLE_JIT=1 pytest --cov=mlforecast --cov-report term-missing`, which will print the lines missed by the tests. If you're implementing new features please make sure to add the relevant tests so that no lines get missed by the tests.
-
+* If you're working on the local interface, use `nbdev_test --skip_file_re distributed*`.
+* If you're modifying the distributed interface run the tests using `nbdev_test --n_workers 1`.
 ### Linters
-
 This project uses a couple of linters to validate different aspects of the code. Before opening a PR, please make sure that it passes all the linting tasks by following the next steps.
 
-#### Install linters
-`conda install -c conda-forge black "mypy<0.900" flake8 isort`
-
 #### Run the linting tasks
-Once you have the linters installed, the tasks can be run with:
-
 * `mypy mlforecast/`
 * `flake8 --select=F mlforecast/`
-* `isort --diff mlforecast/`
-* `action_files/black.sh`
-    * This only prints whether or not there would be changes. If you want to know what to change you can replace `--check` with `--diff` in the file (make sure you revert it before pushing).
-    * If you're on windows you can use `black -S --diff mlforecast/` and ignore the changes to `__all__` and `_nbdev.py`.
 
 ### Cleaning notebooks
-Since the notebooks output cells can vary from run to run (even if they produce the same outputs) the notebooks are cleaned before committing them. Please make sure to run `nbdev_clean_nbs` before committing your changes.
-
+Run `nbdev_clean`.
 ## Do you want to contribute to the documentation?
 
 * Docs are automatically created from the notebooks in the `nbs` folder.
@@ -84,5 +71,5 @@ Since the notebooks output cells can vary from run to run (even if they produce 
     1. Find the relevant notebook.
     2. Make your changes.
     3. Run all cells.
-    4. Run `nbdev_build_docs --mk_readme False --fname nbs/{modified_nb}.ipynb`
-    5. Clean the notebook outputs using `nbdev_clean_nbs`
+    4. Run `nbdev_preview`
+    5. If you modified the `index.ipynb` notebook, run `nbdev_readme`.

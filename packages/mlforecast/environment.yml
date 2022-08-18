@@ -3,8 +3,10 @@ channels:
   - conda-forge
 dependencies:
   - dask
+  - flake8
   - lightgbm
   - matplotlib
+  - mypy
   - numba
   - pandas
   - pip
