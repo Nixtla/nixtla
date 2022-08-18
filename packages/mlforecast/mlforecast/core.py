@@ -6,8 +6,9 @@ __all__ = ['simple_predict', 'merge_predict', 'TimeSeries']
 # %% ../nbs/core.ipynb 3
 import concurrent.futures
 import inspect
+import reprlib
 import warnings
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -168,6 +169,22 @@ def merge_predict(
     return model.predict(new_x)
 
 # %% ../nbs/core.ipynb 21
+def _name_models(current_names):
+    ctr = Counter(current_names)
+    if max(ctr.values()) < 2:
+        return current_names
+    names = current_names.copy()
+    for i, x in enumerate(reversed(current_names), start=1):
+        count = ctr[x]
+        if count > 1:
+            name = f"{x}_{count}"
+            ctr[x] -= 1
+        else:
+            name = x
+        names[-i] = name
+    return names
+
+# %% ../nbs/core.ipynb 23
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
@@ -200,7 +217,12 @@ class TimeSeries:
         return list(self.transforms.keys()) + self.date_features
 
     def __repr__(self):
-        return f"TimeSeries(freq={self.freq}, transforms={list(self.transforms.keys())}, date_features={self.date_features}, num_threads={self.num_threads})"
+        return (
+            f"TimeSeries(freq={self.freq}, "
+            f"transforms={reprlib.repr(list(self.transforms.keys()))}, "
+            f"date_features={reprlib.repr(self.date_features)}, "
+            f"num_threads={self.num_threads})"
+        )
 
     def _apply_transforms(self, updates_only: bool = False) -> Dict[str, np.ndarray]:
         """Apply the transformations using the main process.
@@ -287,6 +309,9 @@ class TimeSeries:
         results_df["ds"] = self.curr_dates
         return results_df
 
+    def _get_raw_predictions(self) -> np.ndarray:
+        return np.array(self.y_pred).ravel("F")
+
     def _get_predictions(self) -> pd.DataFrame:
         """Get all the predicted values with their corresponding ids and datestamps."""
         n_preds = len(self.y_pred)
@@ -298,7 +323,7 @@ class TimeSeries:
         df = pd.DataFrame(
             {
                 "ds": np.array(self.test_dates).ravel("F"),
-                "y_pred": np.array(self.y_pred).ravel("F"),
+                "y_pred": self._get_raw_predictions(),
             },
             index=idx,
         )
@@ -390,23 +415,32 @@ class TimeSeries:
 
     def predict(
         self,
-        model,
+        models,
         horizon: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
     ) -> pd.DataFrame:
         """Use `model` to predict the next `horizon` timesteps."""
-        self._predict_setup()
-        predict_fn = self._define_predict_fn(predict_fn, dynamic_dfs)
-        for _ in range(horizon):
-            new_x = self._update_features()
-            predictions = predict_fn(
-                model,
-                new_x,
-                dynamic_dfs,
-                self.features_order_,
-                **predict_fn_kwargs,
-            )
-            self._update_y(predictions)
-        return self._get_predictions()
+        if not isinstance(models, list):
+            models = [models]
+        model_names = _name_models([m.__class__.__name__ for m in models])
+        for i, model in enumerate(models):
+            self._predict_setup()
+            predict_fn = self._define_predict_fn(predict_fn, dynamic_dfs)
+            for _ in range(horizon):
+                new_x = self._update_features()
+                predictions = predict_fn(
+                    model,
+                    new_x,
+                    dynamic_dfs,
+                    self.features_order_,
+                    **predict_fn_kwargs,
+                )
+                self._update_y(predictions)
+            if i == 0:
+                preds = self._get_predictions()
+                preds = preds.rename(columns={"y_pred": model_names[i]}, copy=False)
+            else:
+                preds[model_names[i]] = self._get_raw_predictions()
+        return preds

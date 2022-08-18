@@ -4,6 +4,7 @@
 __all__ = ['Forecast']
 
 # %% ../nbs/forecast.ipynb 3
+import reprlib
 from typing import Callable, Generator, List, Optional
 
 import pandas as pd
@@ -15,15 +16,19 @@ from .utils import backtest_splits
 class Forecast:
     """Full pipeline encapsulation.
 
-    Takes a model (scikit-learn compatible regressor) and TimeSeries
+    Takes a model or list of models (scikit-learn compatible regressors) and TimeSeries
     and runs all the forecasting pipeline."""
 
-    def __init__(self, model, ts: TimeSeries):
-        self.model = model
+    def __init__(self, models, ts: TimeSeries):
+        if not isinstance(models, list):
+            models = [models]
+        self.models = models
         self.ts = ts
 
     def __repr__(self):
-        return f"Forecast(model={self.model}, ts={self.ts})"
+        return (
+            f"Forecast(models={reprlib.repr(self.models)}, ts={reprlib.repr(self.ts)})"
+        )
 
     def preprocess(
         self,
@@ -46,7 +51,8 @@ class Forecast:
         series_df = self.preprocess(data, static_features, dropna, keep_last_n)
         X, y = series_df.drop(columns=["ds", "y"]), series_df.y.values
         del series_df
-        self.model.fit(X, y, **fit_kwargs)
+        for model in self.models:
+            model.fit(X, y, **fit_kwargs)
         return self
 
     def predict(
@@ -64,7 +70,7 @@ class Forecast:
         `features_order` is the list of column names that were used in the training step.
         """
         return self.ts.predict(
-            self.model, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            self.models, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
         )
 
     def backtest(

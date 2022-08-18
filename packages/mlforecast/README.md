@@ -101,7 +101,7 @@ The lag transformations are defined as [numba](http://numba.pydata.org/)
 arguments you supply a tuple (`transform_func`, `arg1`, `arg2`, …).
 
 ``` python
-from mlforecast.core import TimeSeries
+from mlforecast import Forecast, TimeSeries
 from window_ops.expanding import expanding_mean
 from window_ops.rolling import rolling_mean
 
@@ -116,27 +116,31 @@ ts = TimeSeries(
 ts
 ```
 
-    TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=1)
+    TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean...window_size-7', 'rolling_mean...indow_size-14'], date_features=['dayofweek', 'month'], num_threads=1)
 
-Next define a model. If you want to use the local interface this can be
-any regressor that follows the scikit-learn API. For distributed
+Next define your models. If you want to use the local interface this can
+be any regressor that follows the scikit-learn API. For distributed
 training there are `LGBMForecast` and `XGBForecast`.
 
 ``` python
+import lightgbm as lgb
+import xgboost as xgb
 from sklearn.ensemble import RandomForestRegressor
 
-model = RandomForestRegressor(random_state=0)
+models = [
+    lgb.LGBMRegressor(),
+    xgb.XGBRegressor(),
+    RandomForestRegressor(random_state=0),
+]
 ```
 
-Now instantiate your forecast object with the model and the time series.
-There are two types of forecasters, `Forecast` which is local and
-`DistributedForecast` which performs the whole process in a distributed
-way.
+Now instantiate your forecast object with the models and the time
+series. There are two types of forecasters, `Forecast` which is local
+and `DistributedForecast` which performs the whole process in a
+distributed way.
 
 ``` python
-from mlforecast.forecast import Forecast
-
-fcst = Forecast(model, ts)
+fcst = Forecast(models, ts)
 ```
 
 To compute the features and train the model using them call `.fit` on
@@ -146,7 +150,7 @@ your `Forecast` object.
 fcst.fit(series)
 ```
 
-    Forecast(model=RandomForestRegressor(random_state=0), ts=TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=1))
+    Forecast(models=[LGBMRegressor(), XGBRegressor(...lambda=1, ...), RandomForestR...andom_state=0)], ts=TimeSeries(fr...num_threads=1))
 
 To get the forecasts for the next 14 days call `.predict(14)` on the
 forecaster. This will automatically handle the updates required by the
@@ -163,10 +167,14 @@ predictions.head()
     <tr style="text-align: right;">
       <th></th>
       <th>ds</th>
-      <th>y_pred</th>
+      <th>LGBMRegressor</th>
+      <th>XGBRegressor</th>
+      <th>RandomForestRegressor</th>
     </tr>
     <tr>
       <th>unique_id</th>
+      <th></th>
+      <th></th>
       <th></th>
       <th></th>
     </tr>
@@ -175,26 +183,36 @@ predictions.head()
     <tr>
       <th>id_00</th>
       <td>2000-08-10</td>
+      <td>5.226933</td>
+      <td>5.165335</td>
       <td>5.244840</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-08-11</td>
+      <td>6.222637</td>
+      <td>6.181697</td>
       <td>6.258609</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-08-12</td>
+      <td>0.212516</td>
+      <td>0.231710</td>
       <td>0.225484</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-08-13</td>
+      <td>1.236251</td>
+      <td>1.244750</td>
       <td>1.228957</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-08-14</td>
+      <td>2.241766</td>
+      <td>2.291263</td>
       <td>2.302455</td>
     </tr>
   </tbody>

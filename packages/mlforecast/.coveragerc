@@ -1,4 +1,0 @@
-[run]
-omit =
-	*/compat.py
-	*/distributed/models/*

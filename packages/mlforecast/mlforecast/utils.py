@@ -21,6 +21,7 @@ def generate_daily_series(
     max_length: int = 500,
     n_static_features: int = 0,
     equal_ends: bool = False,
+    static_as_categorical: bool = True,
     seed: int = 0,
 ) -> pd.DataFrame:
     """Generates `n_series` of different lengths in the interval [`min_length`, `max_length`].
@@ -51,13 +52,12 @@ def generate_daily_series(
         }
     )
     for i in range(n_static_features):
-        static_values = [
-            [random.randint(0, 100)] * serie_length for serie_length in series_lengths
-        ]
-        series[f"static_{i}"] = list(chain.from_iterable(static_values))
-        series[f"static_{i}"] = series[f"static_{i}"].astype("category")
+        static_values = np.repeat(rng.randint(0, 100, n_series), series_lengths)
+        series[f"static_{i}"] = static_values
+        if static_as_categorical:
+            series[f"static_{i}"] = series[f"static_{i}"].astype("category")
         if i == 0:
-            series["y"] = series["y"] * (1 + series[f"static_{i}"].cat.codes)
+            series["y"] = series["y"] * (1 + static_values)
     series["unique_id"] = series["unique_id"].astype("category")
     series["unique_id"] = series["unique_id"].cat.as_ordered()
     series = series.set_index("unique_id")
