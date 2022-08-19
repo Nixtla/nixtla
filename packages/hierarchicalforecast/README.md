@@ -68,7 +68,7 @@ pip install -e .
 The following example needs `statsforecast` and `datasetsforecast` as additional packages. If not installed, install it via your preferred method, e.g. `pip install statsforecast datasetsforecast`.
 The `datasetsforecast` library allows us to download hierarhical datasets and we will use `statsforecast` to compute base forecasts to be reconciled.
 
-You can open this example in Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nixtla/hierarchicalforecast/blob/main/examples/TourismSmall.ipynb)
+You can open this example in Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nixtla/hierarchicalforecast/blob/main/nbs/examples/TourismSmall.ipynb)
 
 ```python
 import numpy as np
