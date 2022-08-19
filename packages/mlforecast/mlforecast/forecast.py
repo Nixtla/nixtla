@@ -5,7 +5,7 @@ __all__ = ['Forecast']
 
 # %% ../nbs/forecast.ipynb 3
 import reprlib
-from typing import Callable, Generator, List, Optional
+from typing import Callable, List, Optional
 
 import pandas as pd
 
@@ -75,7 +75,7 @@ class Forecast:
 
     def backtest(
         self,
-        data: pd.DataFrame,
+        data,
         n_windows: int,
         window_size: int,
         static_features: Optional[List[str]] = None,
@@ -84,7 +84,7 @@ class Forecast:
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
-    ) -> Generator[pd.DataFrame, None, None]:
+    ):
         """Creates `n_windows` splits of `window_size` from `data`, trains the model
         on the training set, predicts the window and merges the actuals and the predictions
         in a dataframe.

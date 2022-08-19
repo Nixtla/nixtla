@@ -177,7 +177,7 @@ def _name_models(current_names):
     for i, x in enumerate(reversed(current_names), start=1):
         count = ctr[x]
         if count > 1:
-            name = f"{x}_{count}"
+            name = f"{x}{count}"
             ctr[x] -= 1
         else:
             name = x

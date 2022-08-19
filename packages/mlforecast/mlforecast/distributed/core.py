@@ -63,21 +63,25 @@ class DistributedTimeSeries:
             self.ts.append(ts_future)
             df_futures.append(df_future)
         meta = self.client.submit(lambda x: x.head(0), df_futures[0]).result()
-        return dd.from_delayed(df_futures, meta=meta)
+        ret = dd.from_delayed(df_futures, meta=meta)
+        assert not isinstance(ret, dd.Series)  # mypy
+        return ret
 
     def predict(
         self,
-        model,
+        models,
         horizon: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
     ) -> dd.DataFrame:
-        """Broadcasts `model` across all workers and computes the next `horizon` timesteps.
+        """Broadcasts `models` across all workers and computes the next `horizon` timesteps.
 
         `predict_fn(model, new_x, features_order, **predict_fn_kwargs)` is called on each timestep.
         """
-        model_future = self.client.scatter(model, broadcast=True)
+        if not isinstance(models, list):
+            models = [models]
+        models_future = self.client.scatter(models, broadcast=True)
         if dynamic_dfs is not None:
             dynamic_dfs_futures = self.client.scatter(dynamic_dfs, broadcast=True)
         else:
@@ -86,7 +90,7 @@ class DistributedTimeSeries:
             self.client.submit(
                 _predict,
                 ts_future,
-                model_future,
+                models_future,
                 horizon,
                 dynamic_dfs=dynamic_dfs_futures,
                 predict_fn=predict_fn,
@@ -95,10 +99,12 @@ class DistributedTimeSeries:
             for ts_future in self.ts
         ]
         meta = self.client.submit(lambda x: x.head(), predictions_futures[0]).result()
-        return dd.from_delayed(
+        ret = dd.from_delayed(
             predictions_futures, meta=meta, divisions=self.data_divisions
         )
+        assert not isinstance(ret, dd.Series)  # mypy
+        return ret
 
     def __repr__(self):
-        ts_repr = self._base_ts.__repr__()
+        ts_repr = repr(self._base_ts)
         return f"Distributed{ts_repr}"

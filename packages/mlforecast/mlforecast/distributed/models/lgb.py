@@ -19,4 +19,4 @@ class LGBMForecast(lgb.dask.DaskLGBMRegressor):
 
     @property
     def model_(self):
-        return self.booster_
+        return self.to_local()

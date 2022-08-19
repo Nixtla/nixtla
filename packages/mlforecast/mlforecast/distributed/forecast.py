@@ -4,28 +4,34 @@
 __all__ = ['DistributedForecast']
 
 # %% ../nbs/distributed.forecast.ipynb 5
-from typing import Callable, Generator, List, Optional
+import reprlib
+from typing import Callable, List, Optional
 
 import dask.dataframe as dd
 import pandas as pd
 from dask.distributed import Client, default_client
 
 from ..core import TimeSeries
-from ..utils import backtest_splits
+from ..forecast import Forecast
 from .core import DistributedTimeSeries
 
 # %% ../nbs/distributed.forecast.ipynb 6
-class DistributedForecast:
+class DistributedForecast(Forecast):
     """Distributed pipeline encapsulation."""
 
-    def __init__(self, model, ts: TimeSeries, client: Optional[Client] = None):
-        self.model = model
+    def __init__(self, models, ts: TimeSeries, client: Optional[Client] = None):
+        if not isinstance(models, list):
+            models = [models]
+        self.models = models
         self.client = client or default_client()
         self.dts = DistributedTimeSeries(ts, self.client)
-        self.model.client = self.client
+        for model in self.models:
+            model.client = self.client
 
     def __repr__(self) -> str:
-        return f"DistributedForecast(model={self.model}, dts={self.dts})"
+        return (
+            f"DistributedForecast(models={reprlib.repr(self.models)}, dts={self.dts})"
+        )
 
     def preprocess(
         self,
@@ -51,7 +57,8 @@ class DistributedForecast:
         """Perform the preprocessing and fit the model."""
         train_ddf = self.preprocess(data, static_features, dropna, keep_last_n)
         X, y = train_ddf.drop(columns=["ds", "y"]), train_ddf.y
-        self.model.fit(X, y, **fit_kwargs)
+        for model in self.models:
+            model.fit(X, y, **fit_kwargs)
         return self
 
     def predict(
@@ -69,32 +76,9 @@ class DistributedForecast:
         `features_order` is the list of column names that were used in the training step.
         """
         return self.dts.predict(
-            self.model.model_, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            [m.model_ for m in self.models],
+            horizon,
+            dynamic_dfs,
+            predict_fn,
+            **predict_fn_kwargs,
         )
-
-    def backtest(
-        self,
-        data: dd.DataFrame,
-        n_windows: int,
-        window_size: int,
-        static_features: Optional[List[str]] = None,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
-        predict_fn: Callable = None,
-        **predict_fn_kwargs,
-    ) -> Generator[dd.DataFrame, None, None]:
-        """Creates `n_windows` splits of `window_size` from `data`, trains the model
-        on the training set, predicts the window and merges the actuals and the predictions
-        in a dataframe.
-
-        Returns a generator to the dataframes containing the datestamps, actual values
-        and predictions."""
-        for train, valid in backtest_splits(data, n_windows, window_size):
-            self.fit(train, static_features, dropna, keep_last_n)
-            y_pred = self.predict(
-                window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
-            )
-            y_valid = valid[["ds", "y"]]
-            result = y_valid.merge(y_pred, on=["unique_id", "ds"], how="left")
-            yield result

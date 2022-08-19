@@ -63,4 +63,4 @@ jobs:
 
       - name: Run local tests
         if: matrix.os != 'ubuntu-latest'
-        run: nbdev_test --skip_file_re distributed*
+        run: nbdev_test --skip_file_glob distributed*
