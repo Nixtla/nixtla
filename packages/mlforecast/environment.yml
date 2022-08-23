@@ -2,6 +2,7 @@ name: mlforecast
 channels:
   - conda-forge
 dependencies:
+  - black
   - dask
   - flake8
   - lightgbm
