@@ -12,7 +12,7 @@ import pandas as pd
 from .core import TimeSeries
 from .utils import backtest_splits
 
-# %% ../nbs/forecast.ipynb 5
+# %% ../nbs/forecast.ipynb 6
 class Forecast:
     """Full pipeline encapsulation.
 
