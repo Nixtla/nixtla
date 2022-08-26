@@ -33,6 +33,10 @@ class DistributedForecast(Forecast):
             f"DistributedForecast(models={reprlib.repr(self.models)}, dts={self.dts})"
         )
 
+    @property
+    def freq(self):
+        return self.dts._base_ts.freq
+
     def preprocess(
         self,
         data: dd.DataFrame,

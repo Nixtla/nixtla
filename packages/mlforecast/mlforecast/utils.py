@@ -12,7 +12,6 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
-from numba import njit
 
 # %% ../nbs/utils.ipynb 5
 def generate_daily_series(
@@ -88,18 +87,7 @@ def generate_prices_for_series(
     prices_catalog = pd.concat(dfs).reset_index()
     return prices_catalog
 
-# %% ../nbs/utils.ipynb 21
-@njit
-def _get_last_n_mask(x: np.ndarray, n: int) -> np.ndarray:
-    n_samples = x.size
-    mask = np.full(n_samples, True)
-    if n >= n_samples:
-        raise ValueError("Series too short for window")
-    n_first = n_samples - n
-    mask[:n_first] = False
-    return mask
-
-# %% ../nbs/utils.ipynb 23
+# %% ../nbs/utils.ipynb 19
 def data_indptr_from_sorted_df(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     grouped = df.groupby("unique_id")
     sizes = grouped.size().values
@@ -107,55 +95,39 @@ def data_indptr_from_sorted_df(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray
     data = df["y"].values
     return data, indptr
 
-# %% ../nbs/utils.ipynb 24
-@njit
-def _get_mask(data: np.ndarray, indptr: np.ndarray, n: int) -> np.ndarray:
-    mask = np.empty_like(data)
-    for start, end in zip(indptr[:-1], indptr[1:]):
-        mask[start:end] = _get_last_n_mask(data[start:end], n)
-    return mask
 
-
-def _get_dataframe_mask(df, n) -> pd.Series:
-    data, indptr = data_indptr_from_sorted_df(df)
-    mask = _get_mask(data, indptr, n)
-    return mask.astype(bool)
-
-
-def _split_frame(data, n_windows, window, valid_size):
-    full_valid_size = (n_windows - window) * valid_size
-    extra_valid_size = full_valid_size - valid_size
-    if isinstance(data, pd.DataFrame):
-        full_valid_mask = _get_dataframe_mask(data, full_valid_size)
-        train_mask = ~full_valid_mask
-        extra_valid_mask = _get_dataframe_mask(data, extra_valid_size)
-    else:
-        bool_serie = pd.Series([True])
-        full_valid_mask = data.map_partitions(
-            _get_dataframe_mask, full_valid_size, meta=bool_serie
-        )
-        train_mask = ~full_valid_mask
-        extra_valid_mask = data.map_partitions(
-            _get_dataframe_mask, extra_valid_size, meta=bool_serie
-        )
-    valid_mask = full_valid_mask & ~extra_valid_mask
-    return data[train_mask], data[valid_mask]
-
-# %% ../nbs/utils.ipynb 25
 def ensure_sorted(df: pd.DataFrame) -> pd.DataFrame:
     df = df.set_index("ds", append=True)
     if not df.index.is_monotonic_increasing:
         df = df.sort_index()
     return df.reset_index("ds")
 
+# %% ../nbs/utils.ipynb 20
+def _split_info(
+    data: pd.DataFrame, offset: int, window_size: int, freq: pd.offsets.BaseOffset
+):
+    # TODO: try computing this once and passing it to this fn
+    last_dates = data.groupby("unique_id")["ds"].transform("max")
+    train_ends = last_dates - offset * freq
+    valid_ends = train_ends + window_size * freq
+    valid_mask = data["ds"].gt(train_ends) & data["ds"].le(valid_ends)
+    return pd.DataFrame({"train_end": train_ends, "is_valid": valid_mask})
 
-def backtest_splits(data, n_windows: int, window_size: int):
-    """Returns a generator of `n_windows` for train, valid splits of
-    `data` where each valid has `window_size` samples."""
-    if isinstance(data, pd.DataFrame):
-        data = ensure_sorted(data)
-    else:
-        data = data.map_partitions(ensure_sorted, meta=data.head(1))
-    for window in range(n_windows):
-        train, valid = _split_frame(data, n_windows, window, window_size)
-        yield train, valid
+# %% ../nbs/utils.ipynb 21
+def backtest_splits(
+    data, n_windows: int, window_size: int, freq: pd.offsets.BaseOffset
+):
+    for i in range(n_windows):
+        offset = (n_windows - i) * window_size
+        if isinstance(data, pd.DataFrame):
+            splits = _split_info(data, offset, window_size, freq)
+        else:
+            splits = data.map_partitions(
+                _split_info,
+                offset=offset,
+                window_size=window_size,
+                freq=freq,
+            )
+        train_mask = data["ds"].le(splits["train_end"])
+        train, valid = data[train_mask], data[splits["is_valid"]]
+        yield splits.loc[splits["is_valid"], "train_end"], train, valid

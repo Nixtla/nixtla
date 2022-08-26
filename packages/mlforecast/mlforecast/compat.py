@@ -10,14 +10,14 @@ import pandas as pd
 
 try:
     import dask.dataframe as dd
-    from dask.dataframe import DataFrame as dd_Frame
+    from dask.dataframe import concat as dd_concat, DataFrame as dd_Frame
     from dask.distributed import Client, LocalCluster
-
-    from mlforecast.distributed.forecast import DistributedForecast
 except ImportError:
 
     class dd:  # type: ignore
         pass
+
+    dd_concat = None  # type: ignore
 
     dd_Frame = type(None)  # type: ignore
 
@@ -25,9 +25,6 @@ except ImportError:
         pass
 
     class LocalCluster:  # type: ignore
-        pass
-
-    class DistributedForecast:  # type: ignore
         pass
 
 # %% ../nbs/compat.ipynb 2

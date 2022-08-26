@@ -30,6 +30,10 @@ class Forecast:
             f"Forecast(models={reprlib.repr(self.models)}, ts={reprlib.repr(self.ts)})"
         )
 
+    @property
+    def freq(self):
+        return self.ts.freq
+
     def preprocess(
         self,
         data: pd.DataFrame,
@@ -73,7 +77,7 @@ class Forecast:
             self.models, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
         )
 
-    def backtest(
+    def cross_validation(
         self,
         data,
         n_windows: int,
@@ -89,13 +93,21 @@ class Forecast:
         on the training set, predicts the window and merges the actuals and the predictions
         in a dataframe.
 
-        Returns a generator to the dataframes containing the datestamps, actual values
-        and predictions."""
-        for train, valid in backtest_splits(data, n_windows, window_size):
+        Returns a dataframe containing the datestamps, actual values, train ends and predictions."""
+        results = []
+        for train_end, train, valid in backtest_splits(
+            data, n_windows, window_size, self.freq
+        ):
             self.fit(train, static_features, dropna, keep_last_n)
             y_pred = self.predict(
                 window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
             )
-            y_valid = valid[["ds", "y"]]
-            result = y_valid.merge(y_pred, on=["unique_id", "ds"], how="left")
-            yield result
+            result = valid[["ds", "y"]].copy()
+            result["cutoff"] = train_end
+            result = result.merge(y_pred, on=["unique_id", "ds"], how="left")
+            results.append(result)
+
+        from mlforecast.compat import dd_concat
+
+        concat_fn = pd.concat if isinstance(data, pd.DataFrame) else dd_concat
+        return concat_fn(results)

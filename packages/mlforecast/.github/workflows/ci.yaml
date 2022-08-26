@@ -59,8 +59,8 @@ jobs:
 
       - name: Run all tests
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --n_workers 1
+        run: nbdev_test --n_workers 1 --do_print --timing
 
       - name: Run local tests
         if: matrix.os != 'ubuntu-latest'
-        run: nbdev_test --skip_file_glob distributed*
+        run: nbdev_test --n_workers 1 --do_print --timing --skip_file_glob distributed*
