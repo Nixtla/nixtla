@@ -4,30 +4,45 @@
 __all__ = ['Forecast']
 
 # %% ../nbs/forecast.ipynb 3
-import reprlib
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
+from sklearn.base import RegressorMixin
 
 from .core import TimeSeries
 from .utils import backtest_splits
 
 # %% ../nbs/forecast.ipynb 6
 class Forecast:
-    """Full pipeline encapsulation.
+    """Full pipeline encapsulation."""
 
-    Takes a model or list of models (scikit-learn compatible regressors) and TimeSeries
-    and runs all the forecasting pipeline."""
-
-    def __init__(self, models, ts: TimeSeries):
+    def __init__(
+        self,
+        models: Union[
+            RegressorMixin, List[RegressorMixin]
+        ],  # model or list of models that follow the scikit-learn API
+        freq: str,  # pandas offset alias, e.g. D, W, M
+        lags: List[int] = [],  # list of lags to use as features
+        lag_transforms: Dict[
+            int, List[Tuple]
+        ] = {},  # list of transformations to apply to each lag
+        date_features: List[
+            str
+        ] = [],  # list of names of pandas date attributes to use as features, e.g. dayofweek
+        num_threads: int = 1,  # number of threads to use when computing lag features
+    ):
         if not isinstance(models, list):
             models = [models]
         self.models = models
-        self.ts = ts
+        self.ts = TimeSeries(freq, lags, lag_transforms, date_features, num_threads)
 
     def __repr__(self):
         return (
-            f"Forecast(models={reprlib.repr(self.models)}, ts={reprlib.repr(self.ts)})"
+            f'Forecast(models=[{", ".join(m.__class__.__name__ for m in self.models)}], '
+            f"freq={self.freq}, "
+            f"lag_features={list(self.ts.transforms.keys())}, "
+            f"date_features={self.ts.date_features}, "
+            f"num_threads={self.ts.num_threads})"
         )
 
     @property
@@ -49,14 +64,13 @@ class Forecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
-        **fit_kwargs,
     ) -> "Forecast":
-        """Preprocesses `data` and fits `model` to it."""
+        """Preprocesses `data` and fits `models` using it."""
         series_df = self.preprocess(data, static_features, dropna, keep_last_n)
         X, y = series_df.drop(columns=["ds", "y"]), series_df.y.values
         del series_df
         for model in self.models:
-            model.fit(X, y, **fit_kwargs)
+            model.fit(X, y)
         return self
 
     def predict(
@@ -68,9 +82,10 @@ class Forecast:
     ) -> pd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
-        `predict_fn(model, new_x, features_order, **predict_fn_kwargs)` is called in every timestep, where:
+        `predict_fn(model, new_x, dynamic_dfs, features_order, **predict_fn_kwargs)` is called in every timestep, where:
         `model` is the trained model.
         `new_x` is a dataframe with the same format as the input plus the computed features.
+        `dynamic_dfs` is a list containing the dynamic dataframes.
         `features_order` is the list of column names that were used in the training step.
         """
         return self.ts.predict(

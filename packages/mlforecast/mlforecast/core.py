@@ -6,7 +6,6 @@ __all__ = ['simple_predict', 'merge_predict', 'TimeSeries']
 # %% ../nbs/core.ipynb 3
 import concurrent.futures
 import inspect
-import reprlib
 import warnings
 from collections import Counter, OrderedDict
 from itertools import chain
@@ -219,8 +218,8 @@ class TimeSeries:
     def __repr__(self):
         return (
             f"TimeSeries(freq={self.freq}, "
-            f"transforms={reprlib.repr(list(self.transforms.keys()))}, "
-            f"date_features={reprlib.repr(self.date_features)}, "
+            f"transforms={list(self.transforms.keys())}, "
+            f"date_features={self.date_features}, "
             f"num_threads={self.num_threads})"
         )
 
