@@ -94,30 +94,6 @@ series.head()
 </table>
 </div>
 
-Then create a `TimeSeries` object with the features that you want to
-use. These include lags, transformations on the lags and date features.
-The lag transformations are defined as [numba](http://numba.pydata.org/)
-*jitted* functions that transform an array, if they have additional
-arguments you supply a tuple (`transform_func`, `arg1`, `arg2`, …).
-
-``` python
-from mlforecast import Forecast, TimeSeries
-from window_ops.expanding import expanding_mean
-from window_ops.rolling import rolling_mean
-
-ts = TimeSeries(
-    lags=[7, 14],
-    lag_transforms={
-        1: [expanding_mean],
-        7: [(rolling_mean, 7), (rolling_mean, 14)]
-    },
-    date_features=['dayofweek', 'month']
-)
-ts
-```
-
-    TimeSeries(freq=<Day>, transforms=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean...window_size-7', 'rolling_mean...indow_size-14'], date_features=['dayofweek', 'month'], num_threads=1)
-
 Next define your models. If you want to use the local interface this can
 be any regressor that follows the scikit-learn API. For distributed
 training there are `LGBMForecast` and `XGBForecast`.
@@ -134,13 +110,28 @@ models = [
 ]
 ```
 
-Now instantiate your forecast object with the models and the time
-series. There are two types of forecasters, `Forecast` which is local
-and `DistributedForecast` which performs the whole process in a
-distributed way.
+Now instantiate a `Forecast` object with the models and the features
+that you want to use. The features can be lags, transformations on the
+lags and date features. The lag transformations are defined as
+[numba](http://numba.pydata.org/) *jitted* functions that transform an
+array, if they have additional arguments you supply a tuple
+(`transform_func`, `arg1`, `arg2`, …).
 
 ``` python
-fcst = Forecast(models, ts)
+from mlforecast import Forecast
+from window_ops.expanding import expanding_mean
+from window_ops.rolling import rolling_mean
+
+fcst = Forecast(
+    models=models,
+    freq='D',
+    lags=[7, 14],
+    lag_transforms={
+        1: [expanding_mean],
+        7: [(rolling_mean, 7), (rolling_mean, 14)]
+    },
+    date_features=['dayofweek', 'month']
+)
 ```
 
 To compute the features and train the model using them call `.fit` on
@@ -150,11 +141,11 @@ your `Forecast` object.
 fcst.fit(series)
 ```
 
-    Forecast(models=[LGBMRegressor(), XGBRegressor(...lambda=1, ...), RandomForestR...andom_state=0)], ts=TimeSeries(fr...num_threads=1))
+    Forecast(models=[LGBMRegressor, XGBRegressor, RandomForestRegressor], freq=<Day>, lag_features=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=1)
 
-To get the forecasts for the next 14 days call `.predict(14)` on the
-forecaster. This will automatically handle the updates required by the
-features.
+To get the forecasts for the next 14 days call `predict(horizon)` on the
+forecast object. This will automatically handle the updates required by
+the features using a recursive strategy.
 
 ``` python
 predictions = fcst.predict(14)
