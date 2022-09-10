@@ -147,3 +147,6 @@ Gemfile*
 
 # jekyll
 .jekyll-cache
+
+# nbdev
+nbs/_docs

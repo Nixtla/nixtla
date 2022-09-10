@@ -39,9 +39,8 @@ The following provides a very basic overview, for a more detailed
 description see the
 [documentation](https://nixtla.github.io/mlforecast/).
 
-Store your time series in a pandas dataframe with an index named
-**unique_id** that identifies each time serie, a column **ds** that
-contains the datestamps and a column **y** with the values.
+Store your time series in a pandas dataframe in long format, that is,
+each row represents an observation for a specific serie and timestamp.
 
 ``` python
 from mlforecast.utils import generate_daily_series
@@ -134,16 +133,22 @@ fcst = Forecast(
 )
 ```
 
-To compute the features and train the model using them call `.fit` on
-your `Forecast` object.
+To compute the features and train the models call `fit` on your
+`Forecast` object. Here you have to specify the columns that:
+
+- Identify each serie (`id_col`). If the series identifier is the index
+  you can specify `id_col='index'`
+- Contain the timestamps (`time_col`). Can also be integers if your data
+  doesn’t have timestamps.
+- Are the series values (`target_col`)
 
 ``` python
-fcst.fit(series)
+fcst.fit(series, id_col='index', time_col='ds', target_col='y')
 ```
 
     Forecast(models=[LGBMRegressor, XGBRegressor, RandomForestRegressor], freq=<Day>, lag_features=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=1)
 
-To get the forecasts for the next 14 days call `predict(horizon)` on the
+To get the forecasts for the next 14 days call `predict(14)` on the
 forecast object. This will automatically handle the updates required by
 the features using a recursive strategy.
 

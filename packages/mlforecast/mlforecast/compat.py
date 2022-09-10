@@ -9,23 +9,9 @@ from typing import Union
 import pandas as pd
 
 try:
-    import dask.dataframe as dd
-    from dask.dataframe import concat as dd_concat, DataFrame as dd_Frame
-    from dask.distributed import Client, LocalCluster
+    from dask.dataframe import DataFrame as dd_Frame
 except ImportError:
-
-    class dd:  # type: ignore
-        pass
-
-    dd_concat = None  # type: ignore
-
     dd_Frame = type(None)  # type: ignore
-
-    class Client:  # type: ignore
-        pass
-
-    class LocalCluster:  # type: ignore
-        pass
 
 # %% ../nbs/compat.ipynb 2
 Frame = Union[pd.DataFrame, dd_Frame]

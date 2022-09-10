@@ -7,9 +7,10 @@ __all__ = ['Forecast']
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
-from sklearn.base import RegressorMixin
+from sklearn.base import RegressorMixin, clone
 
 from .core import TimeSeries
+from .compat import dd_Frame
 from .utils import backtest_splits
 
 # %% ../nbs/forecast.ipynb 6
@@ -21,7 +22,7 @@ class Forecast:
         models: Union[
             RegressorMixin, List[RegressorMixin]
         ],  # model or list of models that follow the scikit-learn API
-        freq: str,  # pandas offset alias, e.g. D, W, M
+        freq: Optional[str] = None,  # pandas offset alias, e.g. D, W, M
         lags: List[int] = [],  # list of lags to use as features
         lag_transforms: Dict[
             int, List[Tuple]
@@ -32,8 +33,8 @@ class Forecast:
         num_threads: int = 1,  # number of threads to use when computing lag features
     ):
         if not isinstance(models, list):
-            models = [models]
-        self.models = models
+            models = [clone(models)]
+        self.models = [clone(m) for m in models]
         self.ts = TimeSeries(freq, lags, lag_transforms, date_features, num_threads)
 
     def __repr__(self):
@@ -51,34 +52,58 @@ class Forecast:
 
     def preprocess(
         self,
-        data: pd.DataFrame,
-        static_features: Optional[List[str]] = None,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
+        data: pd.DataFrame,  # dataframe with the series' data
+        id_col: str = "index",  # column that identifies each serie, can also be the index.
+        time_col: str = "ds",  # column with the timestamps
+        target_col: str = "y",  # column with the series values
+        static_features: Optional[
+            List[str]
+        ] = None,  # column names of the features that don't change in time
+        dropna: bool = True,  # drop rows with missing values created by lags
+        keep_last_n: Optional[
+            int
+        ] = None,  # keep only this many observations of each serie for computing the updates
     ) -> pd.DataFrame:
-        return self.ts.fit_transform(data, static_features, dropna, keep_last_n)
+        return self.ts.fit_transform(
+            data, id_col, time_col, target_col, static_features, dropna, keep_last_n
+        )
 
     def fit(
         self,
-        data: pd.DataFrame,
-        static_features: Optional[List[str]] = None,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
+        data: pd.DataFrame,  # dataframe with the series' data
+        id_col: str = "index",  # column that identifies each serie. If 'index', the index is taken as the identifier of each serie
+        time_col: str = "ds",  # column with the timestamps
+        target_col: str = "y",  # column with the series values
+        static_features: Optional[
+            List[str]
+        ] = None,  # column names of the features that don't change in time
+        dropna: bool = True,  # drop rows with missing values created by lags
+        keep_last_n: Optional[
+            int
+        ] = None,  # keep only this many observations of each serie for computing the updates
     ) -> "Forecast":
         """Preprocesses `data` and fits `models` using it."""
-        series_df = self.preprocess(data, static_features, dropna, keep_last_n)
-        X, y = series_df.drop(columns=["ds", "y"]), series_df.y.values
+        series_df = self.preprocess(
+            data, id_col, time_col, target_col, static_features, dropna, keep_last_n
+        )
+        X, y = (
+            series_df.drop(columns=[time_col, target_col]),
+            series_df[target_col].values,
+        )
         del series_df
-        for model in self.models:
-            model.fit(X, y)
+        self.models_ = []
+        for i, model in enumerate(self.models):
+            self.models_.append(clone(model).fit(X, y))
         return self
 
     def predict(
         self,
-        horizon: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
-        predict_fn: Optional[Callable] = None,
-        **predict_fn_kwargs,
+        horizon: int,  # number of periods to predict in the future
+        dynamic_dfs: Optional[
+            List[pd.DataFrame]
+        ] = None,  # future values for dynamic features
+        predict_fn: Optional[Callable] = None,  # custom function to compute predictions
+        **predict_fn_kwargs,  # additional arguments passed to predict_fn
     ) -> pd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
@@ -89,20 +114,29 @@ class Forecast:
         `features_order` is the list of column names that were used in the training step.
         """
         return self.ts.predict(
-            self.models, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            self.models_, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
         )
 
     def cross_validation(
         self,
-        data,
-        n_windows: int,
-        window_size: int,
-        static_features: Optional[List[str]] = None,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
-        predict_fn: Optional[Callable] = None,
-        **predict_fn_kwargs,
+        data: pd.DataFrame,  # time series
+        n_windows: int,  # number of windows to evaluate
+        window_size: int,  # test size in each window
+        id_col: str = "index",  # column that identifies each serie, can also be the index.
+        time_col: str = "ds",  # column with the timestamps
+        target_col: str = "y",  # column with the series values
+        static_features: Optional[
+            List[str]
+        ] = None,  # column names of the features that don't change in time
+        dropna: bool = True,  # drop rows with missing values created by lags
+        keep_last_n: Optional[
+            int
+        ] = None,  # keep only this many observations of each serie for computing the updates
+        dynamic_dfs: Optional[
+            List[pd.DataFrame]
+        ] = None,  # future values for dynamic features
+        predict_fn: Optional[Callable] = None,  # custom function to compute predictions
+        **predict_fn_kwargs,  # additional arguments passed to predict_fn
     ):
         """Creates `n_windows` splits of `window_size` from `data`, trains the model
         on the training set, predicts the window and merges the actuals and the predictions
@@ -110,10 +144,20 @@ class Forecast:
 
         Returns a dataframe containing the datestamps, actual values, train ends and predictions."""
         results = []
+        self.cv_models_ = []
         for train_end, train, valid in backtest_splits(
             data, n_windows, window_size, self.freq
         ):
-            self.fit(train, static_features, dropna, keep_last_n)
+            self.fit(
+                train,
+                id_col,
+                time_col,
+                target_col,
+                static_features,
+                dropna,
+                keep_last_n,
+            )
+            self.cv_models_.append(self.models_)
             y_pred = self.predict(
                 window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
             )
@@ -122,7 +166,8 @@ class Forecast:
             result = result.merge(y_pred, on=["unique_id", "ds"], how="left")
             results.append(result)
 
-        from mlforecast.compat import dd_concat
+        if isinstance(data, dd_Frame):
+            import dask.dataframe as dd
 
-        concat_fn = pd.concat if isinstance(data, pd.DataFrame) else dd_concat
-        return concat_fn(results)
+            return dd.concat(results)
+        return pd.concat(results)

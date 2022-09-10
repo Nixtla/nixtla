@@ -146,9 +146,15 @@ def _build_transform_name(lag, tfm, *args) -> str:
     return tfm_name
 
 # %% ../nbs/core.ipynb 20
-def simple_predict(model, new_x: pd.DataFrame, *args, **kwargs) -> np.ndarray:
+def simple_predict(
+    model,
+    new_x: pd.DataFrame,
+    dynamic_dfs: List[pd.DataFrame],
+    features_order: List[str],
+    **kwargs,
+) -> np.ndarray:
     """Drop the ds column from `new_x` and call `model.predict` on it."""
-    new_x = new_x.drop(columns="ds")
+    new_x = new_x[features_order]
     return model.predict(new_x)
 
 
@@ -160,10 +166,11 @@ def merge_predict(
     **kwargs,
 ) -> np.ndarray:
     """Perform left join on each of `dynamic_dfs` and call model.predict."""
-    new_x = new_x.reset_index("unique_id")
+    idx = new_x.index.name
+    new_x = new_x.reset_index()
     for df in dynamic_dfs:
         new_x = new_x.merge(df, how="left")
-    new_x = new_x.sort_values("unique_id")
+    new_x = new_x.sort_values(idx)
     new_x = new_x[features_order]
     return model.predict(new_x)
 
@@ -189,15 +196,21 @@ class TimeSeries:
 
     def __init__(
         self,
-        freq: str = "D",
+        freq: Optional[str] = None,
         lags: List[int] = [],
         lag_transforms: Dict[int, List[Tuple]] = {},
         date_features: List[str] = [],
         num_threads: int = 1,
     ):
-        self.freq = pd.tseries.frequencies.to_offset(freq)
+        if freq is not None:
+            self.freq = pd.tseries.frequencies.to_offset(freq)
+        else:
+            self.freq = 1
+        if not isinstance(num_threads, int) or num_threads < 1:
+            warnings.warn("Setting num_threads to 1.")
+            num_threads = 1
         self.num_threads = num_threads
-        self.date_features = date_features
+        self.date_features = list(date_features)
 
         self.transforms: Dict[str, Tuple[Any, ...]] = OrderedDict()
         for lag in lags:
@@ -294,9 +307,10 @@ class TimeSeries:
         else:
             features = self._apply_multithreaded_transforms(updates_only=True)
 
-        for feature in self.date_features:
-            feat_vals = getattr(self.curr_dates, feature).values
-            features[feature] = feat_vals.astype(date_features_dtypes[feature])
+        if not isinstance(self.freq, int):
+            for feature in self.date_features:
+                feat_vals = getattr(self.curr_dates, feature).values
+                features[feature] = feat_vals.astype(date_features_dtypes[feature])
 
         features_df = pd.DataFrame(features, columns=self.features, index=self.uids)
         nulls_in_cols = features_df.isnull().any()
@@ -305,7 +319,7 @@ class TimeSeries:
                 f'Found null values in {", ".join(nulls_in_cols[nulls_in_cols].index)}.'
             )
         results_df = self.static_features.join(features_df)
-        results_df["ds"] = self.curr_dates
+        results_df[self.time_col] = self.curr_dates
         return results_df
 
     def _get_raw_predictions(self) -> np.ndarray:
@@ -316,13 +330,13 @@ class TimeSeries:
         n_preds = len(self.y_pred)
         idx = pd.Index(
             chain.from_iterable([uid] * n_preds for uid in self.uids),
-            name="unique_id",
+            name=self.id_col,
             dtype=self.uids.dtype,
         )
         df = pd.DataFrame(
             {
-                "ds": np.array(self.test_dates).ravel("F"),
-                "y_pred": self._get_raw_predictions(),
+                self.time_col: np.array(self.test_dates).ravel("F"),
+                f"{self.target_col}_pred": self._get_raw_predictions(),
             },
             index=idx,
         )
@@ -357,9 +371,10 @@ class TimeSeries:
         if dropna:
             df.dropna(inplace=True)
 
-        for feature in self.date_features:
-            feat_vals = getattr(df.ds.dt, feature).values
-            df[feature] = feat_vals.astype(date_features_dtypes[feature])
+        if not isinstance(self.freq, int):
+            for feature in self.date_features:
+                feat_vals = getattr(df.ds.dt, feature).values
+                df[feature] = feat_vals.astype(date_features_dtypes[feature])
 
         if keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
@@ -371,6 +386,9 @@ class TimeSeries:
     def fit_transform(
         self,
         data: pd.DataFrame,
+        id_col: str = "index",
+        time_col: str = "ds",
+        target_col: str = "y",
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
@@ -381,12 +399,33 @@ class TimeSeries:
         If you don't want to drop rows with null values after the transformations set `dropna=False`.
         If you want to keep only the last `n` values of each time serie set `keep_last_n=n`.
         """
-        if data.index.name != "unique_id" or "ds" not in data or "y" not in data:
-            raise ValueError(
-                "data must have an index named unique_id and ds and y columns."
-            )
-        if data["y"].isnull().any():
-            raise ValueError("y column contains null values.")
+        if id_col not in data and id_col != "index":
+            raise ValueError(f"Couldn't find {id_col} column.")
+        for col in (time_col, target_col):
+            if col not in data:
+                raise ValueError(f"Data doesn't contain {col} column")
+        if pd.api.types.is_datetime64_dtype(data[time_col]):
+            if self.freq == 1:
+                raise ValueError(
+                    "Must set frequency when using a timestamp type column."
+                )
+        elif np.issubdtype(data[time_col].dtype.type, np.integer):
+            if self.date_features:
+                warnings.warn("Ignoring date_features since time column is integer.")
+        else:
+            raise ValueError(f"{time_col} must be either timestamp or integer.")
+        if data[target_col].isnull().any():
+            raise ValueError(f"{target_col} column contains null values.")
+        if id_col in data:
+            data = data.set_index(id_col)
+        else:
+            data = data.copy(deep=False)
+            id_col = data.index.name or "unique_id"
+        data.index.name = "unique_id"
+        self.id_col = id_col
+        self.target_col = target_col
+        self.time_col = time_col
+        data = data.rename(columns={time_col: "ds", target_col: "y"}, copy=False)
         if static_features is None:
             static_features = data.columns.drop(["ds", "y"])
         self.static_features = (
@@ -397,7 +436,9 @@ class TimeSeries:
         self.restore_idxs = np.empty(data.shape[0], dtype=np.int32)
         self.restore_idxs[sort_idxs] = np.arange(data.shape[0])
         self._fit(sorted_data)
-        return self._transform(data, dropna, keep_last_n)
+        transformed = self._transform(data, dropna, keep_last_n)
+        transformed.index.name = id_col
+        return transformed.rename(columns={"y": target_col, "ds": time_col}, copy=False)
 
     def _predict_setup(self) -> None:
         self.curr_dates = self.last_dates.copy()
@@ -424,22 +465,24 @@ class TimeSeries:
         if not isinstance(models, list):
             models = [models]
         model_names = _name_models([m.__class__.__name__ for m in models])
+        predict_fn = self._define_predict_fn(predict_fn, dynamic_dfs)
         for i, model in enumerate(models):
             self._predict_setup()
-            predict_fn = self._define_predict_fn(predict_fn, dynamic_dfs)
             for _ in range(horizon):
                 new_x = self._update_features()
                 predictions = predict_fn(
                     model,
                     new_x,
-                    dynamic_dfs,
-                    self.features_order_,
+                    dynamic_dfs=dynamic_dfs,
+                    features_order=self.features_order_,
                     **predict_fn_kwargs,
                 )
                 self._update_y(predictions)
             if i == 0:
                 preds = self._get_predictions()
-                preds = preds.rename(columns={"y_pred": model_names[i]}, copy=False)
+                preds = preds.rename(
+                    columns={f"{self.target_col}_pred": model_names[i]}, copy=False
+                )
             else:
                 preds[model_names[i]] = self._get_raw_predictions()
         return preds
