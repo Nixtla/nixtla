@@ -6,11 +6,11 @@ __all__ = ['Forecast']
 # %% ../nbs/forecast.ipynb 3
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
 from sklearn.base import RegressorMixin, clone
 
 from .core import TimeSeries
-from .compat import dd_Frame
 from .utils import backtest_splits
 
 # %% ../nbs/forecast.ipynb 6
@@ -145,29 +145,34 @@ class Forecast:
         Returns a dataframe containing the datestamps, actual values, train ends and predictions."""
         results = []
         self.cv_models_ = []
+        if id_col != "index":
+            data = data.set_index(id_col)
+
+        data = data.rename(columns={time_col: "ds", target_col: "y"}, copy=False)
+        data.index.name = "unique_id"
+
+        if np.issubdtype(data["ds"].dtype.type, np.integer):
+            freq = 1
+        else:
+            freq = self.freq
+
         for train_end, train, valid in backtest_splits(
-            data, n_windows, window_size, self.freq
+            data, n_windows, window_size, freq
         ):
-            self.fit(
-                train,
-                id_col,
-                time_col,
-                target_col,
-                static_features,
-                dropna,
-                keep_last_n,
-            )
+            self.fit(train, "index", "ds", "y", static_features, dropna, keep_last_n)
             self.cv_models_.append(self.models_)
             y_pred = self.predict(
                 window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
             )
             result = valid[["ds", "y"]].copy()
             result["cutoff"] = train_end
+
             result = result.merge(y_pred, on=["unique_id", "ds"], how="left")
+            if id_col != "index":
+                result = result.reset_index()
+            result = result.rename(
+                columns={"ds": time_col, "y": target_col, "unique_id": id_col}
+            )
             results.append(result)
 
-        if isinstance(data, dd_Frame):
-            import dask.dataframe as dd
-
-            return dd.concat(results)
         return pd.concat(results)

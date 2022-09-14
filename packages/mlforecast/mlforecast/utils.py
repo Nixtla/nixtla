@@ -8,7 +8,7 @@ __all__ = ['generate_daily_series', 'generate_prices_for_series', 'data_indptr_f
 import random
 from itertools import chain
 from math import ceil, log10
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -104,7 +104,10 @@ def ensure_sorted(df: pd.DataFrame) -> pd.DataFrame:
 
 # %% ../nbs/utils.ipynb 20
 def _split_info(
-    data: pd.DataFrame, offset: int, window_size: int, freq: pd.offsets.BaseOffset
+    data: pd.DataFrame,
+    offset: int,
+    window_size: int,
+    freq: Union[pd.offsets.BaseOffset, int],
 ):
     # TODO: try computing this once and passing it to this fn
     last_dates = data.groupby("unique_id")["ds"].transform("max")
@@ -115,18 +118,20 @@ def _split_info(
 
 # %% ../nbs/utils.ipynb 21
 def backtest_splits(
-    data, n_windows: int, window_size: int, freq: pd.offsets.BaseOffset
+    data, n_windows: int, window_size: int, freq: Union[pd.offsets.BaseOffset, int]
 ):
     for i in range(n_windows):
         offset = (n_windows - i) * window_size
         if isinstance(data, pd.DataFrame):
             splits = _split_info(data, offset, window_size, freq)
         else:
+            meta = _split_info(data.head(), offset, window_size, freq)
             splits = data.map_partitions(
                 _split_info,
                 offset=offset,
                 window_size=window_size,
                 freq=freq,
+                meta=meta,
             )
         train_mask = data["ds"].le(splits["train_end"])
         train, valid = data[train_mask], data[splits["is_valid"]]

@@ -196,15 +196,17 @@ class TimeSeries:
 
     def __init__(
         self,
-        freq: Optional[str] = None,
+        freq: Optional[Union[int, str]] = None,
         lags: List[int] = [],
         lag_transforms: Dict[int, List[Tuple]] = {},
         date_features: List[str] = [],
         num_threads: int = 1,
     ):
-        if freq is not None:
+        if isinstance(freq, str):
             self.freq = pd.tseries.frequencies.to_offset(freq)
-        else:
+        elif isinstance(freq, int):
+            self.freq = freq
+        elif freq is None:
             self.freq = 1
         if not isinstance(num_threads, int) or num_threads < 1:
             warnings.warn("Setting num_threads to 1.")
@@ -410,6 +412,9 @@ class TimeSeries:
                     "Must set frequency when using a timestamp type column."
                 )
         elif np.issubdtype(data[time_col].dtype.type, np.integer):
+            if self.freq != 1:
+                warnings.warn("Setting `freq=1` since time col is int.")
+                self.freq = 1
             if self.date_features:
                 warnings.warn("Ignoring date_features since time column is integer.")
         else:

@@ -8,16 +8,17 @@ import warnings
 from typing import Callable, Dict, List, Optional, Tuple
 
 import dask.dataframe as dd
+import numpy as np
 import pandas as pd
 from dask.distributed import Client, default_client
 from sklearn.base import clone
 
-from ..core import TimeSeries
-from ..forecast import Forecast
+from .. import Forecast, TimeSeries
 from .core import DistributedTimeSeries
+from ..utils import backtest_splits
 
 # %% ../../nbs/distributed.forecast.ipynb 7
-class DistributedForecast(Forecast):
+class DistributedForecast:
     """Distributed pipeline encapsulation."""
 
     def __init__(
@@ -142,17 +143,51 @@ class DistributedForecast(Forecast):
         predict_fn: Optional[Callable] = None,  # custom function to compute predictions
         **predict_fn_kwargs,  # additional arguments passed to predict_fn
     ):
-        return super().cross_validation(
-            data=data,
-            n_windows=n_windows,
-            window_size=window_size,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            static_features=static_features,
-            dropna=dropna,
-            keep_last_n=keep_last_n,
-            dynamic_dfs=dynamic_dfs,
-            predict_fn=predict_fn,
-            **predict_fn_kwargs,
-        )
+        """Creates `n_windows` splits of `window_size` from `data`, trains the model
+        on the training set, predicts the window and merges the actuals and the predictions
+        in a dataframe.
+
+        Returns a dataframe containing the datestamps, actual values, train ends and predictions."""
+        results = []
+        self.cv_models_ = []
+        if id_col != "index":
+            data = data.set_index(id_col)
+
+        def renames(df):
+            mapper = {time_col: "ds", target_col: "y"}
+            df = df.rename(columns=mapper, copy=False)
+            df.index.name = "unique_id"
+            return df
+
+        data = data.map_partitions(renames)
+
+        if np.issubdtype(data["ds"].dtype.type, np.integer):
+            freq = 1
+        else:
+            freq = self.freq
+        for train_end, train, valid in backtest_splits(
+            data, n_windows, window_size, freq
+        ):
+            self.fit(train, "index", "ds", "y", static_features, dropna, keep_last_n)
+            self.cv_models_.append(self.models_)
+            y_pred = self.predict(
+                window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            )
+            result = valid[["ds", "y"]].copy()
+            result["cutoff"] = train_end
+
+            def merge_fn(res, pred):
+                return res.merge(pred, on=["unique_id", "ds"], how="left")
+
+            meta = {**result.dtypes.to_dict(), **y_pred.dtypes.to_dict()}
+            result = result.map_partitions(
+                merge_fn, y_pred, align_dataframes=False, meta=meta
+            )
+            if id_col != "index":
+                result = result.reset_index()
+            result = result.rename(
+                columns={"ds": time_col, "y": target_col, "unique_id": id_col}
+            )
+            results.append(result)
+
+        return dd.concat(results)
