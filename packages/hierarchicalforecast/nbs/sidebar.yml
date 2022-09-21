@@ -7,6 +7,7 @@ website:
         - examples/TourismSmall.ipynb
         - examples/AustralianDomesticTourism.ipynb
         - examples/AustralianPrisonPopulation.ipynb
+        - examples/AustralianDomesticTourism-Intervals.ipynb
       - section: Reference
         contents:
         - core.ipynb
