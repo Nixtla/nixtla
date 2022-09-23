@@ -90,7 +90,7 @@ class HierarchicalPlot:
         df_plot = Y_df.loc[series].set_index('ds')
         cols = models if models is not None else df_plot.columns
         cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
-        cmap = mcp.gen_color('tab20', len(cols_wo_levels))
+        cmap = mcp.gen_color('tab10', 10)[:len(cols_wo_levels)]
         cmap_dict = dict(zip(cols_wo_levels, cmap))
         df_plot[cols_wo_levels].plot(ax=ax, linewidth=2, color=cmap)
         if level is not None:
@@ -132,7 +132,7 @@ class HierarchicalPlot:
         fig, axs = plt.subplots(len(linked_series), 1, figsize=(20, 2 * len(linked_series)))
         cols = models if models is not None else Y_df.drop(['ds'], axis=1)
         cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
-        cmap = mcp.gen_color('tab20', len(cols_wo_levels))
+        cmap = mcp.gen_color('tab10', 10)[:len(cols_wo_levels)]
         cmap_dict = dict(zip(cols_wo_levels, cmap))
         for idx, series in enumerate(linked_series):
             df_plot = Y_df.loc[series].set_index('ds')
@@ -157,9 +157,13 @@ class HierarchicalPlot:
                             label=f'{col}_level_{lv}'
                         )
             axs[idx].set_title(f'{series}', fontsize=10)
-            axs[idx].legend(prop={'size': 10}, loc="upper left")
             axs[idx].grid()
             axs[idx].get_xaxis().label.set_visible(False)
+            axs[idx].legend().set_visible(False)
             for label in (axs[idx].get_xticklabels() + axs[idx].get_yticklabels()):
                 label.set_fontsize(10)
         plt.subplots_adjust(hspace=0.4)
+        handles, labels = axs[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc='lower center', 
+                   prop={'size': 10}, ncols=2, 
+                   bbox_to_anchor=(0, 0.05, 1, 1))
