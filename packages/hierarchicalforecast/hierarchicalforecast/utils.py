@@ -165,5 +165,5 @@ class HierarchicalPlot:
         plt.subplots_adjust(hspace=0.4)
         handles, labels = axs[0].get_legend_handles_labels()
         fig.legend(handles, labels, loc='lower center', 
-                   prop={'size': 10}, ncols=2, 
+                   prop={'size': 10}, ncols=np.ceil(len(labels) / 2), 
                    bbox_to_anchor=(0, 0.05, 1, 1))
