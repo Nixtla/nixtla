@@ -119,7 +119,7 @@ class HierarchicalPlot:
         for label in (ax.get_xticklabels() + ax.get_yticklabels()):
             label.set_fontsize(20)
                     
-    def plot_hierarchically_linked_data(
+    def plot_hierarchically_linked_series(
         self,
         bottom_series: str, # Bottom time series to plot
         Y_df: Optional[pd.DataFrame] = None, # Dataframe with columns `ds` and models to plot indexed by `unique_id`.
@@ -129,7 +129,7 @@ class HierarchicalPlot:
         if bottom_series not in self.S.columns:
             raise Exception(f'bottom time series {bottom_series} not found')
         linked_series = self.S[bottom_series].loc[lambda x: x == 1.].index
-        fig, axs = plt.subplots(len(linked_series), 1, figsize=(14, 2 * len(linked_series)))
+        fig, axs = plt.subplots(len(linked_series), 1, figsize=(20, 2 * len(linked_series)))
         cols = models if models is not None else Y_df.drop(['ds'], axis=1)
         cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
         cmap = mcp.gen_color('tab20', len(cols_wo_levels))
@@ -157,7 +157,7 @@ class HierarchicalPlot:
                             label=f'{col}_level_{lv}'
                         )
             axs[idx].set_title(f'{series}', fontsize=10)
-            axs[idx].legend(prop={'size': 10})
+            axs[idx].legend(prop={'size': 10}, loc="upper left")
             axs[idx].grid()
             axs[idx].get_xaxis().label.set_visible(False)
             for label in (axs[idx].get_xticklabels() + axs[idx].get_yticklabels()):
