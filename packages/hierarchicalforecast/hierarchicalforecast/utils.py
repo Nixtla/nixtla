@@ -77,6 +77,48 @@ class HierarchicalPlot:
         plt.show()
         plt.close()
         
+    def plot_series(
+            self, 
+            series: str, # Time series to plot
+            Y_df: Optional[pd.DataFrame] = None, # Dataframe with columns `ds` and models to plot indexed by `unique_id`.
+            models: Optional[List[str]] = None, # Models to plot. 
+            level: Optional[List[int]] = None # Levels for probabilistic intervals
+        ):
+        if series not in self.S.index:
+            raise Exception(f'time series {series} not found')
+        fig, ax = plt.subplots(1, 1, figsize = (20, 7))
+        df_plot = Y_df.loc[series].set_index('ds')
+        cols = models if models is not None else df_plot.columns
+        cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
+        cmap = mcp.gen_color('tab20', len(cols_wo_levels))
+        cmap_dict = dict(zip(cols_wo_levels, cmap))
+        df_plot[cols_wo_levels].plot(ax=ax, linewidth=2, color=cmap)
+        if level is not None:
+            for lv in level:
+                for col in cols_wo_levels:
+                    if col == 'y':
+                        # we dont need intervals
+                        # for the actual value
+                        continue
+                    if f'{col}-lo-{lv}' not in df_plot.columns:
+                        # if model
+                        # doesnt have levels
+                        continue
+                    ax.fill_between(
+                        df_plot.index, 
+                        df_plot[f'{col}-lo-{lv}'], 
+                        df_plot[f'{col}-hi-{lv}'],
+                        alpha=-lv/50 + 2,
+                        color=cmap_dict[col],
+                        label=f'{col}_level_{lv}'
+                    )
+        ax.set_title(f'{series} Forecast', fontsize=22)
+        ax.set_xlabel('Timestamp [t]', fontsize=20)
+        ax.legend(prop={'size': 15})
+        ax.grid()
+        for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+            label.set_fontsize(20)
+                    
     def plot_hierarchically_linked_data(
         self,
         bottom_series: str, # Bottom time series to plot
@@ -93,31 +135,31 @@ class HierarchicalPlot:
         cmap = mcp.gen_color('tab20', len(cols_wo_levels))
         cmap_dict = dict(zip(cols_wo_levels, cmap))
         for idx, series in enumerate(linked_series):
-            df_plot = Y_df.loc[series, ['ds'] + cols_wo_levels].set_index('ds')
-            df_plot.plot(ax=axs[idx], linewidth=2, color=cmap)
+            df_plot = Y_df.loc[series].set_index('ds')
+            df_plot[cols_wo_levels].plot(ax=axs[idx], linewidth=2, color=cmap)
             if level is not None:
                 for lv in level:
                     for col in cols_wo_levels:
                         if col == 'y':
                             # we dont need intervals
                             # for the actual value
-                            pass
-                        if f'{col}-lo-{level}' not in df_plot.columns:
+                            continue
+                        if f'{col}-lo-{lv}' not in df_plot.columns:
                             # if model
                             # doesnt have levels
-                            pass
-                        ax.fill_between(df_plot.index, 
-                                        df_plot[f'{col}-lo-{level}'], 
-                                        df_plot[f'{col}-hi-{level}'],
-                                        alpha=-lv/50 + 2,
-                                        color=cmap_dict[col],
-                                        label=f'{col}_level_{level}')
+                            continue
+                        axs[idx].fill_between(
+                            df_plot.index, 
+                            df_plot[f'{col}-lo-{lv}'], 
+                            df_plot[f'{col}-hi-{lv}'],
+                            alpha=-lv/50 + 2,
+                            color=cmap_dict[col],
+                            label=f'{col}_level_{lv}'
+                        )
             axs[idx].set_title(f'{series}', fontsize=10)
             axs[idx].legend(prop={'size': 10})
             axs[idx].grid()
             axs[idx].get_xaxis().label.set_visible(False)
             for label in (axs[idx].get_xticklabels() + axs[idx].get_yticklabels()):
                 label.set_fontsize(10)
-        #plt.set_ylabel('Domestic Tourism', fontsize=9)
-        #plt.set_xlabel('Timestamp [t]', fontsize=9)
         plt.subplots_adjust(hspace=0.4)
