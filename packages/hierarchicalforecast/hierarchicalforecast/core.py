@@ -4,8 +4,10 @@
 __all__ = ['HierarchicalReconciliation']
 
 # %% ../nbs/core.ipynb 2
+import re
 from functools import partial
 from inspect import signature
+from scipy.stats import norm
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
@@ -36,10 +38,15 @@ class HierarchicalReconciliation:
                                 # If a class of `self.reconciles` receives
                                 # `y_hat_insample`, `Y_df` must include them as columns.
             S: pd.DataFrame,    #  Summing matrix of size `(base, bottom)`.
-            tags: Dict[str, np.ndarray] # Each key is a level and its value contains tags associated to that level.
+            tags: Dict[str, np.ndarray], # Each key is a level and its value contains tags associated to that level.
+            level: Optional[List[int]] = None # Levels for probabilistic intervals
         ):
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
+        # store pi names
+        pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name)]
+        #remove prediction intervals
+        model_names = [name for name in model_names if name not in pi_model_names]
         uids = Y_h.index.unique()
         # same order of Y_h to prevent errors
         S_ = S.loc[uids]
@@ -47,15 +54,33 @@ class HierarchicalReconciliation:
             y_insample = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32),
             S = S_.values.astype(np.float32),
             idx_bottom = S_.index.get_indexer(S.columns),
-            levels={key: S_.index.get_indexer(val) for key, val in tags.items()}
+            tags={key: S_.index.get_indexer(val) for key, val in tags.items()}
         )
         fcsts = Y_h.copy()
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
+            has_level = 'level' in signature(reconcile_fn).parameters
             for model_name in model_names:
+                # should we calculate prediction intervals?
+                pi_model_name = [pi_name for pi_name in pi_model_names if model_name in pi_name]
+                pi = len(pi_model_name) > 0
                 # Remember: pivot sorts uid
                 y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[uids].values
+                if pi and has_level and level is not None:
+                    # we need to construct sigmah and add it
+                    # to the common_vals
+                    # to recover sigmah we only need 
+                    # one prediction intervals
+                    pi_col = pi_model_name[0]
+                    sign = -1 if 'lo' in pi_col else 1
+                    level_col = re.findall('[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+', pi_col)
+                    level_col = float(level_col[0])
+                    z = norm.ppf(0.5 + level_col / 200)
+                    sigmah = Y_h.pivot(columns='ds', values=pi_col).loc[uids].values
+                    sigmah = sign * (y_hat_model - sigmah) / z
+                    common_vals['sigmah'] = sigmah
+                    common_vals['level'] = level
                 if has_fitted:
                     if model_name in Y_df:
                         y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
@@ -69,7 +94,13 @@ class HierarchicalReconciliation:
                 kwargs = [key for key in signature(reconcile_fn).parameters if key in common_vals.keys()]
                 kwargs = {key: common_vals[key] for key in kwargs}
                 fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)
-                fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model.flatten()
+                fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model['mean'].flatten()
+                if pi and has_level and level is not None:
+                    for lv in level:
+                        fcsts[f'{model_name}/{reconcile_fn_name}-lo-{lv}'] = fcsts_model[f'lo-{lv}'].flatten()
+                        fcsts[f'{model_name}/{reconcile_fn_name}-hi-{lv}'] = fcsts_model[f'hi-{lv}'].flatten()
+                    del common_vals['sigmah']
+                    del common_vals['level']
                 if has_fitted:
                     del common_vals['y_hat_insample']
         return fcsts

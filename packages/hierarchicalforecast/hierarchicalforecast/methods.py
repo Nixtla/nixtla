@@ -4,31 +4,54 @@
 __all__ = ['BottomUp', 'TopDown', 'MiddleOut', 'MinTrace', 'OptimalCombination', 'ERM']
 
 # %% ../nbs/methods.ipynb 2
+import warnings
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 from numba import njit
+from scipy.stats import norm
 from statsmodels.stats.moment_helpers import cov2corr
 
 # %% ../nbs/methods.ipynb 4
 def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray, 
-               y_hat: np.ndarray, SP: np.ndarray = None):
+               y_hat: np.ndarray, SP: np.ndarray = None,
+               sigmah: Optional[np.ndarray] = None, 
+               level: Optional[List[int]] = None):
     if SP is None:
         SP = S @ P
-    return np.matmul(SP, y_hat)
+    res = {'mean': np.matmul(SP, y_hat)}
+    if sigmah is not None and level is not None:
+        #then we calculate prediction intervals
+        # we assume normality
+        # we have to calculate the "reconciled" sigmah
+        # following
+        # https://otexts.com/fpp3/rec-prob.html
+        R1 = cov2corr(W)
+        W_h = [np.diag(sigma) @ R1 @ np.diag(sigma).T for sigma in sigmah.T]
+        sigmah = np.hstack([np.sqrt(np.diag(SP @ W @ SP.T))[:, None] for W in W_h])
+        res['sigmah'] = sigmah
+        # intervals calc
+        level = np.asarray(level)
+        z = norm.ppf(0.5 + level / 200)
+        for zs, lv in zip(z, level):
+            res[f'lo-{lv}'] = res['mean'] - zs * sigmah
+            res[f'hi-{lv}'] = res['mean'] + zs * sigmah
+    return res
 
 # %% ../nbs/methods.ipynb 5
 def bottom_up(S: np.ndarray,
               y_hat: np.ndarray,
-              idx_bottom: List[int]):
+              idx_bottom: List[int],
+              sigmah: Optional[np.ndarray] = None, 
+              level: Optional[List[int]] = None):
     n_hiers, n_bottom = S.shape
     P = np.zeros_like(S, dtype=np.float32)
     P[idx_bottom] = S[idx_bottom]
     P = P.T
     W = np.eye(n_hiers, dtype=np.float32)
-    return _reconcile(S, P, W, y_hat)
+    return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level)
 
 # %% ../nbs/methods.ipynb 6
 class BottomUp:
@@ -37,21 +60,24 @@ class BottomUp:
             self,
             S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
             y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-            idx_bottom: np.ndarray # Indices corresponding to the bottom level of `S`, size (`bottom`)
+            idx_bottom: np.ndarray, # Indices corresponding to the bottom level of `S`, size (`bottom`)
+            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
+            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
         ):
-        return bottom_up(S=S, y_hat=y_hat, idx_bottom=idx_bottom)
+        return bottom_up(S=S, y_hat=y_hat, 
+                         idx_bottom=idx_bottom, sigmah=sigmah, level=level)
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 13
+# %% ../nbs/methods.ipynb 15
 def is_strictly_hierarchical(S: np.ndarray, 
-                             levels: Dict[str, np.ndarray]):
+                             tags: Dict[str, np.ndarray]):
     # main idea:
     # if S represents a strictly hierarchical structure
     # the number of paths before the bottom level
     # should be equal to the number of nodes
     # of the previuos level
-    levels_ = dict(sorted(levels.items(), key=lambda x: len(x[1])))
+    levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
     # removing bottom level
     levels_.popitem()
     # making S categorical
@@ -61,15 +87,15 @@ def is_strictly_hierarchical(S: np.ndarray,
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/methods.ipynb 15
-def _get_child_nodes(S: np.ndarray, levels: Dict[str, np.ndarray]):
+# %% ../nbs/methods.ipynb 17
+def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
     childs = {}
-    level_names = list(levels.keys())
+    level_names = list(tags.keys())
     nodes = OrderedDict()
     for i_level, level in enumerate(level_names[:-1]):
-        parent = levels[level]
+        parent = tags[level]
         child = np.zeros_like(S)
-        idx_child = levels[level_names[i_level+1]] 
+        idx_child = tags[level_names[i_level+1]] 
         child[idx_child] = S[idx_child]
         nodes_level = {}
         for idx_parent_node in parent:
@@ -80,14 +106,14 @@ def _get_child_nodes(S: np.ndarray, levels: Dict[str, np.ndarray]):
         nodes[level] = nodes_level
     return nodes        
 
-# %% ../nbs/methods.ipynb 16
+# %% ../nbs/methods.ipynb 18
 def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
-                                levels: Dict[str, np.ndarray],
+                                tags: Dict[str, np.ndarray],
                                 nodes: Dict[str, Dict[int, np.ndarray]],
                                 idx_top: int):
     reconciled = np.zeros_like(y_hat)
     reconciled[idx_top] = y_hat[idx_top]
-    level_names = list(levels.keys())
+    level_names = list(tags.keys())
     for i_level, level in enumerate(level_names[:-1]):
         nodes_level = nodes[level]
         for idx_parent, idx_childs in nodes_level.items():
@@ -97,29 +123,33 @@ def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                 reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
     return reconciled
 
-# %% ../nbs/methods.ipynb 17
+# %% ../nbs/methods.ipynb 19
 def top_down(S: np.ndarray, 
              y_hat: np.ndarray,
              y_insample: np.ndarray,
-             levels: Dict[str, np.ndarray],
-             method: str):
-    if not is_strictly_hierarchical(S, levels):
+             tags: Dict[str, np.ndarray],
+             method: str,
+             sigmah: Optional[np.ndarray] = None, 
+             level: Optional[List[int]] = None):
+    if not is_strictly_hierarchical(S, tags):
         raise ValueError('Top down reconciliation requires strictly hierarchical structures.')
     
     n_hiers, n_bottom = S.shape
     idx_top = int(S.sum(axis=1).argmax())
-    levels_ = dict(sorted(levels.items(), key=lambda x: len(x[1])))
+    levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
     idx_bottom = levels_[list(levels_)[-1]]
     
     if method == 'forecast_proportions':
-        nodes = _get_child_nodes(S=S, levels=levels_)
+        if sigmah is not None and level is not None:
+            warnings.warn('Prediction intervals not implement for `forecast_proportions`')
+        nodes = _get_child_nodes(S=S, tags=levels_)
         reconciled = [_reconcile_fcst_proportions(S=S, y_hat=y_hat_[:, None], 
-                                                  levels=levels_, 
+                                                  tags=levels_, 
                                                   nodes=nodes,
                                                   idx_top=idx_top) \
                       for y_hat_ in y_hat.T]
         reconciled = np.hstack(reconciled)
-        return reconciled
+        return {'mean': reconciled}
     else:
         y_top = y_insample[idx_top]
         y_btm = y_insample[idx_bottom]
@@ -132,9 +162,9 @@ def top_down(S: np.ndarray,
     P = np.zeros_like(S, np.float64).T #float 64 if prop is too small, happens with wiki2
     P[:, idx_top] = prop
     W = np.eye(n_hiers, dtype=np.float32)
-    return _reconcile(S, P, W, y_hat)
+    return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level)
 
-# %% ../nbs/methods.ipynb 18
+# %% ../nbs/methods.ipynb 20
 class TopDown:
     
     def __init__(
@@ -148,48 +178,51 @@ class TopDown:
             S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
             y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
             y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-            levels: Dict[str, np.ndarray] # Each key is a level and each value its `S` indices
+            tags: Dict[str, np.ndarray], # Each key is a level and each value its `S` indices
+            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
+            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
         ):
         return top_down(S=S, y_hat=y_hat, 
                         y_insample=y_insample, 
-                        levels=levels,
-                        method=self.method)
+                        tags=tags,
+                        method=self.method,
+                        sigmah=sigmah, level=level)
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 24
+# %% ../nbs/methods.ipynb 27
 def middle_out(S: np.ndarray, 
                y_hat: np.ndarray,
                y_insample: np.ndarray,
-               levels: Dict[str, np.ndarray],
-               level: str,
+               tags: Dict[str, np.ndarray],
+               middle_level: str,
                top_down_method: str):
-    if not is_strictly_hierarchical(S, levels):
+    if not is_strictly_hierarchical(S, tags):
         raise ValueError('Middle out reconciliation requires strictly hierarchical structures.')
-    if level not in levels.keys():
-        raise ValueError('You have to provide a `level` in `levels`.')
-    levels_ = dict(sorted(levels.items(), key=lambda x: len(x[1])))
+    if middle_level not in tags.keys():
+        raise ValueError('You have to provide a `middle_level` in `tags`.')
+    levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
     reconciled = np.full_like(y_hat, fill_value=np.nan)
-    cut_nodes = levels_[level]
+    cut_nodes = levels_[middle_level]
     # bottom up reconciliation
     idxs_bu = []
     for node, idx_node in levels_.items():
         idxs_bu.append(idx_node)
-        if node == level:
+        if node == middle_level:
             break
     idxs_bu = np.hstack(idxs_bu)
     #bottom up forecasts
     bu = bottom_up(S=np.unique(S[idxs_bu], axis=1), 
                    y_hat=y_hat[idxs_bu], 
                    idx_bottom=np.arange(len(idxs_bu))[-len(cut_nodes):])
-    reconciled[idxs_bu] = bu
+    reconciled[idxs_bu] = bu['mean']
     
     #top down
     child_nodes = _get_child_nodes(S, levels_)
     # parents contains each node in the middle out level
     # as key. The values of each node are the levels that
     # are conected to that node.
-    parents = {node: {level: np.array([node])} for node in cut_nodes}
+    parents = {node: {middle_level: np.array([node])} for node in cut_nodes}
     level_names = list(levels_.keys())
     for lv, lv_child in zip(level_names[:-1], level_names[1:]):
         # if lv is not part of the middle out to bottom
@@ -219,19 +252,19 @@ def middle_out(S: np.ndarray,
                       y_insample[idxs_node], 
                       levels_node_, 
                       method=top_down_method)
-        reconciled[idxs_node] = td
-    return reconciled
+        reconciled[idxs_node] = td['mean']
+    return {'mean': reconciled}
         
 
-# %% ../nbs/methods.ipynb 25
+# %% ../nbs/methods.ipynb 28
 class MiddleOut:
     
     def __init__(
             self, 
-            level: str, # Middle level 
+            middle_level: str, # Middle level 
             top_down_method: str # One of `forecast_proportions`, `average_proportions` and `proportion_averages`
         ):
-        self.level = level
+        self.middle_level = middle_level
         self.top_down_method = top_down_method 
     
     def reconcile(
@@ -239,26 +272,28 @@ class MiddleOut:
             S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
             y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
             y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-            levels: Dict[str, np.ndarray] # Each key is a level and each value its `S` indices
+            tags: Dict[str, np.ndarray] # Each key is a level and each value its `S` indices
         ):
         return middle_out(S=S, y_hat=y_hat, 
                           y_insample=y_insample, 
-                          levels=levels,
-                          level=self.level,
+                          tags=tags,
+                          middle_level=self.middle_level,
                           top_down_method=self.top_down_method)
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 31
+# %% ../nbs/methods.ipynb 34
 def crossprod(x):
     return x.T @ x
 
-# %% ../nbs/methods.ipynb 32
+# %% ../nbs/methods.ipynb 35
 def min_trace(S: np.ndarray, 
               y_hat: np.ndarray,
               y_insample: np.ndarray,
               y_hat_insample: np.ndarray,
-              method: str):
+              method: str,
+              sigmah: Optional[np.ndarray] = None,
+              level: Optional[List[int]] = None):
     # shape residuals_insample (n_hiers, obs)
     res_methods = ['wls_var', 'mint_cov', 'mint_shrink']
     if method in res_methods and y_insample is None and y_hat_insample is None:
@@ -300,9 +335,9 @@ def min_trace(S: np.ndarray,
     R = S.T @ np.linalg.pinv(W)
     P = np.linalg.pinv(R @ S) @ R
     
-    return _reconcile(S, P, W, y_hat)
+    return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level)
 
-# %% ../nbs/methods.ipynb 33
+# %% ../nbs/methods.ipynb 36
 class MinTrace:
     
     def __init__(
@@ -316,28 +351,34 @@ class MinTrace:
             S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
             y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
             y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-            y_hat_insample: np.ndarray # Insample forecasts of size (`base`, `insample_size`)
+            y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
+            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
+            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
         ):
         return min_trace(S=S, y_hat=y_hat, 
                          y_insample=y_insample,
                          y_hat_insample=y_hat_insample,
-                         method=self.method)
+                         method=self.method,
+                         sigmah=sigmah,
+                         level=level)
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 39
+# %% ../nbs/methods.ipynb 43
 def optimal_combination(S: np.ndarray, 
                         y_hat: np.ndarray,
                         method: str,
                         y_insample: np.ndarray = None,
-                        y_hat_insample: np.ndarray = None):
+                        y_hat_insample: np.ndarray = None,
+                        sigmah: Optional[np.ndarray] = None, 
+                        level: Optional[List[int]] = None):
     
     return min_trace(S=S, y_hat=y_hat, 
-                         y_insample=y_insample,
-                         y_hat_insample=y_hat_insample,
-                         method=method)
+                     y_insample=y_insample,
+                     y_hat_insample=y_hat_insample,
+                     method=method, sigmah=sigmah, level=level)
 
-# %% ../nbs/methods.ipynb 40
+# %% ../nbs/methods.ipynb 44
 class OptimalCombination:
     
     def __init__(
@@ -355,17 +396,20 @@ class OptimalCombination:
             S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
             y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
             y_insample: np.ndarray = None, # Insample values of size (`base`, `insample_size`)
-            y_hat_insample: np.ndarray = None # Insample forecasts of size (`base`, `insample_size`)
+            y_hat_insample: np.ndarray = None, # Insample forecasts of size (`base`, `insample_size`)
+            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
+            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
         ):
         return optimal_combination(S=S, 
                                    y_hat=y_hat, 
                                    y_insample=y_insample, 
                                    y_hat_insample=y_hat_insample, 
-                                   method=self.method)
+                                   method=self.method, sigmah=sigmah, 
+                                   level=level)
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 46
+# %% ../nbs/methods.ipynb 51
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -397,14 +441,16 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 47
+# %% ../nbs/methods.ipynb 52
 def erm(S: np.ndarray,
         y_hat: np.ndarray,
         y_insample: np.ndarray,
         y_hat_insample: np.ndarray,
         idx_bottom: np.ndarray,
         method: str,
-        lambda_reg: float = 1e-3):
+        lambda_reg: float = 1e-3,
+        sigmah: Optional[np.ndarray] = None, 
+        level: Optional[List[int]] = None):
     n_hiers, n_bottom = S.shape
     # y_hat_insample shape (n_hiers, obs)
     # remove obs with nan values
@@ -439,9 +485,9 @@ def erm(S: np.ndarray,
         
     W = np.eye(n_hiers, dtype=np.float32)
     
-    return _reconcile(S, P, W, y_hat)
+    return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level)
 
-# %% ../nbs/methods.ipynb 48
+# %% ../nbs/methods.ipynb 53
 class ERM:
     
     def __init__(
@@ -458,12 +504,15 @@ class ERM:
             y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
             y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
             y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
-            idx_bottom: np.ndarray # Indices corresponding to the bottom level of `S`, size (`bottom`)
+            idx_bottom: np.ndarray, # Indices corresponding to the bottom level of `S`, size (`bottom`)
+            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
+            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
         ):
         return erm(S=S, y_hat=y_hat, 
                    y_insample=y_insample,
                    y_hat_insample=y_hat_insample,
                    idx_bottom=idx_bottom,
-                   method=self.method, lambda_reg=self.lambda_reg)
+                   method=self.method, lambda_reg=self.lambda_reg,
+                   sigmah=sigmah, level=level)
     
     __call__ = reconcile
