@@ -4,6 +4,7 @@
 __all__ = ['aggregate', 'HierarchicalPlot']
 
 # %% ../nbs/utils.ipynb 2
+import sys
 from itertools import chain
 from typing import Callable, Dict, List, Optional
 
@@ -164,6 +165,11 @@ class HierarchicalPlot:
                 label.set_fontsize(10)
         plt.subplots_adjust(hspace=0.4)
         handles, labels = axs[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc='lower center', 
-                   prop={'size': 10}, ncols=np.ceil(len(labels) / 2), 
-                   bbox_to_anchor=(0, 0.05, 1, 1))
+        kwargs = dict(
+            loc='lower center', 
+            prop={'size': 10}, 
+            bbox_to_anchor=(0, 0.05, 1, 1)
+        )
+        if sys.version_info.minor > 7:
+            kwargs['ncols'] = np.max([2, np.ceil(len(labels) / 2)])
+        fig.legend(handles, labels, **kwargs)
