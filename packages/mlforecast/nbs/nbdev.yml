@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "mlforecast"
+  site-url: "https://Nixtla.github.io/"
+  description: "Scalable machine learning based time series forecasting"
+  repo-branch: main
+  repo-url: "https://github.com/Nixtla/mlforecast"
