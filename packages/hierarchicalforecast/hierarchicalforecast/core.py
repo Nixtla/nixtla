@@ -13,6 +13,8 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from .methods import _bootstrap_samples
+
 # %% ../nbs/core.ipynb 4
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
@@ -39,7 +41,8 @@ class HierarchicalReconciliation:
                                 # `y_hat_insample`, `Y_df` must include them as columns.
             S: pd.DataFrame,    #  Summing matrix of size `(base, bottom)`.
             tags: Dict[str, np.ndarray], # Each key is a level and its value contains tags associated to that level.
-            level: Optional[List[int]] = None # Levels for probabilistic intervals
+            level: Optional[List[int]] = None, # Levels for probabilistic intervals
+            bootstrap: bool = False, # Compute leves using bootstrap
         ):
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
@@ -67,7 +70,7 @@ class HierarchicalReconciliation:
                 pi = len(pi_model_name) > 0
                 # Remember: pivot sorts uid
                 y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[uids].values
-                if pi and has_level and level is not None:
+                if pi and has_level and level is not None and not bootstrap:
                     # we need to construct sigmah and add it
                     # to the common_vals
                     # to recover sigmah we only need 
@@ -81,11 +84,21 @@ class HierarchicalReconciliation:
                     sigmah = sign * (y_hat_model - sigmah) / z
                     common_vals['sigmah'] = sigmah
                     common_vals['level'] = level
-                if has_fitted:
+                if has_fitted or bootstrap:
                     if model_name in Y_df:
                         y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
                         y_hat_insample = y_hat_insample.astype(np.float32)
-                        common_vals['y_hat_insample'] = y_hat_insample 
+                        if has_fitted:
+                            common_vals['y_hat_insample'] = y_hat_insample 
+                        if bootstrap and has_level:
+                            common_vals['bootstrap_samples'] = _bootstrap_samples(
+                                y_insample=common_vals['y_insample'],
+                                y_hat_insample=y_hat_insample, 
+                                y_hat=y_hat_model, 
+                                n_samples=1_000
+                            )
+                            common_vals['bootstrap'] = bootstrap
+                            common_vals['level'] = level
                     else:
                         # some methods have the residuals argument
                         # but they don't need them
@@ -95,12 +108,16 @@ class HierarchicalReconciliation:
                 kwargs = {key: common_vals[key] for key in kwargs}
                 fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)
                 fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model['mean'].flatten()
-                if pi and has_level and level is not None:
+                if (pi and has_level and level is not None) or (bootstrap and level is not None):
                     for lv in level:
                         fcsts[f'{model_name}/{reconcile_fn_name}-lo-{lv}'] = fcsts_model[f'lo-{lv}'].flatten()
                         fcsts[f'{model_name}/{reconcile_fn_name}-hi-{lv}'] = fcsts_model[f'hi-{lv}'].flatten()
-                    del common_vals['sigmah']
                     del common_vals['level']
+                    if not bootstrap:
+                        del common_vals['sigmah']
+                    else:
+                        del common_vals['bootstrap_samples']
+                        del common_vals['bootstrap']
                 if has_fitted:
                     del common_vals['y_hat_insample']
         return fcsts
