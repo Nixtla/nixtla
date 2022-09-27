@@ -148,31 +148,35 @@ class Forecast:
         if id_col != "index":
             data = data.set_index(id_col)
 
-        data = data.rename(columns={time_col: "ds", target_col: "y"}, copy=False)
-        data.index.name = "unique_id"
-
-        if np.issubdtype(data["ds"].dtype.type, np.integer):
+        if np.issubdtype(data[time_col].dtype.type, np.integer):
             freq = 1
         else:
             freq = self.freq
 
         for train_end, train, valid in backtest_splits(
-            data, n_windows, window_size, freq
+            data, n_windows, window_size, freq, time_col, target_col
         ):
-            self.fit(train, "index", "ds", "y", static_features, dropna, keep_last_n)
+            self.fit(
+                train,
+                "index",
+                time_col,
+                target_col,
+                static_features,
+                dropna,
+                keep_last_n,
+            )
             self.cv_models_.append(self.models_)
             y_pred = self.predict(
                 window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
             )
-            result = valid[["ds", "y"]].copy()
+            y_pred = y_pred.set_index(time_col, append=True)
+            result = valid.set_index(time_col, append=True)[[target_col]].copy()
+            result = result.join(y_pred).reset_index(time_col)
             result["cutoff"] = train_end
-
-            result = result.merge(y_pred, on=["unique_id", "ds"], how="left")
-            if id_col != "index":
-                result = result.reset_index()
-            result = result.rename(
-                columns={"ds": time_col, "y": target_col, "unique_id": id_col}
-            )
             results.append(result)
 
-        return pd.concat(results)
+        out = pd.concat(results)
+        out = out[[time_col, "cutoff", target_col, *y_pred.columns]]
+        if id_col != "index":
+            out = out.reset_index()
+        return out

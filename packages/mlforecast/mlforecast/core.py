@@ -8,15 +8,12 @@ import concurrent.futures
 import inspect
 import warnings
 from collections import Counter, OrderedDict
-from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 from numba import njit
 from window_ops.shift import shift_array
-
-from .utils import data_indptr_from_sorted_df
 
 # %% ../nbs/core.ipynb 10
 date_features_dtypes = {
@@ -238,6 +235,68 @@ class TimeSeries:
             f"num_threads={self.num_threads})"
         )
 
+    def _data_indptr_from_sorted_df(
+        self, df: pd.DataFrame
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        grouped = df.groupby(level=0, observed=True)
+        sizes = grouped.size().values
+        indptr = np.append(0, sizes.cumsum())
+        data = df[self.target_col].values
+        return data, indptr
+
+    def _fit(
+        self,
+        df: pd.DataFrame,
+        id_col: str = "index",
+        time_col: str = "ds",
+        target_col: str = "y",
+        static_features: Optional[List[str]] = None,
+        keep_last_n: Optional[int] = None,
+    ) -> "TimeSeries":
+        """Save the series values, ids and last dates."""
+        if pd.api.types.is_datetime64_dtype(df[time_col]):
+            if self.freq == 1:
+                raise ValueError(
+                    "Must set frequency when using a timestamp type column."
+                )
+        elif np.issubdtype(df[time_col].dtype.type, np.integer):
+            if self.freq != 1:
+                warnings.warn("Setting `freq=1` since time col is int.")
+                self.freq = 1
+            if self.date_features:
+                warnings.warn("Ignoring date_features since time column is integer.")
+        else:
+            raise ValueError(f"{time_col} must be either timestamp or integer.")
+        self.id_col = id_col
+        self.target_col = target_col
+        self.time_col = time_col
+        if static_features is None:
+            static_features = df.columns.drop([time_col, target_col])
+        self.static_features = df[static_features].groupby(level=0).head(1)
+        sort_idxs = pd.core.sorting.lexsort_indexer([df.index, df[time_col]])
+        sorted_df = (
+            df[[time_col, target_col]].set_index(time_col, append=True).iloc[sort_idxs]
+        )
+        self.restore_idxs = np.empty(df.shape[0], dtype=np.int32)
+        self.restore_idxs[sort_idxs] = np.arange(df.shape[0])
+        data, indptr = self._data_indptr_from_sorted_df(sorted_df)
+        if data.dtype not in (np.float32, np.float64):
+            # since all transformations generate nulls, we need a float dtype
+            data = data.astype(np.float32)
+        self.ga = GroupedArray(data, indptr)
+        self.features_ = self._compute_transforms()
+        if keep_last_n is not None:
+            self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
+        self._ga = GroupedArray(self.ga.data, self.ga.indptr)
+        self.uids = sorted_df.index.unique(level=0)
+        self.last_dates = sorted_df.index.get_level_values(self.time_col)[
+            indptr[1:] - 1
+        ]
+        self.features_order_ = (
+            df.columns.drop([self.time_col, self.target_col]).tolist() + self.features
+        )
+        return self
+
     def _apply_transforms(self, updates_only: bool = False) -> Dict[str, np.ndarray]:
         """Apply the transformations using the main process.
 
@@ -286,6 +345,57 @@ class TimeSeries:
             return self._apply_transforms()
         return self._apply_multithreaded_transforms()
 
+    def _transform(
+        self,
+        df: pd.DataFrame,
+        dropna: bool = True,
+    ) -> pd.DataFrame:
+        """Add the features to `df`.
+
+        if `dropna=True` then all the null rows are dropped."""
+        if not self.transforms:
+            raise ValueError("Must specify at least one type of transformation.")
+        df = df.copy(deep=False)
+        for feat in self.transforms.keys():
+            df[feat] = self.features_[feat][self.restore_idxs]
+
+        if dropna:
+            df.dropna(inplace=True)
+
+        if not isinstance(self.freq, int):
+            for feature in self.date_features:
+                feat_vals = getattr(df[self.time_col].dt, feature).values
+                df[feature] = feat_vals.astype(date_features_dtypes[feature])
+        return df
+
+    def fit_transform(
+        self,
+        data: pd.DataFrame,
+        id_col: str = "index",
+        time_col: str = "ds",
+        target_col: str = "y",
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """Add the features to `data` and save the required information for the predictions step.
+
+        If not all features are static, specify which ones are in `static_features`.
+        If you don't want to drop rows with null values after the transformations set `dropna=False`
+        If `keep_last_n` is not None then that number of observations is kept across all series for updates.
+        """
+        if id_col not in data and id_col != "index":
+            raise ValueError(f"Couldn't find {id_col} column.")
+        for col in (time_col, target_col):
+            if col not in data:
+                raise ValueError(f"Data doesn't contain {col} column")
+        if data[target_col].isnull().any():
+            raise ValueError(f"{target_col} column contains null values.")
+        if id_col != "index":
+            data = data.set_index(id_col)
+        self._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
+        return self._transform(data, dropna)
+
     def _update_y(self, new: np.ndarray) -> None:
         """Appends the elements of `new` to every time serie.
 
@@ -331,8 +441,8 @@ class TimeSeries:
         """Get all the predicted values with their corresponding ids and datestamps."""
         n_preds = len(self.y_pred)
         idx = pd.Index(
-            chain.from_iterable([uid] * n_preds for uid in self.uids),
-            name=self.id_col,
+            np.repeat(self.uids, n_preds),
+            name=self.id_col if self.id_col != "index" else None,
             dtype=self.uids.dtype,
         )
         df = pd.DataFrame(
@@ -343,107 +453,6 @@ class TimeSeries:
             index=idx,
         )
         return df
-
-    def _fit(self, df: pd.DataFrame) -> "TimeSeries":
-        """Save the series values, ids and last dates."""
-        data, indptr = data_indptr_from_sorted_df(df)
-        if data.dtype not in (np.float32, np.float64):
-            # since all transformations generate nulls, we need a float dtype
-            data = data.astype(np.float32)
-        self.ga = GroupedArray(data, indptr)
-        self.uids = df.index.unique(level="unique_id")
-        self.last_dates = df.index.get_level_values("ds")[indptr[1:] - 1]
-        return self
-
-    def _transform(
-        self,
-        df: pd.DataFrame,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
-    ) -> pd.DataFrame:
-        """Add the features to `df`.
-
-        if `dropna=True` then all the null rows are dropped.
-        if `keep_last_n` is not None then that number of observations is kept across all series."""
-        df = df.copy()
-        features = self._compute_transforms()
-        for feat in self.transforms.keys():
-            df[feat] = features[feat][self.restore_idxs]
-
-        if dropna:
-            df.dropna(inplace=True)
-
-        if not isinstance(self.freq, int):
-            for feature in self.date_features:
-                feat_vals = getattr(df.ds.dt, feature).values
-                df[feature] = feat_vals.astype(date_features_dtypes[feature])
-
-        if keep_last_n is not None:
-            self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
-
-        self._ga = GroupedArray(self.ga.data, self.ga.indptr)
-        self.features_order_ = df.columns.drop(["ds", "y"])
-        return df
-
-    def fit_transform(
-        self,
-        data: pd.DataFrame,
-        id_col: str = "index",
-        time_col: str = "ds",
-        target_col: str = "y",
-        static_features: Optional[List[str]] = None,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
-    ) -> pd.DataFrame:
-        """Add the features to `data` and save the required information for the predictions step.
-
-        If not all features are static, specify which ones are in `static_features`.
-        If you don't want to drop rows with null values after the transformations set `dropna=False`.
-        If you want to keep only the last `n` values of each time serie set `keep_last_n=n`.
-        """
-        if id_col not in data and id_col != "index":
-            raise ValueError(f"Couldn't find {id_col} column.")
-        for col in (time_col, target_col):
-            if col not in data:
-                raise ValueError(f"Data doesn't contain {col} column")
-        if pd.api.types.is_datetime64_dtype(data[time_col]):
-            if self.freq == 1:
-                raise ValueError(
-                    "Must set frequency when using a timestamp type column."
-                )
-        elif np.issubdtype(data[time_col].dtype.type, np.integer):
-            if self.freq != 1:
-                warnings.warn("Setting `freq=1` since time col is int.")
-                self.freq = 1
-            if self.date_features:
-                warnings.warn("Ignoring date_features since time column is integer.")
-        else:
-            raise ValueError(f"{time_col} must be either timestamp or integer.")
-        if data[target_col].isnull().any():
-            raise ValueError(f"{target_col} column contains null values.")
-        if id_col in data:
-            data = data.set_index(id_col)
-        else:
-            data = data.copy(deep=False)
-            id_col = data.index.name or "unique_id"
-        data.index.name = "unique_id"
-        self.id_col = id_col
-        self.target_col = target_col
-        self.time_col = time_col
-        data = data.rename(columns={time_col: "ds", target_col: "y"}, copy=False)
-        if static_features is None:
-            static_features = data.columns.drop(["ds", "y"])
-        self.static_features = (
-            data[static_features].reset_index().drop_duplicates().set_index("unique_id")
-        )
-        sort_idxs = pd.core.sorting.lexsort_indexer([data.index, data["ds"]])
-        sorted_data = data[["ds", "y"]].set_index("ds", append=True).iloc[sort_idxs]
-        self.restore_idxs = np.empty(data.shape[0], dtype=np.int32)
-        self.restore_idxs[sort_idxs] = np.arange(data.shape[0])
-        self._fit(sorted_data)
-        transformed = self._transform(data, dropna, keep_last_n)
-        transformed.index.name = id_col
-        return transformed.rename(columns={"y": target_col, "ds": time_col}, copy=False)
 
     def _predict_setup(self) -> None:
         self.curr_dates = self.last_dates.copy()

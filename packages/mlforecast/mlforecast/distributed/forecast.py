@@ -66,9 +66,13 @@ class DistributedForecast:
         id_col: str = "index",  # column that identifies each serie, it's recommended to have this as the index.
         time_col: str = "ds",  # column with the timestamps
         target_col: str = "y",  # column with the series values
-        static_features: Optional[List[str]] = None,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
+        static_features: Optional[
+            List[str]
+        ] = None,  # column names of the features that don't change in time
+        dropna: bool = True,  # drop rows with missing values created by lags
+        keep_last_n: Optional[
+            int
+        ] = None,  # keep only this many observations of each serie for computing the updates
     ) -> dd.DataFrame:
         """Computes the transformations on each partition of `data` and
         saves the required information for the forecasting step.
@@ -89,9 +93,13 @@ class DistributedForecast:
         id_col: str = "index",  # column that identifies each serie, it's recommended to have this as the index.
         time_col: str = "ds",  # column with the timestamps
         target_col: str = "y",  # column with the series values
-        static_features: Optional[List[str]] = None,
-        dropna: bool = True,
-        keep_last_n: Optional[int] = None,
+        static_features: Optional[
+            List[str]
+        ] = None,  # column names of the features that don't change in time
+        dropna: bool = True,  # drop rows with missing values created by lags
+        keep_last_n: Optional[
+            int
+        ] = None,  # keep only this many observations of each serie for computing the updates
     ) -> "DistributedForecast":
         """Perform the preprocessing and fit the model."""
         train_ddf = self.preprocess(
