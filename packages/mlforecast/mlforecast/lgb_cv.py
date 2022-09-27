@@ -264,6 +264,7 @@ class LightGBMCV:
                 self.cv_preds_ = [f.result() for f in futures]
 
         if fit_on_all:
+            params["num_iterations"] = rounds
             self.fcst = Forecast([])
             self.fcst.ts = self.ts
             self.fcst.models = [lgb.LGBMRegressor(**params)]
