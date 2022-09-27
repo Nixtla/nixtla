@@ -136,3 +136,4 @@ dmypy.json
 Gemfile.lock
 _docs/
 sidebar.yml
+_proc/
