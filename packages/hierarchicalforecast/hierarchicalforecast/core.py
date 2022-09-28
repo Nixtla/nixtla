@@ -29,8 +29,8 @@ class HierarchicalReconciliation:
 
     The `core.HierarchicalReconciliation` class allows you to efficiently fit multiple 
     HierarchicaForecast methods for a collection of time series and base predictions stored in 
-    pandas DataFrames. The `Y_df` dataframe identifies series and datestamps with the 'unique_id' and 'ds' columns while the
-    'y' column denotes the target time series variable. The `Y_h` dataframe stores the base predictions, 
+    pandas DataFrames. The `Y_df` dataframe identifies series and datestamps with the unique_id and ds columns while the
+    y column denotes the target time series variable. The `Y_h` dataframe stores the base predictions, 
     example ([AutoARIMA](https://nixtla.github.io/statsforecast/models.html#autoarima), [ETS](https://nixtla.github.io/statsforecast/models.html#autoets), etc.).
 
     **Parameters:**<br>
