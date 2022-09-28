@@ -7,7 +7,7 @@ __all__ = ['BottomUp', 'TopDown', 'MiddleOut', 'MinTrace', 'OptimalCombination',
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 import numpy as np
 from numba import njit
@@ -73,26 +73,50 @@ def bottom_up(S: np.ndarray,
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level, 
                       bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
 
-# %% ../nbs/methods.ipynb 6
+# %% ../nbs/methods.ipynb 7
 class BottomUp:
-    
-    def reconcile(
-            self,
-            S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
-            y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-            idx_bottom: np.ndarray, # Indices corresponding to the bottom level of `S`, size (`bottom`)
-            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
-            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
-            bootstrap: bool = False, # Compute leves using bootstrap
-            bootstrap_samples: Optional[np.ndarray] = None, # Bootstrap samples of size (`n_samples`, `base`, `horizon`)
-        ):
+    """Bottom Up Reconciliation Class.
+    The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
+    the first time by Orcutt in 1968.
+    The corresponding hierarchical "projection" matrix is defined as:
+    $$\mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]$$
+
+    **Parameters:**<br>
+    None
+
+    **References:**<br>
+    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). Data aggregation and information loss. The American 
+    Economic Review, 58 , 773{787)](http://www.jstor.org/stable/1815532).
+    """
+    def reconcile(self,
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  idx_bottom: np.ndarray,
+                  sigmah: Optional[np.ndarray] = None,
+                  level: Optional[List[int]] = None,
+                  bootstrap: bool = False,
+                  bootstrap_samples: Optional[np.ndarray] = None):
+        """Bottom Up Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
+        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the Bottom Up approach.
+        """
         return bottom_up(S=S, y_hat=y_hat, 
                          idx_bottom=idx_bottom, sigmah=sigmah, level=level, 
                          bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 13
+# %% ../nbs/methods.ipynb 12
 def _bootstrap_samples(
         y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
         y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
@@ -110,7 +134,7 @@ def _bootstrap_samples(
     samples = [y_hat + residuals[:, idx:(idx + h)] for idx in samples_idx]
     return np.stack(samples)
 
-# %% ../nbs/methods.ipynb 18
+# %% ../nbs/methods.ipynb 17
 def is_strictly_hierarchical(S: np.ndarray, 
                              tags: Dict[str, np.ndarray]):
     # main idea:
@@ -128,9 +152,8 @@ def is_strictly_hierarchical(S: np.ndarray,
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/methods.ipynb 20
+# %% ../nbs/methods.ipynb 19
 def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
-    childs = {}
     level_names = list(tags.keys())
     nodes = OrderedDict()
     for i_level, level in enumerate(level_names[:-1]):
@@ -210,24 +233,50 @@ def top_down(S: np.ndarray,
 
 # %% ../nbs/methods.ipynb 23
 class TopDown:
-    
-    def __init__(
-            self, 
-            method: str # One of `forecast_proportions`, `average_proportions` and `proportion_averages`
-        ):
+    """Top Down Reconciliation Class.
+
+    The Top Down hierarchical reconciliation method, distributes the total aggregate predictions and decomposes 
+    it down the hierarchy using proportions $\mathbf{p}_{\mathrm{[b]}}$ that can be actual historical values 
+    or estimated.
+
+    $$\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]$$
+    **Parameters:**<br>
+    `method`: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.<br>
+
+    **References:**<br>
+    - [Disaggregation methods to expedite product line forecasting. Journal of Forecasting, 9 , 233–254. 
+    doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).<br>
+    - [An investigation of aggregate variable time series forecast strategies with specific subaggregate 
+    time series statistical correlation. Computers and Operations Research, 26 , 1133–1149. 
+    doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
+    """
+    def __init__(self, 
+                 method: str):
         self.method = method
     
-    def reconcile(
-            self, 
-            S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
-            y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-            y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-            tags: Dict[str, np.ndarray], # Each key is a level and each value its `S` indices
-            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
-            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
-            bootstrap: bool = False, # Compute leves using bootstrap
-            bootstrap_samples: Optional[np.ndarray] = None, # Bootstrap samples of size (`n_samples`, `base`, `horizon`)
-        ):
+    def reconcile(self, 
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  y_insample: np.ndarray,
+                  tags: Dict[str, np.ndarray],
+                  sigmah: Optional[np.ndarray] = None,
+                  level: Optional[List[int]] = None,
+                  bootstrap: bool = False,
+                  bootstrap_samples: Optional[np.ndarray] = None):
+        """Top Down Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
+        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the Top Down approach.
+        """
         return top_down(S=S, y_hat=y_hat, 
                         y_insample=y_insample, 
                         tags=tags,
@@ -237,7 +286,7 @@ class TopDown:
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 30
+# %% ../nbs/methods.ipynb 28
 def middle_out(S: np.ndarray, 
                y_hat: np.ndarray,
                y_insample: np.ndarray,
@@ -303,37 +352,59 @@ def middle_out(S: np.ndarray,
     return {'mean': reconciled}
         
 
-# %% ../nbs/methods.ipynb 31
+# %% ../nbs/methods.ipynb 30
 class MiddleOut:
+    """Middle Out Reconciliation Class.
     
-    def __init__(
-            self, 
-            middle_level: str, # Middle level 
-            top_down_method: str # One of `forecast_proportions`, `average_proportions` and `proportion_averages`
-        ):
+    This method is only available for **strictly hierarchical structures**. It anchors the base predictions 
+    in a middle level. The levels above the base predictions use the Bottom-Up approach, while the levels 
+    below use a Top-Down.
+
+    **Parameters:**<br>
+    `middle_level`: Middle level.<br>
+    `top_down_method`: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.<br>
+
+    **References:**<br>
+    - [Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting: principles and practice, 3rd edition: 
+    Chapter 11: Forecasting hierarchical and grouped series.". OTexts: Melbourne, Australia. OTexts.com/fpp3 
+    Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
+
+    """
+    def __init__(self, 
+                 middle_level: str,
+                 top_down_method: str):
         self.middle_level = middle_level
         self.top_down_method = top_down_method 
     
-    def reconcile(
-            self, 
-            S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
-            y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-            y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-            tags: Dict[str, np.ndarray] # Each key is a level and each value its `S` indices
-        ):
+    def reconcile(self, 
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  y_insample: np.ndarray,
+                  tags: Dict[str, np.ndarray]):
+        """Middle Out Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`).<br>
+        `levels`: Each key is a level and each value its `S` indices.<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the Middle Out approach.
+        """
         return middle_out(S=S, y_hat=y_hat, 
                           y_insample=y_insample, 
                           tags=tags,
                           middle_level=self.middle_level,
                           top_down_method=self.top_down_method)
-    
+
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 37
+# %% ../nbs/methods.ipynb 35
 def crossprod(x):
     return x.T @ x
 
-# %% ../nbs/methods.ipynb 38
+# %% ../nbs/methods.ipynb 36
 def min_trace(S: np.ndarray, 
               y_hat: np.ndarray,
               y_insample: np.ndarray,
@@ -387,26 +458,53 @@ def min_trace(S: np.ndarray,
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level,
                       bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
 
-# %% ../nbs/methods.ipynb 39
+# %% ../nbs/methods.ipynb 37
 class MinTrace:
+    """MinTrace Reconciliation Class.
+
+    This reconciliation algorithm proposed by Wickramasuriya et al. depends on a generalized least squares estimator 
+    and an estimator of the covariance matrix of the coherency errors $\mathbf{W}_{h}$. The Min Trace algorithm 
+    minimizes the squared errors for the coherent forecasts under an unbiasedness assumption; the solution has a 
+    closed form.<br>
+
+    $$\mathbf{P}_{\\text{MinT}}=\\left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S}\\right)^{-1}
+    \mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}$$
     
-    def __init__(
-            self, 
-            method: str # One of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_co`
-        ):
+    **Parameters:**<br>
+    `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_co`.<br>
+
+    **References:**<br>
+    - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). Optimal forecast reconciliation for
+    hierarchical and grouped time series through trace minimization. Journal of the American Statistical Association, 
+    114 , 804–819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
+    """
+    def __init__(self, 
+                 method: str):
         self.method = method
-        
-    def reconcile(
-            self, 
-            S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
-            y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-            y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-            y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
-            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
-            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
-            bootstrap: bool = False, # Compute leves using bootstrap
-            bootstrap_samples: Optional[np.ndarray] = None, # Bootstrap samples of size (`n_samples`, `base`, `horizon`)
-        ):
+
+    def reconcile(self, 
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  y_insample: np.ndarray,
+                  y_hat_insample: np.ndarray,
+                  sigmah: Optional[np.ndarray] = None,
+                  level: Optional[List[int]] = None,
+                  bootstrap: bool = False,
+                  bootstrap_samples: Optional[np.ndarray] = None):
+        """MinTrace Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
+        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the MinTrace approach.
+        """
         return min_trace(S=S, y_hat=y_hat, 
                          y_insample=y_insample,
                          y_hat_insample=y_hat_insample,
@@ -415,10 +513,10 @@ class MinTrace:
                          level=level,
                          bootstrap=bootstrap,
                          bootstrap_samples=bootstrap_samples)
-    
+
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 46
+# %% ../nbs/methods.ipynb 44
 def optimal_combination(S: np.ndarray, 
                         y_hat: np.ndarray,
                         method: str,
@@ -435,41 +533,68 @@ def optimal_combination(S: np.ndarray,
                      method=method, sigmah=sigmah, level=level,
                      bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
 
-# %% ../nbs/methods.ipynb 47
+# %% ../nbs/methods.ipynb 45
 class OptimalCombination:
-    
-    def __init__(
-            self, 
-            method: str # Allowed Optimal Combination Methods: 'ols', 'wls_struct'
-        ):
+    """Optimal Combination Reconciliation Class.
+
+    This reconciliation algorithm was proposed by Hyndman et al. 2011, the method uses generalized least squares 
+    estimator using the coherency errors covariance matrix. Consider the covariance of the base forecast 
+    $\\textrm{Var}(\epsilon_{h}) = \Sigma_{h}$, the $\mathbf{P}$ matrix of this method is defined by:
+    $$ \mathbf{P} = \\left(\mathbf{S}^{\intercal}\Sigma_{h}^{\dagger}\mathbf{S}\\right)^{-1}\mathbf{S}^{\intercal}\Sigma^{\dagger}_{h}$$
+    where $\Sigma_{h}^{\dagger}$ denotes the variance pseudo-inverse. The method was later proven equivalent to 
+    `MinTrace` variants.
+
+    **Parameters:**<br>
+    `method`: str, allowed optimal combination methods: 'ols', 'wls_struct'.<br>
+
+    **References:**<br>
+    - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang. "Optimal Combination Forecasts for 
+    Hierarchical Time Series" (2010).](https://robjhyndman.com/papers/Hierarchical6.pdf).<br>
+    - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman. "Optimal Combination Forecasts for 
+    Hierarchical Time Series" (2010).](https://robjhyndman.com/papers/MinT.pdf).
+    """
+    def __init__(self,
+                 method: str):
         comb_methods = ['ols', 'wls_struct']
         if method not in comb_methods:
             raise ValueError(f"Optimal Combination class does not support method: \"{method}\"")
-        
+
         self.method = method
-    
-    def reconcile(
-            self,
-            S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
-            y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-            y_insample: np.ndarray = None, # Insample values of size (`base`, `insample_size`)
-            y_hat_insample: np.ndarray = None, # Insample forecasts of size (`base`, `insample_size`)
-            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
-            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
-            bootstrap: bool = False, # Compute leves using bootstrap
-            bootstrap_samples: Optional[np.ndarray] = None, # Bootstrap samples of size (`n_samples`, `base`, `horizon`)
-        ):
-        return optimal_combination(S=S, 
-                                   y_hat=y_hat, 
-                                   y_insample=y_insample, 
-                                   y_hat_insample=y_hat_insample, 
-                                   method=self.method, sigmah=sigmah, 
+
+    def reconcile(self,
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  y_insample: np.ndarray = None,
+                  y_hat_insample: np.ndarray = None,
+                  sigmah: Optional[np.ndarray] = None,
+                  level: Optional[List[int]] = None,
+                  bootstrap: bool = False,
+                  bootstrap_samples: Optional[np.ndarray] = None):
+        """Optimal Combination Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
+        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the Optimal Combination approach.
+        """
+        return optimal_combination(S=S,
+                                   y_hat=y_hat,
+                                   y_insample=y_insample,
+                                   y_hat_insample=y_hat_insample,
+                                   method=self.method, sigmah=sigmah,
                                    level=level, bootstrap=bootstrap,
                                    bootstrap_samples=bootstrap_samples)
-    
+
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 54
+# %% ../nbs/methods.ipynb 51
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -501,7 +626,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 55
+# %% ../nbs/methods.ipynb 52
 def erm(S: np.ndarray,
         y_hat: np.ndarray,
         y_insample: np.ndarray,
@@ -550,29 +675,62 @@ def erm(S: np.ndarray,
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level, 
                       bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
 
-# %% ../nbs/methods.ipynb 56
+# %% ../nbs/methods.ipynb 53
 class ERM:
+    """Optimal Combination Reconciliation Class.
+
+    The Empirical Risk Minimization reconciliation strategy relaxes the unbiasedness assumptions from
+    previous reconciliation methods like MinT and optimizes square errors between the reconciled predictions
+    and the validation data to obtain an optimal reconciliation matrix P.
     
-    def __init__(
-            self, 
-            method: str, # one of `closed`, `reg` and `reg_bu`
-            lambda_reg: float = 1e-2 # l1 regularizer for `reg` and `reg_bu`
-        ):
+    The exact solution for $\mathbf{P}$ (`method='closed'`) follows the expression:
+    $$\mathbf{P}^{*} = \\left(\mathbf{S}^{\intercal}\mathbf{S}\\right)^{-1}\mathbf{Y}^{\intercal}\hat{\mathbf{Y}}\\left(\hat{\mathbf{Y}}\hat{\mathbf{Y}}\\right)^{-1}$$
+
+    The alternative Lasso regularized $\mathbf{P}$ solution (`method='reg_bu'`) is useful when the observations 
+    of validation data is limited or the exact solution has low numerical stability.
+    $$\mathbf{P}^{*} = \\text{argmin}_{\mathbf{P}} ||\mathbf{Y}-\mathbf{S} \mathbf{P} \hat{Y} ||^{2}_{2} + \lambda ||\mathbf{P}-\mathbf{P}_{\\text{BU}}||_{1}$$
+
+    **Parameters:**<br>
+    `method`: str, one of `closed`, `reg` and `reg_bu`.<br>
+    `lambda_reg`: float, l1 regularizer for `reg` and `reg_bu`.<br>
+
+    **References:**<br>
+    - [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without 
+    unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge 
+    Discovery & Data Mining KDD '19 (p. 1337{1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).<br>
+    """
+    def __init__(self,
+                 method: str,
+                 lambda_reg: float = 1e-2):
         self.method = method
         self.lambda_reg = lambda_reg
-        
-    def reconcile(
-            self, 
-            S: np.ndarray, # Summing matrix of size (`base`, `bottom`)
-            y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-            y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-            y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
-            idx_bottom: np.ndarray, # Indices corresponding to the bottom level of `S`, size (`bottom`)
-            sigmah: Optional[np.ndarray] = None, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
-            level: Optional[List[int]] = None, # Levels of probabilistic forecasts
-            bootstrap: bool = False, # Compute leves using bootstrap
-            bootstrap_samples: Optional[np.ndarray] = None, # Bootstrap samples of size (`n_samples`, `base`, `horizon`)
-        ):
+
+    def reconcile(self, 
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  y_insample: np.ndarray,
+                  y_hat_insample: np.ndarray,
+                  idx_bottom: np.ndarray,
+                  sigmah: Optional[np.ndarray] = None,
+                  level: Optional[List[int]] = None,
+                  bootstrap: bool = False,
+                  bootstrap_samples: Optional[np.ndarray] = None):
+        """ERM Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `y_insample`: Train values of size (`base`, `insample_size`).<br>
+        `y_hat_insample`: Insample train predictions of size (`base`, `insample_size`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
+        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the ERM approach.
+        """
         return erm(S=S, y_hat=y_hat, 
                    y_insample=y_insample,
                    y_hat_insample=y_hat_insample,
@@ -580,5 +738,5 @@ class ERM:
                    method=self.method, lambda_reg=self.lambda_reg,
                    sigmah=sigmah, level=level,
                    bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
-    
+
     __call__ = reconcile

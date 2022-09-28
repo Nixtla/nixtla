@@ -10,23 +10,42 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-# %% ../nbs/evaluation.ipynb 4
-class HierarchicalEvaluation:
+# %% ../nbs/evaluation.ipynb 5
+class HierarchicalEvaluation:    
+    """Hierarchical Evaluation Class.
     
-    def __init__(
-            self, 
-            evaluators: List[Callable] # functions with arguments `y`, `y_hat` 
-        ):
+    You can use your own metrics to evaluate the performance of each level in the structure.
+    The metrics receive `y` and `y_hat` as arguments and they are numpy arrays of size `(series, horizon)`.
+    Consider, for example, the function `rmse` that calculates the root mean squared error.
+
+    This class facilitates measurements across the hierarchy, defined by the `tags` list.
+    See also the [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).
+
+    **Parameters:**<br>
+    `evaluators`: functions with arguments `y`, `y_hat` (numpy arrays).<br>
+    """
+    def __init__(self, 
+                 evaluators: List[Callable]):
         self.evaluators = evaluators
-        
-    def evaluate(
-            self, 
-            Y_h: pd.DataFrame, # Forecasts with columns `['ds']` and models to evaluate.
-            Y_test: pd.DataFrame, # True values with columns `['ds', 'y']`
-            tags: Dict[str, np.ndarray], # Each key is a level and its value contains tags associated to that level.
-            Y_df: Optional[pd.DataFrame] = None,# Training set of base time series with columns `['ds', 'y']` indexed by `unique_id`
-            benchmark: Optional[str] = None # If passed, evaluators are scaled by the error of this benchark.
-        ):
+
+    def evaluate(self, 
+                 Y_h: pd.DataFrame,
+                 Y_test: pd.DataFrame,
+                 tags: Dict[str, np.ndarray],
+                 Y_df: Optional[pd.DataFrame] = None,
+                 benchmark: Optional[str] = None):
+        """Hierarchical Evaluation Method.
+
+        **Parameters:**<br>
+        `Y_h`: pd.DataFrame, Forecasts indexed by `'unique_id'` with column `'ds'` and models to evaluate.<br>
+        `Y_test`:  pd.DataFrame, True values with columns `['ds', 'y']`.<br>
+        `tags`: np.array, each str key is a level and its value contains tags associated to that level.<br>
+        `Y_df`: pd.DataFrame, Training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.<br>
+        `benchmark`: str, If passed, evaluators are scaled by the error of this benchark.<br>
+
+        **Returns:**<br>
+        `evaluation`: pd.DataFrame with accuracy measurements across hierarchical levels.
+        """
         drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
         h = len(Y_h.loc[Y_h.index[0]])
         model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()

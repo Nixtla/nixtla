@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
-from matplotlib import rcParams
+# from matplotlib import rcParams
 from mycolorpy import colorlist as mcp
 
 plt.rcParams['font.family'] = 'serif'
@@ -30,16 +30,26 @@ def _to_summing_matrix(S_df: pd.DataFrame):
     tags = dict(zip(S_df.columns, categories))
     return S, tags
 
-# %% ../nbs/utils.ipynb 5
-def aggregate(
-        df: pd.DataFrame, # DataFrame with columns `['ds', 'y']` and columns to aggregate
-        spec: List[List[str]], # List of levels. Each element of the list contains a list of columns of `df` to aggregate.
-        agg_fn: Callable = np.sum# Function used to aggregate `'y'`.
-    ):
-    """Aggregates `df` according to `spec` using `agg_fn`."""
+# %% ../nbs/utils.ipynb 6
+def aggregate(df: pd.DataFrame,
+              spec: List[List[str]],
+              agg_fn: Callable = np.sum):
+    """Utils Aggregation Function.
+
+    Aggregates bottom level series contained in the pd.DataFrame `df` according 
+    to levels defined in the `spec` list applying the `agg_fn` (sum, mean).
+
+    **Parameters:**<br>
+    `df`: pd.DataFrame with columns `['ds', 'y']` and columns to aggregate.<br>
+    `spec`: List of levels. Each element of the list contains a list of columns of `df` to aggregate.<br>
+    `agg_fn`: Function used to aggregate `'y'`.<br>
+
+    **Returns:**<br>
+    `Y_df, S, tags`: tuple with hierarchically structured series `Y_df` ($\mathbf{y}_{[a,b]}$),
+    summing matrix `S`, and hierarchical aggregation indexes `tags`.
+    """
     max_len_idx = np.argmax([len(hier) for hier in spec])
     bottom_comb = spec[max_len_idx]
-    orig_cols = df.drop(labels=['ds', 'y'], axis=1).columns.to_list()
     df_hiers = []
     for hier in spec:
         df_hier = df.groupby(hier + ['ds'])['y'].apply(agg_fn).reset_index()
@@ -56,35 +66,58 @@ def aggregate(
         hier_col = '/'.join(hier) 
         S_df[hier_col] = S_df[hier].agg('/'.join, axis=1)
         hiers_cols.append(hier_col)
-    y_df = df_hiers[['unique_id', 'ds', 'y']].set_index('unique_id')
-    #S definition
-    S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
-    return y_df, S, tags
-
-# %% ../nbs/utils.ipynb 9
-class HierarchicalPlot:
+    Y_df = df_hiers[['unique_id', 'ds', 'y']].set_index('unique_id')
     
-    def __init__(
-        self,
-        S: pd.DataFrame,    #  Summing matrix of size `(base, bottom)`.
-        tags: Dict[str, np.ndarray], # Each key is a level and its value contains tags associated to that level.
-    ):
+    # Aggregations constraints S definition
+    S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
+    return Y_df, S, tags
+
+# %% ../nbs/utils.ipynb 10
+class HierarchicalPlot:
+    """ Hierarchical Plot
+
+    This class contains a collection of matplotlib visualization methods, suited for small
+    to medium sized hierarchical series.
+
+    **Parameters:**<br>
+    `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
+    `tags`: np.ndarray, with hierarchical aggregation indexes, where 
+        each key is a level and its value contains tags associated to that level.<br><br>
+    """
+    def __init__(self,
+                 S: pd.DataFrame,
+                 tags: Dict[str, np.ndarray]):
         self.S = S
         self.tags = tags
-        
+
     def plot_summing_matrix(self):
+        """ Summation Constraints plot
+        
+        This method simply plots the hierarchical aggregation
+        constraints matrix $\mathbf{S}$.
+        """
         plt.figure(num=1, figsize=(4, 6), dpi=80, facecolor='w')
         plt.spy(self.S)
         plt.show()
         plt.close()
-        
-    def plot_series(
-            self, 
-            series: str, # Time series to plot
-            Y_df: Optional[pd.DataFrame] = None, # Dataframe with columns `ds` and models to plot indexed by `unique_id`.
-            models: Optional[List[str]] = None, # Models to plot. 
-            level: Optional[List[int]] = None # Levels for probabilistic intervals
-        ):
+
+    def plot_series(self,
+                    series: str,
+                    Y_df: Optional[pd.DataFrame] = None,
+                    models: Optional[List[str]] = None,
+                    level: Optional[List[int]] = None):
+        """ Single Series plot
+
+        **Parameters:**<br>
+        `series`: str, string identifying the `'unique_id'` any-level series to plot.<br>
+        `Y_df`: pd.DataFrame, hierarchically structured series ($\mathbf{y}_{[a,b]}$). 
+                It contains columns `['unique_id', 'ds', 'y']`, it may have `'models'`.<br>
+        `models`: List[str], string identifying filtering model columns.
+        `level`: float list 0-100, confidence levels for prediction intervals available in `Y_df`.<br>
+
+        **Returns:**<br>
+        Single series plot with filtered models and prediction interval level.<br><br>
+        """
         if series not in self.S.index:
             raise Exception(f'time series {series} not found')
         fig, ax = plt.subplots(1, 1, figsize = (20, 7))
@@ -120,13 +153,24 @@ class HierarchicalPlot:
         for label in (ax.get_xticklabels() + ax.get_yticklabels()):
             label.set_fontsize(20)
                     
-    def plot_hierarchically_linked_series(
-        self,
-        bottom_series: str, # Bottom time series to plot
-        Y_df: Optional[pd.DataFrame] = None, # Dataframe with columns `ds` and models to plot indexed by `unique_id`.
-        models: Optional[List[str]] = None, # Models to plot. 
-        level: Optional[List[int]] = None # Levels for probabilistic intervals
-    ):
+    def plot_hierarchically_linked_series(self,
+                                          bottom_series: str,
+                                          Y_df: Optional[pd.DataFrame] = None,
+                                          models: Optional[List[str]] = None,
+                                          level: Optional[List[int]] = None):
+        """ Hierarchically Linked Series plot
+
+        **Parameters:**<br>
+        `bottom_series`: str, string identifying the `'unique_id'` bottom-level series to plot.<br>
+        `Y_df`: pd.DataFrame, hierarchically structured series ($\mathbf{y}_{[a,b]}$). 
+                It contains columns ['unique_id', 'ds', 'y'] and models. <br>
+        `models`: List[str], string identifying filtering model columns.
+        `level`: float list 0-100, confidence levels for prediction intervals available in `Y_df`.<br>
+
+        **Returns:**<br>
+        Collection of hierarchilly linked series plots associated with the `bottom_series`
+        and filtered models and prediction interval level.<br><br>
+        """
         if bottom_series not in self.S.columns:
             raise Exception(f'bottom time series {bottom_series} not found')
         linked_series = self.S[bottom_series].loc[lambda x: x == 1.].index
@@ -165,11 +209,9 @@ class HierarchicalPlot:
                 label.set_fontsize(10)
         plt.subplots_adjust(hspace=0.4)
         handles, labels = axs[0].get_legend_handles_labels()
-        kwargs = dict(
-            loc='lower center', 
-            prop={'size': 10}, 
-            bbox_to_anchor=(0, 0.05, 1, 1)
-        )
+        kwargs = dict(loc='lower center', 
+                      prop={'size': 10}, 
+                      bbox_to_anchor=(0, 0.05, 1, 1))
         if sys.version_info.minor > 7:
             kwargs['ncols'] = np.max([2, np.ceil(len(labels) / 2)])
         fig.legend(handles, labels, **kwargs)

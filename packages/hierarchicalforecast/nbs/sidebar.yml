@@ -2,16 +2,16 @@ website:
   sidebar:
     contents:
       - index.ipynb
-      - section: Quick Start
-        contents:
-        - examples/TourismSmall.ipynb
-        - examples/AustralianDomesticTourism.ipynb
-        - examples/AustralianPrisonPopulation.ipynb
-        - examples/AustralianDomesticTourism-Intervals.ipynb
-        - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
       - section: Reference
         contents:
         - core.ipynb
         - methods.ipynb
         - evaluation.ipynb
         - utils.ipynb
+      - section: Tutorials
+        contents:
+        - examples/TourismSmall.ipynb
+        - examples/AustralianDomesticTourism.ipynb
+        - examples/AustralianPrisonPopulation.ipynb
+        - examples/AustralianDomesticTourism-Intervals.ipynb
+        - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb        
