@@ -25,24 +25,58 @@ def _build_fn_name(fn) -> str:
 
 # %% ../nbs/core.ipynb 7
 class HierarchicalReconciliation:
-    
-    def __init__(
-            self, 
-            reconcilers: List[Callable] # Reconciliation classes of the `methods` module 
-        ):
+    """Hierarchical Reconciliation Class.
+
+    The `core.HierarchicalReconciliation` class allows you to efficiently fit multiple 
+    HierarchicaForecast methods for a collection of time series and base predictions stored in 
+    pandas DataFrames. The `Y_df` dataframe identifies series and datestamps with the unique_id and ds columns while the
+    y column denotes the target time series variable. The `Y_h` dataframe stores the base predictions, 
+    example ([AutoARIMA](https://nixtla.github.io/statsforecast/models.html#autoarima), [ETS](https://nixtla.github.io/statsforecast/models.html#autoets), etc.).
+
+    **Parameters:**<br>
+    `reconcilers`: A list of instantiated classes of the [reconciliation methods](https://nixtla.github.io/hierarchicalforecast/methods.html) module .<br>
+
+    **References:**<br>
+    [Rob J. Hyndman and George Athanasopoulos (2018). \"Forecasting principles and practice, Hierarchical and Grouped Series\".](https://otexts.com/fpp3/hierarchical.html)
+    """
+    def __init__(self,
+                 reconcilers: List[Callable]):
         self.reconcilers = reconcilers
+
+    def reconcile(self, 
+                  Y_hat_df: pd.DataFrame,
+                  Y_df: pd.DataFrame,
+                  S: pd.DataFrame,
+                  tags: Dict[str, np.ndarray],
+                  level: Optional[List[int]] = None,
+                  bootstrap: bool = False):
+        """Hierarchical Reconciliation Method.
+
+        The `reconcile` method is analogous to SKLearn `fit` method, it applies different 
+        reconciliation methods instantiated in the `reconcilers` list. 
         
-    def reconcile(
-            self, 
-            Y_hat_df: pd.DataFrame,
-            Y_df: pd.DataFrame, # Training set of base time series with columns `['ds', 'y']` indexed by `unique_id`
-                                # If a class of `self.reconciles` receives
-                                # `y_hat_insample`, `Y_df` must include them as columns.
-            S: pd.DataFrame,    #  Summing matrix of size `(base, bottom)`.
-            tags: Dict[str, np.ndarray], # Each key is a level and its value contains tags associated to that level.
-            level: Optional[List[int]] = None, # Levels for probabilistic intervals
-            bootstrap: bool = False, # Compute leves using bootstrap
-        ):
+        Most reconciliation methods can be described by the following convenient 
+        linear algebra notation:
+
+        $$\\tilde{\mathbf{y}}_{[a,b],\\tau} = \mathbf{S}_{[a,b][b]} \mathbf{P}_{[b][a,b]} \hat{\mathbf{y}}_{[a,b],\\tau}$$
+        
+        where $a, b$ represent the aggregate and bottom levels, $\mathbf{S}_{[a,b][b]}$ contains
+        the hierarchical aggregation constraints, and $\mathbf{P}_{[b][a,b]}$ varies across 
+        reconciliation methods. The reconciled predictions are $\\tilde{\mathbf{y}}_{[a,b],\\tau}$, and the 
+        base predictions $\hat{\mathbf{y}}_{[a,b],\\tau}$.
+
+        **Parameters:**<br>
+        `Y_hat_df`: pd.DataFrame, base forecasts with columns `ds` and models to reconcile indexed by `unique_id`.<br>
+        `Y_df`: pd.DataFrame, training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.
+        If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
+        `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
+        `tags`: Each key is a level and its value contains tags associated to that level.<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
+
+        **Returns:**<br>
+        `y_tilde`: pd.DataFrame, with reconciled predictions.        
+        """
         drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
         model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
         # store pi names
