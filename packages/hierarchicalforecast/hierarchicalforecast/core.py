@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['HierarchicalReconciliation']
 
-# %% ../nbs/core.ipynb 2
+# %% ../nbs/core.ipynb 3
 import re
 from functools import partial
 from inspect import signature
@@ -15,7 +15,7 @@ import pandas as pd
 
 from .methods import _bootstrap_samples
 
-# %% ../nbs/core.ipynb 4
+# %% ../nbs/core.ipynb 5
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
@@ -24,7 +24,7 @@ def _build_fn_name(fn) -> str:
         fn_name += '_' + '_'.join(func_params)
     return fn_name
 
-# %% ../nbs/core.ipynb 5
+# %% ../nbs/core.ipynb 6
 class HierarchicalReconciliation:
     
     def __init__(
