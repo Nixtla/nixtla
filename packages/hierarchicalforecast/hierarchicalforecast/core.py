@@ -5,7 +5,6 @@ __all__ = ['HierarchicalReconciliation']
 
 # %% ../nbs/core.ipynb 3
 import re
-from functools import partial
 from inspect import signature
 from scipy.stats import norm
 from typing import Callable, Dict, List, Optional
@@ -24,7 +23,7 @@ def _build_fn_name(fn) -> str:
         fn_name += '_' + '_'.join(func_params)
     return fn_name
 
-# %% ../nbs/core.ipynb 6
+# %% ../nbs/core.ipynb 7
 class HierarchicalReconciliation:
     
     def __init__(
@@ -35,7 +34,7 @@ class HierarchicalReconciliation:
         
     def reconcile(
             self, 
-            Y_h: pd.DataFrame, # Base forecasts with columns `ds` and models to reconcile indexed by `unique_id`.
+            Y_hat_df: pd.DataFrame,
             Y_df: pd.DataFrame, # Training set of base time series with columns `['ds', 'y']` indexed by `unique_id`
                                 # If a class of `self.reconciles` receives
                                 # `y_hat_insample`, `Y_df` must include them as columns.
@@ -44,14 +43,14 @@ class HierarchicalReconciliation:
             level: Optional[List[int]] = None, # Levels for probabilistic intervals
             bootstrap: bool = False, # Compute leves using bootstrap
         ):
-        drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
-        model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
+        drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
+        model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
         # store pi names
         pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name)]
         #remove prediction intervals
         model_names = [name for name in model_names if name not in pi_model_names]
-        uids = Y_h.index.unique()
-        # same order of Y_h to prevent errors
+        uids = Y_hat_df.index.unique()
+        # same order of Y_hat_df to prevent errors
         S_ = S.loc[uids]
         common_vals = dict(
             y_insample = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32),
@@ -59,7 +58,7 @@ class HierarchicalReconciliation:
             idx_bottom = S_.index.get_indexer(S.columns),
             tags={key: S_.index.get_indexer(val) for key, val in tags.items()}
         )
-        fcsts = Y_h.copy()
+        fcsts = Y_hat_df.copy()
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
@@ -69,7 +68,7 @@ class HierarchicalReconciliation:
                 pi_model_name = [pi_name for pi_name in pi_model_names if model_name in pi_name]
                 pi = len(pi_model_name) > 0
                 # Remember: pivot sorts uid
-                y_hat_model = Y_h.pivot(columns='ds', values=model_name).loc[uids].values
+                y_hat_model = Y_hat_df.pivot(columns='ds', values=model_name).loc[uids].values
                 if pi and has_level and level is not None and not bootstrap:
                     # we need to construct sigmah and add it
                     # to the common_vals
@@ -80,7 +79,7 @@ class HierarchicalReconciliation:
                     level_col = re.findall('[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+', pi_col)
                     level_col = float(level_col[0])
                     z = norm.ppf(0.5 + level_col / 200)
-                    sigmah = Y_h.pivot(columns='ds', values=pi_col).loc[uids].values
+                    sigmah = Y_hat_df.pivot(columns='ds', values=pi_col).loc[uids].values
                     sigmah = sign * (y_hat_model - sigmah) / z
                     common_vals['sigmah'] = sigmah
                     common_vals['level'] = level
