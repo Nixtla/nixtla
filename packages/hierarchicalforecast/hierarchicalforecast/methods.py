@@ -78,14 +78,14 @@ class BottomUp:
     """Bottom Up Reconciliation Class.
     The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
     the first time by Orcutt in 1968.
-    The corresponding hierarchical "projection" matrix is defined as:
+    The corresponding hierarchical \"projection\" matrix is defined as:
     $$\mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]$$
 
     **Parameters:**<br>
     None
 
     **References:**<br>
-    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). Data aggregation and information loss. The American 
+    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American 
     Economic Review, 58 , 773{787)](http://www.jstor.org/stable/1815532).
     """
     def reconcile(self,
@@ -244,10 +244,10 @@ class TopDown:
     `method`: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.<br>
 
     **References:**<br>
-    - [Disaggregation methods to expedite product line forecasting. Journal of Forecasting, 9 , 233–254. 
+    - [CW. Gross (1990). \"Disaggregation methods to expedite product line forecasting\". Journal of Forecasting, 9 , 233–254. 
     doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).<br>
-    - [An investigation of aggregate variable time series forecast strategies with specific subaggregate 
-    time series statistical correlation. Computers and Operations Research, 26 , 1133–1149. 
+    - [G. Fliedner (1999). \"An investigation of aggregate variable time series forecast strategies with specific subaggregate 
+    time series statistical correlation\". Computers and Operations Research, 26 , 1133–1149. 
     doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
     """
     def __init__(self, 
@@ -365,8 +365,8 @@ class MiddleOut:
     `top_down_method`: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.<br>
 
     **References:**<br>
-    - [Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting: principles and practice, 3rd edition: 
-    Chapter 11: Forecasting hierarchical and grouped series.". OTexts: Melbourne, Australia. OTexts.com/fpp3 
+    - [Hyndman, R.J., & Athanasopoulos, G. (2021). \"Forecasting: principles and practice, 3rd edition: 
+    Chapter 11: Forecasting hierarchical and grouped series.\". OTexts: Melbourne, Australia. OTexts.com/fpp3 
     Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
 
     """
@@ -474,8 +474,8 @@ class MinTrace:
     `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_co`.<br>
 
     **References:**<br>
-    - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). Optimal forecast reconciliation for
-    hierarchical and grouped time series through trace minimization. Journal of the American Statistical Association, 
+    - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
+    hierarchical and grouped time series through trace minimization\". Journal of the American Statistical Association, 
     114 , 804–819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
     """
     def __init__(self, 
@@ -548,10 +548,10 @@ class OptimalCombination:
     `method`: str, allowed optimal combination methods: 'ols', 'wls_struct'.<br>
 
     **References:**<br>
-    - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang. "Optimal Combination Forecasts for 
-    Hierarchical Time Series" (2010).](https://robjhyndman.com/papers/Hierarchical6.pdf).<br>
-    - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman. "Optimal Combination Forecasts for 
-    Hierarchical Time Series" (2010).](https://robjhyndman.com/papers/MinT.pdf).
+    - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang (2010). \"Optimal Combination Forecasts for 
+    Hierarchical Time Series\".](https://robjhyndman.com/papers/Hierarchical6.pdf).<br>
+    - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman (2010). \"Optimal Combination Forecasts for 
+    Hierarchical Time Series\".](https://robjhyndman.com/papers/MinT.pdf).
     """
     def __init__(self,
                  method: str):

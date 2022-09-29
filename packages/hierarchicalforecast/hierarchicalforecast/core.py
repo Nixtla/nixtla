@@ -37,7 +37,7 @@ class HierarchicalReconciliation:
     `reconcilers`: A list of instantiated classes of the [reconciliation methods](https://nixtla.github.io/hierarchicalforecast/methods.html) module .<br>
 
     **References:**<br>
-    [Rob J. Hyndman and George Athanasopoulos (2018). “Forecasting principles and practice, Hierarchical and Grouped Series”.](https://otexts.com/fpp3/hierarchical.html)
+    [Rob J. Hyndman and George Athanasopoulos (2018). \“Forecasting principles and practice, Hierarchical and Grouped Series\”.](https://otexts.com/fpp3/hierarchical.html)
     """
     def __init__(self, 
                  reconcilers: List[Callable]):
