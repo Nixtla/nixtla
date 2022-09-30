@@ -119,6 +119,9 @@ evaluator.evaluate(Y_h=Y_rec_df, Y_test=Y_df_test,
                    tags=tags, benchmark='Naive')
 ```
 
+## 📖 Documentation (WIP)
+Here is a link to the [documentation](https://nixtla.github.io/hierarchicalforecast/).
+
 ## 📃 License
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/Nixtla/neuralforecast/blob/main/LICENSE) file for details.
 
