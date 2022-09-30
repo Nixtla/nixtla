@@ -35,7 +35,7 @@ Missing something? Please open an issue here or write us in [![Slack](https://im
 
 ### PyPI
 
-You can install the *released version* of `HierarchicalForecast` from the [Python package index](https://pypi.org) with:
+You can install `HierarchicalForecast`'s *released version* from the Python package index [pip](https://pypi.org) with:
 
 ```python
 pip install hierarchicalforecast
@@ -45,7 +45,7 @@ pip install hierarchicalforecast
 
 ### Conda
 
-Also you can install the *released version* of `HierarchicalForecast` from [conda](https://anaconda.org) with:
+Also you can install `HierarchicalForecast`'s *released version* from [conda](https://anaconda.org) with:
 
 ```python
 conda install -c conda-forge hierarchicalforecast
