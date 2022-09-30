@@ -29,16 +29,16 @@ class HierarchicalEvaluation:
         self.evaluators = evaluators
 
     def evaluate(self, 
-                 Y_h: pd.DataFrame,
-                 Y_test: pd.DataFrame,
+                 Y_hat_df: pd.DataFrame,
+                 Y_test_df: pd.DataFrame,
                  tags: Dict[str, np.ndarray],
                  Y_df: Optional[pd.DataFrame] = None,
                  benchmark: Optional[str] = None):
         """Hierarchical Evaluation Method.
 
         **Parameters:**<br>
-        `Y_h`: pd.DataFrame, Forecasts indexed by `'unique_id'` with column `'ds'` and models to evaluate.<br>
-        `Y_test`:  pd.DataFrame, True values with columns `['ds', 'y']`.<br>
+        `Y_hat_df`: pd.DataFrame, Forecasts indexed by `'unique_id'` with column `'ds'` and models to evaluate.<br>
+        `Y_test_df`:  pd.DataFrame, True values with columns `['ds', 'y']`.<br>
         `tags`: np.array, each str key is a level and its value contains tags associated to that level.<br>
         `Y_df`: pd.DataFrame, Training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.<br>
         `benchmark`: str, If passed, evaluators are scaled by the error of this benchark.<br>
@@ -46,9 +46,9 @@ class HierarchicalEvaluation:
         **Returns:**<br>
         `evaluation`: pd.DataFrame with accuracy measurements across hierarchical levels.
         """
-        drop_cols = ['ds', 'y'] if 'y' in Y_h.columns else ['ds']
-        h = len(Y_h.loc[Y_h.index[0]])
-        model_names = Y_h.drop(columns=drop_cols, axis=1).columns.to_list()
+        drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
+        h = len(Y_hat_df.loc[Y_hat_df.index[0]])
+        model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
         fn_names = [fn.__name__ for fn in self.evaluators]
         has_y_insample = any(['y_insample' in signature(fn).parameters for fn in self.evaluators])
         if has_y_insample and Y_df is None:
@@ -60,8 +60,8 @@ class HierarchicalEvaluation:
         index = pd.MultiIndex.from_product([tags_.keys(), fn_names], names=['level', 'metric'])
         evaluation = pd.DataFrame(columns=model_names, index=index)
         for level, cats in tags_.items():
-            Y_h_cats = Y_h.loc[cats]
-            y_test_cats = Y_test.loc[cats, 'y'].values.reshape(-1, h)
+            Y_h_cats = Y_hat_df.loc[cats]
+            y_test_cats = Y_test_df.loc[cats, 'y'].values.reshape(-1, h)
             if has_y_insample:
                 y_insample = Y_df.pivot(columns='ds', values='y').loc[cats].values
             for i_fn, fn in enumerate(self.evaluators):
