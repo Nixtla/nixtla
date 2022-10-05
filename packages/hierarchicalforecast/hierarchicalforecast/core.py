@@ -18,12 +18,12 @@ from .methods import _bootstrap_samples
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
-    func_params = [f'{name}-{value}' for name, value in func_params.items()]
+    func_params = [f'{name}-{value}' for name, value in func_params.items() if name != 'insample']
     if func_params:
         fn_name += '_' + '_'.join(func_params)
     return fn_name
 
-# %% ../nbs/core.ipynb 7
+# %% ../nbs/core.ipynb 9
 class HierarchicalReconciliation:
     """Hierarchical Reconciliation Class.
 
