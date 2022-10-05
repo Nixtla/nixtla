@@ -45,7 +45,13 @@ each row represents an observation for a specific serie and timestamp.
 ``` python
 from mlforecast.utils import generate_daily_series
 
-series = generate_daily_series(20)
+series = generate_daily_series(
+    n_series=20,
+    max_length=100,
+    n_static_features=1,
+    static_as_categorical=False,
+    with_trend=True
+)
 series.head()
 ```
 
@@ -56,9 +62,11 @@ series.head()
       <th></th>
       <th>ds</th>
       <th>y</th>
+      <th>static_0</th>
     </tr>
     <tr>
       <th>unique_id</th>
+      <th></th>
       <th></th>
       <th></th>
     </tr>
@@ -67,27 +75,32 @@ series.head()
     <tr>
       <th>id_00</th>
       <td>2000-01-01</td>
-      <td>0.264447</td>
+      <td>1.751917</td>
+      <td>72</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-01-02</td>
-      <td>1.284022</td>
+      <td>9.196715</td>
+      <td>72</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-01-03</td>
-      <td>2.462798</td>
+      <td>18.577788</td>
+      <td>72</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-01-04</td>
-      <td>3.035518</td>
+      <td>24.520646</td>
+      <td>72</td>
     </tr>
     <tr>
       <th>id_00</th>
       <td>2000-01-05</td>
-      <td>4.043565</td>
+      <td>33.418028</td>
+      <td>72</td>
     </tr>
   </tbody>
 </table>
@@ -127,9 +140,10 @@ fcst = Forecast(
     lags=[7, 14],
     lag_transforms={
         1: [expanding_mean],
-        7: [(rolling_mean, 7), (rolling_mean, 14)]
+        7: [(rolling_mean, 7)]
     },
-    date_features=['dayofweek', 'month']
+    date_features=['dayofweek'],
+    differences=[1],
 )
 ```
 
@@ -143,10 +157,10 @@ To compute the features and train the models call `fit` on your
 - Are the series values (`target_col`)
 
 ``` python
-fcst.fit(series, id_col='index', time_col='ds', target_col='y')
+fcst.fit(series, id_col='index', time_col='ds', target_col='y', static_features=['static_0'])
 ```
 
-    Forecast(models=[LGBMRegressor, XGBRegressor, RandomForestRegressor], freq=<Day>, lag_features=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7', 'rolling_mean_lag-7_window_size-14'], date_features=['dayofweek', 'month'], num_threads=1)
+    Forecast(models=[LGBMRegressor, XGBRegressor, RandomForestRegressor], freq=<Day>, lag_features=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7'], date_features=['dayofweek'], num_threads=1)
 
 To get the forecasts for the next 14 days call `predict(14)` on the
 forecast object. This will automatically handle the updates required by
@@ -154,63 +168,20 @@ the features using a recursive strategy.
 
 ``` python
 predictions = fcst.predict(14)
-predictions.head()
 ```
 
-<div>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>ds</th>
-      <th>LGBMRegressor</th>
-      <th>XGBRegressor</th>
-      <th>RandomForestRegressor</th>
-    </tr>
-    <tr>
-      <th>unique_id</th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-10</td>
-      <td>5.226933</td>
-      <td>5.165335</td>
-      <td>5.244840</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-11</td>
-      <td>6.222637</td>
-      <td>6.181697</td>
-      <td>6.258609</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-12</td>
-      <td>0.212516</td>
-      <td>0.231710</td>
-      <td>0.225484</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-13</td>
-      <td>1.236251</td>
-      <td>1.244750</td>
-      <td>1.228957</td>
-    </tr>
-    <tr>
-      <th>id_00</th>
-      <td>2000-08-14</td>
-      <td>2.241766</td>
-      <td>2.291263</td>
-      <td>2.302455</td>
-    </tr>
-  </tbody>
-</table>
-</div>
+``` python
+import matplotlib.pyplot as plt
+import pandas as pd
+
+fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 6), gridspec_kw=dict(hspace=0.3))
+for i, (cat, axi) in enumerate(zip(series.index.categories, ax.flat)):
+    pd.concat([series.loc[cat, ['ds', 'y']], predictions.loc[cat]]).set_index('ds').plot(ax=axi)
+    axi.set(title=cat, xlabel=None)
+    if i % 2 == 0:
+        axi.legend().remove()
+    else:
+        axi.legend(bbox_to_anchor=(1.01, 1.0))
+```
+
+![](index_files/figure-gfm/cell-7-output-1.png)

@@ -21,6 +21,7 @@ def generate_daily_series(
     n_static_features: int = 0,
     equal_ends: bool = False,
     static_as_categorical: bool = True,
+    with_trend: bool = False,
     seed: int = 0,
 ) -> pd.DataFrame:
     """Generates `n_series` of different lengths in the interval [`min_length`, `max_length`].
@@ -56,10 +57,17 @@ def generate_daily_series(
         if static_as_categorical:
             series[f"static_{i}"] = series[f"static_{i}"].astype("category")
         if i == 0:
-            series["y"] = series["y"] * (1 + static_values)
+            series["y"] = series["y"] * 0.1 * (1 + static_values)
     series["unique_id"] = series["unique_id"].astype("category")
     series["unique_id"] = series["unique_id"].cat.as_ordered()
     series = series.set_index("unique_id")
+    if with_trend:
+        coefs = pd.Series(
+            rng.rand(n_series), index=[f"id_{i:0{n_digits}}" for i in range(n_series)]
+        )
+        trends = series.groupby("unique_id").cumcount()
+        trends.index = series.index
+        series["y"] += coefs * trends
     return series
 
 # %% ../nbs/utils.ipynb 16

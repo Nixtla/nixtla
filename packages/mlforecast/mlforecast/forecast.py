@@ -30,12 +30,17 @@ class Forecast:
         date_features: List[
             str
         ] = [],  # list of names of pandas date attributes to use as features, e.g. dayofweek
+        differences: Optional[
+            List[int]
+        ] = None,  # differences to apply to the series before fitting
         num_threads: int = 1,  # number of threads to use when computing lag features
     ):
         if not isinstance(models, list):
             models = [clone(models)]
         self.models = [clone(m) for m in models]
-        self.ts = TimeSeries(freq, lags, lag_transforms, date_features, num_threads)
+        self.ts = TimeSeries(
+            freq, lags, lag_transforms, date_features, differences, num_threads
+        )
 
     def __repr__(self):
         return (

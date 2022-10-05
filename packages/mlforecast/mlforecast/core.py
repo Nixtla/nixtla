@@ -6,6 +6,7 @@ __all__ = ['simple_predict', 'merge_predict', 'TimeSeries']
 # %% ../nbs/core.ipynb 3
 import concurrent.futures
 import inspect
+import reprlib
 import warnings
 from collections import Counter, OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -73,6 +74,11 @@ class GroupedArray:
     def __getitem__(self, idx: int) -> np.ndarray:
         return self.data[self.indptr[idx] : self.indptr[idx + 1]]
 
+    def __setitem__(self, idx: int, vals: np.ndarray):
+        if self[idx].size != vals.size:
+            raise ValueError(f"vals must be of size {self[idx].size}")
+        self[idx][:] = vals
+
     def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
         """Takes `idx` from each group in the array."""
         ranges = [
@@ -94,7 +100,7 @@ class GroupedArray:
     def __repr__(self) -> str:
         return f"GroupedArray(ndata={self.data.size}, ngroups={self.ngroups})"
 
-# %% ../nbs/core.ipynb 17
+# %% ../nbs/core.ipynb 18
 @njit
 def _identity(x: np.ndarray) -> np.ndarray:
     """Do nothing to the input."""
@@ -127,7 +133,7 @@ def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarra
             out[indptr[i] : indptr[i + 1]] = func(lagged, *args)
     return out
 
-# %% ../nbs/core.ipynb 18
+# %% ../nbs/core.ipynb 19
 def _build_transform_name(lag, tfm, *args) -> str:
     """Creates a name for a transformation based on `lag`, the name of the function and its arguments."""
     tfm_name = f"{tfm.__name__}_lag-{lag}"
@@ -142,7 +148,7 @@ def _build_transform_name(lag, tfm, *args) -> str:
         tfm_name += "_" + "_".join(changed_params)
     return tfm_name
 
-# %% ../nbs/core.ipynb 20
+# %% ../nbs/core.ipynb 21
 def simple_predict(
     model,
     new_x: pd.DataFrame,
@@ -171,7 +177,7 @@ def merge_predict(
     new_x = new_x[features_order]
     return model.predict(new_x)
 
-# %% ../nbs/core.ipynb 21
+# %% ../nbs/core.ipynb 22
 def _name_models(current_names):
     ctr = Counter(current_names)
     if max(ctr.values()) < 2:
@@ -187,7 +193,40 @@ def _name_models(current_names):
         names[-i] = name
     return names
 
-# %% ../nbs/core.ipynb 23
+# %% ../nbs/core.ipynb 24
+@njit
+def _diff(x, lag):
+    y = x.copy()
+    for i in range(lag):
+        y[i] = np.nan
+    for i in range(lag, x.size):
+        y[i] = x[i] - x[i - lag]
+    return y
+
+
+@njit
+def _apply_difference(data, indptr, new_data, new_indptr, d):
+    n_series = len(indptr) - 1
+    for i in range(n_series):
+        new_data[new_indptr[i] : new_indptr[i + 1]] = data[
+            indptr[i + 1] - d : indptr[i + 1]
+        ]
+        sl = slice(indptr[i], indptr[i + 1])
+        data[sl] = _diff(data[sl], d)
+
+
+@njit
+def _restore_difference(preds, data, indptr, d):
+    n_series = len(indptr) - 1
+    h = len(preds) // n_series
+    for i in range(n_series):
+        s = data[indptr[i] : indptr[i + 1]]
+        for j in range(d):
+            preds[i * h + j] += s[j]
+        for j in range(d, h):
+            preds[i * h + j] += preds[i * h + j - d]
+
+# %% ../nbs/core.ipynb 25
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
@@ -197,6 +236,7 @@ class TimeSeries:
         lags: List[int] = [],
         lag_transforms: Dict[int, List[Tuple]] = {},
         date_features: List[str] = [],
+        differences: Optional[List[int]] = None,
         num_threads: int = 1,
     ):
         if isinstance(freq, str):
@@ -208,6 +248,7 @@ class TimeSeries:
         if not isinstance(num_threads, int) or num_threads < 1:
             warnings.warn("Setting num_threads to 1.")
             num_threads = 1
+        self.differences = [] if differences is None else list(differences)
         self.num_threads = num_threads
         self.date_features = list(date_features)
 
@@ -279,16 +320,32 @@ class TimeSeries:
         )
         self.restore_idxs = np.empty(df.shape[0], dtype=np.int32)
         self.restore_idxs[sort_idxs] = np.arange(df.shape[0])
+        self.uids = sorted_df.index.unique(level=0)
         data, indptr = self._data_indptr_from_sorted_df(sorted_df)
         if data.dtype not in (np.float32, np.float64):
             # since all transformations generate nulls, we need a float dtype
             data = data.astype(np.float32)
         self.ga = GroupedArray(data, indptr)
+        if self.differences:
+            original_sizes = indptr[1:].cumsum()
+            total_diffs = sum(self.differences)
+            small_series = self.uids[original_sizes < total_diffs]
+            if small_series.size:
+                msg = reprlib.repr(small_series.tolist())
+                raise ValueError(
+                    f"The following series are too short for the differences: {msg}"
+                )
+            self.original_values_ = []
+            n_series = len(indptr) - 1
+            for d in self.differences:
+                new_data = np.empty_like(data, shape=n_series * d)
+                new_indptr = d * np.arange(n_series + 1, dtype=np.int32)
+                _apply_difference(self.ga.data, self.ga.indptr, new_data, new_indptr, d)
+                self.original_values_.append(GroupedArray(new_data, new_indptr))
         self.features_ = self._compute_transforms()
         if keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
         self._ga = GroupedArray(self.ga.data, self.ga.indptr)
-        self.uids = sorted_df.index.unique(level=0)
         self.last_dates = sorted_df.index.get_level_values(self.time_col)[
             indptr[1:] - 1
         ]
@@ -353,11 +410,12 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        if not self.transforms:
-            raise ValueError("Must specify at least one type of transformation.")
         df = df.copy(deep=False)
         for feat in self.transforms.keys():
             df[feat] = self.features_[feat][self.restore_idxs]
+
+        if self.differences:
+            df[self.target_col] = self.ga.data[self.restore_idxs]
 
         if dropna:
             df.dropna(inplace=True)
@@ -366,6 +424,7 @@ class TimeSeries:
             for feature in self.date_features:
                 feat_vals = getattr(df[self.time_col].dt, feature).values
                 df[feature] = feat_vals.astype(date_features_dtypes[feature])
+
         return df
 
     def fit_transform(
@@ -435,7 +494,12 @@ class TimeSeries:
         return results_df
 
     def _get_raw_predictions(self) -> np.ndarray:
-        return np.array(self.y_pred).ravel("F")
+        preds = np.array(self.y_pred).ravel("F")
+        if not self.differences:
+            return preds
+        for d, ga in zip(reversed(self.differences), reversed(self.original_values_)):
+            _restore_difference(preds, ga.data, ga.indptr, d)
+        return preds
 
     def _get_predictions(self) -> pd.DataFrame:
         """Get all the predicted values with their corresponding ids and datestamps."""

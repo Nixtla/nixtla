@@ -34,6 +34,9 @@ class DistributedForecast:
         date_features: List[
             str
         ] = [],  # list of names of pandas date attributes to use as features, e.g. dayofweek
+        differences: Optional[
+            List[int]
+        ] = None,  # differences to apply to the series before fitting
         num_threads: int = 1,  # number of threads to use when computing lag features
         client: Optional[Client] = None,  # dask client to use for computations
     ):
@@ -42,7 +45,9 @@ class DistributedForecast:
         self.models = [clone(m) for m in models]
         self.client = client or default_client()
         self.dts = DistributedTimeSeries(
-            TimeSeries(freq, lags, lag_transforms, date_features, num_threads),
+            TimeSeries(
+                freq, lags, lag_transforms, date_features, differences, num_threads
+            ),
             self.client,
         )
 

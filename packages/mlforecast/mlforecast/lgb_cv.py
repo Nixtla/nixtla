@@ -74,6 +74,9 @@ class LightGBMCV:
         date_features: List[
             str
         ] = [],  # list of names of pandas date attributes to use as features, e.g. dayofweek
+        differences: Optional[
+            List[int]
+        ] = None,  # differences to apply to the series before fitting
         num_threads: int = 1,  # number of threads to use when computing the predictions of each window.
     ):
         self.num_threads = num_threads
@@ -84,7 +87,7 @@ class LightGBMCV:
             num_cpus = cpu_count
         self.bst_threads = num_cpus // num_threads
         self.ts = TimeSeries(
-            freq, lags, lag_transforms, date_features, self.bst_threads
+            freq, lags, lag_transforms, date_features, differences, self.bst_threads
         )
 
     def _should_stop(self, hist, early_stopping_evals, early_stopping_pct):
