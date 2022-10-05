@@ -410,12 +410,11 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        df = df.copy(deep=False)
+        df = df.copy()
         for feat in self.transforms.keys():
             df[feat] = self.features_[feat][self.restore_idxs]
 
         if self.differences:
-            df[self.target_col] = df[self.target_col].copy()
             df[self.target_col] = self.ga.data[self.restore_idxs]
 
         if dropna:

@@ -18,10 +18,6 @@ from . import Forecast, TimeSeries
 from .utils import backtest_splits
 
 # %% ../nbs/lgb_cv.ipynb 4
-class EarlyStopException(BaseException):
-    ...
-
-
 def _mape(y_true, y_pred):
     abs_pct_err = abs(y_true - y_pred) / y_true
     return (
@@ -41,6 +37,9 @@ def _rmse(y_true, y_pred):
     )
 
 
+_metric2fn = {"mape": _mape, "rmse": _rmse}
+
+
 def _update(bst, n):
     for _ in range(n):
         bst.update()
@@ -50,8 +49,7 @@ def _predict(ts, bst, valid, h, time_col, dynamic_dfs, predict_fn, **predict_fn_
     preds = ts.predict(bst, h, dynamic_dfs, predict_fn, **predict_fn_kwargs).set_index(
         time_col, append=True
     )
-    preds = preds.join(valid)
-    return preds
+    return valid.join(preds)
 
 
 def _update_and_predict(
@@ -90,11 +88,158 @@ class LightGBMCV:
             freq, lags, lag_transforms, date_features, differences, self.bst_threads
         )
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}("
+            f"ts={self.ts}, "
+            f"num_threads={self.num_threads}, "
+            f"bst_threads={self.bst_threads})"
+        )
+
     def _should_stop(self, hist, early_stopping_evals, early_stopping_pct):
         if len(hist) < early_stopping_evals + 1:
             return False
         improvement_pct = 1 - hist[-1][1] / hist[-(early_stopping_evals + 1)][1]
         return improvement_pct < early_stopping_pct
+
+    def setup(
+        self,
+        data: pd.DataFrame,  # time series
+        n_windows: int,  # number of windows to evaluate
+        window_size: int,  # test size in each window
+        params: Dict[str, Any] = {},  # lightgbm parameters
+        id_col: str = "index",  # column that identifies each serie, can also be the index.
+        time_col: str = "ds",  # column with the timestamps
+        target_col: str = "y",  # column with the series values
+        static_features: Optional[
+            List[str]
+        ] = None,  # column names of the features that don't change in time
+        dropna: bool = True,  # drop rows with missing values created by lags
+        keep_last_n: Optional[
+            int
+        ] = None,  # keep only this many observations of each serie for computing the updates
+        weights: Sequence[float] = None,  # weight for each window
+        metric: Union[str, Callable] = "mape",  # evaluation metric
+    ):
+        if weights is None:
+            self.weights = np.full(n_windows, 1 / n_windows)
+        elif len(weights) != n_windows:
+            raise ValueError("Must specify as many weights as the number of windows")
+        else:
+            self.weights = np.asarray(weights)
+        if callable(metric):
+            self.metric_fn = metric
+            self.metric_name = "custom_metric"
+        else:
+            if metric not in _metric2fn:
+                raise ValueError(
+                    f'{metric} is not one of the implemented metrics: ({", ".join(_metric2fn.keys())})'
+                )
+            self.metric_fn = _metric2fn[metric]
+            self.metric_name = metric
+
+        if id_col != "index":
+            data = data.set_index(id_col)
+
+        if np.issubdtype(data[time_col].dtype.type, np.integer):
+            freq = 1
+        else:
+            freq = self.ts.freq
+        self.items = []
+        self.window_size = window_size
+        self.time_col = time_col
+        self.target_col = target_col
+        for _, train, valid in backtest_splits(data, n_windows, window_size, freq):
+            ts = copy.deepcopy(self.ts)
+            prep = ts.fit_transform(
+                train,
+                id_col,
+                time_col,
+                target_col,
+                static_features,
+                dropna,
+                keep_last_n,
+            )
+            ds = lgb.Dataset(
+                prep.drop(columns=[time_col, target_col]), prep[target_col]
+            ).construct()
+            bst = lgb.Booster({**params, "num_threads": self.bst_threads}, ds)
+            bst.predict = partial(bst.predict, num_threads=self.bst_threads)
+            valid = valid.set_index(time_col, append=True)
+            self.items.append((ts, bst, valid))
+        return self
+
+    def _single_threaded_partial_fit(
+        self,
+        metric_values,
+        n_iter,
+        dynamic_dfs,
+        predict_fn,
+        **predict_fn_kwargs,
+    ):
+        for j, (ts, bst, valid) in enumerate(self.items):
+            preds = _update_and_predict(
+                ts,
+                bst,
+                valid,
+                n_iter,
+                self.window_size,
+                self.time_col,
+                dynamic_dfs,
+                predict_fn,
+                **predict_fn_kwargs,
+            )
+            metric_values[j] = self.metric_fn(preds[self.target_col], preds["Booster"])
+
+    def _multithreaded_partial_fit(
+        self,
+        metric_values,
+        n_iter,
+        dynamic_dfs,
+        predict_fn,
+        **predict_fn_kwargs,
+    ):
+        with ThreadPoolExecutor(self.num_threads) as executor:
+            futures = []
+            for ts, bst, valid in self.items:
+                _update(bst, n_iter)
+                future = executor.submit(
+                    _predict,
+                    ts,
+                    bst,
+                    valid,
+                    self.window_size,
+                    self.time_col,
+                    dynamic_dfs,
+                    predict_fn,
+                    **predict_fn_kwargs,
+                )
+                futures.append(future)
+            cv_preds = [f.result() for f in futures]
+        metric_values[:] = [
+            self.metric_fn(preds[self.target_col], preds["Booster"])
+            for preds in cv_preds
+        ]
+
+    def partial_fit(
+        self,
+        n_iter: int,  # number of boosting iterations to run
+        dynamic_dfs: Optional[
+            List[pd.DataFrame]
+        ] = None,  # future values for dynamic features
+        predict_fn: Optional[Callable] = None,  # custom function to compute predictions
+        **predict_fn_kwargs,  # additional arguments passed to predict_fn
+    ):
+        metric_values = np.empty(len(self.items))
+        if self.num_threads == 1:
+            self._single_threaded_partial_fit(
+                metric_values, n_iter, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            )
+        else:
+            self._multithreaded_partial_fit(
+                metric_values, n_iter, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            )
+        return metric_values @ self.weights
 
     def fit(
         self,
@@ -126,132 +271,41 @@ class LightGBMCV:
         predict_fn: Optional[Callable] = None,  # custom function to compute predictions
         **predict_fn_kwargs,  # additional arguments passed to predict_fn
     ):
-        if eval_every <= 0:
-            raise ValueError(
-                "eval_every should be > 0. If you don't want to evaluate the complete horizon use "
-                "Forecast.cross_validation instead."
-            )
-        if weights is None:
-            use_weights = np.full(n_windows, 1 / n_windows)
-        elif len(weights) != n_windows:
-            raise ValueError("Must specify as many weights as the number of windows")
-        else:
-            use_weights = np.asarray(weights)
-        metric2fn = {"mape": _mape, "rmse": _rmse}
-        if callable(metric):
-            metric_fn = metric
-            metric_name = "metric"
-        else:
-            if metric not in metric2fn:
-                raise ValueError(
-                    f'{metric} is not one of the implemented metrics: ({", ".join(metric2fn.keys())})'
-                )
-            metric_fn = metric2fn[metric]
-            metric_name = metric
-
-        if id_col != "index":
-            data = data.set_index(id_col)
-
-        if np.issubdtype(data["ds"].dtype.type, np.integer):
-            freq = 1
-        else:
-            freq = self.ts.freq
-        items = []
-        for _, train, valid in backtest_splits(data, n_windows, window_size, freq):
-            ts = copy.deepcopy(self.ts)
-            prep = ts.fit_transform(
-                train,
-                id_col,
-                time_col,
-                target_col,
-                static_features,
-                dropna,
-                keep_last_n,
-            )
-            ds = lgb.Dataset(
-                prep.drop(columns=[time_col, target_col]), prep[target_col]
-            ).construct()
-            bst = lgb.Booster({**params, "num_threads": self.bst_threads}, ds)
-            bst.predict = partial(bst.predict, num_threads=self.bst_threads)
-            valid = valid.set_index(time_col, append=True)
-            items.append((ts, bst, valid))
-
+        self.setup(
+            data,
+            n_windows,
+            window_size,
+            params,
+            id_col,
+            time_col,
+            target_col,
+            static_features,
+            dropna,
+            keep_last_n,
+            weights,
+            metric,
+        )
         hist = []
         n_iter = lgb.basic._choose_param_value("num_iterations", params, 100)[
             "num_iterations"
         ]
-        metric_values = np.empty(n_windows)
-
-        if self.num_threads == 1:
-            try:
-                for i in range(0, n_iter, eval_every):
-                    for j, (ts, bst, valid) in enumerate(items):
-                        preds = _update_and_predict(
-                            ts,
-                            bst,
-                            valid,
-                            eval_every,
-                            window_size,
-                            time_col,
-                            dynamic_dfs,
-                            predict_fn,
-                            **predict_fn_kwargs,
-                        )
-                        metric_values[j] = metric_fn(
-                            preds[target_col], preds["Booster"]
-                        )
-                    metric_value = metric_values @ use_weights
-                    rounds = eval_every + i
-                    hist.append((rounds, metric_value))
-                    if verbose_eval:
-                        print(f"[{rounds:,d}] {metric_name}: {metric_value:,f}")
-                    if self._should_stop(
-                        hist, early_stopping_evals, early_stopping_pct
-                    ):
-                        raise EarlyStopException
-            except EarlyStopException:
+        for i in range(0, n_iter, eval_every):
+            metric_value = self.partial_fit(
+                eval_every, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            )
+            rounds = eval_every + i
+            hist.append((rounds, metric_value))
+            if verbose_eval:
+                print(f"[{rounds:,d}] {self.metric_name}: {metric_value:,f}")
+            if self._should_stop(hist, early_stopping_evals, early_stopping_pct):
                 print(f"Early stopping at round {rounds:,}")
-        else:
-            try:
-                with ThreadPoolExecutor(self.num_threads) as executor:
-                    for i in range(0, n_iter, eval_every):
-                        futures = []
-                        for ts, bst, valid in items:
-                            _update(bst, eval_every)
-                            future = executor.submit(
-                                _predict,
-                                ts,
-                                bst,
-                                valid,
-                                window_size,
-                                time_col,
-                                dynamic_dfs,
-                                predict_fn,
-                                **predict_fn_kwargs,
-                            )
-                            futures.append(future)
-                        cv_preds = [f.result() for f in futures]
-                        metric_values[:] = [
-                            metric_fn(preds[target_col], preds["Booster"])
-                            for preds in cv_preds
-                        ]
-                        metric_value = metric_values @ use_weights
-                        rounds = eval_every + i
-                        hist.append((rounds, metric_value))
-                        if verbose_eval:
-                            print(f"[{rounds:,d}] {metric_name}: {metric_value:,f}")
-                        if self._should_stop(
-                            hist, early_stopping_evals, early_stopping_pct
-                        ):
-                            raise EarlyStopException
-            except EarlyStopException:
-                print(f"Early stopping at round {rounds:,}.")
+                break
 
-        self.cv_models_ = [item[1] for item in items]
+        self.cv_models_ = [item[1] for item in self.items]
         if compute_cv_preds:
             with ThreadPoolExecutor(self.num_threads) as executor:
                 futures = []
-                for ts, bst, valid in items:
+                for ts, bst, valid in self.items:
                     future = executor.submit(
                         _predict,
                         ts,
@@ -267,7 +321,7 @@ class LightGBMCV:
                 self.cv_preds_ = [f.result() for f in futures]
 
         if fit_on_all:
-            params["num_iterations"] = rounds
+            params["n_estimators"] = rounds
             self.fcst = Forecast([])
             self.fcst.ts = self.ts
             self.fcst.models = [lgb.LGBMRegressor(**params)]
