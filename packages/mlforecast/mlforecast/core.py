@@ -415,6 +415,7 @@ class TimeSeries:
             df[feat] = self.features_[feat][self.restore_idxs]
 
         if self.differences:
+            df[self.target_col] = df[self.target_col].copy()
             df[self.target_col] = self.ga.data[self.restore_idxs]
 
         if dropna:
