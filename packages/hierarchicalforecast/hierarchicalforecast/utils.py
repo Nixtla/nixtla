@@ -180,7 +180,7 @@ class HierarchicalPlot:
         cmap = mcp.gen_color('tab10', 10)[:len(cols_wo_levels)]
         cmap_dict = dict(zip(cols_wo_levels, cmap))
         for idx, series in enumerate(linked_series):
-            df_plot = Y_df.loc[series].set_index('ds')
+            df_plot = Y_df.loc[[series]].set_index('ds')
             df_plot[cols_wo_levels].plot(ax=axs[idx], linewidth=2, color=cmap)
             if level is not None:
                 for lv in level:
