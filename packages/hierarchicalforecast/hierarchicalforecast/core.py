@@ -42,12 +42,13 @@ class HierarchicalReconciliation:
     def __init__(self,
                  reconcilers: List[Callable]):
         self.reconcilers = reconcilers
+        self.insample = any([method.insample for method in reconcilers])
 
     def reconcile(self, 
                   Y_hat_df: pd.DataFrame,
-                  Y_df: pd.DataFrame,
                   S: pd.DataFrame,
                   tags: Dict[str, np.ndarray],
+                  Y_df: Optional[pd.DataFrame] = None,
                   level: Optional[List[int]] = None,
                   bootstrap: bool = False):
         """Hierarchical Reconciliation Method.
@@ -87,11 +88,17 @@ class HierarchicalReconciliation:
         # same order of Y_hat_df to prevent errors
         S_ = S.loc[uids]
         common_vals = dict(
-            y_insample = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32),
-            S = S_.values.astype(np.float32),
-            idx_bottom = S_.index.get_indexer(S.columns),
+            S=S_.values.astype(np.float32),
+            idx_bottom=S_.index.get_indexer(S.columns),
             tags={key: S_.index.get_indexer(val) for key, val in tags.items()}
         )
+        # we need insample values if 
+        # we are using a method that requires them
+        # or if we are performing boostrap
+        if self.insample or bootstrap:
+            if Y_df is None:
+                raise Exception('you need to pass `Y_df`')
+            common_vals['y_insample'] = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32)
         fcsts = Y_hat_df.copy()
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
@@ -117,7 +124,7 @@ class HierarchicalReconciliation:
                     sigmah = sign * (y_hat_model - sigmah) / z
                     common_vals['sigmah'] = sigmah
                     common_vals['level'] = level
-                if has_fitted or bootstrap:
+                if (self.insample and has_fitted) or bootstrap:
                     if model_name in Y_df:
                         y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
                         y_hat_insample = y_hat_insample.astype(np.float32)
@@ -151,6 +158,6 @@ class HierarchicalReconciliation:
                     else:
                         del common_vals['bootstrap_samples']
                         del common_vals['bootstrap']
-                if has_fitted:
+                if self.insample and has_fitted:
                     del common_vals['y_hat_insample']
         return fcsts

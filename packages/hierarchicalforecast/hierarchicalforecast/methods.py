@@ -88,6 +88,8 @@ class BottomUp:
     - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American 
     Economic Review, 58 , 773{787)](http://www.jstor.org/stable/1815532).
     """
+    insample = False
+    
     def reconcile(self,
                   S: np.ndarray,
                   y_hat: np.ndarray,
@@ -253,12 +255,13 @@ class TopDown:
     def __init__(self, 
                  method: str):
         self.method = method
+        self.insample = method in ['average_proportions', 'proportion_averages']
     
     def reconcile(self, 
                   S: np.ndarray,
                   y_hat: np.ndarray,
-                  y_insample: np.ndarray,
                   tags: Dict[str, np.ndarray],
+                  y_insample: Optional[np.ndarray] = None,
                   sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
                   bootstrap: bool = False,
@@ -268,6 +271,8 @@ class TopDown:
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
@@ -345,7 +350,7 @@ def middle_out(S: np.ndarray,
             counter += idxs_len
         td = top_down(S_node, 
                       y_hat[idxs_node], 
-                      y_insample[idxs_node], 
+                      y_insample[idxs_node] if y_insample is not None else None, 
                       levels_node_, 
                       method=top_down_method)
         reconciled[idxs_node] = td['mean']
@@ -375,19 +380,20 @@ class MiddleOut:
                  top_down_method: str):
         self.middle_level = middle_level
         self.top_down_method = top_down_method 
+        self.insample = top_down_method in ['average_proportions', 'proportion_averages']
     
     def reconcile(self, 
                   S: np.ndarray,
                   y_hat: np.ndarray,
-                  y_insample: np.ndarray,
-                  tags: Dict[str, np.ndarray]):
+                  tags: Dict[str, np.ndarray],
+                  y_insample: Optional[np.ndarray] = None):
         """Middle Out Reconciliation Method.
 
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
-        `y_insample`: Insample values of size (`base`, `insample_size`).<br>
-        `levels`: Each key is a level and each value its `S` indices.<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Only used for `forecast_proportions`<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Middle Out approach.
@@ -471,7 +477,7 @@ class MinTrace:
     \mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}$$
     
     **Parameters:**<br>
-    `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_co`.<br>
+    `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.<br>
 
     **References:**<br>
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
@@ -481,12 +487,13 @@ class MinTrace:
     def __init__(self, 
                  method: str):
         self.method = method
+        self.insample = method in ['wls_var', 'mint_cov', 'mint_shrink']
 
     def reconcile(self, 
                   S: np.ndarray,
                   y_hat: np.ndarray,
-                  y_insample: np.ndarray,
-                  y_hat_insample: np.ndarray,
+                  y_insample: Optional[np.ndarray] = None,
+                  y_hat_insample: Optional[np.ndarray] = None,
                   sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
                   bootstrap: bool = False,
@@ -496,7 +503,8 @@ class MinTrace:
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
-        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
+        `y_hat_insample`: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
         `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
         `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
@@ -560,12 +568,11 @@ class OptimalCombination:
             raise ValueError(f"Optimal Combination class does not support method: \"{method}\"")
 
         self.method = method
+        self.insample = False
 
     def reconcile(self,
                   S: np.ndarray,
                   y_hat: np.ndarray,
-                  y_insample: np.ndarray = None,
-                  y_hat_insample: np.ndarray = None,
                   sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
                   bootstrap: bool = False,
@@ -575,7 +582,6 @@ class OptimalCombination:
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
-        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
         `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
@@ -586,8 +592,6 @@ class OptimalCombination:
         """
         return optimal_combination(S=S,
                                    y_hat=y_hat,
-                                   y_insample=y_insample,
-                                   y_hat_insample=y_hat_insample,
                                    method=self.method, sigmah=sigmah,
                                    level=level, bootstrap=bootstrap,
                                    bootstrap_samples=bootstrap_samples)
@@ -704,6 +708,7 @@ class ERM:
                  lambda_reg: float = 1e-2):
         self.method = method
         self.lambda_reg = lambda_reg
+        self.insample = True
 
     def reconcile(self, 
                   S: np.ndarray,
