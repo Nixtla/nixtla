@@ -47,7 +47,7 @@ class HierarchicalEvaluation:
         `evaluation`: pd.DataFrame with accuracy measurements across hierarchical levels.
         """
         drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
-        h = len(Y_hat_df.loc[Y_hat_df.index[0]])
+        h = len(Y_hat_df.loc[[Y_hat_df.index[0]]])
         model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
         fn_names = [fn.__name__ for fn in self.evaluators]
         has_y_insample = any(['y_insample' in signature(fn).parameters for fn in self.evaluators])
