@@ -242,7 +242,12 @@ class NBEATS(BaseWindows):
                 
         return block_list
 
-    def forward(self, insample_y, insample_mask):
+    def forward(self, windows_batch):
+        
+        # Parse windows_batch
+        insample_y    = windows_batch['insample_y']
+        insample_mask = windows_batch['insample_mask']
+
         # insample
         residuals = insample_y.flip(dims=(-1,)) #backcast init
         insample_mask = insample_mask.flip(dims=(-1,))
