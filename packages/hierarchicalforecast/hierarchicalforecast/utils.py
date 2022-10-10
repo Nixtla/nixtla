@@ -80,7 +80,7 @@ class HierarchicalPlot:
     to medium sized hierarchical series.
 
     **Parameters:**<br>
-    `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
+    `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate function](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
     `tags`: np.ndarray, with hierarchical aggregation indexes, where 
         each key is a level and its value contains tags associated to that level.<br><br>
     """
@@ -215,3 +215,52 @@ class HierarchicalPlot:
         if sys.version_info.minor > 7:
             kwargs['ncols'] = np.max([2, np.ceil(len(labels) / 2)])
         fig.legend(handles, labels, **kwargs)
+
+    def plot_hierarchical_predictions_gap(self,
+                                          Y_df: pd.DataFrame,
+                                          models: Optional[List[str]] = None,
+                                          xlabel: Optional=None,
+                                          ylabel: Optional=None,
+                                          ):
+        """ Hierarchically Predictions Gap plot
+
+        **Parameters:**<br>
+        `Y_df`: pd.DataFrame, hierarchically structured series ($\mathbf{y}_{[a,b]}$). 
+                It contains columns ['unique_id', 'ds', 'y'] and models. <br>
+        `models`: List[str], string identifying filtering model columns.
+        `xlabel`: str, string for the plot's x axis label.
+        `ylable`: str, string for the plot's y axis label.
+
+        **Returns:**<br>
+        Plots of aggregated predictions at different levels of the hierarchical structure.
+        The aggregation is performed according to the tag levels see 
+        [aggregate function](https://nixtla.github.io/hierarchicalforecast/utils.html).<br><br>
+        """
+        # Parse predictions dataframe
+        horizon_dates = Y_df['ds'].unique()
+        cols = models if models is not None else Y_df.drop(['ds', 'y'], axis=1).columns
+        
+        # Plot predictions across tag levels
+        fig, ax = plt.subplots(figsize=(8, 5))
+        
+        if 'y' in Y_df.columns:
+            y_plot = Y_df[Y_df.index =="['Total']"].y.values
+            plt.plot(horizon_dates, y_plot, label='True')
+
+        ys = []
+        for tag in self.tags:
+            y_plot = sum([Y_df[cols].loc[Y_df.index == idx].values \
+                          for idx in self.tags[tag]])
+            plt.plot(horizon_dates, y_plot, label=f'Level: {tag}')
+            
+            ys.append(y_plot[:,None])
+
+        plt.title('Predictions Accumulated Difference')
+        if ylabel is not None:
+            plt.ylabel(ylabel)
+        if xlabel is not None:
+            plt.xlabel(xlabel)
+
+        plt.legend()
+        plt.grid()
+        plt.show()
