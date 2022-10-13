@@ -10,8 +10,9 @@ website:
         - utils.ipynb
       - section: Tutorials
         contents:
-        - examples/TourismSmall.ipynb
-        - examples/AustralianDomesticTourism.ipynb
-        - examples/AustralianPrisonPopulation.ipynb
-        - examples/AustralianDomesticTourism-Intervals.ipynb
-        - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb        
+        - examples/1TourismSmall.ipynb
+        - examples/2AustralianDomesticTourism.ipynb
+        - examples/3AustralianPrisonPopulation.ipynb
+        - examples/4AustralianDomesticTourism-Intervals.ipynb
+        - examples/5AustralianDomesticTourism-Bootstraped-Intervals.ipynb
+        - examples/6PERMBU_example.ipynb
