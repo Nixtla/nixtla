@@ -235,7 +235,7 @@ class TimeSeries:
         freq: Optional[Union[int, str]] = None,
         lags: List[int] = [],
         lag_transforms: Dict[int, List[Tuple]] = {},
-        date_features: List[str] = [],
+        date_features: List[Union[str, Callable]] = [],
         differences: Optional[List[int]] = None,
         num_threads: int = 1,
     ):
@@ -250,6 +250,11 @@ class TimeSeries:
             num_threads = 1
         self.differences = [] if differences is None else list(differences)
         self.num_threads = num_threads
+        for feature in date_features:
+            if callable(feature) and feature.__name__ == "<lambda>":
+                raise ValueError(
+                    "Can't use a lambda as a date feature because the function name gets used as the feature name."
+                )
         self.date_features = list(date_features)
 
         self.transforms: Dict[str, Tuple[Any, ...]] = OrderedDict()
@@ -264,15 +269,19 @@ class TimeSeries:
         self.ga: GroupedArray
 
     @property
+    def _date_feature_names(self):
+        return [f.__name__ if callable(f) else f for f in self.date_features]
+
+    @property
     def features(self) -> List[str]:
         """Names of all computed features."""
-        return list(self.transforms.keys()) + self.date_features
+        return list(self.transforms.keys()) + self._date_feature_names
 
     def __repr__(self):
         return (
             f"TimeSeries(freq={self.freq}, "
             f"transforms={list(self.transforms.keys())}, "
-            f"date_features={self.date_features}, "
+            f"date_features={self._date_feature_names}, "
             f"num_threads={self.num_threads})"
         )
 
@@ -304,8 +313,6 @@ class TimeSeries:
             if self.freq != 1:
                 warnings.warn("Setting `freq=1` since time col is int.")
                 self.freq = 1
-            if self.date_features:
-                warnings.warn("Ignoring date_features since time column is integer.")
         else:
             raise ValueError(f"{time_col} must be either timestamp or integer.")
         self.id_col = id_col
@@ -402,6 +409,24 @@ class TimeSeries:
             return self._apply_transforms()
         return self._apply_multithreaded_transforms()
 
+    def _compute_date_feature(self, dates, feature):
+        dates = getattr(dates, "dt", dates)
+        if feature in ("week", "weekofyear"):
+            feat_name = feature
+            feat_vals = dates.isocalendar().week
+        else:
+            if callable(feature):
+                feat_name = feature.__name__
+                feat_vals = feature(dates)
+            else:
+                feat_name = feature
+                feat_vals = getattr(dates, feature)
+        feat_dtype = date_features_dtypes.get(feature)
+        vals = np.asarray(feat_vals)
+        if feat_dtype is not None:
+            vals = vals.astype(feat_dtype)
+        return feat_name, vals
+
     def _transform(
         self,
         df: pd.DataFrame,
@@ -410,7 +435,7 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        df = df.copy()
+        df = df.copy(deep=bool(self.differences))
         for feat in self.transforms.keys():
             df[feat] = self.features_[feat][self.restore_idxs]
 
@@ -420,11 +445,11 @@ class TimeSeries:
         if dropna:
             df.dropna(inplace=True)
 
-        if not isinstance(self.freq, int):
-            for feature in self.date_features:
-                feat_vals = getattr(df[self.time_col].dt, feature).values
-                df[feature] = feat_vals.astype(date_features_dtypes[feature])
-
+        for feature in self.date_features:
+            feat_name, feat_vals = self._compute_date_feature(
+                df[self.time_col], feature
+            )
+            df[feat_name] = feat_vals
         return df
 
     def fit_transform(
@@ -478,10 +503,9 @@ class TimeSeries:
         else:
             features = self._apply_multithreaded_transforms(updates_only=True)
 
-        if not isinstance(self.freq, int):
-            for feature in self.date_features:
-                feat_vals = getattr(self.curr_dates, feature).values
-                features[feature] = feat_vals.astype(date_features_dtypes[feature])
+        for feature in self.date_features:
+            feat_name, feat_vals = self._compute_date_feature(self.curr_dates, feature)
+            features[feat_name] = feat_vals
 
         features_df = pd.DataFrame(features, columns=self.features, index=self.uids)
         nulls_in_cols = features_df.isnull().any()

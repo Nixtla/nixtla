@@ -5,7 +5,7 @@ __all__ = ['DistributedForecast']
 
 # %% ../../nbs/distributed.forecast.ipynb 5
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import dask.dataframe as dd
 import numpy as np
@@ -32,8 +32,8 @@ class DistributedForecast:
             int, List[Tuple]
         ] = {},  # list of transformations to apply to each lag
         date_features: List[
-            str
-        ] = [],  # list of names of pandas date attributes to use as features, e.g. dayofweek
+            Union[str, Callable]
+        ] = [],  # list of names of pandas date attributes or functions to use as features, e.g. dayofweek
         differences: Optional[
             List[int]
         ] = None,  # differences to apply to the series before fitting

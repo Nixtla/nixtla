@@ -28,8 +28,8 @@ class Forecast:
             int, List[Tuple]
         ] = {},  # list of transformations to apply to each lag
         date_features: List[
-            str
-        ] = [],  # list of names of pandas date attributes to use as features, e.g. dayofweek
+            Union[str, Callable]
+        ] = [],  # list of names of pandas date attributes or functions to use as features, e.g. dayofweek
         differences: Optional[
             List[int]
         ] = None,  # differences to apply to the series before fitting
