@@ -96,12 +96,6 @@ class LightGBMCV:
             f"bst_threads={self.bst_threads})"
         )
 
-    def _should_stop(self, hist, early_stopping_evals, early_stopping_pct):
-        if len(hist) < early_stopping_evals + 1:
-            return False
-        improvement_pct = 1 - hist[-1][1] / hist[-(early_stopping_evals + 1)][1]
-        return improvement_pct < early_stopping_pct
-
     def setup(
         self,
         data: pd.DataFrame,  # time series
@@ -149,7 +143,9 @@ class LightGBMCV:
         self.window_size = window_size
         self.time_col = time_col
         self.target_col = target_col
-        for _, train, valid in backtest_splits(data, n_windows, window_size, freq):
+        for _, train, valid in backtest_splits(
+            data, n_windows, window_size, freq, time_col, target_col
+        ):
             ts = copy.deepcopy(self.ts)
             prep = ts.fit_transform(
                 train,
@@ -172,7 +168,7 @@ class LightGBMCV:
     def _single_threaded_partial_fit(
         self,
         metric_values,
-        n_iter,
+        num_iterations,
         dynamic_dfs,
         predict_fn,
         **predict_fn_kwargs,
@@ -182,7 +178,7 @@ class LightGBMCV:
                 ts,
                 bst,
                 valid,
-                n_iter,
+                num_iterations,
                 self.window_size,
                 self.time_col,
                 dynamic_dfs,
@@ -194,7 +190,7 @@ class LightGBMCV:
     def _multithreaded_partial_fit(
         self,
         metric_values,
-        n_iter,
+        num_iterations,
         dynamic_dfs,
         predict_fn,
         **predict_fn_kwargs,
@@ -202,7 +198,7 @@ class LightGBMCV:
         with ThreadPoolExecutor(self.num_threads) as executor:
             futures = []
             for ts, bst, valid in self.items:
-                _update(bst, n_iter)
+                _update(bst, num_iterations)
                 future = executor.submit(
                     _predict,
                     ts,
@@ -223,7 +219,7 @@ class LightGBMCV:
 
     def partial_fit(
         self,
-        n_iter: int,  # number of boosting iterations to run
+        num_iterations: int,  # number of boosting iterations to run
         dynamic_dfs: Optional[
             List[pd.DataFrame]
         ] = None,  # future values for dynamic features
@@ -233,13 +229,35 @@ class LightGBMCV:
         metric_values = np.empty(len(self.items))
         if self.num_threads == 1:
             self._single_threaded_partial_fit(
-                metric_values, n_iter, dynamic_dfs, predict_fn, **predict_fn_kwargs
+                metric_values,
+                num_iterations,
+                dynamic_dfs,
+                predict_fn,
+                **predict_fn_kwargs,
             )
         else:
             self._multithreaded_partial_fit(
-                metric_values, n_iter, dynamic_dfs, predict_fn, **predict_fn_kwargs
+                metric_values,
+                num_iterations,
+                dynamic_dfs,
+                predict_fn,
+                **predict_fn_kwargs,
             )
         return metric_values @ self.weights
+
+    def _should_stop(self, hist, early_stopping_evals, early_stopping_pct):
+        if len(hist) < early_stopping_evals + 1:
+            return False
+        improvement_pct = 1 - hist[-1][1] / hist[-(early_stopping_evals + 1)][1]
+        return improvement_pct < early_stopping_pct
+
+    def _best_iter(self, hist, early_stopping_evals):
+        best_iter, best_score = hist[-1]
+        for r, m in hist[-(early_stopping_evals + 1) : -1]:
+            if m < best_score:
+                best_score = m
+                best_iter = r
+        return best_iter
 
     def fit(
         self,
@@ -247,6 +265,7 @@ class LightGBMCV:
         n_windows: int,  # number of windows to evaluate
         window_size: int,  # test size in each window
         params: Dict[str, Any] = {},  # lightgbm parameters
+        num_iterations: int = 100,  # number of boosting rounds
         id_col: str = "index",  # column that identifies each serie, can also be the index.
         time_col: str = "ds",  # column with the timestamps
         target_col: str = "y",  # column with the series values
@@ -286,10 +305,7 @@ class LightGBMCV:
             metric,
         )
         hist = []
-        n_iter = lgb.basic._choose_param_value("num_iterations", params, 100)[
-            "num_iterations"
-        ]
-        for i in range(0, n_iter, eval_every):
+        for i in range(0, num_iterations, eval_every):
             metric_value = self.partial_fit(
                 eval_every, dynamic_dfs, predict_fn, **predict_fn_kwargs
             )
@@ -300,6 +316,10 @@ class LightGBMCV:
             if self._should_stop(hist, early_stopping_evals, early_stopping_pct):
                 print(f"Early stopping at round {rounds:,}")
                 break
+        rounds = self._best_iter(hist, early_stopping_evals)
+        print(f"Using best iteration: {rounds:,}")
+        for _, bst, _ in self.items:
+            bst.best_iteration = rounds
 
         self.cv_models_ = [item[1] for item in self.items]
         if compute_cv_preds:
