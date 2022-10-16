@@ -186,4 +186,4 @@ fig.savefig('figs/index.png', bbox_inches='tight')
 plt.close()
 ```
 
-![](figs/index.png)
+![](https://raw.githubusercontent.com/Nixtla/mlforecast/main/figs/index.png)
