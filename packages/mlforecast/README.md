@@ -182,6 +182,8 @@ for i, (cat, axi) in enumerate(zip(series.index.categories, ax.flat)):
         axi.legend().remove()
     else:
         axi.legend(bbox_to_anchor=(1.01, 1.0))
+fig.savefig('figs/index.png', bbox_inches='tight')
+plt.close()
 ```
 
-![](index_files/figure-gfm/cell-7-output-1.png)
+![](figs/index.png)
