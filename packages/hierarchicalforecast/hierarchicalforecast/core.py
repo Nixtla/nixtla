@@ -3,9 +3,9 @@
 # %% auto 0
 __all__ = ['HierarchicalReconciliation']
 
-# %% ../nbs/core.ipynb 3
+# %% ../nbs/core.ipynb 2
 import re
-from inspect import signature
+from inspect import signature, Parameter
 from scipy.stats import norm
 from typing import Callable, Dict, List, Optional
 
@@ -14,16 +14,19 @@ import pandas as pd
 
 from .methods import _bootstrap_samples
 
-# %% ../nbs/core.ipynb 5
+# %% ../nbs/core.ipynb 4
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
-    func_params = [f'{name}-{value}' for name, value in func_params.items() if name != 'insample']
+    args_to_remove = ['insample']
+    if not func_params.get('nonnegative', False):
+        args_to_remove += ['nonnegative']
+    func_params = [f'{name}-{value}' for name, value in func_params.items() if name not in args_to_remove]
     if func_params:
         fn_name += '_' + '_'.join(func_params)
     return fn_name
 
-# %% ../nbs/core.ipynb 9
+# %% ../nbs/core.ipynb 8
 class HierarchicalReconciliation:
     """Hierarchical Reconciliation Class.
 

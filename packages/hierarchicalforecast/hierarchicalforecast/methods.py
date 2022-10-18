@@ -11,8 +11,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 from numba import njit
+from quadprog import solve_qp
 from scipy.stats import norm
-from scipy.optimize import nnls
 from statsmodels.stats.moment_helpers import cov2corr
 from sklearn.preprocessing import OneHotEncoder
 
@@ -464,11 +464,13 @@ def min_trace(S: np.ndarray,
     W_inv = np.linalg.pinv(W)
     if nonnegative:
         # compute P for nonnegative reconciliation
-        W_sqrt = np.sqrt(W_inv)
-        A = W_sqrt @ S
+        warnings.warn('Replacing negative forecasts with zero.')
         y_hat = np.copy(y_hat)
         y_hat[y_hat < 0] = 0.
-        bottom_fcts = np.apply_along_axis(lambda y_hat: nnls(A, W_sqrt @ y_hat)[0], axis=0, arr=y_hat)
+        # solve_qp arguments
+        a = S.T @ W_inv
+        G = a @ S
+        bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat)[0], axis=0, arr=y_hat)
         P = bottom_fcts @ y_hat.T @ np.linalg.pinv(y_hat @ y_hat.T)
     else:
         # compute P for free reconciliation
