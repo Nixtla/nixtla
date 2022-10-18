@@ -11,10 +11,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 from numba import njit
-
 from scipy.stats import norm
+from scipy.optimize import nnls
 from statsmodels.stats.moment_helpers import cov2corr
-
 from sklearn.preprocessing import OneHotEncoder
 
 # %% ../nbs/methods.ipynb 4
@@ -419,6 +418,7 @@ def min_trace(S: np.ndarray,
               y_insample: np.ndarray,
               y_hat_insample: np.ndarray,
               method: str,
+              nonnegative: bool = False,
               sigmah: Optional[np.ndarray] = None,
               level: Optional[List[int]] = None,
               bootstrap: bool = False,
@@ -461,8 +461,19 @@ def min_trace(S: np.ndarray,
     if any(eigenvalues < 1e-8):
         raise Exception(f'min_trace ({method}) needs covariance matrix to be positive definite.')
     
-    R = S.T @ np.linalg.pinv(W)
-    P = np.linalg.pinv(R @ S) @ R
+    W_inv = np.linalg.pinv(W)
+    if nonnegative:
+        # compute P for nonnegative reconciliation
+        W_sqrt = np.sqrt(W_inv)
+        A = W_sqrt @ S
+        y_hat = np.copy(y_hat)
+        y_hat[y_hat < 0] = 0.
+        bottom_fcts = np.apply_along_axis(lambda y_hat: nnls(A, W_sqrt @ y_hat)[0], axis=0, arr=y_hat)
+        P = bottom_fcts @ y_hat.T @ np.linalg.pinv(y_hat @ y_hat.T)
+    else:
+        # compute P for free reconciliation
+        R = S.T @ np.linalg.pinv(W)
+        P = np.linalg.pinv(R @ S) @ R
     
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level,
                       bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
@@ -481,15 +492,21 @@ class MinTrace:
     
     **Parameters:**<br>
     `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.<br>
+    `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
 
     **References:**<br>
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
     hierarchical and grouped time series through trace minimization\". Journal of the American Statistical Association, 
     114 , 804–819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
+    - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). \"Optimal non-negative
+    forecast reconciliation". Stat Comput 30, 1167–1182, 
+    https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
     def __init__(self, 
-                 method: str):
+                 method: str,
+                 nonnegative: bool = False):
         self.method = method
+        self.nonnegative = nonnegative
         self.insample = method in ['wls_var', 'mint_cov', 'mint_shrink']
 
     def reconcile(self, 
@@ -520,6 +537,7 @@ class MinTrace:
                          y_insample=y_insample,
                          y_hat_insample=y_hat_insample,
                          method=self.method,
+                         nonnegative=self.nonnegative,
                          sigmah=sigmah,
                          level=level,
                          bootstrap=bootstrap,
@@ -531,6 +549,7 @@ class MinTrace:
 def optimal_combination(S: np.ndarray, 
                         y_hat: np.ndarray,
                         method: str,
+                        nonnegative: bool = False,
                         y_insample: np.ndarray = None,
                         y_hat_insample: np.ndarray = None,
                         sigmah: Optional[np.ndarray] = None, 
@@ -541,7 +560,8 @@ def optimal_combination(S: np.ndarray,
     return min_trace(S=S, y_hat=y_hat, 
                      y_insample=y_insample,
                      y_hat_insample=y_hat_insample,
-                     method=method, sigmah=sigmah, level=level,
+                     method=method, nonnegative=nonnegative,
+                     sigmah=sigmah, level=level,
                      bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
 
 # %% ../nbs/methods.ipynb 45
@@ -557,20 +577,26 @@ class OptimalCombination:
 
     **Parameters:**<br>
     `method`: str, allowed optimal combination methods: 'ols', 'wls_struct'.<br>
+    `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
 
     **References:**<br>
     - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang (2010). \"Optimal Combination Forecasts for 
     Hierarchical Time Series\".](https://robjhyndman.com/papers/Hierarchical6.pdf).<br>
     - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman (2010). \"Optimal Combination Forecasts for 
     Hierarchical Time Series\".](https://robjhyndman.com/papers/MinT.pdf).
+    - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). \"Optimal non-negative
+    forecast reconciliation". Stat Comput 30, 1167–1182, 
+    https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
     def __init__(self,
-                 method: str):
+                 method: str,
+                 nonnegative: bool = False):
         comb_methods = ['ols', 'wls_struct']
         if method not in comb_methods:
             raise ValueError(f"Optimal Combination class does not support method: \"{method}\"")
 
         self.method = method
+        self.nonnegative = nonnegative
         self.insample = False
 
     def reconcile(self,
@@ -595,7 +621,8 @@ class OptimalCombination:
         """
         return optimal_combination(S=S,
                                    y_hat=y_hat,
-                                   method=self.method, sigmah=sigmah,
+                                   method=self.method, nonnegative=self.nonnegative,
+                                   sigmah=sigmah,
                                    level=level, bootstrap=bootstrap,
                                    bootstrap_samples=bootstrap_samples)
 
