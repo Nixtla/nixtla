@@ -115,7 +115,8 @@ reconcilers = [
               top_down_method='forecast_proportions')
 ]
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
-Y_rec_df = hrec.reconcile(Y_hat_df, Y_train_df, S, tags)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_train_df, 
+                          S=S, tags=tags)
 ```
 
 ### Evaluation
