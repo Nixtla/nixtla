@@ -465,7 +465,7 @@ def min_trace(S: np.ndarray,
     W_inv = np.linalg.pinv(W)
     if nonnegative:
         if bootstrap:
-            raise Exception('nonnegative reconciliation is not compaitble with bootstrap forecasts')
+            raise Exception('nonnegative reconciliation is not compatible with bootstrap forecasts')
         if idx_bottom is None:
             raise Exception('idx_bottom needed for nonnegative reconciliation')
         # compute P for nonnegative reconciliation
