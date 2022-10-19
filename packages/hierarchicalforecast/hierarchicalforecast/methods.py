@@ -468,15 +468,22 @@ def min_trace(S: np.ndarray,
             raise Exception('nonnegative reconciliation is not compatible with bootstrap forecasts')
         if idx_bottom is None:
             raise Exception('idx_bottom needed for nonnegative reconciliation')
-        # compute P for nonnegative reconciliation
         warnings.warn('Replacing negative forecasts with zero.')
         y_hat = np.copy(y_hat)
         y_hat[y_hat < 0] = 0.
-        # solve_qp arguments
+        # Quadratic progamming formulation
+        # here we are solving the quadratic programming problem
+        # formulated in the origial paper
+        # https://robjhyndman.com/publications/nnmint/
+        # The library quadprog was chosen
+        # based on these benchmarks:
+        # https://scaron.info/blog/quadratic-programming-in-python.html
         a = S.T @ W_inv
         G = a @ S
         C = np.eye(n_bottom)
         b = np.zeros(n_bottom)
+        # the quadratic programming problem
+        # returns the forecasts of the bottom series
         bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0], 
                                           axis=0, 
                                           arr=y_hat)
@@ -484,7 +491,6 @@ def min_trace(S: np.ndarray,
         return bottom_up(S=S, y_hat=y_hat, 
                          idx_bottom=idx_bottom, 
                          sigmah=sigmah, level=level)
-        #return {'mean': S @ bottom_fcts}
     else:
         # compute P for free reconciliation
         R = S.T @ np.linalg.pinv(W)
