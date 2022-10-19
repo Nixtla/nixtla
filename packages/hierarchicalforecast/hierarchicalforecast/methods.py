@@ -487,6 +487,10 @@ def min_trace(S: np.ndarray,
         bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0], 
                                           axis=0, 
                                           arr=y_hat)
+        if not np.all(bottom_fcts > -1e-8):
+            raise Exception('nonnegative optimization failed')
+        # remove negative values close to zero
+        bottom_fcts = np.clip(np.float32(bottom_fcts), a_min=0, a_max=None)
         y_hat = S @ bottom_fcts
         return bottom_up(S=S, y_hat=y_hat, 
                          idx_bottom=idx_bottom, 
