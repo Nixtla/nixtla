@@ -418,6 +418,7 @@ def min_trace(S: np.ndarray,
               y_insample: np.ndarray,
               y_hat_insample: np.ndarray,
               method: str,
+              idx_bottom: List[int] = None,
               nonnegative: bool = False,
               sigmah: Optional[np.ndarray] = None,
               level: Optional[List[int]] = None,
@@ -463,6 +464,10 @@ def min_trace(S: np.ndarray,
     
     W_inv = np.linalg.pinv(W)
     if nonnegative:
+        if bootstrap:
+            raise Exception('nonnegative reconciliation is not compaitble with bootstrap forecasts')
+        if idx_bottom is None:
+            raise Exception('idx_bottom needed for nonnegative reconciliation')
         # compute P for nonnegative reconciliation
         warnings.warn('Replacing negative forecasts with zero.')
         y_hat = np.copy(y_hat)
@@ -470,8 +475,16 @@ def min_trace(S: np.ndarray,
         # solve_qp arguments
         a = S.T @ W_inv
         G = a @ S
-        bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat)[0], axis=0, arr=y_hat)
-        P = bottom_fcts @ y_hat.T @ np.linalg.pinv(y_hat @ y_hat.T)
+        C = np.eye(n_bottom)
+        b = np.zeros(n_bottom)
+        bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0], 
+                                          axis=0, 
+                                          arr=y_hat)
+        y_hat = S @ bottom_fcts
+        return bottom_up(S=S, y_hat=y_hat, 
+                         idx_bottom=idx_bottom, 
+                         sigmah=sigmah, level=level)
+        #return {'mean': S @ bottom_fcts}
     else:
         # compute P for free reconciliation
         R = S.T @ np.linalg.pinv(W)
@@ -516,6 +529,7 @@ class MinTrace:
                   y_hat: np.ndarray,
                   y_insample: Optional[np.ndarray] = None,
                   y_hat_insample: Optional[np.ndarray] = None,
+                  idx_bottom: Optional[List[int]] = None,
                   sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
                   bootstrap: bool = False,
@@ -527,6 +541,7 @@ class MinTrace:
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `y_insample`: Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
         `y_hat_insample`: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
         `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
@@ -538,6 +553,7 @@ class MinTrace:
         return min_trace(S=S, y_hat=y_hat, 
                          y_insample=y_insample,
                          y_hat_insample=y_hat_insample,
+                         idx_bottom=idx_bottom,
                          method=self.method,
                          nonnegative=self.nonnegative,
                          sigmah=sigmah,
@@ -551,6 +567,7 @@ class MinTrace:
 def optimal_combination(S: np.ndarray, 
                         y_hat: np.ndarray,
                         method: str,
+                        idx_bottom: List[int] = None,
                         nonnegative: bool = False,
                         y_insample: np.ndarray = None,
                         y_hat_insample: np.ndarray = None,
@@ -562,7 +579,8 @@ def optimal_combination(S: np.ndarray,
     return min_trace(S=S, y_hat=y_hat, 
                      y_insample=y_insample,
                      y_hat_insample=y_hat_insample,
-                     method=method, nonnegative=nonnegative,
+                     method=method, idx_bottom=idx_bottom,
+                     nonnegative=nonnegative,
                      sigmah=sigmah, level=level,
                      bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
 
@@ -604,6 +622,7 @@ class OptimalCombination:
     def reconcile(self,
                   S: np.ndarray,
                   y_hat: np.ndarray,
+                  idx_bottom: Optional[List[int]] = None,
                   sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
                   bootstrap: bool = False,
@@ -613,6 +632,7 @@ class OptimalCombination:
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
         `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
@@ -623,7 +643,8 @@ class OptimalCombination:
         """
         return optimal_combination(S=S,
                                    y_hat=y_hat,
-                                   method=self.method, nonnegative=self.nonnegative,
+                                   method=self.method, idx_bottom=idx_bottom,
+                                   nonnegative=self.nonnegative,
                                    sigmah=sigmah,
                                    level=level, bootstrap=bootstrap,
                                    bootstrap_samples=bootstrap_samples)
