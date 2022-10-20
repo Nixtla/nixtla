@@ -15,5 +15,4 @@ website:
         - examples/3AustralianPrisonPopulation.ipynb
         - examples/4AustralianDomesticTourism-Intervals.ipynb
         - examples/5AustralianDomesticTourism-Bootstraped-Intervals.ipynb
-        - examples/6PERMBU_example.ipynb
         - examples/7NonNegativeReconciliation.ipynb
