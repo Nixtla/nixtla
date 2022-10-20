@@ -7,7 +7,7 @@ __all__ = ['BottomUp', 'TopDown', 'MiddleOut', 'MinTrace', 'OptimalCombination',
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import numpy as np
 from numba import njit
@@ -19,24 +19,24 @@ from sklearn.preprocessing import OneHotEncoder
 # %% ../nbs/methods.ipynb 4
 def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray, 
                y_hat: np.ndarray, SP: np.ndarray = None,
-               level: Optional[List[int]] = None,
-               intervals_method: str = 'normality',
-               sigmah: Optional[np.ndarray] = None, 
-               samples: Optional[np.ndarray] = None):
+               level: Optional[List[int]] = None, 
+               sampler: Optional[Callable] = None):
     if SP is None:
         SP = S @ P
     #mean reconciliation
     res = {'mean': np.matmul(SP, y_hat)}
+    sampler_name = type(sampler).__name__
     
-    if intervals_method in ['bootstrap', 'permbu'] and level is not None:
+    if sampler_name in ['Bootstrap', 'PERMBU'] and level is not None:
         # calculate prediction intervals
-        # using bootstrap
-        # we are assuming that
-        # samples are calculated according to intervals_method
-        if samples is None:
-            raise Exception(f'you have to pass {intervals_method} samples')
+        if sampler is None:
+            raise Exception(f'you have to pass a sampler')
         # samples of shape (B, n_hiers, h)
-        samples = np.apply_along_axis(lambda path: np.matmul(SP, path), axis=1, arr=samples)
+        if sampler_name == 'Bootstrap':
+            samples = sampler.get_samples()
+            samples = np.apply_along_axis(lambda path: np.matmul(SP, path), axis=1, arr=samples)
+        elif sampler_name == 'PERMBU':
+            samples = sampler.get_samples(y_hat)
         res = {'mean': samples.mean(axis=0)}
         for lv in level:
             min_q = (100 - lv) / 200 
@@ -45,9 +45,8 @@ def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray,
             res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=0)
         return res
     
-    if intervals_method == 'normality'and level is not None:
-        if sigmah is None:
-            raise Exception('you have to pass `sigmah`')
+    if sampler_name == 'Normality' and level is not None:
+        sigmah = sampler.get_samples()
         # then we calculate prediction intervals
         # we assume normality
         # we have to calculate the "reconciled" sigmah
@@ -65,75 +64,47 @@ def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray,
             res[f'hi-{lv}'] = res['mean'] + zs * sigmah
     return res
 
+# %% ../nbs/methods.ipynb 5
+class Normality:
+    
+    def __init__(
+            self, 
+            sigmah: np.ndarray #Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
+        ):
+        self.sigmah = sigmah
+        
+    def get_samples(self):
+        return self.sigmah
+
 # %% ../nbs/methods.ipynb 6
-class BottomUp:
-    """Bottom Up Reconciliation Class.
-    The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
-    the first time by Orcutt in 1968.
-    The corresponding hierarchical \"projection\" matrix is defined as:
-    $$\mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]$$
-
-    **Parameters:**<br>
-    None
-
-    **References:**<br>
-    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American 
-    Economic Review, 58 , 773{787)](http://www.jstor.org/stable/1815532).
-    """
-    insample = False
+class Bootstrap:
     
-    def reconcile(self,
-                  S: np.ndarray,
-                  y_hat: np.ndarray,
-                  idx_bottom: np.ndarray,
-                  level: Optional[List[int]] = None,
-                  intervals_method: str = 'normality',
-                  sigmah: Optional[np.ndarray] = None,
-                  samples: Optional[np.ndarray] = None):
-        """Bottom Up Reconciliation Method.
-
-        **Parameters:**<br>
-        `S`: Summing matrix of size (`base`, `bottom`).<br>
-        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
-        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
-        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
-
-        **Returns:**<br>
-        `y_tilde`: Reconciliated y_hat using the Bottom Up approach.
-        """
-        n_hiers, n_bottom = S.shape
-        P = np.zeros_like(S, dtype=np.float32)
-        P[idx_bottom] = S[idx_bottom]
-        P = P.T
-        W = np.eye(n_hiers, dtype=np.float32)
-        return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level, 
-                          intervals_method=intervals_method, 
-                          samples=samples)
-    
-    __call__ = reconcile
-
-# %% ../nbs/methods.ipynb 11
-def _bootstrap_samples(
+    def __init__(
+        self,
         y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
         y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
         y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
         n_samples: int, # Number of bootstrap samples,
         seed: int = 0, # seed
     ):
-    residuals = y_insample - y_hat_insample
-    h = y_hat.shape[1]
-    #removing nas from residuals
-    residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
-    sample_idx = np.arange(residuals.shape[1] - h)
-    state = np.random.RandomState(seed)
-    samples_idx = state.choice(sample_idx, size=n_samples)
-    samples = [y_hat + residuals[:, idx:(idx + h)] for idx in samples_idx]
-    return np.stack(samples)
+        self.y_insample = y_insample
+        self.y_hat_insample = y_hat_insample
+        self.y_hat = y_hat
+        self.n_samples = n_samples
+        self.seed = seed
+    
+    def get_samples(self):
+        residuals = self.y_insample - self.y_hat_insample
+        h = self.y_hat.shape[1]
+        #removing nas from residuals
+        residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
+        sample_idx = np.arange(residuals.shape[1] - h)
+        state = np.random.RandomState(self.seed)
+        samples_idx = state.choice(sample_idx, size=self.n_samples)
+        samples = [self.y_hat + residuals[:, idx:(idx + h)] for idx in samples_idx]
+        return np.stack(samples)
 
-# %% ../nbs/methods.ipynb 13
+# %% ../nbs/methods.ipynb 7
 class PERMBU:
     """PERMBU Probabilistic Reconciliation Class.
 
@@ -148,6 +119,30 @@ class PERMBU:
     Coherent probabilistic forecasts for hierarchical time series. 
     International conference on machine learning ICML.](https://proceedings.mlr.press/v70/taieb17a.html)
     """
+    def __init__(
+            self,
+            y_insample: np.ndarray,
+            y_hat_insample: np.ndarray,
+            sigmah: np.ndarray,
+            S: np.ndarray,                 
+            n_samples: int=None,
+            seed: int=0
+        ):
+        """
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `sigmah`: Forecast standard dev. of size (`base`, `horizon`).<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`).<br>
+        `y_hat_insample`: Insample values of size (`base`, `insample_size`).<br>
+        `n_samples`: int, number of normal prediction samples generated.<br>
+        """
+        self.y_insample = y_insample
+        self.y_hat_insample = y_hat_insample
+        self.sigmah = sigmah
+        self.S = S
+        self.n_samples = n_samples
+        self.seed = seed
+    
     def _obtain_ranks(self, array):
         """ Vector ranks
 
@@ -221,14 +216,7 @@ class PERMBU:
     def _nonzero_indexes_by_row(self, M):
         return [np.nonzero(M[row,:])[0] for row in range(len(M))]
 
-    def reconcile(self,
-                  S: np.ndarray,
-                  y_hat_mean: np.ndarray,
-                  y_hat_std: np.ndarray,                  
-                  y_insample: np.ndarray,
-                  y_hat_insample: np.ndarray,
-                  n_samples: int=None,
-                  seed: int=0):
+    def get_samples(self, y_hat: np.ndarray):
         """PERMBU Sample Reconciliation Method.
 
         Applies PERMBU reconciliation method as defined by Taieb et. al 2017.
@@ -246,39 +234,36 @@ class PERMBU:
             3.2.   From the children's joint obtain the aggregate series's samples.        
 
         **Parameters:**<br>
-        `S`: Summing matrix of size (`base`, `bottom`).<br>
-        `y_hat_mean`: Mean forecast values of size (`base`, `horizon`).<br>
-        `y_hat_std`: Forecast standard dev. of size (`base`, `horizon`).<br>
-        `y_insample`: Insample values of size (`base`, `insample_size`).<br>
-        `y_hat_insample`: Insample values of size (`base`, `insample_size`).<br>
-        `n_samples`: int, number of normal prediction samples generated.<br>
+        `y_hat`: Mean forecast values of size (`base`, `horizon`).<br>
 
         **Returns:**<br>
         `rec_samples`: Reconciliated samples using the PERMBU approach.
         """
 
         # Compute residuals and rank permutations
-        residuals = y_insample - y_hat_insample
+        residuals = self.y_insample - self.y_hat_insample
         #removing nas from residuals
         residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
         rank_permutations = self._obtain_ranks(residuals)
         
         # Sample h step-ahead base marginal distributions
-        if n_samples is None:
+        if self.n_samples is None:
             n_samples = residuals.shape[1]
-        state = np.random.RandomState(seed)
-        n_series, n_horizon = y_hat_mean.shape
+        else:
+            n_samples = self.n_samples
+        state = np.random.RandomState(self.seed)
+        n_series, n_horizon = y_hat.shape
 
         base_samples = np.array([
             state.normal(loc=m, scale=s, size=n_samples) for m, s in \
-            zip(y_hat_mean.flatten(), y_hat_std.flatten())
+            zip(y_hat.flatten(), self.sigmah.flatten())
         ])
         base_samples = base_samples.reshape(n_series, n_horizon, n_samples)
 
         # Initialize PERMBU utility
         rec_samples = base_samples.copy()
         encoder = OneHotEncoder(sparse=False, dtype=np.float32)
-        hier_links = np.vstack(self._nonzero_indexes_by_row(S.T))
+        hier_links = np.vstack(self._nonzero_indexes_by_row(self.S.T))
 
         # BottomUp hierarchy traversing
         hier_levels = hier_links.shape[1]-1
@@ -295,40 +280,72 @@ class PERMBU:
             children_permutations = rank_permutations[children_idxs, :]
             children_samples = rec_samples[children_idxs,:,:]
             children_samples = self._permutate_predictions(
-                                        prediction_samples=children_samples,
-                                        permutations=children_permutations)
+                prediction_samples=children_samples,
+                permutations=children_permutations
+            )
 
             # Overwrite hier_samples with BottomUp aggregation
             # and randomly shuffle parent predictions after aggregation
             parent_samples = np.einsum('ab,bhs->ahs', Agg, children_samples)
             random_permutation = np.array([
-                                  np.random.permutation(np.arange(n_samples)) \
-                                      for serie in range(len(parent_samples))])
+                np.random.permutation(np.arange(n_samples)) \
+                for serie in range(len(parent_samples))
+            ])
             parent_samples = self._permutate_predictions(
-                                        prediction_samples=parent_samples,
-                                        permutations=random_permutation)
+                prediction_samples=parent_samples,
+                permutations=random_permutation
+            )
 
             rec_samples[parent_idxs,:,:] = parent_samples
 
         return np.transpose(rec_samples, (2, 0, 1))
 
+# %% ../nbs/methods.ipynb 9
+class BottomUp:
+    """Bottom Up Reconciliation Class.
+    The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
+    the first time by Orcutt in 1968.
+    The corresponding hierarchical \"projection\" matrix is defined as:
+    $$\mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]$$
+
+    **Parameters:**<br>
+    None
+
+    **References:**<br>
+    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American 
+    Economic Review, 58 , 773{787)](http://www.jstor.org/stable/1815532).
+    """
+    insample = False
+    
+    def reconcile(self,
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  idx_bottom: np.ndarray,
+                  level: Optional[List[int]] = None,
+                  sampler: Optional[Callable] = None):
+        """Bottom Up Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the Bottom Up approach.
+        """
+        n_hiers, n_bottom = S.shape
+        P = np.zeros_like(S, dtype=np.float32)
+        P[idx_bottom] = S[idx_bottom]
+        P = P.T
+        W = np.eye(n_hiers, dtype=np.float32)
+        return _reconcile(S, P, W, y_hat, level=level, 
+                          sampler=sampler)
+    
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 14
-def _permbu_samples(
-        y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-        y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
-        y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-        sigmah: np.ndarray, # Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
-        S: np.ndarray, # Summing matrix
-        n_samples: int, # Number of bootstrap samples,
-        seed: int = 0, # seed
-    ):
-    return PERMBU().reconcile(S=S, y_hat_mean=y_hat, y_hat_std=sigmah,
-                              y_insample=y_insample, y_hat_insample=y_hat_insample, 
-                              n_samples=n_samples, seed=seed)
-
-# %% ../nbs/methods.ipynb 19
+# %% ../nbs/methods.ipynb 18
 def is_strictly_hierarchical(S: np.ndarray, 
                              tags: Dict[str, np.ndarray]):
     # main idea:
@@ -346,7 +363,7 @@ def is_strictly_hierarchical(S: np.ndarray,
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/methods.ipynb 21
+# %% ../nbs/methods.ipynb 20
 def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
     level_names = list(tags.keys())
     nodes = OrderedDict()
@@ -364,7 +381,7 @@ def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
         nodes[level] = nodes_level
     return nodes        
 
-# %% ../nbs/methods.ipynb 23
+# %% ../nbs/methods.ipynb 22
 def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                                 tags: Dict[str, np.ndarray],
                                 nodes: Dict[str, Dict[int, np.ndarray]],
@@ -381,7 +398,7 @@ def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                 reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
     return reconciled
 
-# %% ../nbs/methods.ipynb 24
+# %% ../nbs/methods.ipynb 23
 class TopDown:
     """Top Down Reconciliation Class.
 
@@ -411,9 +428,7 @@ class TopDown:
                   tags: Dict[str, np.ndarray],
                   y_insample: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
-                  intervals_method: str = 'normality',
-                  sigmah: Optional[np.ndarray] = None,
-                  samples: Optional[np.ndarray] = None):
+                  sampler: Optional[np.ndarray] = None):
         """Top Down Reconciliation Method.
 
         **Parameters:**<br>
@@ -423,9 +438,7 @@ class TopDown:
         `y_insample`: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
-        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
+        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Top Down approach.
@@ -461,12 +474,11 @@ class TopDown:
         P = np.zeros_like(S, np.float64).T #float 64 if prop is too small, happens with wiki2
         P[:, idx_top] = prop
         W = np.eye(n_hiers, dtype=np.float32)
-        return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level,
-                          intervals_method=intervals_method, 
-                          samples=samples)
+        return _reconcile(S, P, W, y_hat, level=level,
+                          sampler=sampler)
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 30
+# %% ../nbs/methods.ipynb 29
 class MiddleOut:
     """Middle Out Reconciliation Class.
     
@@ -569,11 +581,11 @@ class MiddleOut:
         return {'mean': reconciled}
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 35
+# %% ../nbs/methods.ipynb 34
 def crossprod(x):
     return x.T @ x
 
-# %% ../nbs/methods.ipynb 36
+# %% ../nbs/methods.ipynb 35
 class MinTrace:
     """MinTrace Reconciliation Class.
 
@@ -611,9 +623,7 @@ class MinTrace:
                   y_hat_insample: Optional[np.ndarray] = None,
                   idx_bottom: Optional[List[int]] = None,
                   level: Optional[List[int]] = None,
-                  intervals_method: str = 'normality',
-                  sigmah: Optional[np.ndarray] = None,
-                  samples: Optional[np.ndarray] = None):
+                  sampler: Optional[Callable] = None):
         """MinTrace Reconciliation Method.
 
         **Parameters:**<br>
@@ -623,14 +633,12 @@ class MinTrace:
         `y_hat_insample`: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
-        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
+        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the MinTrace approach.
         """
-    # shape residuals_insample (n_hiers, obs)
+        # shape residuals_insample (n_hiers, obs)
         res_methods = ['wls_var', 'mint_cov', 'mint_shrink']
         if self.method in res_methods and y_insample is None and y_hat_insample is None:
             raise ValueError(f"For methods {', '.join(res_methods)} you need to pass residuals")
@@ -670,7 +678,7 @@ class MinTrace:
 
         W_inv = np.linalg.pinv(W)
         if self.nonnegative:
-            if intervals_method == 'bootstrap':
+            if level is not None and type(sampler).__name__ in ['Bootstrap', 'PERMBU']:
                 raise Exception('nonnegative reconciliation is not compatible with bootstrap forecasts')
             if idx_bottom is None:
                 raise Exception('idx_bottom needed for nonnegative reconciliation')
@@ -698,41 +706,19 @@ class MinTrace:
             # remove negative values close to zero
             bottom_fcts = np.clip(np.float32(bottom_fcts), a_min=0, a_max=None)
             y_hat = S @ bottom_fcts
-            return BottomUp().reconcile(S=S, y_hat=y_hat, idx_bottom=idx_bottom, sigmah=sigmah, level=level)
+            return BottomUp().reconcile(S=S, y_hat=y_hat, idx_bottom=idx_bottom, 
+                                        level=level, sampler=sampler)
         else:
             # compute P for free reconciliation
             R = S.T @ np.linalg.pinv(W)
             P = np.linalg.pinv(R @ S) @ R
 
-        return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level,
-                          intervals_method=intervals_method,
-                          samples=samples)
+        return _reconcile(S, P, W, y_hat, level=level,
+                          sampler=sampler)
 
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 43
-def optimal_combination(S: np.ndarray, 
-                        y_hat: np.ndarray,
-                        method: str,
-                        idx_bottom: List[int] = None,
-                        nonnegative: bool = False,
-                        y_insample: np.ndarray = None,
-                        y_hat_insample: np.ndarray = None,
-                        level: Optional[List[int]] = None,
-                        intervals_method: str = 'normality',
-                        sigmah: Optional[np.ndarray] = None, 
-                        samples: Optional[np.ndarray] = None):
-    
-    return min_trace(S=S, y_hat=y_hat, 
-                     y_insample=y_insample,
-                     y_hat_insample=y_hat_insample,
-                     method=method, idx_bottom=idx_bottom,
-                     nonnegative=nonnegative,
-                     sigmah=sigmah, level=level,
-                     intervals_method=intervals_method, 
-                     samples=samples)
-
-# %% ../nbs/methods.ipynb 44
+# %% ../nbs/methods.ipynb 42
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -767,7 +753,7 @@ class OptimalCombination(MinTrace):
         self.nonnegative = nonnegative
         self.insample = False
 
-# %% ../nbs/methods.ipynb 50
+# %% ../nbs/methods.ipynb 48
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -799,7 +785,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 51
+# %% ../nbs/methods.ipynb 49
 class ERM:
     """Optimal Combination Reconciliation Class.
 
@@ -837,9 +823,7 @@ class ERM:
                   y_hat_insample: np.ndarray,
                   idx_bottom: np.ndarray,
                   level: Optional[List[int]] = None,
-                  intervals_method: str = 'normality',
-                  sigmah: Optional[np.ndarray] = None,
-                  samples: Optional[np.ndarray] = None):
+                  sampler: Optional[Callable] = None):
         """ERM Reconciliation Method.
 
         **Parameters:**<br>
@@ -849,9 +833,7 @@ class ERM:
         `y_hat_insample`: Insample train predictions of size (`base`, `insample_size`).<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
-        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
+        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the ERM approach.
@@ -888,12 +870,11 @@ class ERM:
             P = P + Pbu.T.flatten(order='F')
             P = P.reshape(-1, n_bottom, order='F').T
         else:
-            raise ValueError(f'Unkown reconciliation method {method}')
+            raise ValueError(f'Unkown reconciliation method {self.method}')
 
         W = np.eye(n_hiers, dtype=np.float32)
 
-        return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level, 
-                          intervals_method=intervals_method, 
-                          samples=samples)
+        return _reconcile(S, P, W, y_hat, level=level, 
+                          sampler=sampler)
 
     __call__ = reconcile
