@@ -10,10 +10,10 @@ website:
         - utils.ipynb
       - section: Tutorials
         contents:
-        - examples/1TourismSmall.ipynb
-        - examples/2AustralianDomesticTourism.ipynb
-        - examples/3AustralianPrisonPopulation.ipynb
-        - examples/4AustralianDomesticTourism-Intervals.ipynb
-        - examples/5AustralianDomesticTourism-Bootstraped-Intervals.ipynb
-        - examples/6AustralianDomesticTourism-Permbu-Intervals.ipynb
-        - examples/7NonNegativeReconciliation.ipynb
+        - examples/TourismSmall.ipynb
+        - examples/AustralianDomesticTourism.ipynb
+        - examples/AustralianPrisonPopulation.ipynb
+        - examples/AustralianDomesticTourism-Intervals.ipynb
+        - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
+        - examples/AustralianDomesticTourism-Permbu-Intervals.ipynb
+        - examples/NonNegativeReconciliation.ipynb
