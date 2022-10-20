@@ -36,7 +36,7 @@ def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray,
             samples = sampler.get_samples()
             samples = np.apply_along_axis(lambda path: np.matmul(SP, path), axis=1, arr=samples)
         elif sampler_name == 'PERMBU':
-            samples = sampler.get_samples(y_hat)
+            samples = sampler.get_samples(res['mean'])
         res = {'mean': samples.mean(axis=0)}
         for lv in level:
             min_q = (100 - lv) / 200 
