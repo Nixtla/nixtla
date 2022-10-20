@@ -19,19 +19,24 @@ from sklearn.preprocessing import OneHotEncoder
 # %% ../nbs/methods.ipynb 4
 def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray, 
                y_hat: np.ndarray, SP: np.ndarray = None,
-               sigmah: Optional[np.ndarray] = None, 
                level: Optional[List[int]] = None,
-               bootstrap: bool = False,
-               bootstrap_samples: Optional[np.ndarray] = None):
+               intervals_method: str = 'normality',
+               sigmah: Optional[np.ndarray] = None, 
+               samples: Optional[np.ndarray] = None):
     if SP is None:
         SP = S @ P
-    if bootstrap and level is not None:
+    #mean reconciliation
+    res = {'mean': np.matmul(SP, y_hat)}
+    
+    if intervals_method == 'bootstrap' and level is not None:
         # calculate prediction intervals
         # using bootstrap
-        if bootstrap_samples is None:
-            raise Exception('you have to pass bootstramp samples')
+        # we are assuming that
+        # samples are calculated using bootstrap
+        if samples is None:
+            raise Exception('you have to pass bootstrap samples')
         # bootstrap_samples of shape (B, n_hiers, h)
-        bootstrap_samples = np.apply_along_axis(lambda path: np.matmul(SP, path), axis=1, arr=bootstrap_samples)
+        bootstrap_samples = np.apply_along_axis(lambda path: np.matmul(SP, path), axis=1, arr=samples)
         res = {'mean': bootstrap_samples.mean(axis=0)}
         for lv in level:
             min_q = (100 - lv) / 200 
@@ -39,10 +44,11 @@ def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray,
             res[f'lo-{lv}'] = np.quantile(bootstrap_samples, min_q, axis=0)
             res[f'hi-{lv}'] = np.quantile(bootstrap_samples, max_q, axis=0)
         return res
-        
-    res = {'mean': np.matmul(SP, y_hat)}
-    if sigmah is not None and level is not None:
-        #then we calculate prediction intervals
+    
+    if intervals_method == 'normality'and level is not None:
+        if sigmah is None:
+            raise Exception('you have to pass `sigmah`')
+        # then we calculate prediction intervals
         # we assume normality
         # we have to calculate the "reconciled" sigmah
         # following
@@ -63,17 +69,18 @@ def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray,
 def bottom_up(S: np.ndarray,
               y_hat: np.ndarray,
               idx_bottom: List[int],
-              sigmah: Optional[np.ndarray] = None, 
               level: Optional[List[int]] = None,
-              bootstrap: bool = False,
-              bootstrap_samples: Optional[np.ndarray] = None):
+              intervals_method: str = 'normality',
+              sigmah: Optional[np.ndarray] = None, 
+              samples: Optional[np.ndarray] = None):
     n_hiers, n_bottom = S.shape
     P = np.zeros_like(S, dtype=np.float32)
     P[idx_bottom] = S[idx_bottom]
     P = P.T
     W = np.eye(n_hiers, dtype=np.float32)
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level, 
-                      bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                      intervals_method=intervals_method, 
+                      samples=samples)
 
 # %% ../nbs/methods.ipynb 7
 class BottomUp:
@@ -96,27 +103,28 @@ class BottomUp:
                   S: np.ndarray,
                   y_hat: np.ndarray,
                   idx_bottom: np.ndarray,
-                  sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
-                  bootstrap: bool = False,
-                  bootstrap_samples: Optional[np.ndarray] = None):
+                  intervals_method: str = 'normality',
+                  sigmah: Optional[np.ndarray] = None,
+                  samples: Optional[np.ndarray] = None):
         """Bottom Up Reconciliation Method.
 
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
-        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Bottom Up approach.
         """
         return bottom_up(S=S, y_hat=y_hat, 
                          idx_bottom=idx_bottom, sigmah=sigmah, level=level, 
-                         bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                         intervals_method=intervals_method, 
+                         samples=samples)
     
     __call__ = reconcile
 
@@ -197,10 +205,10 @@ def top_down(S: np.ndarray,
              y_insample: np.ndarray,
              tags: Dict[str, np.ndarray],
              method: str,
-             sigmah: Optional[np.ndarray] = None, 
              level: Optional[List[int]] = None,
-             bootstrap: bool = False,
-             bootstrap_samples: Optional[np.ndarray] = None):
+             intervals_method: str = 'normality',
+             sigmah: Optional[np.ndarray] = None, 
+             samples: Optional[np.ndarray] = None):
     if not is_strictly_hierarchical(S, tags):
         raise ValueError('Top down reconciliation requires strictly hierarchical structures.')
     
@@ -210,7 +218,7 @@ def top_down(S: np.ndarray,
     idx_bottom = levels_[list(levels_)[-1]]
     
     if method == 'forecast_proportions':
-        if sigmah is not None and level is not None:
+        if level is not None:
             warnings.warn('Prediction intervals not implement for `forecast_proportions`')
         nodes = _get_child_nodes(S=S, tags=levels_)
         reconciled = [_reconcile_fcst_proportions(S=S, y_hat=y_hat_[:, None], 
@@ -233,7 +241,8 @@ def top_down(S: np.ndarray,
     P[:, idx_top] = prop
     W = np.eye(n_hiers, dtype=np.float32)
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level,
-                      bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                      intervals_method=intervals_method, 
+                      samples=samples)
 
 # %% ../nbs/methods.ipynb 23
 class TopDown:
@@ -264,10 +273,10 @@ class TopDown:
                   y_hat: np.ndarray,
                   tags: Dict[str, np.ndarray],
                   y_insample: Optional[np.ndarray] = None,
-                  sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
-                  bootstrap: bool = False,
-                  bootstrap_samples: Optional[np.ndarray] = None):
+                  intervals_method: str = 'normality',
+                  sigmah: Optional[np.ndarray] = None,
+                  samples: Optional[np.ndarray] = None):
         """Top Down Reconciliation Method.
 
         **Parameters:**<br>
@@ -276,10 +285,10 @@ class TopDown:
         `tags`: Each key is a level and each value its `S` indices.<br>
         `y_insample`: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
-        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Top Down approach.
@@ -289,7 +298,8 @@ class TopDown:
                         tags=tags,
                         method=self.method,
                         sigmah=sigmah, level=level, 
-                        bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                        intervals_method=intervals_method,
+                        samples=samples)
     
     __call__ = reconcile
 
@@ -420,10 +430,10 @@ def min_trace(S: np.ndarray,
               method: str,
               idx_bottom: List[int] = None,
               nonnegative: bool = False,
-              sigmah: Optional[np.ndarray] = None,
               level: Optional[List[int]] = None,
-              bootstrap: bool = False,
-              bootstrap_samples: Optional[np.ndarray] = None):
+              intervals_method: str = 'normality',
+              sigmah: Optional[np.ndarray] = None,
+              samples: Optional[np.ndarray] = None):
     # shape residuals_insample (n_hiers, obs)
     res_methods = ['wls_var', 'mint_cov', 'mint_shrink']
     if method in res_methods and y_insample is None and y_hat_insample is None:
@@ -464,7 +474,7 @@ def min_trace(S: np.ndarray,
     
     W_inv = np.linalg.pinv(W)
     if nonnegative:
-        if bootstrap:
+        if intervals_method == 'bootstrap':
             raise Exception('nonnegative reconciliation is not compatible with bootstrap forecasts')
         if idx_bottom is None:
             raise Exception('idx_bottom needed for nonnegative reconciliation')
@@ -501,7 +511,8 @@ def min_trace(S: np.ndarray,
         P = np.linalg.pinv(R @ S) @ R
     
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level,
-                      bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                      intervals_method=intervals_method,
+                      samples=samples)
 
 # %% ../nbs/methods.ipynb 37
 class MinTrace:
@@ -540,10 +551,10 @@ class MinTrace:
                   y_insample: Optional[np.ndarray] = None,
                   y_hat_insample: Optional[np.ndarray] = None,
                   idx_bottom: Optional[List[int]] = None,
-                  sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
-                  bootstrap: bool = False,
-                  bootstrap_samples: Optional[np.ndarray] = None):
+                  intervals_method: str = 'normality',
+                  sigmah: Optional[np.ndarray] = None,
+                  samples: Optional[np.ndarray] = None):
         """MinTrace Reconciliation Method.
 
         **Parameters:**<br>
@@ -552,10 +563,10 @@ class MinTrace:
         `y_insample`: Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
         `y_hat_insample`: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
-        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the MinTrace approach.
@@ -568,8 +579,8 @@ class MinTrace:
                          nonnegative=self.nonnegative,
                          sigmah=sigmah,
                          level=level,
-                         bootstrap=bootstrap,
-                         bootstrap_samples=bootstrap_samples)
+                         intervals_method=intervals_method,
+                         samples=samples)
 
     __call__ = reconcile
 
@@ -581,10 +592,10 @@ def optimal_combination(S: np.ndarray,
                         nonnegative: bool = False,
                         y_insample: np.ndarray = None,
                         y_hat_insample: np.ndarray = None,
-                        sigmah: Optional[np.ndarray] = None, 
                         level: Optional[List[int]] = None,
-                        bootstrap: bool = False,
-                        bootstrap_samples: Optional[np.ndarray] = None):
+                        intervals_method: str = 'normality',
+                        sigmah: Optional[np.ndarray] = None, 
+                        samples: Optional[np.ndarray] = None):
     
     return min_trace(S=S, y_hat=y_hat, 
                      y_insample=y_insample,
@@ -592,7 +603,8 @@ def optimal_combination(S: np.ndarray,
                      method=method, idx_bottom=idx_bottom,
                      nonnegative=nonnegative,
                      sigmah=sigmah, level=level,
-                     bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                     intervals_method=intervals_method, 
+                     samples=samples)
 
 # %% ../nbs/methods.ipynb 45
 class OptimalCombination:
@@ -633,20 +645,20 @@ class OptimalCombination:
                   S: np.ndarray,
                   y_hat: np.ndarray,
                   idx_bottom: Optional[List[int]] = None,
-                  sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
-                  bootstrap: bool = False,
-                  bootstrap_samples: Optional[np.ndarray] = None):
+                  intervals_method: str = 'normality',
+                  sigmah: Optional[np.ndarray] = None,
+                  samples: Optional[np.ndarray] = None):
         """Optimal Combination Reconciliation Method.
 
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
-        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Optimal Combination approach.
@@ -656,8 +668,9 @@ class OptimalCombination:
                                    method=self.method, idx_bottom=idx_bottom,
                                    nonnegative=self.nonnegative,
                                    sigmah=sigmah,
-                                   level=level, bootstrap=bootstrap,
-                                   bootstrap_samples=bootstrap_samples)
+                                   level=level, 
+                                   intervals_method=intervals_method,
+                                   samples=samples)
 
     __call__ = reconcile
 
@@ -701,10 +714,10 @@ def erm(S: np.ndarray,
         idx_bottom: np.ndarray,
         method: str,
         lambda_reg: float = 1e-3,
-        sigmah: Optional[np.ndarray] = None, 
         level: Optional[List[int]] = None,
-        bootstrap: bool = False,
-        bootstrap_samples: Optional[np.ndarray] = None):
+        intervals_method: str = 'normality',
+        sigmah: Optional[np.ndarray] = None, 
+        samples: Optional[np.ndarray] = None):
     n_hiers, n_bottom = S.shape
     # y_hat_insample shape (n_hiers, obs)
     # remove obs with nan values
@@ -740,7 +753,8 @@ def erm(S: np.ndarray,
     W = np.eye(n_hiers, dtype=np.float32)
     
     return _reconcile(S, P, W, y_hat, sigmah=sigmah, level=level, 
-                      bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                      intervals_method=intervals_method, 
+                      samples=samples)
 
 # %% ../nbs/methods.ipynb 53
 class ERM:
@@ -779,10 +793,10 @@ class ERM:
                   y_insample: np.ndarray,
                   y_hat_insample: np.ndarray,
                   idx_bottom: np.ndarray,
-                  sigmah: Optional[np.ndarray] = None,
                   level: Optional[List[int]] = None,
-                  bootstrap: bool = False,
-                  bootstrap_samples: Optional[np.ndarray] = None):
+                  intervals_method: str = 'normality',
+                  sigmah: Optional[np.ndarray] = None,
+                  samples: Optional[np.ndarray] = None):
         """ERM Reconciliation Method.
 
         **Parameters:**<br>
@@ -791,10 +805,10 @@ class ERM:
         `y_insample`: Train values of size (`base`, `insample_size`).<br>
         `y_hat_insample`: Insample train predictions of size (`base`, `insample_size`).<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `sigmah`: float, estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
-        `bootstrap_samples`: int, if `bootstrap=True` number of bootstrap_samples size (`n_samples`, `base`, `horizon`).<br>
+        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `sigmah`: Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)<br>
+        `samples`: Samples for prediction intevals of size (`n_samples`, `base`, `horizon`).<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the ERM approach.
@@ -805,7 +819,8 @@ class ERM:
                    idx_bottom=idx_bottom,
                    method=self.method, lambda_reg=self.lambda_reg,
                    sigmah=sigmah, level=level,
-                   bootstrap=bootstrap, bootstrap_samples=bootstrap_samples)
+                   intervals_method=intervals_method, 
+                   samples=samples)
 
     __call__ = reconcile
 
