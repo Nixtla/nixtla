@@ -858,7 +858,7 @@ class ERM:
         elif self.method in ['reg', 'reg_bu']:
             X = np.kron(np.array(S, order='F'), np.array(y_hat_insample.T, order='F'))
             Pbu = np.zeros_like(S)
-            if method == 'reg_bu':
+            if self.method == 'reg_bu':
                 Pbu[idx_bottom] = S[idx_bottom]
             Pbu = Pbu.T
             Y = y_insample.T.flatten(order='F') - X @ Pbu.T.flatten(order='F')
