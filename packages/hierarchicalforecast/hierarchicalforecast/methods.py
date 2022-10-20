@@ -274,11 +274,13 @@ class PERMBU:
 
         # Compute residuals and rank permutations
         residuals = y_insample - y_hat_insample
+        #removing nas from residuals
+        residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
         rank_permutations = self._obtain_ranks(residuals)
         
         # Sample h step-ahead base marginal distributions
         if n_samples is None:
-            n_samples = y_insample.shape[1]
+            n_samples = residuals.shape[1]
         state = np.random.RandomState(seed)
         n_series, n_horizon = y_hat_mean.shape
 
