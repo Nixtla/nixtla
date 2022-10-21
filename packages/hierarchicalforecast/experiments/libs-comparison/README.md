@@ -14,6 +14,10 @@ Notes:
 - [fable](https://github.com/tidyverts/fable) also contains `TopDown` and `MiddleOut` methods, but they rise an error. A [Pull Request](https://github.com/tidyverts/fabletools/pull/362) was opened to fix the issue.
 - The `RMSSE` (root mean squared scaled error) was calculated against a naive model.
 
+**Disclaimer:**
+
+It was pointed out by sktime contributors that the difference between fable and sktime in our experiments, in terms of forecast accuracy, are due to [problems](https://github.com/sktime/sktime/issues/3162) with the base forecaster in sktime. Using a simple AR models ensures replicability between fable and sktime as seen [here](https://github.com/ciaran-g/hierarchical-fc-comparison). 
+
 ### Time (seconds)
 
 | Dataset      |   statsforecast |   fable |   sktime |
