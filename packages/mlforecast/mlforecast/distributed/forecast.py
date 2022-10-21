@@ -5,7 +5,7 @@ __all__ = ['DistributedForecast']
 
 # %% ../../nbs/distributed.forecast.ipynb 5
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Iterable, List, Optional
 
 import dask.dataframe as dd
 import numpy as np
@@ -13,7 +13,15 @@ import pandas as pd
 from dask.distributed import Client, default_client
 from sklearn.base import clone
 
-from .. import Forecast, TimeSeries
+from mlforecast.core import (
+    DateFeature,
+    Differences,
+    Freq,
+    LagTransforms,
+    Lags,
+    Models,
+    TimeSeries,
+)
 from .core import DistributedTimeSeries
 from ..utils import backtest_splits
 
@@ -23,23 +31,36 @@ class DistributedForecast:
 
     def __init__(
         self,
-        models,  # model or list of mlforecast.distributed.models
-        freq: Optional[
-            str
-        ] = None,  # pandas offset alias, e.g. D, W, M. Don't set if you're using integer times.
-        lags: List[int] = [],  # list of lags to use as features
-        lag_transforms: Dict[
-            int, List[Tuple]
-        ] = {},  # list of transformations to apply to each lag
-        date_features: List[
-            Union[str, Callable]
-        ] = [],  # list of names of pandas date attributes or functions to use as features, e.g. dayofweek
-        differences: Optional[
-            List[int]
-        ] = None,  # differences to apply to the series before fitting
-        num_threads: int = 1,  # number of threads to use when computing lag features
-        client: Optional[Client] = None,  # dask client to use for computations
+        models: Models,
+        freq: Optional[Freq] = None,
+        lags: Optional[Lags] = None,
+        lag_transforms: Optional[LagTransforms] = None,
+        date_features: Optional[Iterable[DateFeature]] = None,
+        differences: Optional[Differences] = None,
+        num_threads: int = 1,
+        client: Optional[Client] = None,
     ):
+        """Create distributed forecast object
+
+        Parameters
+        ----------
+        models : regressor or list of regressors
+            Models that will be trained and used to compute the forecasts.
+        freq : str or int, optional (default=None)
+            Pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series.
+        lags : list of int, optional (default=None)
+            Lags of the target to use as features.
+        lag_transforms : dict of int to list of functions, optional (default=None)
+            Mapping of target lags to their transformations.
+        date_features : list of str or callable, optional (default=None)
+            Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input.
+        differences : list of int, optional (default=None)
+            Differences to take of the target before computing the features. These are restored at the forecasting step.
+        num_threads : int (default=1)
+            Number of threads to use when computing the features.
+        client : dask distributed client
+            Client to use for computing data and training the models.
+        """
         if not isinstance(models, list):
             models = [clone(models)]
         self.models = [clone(m) for m in models]
@@ -68,20 +89,37 @@ class DistributedForecast:
     def preprocess(
         self,
         data: dd.DataFrame,
-        id_col: str = "index",  # column that identifies each serie, it's recommended to have this as the index.
-        time_col: str = "ds",  # column with the timestamps
-        target_col: str = "y",  # column with the series values
-        static_features: Optional[
-            List[str]
-        ] = None,  # column names of the features that don't change in time
-        dropna: bool = True,  # drop rows with missing values created by lags
-        keep_last_n: Optional[
-            int
-        ] = None,  # keep only this many observations of each serie for computing the updates
+        id_col: str = "index",
+        time_col: str = "ds",
+        target_col: str = "y",
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
     ) -> dd.DataFrame:
-        """Computes the transformations on each partition of `data` and
-        saves the required information for the forecasting step.
-        Returns a dask dataframe with the computed features."""
+        """Add the features to `data`.
+
+        Parameters
+        ----------
+        data : dask DataFrame
+            Series data in long format.
+        id_col : str
+            Column that identifies each serie. If 'index' then the index is used.
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str
+            Column that contains the target.
+        static_features : list of str, optional (default=None)
+            Names of the features that are static and will be repeated when forecasting.
+        dropna : bool (default=True)
+            Drop rows with missing values produced by the transformations.
+        keep_last_n : int, optional (default=None)
+            Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+
+        Returns
+        -------
+        result : dask DataFrame.
+            `data` plus added features.
+        """
         if id_col in data:
             warnings.warn(
                 "It is recommended to have id_col as the index, since setting the index is a slow operation."
@@ -92,30 +130,69 @@ class DistributedForecast:
             data, id_col, time_col, target_col, static_features, dropna, keep_last_n
         )
 
+    def fit_models(
+        self,
+        X: dd.DataFrame,
+        y: dd.Series,
+    ) -> "DistributedForecast":
+        """Manually train models. Use this if you called `Forecast.preprocess` beforehand.
+
+        Parameters
+        ----------
+        X : dask DataFrame
+            Features.
+        y : dask Series.
+            Target.
+
+        Returns
+        -------
+        self : DistributedForecast
+            Forecast object with trained models.
+        """
+        self.models_ = []
+        for i, model in enumerate(self.models):
+            self.models_.append(clone(model).fit(X, y))
+        return self
+
     def fit(
         self,
         data: dd.DataFrame,
-        id_col: str = "index",  # column that identifies each serie, it's recommended to have this as the index.
-        time_col: str = "ds",  # column with the timestamps
-        target_col: str = "y",  # column with the series values
-        static_features: Optional[
-            List[str]
-        ] = None,  # column names of the features that don't change in time
-        dropna: bool = True,  # drop rows with missing values created by lags
-        keep_last_n: Optional[
-            int
-        ] = None,  # keep only this many observations of each serie for computing the updates
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
     ) -> "DistributedForecast":
-        """Perform the preprocessing and fit the model."""
+        """Apply the feature engineering and train the models.
+
+        Parameters
+        ----------
+        data : dask DataFrame
+            Series data in long format.
+        id_col : str
+            Column that identifies each serie. If 'index' then the index is used.
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str
+            Column that contains the target.
+        static_features : list of str, optional (default=None)
+            Names of the features that are static and will be repeated when forecasting.
+        dropna : bool (default=True)
+            Drop rows with missing values produced by the transformations.
+        keep_last_n : int, optional (default=None)
+            Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+
+        Returns
+        -------
+        self : DistributedForecast
+            Forecast object with series values and trained models.
+        """
         train_ddf = self.preprocess(
             data, id_col, time_col, target_col, static_features, dropna, keep_last_n
         )
         X, y = train_ddf.drop(columns=[time_col, target_col]), train_ddf[target_col]
-        self.models_ = []
-        for i, model in enumerate(self.models):
-            model = clone(model)
-            model.client = self.client
-            self.models_.append(model.fit(X, y))
+        self.fit_models(X, y)
         return self
 
     def predict(
@@ -125,6 +202,36 @@ class DistributedForecast:
         predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
     ) -> dd.DataFrame:
+        """Compute the predictions for the next `horizon` steps.
+
+        Parameters
+        ----------
+        horizon : int
+            Number of periods to predict.
+        dynamic_dfs : list of pandas DataFrame, optional (default=None)
+            Future values of the dynamic features, e.g. prices.
+        predict_fn : callable, optional (default=None)
+            Custom function to compute predictions.
+            This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
+            and should return an array with the predictions, where:
+                model : regressor
+                    Fitted model.
+                new_x : pandas DataFrame
+                    Current values of the features.
+                dynamic_dfs : list of pandas DataFrame
+                    Future values of the dynamic features
+                features_order : list of str
+                    Column names in the order in which they were used to train the model.
+                **kwargs
+                    Other keyword arguments passed to `Forecast.predict`.
+        **predict_fn_kwargs
+            Additional arguments passed to predict_fn
+
+        Returns
+        -------
+        result : dask DataFrame
+            Predictions for each serie and timestep, with one column per model.
+        """
         return self.dts.predict(
             [m.model_ for m in self.models_],
             horizon,
@@ -133,34 +240,69 @@ class DistributedForecast:
             **predict_fn_kwargs,
         )
 
-    predict.__doc__ = Forecast.predict.__doc__
-
     def cross_validation(
         self,
-        data: dd.DataFrame,  # time series
-        n_windows: int,  # number of windows to evaluate
-        window_size: int,  # test size in each window
-        id_col: str = "index",  # column that identifies each serie, can also be the index.
-        time_col: str = "ds",  # column with the timestamps
-        target_col: str = "y",  # column with the series values
-        static_features: Optional[
-            List[str]
-        ] = None,  # column names of the features that don't change in time
-        dropna: bool = True,  # drop rows with missing values created by lags
-        keep_last_n: Optional[
-            int
-        ] = None,  # keep only this many observations of each serie for computing the updates
-        dynamic_dfs: Optional[
-            List[pd.DataFrame]
-        ] = None,  # future values for dynamic features
-        predict_fn: Optional[Callable] = None,  # custom function to compute predictions
-        **predict_fn_kwargs,  # additional arguments passed to predict_fn
+        data: pd.DataFrame,
+        n_windows: int,
+        window_size: int,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+        predict_fn: Optional[Callable] = None,
+        **predict_fn_kwargs,
     ):
-        """Creates `n_windows` splits of `window_size` from `data`, trains the model
-        on the training set, predicts the window and merges the actuals and the predictions
-        in a dataframe.
+        """Perform time series cross validation.
+        Creates `n_windows` splits where each window has `window_size` test periods,
+        trains the models, computes the predictions and merges the actuals.
 
-        Returns a dataframe containing the datestamps, actual values, train ends and predictions."""
+        Parameters
+        ----------
+        data : dask DataFrame
+            Series data in long format.
+        n_windows : int
+            Number of windows to evaluate.
+        window_size : int
+            Number of test periods in each window.
+        id_col : str
+            Column that identifies each serie. If 'index' then the index is used.
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str
+            Column that contains the target.
+        static_features : list of str, optional (default=None)
+            Names of the features that are static and will be repeated when forecasting.
+        dropna : bool (default=True)
+            Drop rows with missing values produced by the transformations.
+        keep_last_n : int, optional (default=None)
+            Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+        dynamic_dfs : list of pandas DataFrame, optional (default=None)
+            Future values of the dynamic features, e.g. prices.
+        predict_fn : callable, optional (default=None)
+            Custom function to compute predictions.
+            This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
+            and should return an array with the predictions, where:
+                model : regressor
+                    Fitted model.
+                new_x : pandas DataFrame
+                    Current values of the features.
+                dynamic_dfs : list of pandas DataFrame
+                    Future values of the dynamic features
+                features_order : list of str
+                    Column names in the order in which they were used to train the model.
+                **kwargs
+                    Other keyword arguments passed to `Forecast.predict`.
+        **predict_fn_kwargs
+            Additional arguments passed to predict_fn
+
+        Returns
+        -------
+        result : dask DataFrame
+            Predictions for each window with the series id, timestamp, last train date, target value and predictions from each model.
+        """
         results = []
         self.cv_models_ = []
         if id_col != "index":

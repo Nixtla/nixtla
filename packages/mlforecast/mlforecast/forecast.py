@@ -4,37 +4,56 @@
 __all__ = ['Forecast']
 
 # %% ../nbs/forecast.ipynb 3
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Iterable, List, Optional, Union
 
 import numpy as np
 import pandas as pd
-from sklearn.base import RegressorMixin, clone
+from sklearn.base import clone
 
-from .core import TimeSeries
+from mlforecast.core import (
+    DateFeature,
+    Differences,
+    Freq,
+    LagTransforms,
+    Lags,
+    Models,
+    TimeSeries,
+)
 from .utils import backtest_splits
 
 # %% ../nbs/forecast.ipynb 6
 class Forecast:
-    """Full pipeline encapsulation."""
+    """Feature engineering + model training + forecasting pipeline encapsulation."""
 
     def __init__(
         self,
-        models: Union[
-            RegressorMixin, List[RegressorMixin]
-        ],  # model or list of models that follow the scikit-learn API
-        freq: Optional[str] = None,  # pandas offset alias, e.g. D, W, M
-        lags: List[int] = [],  # list of lags to use as features
-        lag_transforms: Dict[
-            int, List[Tuple]
-        ] = {},  # list of transformations to apply to each lag
-        date_features: List[
-            Union[str, Callable]
-        ] = [],  # list of names of pandas date attributes or functions to use as features, e.g. dayofweek
-        differences: Optional[
-            List[int]
-        ] = None,  # differences to apply to the series before fitting
-        num_threads: int = 1,  # number of threads to use when computing lag features
+        models: Models,
+        freq: Optional[Freq] = None,
+        lags: Optional[Lags] = None,
+        lag_transforms: Optional[LagTransforms] = None,
+        date_features: Optional[Iterable[DateFeature]] = None,
+        differences: Optional[Differences] = None,
+        num_threads: int = 1,
     ):
+        """Create forecast object
+
+        Parameters
+        ----------
+        models : regressor or list of regressors
+            Models that will be trained and used to compute the forecasts.
+        freq : str or int, optional (default=None)
+            Pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series.
+        lags : list of int, optional (default=None)
+            Lags of the target to use as features.
+        lag_transforms : dict of int to list of functions, optional (default=None)
+            Mapping of target lags to their transformations.
+        date_features : list of str or callable, optional (default=None)
+            Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input.
+        differences : list of int, optional (default=None)
+            Differences to take of the target before computing the features. These are restored at the forecasting step.
+        num_threads : int (default=1)
+            Number of threads to use when computing the features.
+        """
         if not isinstance(models, list):
             models = [clone(models)]
         self.models = [clone(m) for m in models]
@@ -57,37 +76,100 @@ class Forecast:
 
     def preprocess(
         self,
-        data: pd.DataFrame,  # dataframe with the series' data
-        id_col: str = "index",  # column that identifies each serie, can also be the index.
-        time_col: str = "ds",  # column with the timestamps
-        target_col: str = "y",  # column with the series values
-        static_features: Optional[
-            List[str]
-        ] = None,  # column names of the features that don't change in time
-        dropna: bool = True,  # drop rows with missing values created by lags
-        keep_last_n: Optional[
-            int
-        ] = None,  # keep only this many observations of each serie for computing the updates
+        data: pd.DataFrame,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
     ) -> pd.DataFrame:
+        """Add the features to `data`.
+
+        Parameters
+        ----------
+        data : pandas DataFrame
+            Series data in long format.
+        id_col : str
+            Column that identifies each serie. If 'index' then the index is used.
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str
+            Column that contains the target.
+        static_features : list of str, optional (default=None)
+            Names of the features that are static and will be repeated when forecasting.
+        dropna : bool (default=True)
+            Drop rows with missing values produced by the transformations.
+        keep_last_n : int, optional (default=None)
+            Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+
+        Returns
+        -------
+        result : pandas DataFrame.
+            `data` plus added features.
+        """
         return self.ts.fit_transform(
             data, id_col, time_col, target_col, static_features, dropna, keep_last_n
         )
 
+    def fit_models(
+        self,
+        X: pd.DataFrame,
+        y: Union[np.ndarray, pd.Series],
+    ) -> "Forecast":
+        """Manually train models. Use this if you called `Forecast.preprocess` beforehand.
+
+        Parameters
+        ----------
+        X : pandas DataFrame
+            Features.
+        y : numpy array or pandas Series.
+            Target.
+
+        Returns
+        -------
+        self : Forecast
+            Forecast object with trained models.
+        """
+        self.models_ = []
+        for i, model in enumerate(self.models):
+            self.models_.append(clone(model).fit(X, y))
+        return self
+
     def fit(
         self,
-        data: pd.DataFrame,  # dataframe with the series' data
-        id_col: str = "index",  # column that identifies each serie. If 'index', the index is taken as the identifier of each serie
-        time_col: str = "ds",  # column with the timestamps
-        target_col: str = "y",  # column with the series values
-        static_features: Optional[
-            List[str]
-        ] = None,  # column names of the features that don't change in time
-        dropna: bool = True,  # drop rows with missing values created by lags
-        keep_last_n: Optional[
-            int
-        ] = None,  # keep only this many observations of each serie for computing the updates
+        data: pd.DataFrame,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
     ) -> "Forecast":
-        """Preprocesses `data` and fits `models` using it."""
+        """Apply the feature engineering and train the models.
+
+        Parameters
+        ----------
+        data : pandas DataFrame
+            Series data in long format.
+        id_col : str
+            Column that identifies each serie. If 'index' then the index is used.
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str
+            Column that contains the target.
+        static_features : list of str, optional (default=None)
+            Names of the features that are static and will be repeated when forecasting.
+        dropna : bool (default=True)
+            Drop rows with missing values produced by the transformations.
+        keep_last_n : int, optional (default=None)
+            Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+
+        Returns
+        -------
+        self : Forecast
+            Forecast object with series values and trained models.
+        """
         series_df = self.preprocess(
             data, id_col, time_col, target_col, static_features, dropna, keep_last_n
         )
@@ -96,58 +178,116 @@ class Forecast:
             series_df[target_col].values,
         )
         del series_df
-        self.models_ = []
-        for i, model in enumerate(self.models):
-            self.models_.append(clone(model).fit(X, y))
-        return self
+        return self.fit_models(X, y)
 
     def predict(
         self,
-        horizon: int,  # number of periods to predict in the future
-        dynamic_dfs: Optional[
-            List[pd.DataFrame]
-        ] = None,  # future values for dynamic features
-        predict_fn: Optional[Callable] = None,  # custom function to compute predictions
-        **predict_fn_kwargs,  # additional arguments passed to predict_fn
+        horizon: int,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+        predict_fn: Optional[Callable] = None,
+        **predict_fn_kwargs,
     ) -> pd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
-        `predict_fn(model, new_x, dynamic_dfs, features_order, **predict_fn_kwargs)` is called in every timestep, where:
-        `model` is the trained model.
-        `new_x` is a dataframe with the same format as the input plus the computed features.
-        `dynamic_dfs` is a list containing the dynamic dataframes.
-        `features_order` is the list of column names that were used in the training step.
+        Parameters
+        ----------
+        horizon : int
+            Number of periods to predict.
+        dynamic_dfs : list of pandas DataFrame, optional (default=None)
+            Future values of the dynamic features, e.g. prices.
+        predict_fn : callable, optional (default=None)
+            Custom function to compute predictions.
+            This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
+            and should return an array with the predictions, where:
+                model : regressor
+                    Fitted model.
+                new_x : pandas DataFrame
+                    Current values of the features.
+                dynamic_dfs : list of pandas DataFrame
+                    Future values of the dynamic features
+                features_order : list of str
+                    Column names in the order in which they were used to train the model.
+                **kwargs
+                    Other keyword arguments passed to `Forecast.predict`.
+        **predict_fn_kwargs
+            Additional arguments passed to predict_fn
+
+        Returns
+        -------
+        result : pandas DataFrame
+            Predictions for each serie and timestep, with one column per model.
         """
+        if not hasattr(self, "models_"):
+            raise ValueError(
+                "No fitted models found. You have to call fit or preprocess + fit_models."
+            )
         return self.ts.predict(
             self.models_, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
         )
 
     def cross_validation(
         self,
-        data: pd.DataFrame,  # time series
-        n_windows: int,  # number of windows to evaluate
-        window_size: int,  # test size in each window
-        id_col: str = "index",  # column that identifies each serie, can also be the index.
-        time_col: str = "ds",  # column with the timestamps
-        target_col: str = "y",  # column with the series values
-        static_features: Optional[
-            List[str]
-        ] = None,  # column names of the features that don't change in time
-        dropna: bool = True,  # drop rows with missing values created by lags
-        keep_last_n: Optional[
-            int
-        ] = None,  # keep only this many observations of each serie for computing the updates
-        dynamic_dfs: Optional[
-            List[pd.DataFrame]
-        ] = None,  # future values for dynamic features
-        predict_fn: Optional[Callable] = None,  # custom function to compute predictions
-        **predict_fn_kwargs,  # additional arguments passed to predict_fn
+        data: pd.DataFrame,
+        n_windows: int,
+        window_size: int,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]] = None,
+        dropna: bool = True,
+        keep_last_n: Optional[int] = None,
+        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
+        predict_fn: Optional[Callable] = None,
+        **predict_fn_kwargs,
     ):
-        """Creates `n_windows` splits of `window_size` from `data`, trains the model
-        on the training set, predicts the window and merges the actuals and the predictions
-        in a dataframe.
+        """Perform time series cross validation.
+        Creates `n_windows` splits where each window has `window_size` test periods,
+        trains the models, computes the predictions and merges the actuals.
 
-        Returns a dataframe containing the datestamps, actual values, train ends and predictions."""
+        Parameters
+        ----------
+        data : pandas DataFrame
+            Series data in long format.
+        n_windows : int
+            Number of windows to evaluate.
+        window_size : int
+            Number of test periods in each window.
+        id_col : str
+            Column that identifies each serie. If 'index' then the index is used.
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str
+            Column that contains the target.
+        static_features : list of str, optional (default=None)
+            Names of the features that are static and will be repeated when forecasting.
+        dropna : bool (default=True)
+            Drop rows with missing values produced by the transformations.
+        keep_last_n : int, optional (default=None)
+            Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+        dynamic_dfs : list of pandas DataFrame, optional (default=None)
+            Future values of the dynamic features, e.g. prices.
+        predict_fn : callable, optional (default=None)
+            Custom function to compute predictions.
+            This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
+            and should return an array with the predictions, where:
+                model : regressor
+                    Fitted model.
+                new_x : pandas DataFrame
+                    Current values of the features.
+                dynamic_dfs : list of pandas DataFrame
+                    Future values of the dynamic features
+                features_order : list of str
+                    Column names in the order in which they were used to train the model.
+                **kwargs
+                    Other keyword arguments passed to `Forecast.predict`.
+        **predict_fn_kwargs
+            Additional arguments passed to predict_fn
+
+        Returns
+        -------
+        result : pandas DataFrame
+            Predictions for each window with the series id, timestamp, last train date, target value and predictions from each model.
+        """
         results = []
         self.cv_models_ = []
         if id_col != "index":

@@ -2,6 +2,7 @@ website:
   sidebar:
     contents:
       - forecast.ipynb
+      - lgb_cv.ipynb
       - utils.ipynb
       - section: Distributed
         contents:
