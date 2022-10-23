@@ -12,7 +12,7 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from .methods import _bootstrap_samples
+from .methods import Normality, Bootstrap, PERMBU
 
 # %% ../nbs/core.ipynb 4
 def _build_fn_name(fn) -> str:
@@ -53,7 +53,7 @@ class HierarchicalReconciliation:
                   tags: Dict[str, np.ndarray],
                   Y_df: Optional[pd.DataFrame] = None,
                   level: Optional[List[int]] = None,
-                  bootstrap: bool = False):
+                  intervals_method: str = 'normality'):
         """Hierarchical Reconciliation Method.
 
         The `reconcile` method is analogous to SKLearn `fit` method, it applies different 
@@ -76,11 +76,13 @@ class HierarchicalReconciliation:
         `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `bootstrap`: bool, whether or not to use bootstraped prediction intervals, alternative normality assumption.<br>
-
+        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+         
         **Returns:**<br>
         `y_tilde`: pd.DataFrame, with reconciled predictions.        
         """
+        if intervals_method not in ['normality', 'bootstrap', 'permbu']:
+            raise ValueError(f'Unkwon interval method: {intervals_method}')
         drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
         model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
         # store pi names
@@ -98,7 +100,7 @@ class HierarchicalReconciliation:
         # we need insample values if 
         # we are using a method that requires them
         # or if we are performing boostrap
-        if self.insample or bootstrap:
+        if self.insample or (intervals_method in ['bootstrap', 'permbu']):
             if Y_df is None:
                 raise Exception('you need to pass `Y_df`')
             common_vals['y_insample'] = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32)
@@ -113,7 +115,7 @@ class HierarchicalReconciliation:
                 pi = len(pi_model_name) > 0
                 # Remember: pivot sorts uid
                 y_hat_model = Y_hat_df.pivot(columns='ds', values=model_name).loc[uids].values
-                if pi and has_level and level is not None and not bootstrap:
+                if pi and has_level and level is not None and intervals_method in ['normality', 'permbu']:
                     # we need to construct sigmah and add it
                     # to the common_vals
                     # to recover sigmah we only need 
@@ -124,23 +126,33 @@ class HierarchicalReconciliation:
                     level_col = float(level_col[0])
                     z = norm.ppf(0.5 + level_col / 200)
                     sigmah = Y_hat_df.pivot(columns='ds', values=pi_col).loc[uids].values
-                    sigmah = sign * (y_hat_model - sigmah) / z
-                    common_vals['sigmah'] = sigmah
+                    sigmah = sign * (sigmah - y_hat_model) / z
                     common_vals['level'] = level
-                if (self.insample and has_fitted) or bootstrap:
+                    if intervals_method == 'permbu':
+                        y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
+                        y_hat_insample = y_hat_insample.astype(np.float32)
+                        common_vals['sampler'] = PERMBU(
+                            y_insample=common_vals['y_insample'], 
+                            y_hat_insample=y_hat_insample,
+                            sigmah=sigmah,
+                            S=common_vals['S'],
+                            n_samples=None
+                        )
+                    elif intervals_method == 'normality':
+                        common_vals['sampler'] = Normality(sigmah=sigmah)
+                if (self.insample and has_fitted) or (intervals_method in ['bootstrap']):
                     if model_name in Y_df:
                         y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
                         y_hat_insample = y_hat_insample.astype(np.float32)
                         if has_fitted:
                             common_vals['y_hat_insample'] = y_hat_insample 
-                        if bootstrap and has_level:
-                            common_vals['bootstrap_samples'] = _bootstrap_samples(
+                        if intervals_method == 'bootstrap' and has_level:
+                            common_vals['sampler'] = Bootstrap(
                                 y_insample=common_vals['y_insample'],
                                 y_hat_insample=y_hat_insample, 
                                 y_hat=y_hat_model, 
                                 n_samples=1_000
                             )
-                            common_vals['bootstrap'] = bootstrap
                             common_vals['level'] = level
                     else:
                         # some methods have the residuals argument
@@ -151,16 +163,12 @@ class HierarchicalReconciliation:
                 kwargs = {key: common_vals[key] for key in kwargs}
                 fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)
                 fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model['mean'].flatten()
-                if (pi and has_level and level is not None) or (bootstrap and level is not None):
+                if (pi and has_level and level is not None) or (intervals_method in ['bootstrap'] and level is not None):
                     for lv in level:
                         fcsts[f'{model_name}/{reconcile_fn_name}-lo-{lv}'] = fcsts_model[f'lo-{lv}'].flatten()
                         fcsts[f'{model_name}/{reconcile_fn_name}-hi-{lv}'] = fcsts_model[f'hi-{lv}'].flatten()
                     del common_vals['level']
-                    if not bootstrap:
-                        del common_vals['sigmah']
-                    else:
-                        del common_vals['bootstrap_samples']
-                        del common_vals['bootstrap']
+                    del common_vals['sampler']
                 if self.insample and has_fitted:
                     del common_vals['y_hat_insample']
         return fcsts

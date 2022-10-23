@@ -10,7 +10,7 @@
 [![PyPi](https://img.shields.io/pypi/v/hierarchicalforecast?color=blue)](https://pypi.org/project/hierarchicalforecast/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE)
     
-**HierarchicalForecast** offers a collection of reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`. And Probabilistic coherent predictions including `MinTrace-normality`, `Bootstrap`, and `PERM-BU`.
+**HierarchicalForecast** offers a collection of reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`. And Probabilistic coherent predictions including `Normality`, `Bootstrap`, and `PERMBU`.
 </div>
 
 ## 🎊 Features 
@@ -23,9 +23,9 @@
     - `MinTrace`: Minimizes the total forecast variance of the space of coherent forecasts, with the Minimum Trace reconciliation.
     - `ERM`: Optimizes the reconciliation matrix minimizing an L1 regularized objective.
 * Probabilistic coherent methods:
-    - `MinTrace-normality`: Uses MinTrace variance-covariance closed form matrix under a normality assumption.
+    - `Normality`: Uses MinTrace variance-covariance closed form matrix under a normality assumption.
     - `Bootstrap`: Generates distribution of hierarchically reconciled predictions using Gamakumara's bootstrap approach.
-    - `PERM-BU`: Reconciles independent sample predictions by reinjecting multivariate dependence with estimated rank permutation copulas, and performing a Bottom-Up aggregation.
+    - `PERMBU`: Reconciles independent sample predictions by reinjecting multivariate dependence with estimated rank permutation copulas, and performing a Bottom-Up aggregation.
 
 Missing something? Please open an issue here or write us in [![Slack](https://img.shields.io/badge/Slack-4A154B?&logo=slack&logoColor=white)](https://join.slack.com/t/nixtlaworkspace/shared_invite/zt-135dssye9-fWTzMpv2WBthq8NK0Yvu6A)
 
