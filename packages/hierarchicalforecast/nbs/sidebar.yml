@@ -6,6 +6,7 @@ website:
         contents:
         - core.ipynb
         - methods.ipynb
+        - probabilistic_methods.ipynb
         - evaluation.ipynb
         - utils.ipynb
       - section: Tutorials

@@ -12,295 +12,45 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 from numba import njit
 from quadprog import solve_qp
-from scipy.stats import norm
 from statsmodels.stats.moment_helpers import cov2corr
-from sklearn.preprocessing import OneHotEncoder
 
 # %% ../nbs/methods.ipynb 4
-def _reconcile(S: np.ndarray, P: np.ndarray, W: np.ndarray, 
-               y_hat: np.ndarray, SP: np.ndarray = None,
-               level: Optional[List[int]] = None, 
+def _reconcile(S: np.ndarray,
+               P: np.ndarray,
+               W: np.ndarray,
+               y_hat: np.ndarray,
+               SP: np.ndarray = None,
+               level: Optional[List[int]] = None,
                sampler: Optional[Callable] = None):
-    if SP is None:
-        SP = S @ P
-    #mean reconciliation
-    res = {'mean': np.matmul(SP, y_hat)}
+
+    # Mean reconciliation
+    res = {'mean': np.matmul(S @ P, y_hat)}
     sampler_name = type(sampler).__name__
-    
-    if sampler_name in ['Bootstrap', 'PERMBU'] and level is not None:
-        # calculate prediction intervals
-        if sampler is None:
-            raise Exception(f'you have to pass a sampler')
-        # samples of shape (B, n_hiers, h)
+
+    # Probabilistic reconciliation
+    # TODO: instantiate the samplers after mean reconciliation.
+    # separate functions, and add _prob_reconcile -> probabilistic_methods.py
+    # both Normality and Bootstrap depend reconciled outputs (P, W).
+    # I suggest to do it in `core.HierarchicalForecast.reconcile`
+    # after this call `fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)`
+
+    if level is not None and \
+        sampler_name in ['Normality', 'Bootstrap', 'PERMBU']:
+
+        if sampler_name == 'Normality':
+            res = sampler.get_prediction_levels(P=P, W=W,
+                                                res=res, level=level)
+
         if sampler_name == 'Bootstrap':
-            samples = sampler.get_samples()
-            samples = np.apply_along_axis(lambda path: np.matmul(SP, path), axis=1, arr=samples)
-        elif sampler_name == 'PERMBU':
-            samples = sampler.get_samples(res['mean'])
-        res = {'mean': samples.mean(axis=0)}
-        for lv in level:
-            min_q = (100 - lv) / 200 
-            max_q = min_q + lv / 100
-            res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=0)
-            res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=0)
-        return res
-    
-    if sampler_name == 'Normality' and level is not None:
-        sigmah = sampler.get_samples()
-        # then we calculate prediction intervals
-        # we assume normality
-        # we have to calculate the "reconciled" sigmah
-        # following
-        # https://otexts.com/fpp3/rec-prob.html
-        R1 = cov2corr(W)
-        W_h = [np.diag(sigma) @ R1 @ np.diag(sigma).T for sigma in sigmah.T]
-        sigmah = np.hstack([np.sqrt(np.diag(SP @ W @ SP.T))[:, None] for W in W_h])
-        res['sigmah'] = sigmah
-        # intervals calc
-        level = np.asarray(level)
-        z = norm.ppf(0.5 + level / 200)
-        for zs, lv in zip(z, level):
-            res[f'lo-{lv}'] = res['mean'] - zs * sigmah
-            res[f'hi-{lv}'] = res['mean'] + zs * sigmah
+            res = sampler.get_prediction_levels(P=P,
+                                                res=res, level=level)
+
+        if sampler_name == 'PERMBU':
+            res = sampler.get_prediction_levels(res=res, level=level)
+
     return res
 
-# %% ../nbs/methods.ipynb 5
-class Normality:
-    
-    def __init__(
-            self, 
-            sigmah: np.ndarray #Estimate of the standard deviation of the h-step forecast of size (`base`, `horizon`)
-        ):
-        self.sigmah = sigmah
-        
-    def get_samples(self):
-        return self.sigmah
-
 # %% ../nbs/methods.ipynb 6
-class Bootstrap:
-    
-    def __init__(
-        self,
-        y_insample: np.ndarray, # Insample values of size (`base`, `insample_size`)
-        y_hat_insample: np.ndarray, # Insample forecasts of size (`base`, `insample_size`)
-        y_hat: np.ndarray, # Forecast values of size (`base`, `horizon`)
-        n_samples: int, # Number of bootstrap samples,
-        seed: int = 0, # seed
-    ):
-        self.y_insample = y_insample
-        self.y_hat_insample = y_hat_insample
-        self.y_hat = y_hat
-        self.n_samples = n_samples
-        self.seed = seed
-    
-    def get_samples(self):
-        residuals = self.y_insample - self.y_hat_insample
-        h = self.y_hat.shape[1]
-        #removing nas from residuals
-        residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
-        sample_idx = np.arange(residuals.shape[1] - h)
-        state = np.random.RandomState(self.seed)
-        samples_idx = state.choice(sample_idx, size=self.n_samples)
-        samples = [self.y_hat + residuals[:, idx:(idx + h)] for idx in samples_idx]
-        return np.stack(samples)
-
-# %% ../nbs/methods.ipynb 7
-class PERMBU:
-    """PERMBU Probabilistic Reconciliation Class.
-
-    The PERM-BU method leverages empirical bottom-level marginal distributions 
-    with empirical copula functions (describing bottom-level dependencies) to 
-    generate the distribution of aggregate-level distributions using BottomUp 
-    reconciliation. The sample reordering technique in the PERM-BU method reinjects 
-    multivariate dependencies into independent bottom-level samples.
-
-    **References:**<br>
-    - [Taieb, Souhaib Ben and Taylor, James W and Hyndman, Rob J. (2017). 
-    Coherent probabilistic forecasts for hierarchical time series. 
-    International conference on machine learning ICML.](https://proceedings.mlr.press/v70/taieb17a.html)
-    """
-    def __init__(
-            self,
-            y_insample: np.ndarray,
-            y_hat_insample: np.ndarray,
-            sigmah: np.ndarray,
-            S: np.ndarray,                 
-            n_samples: int=None,
-            seed: int=0
-        ):
-        """
-        **Parameters:**<br>
-        `S`: Summing matrix of size (`base`, `bottom`).<br>
-        `sigmah`: Forecast standard dev. of size (`base`, `horizon`).<br>
-        `y_insample`: Insample values of size (`base`, `insample_size`).<br>
-        `y_hat_insample`: Insample values of size (`base`, `insample_size`).<br>
-        `n_samples`: int, number of normal prediction samples generated.<br>
-        """
-        self.y_insample = y_insample
-        self.y_hat_insample = y_hat_insample
-        self.sigmah = sigmah
-        self.S = S
-        self.n_samples = n_samples
-        self.seed = seed
-    
-    def _obtain_ranks(self, array):
-        """ Vector ranks
-
-        Efficiently obtain vector ranks.
-        Example `array=[4,2,7,1]` -> `ranks=[2, 1, 3, 0]`.
-
-        **Parameters**<br>
-        `array`: np.array, matrix with floats or integers on which the 
-                ranks will be computed on the second dimension.<br>
-
-        **Returns**<br>
-        `ranks`: np.array, matrix with ranks along the second dimension.<br>
-        """
-        temp = array.argsort(axis=1)
-        ranks = np.empty_like(temp)
-        a_range = np.arange(temp.shape[1])
-        for iRow in range(temp.shape[0]):
-            ranks[iRow, temp[iRow,:]] = a_range
-        return ranks
-
-    def _permutate_samples(self, samples, permutations):
-        """ Permutate Samples
-
-        Applies efficient vectorized permutation on the samples.
-
-        **Parameters**<br>
-        `samples`: np.array [series,samples], independent base samples.<br>
-        `permutations`: np.array [series,samples], permutation ranks with wich
-                  which `samples` dependence will be restored see `_obtain_ranks`.<br>
-
-        **Returns**<br>
-        `permutated_samples`: np.array.<br>
-        """
-        # Generate auxiliary and flat permutation indexes
-        n_rows, n_cols = permutations.shape
-        aux_row_idx = np.arange(n_rows)[:,None] * n_cols
-        aux_row_idx = np.repeat(aux_row_idx, repeats=n_cols, axis=1)
-        permutate_idxs = permutations.flatten() + aux_row_idx.flatten()
-
-        # Apply flat permutation indexes and recover original shape
-        permutated_samples = samples.flatten()
-        permutated_samples = permutated_samples[permutate_idxs]
-        permutated_samples = permutated_samples.reshape(n_rows, n_cols)
-        return permutated_samples
-    
-    def _permutate_predictions(self, prediction_samples, permutations):
-        """ Permutate Prediction Samples
-
-        Applies permutations to prediction_samples across the horizon.
-
-        **Parameters**<br>
-        `prediction_samples`: np.array [series,horizon,samples], independent 
-                  base prediction samples.<br>
-        `permutations`: np.array [series, samples], permutation ranks with which
-                  `samples` dependence will be restored see `_obtain_ranks`.
-                  it can also apply a random permutation.<br>
-
-        **Returns**<br>
-        `permutated_prediction_samples`: np.array.<br>
-        """
-        # Apply permutation throughout forecast horizon
-        permutated_prediction_samples = prediction_samples.copy()
-        
-        _, n_horizon, _ = prediction_samples.shape
-        for t in range(n_horizon):
-            permutated_prediction_samples[:,t,:] = \
-                              self._permutate_samples(prediction_samples[:,t,:],
-                                                      permutations)
-        return permutated_prediction_samples
-
-    def _nonzero_indexes_by_row(self, M):
-        return [np.nonzero(M[row,:])[0] for row in range(len(M))]
-
-    def get_samples(self, y_hat: np.ndarray):
-        """PERMBU Sample Reconciliation Method.
-
-        Applies PERMBU reconciliation method as defined by Taieb et. al 2017.
-        Generating independent base prediction samples, restoring its multivariate
-        dependence using estimated copula with reordering and applying the BottomUp
-        aggregation to the new samples.
-
-        Algorithm:
-        1.   For all series compute conditional marginals distributions.
-        2.   Compute residuals $\hat{\epsilon}_{i,t}$ and obtain rank permutations.
-        2.   Obtain K-sample from the bottom-level series predictions.
-        3.   Apply recursively through the hierarchical structure:<br>
-            3.1.   For a given aggregate series $i$ and its children series:<br>
-            3.2.   Obtain children's empirical joint using sample reordering copula.<br>
-            3.2.   From the children's joint obtain the aggregate series's samples.        
-
-        **Parameters:**<br>
-        `y_hat`: Mean forecast values of size (`base`, `horizon`).<br>
-
-        **Returns:**<br>
-        `rec_samples`: Reconciliated samples using the PERMBU approach.
-        """
-
-        # Compute residuals and rank permutations
-        residuals = self.y_insample - self.y_hat_insample
-        #removing nas from residuals
-        residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
-        rank_permutations = self._obtain_ranks(residuals)
-        
-        # Sample h step-ahead base marginal distributions
-        if self.n_samples is None:
-            n_samples = residuals.shape[1]
-        else:
-            n_samples = self.n_samples
-        state = np.random.RandomState(self.seed)
-        n_series, n_horizon = y_hat.shape
-
-        base_samples = np.array([
-            state.normal(loc=m, scale=s, size=n_samples) for m, s in \
-            zip(y_hat.flatten(), self.sigmah.flatten())
-        ])
-        base_samples = base_samples.reshape(n_series, n_horizon, n_samples)
-
-        # Initialize PERMBU utility
-        rec_samples = base_samples.copy()
-        encoder = OneHotEncoder(sparse=False, dtype=np.float32)
-        hier_links = np.vstack(self._nonzero_indexes_by_row(self.S.T))
-
-        # BottomUp hierarchy traversing
-        hier_levels = hier_links.shape[1]-1
-        for level_idx in reversed(range(hier_levels)):
-            # Obtain aggregation matrix from parent/children links
-            children_links = np.unique(hier_links[:,level_idx:level_idx+2], 
-                                       axis=0)
-            children_idxs = np.unique(children_links[:,1])
-            parent_idxs = np.unique(children_links[:,0])
-            Agg = encoder.fit_transform(children_links).T
-            Agg = Agg[:len(parent_idxs),:]
-
-            # Permute children_samples for each prediction step
-            children_permutations = rank_permutations[children_idxs, :]
-            children_samples = rec_samples[children_idxs,:,:]
-            children_samples = self._permutate_predictions(
-                prediction_samples=children_samples,
-                permutations=children_permutations
-            )
-
-            # Overwrite hier_samples with BottomUp aggregation
-            # and randomly shuffle parent predictions after aggregation
-            parent_samples = np.einsum('ab,bhs->ahs', Agg, children_samples)
-            random_permutation = np.array([
-                np.random.permutation(np.arange(n_samples)) \
-                for serie in range(len(parent_samples))
-            ])
-            parent_samples = self._permutate_predictions(
-                prediction_samples=parent_samples,
-                permutations=random_permutation
-            )
-
-            rec_samples[parent_idxs,:,:] = parent_samples
-
-        return np.transpose(rec_samples, (2, 0, 1))
-
-# %% ../nbs/methods.ipynb 9
 class BottomUp:
     """Bottom Up Reconciliation Class.
     The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
@@ -345,7 +95,7 @@ class BottomUp:
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 18
+# %% ../nbs/methods.ipynb 15
 def is_strictly_hierarchical(S: np.ndarray, 
                              tags: Dict[str, np.ndarray]):
     # main idea:
@@ -363,7 +113,7 @@ def is_strictly_hierarchical(S: np.ndarray,
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/methods.ipynb 20
+# %% ../nbs/methods.ipynb 17
 def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
     level_names = list(tags.keys())
     nodes = OrderedDict()
@@ -381,7 +131,7 @@ def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
         nodes[level] = nodes_level
     return nodes        
 
-# %% ../nbs/methods.ipynb 22
+# %% ../nbs/methods.ipynb 19
 def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                                 tags: Dict[str, np.ndarray],
                                 nodes: Dict[str, Dict[int, np.ndarray]],
@@ -398,7 +148,7 @@ def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                 reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
     return reconciled
 
-# %% ../nbs/methods.ipynb 23
+# %% ../nbs/methods.ipynb 20
 class TopDown:
     """Top Down Reconciliation Class.
 
@@ -470,7 +220,7 @@ class TopDown:
             elif self.method == 'proportion_averages':
                 prop = np.mean(y_btm, axis=1) / np.mean(y_top)
             else:
-                raise Exception(f'Unknown method {method}')
+                raise Exception(f'Unknown method {self.method}')
         P = np.zeros_like(S, np.float64).T #float 64 if prop is too small, happens with wiki2
         P[:, idx_top] = prop
         W = np.eye(n_hiers, dtype=np.float32)
@@ -478,7 +228,7 @@ class TopDown:
                           sampler=sampler)
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 29
+# %% ../nbs/methods.ipynb 26
 class MiddleOut:
     """Middle Out Reconciliation Class.
     
@@ -581,11 +331,11 @@ class MiddleOut:
         return {'mean': reconciled}
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 34
+# %% ../nbs/methods.ipynb 31
 def crossprod(x):
     return x.T @ x
 
-# %% ../nbs/methods.ipynb 35
+# %% ../nbs/methods.ipynb 32
 class MinTrace:
     """MinTrace Reconciliation Class.
 
@@ -718,7 +468,7 @@ class MinTrace:
 
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 42
+# %% ../nbs/methods.ipynb 39
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -753,7 +503,7 @@ class OptimalCombination(MinTrace):
         self.nonnegative = nonnegative
         self.insample = False
 
-# %% ../nbs/methods.ipynb 48
+# %% ../nbs/methods.ipynb 45
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -785,7 +535,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 49
+# %% ../nbs/methods.ipynb 46
 class ERM:
     """Optimal Combination Reconciliation Class.
 
