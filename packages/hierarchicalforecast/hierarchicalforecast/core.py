@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['HierarchicalReconciliation']
 
-# %% ../nbs/core.ipynb 2
+# %% ../nbs/core.ipynb 3
 import re
 from inspect import signature
 from scipy.stats import norm
@@ -14,7 +14,7 @@ import pandas as pd
 
 from .probabilistic_methods import Normality, Bootstrap, PERMBU
 
-# %% ../nbs/core.ipynb 4
+# %% ../nbs/core.ipynb 5
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
@@ -26,7 +26,7 @@ def _build_fn_name(fn) -> str:
         fn_name += '_' + '_'.join(func_params)
     return fn_name
 
-# %% ../nbs/core.ipynb 8
+# %% ../nbs/core.ipynb 9
 class HierarchicalReconciliation:
     """Hierarchical Reconciliation Class.
 

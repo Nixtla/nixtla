@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['BottomUp', 'TopDown', 'MiddleOut', 'MinTrace', 'OptimalCombination', 'ERM']
 
-# %% ../nbs/methods.ipynb 2
+# %% ../nbs/methods.ipynb 3
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
@@ -14,7 +14,7 @@ from numba import njit
 from quadprog import solve_qp
 from statsmodels.stats.moment_helpers import cov2corr
 
-# %% ../nbs/methods.ipynb 4
+# %% ../nbs/methods.ipynb 5
 def _reconcile(S: np.ndarray,
                P: np.ndarray,
                W: np.ndarray,
@@ -50,7 +50,7 @@ def _reconcile(S: np.ndarray,
 
     return res
 
-# %% ../nbs/methods.ipynb 6
+# %% ../nbs/methods.ipynb 7
 class BottomUp:
     """Bottom Up Reconciliation Class.
     The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
@@ -95,7 +95,7 @@ class BottomUp:
     
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 15
+# %% ../nbs/methods.ipynb 16
 def is_strictly_hierarchical(S: np.ndarray, 
                              tags: Dict[str, np.ndarray]):
     # main idea:
@@ -113,7 +113,7 @@ def is_strictly_hierarchical(S: np.ndarray,
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/methods.ipynb 17
+# %% ../nbs/methods.ipynb 18
 def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
     level_names = list(tags.keys())
     nodes = OrderedDict()
@@ -131,7 +131,7 @@ def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
         nodes[level] = nodes_level
     return nodes        
 
-# %% ../nbs/methods.ipynb 19
+# %% ../nbs/methods.ipynb 20
 def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                                 tags: Dict[str, np.ndarray],
                                 nodes: Dict[str, Dict[int, np.ndarray]],
@@ -148,7 +148,7 @@ def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                 reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
     return reconciled
 
-# %% ../nbs/methods.ipynb 20
+# %% ../nbs/methods.ipynb 21
 class TopDown:
     """Top Down Reconciliation Class.
 
@@ -228,7 +228,7 @@ class TopDown:
                           sampler=sampler)
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 26
+# %% ../nbs/methods.ipynb 27
 class MiddleOut:
     """Middle Out Reconciliation Class.
     
@@ -331,11 +331,11 @@ class MiddleOut:
         return {'mean': reconciled}
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 31
+# %% ../nbs/methods.ipynb 32
 def crossprod(x):
     return x.T @ x
 
-# %% ../nbs/methods.ipynb 32
+# %% ../nbs/methods.ipynb 33
 class MinTrace:
     """MinTrace Reconciliation Class.
 
@@ -468,7 +468,7 @@ class MinTrace:
 
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 39
+# %% ../nbs/methods.ipynb 40
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -503,7 +503,7 @@ class OptimalCombination(MinTrace):
         self.nonnegative = nonnegative
         self.insample = False
 
-# %% ../nbs/methods.ipynb 45
+# %% ../nbs/methods.ipynb 46
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -535,7 +535,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 46
+# %% ../nbs/methods.ipynb 47
 class ERM:
     """Optimal Combination Reconciliation Class.
 
