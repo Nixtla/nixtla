@@ -4,11 +4,14 @@
 __all__ = ['Normality']
 
 # %% ../nbs/probabilistic_methods.ipynb 3
-import numpy as np
-from sklearn.preprocessing import OneHotEncoder
+from typing import Dict
 
+import numpy as np
 from scipy.stats import norm
+from sklearn.preprocessing import OneHotEncoder
 from statsmodels.stats.moment_helpers import cov2corr
+
+from .methods import is_strictly_hierarchical
 
 # %% ../nbs/probabilistic_methods.ipynb 6
 class Normality:
@@ -154,6 +157,7 @@ class PERMBU:
 
     **Parameters:**<br>
     `S`: np.array, summing matrix of size (`base`, `bottom`).<br>
+    `tags`: Each key is a level and each value its `S` indices.<br>
     `y_insample`: Insample values of size (`base`, `insample_size`).<br>
     `y_hat_insample`: Insample values of size (`base`, `insample_size`).<br>
     `sigmah`: np.array, forecast standard dev. of size (`base`, `horizon`).<br>
@@ -167,11 +171,15 @@ class PERMBU:
     """
     def __init__(self,
                  S: np.ndarray,
+                 tags: Dict[str, np.ndarray],
                  y_insample: np.ndarray,
                  y_hat_insample: np.ndarray,
                  sigmah: np.ndarray,
                  n_samples: int=None,
                  seed: int=0):
+        # PERMBU only works for strictly hierarchical structures
+        if not is_strictly_hierarchical(S, tags):
+            raise ValueError('PERMBU probabilistic reconciliation requires strictly hierarchical structures.')
         self.S = S
         self.y_insample = y_insample
         self.y_hat_insample = y_hat_insample
