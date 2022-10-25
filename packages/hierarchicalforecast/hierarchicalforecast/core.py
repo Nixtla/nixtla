@@ -115,6 +115,7 @@ class HierarchicalReconciliation:
                 pi = len(pi_model_name) > 0
                 # Remember: pivot sorts uid
                 y_hat_model = Y_hat_df.pivot(columns='ds', values=model_name).loc[uids].values
+                y_hat_model = y_hat_model.astype(np.float32)
                 if pi and has_level and level is not None and intervals_method in ['normality', 'permbu']:
                     # we need to construct sigmah and add it
                     # to the reconciler_args
