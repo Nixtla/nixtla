@@ -90,6 +90,9 @@ class HierarchicalReconciliation:
         #remove prediction intervals
         model_names = [name for name in model_names if name not in pi_model_names]
         uids = Y_hat_df.index.unique()
+        # check if Y_hat_df has the same uids as S
+        if len(S.index.difference(uids)) > 0 or len(Y_hat_df.index.difference(S.index.unique())) > 0:
+            raise Exception('Summing matrix `S` and `Y_hat_df` do not have the same time series, please check.')
         # same order of Y_hat_df to prevent errors
         S_ = S.loc[uids]
         reconciler_args = dict(
@@ -103,6 +106,9 @@ class HierarchicalReconciliation:
         if self.insample or (intervals_method in ['bootstrap', 'permbu']):
             if Y_df is None:
                 raise Exception('you need to pass `Y_df`')
+            # check if Y_hat_df has the same uids as Y_df
+            if len(Y_df.index.difference(uids)) > 0 or len(Y_hat_df.index.difference(Y_df.index.unique())) > 0:
+                raise Exception('Y_df` and `Y_hat_df` do not have the same time series, please check.')
             reconciler_args['y_insample'] = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32)
         fcsts = Y_hat_df.copy()
         for reconcile_fn in self.reconcilers:
