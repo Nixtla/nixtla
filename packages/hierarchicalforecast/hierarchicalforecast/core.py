@@ -139,7 +139,7 @@ class HierarchicalReconciliation:
                             n_samples=None
                         )
                     elif intervals_method == 'normality':
-                        reconciler_args['sampler'] = Normality(sigmah=sigmah)
+                        reconciler_args['sampler'] = Normality(S=reconciler_args['S'], sigmah=sigmah)
                 if (self.insample and has_fitted) or (intervals_method in ['bootstrap']):
                     if model_name in Y_df:
                         y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
