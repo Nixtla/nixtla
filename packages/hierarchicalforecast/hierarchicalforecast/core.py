@@ -18,9 +18,17 @@ from .probabilistic_methods import Normality, Bootstrap, PERMBU
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
+
+    # Take default parameter out of names
     args_to_remove = ['insample']
     if not func_params.get('nonnegative', False):
         args_to_remove += ['nonnegative']
+
+    if fn_name == 'MinTrace' and \
+        func_params['method']=='mint_shrink':
+        if func_params['mint_shr_ridge'] == 2e-8:
+            args_to_remove += ['mint_shr_ridge']
+
     func_params = [f'{name}-{value}' for name, value in func_params.items() if name not in args_to_remove]
     if func_params:
         fn_name += '_' + '_'.join(func_params)
@@ -58,12 +66,12 @@ class HierarchicalReconciliation:
 
         The `reconcile` method is analogous to SKLearn `fit` method, it applies different 
         reconciliation methods instantiated in the `reconcilers` list. 
-        
+
         Most reconciliation methods can be described by the following convenient 
         linear algebra notation:
 
         $$\\tilde{\mathbf{y}}_{[a,b],\\tau} = \mathbf{S}_{[a,b][b]} \mathbf{P}_{[b][a,b]} \hat{\mathbf{y}}_{[a,b],\\tau}$$
-        
+
         where $a, b$ represent the aggregate and bottom levels, $\mathbf{S}_{[a,b][b]}$ contains
         the hierarchical aggregation constraints, and $\mathbf{P}_{[b][a,b]}$ varies across 
         reconciliation methods. The reconciled predictions are $\\tilde{\mathbf{y}}_{[a,b],\\tau}$, and the 
@@ -77,7 +85,7 @@ class HierarchicalReconciliation:
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
-         
+
         **Returns:**<br>
         `y_tilde`: pd.DataFrame, with reconciled predictions.        
         """
