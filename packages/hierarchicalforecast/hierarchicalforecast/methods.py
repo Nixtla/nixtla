@@ -441,12 +441,10 @@ class MinTrace:
                 # this version follows https://robjhyndman.com/papers/MinT.pdf
                 tar = np.diag(np.diag(covm))
 
-                # Protection: constant's correlation set to 0
-                corm = cov2corr(covm)
+                # Protections: constant's correlation set to 0
+                # standardized residuals 0 where residual_std=0
+                corm, residual_std = cov2corr(covm, return_std=True)
                 corm = np.nan_to_num(corm, nan=0.0)
-
-                # Protection: standardized residuals 0 where residual_std=0
-                residual_std =  np.sqrt(np.diag(covm))
                 xs = np.divide(residuals, residual_std, 
                                out=np.zeros_like(residuals), where=residual_std!=0)
 
@@ -512,7 +510,7 @@ class MinTrace:
 
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 41
+# %% ../nbs/methods.ipynb 42
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -547,7 +545,7 @@ class OptimalCombination(MinTrace):
         self.nonnegative = nonnegative
         self.insample = False
 
-# %% ../nbs/methods.ipynb 47
+# %% ../nbs/methods.ipynb 48
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -579,7 +577,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 48
+# %% ../nbs/methods.ipynb 49
 class ERM:
     """Optimal Combination Reconciliation Class.
 
