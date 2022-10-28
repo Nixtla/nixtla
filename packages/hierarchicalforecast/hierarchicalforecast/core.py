@@ -92,6 +92,8 @@ class HierarchicalReconciliation:
         uids = Y_hat_df.index.unique()
         # check if Y_hat_df has the same uids as S
         if len(S.index.difference(uids)) > 0 or len(Y_hat_df.index.difference(S.index.unique())) > 0:
+            print(len(S.index.difference(uids)))
+            print(len(Y_hat_df.index.difference(S.index.unique())))
             raise Exception('Summing matrix `S` and `Y_hat_df` do not have the same time series, please check.')
         # same order of Y_hat_df to prevent errors
         S_ = S.loc[uids]
