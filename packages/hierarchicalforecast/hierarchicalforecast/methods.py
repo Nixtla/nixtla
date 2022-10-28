@@ -12,7 +12,6 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 from numba import njit
 from quadprog import solve_qp
-from statsmodels.stats.moment_helpers import cov2corr
 
 # %% ../nbs/methods.ipynb 5
 def _reconcile(S: np.ndarray,
@@ -336,6 +335,25 @@ def crossprod(x):
     return x.T @ x
 
 # %% ../nbs/methods.ipynb 33
+def cov2corr(cov, return_std=False):
+    """ convert covariance matrix to correlation matrix
+
+    **Parameters:**<br>
+    `cov`: array_like, 2d covariance matrix.<br>
+    `return_std`: bool=False, if True returned std.<br>
+
+    **Returns:**<br>
+    `corr`: ndarray (subclass) correlation matrix
+    """
+    cov = np.asanyarray(cov)
+    std_ = np.sqrt(np.diag(cov))
+    corr = cov / np.outer(std_, std_)
+    if return_std:
+        return corr, std_
+    else:
+        return corr
+
+# %% ../nbs/methods.ipynb 34
 class MinTrace:
     """MinTrace Reconciliation Class.
 
@@ -350,6 +368,7 @@ class MinTrace:
     **Parameters:**<br>
     `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.<br>
     `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
+    `mint_shr_ridge`: float, ridge numeric protection to MinTrace-shr covariance estimator.<br>
 
     **References:**<br>
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
@@ -361,10 +380,13 @@ class MinTrace:
     """
     def __init__(self, 
                  method: str,
-                 nonnegative: bool = False):
+                 nonnegative: bool = False,
+                 mint_shr_ridge: Optional[float] = 2e-8):
         self.method = method
         self.nonnegative = nonnegative
         self.insample = method in ['wls_var', 'mint_cov', 'mint_shrink']
+        if method == 'mint_shrink':
+            self.mint_shr_ridge = mint_shr_ridge
 
     def reconcile(self, 
                   S: np.ndarray,
@@ -398,27 +420,51 @@ class MinTrace:
         elif self.method == 'wls_struct':
             W = np.diag(S @ np.ones((n_bottom,)))
         elif self.method in res_methods:
-            #we need residuals with shape (obs, n_hiers)
+            # Residuals with shape (obs, n_hiers)
             residuals = (y_insample - y_hat_insample).T
             n, _ = residuals.shape
+
+            # Protection: against overfitted model
+            residuals_sum = np.sum(residuals, axis=0)
+            zero_residual_prc = np.abs(residuals_sum) < 1e-4
+            zero_residual_prc = np.mean(zero_residual_prc)
+            if zero_residual_prc > .98:
+                raise Exception(f'Insample residuals close to 0, zero_residual_prc={zero_residual_prc}. Check `Y_df`')
+
+            # Protection: cases where data is unavailable/nan
             masked_res = np.ma.array(residuals, mask=np.isnan(residuals))
             covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
+
             if self.method == 'wls_var':
                 W = np.diag(np.diag(covm))
             elif self.method == 'mint_cov':
                 W = covm
             elif self.method == 'mint_shrink':
+                # Schäfer and Strimmer 2005, scale invariant shrinkage
+                # lasso or ridge might improve numerical stability but
+                # this version follows https://robjhyndman.com/papers/MinT.pdf
                 tar = np.diag(np.diag(covm))
-                corm = cov2corr(covm)
-                xs = np.divide(residuals, np.sqrt(np.diag(covm)))
+
+                # Protections: constant's correlation set to 0
+                # standardized residuals 0 where residual_std=0
+                corm, residual_std = cov2corr(covm, return_std=True)
+                corm = np.nan_to_num(corm, nan=0.0)
+                xs = np.divide(residuals, residual_std, 
+                               out=np.zeros_like(residuals), where=residual_std!=0)
+
                 xs = xs[~np.isnan(xs).any(axis=1), :]
                 v = (1 / (n * (n - 1))) * (crossprod(xs ** 2) - (1 / n) * (crossprod(xs) ** 2))
                 np.fill_diagonal(v, 0)
+
+                # Protection: constant's correlation set to 0
                 corapn = cov2corr(tar)
+                corapn = np.nan_to_num(corapn, nan=0.0)
                 d = (corm - corapn) ** 2
                 lmd = v.sum() / d.sum()
                 lmd = max(min(lmd, 1), 0)
-                W = lmd * tar + (1 - lmd) * covm
+
+                # Protection: final ridge diagonal protection
+                W = (lmd * tar + (1 - lmd) * covm) + self.mint_shr_ridge
         else:
             raise ValueError(f'Unkown reconciliation method {self.method}')
 
@@ -468,7 +514,7 @@ class MinTrace:
 
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 40
+# %% ../nbs/methods.ipynb 42
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -503,7 +549,7 @@ class OptimalCombination(MinTrace):
         self.nonnegative = nonnegative
         self.insample = False
 
-# %% ../nbs/methods.ipynb 46
+# %% ../nbs/methods.ipynb 48
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -535,7 +581,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 47
+# %% ../nbs/methods.ipynb 49
 class ERM:
     """Optimal Combination Reconciliation Class.
 

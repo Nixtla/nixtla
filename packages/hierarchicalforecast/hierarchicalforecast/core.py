@@ -81,35 +81,50 @@ class HierarchicalReconciliation:
         **Returns:**<br>
         `y_tilde`: pd.DataFrame, with reconciled predictions.        
         """
+        #----------------------------- Preliminary Wrangling/Protections -----------------------------#
+        # Check input's validity
         if intervals_method not in ['normality', 'bootstrap', 'permbu']:
             raise ValueError(f'Unkwon interval method: {intervals_method}')
+
+        if self.insample or (intervals_method in ['bootstrap', 'permbu']):
+            if Y_df is None:
+                raise Exception('you need to pass `Y_df`')            
+
+        # Declare output names
         drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
         model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
-        # store pi names
         pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name)]
-        #remove prediction intervals
         model_names = [name for name in model_names if name not in pi_model_names]
+
         uids = Y_hat_df.index.unique()
-        # check if Y_hat_df has the same uids as S
-        if len(S.index.difference(uids)) > 0 or len(Y_hat_df.index.difference(S.index.unique())) > 0:
-            raise Exception('Summing matrix `S` and `Y_hat_df` do not have the same time series, please check.')
-        # same order of Y_hat_df to prevent errors
+
+        # Check Y_hat_df\S_df series difference
+        S_diff  = len(S.index.difference(uids))
+        Y_hat_diff = len(Y_hat_df.index.difference(S.index.unique()))
+        if S_diff > 0 or Y_hat_diff > 0:
+            raise Exception(f'Check `S_df`, `Y_hat_df` series difference, S\Y_hat={S_diff}, Y_hat\S={Y_hat_diff}')
+
+        if Y_df is not None:
+            # Check Y_hat_df\Y_df series difference
+            Y_diff  = len(Y_df.index.difference(uids))
+            Y_hat_diff = len(Y_hat_df.index.difference(Y_df.index.unique()))
+            if Y_diff > 0 or  Y_hat_diff > 0:
+                raise Exception(f'Check `Y_hat_df`, `Y_df` series difference, Y_hat\Y={Y_hat_diff}, Y\Y_hat={Y_diff}')
+
+        # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
         S_ = S.loc[uids]
+    
+
+        #---------------------------------------- Predictions ----------------------------------------#
+        # Initialize reconciler arguments
         reconciler_args = dict(
             S=S_.values.astype(np.float32),
             idx_bottom=S_.index.get_indexer(S.columns),
             tags={key: S_.index.get_indexer(val) for key, val in tags.items()}
         )
-        # we need insample values if 
-        # we are using a method that requires them
-        # or if we are performing boostrap
-        if self.insample or (intervals_method in ['bootstrap', 'permbu']):
-            if Y_df is None:
-                raise Exception('you need to pass `Y_df`')
-            # check if Y_hat_df has the same uids as Y_df
-            if len(Y_df.index.difference(uids)) > 0 or len(Y_hat_df.index.difference(Y_df.index.unique())) > 0:
-                raise Exception('Y_df` and `Y_hat_df` do not have the same time series, please check.')
+        if Y_df is not None:
             reconciler_args['y_insample'] = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32)
+
         fcsts = Y_hat_df.copy()
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
