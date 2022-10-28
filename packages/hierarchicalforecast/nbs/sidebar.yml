@@ -11,6 +11,7 @@ website:
         - utils.ipynb
       - section: Tutorials
         contents:
+        - examples/Introduction.ipynb
         - examples/TourismSmall.ipynb
         - examples/AustralianDomesticTourism.ipynb
         - examples/AustralianPrisonPopulation.ipynb
