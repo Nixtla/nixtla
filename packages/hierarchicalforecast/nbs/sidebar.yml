@@ -11,10 +11,13 @@ website:
         - utils.ipynb
       - section: Tutorials
         contents:
+        - examples/Introduction.ipynb
         - examples/TourismSmall.ipynb
         - examples/AustralianDomesticTourism.ipynb
         - examples/AustralianPrisonPopulation.ipynb
-        - examples/AustralianDomesticTourism-Intervals.ipynb
-        - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
-        - examples/AustralianDomesticTourism-Permbu-Intervals.ipynb
         - examples/NonNegativeReconciliation.ipynb
+        - section: Probabilistic Reconciliation
+          contents:
+          - examples/AustralianDomesticTourism-Intervals.ipynb
+          - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
+          - examples/AustralianDomesticTourism-Permbu-Intervals.ipynb

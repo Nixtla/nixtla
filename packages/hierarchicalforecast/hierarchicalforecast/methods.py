@@ -368,7 +368,7 @@ class MinTrace:
     **Parameters:**<br>
     `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.<br>
     `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
-    `mint_shr_ridge`: float, ridge numeric protection to MinTrace-shr covariance estimator.<br>
+    `mint_shr_ridge`: float=2e-8, ridge numeric protection to MinTrace-shr covariance estimator.<br>
 
     **References:**<br>
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
