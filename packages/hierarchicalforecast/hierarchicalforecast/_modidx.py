@@ -3,7 +3,7 @@
 d = { 'settings': { 'branch': 'main',
                 'doc_baseurl': '/hierarchicalforecast/',
                 'doc_host': 'https://Nixtla.github.io',
-                'git_url': 'https://github.com/Nixtla/hierarchicalforecast/tree/main/',
+                'git_url': 'https://github.com/Nixtla/hierarchicalforecast/',
                 'lib_path': 'hierarchicalforecast'},
   'syms': { 'hierarchicalforecast.core': { 'hierarchicalforecast.core.HierarchicalReconciliation': ( 'core.html#hierarchicalreconciliation',
                                                                                                      'hierarchicalforecast/core.py'),
