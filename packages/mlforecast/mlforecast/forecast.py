@@ -23,8 +23,6 @@ from .utils import backtest_splits
 
 # %% ../nbs/forecast.ipynb 6
 class Forecast:
-    """Feature engineering + model training + forecasting pipeline encapsulation."""
-
     def __init__(
         self,
         models: Models,
