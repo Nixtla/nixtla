@@ -15,4 +15,5 @@ dependencies:
   - window-ops
   - xgboost
   - pip:
+    - datasetsforecast
     - nbdev
