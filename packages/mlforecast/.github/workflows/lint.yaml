@@ -19,10 +19,7 @@ jobs:
           python-version: 3.8
 
       - name: Install linters
-        run: pip install mypy flake8
+        run: pip install mypy flake8 pylint
 
-      - name: mypy
-        run: mypy mlforecast/
-
-      - name: flake8
-        run: flake8 --select=F mlforecast/
+      - name: Lint
+        run: ./action_files/lint

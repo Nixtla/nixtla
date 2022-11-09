@@ -132,7 +132,7 @@ class LightGBMCV:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
-        weights: Sequence[float] = None,
+        weights: Optional[Sequence[float]] = None,
         metric: Union[str, Callable] = "mape",
     ):
         """Initialize internal data structures to iteratively train the boosters. Use this before calling partial_fit.
@@ -199,7 +199,7 @@ class LightGBMCV:
         self.target_col = target_col
         params = {} if params is None else params
         for _, train, valid in backtest_splits(
-            data, n_windows, window_size, freq, time_col, target_col
+            data, n_windows, window_size, freq, time_col
         ):
             ts = copy.deepcopy(self.ts)
             prep = ts.fit_transform(
@@ -351,13 +351,13 @@ class LightGBMCV:
         time_col: str,
         target_col: str,
         num_iterations: int = 100,
-        params: Dict[str, Any] = None,
+        params: Optional[Dict[str, Any]] = None,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         eval_every: int = 10,
-        weights: Sequence[float] = None,
+        weights: Optional[Sequence[float]] = None,
         metric: Union[str, Callable] = "mape",
         verbose_eval: bool = True,
         early_stopping_evals: int = 2,
@@ -588,4 +588,6 @@ class LightGBMCV:
         result : pandas DataFrame
             Predictions for each serie and timestep, with one column per window.
         """
-        return self.ts.predict(self.cv_models_, horizon)
+        return self.ts.predict(
+            self.cv_models_, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
+        )

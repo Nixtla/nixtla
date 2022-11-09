@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
-mypy mlforecast
-flake8 --select=F mlforecast
+mypy mlforecast || exit -1
+flake8 --select=F mlforecast || exit -1
+pylint mlforecast

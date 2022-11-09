@@ -154,9 +154,9 @@ def _build_transform_name(lag, tfm, *args) -> str:
 def simple_predict(
     model,
     new_x: pd.DataFrame,
-    dynamic_dfs: List[pd.DataFrame],
+    _dynamic_dfs: List[pd.DataFrame],
     features_order: List[str],
-    **kwargs,
+    **_kwargs,
 ) -> np.ndarray:
     """Drop the ds column from `new_x` and call `model.predict` on it."""
     new_x = new_x[features_order]
@@ -168,7 +168,7 @@ def merge_predict(
     new_x: pd.DataFrame,
     dynamic_dfs: List[pd.DataFrame],
     features_order: List[str],
-    **kwargs,
+    **_kwargs,
 ) -> np.ndarray:
     """Perform left join on each of `dynamic_dfs` and call model.predict."""
     idx = new_x.index.name
@@ -586,8 +586,8 @@ class TimeSeries:
                 predictions = predict_fn(
                     model,
                     new_x,
-                    dynamic_dfs=dynamic_dfs,
-                    features_order=self.features_order_,
+                    dynamic_dfs,
+                    self.features_order_,
                     **predict_fn_kwargs,
                 )
                 self._update_y(predictions)
