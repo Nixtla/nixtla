@@ -127,7 +127,9 @@ that you want to use. The features can be lags, transformations on the
 lags and date features. The lag transformations are defined as
 [numba](http://numba.pydata.org/) *jitted* functions that transform an
 array, if they have additional arguments you supply a tuple
-(`transform_func`, `arg1`, `arg2`, …).
+(`transform_func`, `arg1`, `arg2`, …). You can also define differences
+to apply to the series before fitting that will be restored when
+predicting.
 
 ``` python
 from mlforecast import Forecast
@@ -187,3 +189,9 @@ plt.close()
 ```
 
 ![](https://raw.githubusercontent.com/Nixtla/mlforecast/main/figs/index.png)
+
+## Sample notebooks
+
+- [m5](https://www.kaggle.com/code/lemuz90/m5-mlforecast-eval)
+- [m4](https://www.kaggle.com/code/lemuz90/m4-competition)
+- [m4-cv](https://www.kaggle.com/code/lemuz90/m4-competition-cv)
