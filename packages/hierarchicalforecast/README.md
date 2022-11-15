@@ -61,11 +61,8 @@ The `datasetsforecast` library allows us to download hierarhical datasets and we
 
 You can open a complete example in Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nixtla/hierarchicalforecast/blob/main/nbs/examples/TourismSmall.ipynb)
 
-Minimal Example
+Minimal Example:
 ```python
-
-#obtain hierarchical dataset
-from datasetsforecast.hierarchical import HierarchicalData
 
 # compute base forecast no coherent
 from statsforecast.core import StatsForecast
@@ -78,12 +75,13 @@ from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
 
 # Load TourismSmall dataset
 Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
+Y_df['ds'] = pd.to_datetime(Y_df['ds'])
 
 
 # Compute base level predictions 
-sf = StatsForecast(df=Y_train_df, 
-                     models=[AutoARIMA(season_length=12), Naive()], 
-                     freq='M', n_jobs=-1)
+sf = StatsForecast(df=Y_df, 
+                   models=[AutoARIMA(season_length=12), Naive()], 
+                   freq='M', n_jobs=-1)
 
 forecasts = sf.forecast(h=12)
 
@@ -101,6 +99,7 @@ reconciled_forecasts = hrec.reconcile(Y_hat_df=forecasts, S=S, tags=tags)
 ```
 
 ### Evaluation
+Assumes you have a test dataframe.
 
 ```python
 from hierarchicalforecast.core import HierarchicalEvaluation
