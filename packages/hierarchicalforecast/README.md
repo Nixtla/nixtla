@@ -2,8 +2,8 @@
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_mid.png">
-<h1 align="center">Hierarchical 👑 Forecast</h1>
-<h3 align="center">Hierarchical forecasting with statistical and econometric methods</h3>
+<h1 align="center">Hierarchical Forecast 👑</h1>
+<h3 align="center">Probabilistic hierarchical forecasting with statistical and econometric methods</h3>
     
 [![CI](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml/badge.svg)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/hierarchicalforecast)](https://pypi.org/project/hierarchicalforecast/)
@@ -12,6 +12,10 @@
     
 **HierarchicalForecast** offers a collection of reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`. And Probabilistic coherent predictions including `Normality`, `Bootstrap`, and `PERMBU`.
 </div>
+
+## 📚 Intro
+A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include categories, brands, or geographical groupings. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers differnt reconciliation methods that render coherent forecasts across hierachies. 
+Until recent, this methods were mainly avaiable in the R ecosystem. This Python-based framework aims to bridge the gap between statistical modeling and Machine Learning in the time series field.
 
 ## 🎊 Features 
 
@@ -37,46 +41,28 @@ Missing something? Please open an issue here or write us in [![Slack](https://im
 
 ## 💻 Installation
 
-### PyPI
-
-You can install `HierarchicalForecast`'s *released version* from the Python package index [pip](https://pypi.org) with:
+You can install `HierarchicalForecast`'s the Python package index [pip](https://pypi.org) with:
 
 ```python
 pip install hierarchicalforecast
 ```
 
-(Installing inside a python virtualenvironment or a conda environment is recommended.)
-
-### Conda
-
-Also you can install `HierarchicalForecast`'s *released version* from [conda](https://anaconda.org) with:
+You can also can install `HierarchicalForecast`'s from [conda](https://anaconda.org) with:
 
 ```python
 conda install -c conda-forge hierarchicalforecast
 ```
 
-(Installing inside a python virtualenvironment or a conda environment is recommended.)
-
-### Dev Mode
-
-If you want to make some modifications to the code and see the effects in real time (without reinstalling), follow the steps below:
-
-```bash
-git clone https://github.com/Nixtla/hierarchicalforecast.git
-cd hierarchicalforecast
-pip install -e .
-```
 
 ## 🧬 How to use
 
 The following example needs `statsforecast` and `datasetsforecast` as additional packages. If not installed, install it via your preferred method, e.g. `pip install statsforecast datasetsforecast`.
-The `datasetsforecast` library allows us to download hierarhical datasets and we will use `statsforecast` to compute base forecasts to be reconciled.
+The `datasetsforecast` library allows us to download hierarhical datasets and we will use `statsforecast` to compute the base forecasts to be reconciled.
 
-You can open this example in Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nixtla/hierarchicalforecast/blob/main/nbs/examples/TourismSmall.ipynb)
+You can open a complete example in Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nixtla/hierarchicalforecast/blob/main/nbs/examples/TourismSmall.ipynb)
 
+Minimal Example
 ```python
-import numpy as np
-import pandas as pd
 
 #obtain hierarchical dataset
 from datasetsforecast.hierarchical import HierarchicalData
@@ -87,25 +73,19 @@ from statsforecast.models import AutoARIMA, Naive
 
 #obtain hierarchical reconciliation methods and evaluation
 from hierarchicalforecast.core import HierarchicalReconciliation
-from hierarchicalforecast.evaluation import HierarchicalEvaluation
 from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
 
 
 # Load TourismSmall dataset
 Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
-Y_df['ds'] = pd.to_datetime(Y_df['ds'])
 
-#split train/test sets
-Y_test_df  = Y_df.groupby('unique_id').tail(12)
-Y_train_df = Y_df.drop(Y_test_df.index)
-Y_test_df  = Y_test_df.set_index('unique_id')
-Y_train_df = Y_train_df.set_index('unique_id')
 
-# Compute base auto-ARIMA predictions
-fcst = StatsForecast(df=Y_train_df, 
+# Compute base level predictions 
+sf = StatsForecast(df=Y_train_df, 
                      models=[AutoARIMA(season_length=12), Naive()], 
                      freq='M', n_jobs=-1)
-Y_hat_df = fcst.forecast(h=12)
+
+forecasts = sf.forecast(h=12)
 
 # Reconcile the base predictions
 reconcilers = [
@@ -114,14 +94,17 @@ reconcilers = [
     MiddleOut(middle_level='Country/Purpose/State',
               top_down_method='forecast_proportions')
 ]
+
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
-Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_train_df, 
-                          S=S, tags=tags)
+
+reconciled_forecasts = hrec.reconcile(Y_hat_df=forecasts, S=S, tags=tags)
 ```
 
 ### Evaluation
 
 ```python
+from hierarchicalforecast.core import HierarchicalEvaluation
+
 def mse(y, y_hat):
     return np.mean((y-y_hat)**2)
 
