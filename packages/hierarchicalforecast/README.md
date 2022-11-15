@@ -83,7 +83,7 @@ sf = StatsForecast(df=Y_df,
                    models=[AutoARIMA(season_length=12), Naive()], 
                    freq='M', n_jobs=-1)
 
-forecasts = sf.forecast(h=12)
+forecasts_df = sf.forecast(h=12)
 
 # Reconcile the base predictions
 reconcilers = [
@@ -95,7 +95,7 @@ reconcilers = [
 
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
 
-reconciled_forecasts = hrec.reconcile(Y_hat_df=forecasts, S=S, tags=tags)
+reconciled_forecasts = hrec.reconcile(Y_hat_df=forecasts_df, S=S, tags=tags)
 ```
 
 ### Evaluation
