@@ -1,23 +1,34 @@
 website:
   sidebar:
+    collapse-level: 1
     contents:
       - index.ipynb
-      - section: Reference
+      - text: "--"
+      - section: "Getting Started"
+        contents: 
+        - examples/Installation.ipynb
+        - examples/TourismSmall.ipynb
+        - examples/Introduction.ipynb
+      - section: Tutorials
+        contents:
+        - section: Point Reconciliation
+          contents:
+          - examples/AustralianDomesticTourism.ipynb
+          - examples/AustralianPrisonPopulation.ipynb
+          - examples/NonNegativeReconciliation.ipynb
+        - section: Probabilistic Reconciliation
+          contents:
+          - examples/AustralianDomesticTourism-Intervals.ipynb
+          - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
+          - examples/AustralianDomesticTourism-Permbu-Intervals.ipynb
+      - Methods
+      - section: API Reference
         contents:
         - core.ipynb
         - methods.ipynb
         - probabilistic_methods.ipynb
         - evaluation.ipynb
         - utils.ipynb
-      - section: Tutorials
+      - section: Community
         contents:
-        - examples/Introduction.ipynb
-        - examples/TourismSmall.ipynb
-        - examples/AustralianDomesticTourism.ipynb
-        - examples/AustralianPrisonPopulation.ipynb
-        - examples/NonNegativeReconciliation.ipynb
-        - section: Probabilistic Reconciliation
-          contents:
-          - examples/AustralianDomesticTourism-Intervals.ipynb
-          - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
-          - examples/AustralianDomesticTourism-Permbu-Intervals.ipynb
+          - Contributing
