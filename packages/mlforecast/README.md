@@ -39,6 +39,8 @@ The following provides a very basic overview, for a more detailed
 description see the
 [documentation](https://nixtla.github.io/mlforecast/).
 
+### Data setup
+
 Store your time series in a pandas dataframe in long format, that is,
 each row represents an observation for a specific serie and timestamp.
 
@@ -106,6 +108,8 @@ series.head()
 </table>
 </div>
 
+### Models
+
 Next define your models. If you want to use the local interface this can
 be any regressor that follows the scikit-learn API. For distributed
 training there are `LGBMForecast` and `XGBForecast`.
@@ -122,32 +126,43 @@ models = [
 ]
 ```
 
-Now instantiate a `Forecast` object with the models and the features
+### Forecast object
+
+Now instantiate a `MLForecast` object with the models and the features
 that you want to use. The features can be lags, transformations on the
 lags and date features. The lag transformations are defined as
 [numba](http://numba.pydata.org/) *jitted* functions that transform an
-array, if they have additional arguments you supply a tuple
-(`transform_func`, `arg1`, `arg2`, …). You can also define differences
-to apply to the series before fitting that will be restored when
-predicting.
+array, if they have additional arguments you can either supply a tuple
+(`transform_func`, `arg1`, `arg2`, …) or define new functions fixing the
+arguments. You can also define differences to apply to the series before
+fitting that will be restored when predicting.
 
 ``` python
-from mlforecast import Forecast
+from mlforecast import MLForecast
+from numba import njit
 from window_ops.expanding import expanding_mean
 from window_ops.rolling import rolling_mean
 
-fcst = Forecast(
+
+@njit
+def rolling_mean_28(x):
+    return rolling_mean(x, window_size=28)
+
+
+fcst = MLForecast(
     models=models,
     freq='D',
     lags=[7, 14],
     lag_transforms={
         1: [expanding_mean],
-        7: [(rolling_mean, 7)]
+        7: [rolling_mean_28]
     },
     date_features=['dayofweek'],
     differences=[1],
 )
 ```
+
+### Training
 
 To compute the features and train the models call `fit` on your
 `Forecast` object. Here you have to specify the columns that:
@@ -157,20 +172,128 @@ To compute the features and train the models call `fit` on your
 - Contain the timestamps (`time_col`). Can also be integers if your data
   doesn’t have timestamps.
 - Are the series values (`target_col`)
+- Are static (`static_features`). These are features that don’t change
+  over time and can be repeated when predicting.
 
 ``` python
 fcst.fit(series, id_col='index', time_col='ds', target_col='y', static_features=['static_0'])
 ```
 
-    Forecast(models=[LGBMRegressor, XGBRegressor, RandomForestRegressor], freq=<Day>, lag_features=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_lag-7_window_size-7'], date_features=['dayofweek'], num_threads=1)
+    MLForecast(models=[LGBMRegressor, XGBRegressor, RandomForestRegressor], freq=<Day>, lag_features=['lag-7', 'lag-14', 'expanding_mean_lag-1', 'rolling_mean_28_lag-7'], date_features=['dayofweek'], num_threads=1)
 
-To get the forecasts for the next 14 days call `predict(14)` on the
+### Predicting
+
+To get the forecasts for the next `n` days call `predict(n)` on the
 forecast object. This will automatically handle the updates required by
 the features using a recursive strategy.
 
 ``` python
 predictions = fcst.predict(14)
+predictions
 ```
+
+<div>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ds</th>
+      <th>LGBMRegressor</th>
+      <th>XGBRegressor</th>
+      <th>RandomForestRegressor</th>
+    </tr>
+    <tr>
+      <th>unique_id</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>id_00</th>
+      <td>2000-04-04</td>
+      <td>69.082830</td>
+      <td>67.761337</td>
+      <td>68.184016</td>
+    </tr>
+    <tr>
+      <th>id_00</th>
+      <td>2000-04-05</td>
+      <td>75.706024</td>
+      <td>74.588699</td>
+      <td>75.470680</td>
+    </tr>
+    <tr>
+      <th>id_00</th>
+      <td>2000-04-06</td>
+      <td>82.222473</td>
+      <td>81.058289</td>
+      <td>82.846249</td>
+    </tr>
+    <tr>
+      <th>id_00</th>
+      <td>2000-04-07</td>
+      <td>89.577638</td>
+      <td>88.735947</td>
+      <td>90.201271</td>
+    </tr>
+    <tr>
+      <th>id_00</th>
+      <td>2000-04-08</td>
+      <td>44.149095</td>
+      <td>44.981384</td>
+      <td>46.096322</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>id_19</th>
+      <td>2000-03-23</td>
+      <td>30.236012</td>
+      <td>31.949095</td>
+      <td>32.656369</td>
+    </tr>
+    <tr>
+      <th>id_19</th>
+      <td>2000-03-24</td>
+      <td>31.308269</td>
+      <td>32.765919</td>
+      <td>33.624488</td>
+    </tr>
+    <tr>
+      <th>id_19</th>
+      <td>2000-03-25</td>
+      <td>32.788550</td>
+      <td>33.628864</td>
+      <td>34.581486</td>
+    </tr>
+    <tr>
+      <th>id_19</th>
+      <td>2000-03-26</td>
+      <td>34.086976</td>
+      <td>34.508457</td>
+      <td>35.553173</td>
+    </tr>
+    <tr>
+      <th>id_19</th>
+      <td>2000-03-27</td>
+      <td>34.288968</td>
+      <td>35.411613</td>
+      <td>36.526505</td>
+    </tr>
+  </tbody>
+</table>
+<p>280 rows × 4 columns</p>
+</div>
+
+### Visualize results
 
 ``` python
 import matplotlib.pyplot as plt
