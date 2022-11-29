@@ -16,7 +16,7 @@ mlforecast
 `pip install mlforecast`
 
 If you want to perform distributed training, you can instead use
-`pip install mlforecast[distributed]`, which will also install
+`pip install "mlforecast[distributed]"`, which will also install
 [dask](https://dask.org/). Note that you’ll also need to install either
 [LightGBM](https://github.com/microsoft/LightGBM/tree/master/python-package)
 or
