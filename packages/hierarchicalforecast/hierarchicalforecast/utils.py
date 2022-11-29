@@ -12,8 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
-# from matplotlib import rcParams
-from mycolorpy import colorlist as mcp
 
 plt.rcParams['font.family'] = 'serif'
 
@@ -124,7 +122,8 @@ class HierarchicalPlot:
         df_plot = Y_df.loc[series].set_index('ds')
         cols = models if models is not None else df_plot.columns
         cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
-        cmap = mcp.gen_color('tab10', 10)[:len(cols_wo_levels)]
+        cmap = plt.cm.get_cmap("tab10", 10)
+        cmap = [cmap(i) for i in range(10)][:len(cols_wo_levels)]
         cmap_dict = dict(zip(cols_wo_levels, cmap))
         df_plot[cols_wo_levels].plot(ax=ax, linewidth=2, color=cmap)
         if level is not None:
@@ -177,7 +176,8 @@ class HierarchicalPlot:
         fig, axs = plt.subplots(len(linked_series), 1, figsize=(20, 2 * len(linked_series)))
         cols = models if models is not None else Y_df.drop(['ds'], axis=1)
         cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
-        cmap = mcp.gen_color('tab10', 10)[:len(cols_wo_levels)]
+        cmap = plt.cm.get_cmap("tab10", 10)
+        cmap = [cmap(i) for i in range(10)][:len(cols_wo_levels)]
         cmap_dict = dict(zip(cols_wo_levels, cmap))
         for idx, series in enumerate(linked_series):
             df_plot = Y_df.loc[[series]].set_index('ds')
