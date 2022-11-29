@@ -141,7 +141,7 @@ class HierarchicalPlot:
                         df_plot.index, 
                         df_plot[f'{col}-lo-{lv}'], 
                         df_plot[f'{col}-hi-{lv}'],
-                        alpha=-lv/50 + 2,
+                        alpha=-lv/100 + 1,
                         color=cmap_dict[col],
                         label=f'{col}_level_{lv}'
                     )
@@ -197,7 +197,7 @@ class HierarchicalPlot:
                             df_plot.index, 
                             df_plot[f'{col}-lo-{lv}'], 
                             df_plot[f'{col}-hi-{lv}'],
-                            alpha=-lv/50 + 2,
+                            alpha=-lv/100 + 1,
                             color=cmap_dict[col],
                             label=f'{col}_level_{lv}'
                         )
