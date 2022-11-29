@@ -7,7 +7,7 @@ dependencies:
   - numba
   - pandas
   - scikit-learn
+  - quadprog
   - pip
   - pip:
     - nbdev
-    - quadprog
