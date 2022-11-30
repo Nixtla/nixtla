@@ -8,6 +8,7 @@
 [![CI](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml/badge.svg)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/hierarchicalforecast)](https://pypi.org/project/hierarchicalforecast/)
 [![PyPi](https://img.shields.io/pypi/v/hierarchicalforecast?color=blue)](https://pypi.org/project/hierarchicalforecast/)
+[![conda-nixtla](https://img.shields.io/conda/vn/conda-forge/hierarchicalforecast?color=seagreen&label=conda)](https://anaconda.org/conda-forge/hierarchicalforecast)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE)
     
 **HierarchicalForecast** offers a collection of reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`. And Probabilistic coherent predictions including `Normality`, `Bootstrap`, and `PERMBU`.
