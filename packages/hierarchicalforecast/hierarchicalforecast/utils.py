@@ -244,7 +244,7 @@ class HierarchicalPlot:
         fig, ax = plt.subplots(figsize=(8, 5))
         
         if 'y' in Y_df.columns:
-            idx_top = S.sum(axis=1).idxmax()
+            idx_top = self.S.sum(axis=1).idxmax()
             y_plot = Y_df.loc[idx_top].y.values
             plt.plot(horizon_dates, y_plot, label='True')
 

@@ -35,6 +35,35 @@ def _build_fn_name(fn) -> str:
     return fn_name
 
 # %% ../nbs/core.ipynb 9
+def _reverse_engineer_sigmah(Y_hat_df, y_hat_model, model_name, uids):
+    """
+    This function assumes that the model creates prediction intervals
+    under a normality assumption with the following the Equation:
+    $\hat{y}_{t+h} + c \hat{sigma}_{h}$
+
+    In the future, we might deprecate this function in favor of a 
+    direct usage of an estimated $\hat{sigma}_{h}$
+    """
+    drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
+    model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
+    pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name)]
+    pi_model_name = [pi_name for pi_name in pi_model_names if model_name in pi_name]
+    pi = len(pi_model_name) > 0
+
+    if not pi:
+        raise Exception(f'Please include {model_name} prediction intervals in `Y_hat_df`')
+
+    pi_col = pi_model_name[0]
+    sign = -1 if 'lo' in pi_col else 1
+    level_col = re.findall('[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+', pi_col)
+    level_col = float(level_col[0])
+    z = norm.ppf(0.5 + level_col / 200)
+    sigmah = Y_hat_df.pivot(columns='ds', values=pi_col).loc[uids].values
+    sigmah = sign * (sigmah - y_hat_model) / z
+
+    return sigmah
+
+# %% ../nbs/core.ipynb 10
 class HierarchicalReconciliation:
     """Hierarchical Reconciliation Class.
 
@@ -138,24 +167,16 @@ class HierarchicalReconciliation:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
             has_level = 'level' in signature(reconcile_fn).parameters
+            
             for model_name in model_names:
-                # should we calculate prediction intervals?
-                pi_model_name = [pi_name for pi_name in pi_model_names if model_name in pi_name]
-                pi = len(pi_model_name) > 0
                 # Remember: pivot sorts uid
                 y_hat_model = Y_hat_df.pivot(columns='ds', values=model_name).loc[uids].values
-                if pi and has_level and level is not None and intervals_method in ['normality', 'permbu']:
-                    # we need to construct sigmah and add it
-                    # to the reconciler_args
-                    # to recover sigmah we only need 
-                    # one prediction intervals
-                    pi_col = pi_model_name[0]
-                    sign = -1 if 'lo' in pi_col else 1
-                    level_col = re.findall('[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+', pi_col)
-                    level_col = float(level_col[0])
-                    z = norm.ppf(0.5 + level_col / 200)
-                    sigmah = Y_hat_df.pivot(columns='ds', values=pi_col).loc[uids].values
-                    sigmah = sign * (sigmah - y_hat_model) / z
+
+                # Recover sigmah and add it to reconciler_args
+                if has_level and level is not None and intervals_method in ['normality', 'permbu']:
+                    sigmah = _reverse_engineer_sigmah(Y_hat_df=Y_hat_df,
+                                y_hat_model=y_hat_model, model_name=model_name, uids=uids)
+
                     reconciler_args['level'] = level
                     if intervals_method == 'permbu':
                         y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
@@ -202,7 +223,7 @@ class HierarchicalReconciliation:
                 # this will require outputs of reconcile_fn to include P, W
 
                 fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model['mean'].flatten()
-                if (pi and has_level and level is not None) or (intervals_method in ['bootstrap'] and level is not None):
+                if intervals_method in ['bootstrap', 'normality', 'permbu'] and level is not None:
                     for lv in level:
                         fcsts[f'{model_name}/{reconcile_fn_name}-lo-{lv}'] = fcsts_model[f'lo-{lv}'].flatten()
                         fcsts[f'{model_name}/{reconcile_fn_name}-hi-{lv}'] = fcsts_model[f'hi-{lv}'].flatten()
