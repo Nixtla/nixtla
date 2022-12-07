@@ -65,7 +65,15 @@ class BottomUp:
     Economic Review, 58 , 773{787)](http://www.jstor.org/stable/1815532).
     """
     insample = False
-    
+
+    def _get_PW_matrices(self, S, idx_bottom):
+        n_hiers, n_bottom = S.shape
+        P = np.zeros_like(S, dtype=np.float32)
+        P[idx_bottom] = S[idx_bottom]
+        P = P.T
+        W = np.eye(n_hiers, dtype=np.float32)
+        return P, W
+
     def reconcile(self,
                   S: np.ndarray,
                   y_hat: np.ndarray,
@@ -84,14 +92,10 @@ class BottomUp:
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Bottom Up approach.
         """
-        n_hiers, n_bottom = S.shape
-        P = np.zeros_like(S, dtype=np.float32)
-        P[idx_bottom] = S[idx_bottom]
-        P = P.T
-        W = np.eye(n_hiers, dtype=np.float32)
-        return _reconcile(S, P, W, y_hat, level=level, 
-                          sampler=sampler)
-    
+        self.P, self.W = self._get_PW_matrices(S=S, idx_bottom=idx_bottom)
+        return _reconcile(S=S, P=self.P, W=self.W, y_hat=y_hat,
+                          level=level, sampler=sampler)
+
     __call__ = reconcile
 
 # %% ../nbs/methods.ipynb 16
@@ -170,6 +174,33 @@ class TopDown:
                  method: str):
         self.method = method
         self.insample = method in ['average_proportions', 'proportion_averages']
+
+    def _get_PW_matrices(self,
+                         S: np.ndarray,
+                         y_hat: np.ndarray,
+                         tags: Dict[str, np.ndarray],
+                         y_insample: Optional[np.ndarray] = None):
+        if not is_strictly_hierarchical(S, tags):
+            raise ValueError('Top down reconciliation requires strictly hierarchical structures.')
+
+        n_hiers, n_bottom = S.shape
+        idx_top = int(S.sum(axis=1).argmax())
+        levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
+        idx_bottom = levels_[list(levels_)[-1]]
+
+        y_top = y_insample[idx_top]
+        y_btm = y_insample[idx_bottom]
+        if self.method == 'average_proportions':
+            prop = np.mean(y_btm / y_top, axis=1)
+        elif self.method == 'proportion_averages':
+            prop = np.mean(y_btm, axis=1) / np.mean(y_top)
+        else:
+            raise Exception(f'Unknown method {self.method}')
+
+        P = np.zeros_like(S, np.float64).T #float 64 if prop is too small, happens with wiki2
+        P[:, idx_top] = prop
+        W = np.eye(n_hiers, dtype=np.float32)
+        return P, W
     
     def reconcile(self, 
                   S: np.ndarray,
@@ -192,15 +223,9 @@ class TopDown:
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Top Down approach.
         """
-        if not is_strictly_hierarchical(S, tags):
-            raise ValueError('Top down reconciliation requires strictly hierarchical structures.')
-
-        n_hiers, n_bottom = S.shape
-        idx_top = int(S.sum(axis=1).argmax())
-        levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
-        idx_bottom = levels_[list(levels_)[-1]]
-
         if self.method == 'forecast_proportions':
+            idx_top = int(S.sum(axis=1).argmax())
+            levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
             if level is not None:
                 warnings.warn('Prediction intervals not implement for `forecast_proportions`')
             nodes = _get_child_nodes(S=S, tags=levels_)
@@ -212,25 +237,16 @@ class TopDown:
             reconciled = np.hstack(reconciled)
             return {'mean': reconciled}
         else:
-            y_top = y_insample[idx_top]
-            y_btm = y_insample[idx_bottom]
-            if self.method == 'average_proportions':
-                prop = np.mean(y_btm / y_top, axis=1)
-            elif self.method == 'proportion_averages':
-                prop = np.mean(y_btm, axis=1) / np.mean(y_top)
-            else:
-                raise Exception(f'Unknown method {self.method}')
-        P = np.zeros_like(S, np.float64).T #float 64 if prop is too small, happens with wiki2
-        P[:, idx_top] = prop
-        W = np.eye(n_hiers, dtype=np.float32)
-        return _reconcile(S, P, W, y_hat, level=level,
-                          sampler=sampler)
+            self.P, self.W = self._get_PW_matrices(S=S, y_hat=y_hat, 
+                                                   tags=tags, y_insample=y_insample)
+            return _reconcile(S=S, P=self.P, W=self.W, y_hat=y_hat,
+                            level=level,sampler=sampler)
     __call__ = reconcile
 
 # %% ../nbs/methods.ipynb 27
 class MiddleOut:
     """Middle Out Reconciliation Class.
-    
+
     This method is only available for **strictly hierarchical structures**. It anchors the base predictions 
     in a middle level. The levels above the base predictions use the Bottom-Up approach, while the levels 
     below use a Top-Down.
@@ -240,7 +256,7 @@ class MiddleOut:
     `top_down_method`: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.<br>
 
     **References:**<br>
-    - [Hyndman, R.J., & Athanasopoulos, G. (2021). \"Forecasting: principles and practice, 3rd edition: 
+    - [Hyndman, R.J., & Athanasopoulos, G. (2021). \"Forecasting: principles and practice, 3rd edition:
     Chapter 11: Forecasting hierarchical and grouped series.\". OTexts: Melbourne, Australia. OTexts.com/fpp3 
     Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
 
@@ -251,7 +267,10 @@ class MiddleOut:
         self.middle_level = middle_level
         self.top_down_method = top_down_method 
         self.insample = top_down_method in ['average_proportions', 'proportion_averages']
-    
+
+    def _get_PW_matrices(self):
+        raise Exception('Not implemented')
+
     def reconcile(self, 
                   S: np.ndarray,
                   y_hat: np.ndarray,
@@ -388,28 +407,12 @@ class MinTrace:
         if method == 'mint_shrink':
             self.mint_shr_ridge = mint_shr_ridge
 
-    def reconcile(self, 
+    def _get_PW_matrices(self, 
                   S: np.ndarray,
                   y_hat: np.ndarray,
                   y_insample: Optional[np.ndarray] = None,
                   y_hat_insample: Optional[np.ndarray] = None,
-                  idx_bottom: Optional[List[int]] = None,
-                  level: Optional[List[int]] = None,
-                  sampler: Optional[Callable] = None):
-        """MinTrace Reconciliation Method.
-
-        **Parameters:**<br>
-        `S`: Summing matrix of size (`base`, `bottom`).<br>
-        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
-        `y_insample`: Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
-        `y_hat_insample`: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
-        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
-
-        **Returns:**<br>
-        `y_tilde`: Reconciliated y_hat using the MinTrace approach.
-        """
+                  idx_bottom: Optional[List[int]] = None,):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ['wls_var', 'mint_cov', 'mint_shrink']
         if self.method in res_methods and y_insample is None and y_hat_insample is None:
@@ -472,8 +475,45 @@ class MinTrace:
         if any(eigenvalues < 1e-8):
             raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite.')
 
-        W_inv = np.linalg.pinv(W)
-        if self.nonnegative:
+        else:
+            # compute P for free reconciliation
+            R = S.T @ np.linalg.pinv(W)
+            P = np.linalg.pinv(R @ S) @ R
+
+        return P, W
+
+    def reconcile(self, 
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  y_insample: Optional[np.ndarray] = None,
+                  y_hat_insample: Optional[np.ndarray] = None,
+                  idx_bottom: Optional[List[int]] = None,
+                  level: Optional[List[int]] = None,
+                  sampler: Optional[Callable] = None):
+        """MinTrace Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
+        `y_hat_insample`: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the MinTrace approach.
+        """
+        self.P, self.W = self._get_PW_matrices(S=S, y_hat=y_hat, 
+                                               y_insample=y_insample, y_hat_insample=y_hat_insample,
+                                               idx_bottom=idx_bottom)        
+        if not self.nonnegative:
+            return _reconcile(S=S, P=self.P, W=self.W, y_hat=y_hat,
+                            level=level, sampler=sampler)
+
+        else:
+            _, n_bottom = S.shape
+            W_inv = np.linalg.pinv(self.W)
             if level is not None and type(sampler).__name__ in ['Bootstrap', 'PERMBU']:
                 raise Exception('nonnegative reconciliation is not compatible with bootstrap forecasts')
             if idx_bottom is None:
@@ -495,22 +535,14 @@ class MinTrace:
             # the quadratic programming problem
             # returns the forecasts of the bottom series
             bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0], 
-                                              axis=0, 
-                                              arr=y_hat)
+                                              axis=0, arr=y_hat)
             if not np.all(bottom_fcts > -1e-8):
                 raise Exception('nonnegative optimization failed')
             # remove negative values close to zero
             bottom_fcts = np.clip(np.float32(bottom_fcts), a_min=0, a_max=None)
             y_hat = S @ bottom_fcts
-            return BottomUp().reconcile(S=S, y_hat=y_hat, idx_bottom=idx_bottom, 
+            return BottomUp().reconcile(S=S, y_hat=y_hat, idx_bottom=idx_bottom,
                                         level=level, sampler=sampler)
-        else:
-            # compute P for free reconciliation
-            R = S.T @ np.linalg.pinv(W)
-            P = np.linalg.pinv(R @ S) @ R
-
-        return _reconcile(S, P, W, y_hat, level=level,
-                          sampler=sampler)
 
     __call__ = reconcile
 
@@ -612,28 +644,12 @@ class ERM:
         self.lambda_reg = lambda_reg
         self.insample = True
 
-    def reconcile(self, 
+    def _get_PW_matrices(self, 
                   S: np.ndarray,
                   y_hat: np.ndarray,
                   y_insample: np.ndarray,
                   y_hat_insample: np.ndarray,
-                  idx_bottom: np.ndarray,
-                  level: Optional[List[int]] = None,
-                  sampler: Optional[Callable] = None):
-        """ERM Reconciliation Method.
-
-        **Parameters:**<br>
-        `S`: Summing matrix of size (`base`, `bottom`).<br>
-        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
-        `y_insample`: Train values of size (`base`, `insample_size`).<br>
-        `y_hat_insample`: Insample train predictions of size (`base`, `insample_size`).<br>
-        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
-
-        **Returns:**<br>
-        `y_tilde`: Reconciliated y_hat using the ERM approach.
-        """
+                  idx_bottom: np.ndarray):
         n_hiers, n_bottom = S.shape
         # y_hat_insample shape (n_hiers, obs)
         # remove obs with nan values
@@ -670,7 +686,36 @@ class ERM:
 
         W = np.eye(n_hiers, dtype=np.float32)
 
-        return _reconcile(S, P, W, y_hat, level=level, 
-                          sampler=sampler)
+        return P, W
+
+    def reconcile(self, 
+                  S: np.ndarray,
+                  y_hat: np.ndarray,
+                  y_insample: np.ndarray,
+                  y_hat_insample: np.ndarray,
+                  idx_bottom: np.ndarray,
+                  level: Optional[List[int]] = None,
+                  sampler: Optional[Callable] = None):
+        """ERM Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `y_insample`: Train values of size (`base`, `insample_size`).<br>
+        `y_hat_insample`: Insample train predictions of size (`base`, `insample_size`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `sampler`: Sampler for prediction intevals, one of Normality(), Bootstrap(), PERMBU().<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the ERM approach.
+        """
+        self.P, self.W = self._get_PW_matrices(S=S,
+                                               y_hat=y_hat,
+                                               y_insample=y_insample,
+                                               y_hat_insample=y_hat_insample,
+                                               idx_bottom=idx_bottom)
+        return _reconcile(S=S, P=self.P, W=self.W, y_hat=y_hat,
+                          level=level, sampler=sampler)
 
     __call__ = reconcile
