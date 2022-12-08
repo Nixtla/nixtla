@@ -137,11 +137,11 @@ def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarra
 # %% ../nbs/core.ipynb 19
 def _build_transform_name(lag, tfm, *args) -> str:
     """Creates a name for a transformation based on `lag`, the name of the function and its arguments."""
-    tfm_name = f"{tfm.__name__}_lag-{lag}"
+    tfm_name = f"{tfm.__name__}_lag{lag}"
     func_params = inspect.signature(tfm).parameters
     func_args = list(func_params.items())[1:]  # remove input array argument
     changed_params = [
-        f"{name}-{value}"
+        f"{name}{value}"
         for value, (name, arg) in zip(args, func_args)
         if arg.default != value
     ]
@@ -271,7 +271,7 @@ class TimeSeries:
 
         self.transforms: Dict[str, Tuple[Any, ...]] = OrderedDict()
         for lag in self.lags:
-            self.transforms[f"lag-{lag}"] = (lag, _identity)
+            self.transforms[f"lag{lag}"] = (lag, _identity)
         for lag in self.lag_transforms.keys():
             for tfm_args in self.lag_transforms[lag]:
                 tfm, *args = _as_tuple(tfm_args)
