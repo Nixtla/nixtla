@@ -183,11 +183,12 @@ class HierarchicalReconciliation:
                         y_hat_insample = y_hat_insample.astype(np.float32)
                         reconciler_args['sampler'] = PERMBU(
                             S=reconciler_args['S'],
+                            y_hat=y_hat_model,
                             tags=reconciler_args['tags'],
                             y_insample=reconciler_args['y_insample'], 
                             y_hat_insample=y_hat_insample,
                             sigmah=sigmah,
-                            n_samples=None
+                            num_samples=None
                         )
                     elif intervals_method == 'normality':
                         reconciler_args['sampler'] = Normality(S=reconciler_args['S'], sigmah=sigmah)
@@ -200,10 +201,10 @@ class HierarchicalReconciliation:
                         if intervals_method == 'bootstrap' and has_level:
                             reconciler_args['sampler'] = Bootstrap(
                                 S=reconciler_args['S'],
+                                y_hat=y_hat_model,
                                 y_insample=reconciler_args['y_insample'],
-                                y_hat_insample=y_hat_insample, 
-                                y_hat=y_hat_model, 
-                                n_samples=1_000
+                                y_hat_insample=y_hat_insample,
+                                num_samples=1_000
                             )
                             reconciler_args['level'] = level
                     else:

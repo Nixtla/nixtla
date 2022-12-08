@@ -33,19 +33,12 @@ def _reconcile(S: np.ndarray,
     # I suggest to do it in `core.HierarchicalForecast.reconcile`
     # after this call `fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)`
 
+    sampler_name = type(sampler).__name__
     if level is not None and \
         sampler_name in ['Normality', 'Bootstrap', 'PERMBU']:
-
-        if sampler_name == 'Normality':
-            res = sampler.get_prediction_levels(P=P, W=W,
-                                                res=res, level=level)
-
-        if sampler_name == 'Bootstrap':
-            res = sampler.get_prediction_levels(P=P,
-                                                res=res, level=level)
-
-        if sampler_name == 'PERMBU':
-            res = sampler.get_prediction_levels(res=res, level=level)
+        sampler.P = P
+        sampler.W = W
+        res = sampler.get_prediction_levels(res=res, level=level)
 
     return res
 

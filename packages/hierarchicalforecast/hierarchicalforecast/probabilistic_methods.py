@@ -40,19 +40,23 @@ class Normality:
     """
     def __init__(self,
                  S: np.ndarray,
-                 sigmah: np.ndarray):
+                 sigmah: np.ndarray,
+                 P: np.ndarray=None,
+                 W: np.ndarray=None):
         self.S = S
+        self.P = P
+        self.W = W
         self.sigmah = sigmah
 
-    def get_prediction_levels(self, res, level, P, W):
+    def get_prediction_levels(self, res, level):
         """ Adds reconciled forecast levels to results dictionary """
 
         # Errors normality implies independence/diagonal covariance
-        R1 = cov2corr(W)
+        R1 = cov2corr(self.W)
         W_h = [np.diag(sigma) @ R1 @ np.diag(sigma).T for sigma in self.sigmah.T]
 
         # Reconciled covariances across forecast horizon
-        SP = self.S @ P
+        SP = self.S @ self.P
         sigmah_rec = np.hstack([np.sqrt(np.diag(SP @ W @ SP.T))[:, None] for W in W_h])
 
         res['sigmah'] = sigmah_rec
@@ -86,7 +90,7 @@ class Bootstrap:
     `y_insample`: Insample values of size (`base`, `insample_size`).<br>
     `y_hat_insample`: Insample values of size (`base`, `insample_size`).<br>
     `y_hat`: Point forecasts values of size (`base`, `horizon`).<br>
-    `n_samples`: int, number of bootstraped samples generated.<br>
+    `num_samples`: int, number of bootstraped samples generated.<br>
     `seed`: int, random seed for numpy generator's replicability.<br>
 
     **References:**<br>
@@ -100,13 +104,17 @@ class Bootstrap:
                  y_insample: np.ndarray,
                  y_hat_insample: np.ndarray,
                  y_hat: np.ndarray,
-                 n_samples: int,
-                 seed: int = 0):
+                 num_samples: int,
+                 seed: int = 0,
+                 P: np.ndarray = None,
+                 W: np.ndarray = None):
         self.S = S
+        self.P = P
+        self.W = W
+        self.y_hat = y_hat
         self.y_insample = y_insample
         self.y_hat_insample = y_hat_insample
-        self.y_hat = y_hat
-        self.n_samples = n_samples
+        self.num_samples = num_samples
         self.seed = seed
 
     def get_samples(self):
@@ -117,18 +125,16 @@ class Bootstrap:
         residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
         sample_idx = np.arange(residuals.shape[1] - h)
         state = np.random.RandomState(self.seed)
-        samples_idx = state.choice(sample_idx, size=self.n_samples)
+        samples_idx = state.choice(sample_idx, size=self.num_samples)
         samples = [self.y_hat + residuals[:, idx:(idx + h)] for idx in samples_idx]
-        return np.stack(samples)
-
-    def get_prediction_levels(self, res, level, P):
-        """ Adds reconciled forecast levels to results dictionary """
-        SP = self.S @ P
-        samples = self.get_samples()
+        SP = self.S @ self.P
         samples = np.apply_along_axis(lambda path: np.matmul(SP, path),
                                       axis=1, arr=samples)
-        
-        res = {'mean': samples.mean(axis=0)}
+        return np.stack(samples)
+
+    def get_prediction_levels(self, res, level):
+        """ Adds reconciled forecast levels to results dictionary """
+        samples = self.get_samples()
         for lv in level:
             min_q = (100 - lv) / 200
             max_q = min_q + lv / 100
@@ -161,7 +167,7 @@ class PERMBU:
     `y_insample`: Insample values of size (`base`, `insample_size`).<br>
     `y_hat_insample`: Insample values of size (`base`, `insample_size`).<br>
     `sigmah`: np.array, forecast standard dev. of size (`base`, `horizon`).<br>
-    `n_samples`: int, number of normal prediction samples generated.<br>
+    `num_samples`: int, number of normal prediction samples generated.<br>
     `seed`: int, random seed for numpy generator's replicability.<br>
 
     **References:**<br>
@@ -172,19 +178,23 @@ class PERMBU:
     def __init__(self,
                  S: np.ndarray,
                  tags: Dict[str, np.ndarray],
+                 y_hat: np.ndarray,
                  y_insample: np.ndarray,
                  y_hat_insample: np.ndarray,
                  sigmah: np.ndarray,
-                 n_samples: int=None,
-                 seed: int=0):
+                 num_samples: int=None,
+                 seed: int=0,
+                 P: np.ndarray = None):
         # PERMBU only works for strictly hierarchical structures
         if not is_strictly_hierarchical(S, tags):
             raise ValueError('PERMBU probabilistic reconciliation requires strictly hierarchical structures.')
         self.S = S
+        self.P = P
+        self.y_hat = y_hat
         self.y_insample = y_insample
         self.y_hat_insample = y_hat_insample
         self.sigmah = sigmah
-        self.n_samples = n_samples
+        self.num_samples = num_samples
         self.seed = seed
 
     def _obtain_ranks(self, array):
@@ -203,8 +213,8 @@ class PERMBU:
         temp = array.argsort(axis=1)
         ranks = np.empty_like(temp)
         a_range = np.arange(temp.shape[1])
-        for iRow in range(temp.shape[0]):
-            ranks[iRow, temp[iRow,:]] = a_range
+        for i_row in range(temp.shape[0]):
+            ranks[i_row, temp[i_row,:]] = a_range
         return ranks
 
     def _permutate_samples(self, samples, permutations):
@@ -232,35 +242,35 @@ class PERMBU:
         permutated_samples = permutated_samples.reshape(n_rows, n_cols)
         return permutated_samples
     
-    def _permutate_predictions(self, prediction_samples, permutations):
+    def _permutate_predictions(self, predictionum_samples, permutations):
         """ Permutate Prediction Samples
 
-        Applies permutations to prediction_samples across the horizon.
+        Applies permutations to predictionum_samples across the horizon.
 
         **Parameters**<br>
-        `prediction_samples`: np.array [series,horizon,samples], independent 
+        `predictionum_samples`: np.array [series,horizon,samples], independent 
                   base prediction samples.<br>
         `permutations`: np.array [series, samples], permutation ranks with which
                   `samples` dependence will be restored see `_obtain_ranks`.
                   it can also apply a random permutation.<br>
 
         **Returns**<br>
-        `permutated_prediction_samples`: np.array.<br>
+        `permutated_predictionum_samples`: np.array.<br>
         """
         # Apply permutation throughout forecast horizon
-        permutated_prediction_samples = prediction_samples.copy()
-        
-        _, n_horizon, _ = prediction_samples.shape
+        permutated_predictionum_samples = predictionum_samples.copy()
+
+        _, n_horizon, _ = predictionum_samples.shape
         for t in range(n_horizon):
-            permutated_prediction_samples[:,t,:] = \
-                              self._permutate_samples(prediction_samples[:,t,:],
+            permutated_predictionum_samples[:,t,:] = \
+                              self._permutate_samples(predictionum_samples[:,t,:],
                                                       permutations)
-        return permutated_prediction_samples
+        return permutated_predictionum_samples
 
     def _nonzero_indexes_by_row(self, M):
         return [np.nonzero(M[row,:])[0] for row in range(len(M))]
 
-    def get_samples(self, y_hat: np.ndarray):
+    def get_samples(self):
         """PERMBU Sample Reconciliation Method.
 
         Applies PERMBU reconciliation method as defined by Taieb et. al 2017.
@@ -280,20 +290,20 @@ class PERMBU:
         #removing nas from residuals
         residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
         rank_permutations = self._obtain_ranks(residuals)
-        
+
         # Sample h step-ahead base marginal distributions
-        if self.n_samples is None:
-            n_samples = residuals.shape[1]
+        if self.num_samples is None:
+            num_samples = residuals.shape[1]
         else:
-            n_samples = self.n_samples
+            num_samples = self.num_samples
         state = np.random.RandomState(self.seed)
-        n_series, n_horizon = y_hat.shape
+        n_series, n_horizon = self.y_hat.shape
 
         base_samples = np.array([
-            state.normal(loc=m, scale=s, size=n_samples) for m, s in \
-            zip(y_hat.flatten(), self.sigmah.flatten())
+            state.normal(loc=m, scale=s, size=num_samples) for m, s in \
+            zip(self.y_hat.flatten(), self.sigmah.flatten())
         ])
-        base_samples = base_samples.reshape(n_series, n_horizon, n_samples)
+        base_samples = base_samples.reshape(n_series, n_horizon, num_samples)
 
         # Initialize PERMBU utility
         rec_samples = base_samples.copy()
@@ -311,23 +321,23 @@ class PERMBU:
             Agg = encoder.fit_transform(children_links).T
             Agg = Agg[:len(parent_idxs),:]
 
-            # Permute children_samples for each prediction step
+            # Permute childrenum_samples for each prediction step
             children_permutations = rank_permutations[children_idxs, :]
-            children_samples = rec_samples[children_idxs,:,:]
-            children_samples = self._permutate_predictions(
-                prediction_samples=children_samples,
+            childrenum_samples = rec_samples[children_idxs,:,:]
+            childrenum_samples = self._permutate_predictions(
+                predictionum_samples=childrenum_samples,
                 permutations=children_permutations
             )
 
             # Overwrite hier_samples with BottomUp aggregation
             # and randomly shuffle parent predictions after aggregation
-            parent_samples = np.einsum('ab,bhs->ahs', Agg, children_samples)
+            parent_samples = np.einsum('ab,bhs->ahs', Agg, childrenum_samples)
             random_permutation = np.array([
-                np.random.permutation(np.arange(n_samples)) \
+                np.random.permutation(np.arange(num_samples)) \
                 for serie in range(len(parent_samples))
             ])
             parent_samples = self._permutate_predictions(
-                prediction_samples=parent_samples,
+                predictionum_samples=parent_samples,
                 permutations=random_permutation
             )
 
@@ -337,11 +347,9 @@ class PERMBU:
 
     def get_prediction_levels(self, res, level):
         """ Adds reconciled forecast levels to results dictionary """
-        samples = self.get_samples(y_hat=res['mean'])
-
-        res = {'mean': samples.mean(axis=0)}
+        samples = self.get_samples()
         for lv in level:
-            min_q = (100 - lv) / 200 
+            min_q = (100 - lv) / 200
             max_q = min_q + lv / 100
             res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=0)
             res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=0)
