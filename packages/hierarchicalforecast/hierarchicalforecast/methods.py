@@ -91,7 +91,7 @@ class BottomUp:
 
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 16
+# %% ../nbs/methods.ipynb 13
 def is_strictly_hierarchical(S: np.ndarray, 
                              tags: Dict[str, np.ndarray]):
     # main idea:
@@ -109,7 +109,7 @@ def is_strictly_hierarchical(S: np.ndarray,
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/methods.ipynb 18
+# %% ../nbs/methods.ipynb 15
 def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
     level_names = list(tags.keys())
     nodes = OrderedDict()
@@ -125,9 +125,9 @@ def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
             idx_node, = np.where(idx_node.sum(axis=1) > 0)
             nodes_level[idx_parent_node] = [idx for idx in idx_child if idx in idx_node]
         nodes[level] = nodes_level
-    return nodes        
+    return nodes
 
-# %% ../nbs/methods.ipynb 20
+# %% ../nbs/methods.ipynb 17
 def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                                 tags: Dict[str, np.ndarray],
                                 nodes: Dict[str, Dict[int, np.ndarray]],
@@ -144,7 +144,7 @@ def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                 reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
     return reconciled
 
-# %% ../nbs/methods.ipynb 21
+# %% ../nbs/methods.ipynb 18
 class TopDown:
     """Top Down Reconciliation Class.
 
@@ -236,7 +236,7 @@ class TopDown:
                             level=level,sampler=sampler)
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 27
+# %% ../nbs/methods.ipynb 23
 class MiddleOut:
     """Middle Out Reconciliation Class.
 
@@ -342,11 +342,11 @@ class MiddleOut:
         return {'mean': reconciled}
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 32
+# %% ../nbs/methods.ipynb 28
 def crossprod(x):
     return x.T @ x
 
-# %% ../nbs/methods.ipynb 33
+# %% ../nbs/methods.ipynb 29
 def cov2corr(cov, return_std=False):
     """ convert covariance matrix to correlation matrix
 
@@ -365,7 +365,7 @@ def cov2corr(cov, return_std=False):
     else:
         return corr
 
-# %% ../nbs/methods.ipynb 34
+# %% ../nbs/methods.ipynb 30
 class MinTrace:
     """MinTrace Reconciliation Class.
 
@@ -539,7 +539,7 @@ class MinTrace:
 
     __call__ = reconcile
 
-# %% ../nbs/methods.ipynb 42
+# %% ../nbs/methods.ipynb 38
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -574,7 +574,7 @@ class OptimalCombination(MinTrace):
         self.nonnegative = nonnegative
         self.insample = False
 
-# %% ../nbs/methods.ipynb 48
+# %% ../nbs/methods.ipynb 44
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -606,7 +606,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 49
+# %% ../nbs/methods.ipynb 45
 class ERM:
     """Optimal Combination Reconciliation Class.
 
