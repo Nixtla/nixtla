@@ -10,8 +10,7 @@ import numpy as np
 from scipy.stats import norm
 from sklearn.preprocessing import OneHotEncoder
 
-
-from .methods import is_strictly_hierarchical, cov2corr
+from .utils import is_strictly_hierarchical, cov2corr
 
 # %% ../nbs/probabilistic_methods.ipynb 6
 class Normality:

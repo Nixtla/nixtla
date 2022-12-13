@@ -16,6 +16,43 @@ from sklearn.preprocessing import OneHotEncoder
 plt.rcParams['font.family'] = 'serif'
 
 # %% ../nbs/utils.ipynb 4
+def is_strictly_hierarchical(S: np.ndarray, 
+                             tags: Dict[str, np.ndarray]):
+    # main idea:
+    # if S represents a strictly hierarchical structure
+    # the number of paths before the bottom level
+    # should be equal to the number of nodes
+    # of the previuos level
+    levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
+    # removing bottom level
+    levels_.popitem()
+    # making S categorical
+    hiers = [np.argmax(S[idx], axis=0) + 1 for _, idx in levels_.items()]
+    hiers = np.vstack(hiers)
+    paths = np.unique(hiers, axis=1).shape[1] 
+    nodes = levels_.popitem()[1].size
+    return paths == nodes
+
+# %% ../nbs/utils.ipynb 5
+def cov2corr(cov, return_std=False):
+    """ convert covariance matrix to correlation matrix
+
+    **Parameters:**<br>
+    `cov`: array_like, 2d covariance matrix.<br>
+    `return_std`: bool=False, if True returned std.<br>
+
+    **Returns:**<br>
+    `corr`: ndarray (subclass) correlation matrix
+    """
+    cov = np.asanyarray(cov)
+    std_ = np.sqrt(np.diag(cov))
+    corr = cov / np.outer(std_, std_)
+    if return_std:
+        return corr, std_
+    else:
+        return corr
+
+# %% ../nbs/utils.ipynb 7
 def _to_summing_matrix(S_df: pd.DataFrame):
     """Transforms the DataFrame `df` of hierarchies to a summing matrix S."""
     categories = [S_df[col].unique() for col in S_df.columns]
@@ -28,7 +65,7 @@ def _to_summing_matrix(S_df: pd.DataFrame):
     tags = dict(zip(S_df.columns, categories))
     return S, tags
 
-# %% ../nbs/utils.ipynb 6
+# %% ../nbs/utils.ipynb 8
 def aggregate(df: pd.DataFrame,
               spec: List[List[str]],
               agg_fn: Callable = np.sum):
@@ -70,7 +107,7 @@ def aggregate(df: pd.DataFrame,
     S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
     return Y_df, S, tags
 
-# %% ../nbs/utils.ipynb 10
+# %% ../nbs/utils.ipynb 12
 class HierarchicalPlot:
     """ Hierarchical Plot
 
