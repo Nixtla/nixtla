@@ -32,6 +32,7 @@ MANIFEST
 .gitconfig
 .DS_Store
 quarto-macos.pkg
+action_files/test_models/data/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
