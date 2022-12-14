@@ -172,10 +172,10 @@ class MLForecast:
         series_df = self.preprocess(
             data, id_col, time_col, target_col, static_features, dropna, keep_last_n
         )
-        X, y = (
-            series_df.drop(columns=[time_col, target_col]),
-            series_df[target_col].values,
-        )
+        cols_to_drop = [time_col, target_col]
+        if id_col != "index" and id_col not in self.ts.static_features:
+            cols_to_drop.append(id_col)
+        X, y = series_df.drop(columns=cols_to_drop), series_df[target_col].values
         del series_df
         return self.fit_models(X, y)
 

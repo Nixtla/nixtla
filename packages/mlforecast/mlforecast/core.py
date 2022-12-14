@@ -58,50 +58,6 @@ def _append_new(data, indptr, new):
     return new_data, new_indptr
 
 # %% ../nbs/core.ipynb 11
-class GroupedArray:
-    """Array made up of different groups. Can be thought of (and iterated) as a list of arrays.
-
-    All the data is stored in a single 1d array `data`.
-    The indices for the group boundaries are stored in another 1d array `indptr`."""
-
-    def __init__(self, data: np.ndarray, indptr: np.ndarray):
-        self.data = data
-        self.indptr = indptr
-        self.ngroups = len(indptr) - 1
-
-    def __len__(self) -> int:
-        return self.ngroups
-
-    def __getitem__(self, idx: int) -> np.ndarray:
-        return self.data[self.indptr[idx] : self.indptr[idx + 1]]
-
-    def __setitem__(self, idx: int, vals: np.ndarray):
-        if self[idx].size != vals.size:
-            raise ValueError(f"vals must be of size {self[idx].size}")
-        self[idx][:] = vals
-
-    def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
-        """Takes `idx` from each group in the array."""
-        ranges = [
-            range(self.indptr[i], self.indptr[i + 1])[idx] for i in range(self.ngroups)
-        ]
-        items = [self.data[rng] for rng in ranges]
-        sizes = np.array([item.size for item in items])
-        data = np.hstack(items)
-        indptr = np.append(0, sizes.cumsum())
-        return GroupedArray(data, indptr)
-
-    def append(self, new: np.ndarray) -> "GroupedArray":
-        """Appends each element of `new` to each existing group. Returns a copy."""
-        if new.size != self.ngroups:
-            raise ValueError(f"new must be of size {self.ngroups}")
-        new_data, new_indptr = _append_new(self.data, self.indptr, new)
-        return GroupedArray(new_data, new_indptr)
-
-    def __repr__(self) -> str:
-        return f"GroupedArray(ndata={self.data.size}, ngroups={self.ngroups})"
-
-# %% ../nbs/core.ipynb 18
 @njit
 def _identity(x: np.ndarray) -> np.ndarray:
     """Do nothing to the input."""
@@ -133,6 +89,104 @@ def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarra
             lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
             out[indptr[i] : indptr[i + 1]] = func(lagged, *args)
     return out
+
+
+@njit
+def _diff(x, lag):
+    y = x.copy()
+    for i in range(lag):
+        y[i] = np.nan
+    for i in range(lag, x.size):
+        y[i] = x[i] - x[i - lag]
+    return y
+
+
+@njit
+def _apply_difference(data, indptr, new_data, new_indptr, d):
+    n_series = len(indptr) - 1
+    for i in range(n_series):
+        new_data[new_indptr[i] : new_indptr[i + 1]] = data[
+            indptr[i + 1] - d : indptr[i + 1]
+        ]
+        sl = slice(indptr[i], indptr[i + 1])
+        data[sl] = _diff(data[sl], d)
+
+
+@njit
+def _restore_difference(preds, data, indptr, d):
+    n_series = len(indptr) - 1
+    h = len(preds) // n_series
+    for i in range(n_series):
+        s = data[indptr[i] : indptr[i + 1]]
+        for j in range(min(h, d)):
+            preds[i * h + j] += s[j]
+        for j in range(d, h):
+            preds[i * h + j] += preds[i * h + j - d]
+
+# %% ../nbs/core.ipynb 12
+class GroupedArray:
+    """Array made up of different groups. Can be thought of (and iterated) as a list of arrays.
+
+    All the data is stored in a single 1d array `data`.
+    The indices for the group boundaries are stored in another 1d array `indptr`."""
+
+    def __init__(self, data: np.ndarray, indptr: np.ndarray):
+        self.data = data
+        self.indptr = indptr
+        self.ngroups = len(indptr) - 1
+
+    def __len__(self) -> int:
+        return self.ngroups
+
+    def __getitem__(self, idx: int) -> np.ndarray:
+        return self.data[self.indptr[idx] : self.indptr[idx + 1]]
+
+    def __setitem__(self, idx: int, vals: np.ndarray):
+        if self[idx].size != vals.size:
+            raise ValueError(f"vals must be of size {self[idx].size}")
+        self[idx][:] = vals
+
+    @classmethod
+    def from_sorted_df(cls, df: pd.DataFrame, target_col: str) -> "GroupedArray":
+        grouped = df.groupby(level=0, observed=True)
+        sizes = grouped.size().values
+        indptr = np.append(0, sizes.cumsum())
+        data = df[target_col].values
+        if data.dtype not in (np.float32, np.float64):
+            # since all transformations generate nulls, we need a float dtype
+            data = data.astype(np.float32)
+        return cls(data, indptr)
+
+    def transform_series(
+        self, updates_only: bool, lag: int, func: Callable, *args
+    ) -> np.ndarray:
+        return _transform_series(self.data, self.indptr, updates_only, lag, func, *args)
+
+    def restore_difference(self, preds: np.ndarray, d: int):
+        _restore_difference(preds, self.data, self.indptr, d)
+
+    def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
+        """Takes `idx` from each group in the array."""
+        ranges = [
+            range(self.indptr[i], self.indptr[i + 1])[idx] for i in range(self.ngroups)
+        ]
+        items = [self.data[rng] for rng in ranges]
+        sizes = np.array([item.size for item in items])
+        data = np.hstack(items)
+        indptr = np.append(0, sizes.cumsum())
+        return GroupedArray(data, indptr)
+
+    def append(self, new: np.ndarray) -> "GroupedArray":
+        """Appends each element of `new` to each existing group. Returns a copy."""
+        if new.size != self.ngroups:
+            raise ValueError(f"new must be of size {self.ngroups}")
+        new_data, new_indptr = _append_new(self.data, self.indptr, new)
+        return GroupedArray(new_data, new_indptr)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(ndata={self.data.size}, ngroups={self.ngroups})"
+        )
 
 # %% ../nbs/core.ipynb 19
 def _build_transform_name(lag, tfm, *args) -> str:
@@ -195,39 +249,6 @@ def _name_models(current_names):
     return names
 
 # %% ../nbs/core.ipynb 24
-@njit
-def _diff(x, lag):
-    y = x.copy()
-    for i in range(lag):
-        y[i] = np.nan
-    for i in range(lag, x.size):
-        y[i] = x[i] - x[i - lag]
-    return y
-
-
-@njit
-def _apply_difference(data, indptr, new_data, new_indptr, d):
-    n_series = len(indptr) - 1
-    for i in range(n_series):
-        new_data[new_indptr[i] : new_indptr[i + 1]] = data[
-            indptr[i + 1] - d : indptr[i + 1]
-        ]
-        sl = slice(indptr[i], indptr[i + 1])
-        data[sl] = _diff(data[sl], d)
-
-
-@njit
-def _restore_difference(preds, data, indptr, d):
-    n_series = len(indptr) - 1
-    h = len(preds) // n_series
-    for i in range(n_series):
-        s = data[indptr[i] : indptr[i + 1]]
-        for j in range(min(h, d)):
-            preds[i * h + j] += s[j]
-        for j in range(d, h):
-            preds[i * h + j] += preds[i * h + j - d]
-
-# %% ../nbs/core.ipynb 25
 Freq = Union[int, str]
 Lags = Iterable[int]
 LagTransform = Union[Callable, Tuple[Callable, Any]]
@@ -236,7 +257,7 @@ DateFeature = Union[str, Callable]
 Differences = Iterable[int]
 Models = Union[BaseEstimator, List[BaseEstimator]]
 
-# %% ../nbs/core.ipynb 26
+# %% ../nbs/core.ipynb 25
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
@@ -297,21 +318,12 @@ class TimeSeries:
             f"num_threads={self.num_threads})"
         )
 
-    def _data_indptr_from_sorted_df(
-        self, df: pd.DataFrame
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        grouped = df.groupby(level=0, observed=True)
-        sizes = grouped.size().values
-        indptr = np.append(0, sizes.cumsum())
-        data = df[self.target_col].values
-        return data, indptr
-
     def _fit(
         self,
         df: pd.DataFrame,
-        id_col: str = "index",
-        time_col: str = "ds",
-        target_col: str = "y",
+        id_col: str,
+        time_col: str,
+        target_col: str,
         static_features: Optional[List[str]] = None,
         keep_last_n: Optional[int] = None,
     ) -> "TimeSeries":
@@ -330,9 +342,13 @@ class TimeSeries:
         self.id_col = id_col
         self.target_col = target_col
         self.time_col = time_col
+        if id_col != "index":
+            df = df.set_index(id_col)
         if static_features is None:
             static_features = df.columns.drop([time_col, target_col])
-        self.static_features = df[static_features].groupby(level=0).head(1)
+        self.static_features = (
+            df[static_features].groupby(level=0, observed=True).head(1)
+        )
         sort_idxs = pd.core.sorting.lexsort_indexer([df.index, df[time_col]])
         sorted_df = (
             df[[time_col, target_col]].set_index(time_col, append=True).iloc[sort_idxs]
@@ -340,13 +356,9 @@ class TimeSeries:
         self.restore_idxs = np.empty(df.shape[0], dtype=np.int32)
         self.restore_idxs[sort_idxs] = np.arange(df.shape[0])
         self.uids = sorted_df.index.unique(level=0)
-        data, indptr = self._data_indptr_from_sorted_df(sorted_df)
-        if data.dtype not in (np.float32, np.float64):
-            # since all transformations generate nulls, we need a float dtype
-            data = data.astype(np.float32)
-        self.ga = GroupedArray(data, indptr)
+        self.ga = GroupedArray.from_sorted_df(sorted_df, target_col)
         if self.differences:
-            original_sizes = indptr[1:].cumsum()
+            original_sizes = self.ga.indptr[1:].cumsum()
             total_diffs = sum(self.differences)
             small_series = self.uids[original_sizes < total_diffs]
             if small_series.size:
@@ -355,9 +367,9 @@ class TimeSeries:
                     f"The following series are too short for the differences: {msg}"
                 )
             self.original_values_ = []
-            n_series = len(indptr) - 1
+            n_series = len(self.ga.indptr) - 1
             for d in self.differences:
-                new_data = np.empty_like(data, shape=n_series * d)
+                new_data = np.empty_like(self.ga.data, shape=n_series * d)
                 new_indptr = d * np.arange(n_series + 1, dtype=np.int32)
                 _apply_difference(self.ga.data, self.ga.indptr, new_data, new_indptr, d)
                 self.original_values_.append(GroupedArray(new_data, new_indptr))
@@ -366,7 +378,7 @@ class TimeSeries:
             self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
         self._ga = GroupedArray(self.ga.data, self.ga.indptr)
         self.last_dates = sorted_df.index.get_level_values(self.time_col)[
-            indptr[1:] - 1
+            self.ga.indptr[1:] - 1
         ]
         self.features_order_ = (
             df.columns.drop([self.time_col, self.target_col]).tolist() + self.features
@@ -381,8 +393,8 @@ class TimeSeries:
         results = {}
         offset = 1 if updates_only else 0
         for tfm_name, (lag, tfm, *args) in self.transforms.items():
-            results[tfm_name] = _transform_series(
-                self.ga.data, self.ga.indptr, updates_only, lag - offset, tfm, *args
+            results[tfm_name] = self.ga.transform_series(
+                updates_only, lag - offset, tfm, *args
             )
         return results
 
@@ -399,9 +411,7 @@ class TimeSeries:
         with concurrent.futures.ThreadPoolExecutor(self.num_threads) as executor:
             for tfm_name, (lag, tfm, *args) in self.transforms.items():
                 future = executor.submit(
-                    _transform_series,
-                    self.ga.data,
-                    self.ga.indptr,
+                    self.ga.transform_series,
                     updates_only,
                     lag - offset,
                     tfm,
@@ -465,9 +475,9 @@ class TimeSeries:
     def fit_transform(
         self,
         data: pd.DataFrame,
-        id_col: str = "index",
-        time_col: str = "ds",
-        target_col: str = "y",
+        id_col: str,
+        time_col: str,
+        target_col: str,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
@@ -485,8 +495,6 @@ class TimeSeries:
                 raise ValueError(f"Data doesn't contain {col} column")
         if data[target_col].isnull().any():
             raise ValueError(f"{target_col} column contains null values.")
-        if id_col != "index":
-            data = data.set_index(id_col)
         self._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
         return self._transform(data, dropna)
 
@@ -532,7 +540,7 @@ class TimeSeries:
         if not self.differences:
             return preds
         for d, ga in zip(reversed(self.differences), reversed(self.original_values_)):
-            _restore_difference(preds, ga.data, ga.indptr, d)
+            ga.restore_difference(preds, d)
         return preds
 
     def _get_predictions(self) -> pd.DataFrame:

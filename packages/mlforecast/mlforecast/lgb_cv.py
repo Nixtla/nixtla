@@ -22,7 +22,7 @@ from mlforecast.core import (
     Lags,
     TimeSeries,
 )
-from .forecast import Forecast
+from .forecast import MLForecast
 from .utils import backtest_splits
 
 # %% ../nbs/lgb_cv.ipynb 5
@@ -300,7 +300,7 @@ class LightGBMCV:
                 features_order : list of str
                     Column names in the order in which they were used to train the model.
                 **kwargs
-                    Other keyword arguments passed to `Forecast.predict`.
+                    Other keyword arguments passed to `MLForecast.predict`.
         **predict_fn_kwargs
             Additional arguments passed to predict_fn
 
@@ -424,7 +424,7 @@ class LightGBMCV:
                 features_order : list of str
                     Column names in the order in which they were used to train the model.
                 **kwargs
-                    Other keyword arguments passed to `Forecast.predict`.
+                    Other keyword arguments passed to `MLForecast.predict`.
         **predict_fn_kwargs
             Additional arguments passed to predict_fn
 
@@ -487,10 +487,11 @@ class LightGBMCV:
                 )
 
         if fit_on_all:
-            self.fcst = Forecast([])
-            self.fcst.ts = self.ts
             params = params if params is not None else {}
-            self.fcst.models = [lgb.LGBMRegressor(**{**params, "n_estimators": rounds})]
+            self.fcst = MLForecast(
+                [lgb.LGBMRegressor(**{**params, "n_estimators": rounds})]
+            )
+            self.fcst.ts = self.ts
             self.fcst.fit(
                 data,
                 id_col,
@@ -501,10 +502,8 @@ class LightGBMCV:
                 keep_last_n,
             )
         else:
-            if id_col != "index":
-                data = data.set_index(id_col)
             self.ts._fit(
-                data, "index", time_col, target_col, static_features, keep_last_n
+                data, id_col, time_col, target_col, static_features, keep_last_n
             )
         return hist
 
@@ -536,7 +535,7 @@ class LightGBMCV:
                 features_order : list of str
                     Column names in the order in which they were used to train the model.
                 **kwargs
-                    Other keyword arguments passed to `Forecast.predict`.
+                    Other keyword arguments passed to `MLForecast.predict`.
         **predict_fn_kwargs
             Additional arguments passed to predict_fn
 
@@ -579,7 +578,7 @@ class LightGBMCV:
                 features_order : list of str
                     Column names in the order in which they were used to train the model.
                 **kwargs
-                    Other keyword arguments passed to `Forecast.predict`.
+                    Other keyword arguments passed to `MLForecast.predict`.
         **predict_fn_kwargs
             Additional arguments passed to predict_fn
 
