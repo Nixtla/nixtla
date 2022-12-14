@@ -150,7 +150,7 @@ class HierarchicalReconciliation:
 
         # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
         S_ = S.loc[uids]
-    
+
 
         #---------------------------------------- Predictions ----------------------------------------#
         # Initialize reconciler arguments
@@ -169,7 +169,7 @@ class HierarchicalReconciliation:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
             has_level = 'level' in signature(reconcile_fn).parameters
-            
+
             # TODO: maybe sort in advance by uids and avoid .loc[uids]
             # This change affects y_hat_model, y_insample, y_hat_insample, sigmah
             # change pivot for df.values and reshapes.
@@ -207,8 +207,11 @@ class HierarchicalReconciliation:
                 end = time.time()
                 self.execution_times[f'{model_name}/{reconcile_fn_name}'] = (end - start)
 
+                end = time.time()
+                self.execution_times[f'{model_name}/{reconcile_fn_name}'] = (end - start)
+
                 if self.insample and has_fitted:
                     del reconciler_args['y_hat_insample']
                 gc.collect()
-                    
+
         return fcsts

@@ -27,14 +27,8 @@ def _reconcile(S: np.ndarray,
 
     # Mean reconciliation
     res = {'mean': np.matmul(S @ P, y_hat)}
-    
-    # Probabilistic reconciliation
-    # TODO: instantiate the samplers after mean reconciliation.
-    # separate functions, and add _prob_reconcile -> probabilistic_methods.py
-    # both Normality and Bootstrap depend reconciled outputs (P, W).
-    # I suggest to do it in `core.HierarchicalForecast.fit_predict`
-    # after this call `fcsts_model = reconcile_fn(y_hat=y_hat_model, **kwargs)`
 
+    # Probabilistic reconciliation
     if (level is not None) and (sampler is not None):
         res = sampler.get_prediction_levels(res=res, level=level)
 
@@ -69,8 +63,55 @@ def _get_sampler(intervals_method,
         sampler = None
     return sampler
 
-# %% ../nbs/methods.ipynb 9
-class BottomUp:
+# %% ../nbs/methods.ipynb 8
+class HReconciler:
+    fitted = False
+
+    def predict(self,
+                S: np.ndarray,
+                y_hat: np.ndarray,
+                level: Optional[List[int]] = None):
+        """Predict using reconciler.
+
+        Predict using fitted mean and probabilistic reconcilers.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated predictions.
+        """
+        if not self.fitted:
+            raise Exception("This model instance is not fitted yet, Call fit method.")
+   
+        return _reconcile(S=S, P=self.P, y_hat=y_hat,
+                          sampler=self.sampler, level=level)
+
+    def sample(self,
+               num_samples: int):
+        """Sample probabilistic coherent distribution.
+
+        Generates n samples from the probabilistic coherent distribution.
+        The method is available after fittin model with an appropiate intervals method.
+
+        **Parameters:**<br>
+
+        **Returns:**<br>
+        `sample`: Reconciliated samples of size (`base`, `horizon`, `num_samples`).
+        """
+        if not self.fitted:
+            raise Exception("This model instance is not fitted yet, Call fit method.")
+        if self.sampler is None:
+            raise Exception("This model instance does not have sampler. Call fit with `intervals_method`.")
+
+        #samples = self.sampler.get_samples(num_samples=num_samples)
+        #return samples
+        pass
+
+# %% ../nbs/methods.ipynb 10
+class BottomUp(HReconciler):
     """Bottom Up Reconciliation Class.
     The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
     the first time by Orcutt in 1968.
@@ -94,10 +135,17 @@ class BottomUp:
         W = np.eye(n_hiers, dtype=np.float32)
         return P, W
 
-    def fit(self, S, y_hat, 
-            y_insample, y_hat_insample,
-            sigmah, num_samples, seed, 
-            intervals_method, tags, idx_bottom):
+    def fit(self,
+            S: np.ndarray,
+            y_hat: np.ndarray,
+            idx_bottom: np.ndarray,
+            y_insample: Optional[np.ndarray] = None,
+            y_hat_insample: Optional[np.ndarray] = None,
+            sigmah: Optional[np.ndarray] = None,
+            num_samples: Optional[int] = None,
+            seed: Optional[int] = None,
+            intervals_method: Optional[str] = None,
+            tags: Dict[str, np.ndarray] = None):
 
         self.P, self.W = self._get_PW_matrices(S=S, idx_bottom=idx_bottom)
         self.sampler = _get_sampler(S=S,
@@ -108,14 +156,13 @@ class BottomUp:
                                     y_hat_insample=y_hat_insample,
                                     sigmah=sigmah, tags=tags,
                                     intervals_method=intervals_method)
+        self.fitted = True
         return self
 
     def fit_predict(self,
-                    # MeanReconciler
                     S: np.ndarray,
                     y_hat: np.ndarray,
                     idx_bottom: np.ndarray,
-                    # ProbReconciler
                     y_insample: Optional[np.ndarray] = None,
                     y_hat_insample: Optional[np.ndarray] = None,
                     sigmah: Optional[np.ndarray] = None,
@@ -146,13 +193,13 @@ class BottomUp:
                  seed=seed,
                  intervals_method=intervals_method, 
                  tags=tags, idx_bottom=idx_bottom)
-        
+
         return _reconcile(S=S, P=self.P, y_hat=y_hat,
-                          level=level, sampler=self.sampler)
+                          sampler=self.sampler, level=level)
 
     __call__ = fit_predict
 
-# %% ../nbs/methods.ipynb 17
+# %% ../nbs/methods.ipynb 21
 def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
     level_names = list(tags.keys())
     nodes = OrderedDict()
@@ -170,7 +217,7 @@ def _get_child_nodes(S: np.ndarray, tags: Dict[str, np.ndarray]):
         nodes[level] = nodes_level
     return nodes
 
-# %% ../nbs/methods.ipynb 19
+# %% ../nbs/methods.ipynb 22
 def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                                 tags: Dict[str, np.ndarray],
                                 nodes: Dict[str, Dict[int, np.ndarray]],
@@ -187,8 +234,8 @@ def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
                 reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
     return reconciled
 
-# %% ../nbs/methods.ipynb 20
-class TopDown:
+# %% ../nbs/methods.ipynb 23
+class TopDown(HReconciler):
     """Top Down Reconciliation Class.
 
     The Top Down hierarchical reconciliation method, distributes the total aggregate predictions and decomposes 
@@ -253,14 +300,13 @@ class TopDown:
                                     y_hat_insample=y_hat_insample,
                                     sigmah=sigmah, tags=tags,
                                     intervals_method=intervals_method)
+        self.fitted = True
         return self
 
     def fit_predict(self,
-                    # MeanReconciler
                     S: np.ndarray,
                     y_hat: np.ndarray,
                     tags: Dict[str, np.ndarray],
-                    # ProbReconciler
                     idx_bottom: np.ndarray = None,
                     y_insample: Optional[np.ndarray] = None,
                     y_hat_insample: Optional[np.ndarray] = None,
@@ -308,12 +354,12 @@ class TopDown:
                      intervals_method=intervals_method, 
                      tags=tags, idx_bottom=idx_bottom)
             return _reconcile(S=S, P=self.P, y_hat=y_hat,
-                            level=level, sampler=self.sampler)
+                              level=level, sampler=self.sampler)
 
     __call__ = fit_predict
 
-# %% ../nbs/methods.ipynb 25
-class MiddleOut:
+# %% ../nbs/methods.ipynb 29
+class MiddleOut(HReconciler):
     """Middle Out Reconciliation Class.
 
     This method is only available for **strictly hierarchical structures**. It anchors the base predictions 
@@ -337,7 +383,13 @@ class MiddleOut:
         self.top_down_method = top_down_method 
         self.insample = top_down_method in ['average_proportions', 'proportion_averages']
 
-    def _get_PW_matrices(self):
+    def _get_PW_matrices(self, **kwargs):
+        raise Exception('Not implemented')
+
+    def fit(self, **kwargs):
+        raise Exception('Not implemented')
+
+    def predict(self, **kwargs):
         raise Exception('Not implemented')
 
     def fit_predict(self, 
@@ -420,12 +472,12 @@ class MiddleOut:
 
     __call__ = fit_predict
 
-# %% ../nbs/methods.ipynb 30
+# %% ../nbs/methods.ipynb 34
 def crossprod(x):
     return x.T @ x
 
-# %% ../nbs/methods.ipynb 31
-class MinTrace:
+# %% ../nbs/methods.ipynb 35
+class MinTrace(HReconciler):
     """MinTrace Reconciliation Class.
 
     This reconciliation algorithm proposed by Wickramasuriya et al. depends on a generalized least squares estimator 
@@ -435,7 +487,7 @@ class MinTrace:
 
     $$\mathbf{P}_{\\text{MinT}}=\\left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S}\\right)^{-1}
     \mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}$$
-    
+
     **Parameters:**<br>
     `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.<br>
     `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
@@ -446,7 +498,7 @@ class MinTrace:
     hierarchical and grouped time series through trace minimization\". Journal of the American Statistical Association, 
     114 , 804–819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
     - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). \"Optimal non-negative
-    forecast reconciliation". Stat Comput 30, 1167–1182, 
+    forecast reconciliation". Stat Comput 30, 1167–1182,
     https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
     def __init__(self, 
@@ -582,13 +634,12 @@ class MinTrace:
                                     y_hat_insample=y_hat_insample,
                                     sigmah=sigmah, tags=tags,
                                     intervals_method=intervals_method)
+        self.fitted = True
         return self
 
     def fit_predict(self,
-                    # MeanReconciler
                     S: np.ndarray,
                     y_hat: np.ndarray,
-                    # ProbReconciler
                     idx_bottom: np.ndarray = None,
                     y_insample: Optional[np.ndarray] = None,
                     y_hat_insample: Optional[np.ndarray] = None,
@@ -634,7 +685,7 @@ class MinTrace:
 
     __call__ = fit_predict
 
-# %% ../nbs/methods.ipynb 39
+# %% ../nbs/methods.ipynb 44
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -669,7 +720,7 @@ class OptimalCombination(MinTrace):
         self.nonnegative = nonnegative
         self.insample = False
 
-# %% ../nbs/methods.ipynb 45
+# %% ../nbs/methods.ipynb 51
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -701,8 +752,8 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 46
-class ERM:
+# %% ../nbs/methods.ipynb 52
+class ERM(HReconciler):
     """Optimal Combination Reconciliation Class.
 
     The Empirical Risk Minimization reconciliation strategy relaxes the unbiasedness assumptions from
@@ -794,13 +845,12 @@ class ERM:
                                     y_hat_insample=y_hat_insample,
                                     sigmah=sigmah, tags=tags,
                                     intervals_method=intervals_method)
+        self.fitted = True
         return self
 
     def fit_predict(self,
-                    # MeanReconciler
                     S: np.ndarray,
                     y_hat: np.ndarray,
-                    # ProbReconciler
                     idx_bottom: np.ndarray = None,
                     y_insample: Optional[np.ndarray] = None,
                     y_hat_insample: Optional[np.ndarray] = None,
