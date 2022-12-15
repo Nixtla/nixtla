@@ -30,8 +30,11 @@ class Normality:
     **Parameters:**<br>
     `S`: np.array, summing matrix of size (`base`, `bottom`).<br>
     `P`: np.array, reconciliation matrix of size (`bottom`, `base`).<br>
+    `y_hat`: Point forecasts values of size (`base`, `horizon`).<br>
     `W`: np.array, hierarchical covariance matrix of size (`base`, `base`).<br>
     `sigmah`: np.array, forecast standard dev. of size (`base`, `horizon`).<br>
+    `num_samples`: int, number of bootstraped samples generated.<br>
+    `seed`: int, random seed for numpy generator's replicability.<br>    
 
     **References:**<br>
     - [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022).
@@ -39,34 +42,59 @@ class Normality:
     """
     def __init__(self,
                  S: np.ndarray,
+                 P: np.ndarray,
+                 y_hat: np.ndarray,
                  sigmah: np.ndarray,
-                 P: np.ndarray=None,
-                 W: np.ndarray=None):
+                 W: np.ndarray,
+                 seed: int = 0):
         self.S = S
         self.P = P
+        self.y_hat = y_hat
+        self.SP = self.S @ self.P
         self.W = W
         self.sigmah = sigmah
+        self.seed = seed
+
+        # Base Normality Errors assume independence/diagonal covariance
+        # TODO: replace bilinearity with elementwise row multiplication
+        R1 = cov2corr(self.W)
+        Wh = [np.diag(sigma) @ R1 @ np.diag(sigma).T for sigma in self.sigmah.T]
+
+        # Reconciled covariances across forecast horizon
+        self.cov_rec = [(self.SP @ W @ self.SP.T) for W in Wh]
+        self.sigmah_rec = np.hstack([np.sqrt(np.diag(cov))[:, None] for cov in self.cov_rec])
+
+    def get_samples(self, num_samples: int=None):
+        """Normality Coherent Samples.
+
+        Obtains coherent samples under the Normality assumptions.
+
+        **Parameters:**<br>
+        `num_samples`: int, number of samples generated from coherent distribution.<br>
+
+        **Returns:**<br>
+        `samples`: Coherent samples of size (`base`, `horizon`, `num_samples`).
+        """
+        state = np.random.RandomState(self.seed)
+        n_series, n_horizon = self.y_hat.shape
+        samples = np.empty(shape=(num_samples, n_series, n_horizon))
+        for t in range(n_horizon):
+            partial_samples = state.multivariate_normal(mean=self.SP @ self.y_hat[:,t],
+                                                  cov=self.cov_rec[t], size=num_samples)
+            samples[:,:,t] = partial_samples
+        return samples
 
     def get_prediction_levels(self, res, level):
         """ Adds reconciled forecast levels to results dictionary """
-
-        # Errors normality implies independence/diagonal covariance
-        R1 = cov2corr(self.W)
-        W_h = [np.diag(sigma) @ R1 @ np.diag(sigma).T for sigma in self.sigmah.T]
-
-        # Reconciled covariances across forecast horizon
-        SP = self.S @ self.P
-        sigmah_rec = np.hstack([np.sqrt(np.diag(SP @ W @ SP.T))[:, None] for W in W_h])
-
-        res['sigmah'] = sigmah_rec
+        res['sigmah'] = self.sigmah_rec
         level = np.asarray(level)
         z = norm.ppf(0.5 + level / 200)
         for zs, lv in zip(z, level):
-            res[f'lo-{lv}'] = res['mean'] - zs * sigmah_rec
-            res[f'hi-{lv}'] = res['mean'] + zs * sigmah_rec
+            res[f'lo-{lv}'] = res['mean'] - zs * self.sigmah_rec
+            res[f'hi-{lv}'] = res['mean'] + zs * self.sigmah_rec
         return res
 
-# %% ../nbs/probabilistic_methods.ipynb 9
+# %% ../nbs/probabilistic_methods.ipynb 10
 class Bootstrap:
     """ Bootstrap Probabilistic Reconciliation Class.
 
@@ -86,9 +114,9 @@ class Bootstrap:
     **Parameters:**<br>
     `S`: np.array, summing matrix of size (`base`, `bottom`).<br>
     `P`: np.array, reconciliation matrix of size (`bottom`, `base`).<br>
+    `y_hat`: Point forecasts values of size (`base`, `horizon`).<br>
     `y_insample`: Insample values of size (`base`, `insample_size`).<br>
     `y_hat_insample`: Insample values of size (`base`, `insample_size`).<br>
-    `y_hat`: Point forecasts values of size (`base`, `horizon`).<br>
     `num_samples`: int, number of bootstraped samples generated.<br>
     `seed`: int, random seed for numpy generator's replicability.<br>
 
@@ -100,12 +128,12 @@ class Bootstrap:
     """
     def __init__(self,
                  S: np.ndarray,
+                 P: np.ndarray,
+                 y_hat: np.ndarray,
                  y_insample: np.ndarray,
                  y_hat_insample: np.ndarray,
-                 y_hat: np.ndarray,
-                 num_samples: int,
+                 num_samples: int=100,
                  seed: int = 0,
-                 P: np.ndarray = None,
                  W: np.ndarray = None):
         self.S = S
         self.P = P
@@ -116,7 +144,18 @@ class Bootstrap:
         self.num_samples = num_samples
         self.seed = seed
 
-    def get_samples(self):
+    def get_samples(self, num_samples: int=None):
+        """Bootstrap Sample Reconciliation Method.
+
+        Applies Bootstrap sample reconciliation method as defined by Gamakumara 2020.
+        Generating independent sample paths and reconciling them with Bootstrap.
+
+        **Parameters:**<br>
+        `num_samples`: int, number of samples generated from coherent distribution.<br>
+
+        **Returns:**<br>
+        `samples`: Coherent samples of size (`base`, `horizon`, `num_samples`).
+        """
         residuals = self.y_insample - self.y_hat_insample
         h = self.y_hat.shape[1]
 
@@ -124,7 +163,7 @@ class Bootstrap:
         residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
         sample_idx = np.arange(residuals.shape[1] - h)
         state = np.random.RandomState(self.seed)
-        samples_idx = state.choice(sample_idx, size=self.num_samples)
+        samples_idx = state.choice(sample_idx, size=num_samples)
         samples = [self.y_hat + residuals[:, idx:(idx + h)] for idx in samples_idx]
         SP = self.S @ self.P
         samples = np.apply_along_axis(lambda path: np.matmul(SP, path),
@@ -133,7 +172,7 @@ class Bootstrap:
 
     def get_prediction_levels(self, res, level):
         """ Adds reconciled forecast levels to results dictionary """
-        samples = self.get_samples()
+        samples = self.get_samples(num_samples=self.num_samples)
         for lv in level:
             min_q = (100 - lv) / 200
             max_q = min_q + lv / 100
@@ -141,7 +180,7 @@ class Bootstrap:
             res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=0)
         return res
 
-# %% ../nbs/probabilistic_methods.ipynb 12
+# %% ../nbs/probabilistic_methods.ipynb 14
 class PERMBU:
     """ PERMBU Probabilistic Reconciliation Class.
 
@@ -241,35 +280,35 @@ class PERMBU:
         permutated_samples = permutated_samples.reshape(n_rows, n_cols)
         return permutated_samples
     
-    def _permutate_predictions(self, predictionum_samples, permutations):
+    def _permutate_predictions(self, prediction_samples, permutations):
         """ Permutate Prediction Samples
 
-        Applies permutations to predictionum_samples across the horizon.
+        Applies permutations to prediction_samples across the horizon.
 
         **Parameters**<br>
-        `predictionum_samples`: np.array [series,horizon,samples], independent 
+        `prediction_samples`: np.array [series,horizon,samples], independent 
                   base prediction samples.<br>
         `permutations`: np.array [series, samples], permutation ranks with which
                   `samples` dependence will be restored see `_obtain_ranks`.
                   it can also apply a random permutation.<br>
 
         **Returns**<br>
-        `permutated_predictionum_samples`: np.array.<br>
+        `permutated_prediction_samples`: np.array.<br>
         """
         # Apply permutation throughout forecast horizon
-        permutated_predictionum_samples = predictionum_samples.copy()
+        permutated_prediction_samples = prediction_samples.copy()
 
-        _, n_horizon, _ = predictionum_samples.shape
+        _, n_horizon, _ = prediction_samples.shape
         for t in range(n_horizon):
-            permutated_predictionum_samples[:,t,:] = \
-                              self._permutate_samples(predictionum_samples[:,t,:],
+            permutated_prediction_samples[:,t,:] = \
+                              self._permutate_samples(prediction_samples[:,t,:],
                                                       permutations)
-        return permutated_predictionum_samples
+        return permutated_prediction_samples
 
     def _nonzero_indexes_by_row(self, M):
         return [np.nonzero(M[row,:])[0] for row in range(len(M))]
 
-    def get_samples(self):
+    def get_samples(self, num_samples: int=None):
         """PERMBU Sample Reconciliation Method.
 
         Applies PERMBU reconciliation method as defined by Taieb et. al 2017.
@@ -278,23 +317,25 @@ class PERMBU:
         aggregation to the new samples.
 
         **Parameters:**<br>
-        `y_hat`: Mean forecast values of size (`base`, `horizon`).<br>
+        `num_samples`: int, number of samples generated from coherent distribution.<br>
 
         **Returns:**<br>
-        `rec_samples`: Reconciliated samples using the PERMBU approach.
+        `samples`: Coherent samples of size (`base`, `horizon`, `num_samples`).
         """
-
         # Compute residuals and rank permutations
         residuals = self.y_insample - self.y_hat_insample
-        #removing nas from residuals
         residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
+
+        # Expand residuals to match num_samples [(a,b),T] -> [(a,b),num_samples]
+        if num_samples > residuals.shape[1]:
+            residuals_expansion = np.random.choice(residuals.shape[1], size=num_samples)
+            residuals = residuals[:,residuals_expansion]
         rank_permutations = self._obtain_ranks(residuals)
 
         # Sample h step-ahead base marginal distributions
-        if self.num_samples is None:
+        if num_samples is None:
             num_samples = residuals.shape[1]
-        else:
-            num_samples = self.num_samples
+
         state = np.random.RandomState(self.seed)
         n_series, n_horizon = self.y_hat.shape
 
@@ -324,7 +365,7 @@ class PERMBU:
             children_permutations = rank_permutations[children_idxs, :]
             childrenum_samples = rec_samples[children_idxs,:,:]
             childrenum_samples = self._permutate_predictions(
-                predictionum_samples=childrenum_samples,
+                prediction_samples=childrenum_samples,
                 permutations=children_permutations
             )
 
@@ -336,7 +377,7 @@ class PERMBU:
                 for serie in range(len(parent_samples))
             ])
             parent_samples = self._permutate_predictions(
-                predictionum_samples=parent_samples,
+                prediction_samples=parent_samples,
                 permutations=random_permutation
             )
 
@@ -346,7 +387,7 @@ class PERMBU:
 
     def get_prediction_levels(self, res, level):
         """ Adds reconciled forecast levels to results dictionary """
-        samples = self.get_samples()
+        samples = self.get_samples(num_samples=self.num_samples)
         for lv in level:
             min_q = (100 - lv) / 200
             max_q = min_q + lv / 100

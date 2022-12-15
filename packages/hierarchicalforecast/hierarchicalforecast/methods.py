@@ -42,6 +42,7 @@ def _get_sampler(intervals_method,
     if intervals_method == 'normality':
         sampler = Normality(
                       S=S, P=P,
+                      y_hat=y_hat,
                       W=W, sigmah=sigmah)
     elif intervals_method == 'permbu':
         sampler = PERMBU(
@@ -51,14 +52,14 @@ def _get_sampler(intervals_method,
                       y_insample=y_insample, 
                       y_hat_insample=y_hat_insample,
                       sigmah=sigmah,
-                      num_samples=None)
+                      num_samples=200)
     elif intervals_method == 'bootstrap':
         sampler = Bootstrap(
                       S=S, P=P, 
                       y_hat=y_hat,
                       y_insample=y_insample,
                       y_hat_insample=y_hat_insample,
-                      num_samples=1_000)
+                      num_samples=200)
     else:
         sampler = None
     return sampler
@@ -94,21 +95,23 @@ class HReconciler:
         """Sample probabilistic coherent distribution.
 
         Generates n samples from the probabilistic coherent distribution.
-        The method is available after fittin model with an appropiate intervals method.
+        The method uses fitted mean and probabilistic reconcilers.
 
         **Parameters:**<br>
+        `num_samples`: int, number of samples generated from coherent distribution.<br>
 
         **Returns:**<br>
-        `sample`: Reconciliated samples of size (`base`, `horizon`, `num_samples`).
+        `samples`: Coherent samples of size (`num_series`, `horizon`, `num_samples`).
         """
         if not self.fitted:
             raise Exception("This model instance is not fitted yet, Call fit method.")
         if self.sampler is None:
             raise Exception("This model instance does not have sampler. Call fit with `intervals_method`.")
 
-        #samples = self.sampler.get_samples(num_samples=num_samples)
-        #return samples
-        pass
+        # [samples, N, H] -> [N, H, samples]
+        samples = self.sampler.get_samples(num_samples=num_samples)
+        samples = samples.transpose((1, 2, 0))
+        return samples
 
 # %% ../nbs/methods.ipynb 10
 class BottomUp(HReconciler):
