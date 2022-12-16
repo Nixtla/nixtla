@@ -108,9 +108,7 @@ class HReconciler:
         if self.sampler is None:
             raise Exception("This model instance does not have sampler. Call fit with `intervals_method`.")
 
-        # [samples, N, H] -> [N, H, samples]
         samples = self.sampler.get_samples(num_samples=num_samples)
-        samples = samples.transpose((1, 2, 0))
         return samples
 
 # %% ../nbs/methods.ipynb 10

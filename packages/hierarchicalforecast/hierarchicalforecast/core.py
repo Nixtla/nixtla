@@ -38,7 +38,7 @@ def _build_fn_name(fn) -> str:
 def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name, uids):
     """
     This function assumes that the model creates prediction intervals
-    under a normality assumption with the following the Equation:
+    under a normality with the following the Equation:
     $\hat{y}_{t+h} + c \hat{sigma}_{h}$
 
     In the future, we might deprecate this function in favor of a 
@@ -93,8 +93,8 @@ class HierarchicalReconciliation:
                   intervals_method: str = 'normality'):
         """Hierarchical Reconciliation Method.
 
-        The `reconcile` method is analogous to SKLearn `fit` method, it applies different 
-        reconciliation methods instantiated in the `reconcilers` list. 
+        The `reconcile` method is analogous to SKLearn `fit_predict` method, it 
+        applies different reconciliation methods instantiated in the `reconcilers` list. 
 
         Most reconciliation methods can be described by the following convenient 
         linear algebra notation:
@@ -204,9 +204,6 @@ class HierarchicalReconciliation:
                         fcsts[f'{model_name}/{reconcile_fn_name}-lo-{lv}'] = fcsts_model[f'lo-{lv}'].flatten()
                         fcsts[f'{model_name}/{reconcile_fn_name}-hi-{lv}'] = fcsts_model[f'hi-{lv}'].flatten()
                 
-                end = time.time()
-                self.execution_times[f'{model_name}/{reconcile_fn_name}'] = (end - start)
-
                 end = time.time()
                 self.execution_times[f'{model_name}/{reconcile_fn_name}'] = (end - start)
 

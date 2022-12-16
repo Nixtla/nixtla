@@ -82,6 +82,9 @@ class Normality:
             partial_samples = state.multivariate_normal(mean=self.SP @ self.y_hat[:,t],
                                                   cov=self.cov_rec[t], size=num_samples)
             samples[:,:,t] = partial_samples
+
+        # [samples, N, H] -> [N, H, samples]
+        samples = samples.transpose((1, 2, 0))
         return samples
 
     def get_prediction_levels(self, res, level):
@@ -168,7 +171,11 @@ class Bootstrap:
         SP = self.S @ self.P
         samples = np.apply_along_axis(lambda path: np.matmul(SP, path),
                                       axis=1, arr=samples)
-        return np.stack(samples)
+        samples = np.stack(samples)
+
+        # [samples, N, H] -> [N, H, samples]
+        samples = samples.transpose((1, 2, 0))
+        return samples
 
     def get_prediction_levels(self, res, level):
         """ Adds reconciled forecast levels to results dictionary """
@@ -176,8 +183,8 @@ class Bootstrap:
         for lv in level:
             min_q = (100 - lv) / 200
             max_q = min_q + lv / 100
-            res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=0)
-            res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=0)
+            res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=2)
+            res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=2)
         return res
 
 # %% ../nbs/probabilistic_methods.ipynb 14
@@ -382,8 +389,7 @@ class PERMBU:
             )
 
             rec_samples[parent_idxs,:,:] = parent_samples
-
-        return np.transpose(rec_samples, (2, 0, 1))
+        return rec_samples
 
     def get_prediction_levels(self, res, level):
         """ Adds reconciled forecast levels to results dictionary """
@@ -391,6 +397,6 @@ class PERMBU:
         for lv in level:
             min_q = (100 - lv) / 200
             max_q = min_q + lv / 100
-            res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=0)
-            res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=0)
+            res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=2)
+            res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=2)
         return res
