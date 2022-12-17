@@ -30,7 +30,12 @@ def _reconcile(S: np.ndarray,
 
     # Probabilistic reconciliation
     if (level is not None) and (sampler is not None):
-        res = sampler.get_prediction_levels(res=res, level=level)
+        # Update results dictionary within
+        # Vectorized quantiles
+        quantiles = np.concatenate(
+            [[(100 - lv) / 200, ((100 - lv) / 200) + lv / 100] for lv in level])
+        quantiles = np.sort(quantiles)
+        res = sampler.get_prediction_quantiles(res, quantiles)
 
     return res
 

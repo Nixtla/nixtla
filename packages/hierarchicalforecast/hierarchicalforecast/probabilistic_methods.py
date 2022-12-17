@@ -97,6 +97,14 @@ class Normality:
             res[f'hi-{lv}'] = res['mean'] + zs * self.sigmah_rec
         return res
 
+    def get_prediction_quantiles(self, res, quantiles):
+        """ Adds reconciled forecast quantiles to results dictionary """
+        # [N,H,None] + [None None,Q] * [N,H,None] -> [N,H,Q]
+        z = norm.ppf(quantiles)
+        res['sigmah'] = self.sigmah_rec
+        res['quantiles'] = res['mean'][:,:,None] + z[None,None,:] * self.sigmah_rec[:,:,None]
+        return res
+
 # %% ../nbs/probabilistic_methods.ipynb 10
 class Bootstrap:
     """ Bootstrap Probabilistic Reconciliation Class.
@@ -185,6 +193,15 @@ class Bootstrap:
             max_q = min_q + lv / 100
             res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=2)
             res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=2)
+        return res
+
+    def get_prediction_quantiles(self, res, quantiles):
+        """ Adds reconciled forecast quantiles to results dictionary """
+        samples = self.get_samples(num_samples=self.num_samples)
+
+        # [Q, N, H] -> [N, H, Q]
+        sample_quantiles = np.quantile(samples, quantiles, axis=2)
+        res['quantiles'] = sample_quantiles.transpose((1, 2, 0))
         return res
 
 # %% ../nbs/probabilistic_methods.ipynb 14
@@ -399,4 +416,13 @@ class PERMBU:
             max_q = min_q + lv / 100
             res[f'lo-{lv}'] = np.quantile(samples, min_q, axis=2)
             res[f'hi-{lv}'] = np.quantile(samples, max_q, axis=2)
+        return res
+
+    def get_prediction_quantiles(self, res, quantiles):
+        """ Adds reconciled forecast quantiles to results dictionary """
+        samples = self.get_samples(num_samples=self.num_samples)
+
+        # [Q, N, H] -> [N, H, Q]
+        sample_quantiles = np.quantile(samples, quantiles, axis=2)
+        res['quantiles'] = sample_quantiles.transpose((1, 2, 0))
         return res

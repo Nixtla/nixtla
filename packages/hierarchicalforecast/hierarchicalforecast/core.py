@@ -152,7 +152,7 @@ class HierarchicalReconciliation:
         # TODO: Complete y_hat_insample protection
         if intervals_method in ['bootstrap', 'permbu']:
            if not (set(model_names) <= set(Y_df.columns)):
-               raise Exception('Check `Y_hat_df`, `Y_df` columns difference')
+               raise Exception('Check `Y_hat_df`s models are included in `Y_df` columns')
 
         # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
         S_ = S.loc[uids]
@@ -206,15 +206,21 @@ class HierarchicalReconciliation:
                 # Parse final outputs
                 fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model['mean'].flatten()
                 if intervals_method in ['bootstrap', 'normality', 'permbu'] and level is not None:
-                    for lv in level:
-                        fcsts[f'{model_name}/{reconcile_fn_name}-lo-{lv}'] = fcsts_model[f'lo-{lv}'].flatten()
-                        fcsts[f'{model_name}/{reconcile_fn_name}-hi-{lv}'] = fcsts_model[f'hi-{lv}'].flatten()
-                
+                    level.sort()
+                    hi_names = [f'{model_name}/{reconcile_fn_name}-hi-{lv}' for lv in level]
+                    lo_names = [f'{model_name}/{reconcile_fn_name}-lo-{lv}' for lv in reversed(level)]
+                    sorted_quantiles = np.reshape(fcsts_model['quantiles'], (len(fcsts),-1))
+                    intervals_df = pd.DataFrame(sorted_quantiles, 
+                                                columns=(lo_names+hi_names), index=fcsts.index)
+                    fcsts = pd.concat([fcsts, intervals_df], axis=1)
+
+                    del sorted_quantiles
+                    del intervals_df
+                if self.insample and has_fitted:
+                    del y_hat_insample
+                gc.collect()
+
                 end = time.time()
                 self.execution_times[f'{model_name}/{reconcile_fn_name}'] = (end - start)
-
-                if self.insample and has_fitted:
-                    del reconciler_args['y_hat_insample']
-                gc.collect()
 
         return fcsts
