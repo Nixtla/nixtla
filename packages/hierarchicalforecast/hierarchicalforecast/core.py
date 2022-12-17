@@ -13,6 +13,7 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 # %% ../nbs/core.ipynb 5
 def _build_fn_name(fn) -> str:
@@ -51,7 +52,7 @@ def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name, uids):
     pi = len(pi_model_name) > 0
 
     if not pi:
-        raise Exception(f'Please include {model_name} prediction intervals in `Y_hat_df`')
+        raise Exception(f'Please include `{model_name}` prediction intervals in `Y_hat_df`')
 
     pi_col = pi_model_name[0]
     sign = -1 if 'lo' in pi_col else 1
@@ -148,6 +149,11 @@ class HierarchicalReconciliation:
             if Y_diff > 0 or  Y_hat_diff > 0:
                 raise Exception(f'Check `Y_hat_df`, `Y_df` series difference, Y_hat\Y={Y_hat_diff}, Y\Y_hat={Y_diff}')
 
+        # TODO: Complete y_hat_insample protection
+        if intervals_method in ['bootstrap', 'permbu']:
+           if not (set(model_names) <= set(Y_df.columns)):
+               raise Exception('Check `Y_hat_df`, `Y_df` columns difference')
+
         # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
         S_ = S.loc[uids]
 
@@ -165,7 +171,7 @@ class HierarchicalReconciliation:
         start = time.time()
         self.execution_times = {}
         fcsts = Y_hat_df.copy()
-        for reconcile_fn in self.reconcilers:
+        for reconcile_fn in tqdm(self.reconcilers):
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
             has_level = 'level' in signature(reconcile_fn).parameters

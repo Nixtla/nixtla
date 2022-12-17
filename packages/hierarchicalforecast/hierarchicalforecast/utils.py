@@ -5,6 +5,7 @@ __all__ = ['aggregate', 'HierarchicalPlot']
 
 # %% ../nbs/utils.ipynb 2
 import sys
+import timeit
 from itertools import chain
 from typing import Callable, Dict, List, Optional
 
@@ -16,6 +17,21 @@ from sklearn.preprocessing import OneHotEncoder
 plt.rcParams['font.family'] = 'serif'
 
 # %% ../nbs/utils.ipynb 4
+class CodeTimer:
+    def __init__(self, name=None, verbose=True):
+        self.name = " '"  + name + "'" if name else ''
+        self.verbose = verbose
+
+    def __enter__(self):
+        self.start = timeit.default_timer()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.took = (timeit.default_timer() - self.start)
+        if self.verbose:
+            print('Code block' + self.name + \
+                  ' took:\t{0:.5f}'.format(self.took) + ' seconds')
+
+# %% ../nbs/utils.ipynb 5
 def is_strictly_hierarchical(S: np.ndarray, 
                              tags: Dict[str, np.ndarray]):
     # main idea:
@@ -33,7 +49,7 @@ def is_strictly_hierarchical(S: np.ndarray,
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/utils.ipynb 5
+# %% ../nbs/utils.ipynb 6
 def cov2corr(cov, return_std=False):
     """ convert covariance matrix to correlation matrix
 
@@ -52,7 +68,7 @@ def cov2corr(cov, return_std=False):
     else:
         return corr
 
-# %% ../nbs/utils.ipynb 7
+# %% ../nbs/utils.ipynb 8
 def _to_summing_matrix(S_df: pd.DataFrame):
     """Transforms the DataFrame `df` of hierarchies to a summing matrix S."""
     categories = [S_df[col].unique() for col in S_df.columns]
@@ -65,7 +81,7 @@ def _to_summing_matrix(S_df: pd.DataFrame):
     tags = dict(zip(S_df.columns, categories))
     return S, tags
 
-# %% ../nbs/utils.ipynb 8
+# %% ../nbs/utils.ipynb 9
 def aggregate(df: pd.DataFrame,
               spec: List[List[str]],
               agg_fn: Callable = np.sum):
@@ -107,7 +123,7 @@ def aggregate(df: pd.DataFrame,
     S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
     return Y_df, S, tags
 
-# %% ../nbs/utils.ipynb 12
+# %% ../nbs/utils.ipynb 13
 class HierarchicalPlot:
     """ Hierarchical Plot
 
