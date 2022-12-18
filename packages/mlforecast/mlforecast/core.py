@@ -605,4 +605,6 @@ class TimeSeries:
                 )
             else:
                 preds[model_names[i]] = self._get_raw_predictions()
+        if self.id_col != "index":
+            preds = preds.reset_index()
         return preds

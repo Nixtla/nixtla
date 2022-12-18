@@ -4,6 +4,7 @@
 __all__ = ['MLForecast', 'Forecast']
 
 # %% ../nbs/forecast.ipynb 3
+import copy
 import warnings
 from typing import Callable, Iterable, List, Optional, Union
 
@@ -20,6 +21,7 @@ from mlforecast.core import (
     Models,
     TimeSeries,
 )
+from .lgb_cv import LightGBMCV
 from .utils import backtest_splits
 
 # %% ../nbs/forecast.ipynb 6
@@ -72,6 +74,18 @@ class MLForecast:
     @property
     def freq(self):
         return self.ts.freq
+
+    @classmethod
+    def from_cv(cls, cv: LightGBMCV) -> "MLForecast":
+        if not hasattr(cv, "best_iteration_"):
+            raise ValueError("LightGBMCV object must be fitted first.")
+        import lightgbm as lgb
+
+        fcst = cls(
+            lgb.LGBMRegressor(**{**cv.params, "n_estimators": cv.best_iteration_})
+        )
+        fcst.ts = copy.deepcopy(cv.ts)
+        return fcst
 
     def preprocess(
         self,

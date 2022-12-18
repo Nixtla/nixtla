@@ -22,7 +22,6 @@ from mlforecast.core import (
     Lags,
     TimeSeries,
 )
-from .forecast import MLForecast
 from .utils import backtest_splits
 
 # %% ../nbs/lgb_cv.ipynb 5
@@ -197,7 +196,7 @@ class LightGBMCV:
         self.window_size = window_size
         self.time_col = time_col
         self.target_col = target_col
-        params = {} if params is None else params
+        self.params = {} if params is None else params
         for _, train, valid in backtest_splits(
             data, n_windows, window_size, freq, time_col
         ):
@@ -214,7 +213,7 @@ class LightGBMCV:
             ds = lgb.Dataset(
                 prep.drop(columns=[time_col, target_col]), prep[target_col]
             ).construct()
-            bst = lgb.Booster({**params, "num_threads": self.bst_threads}, ds)
+            bst = lgb.Booster({**self.params, "num_threads": self.bst_threads}, ds)
             bst.predict = partial(bst.predict, num_threads=self.bst_threads)
             valid = valid.set_index(time_col, append=True)
             self.items.append((ts, bst, valid))
@@ -328,13 +327,13 @@ class LightGBMCV:
             )
         return metric_values @ self.weights
 
-    def _should_stop(self, hist, early_stopping_evals, early_stopping_pct) -> bool:
+    def should_stop(self, hist, early_stopping_evals, early_stopping_pct) -> bool:
         if len(hist) < early_stopping_evals + 1:
             return False
         improvement_pct = 1 - hist[-1][1] / hist[-(early_stopping_evals + 1)][1]
         return improvement_pct < early_stopping_pct
 
-    def _best_iter(self, hist, early_stopping_evals) -> int:
+    def find_best_iter(self, hist, early_stopping_evals) -> int:
         best_iter, best_score = hist[-1]
         for r, m in hist[-(early_stopping_evals + 1) : -1]:
             if m < best_score:
@@ -363,7 +362,6 @@ class LightGBMCV:
         early_stopping_evals: int = 2,
         early_stopping_pct: float = 0.01,
         compute_cv_preds: bool = False,
-        fit_on_all: bool = False,
         predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
     ) -> List[CVResult]:
@@ -409,8 +407,6 @@ class LightGBMCV:
             Minimum percentage improvement in metric value in `early_stopping_evals` evaluations.
         compute_cv_preds : bool (default=True)
             Compute predictions for each window after finding the best iteration.
-        fit_on_all : bool (default=True)
-            Return model fitted on full dataset.
         predict_fn : callable, optional (default=None)
             Custom function to compute predictions.
             This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
@@ -456,14 +452,14 @@ class LightGBMCV:
             hist.append((rounds, metric_value))
             if verbose_eval:
                 print(f"[{rounds:,d}] {self.metric_name}: {metric_value:,f}")
-            if self._should_stop(hist, early_stopping_evals, early_stopping_pct):
+            if self.should_stop(hist, early_stopping_evals, early_stopping_pct):
                 print(f"Early stopping at round {rounds:,}")
                 break
-        rounds = self._best_iter(hist, early_stopping_evals)
-        print(f"Using best iteration: {rounds:,}")
-        hist = hist[: rounds // eval_every]
+        self.best_iteration_ = self.find_best_iter(hist, early_stopping_evals)
+        print(f"Using best iteration: {self.best_iteration_:,}")
+        hist = hist[: self.best_iteration_ // eval_every]
         for _, bst, _ in self.items:
-            bst.best_iteration = rounds
+            bst.best_iteration = self.best_iteration_
 
         self.cv_models_ = [item[1] for item in self.items]
         if compute_cv_preds:
@@ -482,75 +478,18 @@ class LightGBMCV:
                         **predict_fn_kwargs,
                     )
                     futures.append(future)
-                self.cv_preds_ = pd.concat(
+                cv_preds = pd.concat(
                     [f.result().assign(window=i) for i, f in enumerate(futures)]
                 )
-
-        if fit_on_all:
-            params = params if params is not None else {}
-            self.fcst = MLForecast(
-                [lgb.LGBMRegressor(**{**params, "n_estimators": rounds})]
-            )
-            self.fcst.ts = self.ts
-            self.fcst.fit(
-                data,
-                id_col,
-                time_col,
-                target_col,
-                static_features,
-                dropna,
-                keep_last_n,
-            )
-        else:
-            self.ts._fit(
-                data, id_col, time_col, target_col, static_features, keep_last_n
-            )
+                if id_col != "index":
+                    idxs = [id_col, time_col]
+                else:
+                    idxs = [time_col]
+                self.cv_preds_ = cv_preds.reset_index(idxs)
+        self.ts._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
         return hist
 
     def predict(
-        self,
-        horizon: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
-        predict_fn: Optional[Callable] = None,
-        **predict_fn_kwargs,
-    ) -> pd.DataFrame:
-        """Compute predictions using the model trained on all data.
-
-        Parameters
-        ----------
-        horizon : int
-            Number of periods to predict.
-        dynamic_dfs : list of pandas DataFrame, optional (default=None)
-            Future values of the dynamic features, e.g. prices.
-        predict_fn : callable, optional (default=None)
-            Custom function to compute predictions.
-            This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
-            and should return an array with the predictions, where:
-                model : regressor
-                    Fitted model.
-                new_x : pandas DataFrame
-                    Current values of the features.
-                dynamic_dfs : list of pandas DataFrame
-                    Future values of the dynamic features
-                features_order : list of str
-                    Column names in the order in which they were used to train the model.
-                **kwargs
-                    Other keyword arguments passed to `MLForecast.predict`.
-        **predict_fn_kwargs
-            Additional arguments passed to predict_fn
-
-        Returns
-        -------
-        result : pandas DataFrame
-            Predictions for each serie and timestep.
-        """
-        if not hasattr(self, "fcst"):
-            raise ValueError(
-                "Must call fit with fit_on_all=True before. You can also call cv_predict instead."
-            )
-        return self.fcst.predict(horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs)
-
-    def cv_predict(
         self,
         horizon: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
