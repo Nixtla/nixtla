@@ -203,8 +203,8 @@ class MLForecast:
         self,
         horizon: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
-        predict_fn: Optional[Callable] = None,
-        **predict_fn_kwargs,
+        before_predict_callback: Optional[Callable] = None,
+        after_predict_callback: Optional[Callable] = None,
     ) -> pd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
@@ -214,22 +214,15 @@ class MLForecast:
             Number of periods to predict.
         dynamic_dfs : list of pandas DataFrame, optional (default=None)
             Future values of the dynamic features, e.g. prices.
-        predict_fn : callable, optional (default=None)
-            Custom function to compute predictions.
-            This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
-            and should return an array with the predictions, where:
-                model : regressor
-                    Fitted model.
-                new_x : pandas DataFrame
-                    Current values of the features.
-                dynamic_dfs : list of pandas DataFrame
-                    Future values of the dynamic features
-                features_order : list of str
-                    Column names in the order in which they were used to train the model.
-                **kwargs
-                    Other keyword arguments passed to `Forecast.predict`.
-        **predict_fn_kwargs
-            Additional arguments passed to predict_fn
+        before_predict_callback : callable, optional (default=None)
+            Function to call on the features before computing the predictions.
+                This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
+                The series identifier is on the index.
+        after_predict_callback : callable, optional (default=None)
+            Function to call on the predictions before updating the targets.
+                This function will take a pandas Series with the predictions and should return another one with the same structure.
+                The series identifier is on the index.
+
 
         Returns
         -------
@@ -241,7 +234,11 @@ class MLForecast:
                 "No fitted models found. You have to call fit or preprocess + fit_models."
             )
         return self.ts.predict(
-            self.models_, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs
+            self.models_,
+            horizon,
+            dynamic_dfs,
+            before_predict_callback,
+            after_predict_callback,
         )
 
     def cross_validation(
@@ -256,8 +253,8 @@ class MLForecast:
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
-        predict_fn: Optional[Callable] = None,
-        **predict_fn_kwargs,
+        before_predict_callback: Optional[Callable] = None,
+        after_predict_callback: Optional[Callable] = None,
     ):
         """Perform time series cross validation.
         Creates `n_windows` splits where each window has `window_size` test periods,
@@ -285,22 +282,14 @@ class MLForecast:
             Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
         dynamic_dfs : list of pandas DataFrame, optional (default=None)
             Future values of the dynamic features, e.g. prices.
-        predict_fn : callable, optional (default=None)
-            Custom function to compute predictions.
-            This function will recieve: model, new_x, dynamic_dfs, features_order and kwargs,
-            and should return an array with the predictions, where:
-                model : regressor
-                    Fitted model.
-                new_x : pandas DataFrame
-                    Current values of the features.
-                dynamic_dfs : list of pandas DataFrame
-                    Future values of the dynamic features
-                features_order : list of str
-                    Column names in the order in which they were used to train the model.
-                **kwargs
-                    Other keyword arguments passed to `Forecast.predict`.
-        **predict_fn_kwargs
-            Additional arguments passed to predict_fn
+        before_predict_callback : callable, optional (default=None)
+            Function to call on the features before computing the predictions.
+                This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
+                The series identifier is on the index.
+        after_predict_callback : callable, optional (default=None)
+            Function to call on the predictions before updating the targets.
+                This function will take a pandas Series with the predictions and should return another one with the same structure.
+                The series identifier is on the index.
 
         Returns
         -------
@@ -331,7 +320,10 @@ class MLForecast:
             )
             self.cv_models_.append(self.models_)
             y_pred = self.predict(
-                window_size, dynamic_dfs, predict_fn, **predict_fn_kwargs
+                window_size,
+                dynamic_dfs,
+                before_predict_callback,
+                after_predict_callback,
             )
             y_pred = y_pred.set_index(time_col, append=True)
             result = valid.set_index(time_col, append=True)[[target_col]].copy()
