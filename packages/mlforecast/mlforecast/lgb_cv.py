@@ -53,9 +53,9 @@ def _update(bst, n):
 
 
 def _predict(ts, bst, valid, h, time_col, dynamic_dfs, predict_fn, **predict_fn_kwargs):
-    preds = ts.predict(bst, h, dynamic_dfs, predict_fn, **predict_fn_kwargs).set_index(
-        time_col, append=True
-    )
+    preds = ts.predict(
+        {"Booster": bst}, h, dynamic_dfs, predict_fn, **predict_fn_kwargs
+    ).set_index(time_col, append=True)
     return valid.join(preds)
 
 
@@ -461,7 +461,7 @@ class LightGBMCV:
         for _, bst, _ in self.items:
             bst.best_iteration = self.best_iteration_
 
-        self.cv_models_ = [item[1] for item in self.items]
+        self.cv_models_ = {f"Booster{i}": item[1] for i, item in enumerate(self.items)}
         if compute_cv_preds:
             with ThreadPoolExecutor(self.num_threads) as executor:
                 futures = []

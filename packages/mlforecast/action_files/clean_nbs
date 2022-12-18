@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+nbdev_clean
+# the following sets the kernel as python 3 to avoid annoying diffs
 for file in $(find nbs/ -type f -name "*.ipynb")
 do
   sed -i 's/Python 3.*,$/Python 3\",/g' $file

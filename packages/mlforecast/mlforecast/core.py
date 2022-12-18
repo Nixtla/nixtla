@@ -235,6 +235,8 @@ def merge_predict(
 # %% ../nbs/core.ipynb 22
 def _name_models(current_names):
     ctr = Counter(current_names)
+    if not ctr:
+        return []
     if max(ctr.values()) < 2:
         return current_names
     names = current_names.copy()
@@ -255,7 +257,7 @@ LagTransform = Union[Callable, Tuple[Callable, Any]]
 LagTransforms = Dict[int, List[LagTransform]]
 DateFeature = Union[str, Callable]
 Differences = Iterable[int]
-Models = Union[BaseEstimator, List[BaseEstimator]]
+Models = Union[BaseEstimator, List[BaseEstimator], Dict[str, BaseEstimator]]
 
 # %% ../nbs/core.ipynb 25
 class TimeSeries:
@@ -575,18 +577,15 @@ class TimeSeries:
 
     def predict(
         self,
-        models: Models,
+        models: Dict[str, BaseEstimator],
         horizon: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         predict_fn: Optional[Callable] = None,
         **predict_fn_kwargs,
     ) -> pd.DataFrame:
         """Use `model` to predict the next `horizon` timesteps."""
-        if not isinstance(models, list):
-            models = [models]
-        model_names = _name_models([m.__class__.__name__ for m in models])
         predict_fn = self._define_predict_fn(predict_fn, dynamic_dfs)
-        for i, model in enumerate(models):
+        for i, (name, model) in enumerate(models.items()):
             self._predict_setup()
             for _ in range(horizon):
                 new_x = self._update_features()
@@ -601,10 +600,10 @@ class TimeSeries:
             if i == 0:
                 preds = self._get_predictions()
                 preds = preds.rename(
-                    columns={f"{self.target_col}_pred": model_names[i]}, copy=False
+                    columns={f"{self.target_col}_pred": name}, copy=False
                 )
             else:
-                preds[model_names[i]] = self._get_raw_predictions()
+                preds[name] = self._get_raw_predictions()
         if self.id_col != "index":
             preds = preds.reset_index()
         return preds

@@ -24,7 +24,7 @@ def _fit_transform(
 
 
 def _predict(ts, model, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs):
-    return ts.predict(model, horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs)
+    return ts.predict(model[0], horizon, dynamic_dfs, predict_fn, **predict_fn_kwargs)
 
 # %% ../../nbs/distributed.core.ipynb 7
 class DistributedTimeSeries:
@@ -89,9 +89,7 @@ class DistributedTimeSeries:
 
         `predict_fn(model, new_x, features_order, **predict_fn_kwargs)` is called on each timestep.
         """
-        if not isinstance(models, list):
-            models = [models]
-        models_future = self.client.scatter(models, broadcast=True)
+        models_future = self.client.scatter([models], broadcast=True)
         if dynamic_dfs is not None:
             dynamic_dfs_futures = self.client.scatter(dynamic_dfs, broadcast=True)
         else:

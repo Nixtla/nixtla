@@ -20,6 +20,7 @@ from mlforecast.core import (
     Lags,
     Models,
     TimeSeries,
+    _name_models,
 )
 from .lgb_cv import LightGBMCV
 from .utils import backtest_splits
@@ -55,16 +56,21 @@ class MLForecast:
         num_threads : int (default=1)
             Number of threads to use when computing the features.
         """
-        if not isinstance(models, list):
-            models = [clone(models)]
-        self.models = [clone(m) for m in models]
+        if not isinstance(models, dict) and not isinstance(models, list):
+            models = [models]
+        if isinstance(models, list):
+            model_names = _name_models([m.__class__.__name__ for m in models])
+            models_with_names = dict(zip(model_names, models))
+        else:
+            models_with_names = models
+        self.models = models_with_names
         self.ts = TimeSeries(
             freq, lags, lag_transforms, date_features, differences, num_threads
         )
 
     def __repr__(self):
         return (
-            f'{self.__class__.__name__}(models=[{", ".join(m.__class__.__name__ for m in self.models)}], '
+            f'{self.__class__.__name__}(models=[{", ".join(self.models.keys())}], '
             f"freq={self.freq}, "
             f"lag_features={list(self.ts.transforms.keys())}, "
             f"date_features={self.ts.date_features}, "
@@ -144,9 +150,9 @@ class MLForecast:
         self : Forecast
             Forecast object with trained models.
         """
-        self.models_ = []
-        for model in self.models:
-            self.models_.append(clone(model).fit(X, y))
+        self.models_ = {}
+        for name, model in self.models.items():
+            self.models_[name] = clone(model).fit(X, y)
         return self
 
     def fit(

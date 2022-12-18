@@ -21,6 +21,7 @@ from mlforecast.core import (
     Lags,
     Models,
     TimeSeries,
+    _name_models,
 )
 from .core import DistributedTimeSeries
 from ..utils import backtest_splits
@@ -61,9 +62,14 @@ class DistributedMLForecast:
         client : dask distributed client
             Client to use for computing data and training the models.
         """
-        if not isinstance(models, list):
-            models = [clone(models)]
-        self.models = [clone(m) for m in models]
+        if not isinstance(models, dict) and not isinstance(models, list):
+            models = [models]
+        if isinstance(models, list):
+            model_names = _name_models([m.__class__.__name__ for m in models])
+            models_with_names = dict(zip(model_names, models))
+        else:
+            models_with_names = models
+        self.models = models_with_names
         self.client = client or default_client()
         self.dts = DistributedTimeSeries(
             TimeSeries(
@@ -74,7 +80,7 @@ class DistributedMLForecast:
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__}(models=[{", ".join(m.__class__.__name__ for m in self.models)}], '
+            f'{self.__class__.__name__}(models=[{", ".join(self.models.keys())}], '
             f"freq={self.freq}, "
             f"lag_features={list(self.dts._base_ts.transforms.keys())}, "
             f"date_features={self.dts._base_ts.date_features}, "
@@ -149,9 +155,9 @@ class DistributedMLForecast:
         self : DistributedForecast
             Forecast object with trained models.
         """
-        self.models_ = []
-        for model in self.models:
-            self.models_.append(clone(model).fit(X, y))
+        self.models_ = {}
+        for name, model in self.models.items():
+            self.models_[name] = clone(model).fit(X, y).model_
         return self
 
     def fit(
@@ -233,7 +239,7 @@ class DistributedMLForecast:
             Predictions for each serie and timestep, with one column per model.
         """
         return self.dts.predict(
-            [m.model_ for m in self.models_],
+            self.models_,
             horizon,
             dynamic_dfs,
             predict_fn,
