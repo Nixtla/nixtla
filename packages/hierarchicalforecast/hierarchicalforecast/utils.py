@@ -192,8 +192,8 @@ class HierarchicalPlot:
                         continue
                     ax.fill_between(
                         df_plot.index, 
-                        df_plot[f'{col}-lo-{lv}'], 
-                        df_plot[f'{col}-hi-{lv}'],
+                        df_plot[f'{col}-lo-{lv}'].values, 
+                        df_plot[f'{col}-hi-{lv}'].values,
                         alpha=-lv/100 + 1,
                         color=cmap_dict[col],
                         label=f'{col}_level_{lv}'
@@ -248,8 +248,8 @@ class HierarchicalPlot:
                             continue
                         axs[idx].fill_between(
                             df_plot.index, 
-                            df_plot[f'{col}-lo-{lv}'], 
-                            df_plot[f'{col}-hi-{lv}'],
+                            df_plot[f'{col}-lo-{lv}'].values, 
+                            df_plot[f'{col}-hi-{lv}'].values,
                             alpha=-lv/100 + 1,
                             color=cmap_dict[col],
                             label=f'{col}_level_{lv}'
