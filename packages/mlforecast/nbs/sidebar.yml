@@ -10,6 +10,9 @@ website:
           - docs/quick_start_local.ipynb
           - docs/quick_start_distributed.ipynb
           - docs/end_to_end_walkthrough.ipynb
+      - section: Tutorials
+        contents:
+          - docs/cross_validation.ipynb
       - section: API reference
         contents:
           - section: Local
