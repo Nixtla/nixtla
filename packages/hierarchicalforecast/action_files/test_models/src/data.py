@@ -61,6 +61,9 @@ def get_data():
     Y_train_df = Y_train_df.reset_index()
 
     # Save Data
+    if not os.path.exists('./data'):
+        os.makedirs('./data')
+
     Y_test_df.to_csv('./data/Y_test.csv', index=False)
     Y_train_df.to_csv('./data/Y_train.csv', index=False)
 
