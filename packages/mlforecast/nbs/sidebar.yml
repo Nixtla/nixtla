@@ -13,6 +13,7 @@ website:
       - section: Tutorials
         contents:
           - docs/cross_validation.ipynb
+          - docs/electricity_peak_forecasting.ipynb
       - section: API reference
         contents:
           - section: Local
