@@ -153,7 +153,7 @@ def scaled_crps(y, y_hat, quantiles):
     This metric averages percentual weighted absolute deviations as 
     defined by the quantile losses.
 
-    $$ \mathrm{sCRPS}(\hat{F}_{\\tau}, \mathbf{y}_{\\tau}) = 2 \sum_{i}
+    $$ \mathrm{sCRPS}(\hat{F}_{\\tau}, \mathbf{y}_{\\tau}) = \\frac{2}{N} \sum_{i}
     \int^{1}_{0}
     \\frac{\mathrm{QL}(\hat{F}_{i,\\tau}, y_{i,\\tau})_{q}}{\sum_{i} | y_{i,\\tau} |} dq $$
 

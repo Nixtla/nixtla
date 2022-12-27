@@ -21,6 +21,7 @@ website:
           - examples/AustralianDomesticTourism-Intervals.ipynb
           - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
           - examples/AustralianDomesticTourism-Permbu-Intervals.ipynb
+          - examples/TourismLarge-Evaluation.ipynb
       - Methods
       - section: API Reference
         contents:
