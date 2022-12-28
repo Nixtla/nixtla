@@ -249,6 +249,7 @@ class MLForecast:
         id_col: str,
         time_col: str,
         target_col: str,
+        step_size: Optional[int] = None,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
@@ -274,6 +275,8 @@ class MLForecast:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
+        step_size : int, optional (default=None)
+            Step size between each cross validation window. If None it will be equal to `window_size`.
         static_features : list of str, optional (default=None)
             Names of the features that are static and will be repeated when forecasting.
         dropna : bool (default=True)
@@ -307,7 +310,7 @@ class MLForecast:
             freq = self.freq
 
         for train_end, train, valid in backtest_splits(
-            data, n_windows, window_size, freq, time_col
+            data, n_windows, window_size, freq, step_size, time_col
         ):
             self.fit(
                 train,

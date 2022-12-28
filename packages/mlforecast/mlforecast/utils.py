@@ -8,7 +8,7 @@ import random
 import reprlib
 from itertools import chain
 from math import ceil, log10
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -121,10 +121,14 @@ def backtest_splits(
     n_windows: int,
     window_size: int,
     freq: Union[pd.offsets.BaseOffset, int],
+    step_size: Optional[int] = None,
     time_col: str = "ds",
 ):
+    if step_size is None:
+        step_size = window_size
+    test_size = window_size + step_size * (n_windows - 1)
     for i in range(n_windows):
-        offset = (n_windows - i) * window_size
+        offset = test_size - i * step_size
         if isinstance(data, pd.DataFrame):
             splits = _split_info(data, offset, window_size, freq, time_col)
         else:

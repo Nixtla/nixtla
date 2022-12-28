@@ -5,6 +5,7 @@ dependencies:
   - black
   - dask
   - flake8
+  - jupyterlab
   - lightgbm
   - matplotlib
   - mypy
