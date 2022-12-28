@@ -35,7 +35,7 @@ def _build_fn_name(fn) -> str:
     return fn_name
 
 # %% ../nbs/core.ipynb 9
-def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name, uids):
+def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name):
     """
     This function assumes that the model creates prediction intervals
     under a normality with the following the Equation:
@@ -50,6 +50,8 @@ def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name, uids):
     pi_model_name = [pi_name for pi_name in pi_model_names if model_name in pi_name]
     pi = len(pi_model_name) > 0
 
+    n_series = len(Y_hat_df.index.unique())
+
     if not pi:
         raise Exception(f'Please include `{model_name}` prediction intervals in `Y_hat_df`')
 
@@ -58,7 +60,7 @@ def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name, uids):
     level_col = re.findall('[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+', pi_col)
     level_col = float(level_col[0])
     z = norm.ppf(0.5 + level_col / 200)
-    sigmah = Y_hat_df.pivot(columns='ds', values=pi_col).loc[uids].values
+    sigmah = Y_hat_df[pi_col].values.reshape(n_series,-1)
     sigmah = sign * (sigmah - y_hat) / z
 
     return sigmah
@@ -83,6 +85,73 @@ class HierarchicalReconciliation:
                  reconcilers: List[Callable]):
         self.reconcilers = reconcilers
         self.insample = any([method.insample for method in reconcilers])
+    
+    def _prepare_fit(self,
+                     Y_hat_df: pd.DataFrame,
+                     S_df: pd.DataFrame,
+                     Y_df: Optional[pd.DataFrame],
+                     tags: Dict[str, np.ndarray],
+                     intervals_method: str, 
+                     sort_df: bool):
+        """
+        Performs preliminary wrangling and protections
+        """
+        #-------------------------------- Match Y_hat/Y/S index order --------------------------------#
+        if sort_df:
+            Y_hat_df = Y_hat_df.reset_index()
+            Y_hat_df.unique_id = Y_hat_df.unique_id.astype('category')
+            Y_hat_df.unique_id = Y_hat_df.unique_id.cat.set_categories(S_df.index)
+            Y_hat_df = Y_hat_df.sort_values(by=['unique_id', 'ds'])
+            Y_hat_df = Y_hat_df.set_index('unique_id')
+
+            if Y_df is not None:
+                Y_df = Y_df.reset_index()
+                Y_df.unique_id = Y_df.unique_id.astype('category')
+                Y_df.unique_id = Y_df.unique_id.cat.set_categories(S_df.index)
+                Y_df = Y_df.sort_values(by=['unique_id', 'ds'])
+                Y_df = Y_df.set_index('unique_id')
+
+            S_df.index = pd.CategoricalIndex(S_df.index, categories=S_df.index)
+
+        #----------------------------------- Check Input's Validity ----------------------------------#
+        # Check input's validity
+        if intervals_method not in ['normality', 'bootstrap', 'permbu']:
+            raise ValueError(f'Unkwon interval method: {intervals_method}')
+
+        if self.insample or (intervals_method in ['bootstrap', 'permbu']):
+            if Y_df is None:
+                raise Exception('you need to pass `Y_df`')            
+
+        # Declare output names
+        drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
+        model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
+        pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name)]
+        model_names = [name for name in model_names if name not in pi_model_names]
+
+        # TODO: Complete y_hat_insample protection
+        if intervals_method in ['bootstrap', 'permbu']:
+           if not (set(model_names) <= set(Y_df.columns)):
+               raise Exception('Check `Y_hat_df`s models are included in `Y_df` columns')
+
+        uids = Y_hat_df.index.unique()
+
+        # Check Y_hat_df\S_df series difference
+        S_diff  = len(S_df.index.difference(uids))
+        Y_hat_diff = len(Y_hat_df.index.difference(S_df.index.unique()))
+        if S_diff > 0 or Y_hat_diff > 0:
+            raise Exception(f'Check `S_df`, `Y_hat_df` series difference, S\Y_hat={S_diff}, Y_hat\S={Y_hat_diff}')
+
+        if Y_df is not None:
+            # Check Y_hat_df\Y_df series difference
+            Y_diff  = len(Y_df.index.difference(uids))
+            Y_hat_diff = len(Y_hat_df.index.difference(Y_df.index.unique()))
+            if Y_diff > 0 or  Y_hat_diff > 0:
+                raise Exception(f'Check `Y_hat_df`, `Y_df` series difference, Y_hat\Y={Y_hat_diff}, Y\Y_hat={Y_diff}')
+
+        # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
+        S_df = S_df.loc[uids]
+
+        return Y_hat_df, S_df, Y_df, model_names
 
     def reconcile(self, 
                   Y_hat_df: pd.DataFrame,
@@ -91,6 +160,7 @@ class HierarchicalReconciliation:
                   Y_df: Optional[pd.DataFrame] = None,
                   level: Optional[List[int]] = None,
                   intervals_method: str = 'normality',
+                  return_samples: bool = False,
                   sort_df: bool = True):
         """Hierarchical Reconciliation Method.
 
@@ -115,96 +185,46 @@ class HierarchicalReconciliation:
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `sort_df` : bool (default=True), iff True, sort `df` by [`unique_id`,`ds`].<br>
+        `return_samples`: bool (default=False), if True return probabilistic coherent samples.<br>
+        `sort_df` : bool (default=True), if True, sort `df` by [`unique_id`,`ds`].<br>
 
         **Returns:**<br>
         `y_tilde`: pd.DataFrame, with reconciled predictions.        
         """
-        #----------------------------- Preliminary Wrangling/Protections -----------------------------#
-        if sort_df:
-            Y_hat_df = Y_hat_df.reset_index()
-            Y_hat_df.unique_id = Y_hat_df.unique_id.astype('category')
-            Y_hat_df.unique_id = Y_hat_df.unique_id.cat.set_categories(S.index)
-            Y_hat_df = Y_hat_df.sort_values(by=['unique_id', 'ds'])
-            Y_hat_df = Y_hat_df.set_index('unique_id')
+        # Check input's validity and sort dataframes
+        Y_hat_df, S_df, Y_df, model_names = \
+                    self._prepare_fit(Y_hat_df=Y_hat_df,
+                                      S_df=S,
+                                      Y_df=Y_df,
+                                      tags=tags,
+                                      intervals_method=intervals_method,
+                                      sort_df=sort_df)
 
-            if Y_df is not None:
-                Y_df = Y_df.reset_index()
-                Y_df.unique_id = Y_df.unique_id.astype('category')
-                Y_df.unique_id = Y_df.unique_id.cat.set_categories(S.index)
-                Y_df = Y_df.sort_values(by=['unique_id', 'ds'])
-                Y_df = Y_df.set_index('unique_id')
-
-            S.index = pd.CategoricalIndex(S.index)
-
-        # Check input's validity
-        if intervals_method not in ['normality', 'bootstrap', 'permbu']:
-            raise ValueError(f'Unkwon interval method: {intervals_method}')
-
-        if self.insample or (intervals_method in ['bootstrap', 'permbu']):
-            if Y_df is None:
-                raise Exception('you need to pass `Y_df`')            
-
-        # Declare output names
-        drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
-        model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
-        pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name)]
-        model_names = [name for name in model_names if name not in pi_model_names]
-
-        uids = Y_hat_df.index.unique()
-
-        # Check Y_hat_df\S_df series difference
-        S_diff  = len(S.index.difference(uids))
-        Y_hat_diff = len(Y_hat_df.index.difference(S.index.unique()))
-        if S_diff > 0 or Y_hat_diff > 0:
-            raise Exception(f'Check `S_df`, `Y_hat_df` series difference, S\Y_hat={S_diff}, Y_hat\S={Y_hat_diff}')
-
-        if Y_df is not None:
-            # Check Y_hat_df\Y_df series difference
-            Y_diff  = len(Y_df.index.difference(uids))
-            Y_hat_diff = len(Y_hat_df.index.difference(Y_df.index.unique()))
-            if Y_diff > 0 or  Y_hat_diff > 0:
-                raise Exception(f'Check `Y_hat_df`, `Y_df` series difference, Y_hat\Y={Y_hat_diff}, Y\Y_hat={Y_diff}')
-
-        # TODO: Complete y_hat_insample protection
-        if intervals_method in ['bootstrap', 'permbu']:
-           if not (set(model_names) <= set(Y_df.columns)):
-               raise Exception('Check `Y_hat_df`s models are included in `Y_df` columns')
-
-        # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
-        S_ = S.loc[uids]
-
-
-        #---------------------------------------- Predictions ----------------------------------------#
         # Initialize reconciler arguments
         reconciler_args = dict(
-            S=S_.values.astype(np.float32),
-            idx_bottom=S_.index.get_indexer(S.columns),
-            tags={key: S_.index.get_indexer(val) for key, val in tags.items()}
+            S=S_df.values.astype(np.float32),
+            idx_bottom=S_df.index.get_indexer(S.columns),
+            tags={key: S_df.index.get_indexer(val) for key, val in tags.items()}
         )
         if Y_df is not None:
-            reconciler_args['y_insample'] = Y_df.pivot(columns='ds', values='y').loc[uids].values.astype(np.float32)
+            y_insample = Y_df['y'].values.reshape(len(S_df), -1).astype(np.float32)
+            reconciler_args['y_insample'] = y_insample
 
         fcsts = Y_hat_df.copy()
         start = time.time()
         self.execution_times = {}
         self.level_names = {}
-        #for reconcile_fn in tqdm(self.reconcilers):
         for reconcile_fn in self.reconcilers:
             reconcile_fn_name = _build_fn_name(reconcile_fn)
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
             has_level = 'level' in signature(reconcile_fn).parameters
 
-            # TODO: maybe sort in advance by uids and avoid .loc[uids]
-            # This change affects y_hat_model, y_insample, y_hat_insample, sigmah
-            # change pivot for df.values and reshapes.
             for model_name in model_names:
-                y_hat = Y_hat_df.pivot(columns='ds', values=model_name).loc[uids].values
+                y_hat = Y_hat_df[model_name].values.reshape(len(S_df), -1).astype(np.float32)
                 reconciler_args['y_hat'] = y_hat
 
                 if (self.insample and has_fitted) or intervals_method in ['bootstrap', 'permbu']:
-                    y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[uids].values
-                    y_hat_insample = y_hat_insample.astype(np.float32)
+                    y_hat_insample = Y_df[model_name].values.reshape(len(S_df), -1).astype(np.float32)
                     reconciler_args['y_hat_insample'] = y_hat_insample
 
                 if has_level and (level is not None):
@@ -212,10 +232,11 @@ class HierarchicalReconciliation:
 
                     if intervals_method in ['normality', 'permbu']:
                         sigmah = _reverse_engineer_sigmah(Y_hat_df=Y_hat_df,
-                                    y_hat=y_hat, model_name=model_name, uids=uids)
+                                    y_hat=y_hat, model_name=model_name)
                         reconciler_args['sigmah'] = sigmah
 
                     reconciler_args['intervals_method'] = intervals_method
+                    reconciler_args['return_sample'] = return_samples
 
                 # Mean and Probabilistic reconciliation
                 kwargs = [key for key in signature(reconcile_fn).parameters if key in reconciler_args.keys()]
@@ -234,6 +255,14 @@ class HierarchicalReconciliation:
                                                 columns=self.level_names[f'{model_name}/{reconcile_fn_name}'], 
                                                 index=fcsts.index)
                     fcsts = pd.concat([fcsts, intervals_df], axis=1)
+
+                    if return_samples:
+                        self.sample_names[f'{model_name}/{reconcile_fn_name}'] = [f'{model_name}/{reconcile_fn_name}-sample-{lv}' for lv in level]
+                        samples = np.reshape(fcsts_model['samples'], (len(fcsts),-1))
+                        samples_df = pd.DataFrame(samples,
+                                                  columns=self.sample_names[f'{model_name}/{reconcile_fn_name}'], 
+                                                  index=fcsts.index)
+                        fcsts = pd.concat([fcsts, samples_df], axis=1)
 
                     del sorted_quantiles
                     del intervals_df
