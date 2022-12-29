@@ -43,8 +43,8 @@ class MLForecast:
         ----------
         models : regressor or list of regressors
             Models that will be trained and used to compute the forecasts.
-        freq : str or int, optional (default=None)
-            Pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series.
+        freq : str or int or pd.offsets.BaseOffset, optional (default=None)
+            Pandas offset, pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series.
         lags : list of int, optional (default=None)
             Lags of the target to use as features.
         lag_transforms : dict of int to list of functions, optional (default=None)
@@ -205,6 +205,7 @@ class MLForecast:
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        new_data: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
@@ -222,6 +223,10 @@ class MLForecast:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
+        new_data : pandas DataFrame, optional (default=None)
+            Series data of new observations for which forecasts are to be generated.
+                This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
+                If `new_data` is not None, the method will generate forecasts for the new observations.
 
 
         Returns
@@ -233,7 +238,29 @@ class MLForecast:
             raise ValueError(
                 "No fitted models found. You have to call fit or preprocess + fit_models."
             )
-        return self.ts.predict(
+
+        if new_data is not None:
+            new_ts = TimeSeries(
+                self.ts.freq,
+                self.ts.lags,
+                self.ts.lag_transforms,
+                self.ts.date_features,
+                self.ts.differences,
+                self.ts.num_threads,
+            )
+            new_ts._fit(
+                new_data,
+                self.ts.id_col,
+                self.ts.time_col,
+                self.ts.target_col,
+                self.ts.static_features.columns,
+                self.ts.keep_last_n,
+            )
+            ts = new_ts
+        else:
+            ts = self.ts
+
+        return ts.predict(
             self.models_,
             horizon,
             dynamic_dfs,

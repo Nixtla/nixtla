@@ -222,7 +222,7 @@ def _name_models(current_names):
     return names
 
 # %% ../nbs/core.ipynb 23
-Freq = Union[int, str]
+Freq = Union[int, str, pd.offsets.BaseOffset]
 Lags = Iterable[int]
 LagTransform = Union[Callable, Tuple[Callable, Any]]
 LagTransforms = Dict[int, List[LagTransform]]
@@ -245,10 +245,17 @@ class TimeSeries:
     ):
         if isinstance(freq, str):
             self.freq = pd.tseries.frequencies.to_offset(freq)
+        elif isinstance(freq, pd.offsets.BaseOffset):
+            self.freq = freq
         elif isinstance(freq, int):
             self.freq = freq
         elif freq is None:
             self.freq = 1
+        else:
+            raise ValueError(
+                "Unknown frequency type "
+                "Please use a str, int or offset frequency type."
+            )
         if not isinstance(num_threads, int) or num_threads < 1:
             warnings.warn("Setting num_threads to 1.")
             num_threads = 1
@@ -301,6 +308,13 @@ class TimeSeries:
         keep_last_n: Optional[int] = None,
     ) -> "TimeSeries":
         """Save the series values, ids and last dates."""
+        if id_col not in df and id_col != "index":
+            raise ValueError(f"Couldn't find {id_col} column.")
+        for col in (time_col, target_col):
+            if col not in df:
+                raise ValueError(f"Data doesn't contain {col} column")
+        if df[target_col].isnull().any():
+            raise ValueError(f"{target_col} column contains null values.")
         if pd.api.types.is_datetime64_dtype(df[time_col]):
             if self.freq == 1:
                 raise ValueError(
@@ -461,13 +475,8 @@ class TimeSeries:
         If you don't want to drop rows with null values after the transformations set `dropna=False`
         If `keep_last_n` is not None then that number of observations is kept across all series for updates.
         """
-        if id_col not in data and id_col != "index":
-            raise ValueError(f"Couldn't find {id_col} column.")
-        for col in (time_col, target_col):
-            if col not in data:
-                raise ValueError(f"Data doesn't contain {col} column")
-        if data[target_col].isnull().any():
-            raise ValueError(f"{target_col} column contains null values.")
+        self.dropna = dropna
+        self.keep_last_n = keep_last_n
         self._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
         return self._transform(data, dropna)
 

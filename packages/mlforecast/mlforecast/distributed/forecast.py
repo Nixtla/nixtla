@@ -207,6 +207,7 @@ class DistributedMLForecast:
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        new_data: Optional[dd.DataFrame] = None,
     ) -> dd.DataFrame:
         """Compute the predictions for the next `horizon` steps.
 
@@ -224,13 +225,50 @@ class DistributedMLForecast:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
+        new_data : dask DataFrame, optional (default=None)
+            Series data of new observations for which forecasts are to be generated.
+                This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
+                If `new_data` is not None, the method will generate forecasts for the new observations.
+
 
         Returns
         -------
         result : dask DataFrame
             Predictions for each serie and timestep, with one column per model.
         """
-        return self.dts.predict(
+        if new_data is not None:
+            ts_info = self.dts.ts[0].result()
+            if ts_info.id_col in new_data:
+                warnings.warn(
+                    "It is recommended to have id_col as the index, since setting the index is a slow operation."
+                )
+                new_data = new_data.set_index(ts_info.id_col)
+                ts_info.id_col = "index"
+            new_dts = DistributedTimeSeries(
+                TimeSeries(
+                    self.dts._base_ts.freq,
+                    self.dts._base_ts.lags,
+                    self.dts._base_ts.lag_transforms,
+                    self.dts._base_ts.date_features,
+                    self.dts._base_ts.differences,
+                    self.dts._base_ts.num_threads,
+                ),
+                self.client,
+            )
+            new_dts.fit_transform(
+                new_data,
+                ts_info.id_col,
+                ts_info.time_col,
+                ts_info.target_col,
+                ts_info.static_features.columns,
+                ts_info.dropna,
+                ts_info.keep_last_n,
+            )
+            dts = new_dts
+        else:
+            dts = self.dts
+
+        return dts.predict(
             self.models_,
             horizon,
             dynamic_dfs,
