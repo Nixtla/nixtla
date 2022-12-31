@@ -7,6 +7,7 @@ __all__ = ['HierarchicalReconciliation']
 import re
 import gc
 import time
+import copy
 from inspect import signature
 from scipy.stats import norm
 from typing import Callable, Dict, List, Optional
@@ -84,6 +85,7 @@ class HierarchicalReconciliation:
     def __init__(self,
                  reconcilers: List[Callable]):
         self.reconcilers = reconcilers
+        self.orig_reconcilers = copy.deepcopy(reconcilers) # TODO: elegant solution
         self.insample = any([method.insample for method in reconcilers])
     
     def _prepare_fit(self,
@@ -160,12 +162,13 @@ class HierarchicalReconciliation:
                   Y_df: Optional[pd.DataFrame] = None,
                   level: Optional[List[int]] = None,
                   intervals_method: str = 'normality',
-                  return_samples: bool = False,
+                  num_samples: int = -1,
+                  seed: int = 0,
                   sort_df: bool = True):
         """Hierarchical Reconciliation Method.
 
         The `reconcile` method is analogous to SKLearn `fit_predict` method, it 
-        applies different reconciliation methods instantiated in the `reconcilers` list. 
+        applies different reconciliation techniques instantiated in the `reconcilers` list.
 
         Most reconciliation methods can be described by the following convenient 
         linear algebra notation:
@@ -179,20 +182,21 @@ class HierarchicalReconciliation:
 
         **Parameters:**<br>
         `Y_hat_df`: pd.DataFrame, base forecasts with columns `ds` and models to reconcile indexed by `unique_id`.<br>
-        `Y_df`: pd.DataFrame, training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.
+        `Y_df`: pd.DataFrame, training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.<br>
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
         `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `return_samples`: bool (default=False), if True return probabilistic coherent samples.<br>
+        `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
+        `seed`: int=0, random seed for numpy generator's replicability.<br>
         `sort_df` : bool (default=True), if True, sort `df` by [`unique_id`,`ds`].<br>
 
         **Returns:**<br>
-        `y_tilde`: pd.DataFrame, with reconciled predictions.        
+        `Y_tilde_df`: pd.DataFrame, with reconciled predictions.
         """
         # Check input's validity and sort dataframes
-        Y_hat_df, S_df, Y_df, model_names = \
+        Y_hat_df, S_df, Y_df, self.model_names = \
                     self._prepare_fit(Y_hat_df=Y_hat_df,
                                       S_df=S,
                                       Y_df=Y_df,
@@ -210,16 +214,18 @@ class HierarchicalReconciliation:
             y_insample = Y_df['y'].values.reshape(len(S_df), -1).astype(np.float32)
             reconciler_args['y_insample'] = y_insample
 
-        fcsts = Y_hat_df.copy()
+        Y_tilde_df= Y_hat_df.copy()
         start = time.time()
         self.execution_times = {}
         self.level_names = {}
-        for reconcile_fn in self.reconcilers:
-            reconcile_fn_name = _build_fn_name(reconcile_fn)
+        self.sample_names = {}
+        for reconcile_fn, name_copy in zip(self.reconcilers, self.orig_reconcilers):
+            reconcile_fn_name = _build_fn_name(name_copy)
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
             has_level = 'level' in signature(reconcile_fn).parameters
 
-            for model_name in model_names:
+            for model_name in self.model_names:
+                recmodel_name = f'{model_name}/{reconcile_fn_name}'
                 y_hat = Y_hat_df[model_name].values.reshape(len(S_df), -1).astype(np.float32)
                 reconciler_args['y_hat'] = y_hat
 
@@ -228,41 +234,47 @@ class HierarchicalReconciliation:
                     reconciler_args['y_hat_insample'] = y_hat_insample
 
                 if has_level and (level is not None):
-                    reconciler_args['level'] = level
-
                     if intervals_method in ['normality', 'permbu']:
                         sigmah = _reverse_engineer_sigmah(Y_hat_df=Y_hat_df,
                                     y_hat=y_hat, model_name=model_name)
                         reconciler_args['sigmah'] = sigmah
 
                     reconciler_args['intervals_method'] = intervals_method
-                    reconciler_args['return_sample'] = return_samples
+                    reconciler_args['num_samples'] = 200 # TODO: solve duplicated num_samples
+                    reconciler_args['seed'] = seed
 
                 # Mean and Probabilistic reconciliation
                 kwargs = [key for key in signature(reconcile_fn).parameters if key in reconciler_args.keys()]
                 kwargs = {key: reconciler_args[key] for key in kwargs}
-                fcsts_model = reconcile_fn(**kwargs)
+                
+                if (level is not None) and (num_samples > 0):
+                    # Store reconciler's memory to generate samples
+                    reconciler = reconcile_fn.fit(**kwargs)
+                    fcsts_model = reconciler.predict(S=reconciler_args['S'], 
+                                                     y_hat=reconciler_args['y_hat'], level=level)
+                else:
+                    # Memory efficient reconciler's fit_predict
+                    fcsts_model = reconcile_fn(**kwargs, level=level)
 
                 # Parse final outputs
-                fcsts[f'{model_name}/{reconcile_fn_name}'] = fcsts_model['mean'].flatten()
+                Y_tilde_df[recmodel_name] = fcsts_model['mean'].flatten()
                 if intervals_method in ['bootstrap', 'normality', 'permbu'] and level is not None:
                     level.sort()
-                    lo_names = [f'{model_name}/{reconcile_fn_name}-lo-{lv}' for lv in reversed(level)]
-                    hi_names = [f'{model_name}/{reconcile_fn_name}-hi-{lv}' for lv in level]
-                    self.level_names[f'{model_name}/{reconcile_fn_name}'] = lo_names + hi_names
-                    sorted_quantiles = np.reshape(fcsts_model['quantiles'], (len(fcsts),-1))
-                    intervals_df = pd.DataFrame(sorted_quantiles,
-                                                columns=self.level_names[f'{model_name}/{reconcile_fn_name}'], 
-                                                index=fcsts.index)
-                    fcsts = pd.concat([fcsts, intervals_df], axis=1)
+                    lo_names = [f'{recmodel_name}-lo-{lv}' for lv in reversed(level)]
+                    hi_names = [f'{recmodel_name}-hi-{lv}' for lv in level]
+                    self.level_names[recmodel_name] = lo_names + hi_names
+                    sorted_quantiles = np.reshape(fcsts_model['quantiles'], (len(Y_tilde_df),-1))
+                    intervals_df = pd.DataFrame(sorted_quantiles, index=Y_tilde_df.index,
+                                                columns=self.level_names[recmodel_name])
+                    Y_tilde_df= pd.concat([Y_tilde_df, intervals_df], axis=1)
 
-                    if return_samples:
-                        self.sample_names[f'{model_name}/{reconcile_fn_name}'] = [f'{model_name}/{reconcile_fn_name}-sample-{lv}' for lv in level]
-                        samples = np.reshape(fcsts_model['samples'], (len(fcsts),-1))
-                        samples_df = pd.DataFrame(samples,
-                                                  columns=self.sample_names[f'{model_name}/{reconcile_fn_name}'], 
-                                                  index=fcsts.index)
-                        fcsts = pd.concat([fcsts, samples_df], axis=1)
+                    if num_samples > 0:
+                        samples = reconciler.sample(num_samples=num_samples)
+                        self.sample_names[recmodel_name] = [f'{recmodel_name}-sample-{i}' for i in range(num_samples)]
+                        samples = np.reshape(samples, (len(Y_tilde_df),-1))
+                        samples_df = pd.DataFrame(samples, index=Y_tilde_df.index,
+                                                  columns=self.sample_names[recmodel_name])
+                        Y_tilde_df= pd.concat([Y_tilde_df, samples_df], axis=1)
 
                     del sorted_quantiles
                     del intervals_df
@@ -273,4 +285,69 @@ class HierarchicalReconciliation:
                 end = time.time()
                 self.execution_times[f'{model_name}/{reconcile_fn_name}'] = (end - start)
 
-        return fcsts
+        return Y_tilde_df
+
+    def bootstrap_reconcile(self,
+                            Y_hat_df: pd.DataFrame,
+                            S_df: pd.DataFrame,
+                            tags: Dict[str, np.ndarray],
+                            Y_df: Optional[pd.DataFrame] = None,
+                            level: Optional[List[int]] = None,
+                            intervals_method: str = 'normality',
+                            num_samples: int = -1,
+                            num_seeds: int = 1,
+                            sort_df: bool = True):
+        """Bootstraped Hierarchical Reconciliation Method.
+
+        Applies N times, based on different random seeds, the `reconcile` method 
+        for the different reconciliation techniques instantiated in the `reconcilers` list. 
+
+        **Parameters:**<br>
+        `Y_hat_df`: pd.DataFrame, base forecasts with columns `ds` and models to reconcile indexed by `unique_id`.<br>
+        `Y_df`: pd.DataFrame, training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.<br>
+        If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
+        `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
+        `tags`: Each key is a level and its value contains tags associated to that level.<br>
+        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
+        `num_seeds`: int=1, random seed for numpy generator's replicability.<br>
+        `sort_df` : bool (default=True), if True, sort `df` by [`unique_id`,`ds`].<br>
+
+        **Returns:**<br>
+        `Y_bootstrap_df`: pd.DataFrame, with bootstraped reconciled predictions.
+        """
+
+        # Check input's validity and sort dataframes
+        Y_hat_df, S_df, Y_df, self.model_names = \
+                    self._prepare_fit(Y_hat_df=Y_hat_df,
+                                      S_df=S_df,
+                                      Y_df=Y_df,
+                                      tags=tags,
+                                      intervals_method=intervals_method,
+                                      sort_df=sort_df)
+
+        # Bootstrap reconciled predictions
+        Y_tilde_list = []
+        for seed in range(num_seeds):
+            Y_tilde_df = self.reconcile(Y_hat_df=Y_hat_df,
+                                        S=S_df,
+                                        tags=tags,
+                                        Y_df=Y_df,
+                                        level=level,
+                                        intervals_method=intervals_method,
+                                        num_samples=num_samples,
+                                        seed=seed,
+                                        sort_df=False)
+            Y_tilde_df['seed'] = seed
+            # TODO: fix broken recmodel_names
+            if seed==0:
+                first_columns = Y_tilde_df.columns
+            Y_tilde_df.columns = first_columns
+            Y_tilde_list.append(Y_tilde_df)
+
+        Y_bootstrap_df = pd.concat(Y_tilde_list, axis=0)
+        del Y_tilde_list
+        gc.collect()
+
+        return Y_bootstrap_df
