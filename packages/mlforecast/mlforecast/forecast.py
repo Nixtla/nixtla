@@ -280,6 +280,7 @@ class MLForecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
+        refit: bool = True,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
@@ -310,6 +311,9 @@ class MLForecast:
             Drop rows with missing values produced by the transformations.
         keep_last_n : int, optional (default=None)
             Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+        refit : bool (default=True)
+            Retrain model for each cross validation window.
+            If False, the models are trained at the beginning and then used to predict each window.
         dynamic_dfs : list of pandas DataFrame, optional (default=None)
             Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
@@ -336,24 +340,28 @@ class MLForecast:
         else:
             freq = self.freq
 
-        for train_end, train, valid in backtest_splits(
+        splits = backtest_splits(
             data, n_windows, window_size, freq, step_size, time_col
-        ):
-            self.fit(
-                train,
-                "index",
-                time_col,
-                target_col,
-                static_features,
-                dropna,
-                keep_last_n,
-            )
+        )
+
+        for i_window, (train_end, train, valid) in enumerate(splits):
+            if refit or i_window == 0:
+                self.fit(
+                    train,
+                    "index",
+                    time_col,
+                    target_col,
+                    static_features,
+                    dropna,
+                    keep_last_n,
+                )
             self.cv_models_.append(self.models_)
             y_pred = self.predict(
                 window_size,
                 dynamic_dfs,
                 before_predict_callback,
                 after_predict_callback,
+                new_data=train if not refit else None,
             )
             y_pred = y_pred.set_index(time_col, append=True)
             result = valid.set_index(time_col, append=True)[[target_col]].copy()

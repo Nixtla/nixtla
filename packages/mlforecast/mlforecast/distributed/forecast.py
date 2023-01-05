@@ -225,7 +225,7 @@ class DistributedMLForecast:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
-        new_data : dask DataFrame, optional (default=None)
+        new_data : pandas DataFrame, optional (default=None)
             Series data of new observations for which forecasts are to be generated.
                 This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
                 If `new_data` is not None, the method will generate forecasts for the new observations.
@@ -288,6 +288,7 @@ class DistributedMLForecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
+        refit: bool = True,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
@@ -318,6 +319,9 @@ class DistributedMLForecast:
             Drop rows with missing values produced by the transformations.
         keep_last_n : int, optional (default=None)
             Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+        refit : bool (default=True)
+            Retrain model for each cross validation window.
+            If False, the models are trained at the beginning and then used to predict each window.
         dynamic_dfs : list of pandas DataFrame, optional (default=None)
             Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
@@ -351,16 +355,21 @@ class DistributedMLForecast:
             freq = 1
         else:
             freq = self.freq
-        for train_end, train, valid in backtest_splits(
-            data, n_windows, window_size, freq, step_size
-        ):
-            self.fit(train, "index", "ds", "y", static_features, dropna, keep_last_n)
+
+        splits = backtest_splits(data, n_windows, window_size, freq, step_size)
+
+        for i_window, (train_end, train, valid) in enumerate(splits):
+            if refit or i_window == 0:
+                self.fit(
+                    train, "index", "ds", "y", static_features, dropna, keep_last_n
+                )
             self.cv_models_.append(self.models_)
             y_pred = self.predict(
                 window_size,
                 dynamic_dfs,
                 before_predict_callback,
                 after_predict_callback,
+                new_data=train if not refit else None,
             )
             result = valid[["ds", "y"]].copy()
             result["cutoff"] = train_end
