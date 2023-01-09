@@ -136,9 +136,11 @@ If you enjoy or benefit from using these Python implementations, a citation to t
                  David Luo and 
                  Cristian Challú and
                  Max Mergenthaler and
+                 Souhaib Ben Taieb and
+                 Shanika L. Wickramasuriya and
                  Artur Dubrawski},
-    title     = {HierarchicalForecast: A Reference Framework for Hierarchical Forecasting in Python},
-    journal   = {Computing Research Repository},
+    title     = {{HierarchicalForecast}: A Reference Framework for Hierarchical Forecasting in Python},
+    journal   = {Work in progress paper, submitted to Journal of Machine Learning Research.},
     volume    = {abs/2207.03517},
     year      = {2022},
     url       = {https://arxiv.org/abs/2207.03517},

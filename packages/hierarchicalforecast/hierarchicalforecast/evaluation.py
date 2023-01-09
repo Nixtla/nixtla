@@ -128,7 +128,7 @@ def msse(y, y_hat, y_train, mask=None):
     **References:**<br>
     - [Hyndman, R. J and Koehler, A. B. (2006).
        "Another look at measures of forecast accuracy",
-       International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)
+       International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)<br>
     - [Kin G. Olivares, O. Nganba Meetei, Ruijun Ma, Rohan Reddy, Mengfei Cao, Lee Dicker. 
        "Probabilistic Hierarchical Forecasting with Deep Poisson Mixtures. 
        Submitted to the International Journal Forecasting, Working paper available at arxiv.](https://arxiv.org/pdf/2110.13179.pdf)
@@ -171,10 +171,10 @@ def scaled_crps(y, y_hat, quantiles):
 
     **References:**<br>
     - [Gneiting, Tilmann. (2011). \"Quantiles as optimal point forecasts\". 
-    International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207010000063)
+    International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207010000063)<br>
     - [Spyros Makridakis, Evangelos Spiliotis, Vassilios Assimakopoulos, Zhi Chen, Anil Gaba, Ilia Tsetlin, Robert L. Winkler. (2022). 
     \"The M5 uncertainty competition: Results, findings and conclusions\". 
-    International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207021001722)
+    International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207021001722)<br>
     - [Syama Sundar Rangapuram, Lucien D Werner, Konstantinos Benidis, Pedro Mercado, Jan Gasthaus, Tim Januschowski. (2021). 
     \"End-to-End Learning of Coherent Probabilistic Forecasts for Hierarchical Time Series\". 
     Proceedings of the 38th International Conference on Machine Learning (ICML).](https://proceedings.mlr.press/v139/rangapuram21a.html)
@@ -212,7 +212,7 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
     **References:**<br>
     - [Gneiting, Tilmann, and Adrian E. Raftery. (2007). 
     \"Strictly proper scoring rules, prediction and estimation\". 
-    Journal of the American Statistical Association.](https://sites.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf)
+    Journal of the American Statistical Association.](https://sites.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf)<br>
     - [Anastasios Panagiotelis, Puwasala Gamakumara, George Athanasopoulos, Rob J. Hyndman. (2022). 
     \"Probabilistic forecast reconciliation: Properties, evaluation and score optimisation\". 
     European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)    
