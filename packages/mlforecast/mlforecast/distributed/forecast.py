@@ -242,8 +242,10 @@ class DistributedMLForecast:
                 warnings.warn(
                     "It is recommended to have id_col as the index, since setting the index is a slow operation."
                 )
-                new_data = new_data.set_index(ts_info.id_col)
+                ddf = new_data.set_index(ts_info.id_col)
                 ts_info.id_col = "index"
+            else:
+                ddf = new_data
             new_dts = DistributedTimeSeries(
                 TimeSeries(
                     self.dts._base_ts.freq,
@@ -256,7 +258,7 @@ class DistributedMLForecast:
                 self.client,
             )
             new_dts.fit_transform(
-                new_data,
+                ddf,
                 ts_info.id_col,
                 ts_info.time_col,
                 ts_info.target_col,
