@@ -291,7 +291,6 @@ class DistributedMLForecast:
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
         refit: bool = True,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
     ):
@@ -324,8 +323,6 @@ class DistributedMLForecast:
         refit : bool (default=True)
             Retrain model for each cross validation window.
             If False, the models are trained at the beginning and then used to predict each window.
-        dynamic_dfs : list of pandas DataFrame, optional (default=None)
-            Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
             Function to call on the features before computing the predictions.
                 This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
@@ -359,13 +356,25 @@ class DistributedMLForecast:
             freq = self.freq
 
         splits = backtest_splits(data, n_windows, window_size, freq, step_size)
-
+        ex_cols_to_drop = ["y"]
+        if static_features is not None:
+            ex_cols_to_drop.extend(static_features)
+        has_ex = data.shape[1] > len(ex_cols_to_drop) + 1  # +1 due to time_col
         for i_window, (train_end, train, valid) in enumerate(splits):
             if refit or i_window == 0:
                 self.fit(
                     train, "index", "ds", "y", static_features, dropna, keep_last_n
                 )
             self.cv_models_.append(self.models_)
+            dynamic_dfs = (
+                [
+                    self.client.compute(
+                        valid.drop(columns=ex_cols_to_drop).reset_index()
+                    ).result()
+                ]
+                if has_ex
+                else None
+            )
             y_pred = self.predict(
                 window_size,
                 dynamic_dfs,
