@@ -64,7 +64,7 @@ You can open a complete example in Colab [![Open In Colab](https://colab.researc
 
 Minimal Example:
 ```python
-
+# !pip install -U numba statsforecast datasetsforecast
 import pandas as pd
 
 # compute base forecast no coherent
