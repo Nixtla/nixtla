@@ -65,6 +65,8 @@ You can open a complete example in Colab [![Open In Colab](https://colab.researc
 Minimal Example:
 ```python
 
+import pandas as pd
+
 # compute base forecast no coherent
 from statsforecast.core import StatsForecast
 from statsforecast.models import AutoARIMA, Naive
@@ -73,6 +75,8 @@ from statsforecast.models import AutoARIMA, Naive
 from hierarchicalforecast.core import HierarchicalReconciliation
 from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
 
+#obtain hierarchical datasets
+from datasetsforecast.hierarchical import HierarchicalData
 
 # Load TourismSmall dataset
 Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
