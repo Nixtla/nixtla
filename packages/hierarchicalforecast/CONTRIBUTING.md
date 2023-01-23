@@ -60,7 +60,7 @@ nbdev_export
 ```
 
 ### Check syntax with Linters
-This project uses a couple of linters to validate different aspects of the code. Before opening a PR, please make sure that it passes all the linting tasks by following the next steps.
+This project uses a couple of linters to validate different aspects of the code. Before opening a PR, please make sure that it passes all the linting tasks by following the next steps. After installing `pip install flake8` and `pip install mypy`.
 
 * `mypy hierarchicalforecast/`
 * `flake8 --select=F hierarchicalforecast/`

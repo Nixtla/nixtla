@@ -93,8 +93,9 @@ class HierarchicalReconciliation:
                      S_df: pd.DataFrame,
                      Y_df: Optional[pd.DataFrame],
                      tags: Dict[str, np.ndarray],
-                     intervals_method: str, 
-                     sort_df: bool):
+                     level: Optional[List[int]] = None,
+                     intervals_method: str = 'normality',
+                     sort_df: bool = True):
         """
         Performs preliminary wrangling and protections
         """
@@ -122,7 +123,13 @@ class HierarchicalReconciliation:
 
         if self.insample or (intervals_method in ['bootstrap', 'permbu']):
             if Y_df is None:
-                raise Exception('you need to pass `Y_df`')            
+                raise Exception('you need to pass `Y_df`')
+        
+        # Protect level list
+        if (level is not None):
+            level_outside_domain = np.any((np.array(level) <= 0)|(np.array(level) > 100 ))
+            if level_outside_domain and (intervals_method in ['normality', 'permbu']):
+                raise Exception('Level outside domain, send `level` list in (0,100]')
 
         # Declare output names
         drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
@@ -186,7 +193,7 @@ class HierarchicalReconciliation:
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
         `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `level`: positive float list (0-100], confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
         `seed`: int=0, random seed for numpy generator's replicability.<br>
@@ -201,6 +208,7 @@ class HierarchicalReconciliation:
                                       S_df=S,
                                       Y_df=Y_df,
                                       tags=tags,
+                                      level=level,
                                       intervals_method=intervals_method,
                                       sort_df=sort_df)
 
