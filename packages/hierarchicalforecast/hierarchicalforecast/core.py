@@ -59,7 +59,7 @@ def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name):
     pi_col = pi_model_name[0]
     sign = -1 if 'lo' in pi_col else 1
     level_col = re.findall('[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+', pi_col)
-    level_col = float(level_col[0])
+    level_col = float(level_col[-1])
     z = norm.ppf(0.5 + level_col / 200)
     sigmah = Y_hat_df[pi_col].values.reshape(n_series,-1)
     sigmah = sign * (sigmah - y_hat) / z
@@ -127,9 +127,9 @@ class HierarchicalReconciliation:
         
         # Protect level list
         if (level is not None):
-            level_outside_domain = np.any((np.array(level) <= 0)|(np.array(level) > 100 ))
+            level_outside_domain = np.any((np.array(level) < 0)|(np.array(level) >= 100 ))
             if level_outside_domain and (intervals_method in ['normality', 'permbu']):
-                raise Exception('Level outside domain, send `level` list in (0,100]')
+                raise Exception('Level outside domain, send `level` list in [0,100)')
 
         # Declare output names
         drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
@@ -193,7 +193,7 @@ class HierarchicalReconciliation:
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
         `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
-        `level`: positive float list (0-100], confidence levels for prediction intervals.<br>
+        `level`: positive float list [0,100), confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
         `seed`: int=0, random seed for numpy generator's replicability.<br>
@@ -316,7 +316,7 @@ class HierarchicalReconciliation:
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
         `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
+        `level`: positive float list [0,100), confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
         `num_seeds`: int=1, random seed for numpy generator's replicability.<br>
