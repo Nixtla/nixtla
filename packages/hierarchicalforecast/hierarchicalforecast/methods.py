@@ -575,6 +575,7 @@ class MinTrace(HReconciler):
                   idx_bottom: Optional[List[int]] = None,):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ['wls_var', 'mint_cov', 'mint_shrink']
+        diag_only_methods = ['ols', 'wls_struct', 'wls_var']
         if self.method in res_methods and y_insample is None and y_hat_insample is None:
             raise ValueError(f"For methods {', '.join(res_methods)} you need to pass residuals")
         n_hiers, n_bottom = S.shape
@@ -629,15 +630,22 @@ class MinTrace(HReconciler):
                 # Protection: final ridge diagonal protection
                 W = (lmd * tar + (1 - lmd) * covm) + self.mint_shr_ridge
         else:
-            raise ValueError(f'Unkown reconciliation method {self.method}')
+            raise ValueError(f'Unknown reconciliation method {self.method}')
 
-        eigenvalues, _ = np.linalg.eig(W)
+        if self.method not in diag_only_methods:
+            eigenvalues, _ = np.linalg.eig(W)
+        else:
+            eigenvalues = np.diag(W)
+
         if any(eigenvalues < 1e-8):
             raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite.')
 
         else:
             # compute P for free reconciliation
-            R = S.T @ np.linalg.pinv(W)
+            if self.method not in diag_only_methods:
+                R = S.T @ np.linalg.pinv(W)
+            else:
+                R = S.T * np.reciprocal(np.diag(W))
             P = np.linalg.pinv(R @ S) @ R
 
         return P, W
@@ -901,7 +909,7 @@ class ERM(HReconciler):
             P = P + Pbu.T.flatten(order='F')
             P = P.reshape(-1, n_bottom, order='F').T
         else:
-            raise ValueError(f'Unkown reconciliation method {self.method}')
+            raise ValueError(f'Unknown reconciliation method {self.method}')
 
         W = np.eye(n_hiers, dtype=np.float32)
 
