@@ -369,8 +369,8 @@ class DistributedMLForecast:
             dynamic_dfs = (
                 [
                     self.client.compute(
-                        valid.drop(columns=ex_cols_to_drop).reset_index()
-                    ).result()
+                        valid.drop(columns=ex_cols_to_drop).reset_index(), sync=True
+                    )
                 ]
                 if has_ex
                 else None

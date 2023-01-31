@@ -314,6 +314,7 @@ class MLForecast:
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
         refit: bool = True,
+        max_horizon: Optional[int] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
     ):
@@ -343,6 +344,8 @@ class MLForecast:
             Drop rows with missing values produced by the transformations.
         keep_last_n : int, optional (default=None)
             Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+        max_horizon: int, optional (default=None)
+            Train this many models, where each model will predict a specific horizon.
         refit : bool (default=True)
             Retrain model for each cross validation window.
             If False, the models are trained at the beginning and then used to predict each window.
@@ -385,12 +388,13 @@ class MLForecast:
             if refit or i_window == 0:
                 self.fit(
                     train,
-                    "index",
-                    time_col,
-                    target_col,
-                    static_features,
-                    dropna,
-                    keep_last_n,
+                    id_col="index",
+                    time_col=time_col,
+                    target_col=target_col,
+                    static_features=static_features,
+                    dropna=dropna,
+                    keep_last_n=keep_last_n,
+                    max_horizon=max_horizon,
                 )
             self.cv_models_.append(self.models_)
             # reset index of valid to be compatible

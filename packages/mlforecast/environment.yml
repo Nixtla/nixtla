@@ -3,7 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - black
-  - dask
+  - dask<2023.1.1
   - flake8
   - jupyterlab
   - lightgbm
