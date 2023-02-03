@@ -10,6 +10,7 @@ defaults:
 
 jobs:
   release:
+    if: github.repository == 'Nixtla/mlforecast' && startsWith(github.ref, 'refs/tags')
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
@@ -27,7 +28,6 @@ jobs:
         run: python setup.py sdist bdist_wheel 
 
       - name: Publish package to PyPI
-        if: github.repository == 'Nixtla/mlforecast' && startsWith(github.ref, 'refs/tags')
         uses: pypa/gh-action-pypi-publish@master
         with:
           user: __token__
