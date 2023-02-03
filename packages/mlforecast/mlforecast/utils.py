@@ -6,12 +6,17 @@ __all__ = ['generate_daily_series', 'generate_prices_for_series', 'backtest_spli
 # %% ../nbs/utils.ipynb 3
 import random
 import reprlib
+from dataclasses import dataclass
 from itertools import chain
 from math import ceil, log10
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import pandas as pd
+from fugue.collections.yielded import Yielded
+from fugue.constants import FUGUE_CONF_WORKFLOW_EXCEPTION_INJECT
+from fugue.dataframe import DataFrame
+from fugue.workflow import FugueWorkflow
 
 # %% ../nbs/utils.ipynb 5
 def generate_daily_series(
@@ -144,3 +149,46 @@ def backtest_splits(
         train_mask = data[time_col].le(splits["train_end"])
         train, valid = data[train_mask], data[splits["is_valid"]]
         yield splits.loc[splits["is_valid"], "train_end"], train, valid
+
+# %% ../nbs/utils.ipynb 24
+@dataclass
+class PredictionIntervals:
+    """Class for storing prediction intervals metadata information."""
+
+    n_windows: int = 2
+    window_size: int = 1
+
+    def __post_init__(self):
+        if self.n_windows < 2:
+            raise ValueError(
+                "You need at least two windows to compute conformal intervals"
+            )
+
+# %% ../nbs/utils.ipynb 25
+def _cotransform(
+    df1: Any,
+    df2: Any,
+    using: Any,
+    schema: Any = None,
+    params: Any = None,
+    partition: Any = None,
+    engine: Any = None,
+    engine_conf: Any = None,
+    force_output_fugue_dataframe: bool = False,
+    as_local: bool = False,
+) -> Any:
+    dag = FugueWorkflow(compile_conf={FUGUE_CONF_WORKFLOW_EXCEPTION_INJECT: 0})
+
+    src = dag.create_data(df1).zip(dag.create_data(df2), partition=partition)
+    tdf = src.transform(
+        using=using,
+        schema=schema,
+        params=params,
+        pre_partition=partition,
+    )
+    tdf.yield_dataframe_as("result", as_local=as_local)
+    dag.run(engine, conf=engine_conf)
+    result = dag.yields["result"].result  # type:ignore
+    if force_output_fugue_dataframe or isinstance(df1, (DataFrame, Yielded)):
+        return result
+    return result.as_pandas() if result.is_local else result.native
