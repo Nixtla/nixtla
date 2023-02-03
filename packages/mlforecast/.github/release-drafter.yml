@@ -9,6 +9,8 @@ categories:
     label: 'fix'
   - title: 'Documentation'
     label: 'documentation'
+  - title: 'Maintenance'
+    label: 'maintenance'
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 template: |
   ## Changes
