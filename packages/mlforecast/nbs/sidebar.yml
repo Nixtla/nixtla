@@ -15,6 +15,7 @@ website:
           - docs/cross_validation.ipynb
           - docs/electricity_peak_forecasting.ipynb
           - docs/prediction_intervals.ipynb
+          - docs/transfer_learning.ipynb
       - section: API reference
         contents:
           - section: Local
