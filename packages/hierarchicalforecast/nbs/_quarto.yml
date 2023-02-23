@@ -41,7 +41,7 @@ website:
             href: https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1kd5m5db7-7OOfy0xVNf1PcvCiAPWvPw
     right:
       - icon: github
-        href: "https://github.com/nixtla/hierachicalforecast"
+        href: "https://github.com/nixtla/hierarchicalforecast"
       - icon: twitter
         href: https://twitter.com/nixtlainc
         aria-label: Nixtla Twitter
