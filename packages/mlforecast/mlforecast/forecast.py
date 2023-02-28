@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 from .utils import backtest_splits, _cotransform, PredictionIntervals
 
 # %% ../nbs/forecast.ipynb 6
-def _add_conformal_intervals(
+def _add_conformal_distribution_intervals(
     fcst_df: pd.DataFrame,
     cs_df: pd.DataFrame,
     model_names: List[str],
@@ -38,7 +38,40 @@ def _add_conformal_intervals(
 ) -> pd.DataFrame:
     """
     Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
-    `level` should be already sorted.
+    `level` should be already sorted. This strategy creates forecasts paths
+    based on errors and calculate quantiles using those paths.
+    """
+    alphas = [100 - lv for lv in level]
+    cuts = [alpha / 200 for alpha in reversed(alphas)]
+    cuts.extend([1 - alpha / 200 for alpha in alphas])
+    for model in model_names:
+        scores = cs_df[model].values.reshape(cs_n_windows, cs_window_size)
+        mean = fcst_df[model].values.reshape(-1, 1).T
+        scores = np.vstack([mean - scores, mean + scores])
+        quantiles = np.quantile(
+            scores,
+            cuts,
+            axis=0,
+        ).T
+        lo_cols = [f"{model}-lo-{lv}" for lv in reversed(level)]
+        hi_cols = [f"{model}-hi-{lv}" for lv in level]
+        fcst_df[lo_cols] = quantiles[:, : len(level)]
+        fcst_df[hi_cols] = quantiles[:, len(level) :]
+    return fcst_df
+
+# %% ../nbs/forecast.ipynb 7
+def _add_conformal_error_intervals(
+    fcst_df: pd.DataFrame,
+    cs_df: pd.DataFrame,
+    model_names: List[str],
+    level: List[Union[int, float]],
+    cs_n_windows: int,
+    cs_window_size: int,
+) -> pd.DataFrame:
+    """
+    Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
+    `level` should be already sorted. This startegy creates prediction intervals
+    based on the absolute errors.
     """
     cuts = [lv / 100 for lv in level]
     for model in model_names:
@@ -54,7 +87,20 @@ def _add_conformal_intervals(
         fcst_df[hi_cols] = mean + quantiles
     return fcst_df
 
-# %% ../nbs/forecast.ipynb 7
+# %% ../nbs/forecast.ipynb 8
+def _get_conformal_method(method: str):
+    available_methods = {
+        "conformal_distribution": _add_conformal_distribution_intervals,
+        "conformal_error": _add_conformal_error_intervals,
+    }
+    if method not in available_methods.keys():
+        raise ValueError(
+            f"prediction intervals method {method} not supported "
+            f'please choose one of {", ".join(available_methods.keys())}'
+        )
+    return available_methods[method]
+
+# %% ../nbs/forecast.ipynb 10
 def _schema_conformal_intervals(
     model_names, level, id_col, time_col, dtypes, fcst_df_columns
 ):
@@ -84,7 +130,7 @@ def _schema_conformal_intervals(
     )
     return schema, id_col
 
-# %% ../nbs/forecast.ipynb 12
+# %% ../nbs/forecast.ipynb 15
 class MLForecast:
     def __init__(
         self,
@@ -462,7 +508,7 @@ class MLForecast:
                 forecasts = _cotransform(
                     forecasts,
                     self._cs_df,
-                    using=_add_conformal_intervals,
+                    using=_get_conformal_method(self.prediction_intervals.method),
                     params=dict(
                         model_names=list(model_names),
                         level=level_,
@@ -604,7 +650,7 @@ class MLForecast:
             out = out.reset_index()
         return out
 
-# %% ../nbs/forecast.ipynb 15
+# %% ../nbs/forecast.ipynb 18
 class Forecast(MLForecast):
     def __init__(
         self,

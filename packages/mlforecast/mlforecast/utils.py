@@ -157,6 +157,7 @@ class PredictionIntervals:
 
     n_windows: int = 2
     window_size: int = 1
+    method: str = "conformal_distribution"
 
     def __post_init__(self):
         if self.n_windows < 2:
