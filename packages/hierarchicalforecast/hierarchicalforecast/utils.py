@@ -293,26 +293,22 @@ class HierarchicalPlot:
         fig, ax = plt.subplots(1, 1, figsize = (20, 7))
         df_plot = Y_df.loc[series].set_index('ds')
         cols = models if models is not None else df_plot.columns
-        cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
+        cols_wo_levels = [col for col in cols if ('-lo-' not in col and '-hi-' not in col)]
         cmap = plt.cm.get_cmap("tab10", 10)
         cmap = [cmap(i) for i in range(10)][:len(cols_wo_levels)]
         cmap_dict = dict(zip(cols_wo_levels, cmap))
-        df_plot[cols_wo_levels].plot(ax=ax, linewidth=2, color=cmap)
-        if level is not None:
-            for lv in level:
-                for col in cols_wo_levels:
-                    if col == 'y':
-                        # we dont need intervals
-                        # for the actual value
-                        continue
+        for col in cols_wo_levels:
+            ax.plot(df_plot[col], linewidth=2, label=col, color=cmap_dict[col])
+            if level is not None and col != 'y':
+                for lv in level:
                     if f'{col}-lo-{lv}' not in df_plot.columns:
                         # if model
                         # doesnt have levels
                         continue
                     ax.fill_between(
-                        df_plot.index, 
-                        df_plot[f'{col}-lo-{lv}'].values, 
-                        df_plot[f'{col}-hi-{lv}'].values,
+                        df_plot.dropna().index, 
+                        df_plot[f'{col}-lo-{lv}'].dropna().values, 
+                        df_plot[f'{col}-hi-{lv}'].dropna().values,
                         alpha=-lv/100 + 1,
                         color=cmap_dict[col],
                         label=f'{col}_level_{lv}'
@@ -321,6 +317,9 @@ class HierarchicalPlot:
         ax.set_xlabel('Timestamp [t]', fontsize=20)
         ax.legend(prop={'size': 15})
         ax.grid()
+        ax.xaxis.set_major_locator(
+            plt.MaxNLocator(min(max(len(df_plot) // 10, 1), 10))
+        )
         for label in (ax.get_xticklabels() + ax.get_yticklabels()):
             label.set_fontsize(20)
                     
@@ -347,28 +346,24 @@ class HierarchicalPlot:
         linked_series = self.S[bottom_series].loc[lambda x: x == 1.].index
         fig, axs = plt.subplots(len(linked_series), 1, figsize=(20, 2 * len(linked_series)))
         cols = models if models is not None else Y_df.drop(['ds'], axis=1)
-        cols_wo_levels = [col for col in cols if ('lo' not in col and 'hi' not in col)]
+        cols_wo_levels = [col for col in cols if ('-lo-' not in col and '-hi-' not in col)]
         cmap = plt.cm.get_cmap("tab10", 10)
         cmap = [cmap(i) for i in range(10)][:len(cols_wo_levels)]
         cmap_dict = dict(zip(cols_wo_levels, cmap))
         for idx, series in enumerate(linked_series):
             df_plot = Y_df.loc[[series]].set_index('ds')
-            df_plot[cols_wo_levels].plot(ax=axs[idx], linewidth=2, color=cmap)
-            if level is not None:
-                for lv in level:
-                    for col in cols_wo_levels:
-                        if col == 'y':
-                            # we dont need intervals
-                            # for the actual value
-                            continue
+            for col in cols_wo_levels:
+                axs[idx].plot(df_plot[col], linewidth=2, label=col, color=cmap_dict[col])
+                if level is not None and col != 'y':
+                    for lv in level:
                         if f'{col}-lo-{lv}' not in df_plot.columns:
                             # if model
                             # doesnt have levels
                             continue
                         axs[idx].fill_between(
-                            df_plot.index, 
-                            df_plot[f'{col}-lo-{lv}'].values, 
-                            df_plot[f'{col}-hi-{lv}'].values,
+                            df_plot.dropna().index, 
+                            df_plot[f'{col}-lo-{lv}'].dropna().values, 
+                            df_plot[f'{col}-hi-{lv}'].dropna().values,
                             alpha=-lv/100 + 1,
                             color=cmap_dict[col],
                             label=f'{col}_level_{lv}'
@@ -377,6 +372,9 @@ class HierarchicalPlot:
             axs[idx].grid()
             axs[idx].get_xaxis().label.set_visible(False)
             axs[idx].legend().set_visible(False)
+            axs[idx].xaxis.set_major_locator(
+                plt.MaxNLocator(min(max(len(df_plot) // 10, 1), 10))
+            )
             for label in (axs[idx].get_xticklabels() + axs[idx].get_yticklabels()):
                 label.set_fontsize(10)
         plt.subplots_adjust(hspace=0.4)
