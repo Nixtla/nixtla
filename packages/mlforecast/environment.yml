@@ -5,6 +5,7 @@ dependencies:
   - black
   - dask<2023.1.1
   - flake8
+  - fugue
   - jupyterlab
   - lightgbm
   - matplotlib
@@ -13,6 +14,7 @@ dependencies:
   - pandas
   - pip
   - pylint
+  - pyspark
   - scikit-learn
   - window-ops
   - xgboost

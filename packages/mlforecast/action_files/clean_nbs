@@ -5,3 +5,5 @@ for file in $(find nbs/ -type f -name "*.ipynb")
 do
   sed -i 's/Python 3.*,$/Python 3\",/g' $file
 done
+# distributed training produces logs with different IPs each time
+./action_files/remove_ip_cells

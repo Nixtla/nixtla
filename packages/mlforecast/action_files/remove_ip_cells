@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import re
+import json
+from pathlib import Path
+from nbdev.clean import process_write
+
+IP_REGEX = re.compile(r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+
+def cell_contains_ips(cell):
+    if 'outputs' not in cell:
+        return False
+    for output in cell['outputs']:
+        if 'text' not in output:
+            return False
+        for line in output['text']:
+            if IP_REGEX.search(line) is not None:
+                return True
+    return False
+
+
+def clean_nb(nb):
+    for cell in nb['cells']:
+        if cell_contains_ips(cell):
+            cell['outputs'] = []
+
+
+if __name__ == '__main__':
+    repo_root = Path(__file__).parents[1]
+    for nb in (repo_root / 'nbs').glob('*distributed*'):
+        process_write(warn_msg='Failed to clean_nb', proc_nb=clean_nb, f_in=nb)
