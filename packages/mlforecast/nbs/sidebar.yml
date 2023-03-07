@@ -27,6 +27,7 @@ website:
           - section: Distributed
             contents:
             - distributed.forecast.ipynb
+            - distributed.fugue.ipynb
             - distributed.models.lgb.ipynb
             - distributed.models.xgb.ipynb
             - distributed.core.ipynb
