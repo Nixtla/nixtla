@@ -6,4 +6,4 @@ do
   sed -i 's/Python 3.*,$/Python 3\",/g' $file
 done
 # distributed training produces logs with different IPs each time
-./action_files/remove_ip_cells
+./action_files/remove_logs_cells

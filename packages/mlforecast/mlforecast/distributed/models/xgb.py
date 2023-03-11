@@ -10,6 +10,7 @@ import xgboost as xgb
 class XGBForecast(xgb.dask.DaskXGBRegressor):
     @property
     def model_(self):
-        local = xgb.XGBRegressor(**self.get_params())
-        local._Booster = self._Booster
+        model_str = self.get_booster().save_raw("ubj")
+        local = xgb.XGBRegressor()
+        local.load_model(model_str)
         return local

@@ -1,2 +1,2 @@
-__all__ = ['DistributedForecast', 'DistributedMLForecast']
-from mlforecast.distributed.forecast import DistributedForecast, DistributedMLForecast
+__all__ = ['DistributedMLForecast']
+from mlforecast.distributed.forecast import DistributedMLForecast
