@@ -38,12 +38,11 @@ jobs:
           git status -s # display the status to see which nbs need cleaning up
           if [ -n "$(git status -uno -s)" ]; then echo -e "!!! Detected unstripped out notebooks\n!!!Remember to run nbdev_install_hooks"; false; fi
 
-  run-tests:
-    runs-on: ${{ matrix.os }}
+  run-all-tests:
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.7', '3.8', '3.9', '3.10']
     steps:
       - name: Clone repo
@@ -59,11 +58,30 @@ jobs:
         run: pip install ./
 
       - name: Run all tests
-        if: matrix.os == 'ubuntu-latest'
         run: nbdev_test --n_workers 1 --do_print --timing
 
+  run-local-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        python-version: ['3.7', '3.8', '3.9', '3.10']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Set up environment
+        uses: mamba-org/provision-with-micromamba@main
+        with:
+          environment-file: local_environment.yml
+          extra-specs: python=${{ matrix.python-version }}
+          cache-env: true
+
+      - name: Install the library
+        run: pip install ./
+
       - name: Run local tests
-        if: matrix.os != 'ubuntu-latest'
         run: nbdev_test --n_workers 1 --do_print --timing --skip_file_glob "*distributed*"
 
   check-deps:

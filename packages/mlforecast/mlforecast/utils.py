@@ -6,7 +6,6 @@ __all__ = ['generate_daily_series', 'generate_prices_for_series', 'backtest_spli
 # %% ../nbs/utils.ipynb 3
 import random
 import reprlib
-from dataclasses import dataclass
 from itertools import chain
 from math import ceil, log10
 from typing import Optional, Union
@@ -97,26 +96,6 @@ def generate_prices_for_series(
     return prices_catalog
 
 # %% ../nbs/utils.ipynb 19
-def _split_info(
-    data: pd.DataFrame,
-    offset: int,
-    window_size: int,
-    freq: Union[pd.offsets.BaseOffset, int],
-    time_col: str,
-):
-    # TODO: try computing this once and passing it to this fn
-    last_dates = data.groupby(level=0, observed=True)[time_col].transform("max")
-    train_ends = last_dates - offset * freq
-    valid_ends = train_ends + window_size * freq
-    train_mask = data[time_col].le(train_ends)
-    train_sizes = train_mask.groupby(data.index, observed=True).sum()
-    if train_sizes.eq(0).any():
-        ids = reprlib.repr(train_sizes[train_sizes.eq(0)].index.tolist())
-        raise ValueError(f"The following series are too short for the window: {ids}")
-    valid_mask = data[time_col].gt(train_ends) & data[time_col].le(valid_ends)
-    return pd.DataFrame({"train_end": train_ends, "is_valid": valid_mask})
-
-# %% ../nbs/utils.ipynb 20
 def backtest_splits(
     data,
     n_windows: int,
@@ -128,32 +107,38 @@ def backtest_splits(
     if step_size is None:
         step_size = window_size
     test_size = window_size + step_size * (n_windows - 1)
+    last_dates = data.groupby(level=0, observed=True)[time_col].transform("max")
     for i in range(n_windows):
         offset = test_size - i * step_size
-        if isinstance(data, pd.DataFrame):
-            splits = _split_info(data, offset, window_size, freq, time_col)
-        else:
-            end_dtype = int if isinstance(freq, int) else "datetime64[ns]"
-            splits = data.map_partitions(
-                _split_info,
-                offset=offset,
-                window_size=window_size,
-                freq=freq,
-                time_col=time_col,
-                meta={"train_end": end_dtype, "is_valid": bool},
+        train_ends = last_dates - offset * freq
+        valid_ends = train_ends + window_size * freq
+        train_mask = data[time_col].le(train_ends)
+        train_sizes = train_mask.groupby(data.index, observed=True).sum()
+        if train_sizes.eq(0).any():
+            ids = reprlib.repr(train_sizes[train_sizes.eq(0)].index.tolist())
+            raise ValueError(
+                f"The following series are too short for the window: {ids}"
             )
-        train_mask = data[time_col].le(splits["train_end"])
-        train, valid = data[train_mask], data[splits["is_valid"]]
-        yield splits.loc[splits["is_valid"], "train_end"], train, valid
+        valid_mask = data[time_col].gt(train_ends) & data[time_col].le(valid_ends)
+        train, valid = data[train_mask], data[valid_mask]
+        yield train_ends.groupby(level=0, observed=True).head(1), train, valid
 
-# %% ../nbs/utils.ipynb 24
-@dataclass
+# %% ../nbs/utils.ipynb 22
 class PredictionIntervals:
     """Class for storing prediction intervals metadata information."""
 
-    n_windows: int = 2
-    window_size: int = 1
-    method: str = "conformal_distribution"
+    def __init__(
+        self,
+        n_windows: int = 2,
+        window_size: int = 1,
+        method: str = "conformal_distribution",
+    ):
+        self.n_windows = n_windows
+        self.window_size = window_size
+        allowed_methods = ["conformal_error", "conformal_distribution"]
+        if method not in allowed_methods:
+            raise ValueError(f"method must be one of {allowed_methods}")
+        self.method = method
 
     def __post_init__(self):
         if self.n_windows < 2:
