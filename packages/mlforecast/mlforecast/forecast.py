@@ -25,7 +25,7 @@ from mlforecast.core import (
 
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
-from .utils import backtest_splits, _cotransform, PredictionIntervals
+from .utils import backtest_splits, PredictionIntervals
 
 # %% ../nbs/forecast.ipynb 6
 def _add_conformal_distribution_intervals(
@@ -35,28 +35,32 @@ def _add_conformal_distribution_intervals(
     level: List[Union[int, float]],
     cs_n_windows: int,
     cs_window_size: int,
+    n_series: int,
 ) -> pd.DataFrame:
     """
     Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
     `level` should be already sorted. This strategy creates forecasts paths
     based on errors and calculate quantiles using those paths.
     """
+    fcst_df = fcst_df.copy()
     alphas = [100 - lv for lv in level]
     cuts = [alpha / 200 for alpha in reversed(alphas)]
-    cuts.extend([1 - alpha / 200 for alpha in alphas])
+    cuts.extend(1 - alpha / 200 for alpha in alphas)
     for model in model_names:
-        scores = cs_df[model].values.reshape(cs_n_windows, cs_window_size)
-        mean = fcst_df[model].values.reshape(-1, 1).T
+        scores = cs_df[model].values.reshape(cs_n_windows, n_series, cs_window_size)
+        mean = fcst_df[model].values.reshape(1, n_series, -1)
         scores = np.vstack([mean - scores, mean + scores])
         quantiles = np.quantile(
             scores,
             cuts,
             axis=0,
-        ).T
+        )
+        quantiles = quantiles.reshape(len(cuts), -1)
         lo_cols = [f"{model}-lo-{lv}" for lv in reversed(level)]
         hi_cols = [f"{model}-hi-{lv}" for lv in level]
-        fcst_df[lo_cols] = quantiles[:, : len(level)]
-        fcst_df[hi_cols] = quantiles[:, len(level) :]
+        out_cols = lo_cols + hi_cols
+        for i, col in enumerate(out_cols):
+            fcst_df[col] = quantiles[i]
     return fcst_df
 
 # %% ../nbs/forecast.ipynb 7
@@ -67,24 +71,29 @@ def _add_conformal_error_intervals(
     level: List[Union[int, float]],
     cs_n_windows: int,
     cs_window_size: int,
+    n_series: int,
 ) -> pd.DataFrame:
     """
     Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
     `level` should be already sorted. This startegy creates prediction intervals
     based on the absolute errors.
     """
+    fcst_df = fcst_df.copy()
     cuts = [lv / 100 for lv in level]
     for model in model_names:
+        mean = fcst_df[model].values.ravel()
         quantiles = np.quantile(
-            cs_df[model].values.reshape(cs_n_windows, cs_window_size),
+            cs_df[model].values.reshape(cs_n_windows, n_series, cs_window_size),
             cuts,
             axis=0,
-        ).T
+        )
+        quantiles = quantiles.reshape(len(cuts), -1)
         lo_cols = [f"{model}-lo-{lv}" for lv in reversed(level)]
         hi_cols = [f"{model}-hi-{lv}" for lv in level]
-        mean = fcst_df[model].values.reshape(-1, 1)
-        fcst_df[lo_cols] = mean - quantiles[:, ::-1]
-        fcst_df[hi_cols] = mean + quantiles
+        for i, col in enumerate(lo_cols):
+            fcst_df[col] = mean - quantiles[len(level) - 1 - i]
+        for i, col in enumerate(hi_cols):
+            fcst_df[col] = mean + quantiles[i]
     return fcst_df
 
 # %% ../nbs/forecast.ipynb 8
@@ -100,37 +109,7 @@ def _get_conformal_method(method: str):
         )
     return available_methods[method]
 
-# %% ../nbs/forecast.ipynb 10
-def _schema_conformal_intervals(
-    model_names, level, id_col, time_col, dtypes, fcst_df_columns
-):
-    """Returns schema for conformal intervals."""
-    models_schema = ",".join(f"{model_name}:double" for model_name in model_names)
-    level_schema = ""
-    for model in model_names:
-        level_schema += ","
-        lo_cols = [f"{model}-lo-{lv}:double" for lv in reversed(level)]
-        hi_cols = [f"{model}-hi-{lv}:double" for lv in level]
-        level_schema += ",".join(lo_cols) + "," + ",".join(hi_cols)
-    id_col = id_col if id_col != "index" else fcst_df_columns[0]
-    id_col_type = (
-        dtypes.loc[id_col] if id_col != "index" else dtypes.loc[fcst_df_columns[0]]
-    )
-    if id_col_type == "category":
-        raise NotImplementedError(
-            "Use of `category` type to identify each time series is not yet implemented. "
-            f"Please transform your {id_col} to string to continue."
-        )
-    id_col_type = "string" if id_col_type == "object" else id_col_type
-    ts_col_type = f"{dtypes.loc[time_col]}".replace("64[ns]", "")
-    schema = (
-        f"{id_col}:{id_col_type},{time_col}:{ts_col_type},"
-        + models_schema
-        + level_schema
-    )
-    return schema, id_col
-
-# %% ../nbs/forecast.ipynb 15
+# %% ../nbs/forecast.ipynb 11
 class MLForecast:
     def __init__(
         self,
@@ -496,27 +475,17 @@ class MLForecast:
                 model_names = self.models.keys()
                 if ts.id_col == "index":
                     forecasts = forecasts.reset_index()
-                dtypes = forecasts.dtypes
-                schema, id_col = _schema_conformal_intervals(
-                    model_names=model_names,
-                    level=level_,
-                    id_col=ts.id_col,
-                    time_col=ts.time_col,
-                    dtypes=dtypes,
-                    fcst_df_columns=forecasts.columns,
+                conformal_method = _get_conformal_method(
+                    self.prediction_intervals.method
                 )
-                forecasts = _cotransform(
+                forecasts = conformal_method(
                     forecasts,
                     self._cs_df,
-                    using=_get_conformal_method(self.prediction_intervals.method),
-                    params=dict(
-                        model_names=list(model_names),
-                        level=level_,
-                        cs_window_size=self.prediction_intervals.window_size,
-                        cs_n_windows=self.prediction_intervals.n_windows,
-                    ),
-                    schema=schema,
-                    partition=id_col,
+                    model_names=list(model_names),
+                    level=level_,
+                    cs_window_size=self.prediction_intervals.window_size,
+                    cs_n_windows=self.prediction_intervals.n_windows,
+                    n_series=self.ts.ga.ngroups,
                 )
                 if ts.id_col == "index":
                     forecasts = forecasts.set_index(forecasts.columns[0])
@@ -650,7 +619,7 @@ class MLForecast:
             out = out.reset_index()
         return out
 
-# %% ../nbs/forecast.ipynb 18
+# %% ../nbs/forecast.ipynb 14
 class Forecast(MLForecast):
     def __init__(
         self,
