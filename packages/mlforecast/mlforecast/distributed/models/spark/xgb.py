@@ -12,7 +12,7 @@ except ModuleNotFoundError:
     import os
 
     if os.getenv("IN_TEST", "0") == "1":
-        pass
+        SparkXGBRegressor = object
     else:
         raise
 
