@@ -27,5 +27,7 @@ website:
           - section: Distributed
             contents:
             - distributed.forecast.ipynb
-            - distributed.models.lgb.ipynb
-            - distributed.models.xgb.ipynb
+            - distributed.models.dask.lgb.ipynb
+            - distributed.models.dask.xgb.ipynb
+            - distributed.models.spark.lgb.ipynb
+            - distributed.models.spark.xgb.ipynb

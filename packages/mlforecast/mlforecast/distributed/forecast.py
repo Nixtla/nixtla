@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['DistributedMLForecast']
 
-# %% ../../nbs/distributed.forecast.ipynb 4
+# %% ../../nbs/distributed.forecast.ipynb 5
 import copy
 from collections import namedtuple
 from typing import Any, Callable, Iterable, List, Optional
@@ -39,12 +39,12 @@ from mlforecast.core import (
     _name_models,
 )
 
-# %% ../../nbs/distributed.forecast.ipynb 5
+# %% ../../nbs/distributed.forecast.ipynb 6
 WindowInfo = namedtuple(
     "WindowInfo", ["n_windows", "window_size", "step_size", "i_window"]
 )
 
-# %% ../../nbs/distributed.forecast.ipynb 6
+# %% ../../nbs/distributed.forecast.ipynb 7
 class DistributedMLForecast:
     """Multi backend distributed pipeline"""
 
@@ -315,45 +315,16 @@ class DistributedMLForecast:
         features = [x for x in prep.columns if x not in {id_col, time_col, target_col}]
         self.models_ = {}
         if SPARK_INSTALLED and isinstance(data, SparkDataFrame):
-            try:
-                import lightgbm as lgb
-                from synapse.ml.lightgbm import (
-                    LightGBMRegressor as SynapseLGBMRegressor,
-                )
-
-                LGBM_INSTALLED = True
-            except ModuleNotFoundError:
-                LGBM_INSTALLED = False
-            try:
-                import xgboost as xgb
-                from xgboost.spark import SparkXGBRegressor  # type: ignore
-
-                XGB_INSTALLED = True
-            except ModuleNotFoundError:
-                XGB_INSTALLED = False
-
             featurizer = VectorAssembler(inputCols=features, outputCol="features")
             train_data = featurizer.transform(prep)[target_col, "features"]
             for name, model in self.models.items():
-                if LGBM_INSTALLED and isinstance(model, SynapseLGBMRegressor):
-                    trained_model = model.setLabelCol(target_col).fit(train_data)
-                    model_str = trained_model.getNativeModel()
-                    local_model = lgb.Booster(model_str=model_str)
-                elif XGB_INSTALLED and isinstance(model, SparkXGBRegressor):
-                    model.setParams(label_col=target_col)
-                    trained_model = model.fit(train_data)
-                    model_str = trained_model.get_booster().save_raw("ubj")
-                    local_model = xgb.XGBRegressor()
-                    local_model.load_model(model_str)
-                else:
-                    raise ValueError(
-                        "Only LightGBMRegressor from SynapseML and SparkXGBRegressor are supported in spark."
-                    )
-                self.models_[name] = local_model
+                trained_model = model._pre_fit(target_col).fit(train_data)
+                self.models_[name] = model.extract_local_model(trained_model)
         elif DASK_INSTALLED and isinstance(data, dd.DataFrame):
             X, y = prep[features], prep[target_col]
             for name, model in self.models.items():
-                self.models_[name] = clone(model).fit(X, y).model_
+                trained_model = clone(model).fit(X, y)
+                self.models_[name] = trained_model.model_
         else:
             raise NotImplementedError("Only spark and dask engines are supported.")
         return self

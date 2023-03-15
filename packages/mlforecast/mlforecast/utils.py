@@ -133,15 +133,13 @@ class PredictionIntervals:
         window_size: int = 1,
         method: str = "conformal_distribution",
     ):
-        self.n_windows = n_windows
-        self.window_size = window_size
-        allowed_methods = ["conformal_error", "conformal_distribution"]
-        if method not in allowed_methods:
-            raise ValueError(f"method must be one of {allowed_methods}")
-        self.method = method
-
-    def __post_init__(self):
-        if self.n_windows < 2:
+        if n_windows < 2:
             raise ValueError(
                 "You need at least two windows to compute conformal intervals"
             )
+        allowed_methods = ["conformal_error", "conformal_distribution"]
+        if method not in allowed_methods:
+            raise ValueError(f"method must be one of {allowed_methods}")
+        self.n_windows = n_windows
+        self.window_size = window_size
+        self.method = method
