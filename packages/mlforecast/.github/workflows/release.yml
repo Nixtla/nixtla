@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'
 
 defaults:
   run:
@@ -10,7 +11,7 @@ defaults:
 
 jobs:
   release:
-    if: github.repository == 'Nixtla/mlforecast' && startsWith(github.ref, 'refs/tags')
+    if: github.repository == 'Nixtla/mlforecast'
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
@@ -25,7 +26,7 @@ jobs:
         run: python -m pip install build wheel
 
       - name: Build distributions
-        run: python setup.py sdist bdist_wheel 
+        run: python -m build -sw
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@master
