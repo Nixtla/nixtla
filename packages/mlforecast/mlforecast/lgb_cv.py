@@ -155,6 +155,7 @@ class LightGBMCV:
         id_col: str,
         time_col: str,
         target_col: str,
+        input_size: Optional[int] = None,
         step_size: Optional[int] = None,
         params: Optional[Dict[str, Any]] = None,
         static_features: Optional[List[str]] = None,
@@ -179,6 +180,8 @@ class LightGBMCV:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
         params : dict, optional(default=None)
@@ -228,9 +231,16 @@ class LightGBMCV:
         self.time_col = time_col
         self.target_col = target_col
         self.params = {} if params is None else params
-        for _, train, valid in backtest_splits(
-            data, n_windows, window_size, freq, step_size, time_col
-        ):
+        splits = backtest_splits(
+            data,
+            n_windows=n_windows,
+            window_size=window_size,
+            time_col=time_col,
+            freq=freq,
+            step_size=step_size,
+            input_size=input_size,
+        )
+        for _, train, valid in splits:
             ts = copy.deepcopy(self.ts)
             prep = ts.fit_transform(
                 train,
@@ -372,6 +382,7 @@ class LightGBMCV:
         id_col: str,
         time_col: str,
         target_col: str,
+        input_size: Optional[int] = None,
         step_size: Optional[int] = None,
         num_iterations: int = 100,
         params: Optional[Dict[str, Any]] = None,
@@ -405,6 +416,8 @@ class LightGBMCV:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
         num_iterations : int (default=100)
@@ -455,6 +468,7 @@ class LightGBMCV:
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
+            input_size=input_size,
             step_size=step_size,
             static_features=static_features,
             dropna=dropna,

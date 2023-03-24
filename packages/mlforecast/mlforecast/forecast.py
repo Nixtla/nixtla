@@ -499,6 +499,7 @@ class MLForecast:
         id_col: str,
         time_col: str,
         target_col: str,
+        input_size: Optional[int] = None,
         step_size: Optional[int] = None,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
@@ -528,6 +529,8 @@ class MLForecast:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
         static_features : list of str, optional (default=None)
@@ -574,7 +577,13 @@ class MLForecast:
             freq = self.freq
 
         splits = backtest_splits(
-            data, n_windows, window_size, freq, step_size, time_col
+            data,
+            n_windows=n_windows,
+            window_size=window_size,
+            time_col=time_col,
+            freq=freq,
+            step_size=step_size,
+            input_size=input_size,
         )
         ex_cols_to_drop = [target_col]
         if static_features is not None:

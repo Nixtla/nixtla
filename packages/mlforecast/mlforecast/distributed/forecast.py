@@ -38,10 +38,11 @@ from mlforecast.core import (
     TimeSeries,
     _name_models,
 )
+from ..utils import single_split
 
 # %% ../../nbs/distributed.forecast.ipynb 6
 WindowInfo = namedtuple(
-    "WindowInfo", ["n_windows", "window_size", "step_size", "i_window"]
+    "WindowInfo", ["n_windows", "window_size", "step_size", "i_window", "input_size"]
 )
 
 # %% ../../nbs/distributed.forecast.ipynb 7
@@ -138,25 +139,26 @@ class DistributedMLForecast:
             train = part
             valid = None
         else:
-            n_windows, window_size, step_size, i_window = window_info
-            if step_size is None:
-                step_size = window_size
-            test_size = window_size + step_size * (n_windows - 1)
-            offset = test_size - i_window * step_size
-            max_dates = part.groupby(id_col)[time_col].transform("max")
-            train_ends = max_dates - offset * base_ts.freq
-            valid_ends = train_ends + window_size * base_ts.freq
-            train_mask = part[time_col].le(train_ends)
-            valid_mask = part[time_col].gt(train_ends) & part[time_col].le(valid_ends)
+            part = part.set_index(id_col)
+            max_dates = part.groupby(level=0, observed=True)[time_col].transform("max")
+            cutoffs, train_mask, valid_mask = single_split(
+                part,
+                i_window=window_info.i_window,
+                n_windows=window_info.n_windows,
+                window_size=window_info.window_size,
+                time_col=time_col,
+                freq=base_ts.freq,
+                max_dates=max_dates,
+                step_size=window_info.step_size,
+                input_size=window_info.input_size,
+            )
             train = part[train_mask]
             valid_keep_cols = part.columns
             if static_features is not None:
                 valid_keep_cols.drop(static_features)
-            cutoffs = (
-                part.groupby(id_col)[time_col].max().rename("cutoff")
-                - offset * base_ts.freq
-            )
-            valid = part.loc[valid_mask, valid_keep_cols].merge(cutoffs, on=id_col)
+            valid = part.loc[valid_mask, valid_keep_cols].join(cutoffs)
+            train = train.reset_index()
+            valid = valid.reset_index()
         transformed = ts.fit_transform(
             train,
             id_col=id_col,
@@ -479,6 +481,7 @@ class DistributedMLForecast:
         id_col: str,
         time_col: str,
         target_col: str,
+        input_size: Optional[int] = None,
         step_size: Optional[int] = None,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
@@ -505,6 +508,8 @@ class DistributedMLForecast:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
         static_features : list of str, optional (default=None)
@@ -533,7 +538,7 @@ class DistributedMLForecast:
         self.cv_models_ = []
         results = []
         for i in range(n_windows):
-            window_info = WindowInfo(n_windows, window_size, step_size, i)
+            window_info = WindowInfo(n_windows, window_size, step_size, i, input_size)
             if refit or i == 0:
                 self._fit(
                     data,

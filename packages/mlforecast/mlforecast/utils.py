@@ -96,34 +96,61 @@ def generate_prices_for_series(
     return prices_catalog
 
 # %% ../nbs/utils.ipynb 19
-def backtest_splits(
-    data,
+def single_split(
+    data: pd.DataFrame,
+    i_window: int,
     n_windows: int,
     window_size: int,
+    time_col: str,
     freq: Union[pd.offsets.BaseOffset, int],
+    max_dates: pd.Series,
     step_size: Optional[int] = None,
-    time_col: str = "ds",
+    input_size: Optional[int] = None,
 ):
     if step_size is None:
         step_size = window_size
     test_size = window_size + step_size * (n_windows - 1)
-    last_dates = data.groupby(level=0, observed=True)[time_col].transform("max")
-    for i in range(n_windows):
-        offset = test_size - i * step_size
-        train_ends = last_dates - offset * freq
-        valid_ends = train_ends + window_size * freq
-        train_mask = data[time_col].le(train_ends)
-        train_sizes = train_mask.groupby(data.index, observed=True).sum()
-        if train_sizes.eq(0).any():
-            ids = reprlib.repr(train_sizes[train_sizes.eq(0)].index.tolist())
-            raise ValueError(
-                f"The following series are too short for the window: {ids}"
-            )
-        valid_mask = data[time_col].gt(train_ends) & data[time_col].le(valid_ends)
-        train, valid = data[train_mask], data[valid_mask]
-        yield train_ends.groupby(level=0, observed=True).head(1), train, valid
+    offset = test_size - i_window * step_size
+    train_ends = max_dates - offset * freq
+    valid_ends = train_ends + window_size * freq
+    train_mask = data[time_col].le(train_ends)
+    if input_size is not None:
+        train_mask &= data[time_col].gt(train_ends - input_size * freq)
+    train_sizes = train_mask.groupby(data.index, observed=True).sum()
+    if train_sizes.eq(0).any():
+        ids = reprlib.repr(train_sizes[train_sizes.eq(0)].index.tolist())
+        raise ValueError(f"The following series are too short for the window: {ids}")
+    valid_mask = data[time_col].gt(train_ends) & data[time_col].le(valid_ends)
+    cutoffs = train_ends.groupby(level=0, observed=True).head(1).rename("cutoff")
+    return cutoffs, train_mask, valid_mask
 
-# %% ../nbs/utils.ipynb 22
+# %% ../nbs/utils.ipynb 20
+def backtest_splits(
+    data: pd.DataFrame,
+    n_windows: int,
+    window_size: int,
+    time_col: str,
+    freq: Union[pd.offsets.BaseOffset, int],
+    step_size: Optional[int] = None,
+    input_size: Optional[int] = None,
+):
+    max_dates = data.groupby(level=0, observed=True)[time_col].transform("max")
+    for i in range(n_windows):
+        cutoffs, train_mask, valid_mask = single_split(
+            data,
+            i_window=i,
+            n_windows=n_windows,
+            window_size=window_size,
+            time_col=time_col,
+            freq=freq,
+            max_dates=max_dates,
+            step_size=step_size,
+            input_size=input_size,
+        )
+        train, valid = data[train_mask], data[valid_mask]
+        yield cutoffs, train, valid
+
+# %% ../nbs/utils.ipynb 23
 class PredictionIntervals:
     """Class for storing prediction intervals metadata information."""
 
