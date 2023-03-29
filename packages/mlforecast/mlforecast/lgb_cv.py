@@ -155,7 +155,6 @@ class LightGBMCV:
         id_col: str,
         time_col: str,
         target_col: str,
-        input_size: Optional[int] = None,
         step_size: Optional[int] = None,
         params: Optional[Dict[str, Any]] = None,
         static_features: Optional[List[str]] = None,
@@ -163,6 +162,7 @@ class LightGBMCV:
         keep_last_n: Optional[int] = None,
         weights: Optional[Sequence[float]] = None,
         metric: Union[str, Callable] = "mape",
+        input_size: Optional[int] = None,
     ):
         """Initialize internal data structures to iteratively train the boosters. Use this before calling partial_fit.
 
@@ -180,8 +180,6 @@ class LightGBMCV:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
-        input_size : int, optional (default=None)
-            Maximum training samples per serie in each window. If None, will use an expanding window.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
         params : dict, optional(default=None)
@@ -196,6 +194,8 @@ class LightGBMCV:
             Weights to multiply the metric of each window. If None, all windows have the same weight.
         metric : str or callable, default='mape'
             Metric used to assess the performance of the models and perform early stopping.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
 
         Returns
         -------
@@ -382,7 +382,6 @@ class LightGBMCV:
         id_col: str,
         time_col: str,
         target_col: str,
-        input_size: Optional[int] = None,
         step_size: Optional[int] = None,
         num_iterations: int = 100,
         params: Optional[Dict[str, Any]] = None,
@@ -399,6 +398,7 @@ class LightGBMCV:
         compute_cv_preds: bool = False,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        input_size: Optional[int] = None,
     ) -> List[CVResult]:
         """Train boosters simultaneously and assess their performance on the complete forecasting window.
 
@@ -416,8 +416,6 @@ class LightGBMCV:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
-        input_size : int, optional (default=None)
-            Maximum training samples per serie in each window. If None, will use an expanding window.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
         num_iterations : int (default=100)
@@ -454,6 +452,8 @@ class LightGBMCV:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
 
         Returns
         -------

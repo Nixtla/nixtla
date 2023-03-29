@@ -481,7 +481,6 @@ class DistributedMLForecast:
         id_col: str,
         time_col: str,
         target_col: str,
-        input_size: Optional[int] = None,
         step_size: Optional[int] = None,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
@@ -489,6 +488,7 @@ class DistributedMLForecast:
         refit: bool = True,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        input_size: Optional[int] = None,
     ) -> fugue.AnyDataFrame:
         """Perform time series cross validation.
         Creates `n_windows` splits where each window has `window_size` test periods,
@@ -508,8 +508,6 @@ class DistributedMLForecast:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str
             Column that contains the target.
-        input_size : int, optional (default=None)
-            Maximum training samples per serie in each window. If None, will use an expanding window.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
         static_features : list of str, optional (default=None)
@@ -529,6 +527,8 @@ class DistributedMLForecast:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
 
         Returns
         -------
