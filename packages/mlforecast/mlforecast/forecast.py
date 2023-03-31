@@ -180,9 +180,9 @@ class MLForecast:
     def preprocess(
         self,
         data: pd.DataFrame,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
@@ -195,11 +195,11 @@ class MLForecast:
         ----------
         data : pandas DataFrame
             Series data in long format.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         static_features : list of str, optional (default=None)
             Names of the features that are static and will be repeated when forecasting.
@@ -302,16 +302,14 @@ class MLForecast:
         for model in self.models.keys():
             # compute absolute error for each model
             cv_results[model] = np.abs(cv_results[model] - cv_results[target_col])
-        if id_col == "index":
-            cv_results = cv_results.reset_index()
         return cv_results.drop("y", axis=1)
 
     def fit(
         self,
         data: pd.DataFrame,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
@@ -324,11 +322,11 @@ class MLForecast:
         ----------
         data : pandas DataFrame
             Series data in long format.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         static_features : list of str, optional (default=None)
             Names of the features that are static and will be repeated when forecasting.
@@ -371,9 +369,7 @@ class MLForecast:
             max_horizon=max_horizon,
             return_X_y=True,
         )
-        features = X.columns.drop(time_col)
-        if id_col != "index" and id_col not in self.ts.static_features:
-            features = features.drop(id_col)
+        features = X.columns.drop([id_col, time_col])
         X = X[features]
         return self.fit_models(X, y)
 
@@ -473,8 +469,6 @@ class MLForecast:
                     warnings.warn(warn_msg, UserWarning)
                 level_ = sorted(level)
                 model_names = self.models.keys()
-                if ts.id_col == "index":
-                    forecasts = forecasts.reset_index()
                 conformal_method = _get_conformal_method(
                     self.prediction_intervals.method
                 )
@@ -487,8 +481,6 @@ class MLForecast:
                     cs_n_windows=self.prediction_intervals.n_windows,
                     n_series=self.ts.ga.ngroups,
                 )
-                if ts.id_col == "index":
-                    forecasts = forecasts.set_index(forecasts.columns[0])
         return forecasts
 
     def cross_validation(
@@ -496,9 +488,9 @@ class MLForecast:
         data: pd.DataFrame,
         n_windows: int,
         window_size: int,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         step_size: Optional[int] = None,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
@@ -523,11 +515,11 @@ class MLForecast:
             Number of windows to evaluate.
         window_size : int
             Number of test periods in each window.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
@@ -568,9 +560,6 @@ class MLForecast:
             )
         results = []
         self.cv_models_ = []
-        if id_col != "index":
-            data = data.set_index(id_col)
-
         if np.issubdtype(data[time_col].dtype.type, np.integer):
             freq = 1
         else:
@@ -580,20 +569,21 @@ class MLForecast:
             data,
             n_windows=n_windows,
             window_size=window_size,
+            id_col=id_col,
             time_col=time_col,
             freq=freq,
             step_size=step_size,
             input_size=input_size,
         )
-        ex_cols_to_drop = [target_col]
+        ex_cols_to_drop = [id_col, time_col, target_col]
         if static_features is not None:
             ex_cols_to_drop.extend(static_features)
-        has_ex = data.shape[1] > len(ex_cols_to_drop) + 1  # +1 due to time_col
-        for i_window, (train_end, train, valid) in enumerate(splits):
+        has_ex = not data.columns.drop(ex_cols_to_drop).empty
+        for i_window, (cutoffs, train, valid) in enumerate(splits):
             if refit or i_window == 0:
                 self.fit(
                     train,
-                    id_col="index",
+                    id_col=id_col,
                     time_col=time_col,
                     target_col=target_col,
                     static_features=static_features,
@@ -603,11 +593,7 @@ class MLForecast:
                     prediction_intervals=prediction_intervals,
                 )
             self.cv_models_.append(self.models_)
-            # reset index of valid to be compatible
-            # with _get_features_for_next_step
-            dynamic_dfs = (
-                [valid.drop(columns=ex_cols_to_drop).reset_index()] if has_ex else None
-            )
+            dynamic_dfs = [valid.drop(columns=[target_col])] if has_ex else None
             y_pred = self.predict(
                 window_size,
                 dynamic_dfs,
@@ -616,14 +602,11 @@ class MLForecast:
                 new_data=train if not refit else None,
                 level=level,
             )
-            y_pred = y_pred.set_index(time_col, append=True)
-            result = valid.set_index(time_col, append=True)[[target_col]].copy()
-            result = result.join(y_pred).reset_index(time_col)
-            result["cutoff"] = train_end
+            y_pred = y_pred.merge(cutoffs, on=id_col, how="left")
+            result = valid[[id_col, time_col, target_col]].merge(
+                y_pred, on=[id_col, time_col]
+            )
             results.append(result)
-
         out = pd.concat(results)
-        out = out[[time_col, "cutoff", target_col, *y_pred.columns]]
-        if id_col != "index":
-            out = out.reset_index()
-        return out
+        cols_order = [id_col, time_col, "cutoff", target_col]
+        return out[cols_order + out.columns.drop(cols_order).tolist()]

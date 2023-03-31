@@ -139,13 +139,13 @@ class DistributedMLForecast:
             train = part
             valid = None
         else:
-            part = part.set_index(id_col)
-            max_dates = part.groupby(level=0, observed=True)[time_col].transform("max")
+            max_dates = part.groupby(id_col, observed=True)[time_col].transform("max")
             cutoffs, train_mask, valid_mask = single_split(
                 part,
                 i_window=window_info.i_window,
                 n_windows=window_info.n_windows,
                 window_size=window_info.window_size,
+                id_col=id_col,
                 time_col=time_col,
                 freq=base_ts.freq,
                 max_dates=max_dates,
@@ -156,9 +156,7 @@ class DistributedMLForecast:
             valid_keep_cols = part.columns
             if static_features is not None:
                 valid_keep_cols.drop(static_features)
-            valid = part.loc[valid_mask, valid_keep_cols].join(cutoffs)
-            train = train.reset_index()
-            valid = valid.reset_index()
+            valid = part.loc[valid_mask, valid_keep_cols].merge(cutoffs, on=id_col)
         transformed = ts.fit_transform(
             train,
             id_col=id_col,
@@ -252,9 +250,9 @@ class DistributedMLForecast:
     def preprocess(
         self,
         data: fugue.AnyDataFrame,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
@@ -265,11 +263,11 @@ class DistributedMLForecast:
         ----------
         data : dask or spark DataFrame.
             Series data in long format.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         static_features : list of str, optional (default=None)
             Names of the features that are static and will be repeated when forecasting.
@@ -334,9 +332,9 @@ class DistributedMLForecast:
     def fit(
         self,
         data: fugue.AnyDataFrame,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
@@ -347,11 +345,11 @@ class DistributedMLForecast:
         ----------
         data : dask or spark DataFrame
             Series data in long format.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         static_features : list of str, optional (default=None)
             Names of the features that are static and will be repeated when forecasting.
@@ -399,7 +397,7 @@ class DistributedMLForecast:
                 dynamic_dfs=dynamic_dfs,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
-            ).reset_index()
+            )
             if valid is not None:
                 res = res.merge(valid, how="left")
             yield res
@@ -478,9 +476,9 @@ class DistributedMLForecast:
         data: fugue.AnyDataFrame,
         n_windows: int,
         window_size: int,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         step_size: Optional[int] = None,
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
@@ -502,11 +500,11 @@ class DistributedMLForecast:
             Number of windows to evaluate.
         window_size : int
             Number of test periods in each window.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.

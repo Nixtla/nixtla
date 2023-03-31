@@ -68,8 +68,7 @@ mlf = MLForecast(
     lags=[1, 12],
     freq = 'M'
 )
-
-mlf.fit(df, id_col='index', time_col='ds', target_col='y')
+mlf.fit(df)
 mlf.predict(12)
 ```
 
@@ -159,44 +158,44 @@ series.head()
   <thead>
     <tr style="text-align: right;">
       <th></th>
+      <th>unique_id</th>
       <th>ds</th>
       <th>y</th>
       <th>static_0</th>
     </tr>
-    <tr>
-      <th>unique_id</th>
-      <th></th>
-      <th></th>
-      <th></th>
-    </tr>
   </thead>
   <tbody>
     <tr>
-      <th>id_00</th>
+      <th>0</th>
+      <td>id_00</td>
       <td>2000-01-01</td>
       <td>1.751917</td>
       <td>72</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>1</th>
+      <td>id_00</td>
       <td>2000-01-02</td>
       <td>9.196715</td>
       <td>72</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>2</th>
+      <td>id_00</td>
       <td>2000-01-03</td>
       <td>18.577788</td>
       <td>72</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>3</th>
+      <td>id_00</td>
       <td>2000-01-04</td>
       <td>24.520646</td>
       <td>72</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>4</th>
+      <td>id_00</td>
       <td>2000-01-05</td>
       <td>33.418028</td>
       <td>72</td>
@@ -262,18 +261,10 @@ fcst = MLForecast(
 ### Training
 
 To compute the features and train the models call `fit` on your
-`Forecast` object. Here you have to specify the columns that:
-
-- Identify each serie (`id_col`). If the series identifier is the index
-  you can specify `id_col='index'`
-- Contain the timestamps (`time_col`). Can also be integers if your data
-  doesn’t have timestamps.
-- Are the series values (`target_col`)
-- Are static (`static_features`). These are features that don’t change
-  over time and can be repeated when predicting.
+`Forecast` object.
 
 ``` python
-fcst.fit(series, id_col='index', time_col='ds', target_col='y', static_features=['static_0'])
+fcst.fit(series)
 ```
 
     MLForecast(models=[LGBMRegressor, XGBRegressor, RandomForestRegressor], freq=<Day>, lag_features=['lag7', 'lag14', 'expanding_mean_lag1', 'rolling_mean_28_lag7'], date_features=['dayofweek'], num_threads=1)
@@ -294,50 +285,49 @@ predictions
   <thead>
     <tr style="text-align: right;">
       <th></th>
+      <th>unique_id</th>
       <th>ds</th>
       <th>LGBMRegressor</th>
       <th>XGBRegressor</th>
       <th>RandomForestRegressor</th>
     </tr>
-    <tr>
-      <th>unique_id</th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-    </tr>
   </thead>
   <tbody>
     <tr>
-      <th>id_00</th>
+      <th>0</th>
+      <td>id_00</td>
       <td>2000-04-04</td>
       <td>69.082830</td>
       <td>67.761337</td>
       <td>68.184016</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>1</th>
+      <td>id_00</td>
       <td>2000-04-05</td>
       <td>75.706024</td>
       <td>74.588699</td>
       <td>75.470680</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>2</th>
+      <td>id_00</td>
       <td>2000-04-06</td>
       <td>82.222473</td>
       <td>81.058289</td>
       <td>82.846249</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>3</th>
+      <td>id_00</td>
       <td>2000-04-07</td>
       <td>89.577638</td>
       <td>88.735947</td>
       <td>90.201271</td>
     </tr>
     <tr>
-      <th>id_00</th>
+      <th>4</th>
+      <td>id_00</td>
       <td>2000-04-08</td>
       <td>44.149095</td>
       <td>44.981384</td>
@@ -349,37 +339,43 @@ predictions
       <td>...</td>
       <td>...</td>
       <td>...</td>
+      <td>...</td>
     </tr>
     <tr>
-      <th>id_19</th>
+      <th>275</th>
+      <td>id_19</td>
       <td>2000-03-23</td>
       <td>30.236012</td>
       <td>31.949095</td>
       <td>32.656369</td>
     </tr>
     <tr>
-      <th>id_19</th>
+      <th>276</th>
+      <td>id_19</td>
       <td>2000-03-24</td>
       <td>31.308269</td>
       <td>32.765919</td>
       <td>33.624488</td>
     </tr>
     <tr>
-      <th>id_19</th>
+      <th>277</th>
+      <td>id_19</td>
       <td>2000-03-25</td>
       <td>32.788550</td>
       <td>33.628864</td>
       <td>34.581486</td>
     </tr>
     <tr>
-      <th>id_19</th>
+      <th>278</th>
+      <td>id_19</td>
       <td>2000-03-26</td>
       <td>34.086976</td>
       <td>34.508457</td>
       <td>35.553173</td>
     </tr>
     <tr>
-      <th>id_19</th>
+      <th>279</th>
+      <td>id_19</td>
       <td>2000-03-27</td>
       <td>34.288968</td>
       <td>35.411613</td>
@@ -387,7 +383,7 @@ predictions
     </tr>
   </tbody>
 </table>
-<p>280 rows × 4 columns</p>
+<p>280 rows × 5 columns</p>
 </div>
 
 ### Visualize results
@@ -397,9 +393,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 6), gridspec_kw=dict(hspace=0.3))
-for i, (cat, axi) in enumerate(zip(series.index.categories, ax.flat)):
-    pd.concat([series.loc[cat, ['ds', 'y']], predictions.loc[cat]]).set_index('ds').plot(ax=axi)
-    axi.set(title=cat, xlabel=None)
+for i, (uid, axi) in enumerate(zip(series['unique_id'].unique(), ax.flat)):
+    fltr = lambda df: df['unique_id'].eq(uid)
+    pd.concat([series.loc[fltr, ['ds', 'y']], predictions.loc[fltr]]).set_index('ds').plot(ax=axi)
+    axi.set(title=uid, xlabel=None)
     if i % 2 == 0:
         axi.legend().remove()
     else:

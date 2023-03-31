@@ -57,6 +57,7 @@ def _predict(
     bst,
     valid,
     h,
+    id_col,
     time_col,
     dynamic_dfs,
     before_predict_callback,
@@ -68,8 +69,8 @@ def _predict(
         dynamic_dfs,
         before_predict_callback,
         after_predict_callback,
-    ).set_index(time_col, append=True)
-    return valid.join(preds)
+    )
+    return valid.merge(preds, on=[id_col, time_col], how="left")
 
 
 def _update_and_predict(
@@ -78,6 +79,7 @@ def _update_and_predict(
     valid,
     n,
     h,
+    id_col,
     time_col,
     dynamic_dfs,
     before_predict_callback,
@@ -89,6 +91,7 @@ def _update_and_predict(
         bst,
         valid,
         h,
+        id_col,
         time_col,
         dynamic_dfs,
         before_predict_callback,
@@ -152,9 +155,9 @@ class LightGBMCV:
         data: pd.DataFrame,
         n_windows: int,
         window_size: int,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         step_size: Optional[int] = None,
         params: Optional[Dict[str, Any]] = None,
         static_features: Optional[List[str]] = None,
@@ -174,11 +177,11 @@ class LightGBMCV:
             Number of windows to evaluate.
         window_size : int
             Number of test periods in each window.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
@@ -218,16 +221,13 @@ class LightGBMCV:
                 )
             self.metric_fn = _metric2fn[metric]
             self.metric_name = metric
-
-        if id_col != "index":
-            data = data.set_index(id_col)
-
         if np.issubdtype(data[time_col].dtype.type, np.integer):
             freq = 1
         else:
             freq = self.ts.freq
         self.items = []
         self.window_size = window_size
+        self.id_col = id_col
         self.time_col = time_col
         self.target_col = target_col
         self.params = {} if params is None else params
@@ -235,6 +235,7 @@ class LightGBMCV:
             data,
             n_windows=n_windows,
             window_size=window_size,
+            id_col=id_col,
             time_col=time_col,
             freq=freq,
             step_size=step_size,
@@ -244,7 +245,7 @@ class LightGBMCV:
             ts = copy.deepcopy(self.ts)
             prep = ts.fit_transform(
                 train,
-                "index",
+                id_col,
                 time_col,
                 target_col,
                 static_features,
@@ -252,7 +253,7 @@ class LightGBMCV:
                 keep_last_n,
             )
             ds = lgb.Dataset(
-                prep.drop(columns=[time_col, target_col]), prep[target_col]
+                prep.drop(columns=[id_col, time_col, target_col]), prep[target_col]
             ).construct()
             bst = lgb.Booster({**self.params, "num_threads": self.bst_threads}, ds)
             bst.predict = partial(bst.predict, num_threads=self.bst_threads)
@@ -270,15 +271,16 @@ class LightGBMCV:
     ):
         for j, (ts, bst, valid) in enumerate(self.items):
             preds = _update_and_predict(
-                ts,
-                bst,
-                valid,
-                num_iterations,
-                self.window_size,
-                self.time_col,
-                dynamic_dfs,
-                before_predict_callback,
-                after_predict_callback,
+                ts=ts,
+                bst=bst,
+                valid=valid,
+                n=num_iterations,
+                h=self.window_size,
+                id_col=self.id_col,
+                time_col=self.time_col,
+                dynamic_dfs=dynamic_dfs,
+                before_predict_callback=before_predict_callback,
+                after_predict_callback=after_predict_callback,
             )
             metric_values[j] = self.metric_fn(preds[self.target_col], preds["Booster"])
 
@@ -296,14 +298,15 @@ class LightGBMCV:
                 _update(bst, num_iterations)
                 future = executor.submit(
                     _predict,
-                    ts,
-                    bst,
-                    valid,
-                    self.window_size,
-                    self.time_col,
-                    dynamic_dfs,
-                    before_predict_callback,
-                    after_predict_callback,
+                    ts=ts,
+                    bst=bst,
+                    valid=valid,
+                    h=self.window_size,
+                    id_col=self.id_col,
+                    time_col=self.time_col,
+                    dynamic_dfs=dynamic_dfs,
+                    before_predict_callback=before_predict_callback,
+                    after_predict_callback=after_predict_callback,
                 )
                 futures.append(future)
             cv_preds = [f.result() for f in futures]
@@ -379,9 +382,9 @@ class LightGBMCV:
         data: pd.DataFrame,
         n_windows: int,
         window_size: int,
-        id_col: str,
-        time_col: str,
-        target_col: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         step_size: Optional[int] = None,
         num_iterations: int = 100,
         params: Optional[Dict[str, Any]] = None,
@@ -410,11 +413,11 @@ class LightGBMCV:
             Number of windows to evaluate.
         window_size : int
             Number of test periods in each window.
-        id_col : str
-            Column that identifies each serie. If 'index' then the index is used.
-        time_col : str
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str
+        target_col : str (default='y')
             Column that contains the target.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `window_size`.
@@ -501,24 +504,20 @@ class LightGBMCV:
                 for ts, bst, valid in self.items:
                     future = executor.submit(
                         _predict,
-                        ts,
-                        bst,
-                        valid,
-                        window_size,
-                        time_col,
-                        dynamic_dfs,
-                        before_predict_callback,
-                        after_predict_callback,
+                        ts=ts,
+                        bst=bst,
+                        valid=valid,
+                        h=self.window_size,
+                        id_col=self.id_col,
+                        time_col=self.time_col,
+                        dynamic_dfs=dynamic_dfs,
+                        before_predict_callback=before_predict_callback,
+                        after_predict_callback=after_predict_callback,
                     )
                     futures.append(future)
-                cv_preds = pd.concat(
+                self.cv_preds_ = pd.concat(
                     [f.result().assign(window=i) for i, f in enumerate(futures)]
                 )
-                if id_col != "index":
-                    idxs = [id_col, time_col]
-                else:
-                    idxs = [time_col]
-                self.cv_preds_ = cv_preds.reset_index(idxs)
         self.ts._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
         return hist
 
