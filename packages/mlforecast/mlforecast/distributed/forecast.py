@@ -27,6 +27,13 @@ try:
     SPARK_INSTALLED = True
 except ModuleNotFoundError:
     SPARK_INSTALLED = False
+try:
+    from lightgbm_ray import RayDMatrix
+    from ray.data import Dataset as RayDataset
+
+    RAY_INSTALLED = True
+except ModuleNotFoundError:
+    RAY_INSTALLED = False
 from sklearn.base import clone
 
 from mlforecast.core import (
@@ -59,6 +66,7 @@ class DistributedMLForecast:
         differences: Optional[Differences] = None,
         num_threads: int = 1,
         engine=None,
+        num_partitions: Optional[int] = None,
     ):
         """Create distributed forecast object
 
@@ -81,6 +89,11 @@ class DistributedMLForecast:
         engine : fugue execution engine, optional (default=None)
             Dask Client, Spark Session, etc to use for the distributed computation.
             If None will infer depending on the input type.
+        num_partitions: number of data partitions to use, optional (default=None)
+            If None, the default partitions provided by the AnyDataFrame used
+            by the `fit` and `cross_validation` methods will be used. If a Ray
+            Dataset is provided and `num_partitions` is None, the partitioning
+            will be done by the `id_col`.
         """
         if not isinstance(models, dict) and not isinstance(models, list):
             models = [models]
@@ -94,6 +107,7 @@ class DistributedMLForecast:
             freq, lags, lag_transforms, date_features, differences, num_threads
         )
         self.engine = engine
+        self.num_partitions = num_partitions
 
     def __repr__(self) -> str:
         return (
@@ -191,6 +205,19 @@ class DistributedMLForecast:
         window_info: Optional[WindowInfo] = None,
         fit_ts_only: bool = False,
     ) -> List[Any]:
+        if self.num_partitions:
+            partition = dict(by=id_col, num=self.num_partitions, algo="coarse")
+        elif isinstance(
+            data, RayDataset
+        ):  # num partitions is None but data is a RayDataset
+            # We need to add this because
+            # currently ray doesnt support partitioning a Dataset
+            # based on a column.
+            # If a Dataset is partitioned using `.repartition(num_partitions)`
+            # we will have akward results.
+            partition = dict(by=id_col)
+        else:
+            partition = None
         return fa.transform(
             data,
             DistributedMLForecast._preprocess_partition,
@@ -208,6 +235,7 @@ class DistributedMLForecast:
             schema="ts:binary,train:binary,valid:binary",
             engine=self.engine,
             as_fugue=True,
+            partition=partition,
         )
 
     def _preprocess(
@@ -312,7 +340,11 @@ class DistributedMLForecast:
             keep_last_n=keep_last_n,
             window_info=window_info,
         )
-        features = [x for x in prep.columns if x not in {id_col, time_col, target_col}]
+        features = [
+            x
+            for x in fa.get_column_names(prep)
+            if x not in {id_col, time_col, target_col}
+        ]
         self.models_ = {}
         if SPARK_INSTALLED and isinstance(data, SparkDataFrame):
             featurizer = VectorAssembler(inputCols=features, outputCol="features")
@@ -325,8 +357,18 @@ class DistributedMLForecast:
             for name, model in self.models.items():
                 trained_model = clone(model).fit(X, y)
                 self.models_[name] = trained_model.model_
+        elif RAY_INSTALLED and isinstance(data, RayDataset):
+            X = RayDMatrix(
+                prep.select_columns(cols=features + [target_col]),
+                label=target_col,
+            )
+            for name, model in self.models.items():
+                trained_model = clone(model).fit(X, y=None)
+                self.models_[name] = trained_model.model_
         else:
-            raise NotImplementedError("Only spark and dask engines are supported.")
+            raise NotImplementedError(
+                "Only spark, dask, and ray engines are supported."
+            )
         return self
 
     def fit(
@@ -439,7 +481,7 @@ class DistributedMLForecast:
 
         Returns
         -------
-        result : dask or spark DataFrame
+        result : dask, spark or ray DataFrame
             Predictions for each serie and timestep, with one column per model.
         """
         if new_data is not None:
@@ -494,7 +536,7 @@ class DistributedMLForecast:
 
         Parameters
         ----------
-        data : dask DataFrame
+        data : dask, spark or ray DataFrame
             Series data in long format.
         n_windows : int
             Number of windows to evaluate.
@@ -530,7 +572,7 @@ class DistributedMLForecast:
 
         Returns
         -------
-        result : dask or spark DataFrame
+        result : dask, spark or ray DataFrame
             Predictions for each window with the series id, timestamp, target value and predictions from each model.
         """
         self.cv_models_ = []

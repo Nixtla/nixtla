@@ -5,7 +5,6 @@ dependencies:
   - black
   - dask<2023.1.1
   - flake8
-  - fugue
   - jupyterlab
   - lightgbm
   - matplotlib
@@ -20,4 +19,7 @@ dependencies:
   - xgboost
   - pip:
     - datasetsforecast
+    - fugue[ray]
+    - lightgbm_ray
     - nbdev
+    - xgboost_ray
