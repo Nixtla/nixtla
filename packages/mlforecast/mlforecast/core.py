@@ -6,7 +6,6 @@ __all__ = ['TimeSeries']
 # %% ../nbs/core.ipynb 3
 import concurrent.futures
 import inspect
-import reprlib
 import warnings
 from collections import Counter, OrderedDict
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -15,7 +14,9 @@ import numpy as np
 import pandas as pd
 from numba import njit
 from sklearn.base import BaseEstimator
-from window_ops.shift import shift_array
+
+from .grouped_array import GroupedArray
+from .target_transforms import BaseTargetTransform, Differences
 
 # %% ../nbs/core.ipynb 10
 date_features_dtypes = {
@@ -42,22 +43,40 @@ date_features_dtypes = {
     "is_year_end": np.uint8,
 }
 
-
-@njit
-def _append_new(data, indptr, new):
-    """Append each value of new to each group in data formed by indptr."""
-    n_series = len(indptr) - 1
-    new_data = np.empty(data.size + new.size, dtype=data.dtype)
-    new_indptr = indptr.copy()
-    new_indptr[1:] += np.arange(1, n_series + 1)
-    for i in range(n_series):
-        prev_slice = slice(indptr[i], indptr[i + 1])
-        new_slice = slice(new_indptr[i], new_indptr[i + 1] - 1)
-        new_data[new_slice] = data[prev_slice]
-        new_data[new_indptr[i + 1] - 1] = new[i]
-    return new_data, new_indptr
-
 # %% ../nbs/core.ipynb 11
+def _build_transform_name(lag, tfm, *args) -> str:
+    """Creates a name for a transformation based on `lag`, the name of the function and its arguments."""
+    tfm_name = f"{tfm.__name__}_lag{lag}"
+    func_params = inspect.signature(tfm).parameters
+    func_args = list(func_params.items())[1:]  # remove input array argument
+    changed_params = [
+        f"{name}{value}"
+        for value, (name, arg) in zip(args, func_args)
+        if arg.default != value
+    ]
+    if changed_params:
+        tfm_name += "_" + "_".join(changed_params)
+    return tfm_name
+
+# %% ../nbs/core.ipynb 13
+def _name_models(current_names):
+    ctr = Counter(current_names)
+    if not ctr:
+        return []
+    if max(ctr.values()) < 2:
+        return current_names
+    names = current_names.copy()
+    for i, x in enumerate(reversed(current_names), start=1):
+        count = ctr[x]
+        if count > 1:
+            name = f"{x}{count}"
+            ctr[x] -= 1
+        else:
+            name = x
+        names[-i] = name
+    return names
+
+# %% ../nbs/core.ipynb 15
 @njit
 def _identity(x: np.ndarray) -> np.ndarray:
     """Do nothing to the input."""
@@ -69,59 +88,6 @@ def _as_tuple(x):
     if isinstance(x, tuple):
         return x
     return (x,)
-
-
-@njit(nogil=True)
-def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
-    """Shifts every group in `data` by `lag` and computes `func(shifted, *args)`.
-
-    If `updates_only=True` only last value of the transformation for each group is returned,
-    otherwise the full transformation is returned"""
-    n_series = len(indptr) - 1
-    if updates_only:
-        out = np.empty_like(data[:n_series])
-        for i in range(n_series):
-            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
-            out[i] = func(lagged, *args)[-1]
-    else:
-        out = np.empty_like(data)
-        for i in range(n_series):
-            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
-            out[indptr[i] : indptr[i + 1]] = func(lagged, *args)
-    return out
-
-
-@njit
-def _diff(x, lag):
-    y = x.copy()
-    for i in range(lag):
-        y[i] = np.nan
-    for i in range(lag, x.size):
-        y[i] = x[i] - x[i - lag]
-    return y
-
-
-@njit
-def _apply_difference(data, indptr, new_data, new_indptr, d):
-    n_series = len(indptr) - 1
-    for i in range(n_series):
-        new_data[new_indptr[i] : new_indptr[i + 1]] = data[
-            indptr[i + 1] - d : indptr[i + 1]
-        ]
-        sl = slice(indptr[i], indptr[i + 1])
-        data[sl] = _diff(data[sl], d)
-
-
-@njit
-def _restore_difference(preds, data, indptr, d):
-    n_series = len(indptr) - 1
-    h = len(preds) // n_series
-    for i in range(n_series):
-        s = data[indptr[i] : indptr[i + 1]]
-        for j in range(min(h, d)):
-            preds[i * h + j] += s[j]
-        for j in range(d, h):
-            preds[i * h + j] += preds[i * h + j - d]
 
 
 @njit
@@ -140,117 +106,15 @@ def _expand_target(data, indptr, max_horizon):
             n += 1
     return out
 
-# %% ../nbs/core.ipynb 12
-class GroupedArray:
-    """Array made up of different groups. Can be thought of (and iterated) as a list of arrays.
-
-    All the data is stored in a single 1d array `data`.
-    The indices for the group boundaries are stored in another 1d array `indptr`."""
-
-    def __init__(self, data: np.ndarray, indptr: np.ndarray):
-        self.data = data
-        self.indptr = indptr
-        self.ngroups = len(indptr) - 1
-
-    def __len__(self) -> int:
-        return self.ngroups
-
-    def __getitem__(self, idx: int) -> np.ndarray:
-        return self.data[self.indptr[idx] : self.indptr[idx + 1]]
-
-    def __setitem__(self, idx: int, vals: np.ndarray):
-        if self[idx].size != vals.size:
-            raise ValueError(f"vals must be of size {self[idx].size}")
-        self[idx][:] = vals
-
-    @classmethod
-    def from_sorted_df(cls, df: pd.DataFrame, target_col: str) -> "GroupedArray":
-        grouped = df.groupby(level=0, observed=True)
-        sizes = grouped.size().values
-        indptr = np.append(0, sizes.cumsum())
-        data = df[target_col].values
-        if data.dtype not in (np.float32, np.float64):
-            # since all transformations generate nulls, we need a float dtype
-            data = data.astype(np.float32)
-        return cls(data, indptr)
-
-    def transform_series(
-        self, updates_only: bool, lag: int, func: Callable, *args
-    ) -> np.ndarray:
-        return _transform_series(self.data, self.indptr, updates_only, lag, func, *args)
-
-    def restore_difference(self, preds: np.ndarray, d: int):
-        _restore_difference(preds, self.data, self.indptr, d)
-
-    def expand_target(self, max_horizon: int) -> np.ndarray:
-        return _expand_target(self.data, self.indptr, max_horizon)
-
-    def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
-        """Takes `idx` from each group in the array."""
-        ranges = [
-            range(self.indptr[i], self.indptr[i + 1])[idx] for i in range(self.ngroups)
-        ]
-        items = [self.data[rng] for rng in ranges]
-        sizes = np.array([item.size for item in items])
-        data = np.hstack(items)
-        indptr = np.append(0, sizes.cumsum())
-        return GroupedArray(data, indptr)
-
-    def append(self, new: np.ndarray) -> "GroupedArray":
-        """Appends each element of `new` to each existing group. Returns a copy."""
-        if new.size != self.ngroups:
-            raise ValueError(f"new must be of size {self.ngroups}")
-        new_data, new_indptr = _append_new(self.data, self.indptr, new)
-        return GroupedArray(new_data, new_indptr)
-
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}(ndata={self.data.size}, ngroups={self.ngroups})"
-        )
-
-# %% ../nbs/core.ipynb 20
-def _build_transform_name(lag, tfm, *args) -> str:
-    """Creates a name for a transformation based on `lag`, the name of the function and its arguments."""
-    tfm_name = f"{tfm.__name__}_lag{lag}"
-    func_params = inspect.signature(tfm).parameters
-    func_args = list(func_params.items())[1:]  # remove input array argument
-    changed_params = [
-        f"{name}{value}"
-        for value, (name, arg) in zip(args, func_args)
-        if arg.default != value
-    ]
-    if changed_params:
-        tfm_name += "_" + "_".join(changed_params)
-    return tfm_name
-
-# %% ../nbs/core.ipynb 22
-def _name_models(current_names):
-    ctr = Counter(current_names)
-    if not ctr:
-        return []
-    if max(ctr.values()) < 2:
-        return current_names
-    names = current_names.copy()
-    for i, x in enumerate(reversed(current_names), start=1):
-        count = ctr[x]
-        if count > 1:
-            name = f"{x}{count}"
-            ctr[x] -= 1
-        else:
-            name = x
-        names[-i] = name
-    return names
-
-# %% ../nbs/core.ipynb 24
+# %% ../nbs/core.ipynb 16
 Freq = Union[int, str, pd.offsets.BaseOffset]
 Lags = Iterable[int]
 LagTransform = Union[Callable, Tuple[Callable, Any]]
 LagTransforms = Dict[int, List[LagTransform]]
 DateFeature = Union[str, Callable]
-Differences = Iterable[int]
 Models = Union[BaseEstimator, List[BaseEstimator], Dict[str, BaseEstimator]]
 
-# %% ../nbs/core.ipynb 25
+# %% ../nbs/core.ipynb 17
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
@@ -260,8 +124,9 @@ class TimeSeries:
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
-        differences: Optional[Differences] = None,
+        differences: Optional[Iterable[int]] = None,
         num_threads: int = 1,
+        target_transforms: Optional[List[BaseTargetTransform]] = None,
     ):
         if isinstance(freq, str):
             self.freq = pd.tseries.frequencies.to_offset(freq)
@@ -282,8 +147,18 @@ class TimeSeries:
         self.lags = [] if lags is None else list(lags)
         self.lag_transforms = {} if lag_transforms is None else lag_transforms
         self.date_features = [] if date_features is None else list(date_features)
-        self.differences = [] if differences is None else list(differences)
+        if differences is not None:
+            warnings.warn(
+                "The differences argument is deprecated and will be removed in a future version.\n"
+                "Please pass an `mlforecast.target_transforms.Differences` instance to the `target_transforms` argument instead."
+                ""
+            )
+            if target_transforms is None:
+                target_transforms = [Differences(differences)]
+            else:
+                target_transforms = [Differences(differences)] + target_transforms
         self.num_threads = num_threads
+        self.target_transforms = target_transforms
         for feature in self.date_features:
             if callable(feature) and feature.__name__ == "<lambda>":
                 raise ValueError(
@@ -347,40 +222,26 @@ class TimeSeries:
         self.id_col = id_col
         self.target_col = target_col
         self.time_col = time_col
-        df = df.set_index(id_col)
         if static_features is None:
-            static_features = df.columns.drop([time_col, target_col])
+            static_features = df.columns.drop([id_col, time_col, target_col])
         elif id_col in static_features:
             raise ValueError(
                 "Cannot use the id_col as a static feature. Please create a separate column."
             )
         self.static_features = (
-            df[static_features].groupby(level=0, observed=True).head(1)
+            df.set_index(id_col)[static_features].groupby(id_col, observed=True).head(1)
         )
-        sort_idxs = pd.core.sorting.lexsort_indexer([df.index, df[time_col]])
-        sorted_df = (
-            df[[time_col, target_col]].set_index(time_col, append=True).iloc[sort_idxs]
-        )
+        sort_idxs = pd.core.sorting.lexsort_indexer([df[id_col], df[time_col]])
         self.restore_idxs = np.empty(df.shape[0], dtype=np.int32)
         self.restore_idxs[sort_idxs] = np.arange(df.shape[0])
+        sorted_df = df[[id_col, time_col, target_col]].iloc[sort_idxs]
+        if self.target_transforms is not None:
+            for tfm in self.target_transforms:
+                tfm.set_column_names(id_col, time_col, target_col)
+                sorted_df = tfm.fit_transform(sorted_df)
+        sorted_df = sorted_df.set_index([id_col, time_col])
         self.uids = sorted_df.index.unique(level=0)
-        self.ga = GroupedArray.from_sorted_df(sorted_df, target_col)
-        if self.differences:
-            original_sizes = self.ga.indptr[1:].cumsum()
-            total_diffs = sum(self.differences)
-            small_series = self.uids[original_sizes < total_diffs]
-            if small_series.size:
-                msg = reprlib.repr(small_series.tolist())
-                raise ValueError(
-                    f"The following series are too short for the differences: {msg}"
-                )
-            self.original_values_ = []
-            n_series = len(self.ga.indptr) - 1
-            for d in self.differences:
-                new_data = np.empty_like(self.ga.data, shape=n_series * d)
-                new_indptr = d * np.arange(n_series + 1, dtype=np.int32)
-                _apply_difference(self.ga.data, self.ga.indptr, new_data, new_indptr, d)
-                self.original_values_.append(GroupedArray(new_data, new_indptr))
+        self.ga = GroupedArray.from_sorted_df(sorted_df, id_col, target_col)
         self.features_ = self._compute_transforms()
         if keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
@@ -389,7 +250,7 @@ class TimeSeries:
             self.ga.indptr[1:] - 1
         ]
         self.features_order_ = (
-            df.columns.drop([self.time_col, self.target_col]).tolist() + self.features
+            df.columns.drop([id_col, time_col, target_col]).tolist() + self.features
         )
         return self
 
@@ -464,7 +325,8 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        df = df.copy(deep=bool(self.differences) and not return_X_y)
+        modifies_target = bool(self.target_transforms)
+        df = df.copy(deep=modifies_target and not return_X_y)
 
         # lag transforms
         for feat in self.transforms.keys():
@@ -481,7 +343,7 @@ class TimeSeries:
         # target
         self.max_horizon = max_horizon
         if max_horizon is None:
-            if self.differences:
+            if modifies_target:
                 target = pd.Series(self.ga.data[self.restore_idxs], index=df.index)
             else:
                 target = df[self.target_col]
@@ -493,20 +355,26 @@ class TimeSeries:
             )
 
         # determine rows to keep
-        features = df.columns.drop(self.target_col)
         if dropna:
-            keep_rows = df[features].notnull().all(1).values
+            feature_nulls = df[self.features].isnull().any(axis=1)
+            target_nulls = target.isnull()
+            if target_nulls.ndim == 2:
+                # target nulls for each horizon are dropped in MLForecast.fit_models
+                # we just drop rows here for which all the target values are null
+                target_nulls = target_nulls.all(axis=1)
+            keep_rows = ~(feature_nulls | target_nulls).values
         else:
             keep_rows = np.full(df.shape[0], True)
 
         # assemble return
+        xs = df.columns.drop(self.target_col)
         if return_X_y:
-            return df.loc[keep_rows, features], target.loc[keep_rows]
+            return df.loc[keep_rows, xs], target.loc[keep_rows]
         if max_horizon is None:
-            if self.differences:
+            if modifies_target:
                 df[self.target_col] = target
         else:
-            df = pd.concat([df[features], target], axis=1)
+            df = pd.concat([df[xs], target], axis=1)
         return df.loc[keep_rows]
 
     def fit_transform(
@@ -537,8 +405,7 @@ class TimeSeries:
     def _update_y(self, new: np.ndarray) -> None:
         """Appends the elements of `new` to every time serie.
 
-        These values are used to update the transformations and are stored as predictions.
-        """
+        These values are used to update the transformations and are stored as predictions."""
         if not hasattr(self, "y_pred"):
             self.y_pred = []
         self.y_pred.append(new)
@@ -567,16 +434,8 @@ class TimeSeries:
         features_df[self.time_col] = self.curr_dates
         return self.static_features.merge(features_df, on=self.id_col)
 
-    def _restore_differences(self, preds) -> None:
-        if not self.differences:
-            return
-        for d, ga in zip(reversed(self.differences), reversed(self.original_values_)):
-            ga.restore_difference(preds, d)
-
     def _get_raw_predictions(self) -> np.ndarray:
-        preds = np.array(self.y_pred).ravel("F")
-        self._restore_differences(preds)
-        return preds
+        return np.array(self.y_pred).ravel("F")
 
     def _get_predictions(self) -> pd.DataFrame:
         """Get all the predicted values with their corresponding ids and datestamps."""
@@ -664,7 +523,7 @@ class TimeSeries:
             ]
         )
         result = pd.DataFrame({self.id_col: uids, self.time_col: dates})
-        for i, (name, model) in enumerate(models.items()):
+        for name, model in models.items():
             self._predict_setup()
             new_x = self._get_features_for_next_step(dynamic_dfs)
             if before_predict_callback is not None:
@@ -673,7 +532,6 @@ class TimeSeries:
             for i in range(horizon):
                 predictions[:, i] = model[i].predict(new_x)
             raw_preds = predictions.ravel()
-            self._restore_differences(raw_preds)
             result[name] = raw_preds
         return result
 
@@ -686,16 +544,21 @@ class TimeSeries:
         after_predict_callback: Optional[Callable] = None,
     ) -> pd.DataFrame:
         if getattr(self, "max_horizon", None) is None:
-            return self._predict_recursive(
+            preds = self._predict_recursive(
                 models,
                 horizon,
                 dynamic_dfs,
                 before_predict_callback,
                 after_predict_callback,
             )
-        return self._predict_multi(
-            models,
-            horizon,
-            dynamic_dfs,
-            before_predict_callback,
-        )
+        else:
+            preds = self._predict_multi(
+                models,
+                horizon,
+                dynamic_dfs,
+                before_predict_callback,
+            )
+        if self.target_transforms is not None:
+            for tfm in self.target_transforms[::-1]:
+                preds = tfm.inverse_transform(preds)
+        return preds

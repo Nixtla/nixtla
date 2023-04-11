@@ -235,6 +235,7 @@ fitting that will be restored when predicting.
 
 ``` python
 from mlforecast import MLForecast
+from mlforecast.target_transforms import Differences
 from numba import njit
 from window_ops.expanding import expanding_mean
 from window_ops.rolling import rolling_mean
@@ -254,7 +255,7 @@ fcst = MLForecast(
         7: [rolling_mean_28]
     },
     date_features=['dayofweek'],
-    differences=[1],
+    target_transforms=[Differences([1])],
 )
 ```
 
@@ -299,7 +300,7 @@ predictions
       <td>2000-04-04</td>
       <td>69.082830</td>
       <td>67.761337</td>
-      <td>68.184016</td>
+      <td>68.226556</td>
     </tr>
     <tr>
       <th>1</th>
@@ -307,7 +308,7 @@ predictions
       <td>2000-04-05</td>
       <td>75.706024</td>
       <td>74.588699</td>
-      <td>75.470680</td>
+      <td>75.484774</td>
     </tr>
     <tr>
       <th>2</th>
@@ -315,7 +316,7 @@ predictions
       <td>2000-04-06</td>
       <td>82.222473</td>
       <td>81.058289</td>
-      <td>82.846249</td>
+      <td>82.853684</td>
     </tr>
     <tr>
       <th>3</th>
@@ -323,7 +324,7 @@ predictions
       <td>2000-04-07</td>
       <td>89.577638</td>
       <td>88.735947</td>
-      <td>90.201271</td>
+      <td>90.351212</td>
     </tr>
     <tr>
       <th>4</th>
@@ -331,7 +332,7 @@ predictions
       <td>2000-04-08</td>
       <td>44.149095</td>
       <td>44.981384</td>
-      <td>46.096322</td>
+      <td>46.291173</td>
     </tr>
     <tr>
       <th>...</th>
@@ -345,41 +346,41 @@ predictions
       <th>275</th>
       <td>id_19</td>
       <td>2000-03-23</td>
-      <td>30.236012</td>
-      <td>31.949095</td>
-      <td>32.656369</td>
+      <td>30.151270</td>
+      <td>31.814825</td>
+      <td>32.592799</td>
     </tr>
     <tr>
       <th>276</th>
       <td>id_19</td>
       <td>2000-03-24</td>
-      <td>31.308269</td>
-      <td>32.765919</td>
-      <td>33.624488</td>
+      <td>31.418104</td>
+      <td>32.653374</td>
+      <td>33.563294</td>
     </tr>
     <tr>
       <th>277</th>
       <td>id_19</td>
       <td>2000-03-25</td>
-      <td>32.788550</td>
-      <td>33.628864</td>
-      <td>34.581486</td>
+      <td>32.843567</td>
+      <td>33.586033</td>
+      <td>34.530912</td>
     </tr>
     <tr>
       <th>278</th>
       <td>id_19</td>
       <td>2000-03-26</td>
-      <td>34.086976</td>
-      <td>34.508457</td>
-      <td>35.553173</td>
+      <td>34.127210</td>
+      <td>34.541473</td>
+      <td>35.507559</td>
     </tr>
     <tr>
       <th>279</th>
       <td>id_19</td>
       <td>2000-03-27</td>
-      <td>34.288968</td>
-      <td>35.411613</td>
-      <td>36.526505</td>
+      <td>34.329202</td>
+      <td>35.450943</td>
+      <td>36.425001</td>
     </tr>
   </tbody>
 </table>

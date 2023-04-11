@@ -38,7 +38,6 @@ from sklearn.base import clone
 
 from mlforecast.core import (
     DateFeature,
-    Differences,
     Freq,
     LagTransforms,
     Lags,
@@ -46,6 +45,7 @@ from mlforecast.core import (
     _name_models,
 )
 from ..utils import single_split
+from ..target_transforms import BaseTargetTransform
 
 # %% ../../nbs/distributed.forecast.ipynb 6
 WindowInfo = namedtuple(
@@ -63,8 +63,9 @@ class DistributedMLForecast:
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
-        differences: Optional[Differences] = None,
+        differences: Optional[Iterable[int]] = None,
         num_threads: int = 1,
+        target_transforms: Optional[List[BaseTargetTransform]] = None,
         engine=None,
         num_partitions: Optional[int] = None,
     ):
@@ -86,6 +87,8 @@ class DistributedMLForecast:
             Differences to take of the target before computing the features. These are restored at the forecasting step.
         num_threads : int (default=1)
             Number of threads to use when computing the features.
+        target_transforms : list of transformers, optional(default=None)
+            Transformations that will be applied to the target before computing the features and restored after the forecasting step.
         engine : fugue execution engine, optional (default=None)
             Dask Client, Spark Session, etc to use for the distributed computation.
             If None will infer depending on the input type.
@@ -104,7 +107,13 @@ class DistributedMLForecast:
             models_with_names = models
         self.models = models_with_names
         self._base_ts = TimeSeries(
-            freq, lags, lag_transforms, date_features, differences, num_threads
+            freq=freq,
+            lags=lags,
+            lag_transforms=lag_transforms,
+            date_features=date_features,
+            differences=differences,
+            num_threads=num_threads,
+            target_transforms=target_transforms,
         )
         self.engine = engine
         self.num_partitions = num_partitions
@@ -207,7 +216,7 @@ class DistributedMLForecast:
     ) -> List[Any]:
         if self.num_partitions:
             partition = dict(by=id_col, num=self.num_partitions, algo="coarse")
-        elif isinstance(
+        elif RAY_INSTALLED and isinstance(
             data, RayDataset
         ):  # num partitions is None but data is a RayDataset
             # We need to add this because

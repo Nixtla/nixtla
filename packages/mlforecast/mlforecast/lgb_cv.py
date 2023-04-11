@@ -16,13 +16,13 @@ import pandas as pd
 
 from mlforecast.core import (
     DateFeature,
-    Differences,
     Freq,
     LagTransforms,
     Lags,
     TimeSeries,
 )
 from .utils import backtest_splits
+from .target_transforms import BaseTargetTransform
 
 # %% ../nbs/lgb_cv.ipynb 5
 def _mape(y_true, y_pred):
@@ -109,8 +109,9 @@ class LightGBMCV:
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
-        differences: Optional[Differences] = None,
+        differences: Optional[Iterable[int]] = None,
         num_threads: int = 1,
+        target_transforms: Optional[List[BaseTargetTransform]] = None,
     ):
         """Create LightGBM CV object.
 
@@ -128,6 +129,8 @@ class LightGBMCV:
             Differences to take of the target before computing the features. These are restored at the forecasting step.
         num_threads : int (default=1)
             Number of threads to use when computing the features.
+        target_transforms : list of transformers, optional(default=None)
+            Transformations that will be applied to the target before computing the features and restored after the forecasting step.
         """
         self.num_threads = num_threads
         cpu_count = os.cpu_count()
@@ -137,7 +140,13 @@ class LightGBMCV:
             num_cpus = cpu_count
         self.bst_threads = max(num_cpus // num_threads, 1)
         self.ts = TimeSeries(
-            freq, lags, lag_transforms, date_features, differences, self.bst_threads
+            freq=freq,
+            lags=lags,
+            lag_transforms=lag_transforms,
+            date_features=date_features,
+            differences=differences,
+            num_threads=self.bst_threads,
+            target_transforms=target_transforms,
         )
 
     def __repr__(self):

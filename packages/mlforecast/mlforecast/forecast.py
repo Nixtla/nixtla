@@ -14,7 +14,6 @@ from sklearn.base import BaseEstimator, clone
 
 from mlforecast.core import (
     DateFeature,
-    Differences,
     Freq,
     LagTransforms,
     Lags,
@@ -25,6 +24,7 @@ from mlforecast.core import (
 
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
+from .target_transforms import BaseTargetTransform
 from .utils import backtest_splits, PredictionIntervals
 
 # %% ../nbs/forecast.ipynb 6
@@ -109,7 +109,7 @@ def _get_conformal_method(method: str):
         )
     return available_methods[method]
 
-# %% ../nbs/forecast.ipynb 11
+# %% ../nbs/forecast.ipynb 10
 class MLForecast:
     def __init__(
         self,
@@ -118,8 +118,9 @@ class MLForecast:
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
-        differences: Optional[Differences] = None,
+        differences: Optional[Iterable[int]] = None,
         num_threads: int = 1,
+        target_transforms: Optional[List[BaseTargetTransform]] = None,
     ):
         """Create forecast object
 
@@ -139,6 +140,8 @@ class MLForecast:
             Differences to take of the target before computing the features. These are restored at the forecasting step.
         num_threads : int (default=1)
             Number of threads to use when computing the features.
+        target_transforms : list of transformers, optional(default=None)
+            Transformations that will be applied to the target before computing the features and restored after the forecasting step.
         """
         if not isinstance(models, dict) and not isinstance(models, list):
             models = [models]
@@ -149,7 +152,13 @@ class MLForecast:
             models_with_names = models
         self.models = models_with_names
         self.ts = TimeSeries(
-            freq, lags, lag_transforms, date_features, differences, num_threads
+            freq=freq,
+            lags=lags,
+            lag_transforms=lag_transforms,
+            date_features=date_features,
+            differences=differences,
+            num_threads=num_threads,
+            target_transforms=target_transforms,
         )
 
     def __repr__(self):
@@ -369,8 +378,7 @@ class MLForecast:
             max_horizon=max_horizon,
             return_X_y=True,
         )
-        features = X.columns.drop([id_col, time_col])
-        X = X[features]
+        X = X[self.ts.features_order_]
         return self.fit_models(X, y)
 
     def predict(
@@ -417,20 +425,20 @@ class MLForecast:
 
         if new_data is not None:
             new_ts = TimeSeries(
-                self.ts.freq,
-                self.ts.lags,
-                self.ts.lag_transforms,
-                self.ts.date_features,
-                self.ts.differences,
-                self.ts.num_threads,
+                freq=self.ts.freq,
+                lags=self.ts.lags,
+                lag_transforms=self.ts.lag_transforms,
+                date_features=self.ts.date_features,
+                num_threads=self.ts.num_threads,
+                target_transforms=self.ts.target_transforms,
             )
             new_ts._fit(
                 new_data,
-                self.ts.id_col,
-                self.ts.time_col,
-                self.ts.target_col,
-                self.ts.static_features.columns,
-                self.ts.keep_last_n,
+                id_col=self.ts.id_col,
+                time_col=self.ts.time_col,
+                target_col=self.ts.target_col,
+                static_features=self.ts.static_features.columns,
+                keep_last_n=self.ts.keep_last_n,
             )
             new_ts.max_horizon = self.ts.max_horizon
             ts = new_ts
