@@ -13,7 +13,7 @@ dependencies:
   - pandas
   - pip
   - pylint
-  - pyspark
+  - pyspark>=3.3
   - scikit-learn
   - window-ops
   - xgboost
