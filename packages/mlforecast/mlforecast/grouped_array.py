@@ -84,7 +84,7 @@ def _expand_target(data, indptr, max_horizon):
 
 
 @njit
-def _append_new(
+def _append_one(
     data: np.ndarray, indptr: np.ndarray, new: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Append each value of new to each group in data formed by indptr."""
@@ -99,7 +99,38 @@ def _append_new(
         new_data[new_indptr[i + 1] - 1] = new[i]
     return new_data, new_indptr
 
-# %% ../nbs/grouped_array.ipynb 3
+
+@njit
+def _append_several(
+    data: np.ndarray,
+    indptr: np.ndarray,
+    new_sizes: np.ndarray,
+    new_values: np.ndarray,
+    new_groups: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    new_data = np.empty(data.size + new_values.size, dtype=data.dtype)
+    new_indptr = np.empty(new_sizes.size + 1, dtype=indptr.dtype)
+    new_indptr[0] = 0
+    old_indptr_idx = 0
+    new_vals_idx = 0
+    for i, is_new in enumerate(new_groups):
+        new_size = new_sizes[i]
+        if is_new:
+            old_size = 0
+        else:
+            prev_slice = slice(indptr[old_indptr_idx], indptr[old_indptr_idx + 1])
+            old_indptr_idx += 1
+            old_size = prev_slice.stop - prev_slice.start
+            new_size += old_size
+            new_data[new_indptr[i] : new_indptr[i] + old_size] = data[prev_slice]
+        new_indptr[i + 1] = new_indptr[i] + new_size
+        new_data[new_indptr[i] + old_size : new_indptr[i + 1]] = new_values[
+            new_vals_idx : new_vals_idx + new_sizes[i]
+        ]
+        new_vals_idx += new_sizes[i]
+    return new_data, new_indptr
+
+# %% ../nbs/grouped_array.ipynb 4
 class GroupedArray:
     """Array made up of different groups. Can be thought of (and iterated) as a list of arrays.
 
@@ -161,7 +192,15 @@ class GroupedArray:
         """Appends each element of `new` to each existing group. Returns a copy."""
         if new.size != self.ngroups:
             raise ValueError(f"new must be of size {self.ngroups}")
-        new_data, new_indptr = _append_new(self.data, self.indptr, new)
+        new_data, new_indptr = _append_one(self.data, self.indptr, new)
+        return GroupedArray(new_data, new_indptr)
+
+    def append_several(
+        self, new_sizes: np.ndarray, new_values: np.ndarray, new_groups: np.ndarray
+    ) -> "GroupedArray":
+        new_data, new_indptr = _append_several(
+            self.data, self.indptr, new_sizes, new_values, new_groups
+        )
         return GroupedArray(new_data, new_indptr)
 
     def __repr__(self) -> str:

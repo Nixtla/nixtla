@@ -562,3 +562,30 @@ class TimeSeries:
             for tfm in self.target_transforms[::-1]:
                 preds = tfm.inverse_transform(preds)
         return preds
+
+    def update(self, df: pd.DataFrame) -> None:
+        """Update the values of the stored series."""
+        df = df.sort_values([self.id_col, self.time_col])
+        new_sizes = df.groupby(self.id_col, observed=True).size()
+        prev_sizes = pd.Series(np.full(self.uids.size, 0), index=self.uids)
+        sizes = new_sizes.add(prev_sizes, fill_value=0)
+        values = df[self.target_col].values
+        new_groups = ~sizes.index.isin(self.uids)
+        self.last_dates = pd.Index(
+            df.groupby(self.id_col, observed=True)[self.time_col]
+            .max()
+            .reindex(sizes.index)
+            .fillna(dict(zip(self.uids, self.last_dates)))
+        ).astype(self.last_dates.dtype)
+        self.uids = sizes.index
+        new_statics = df.iloc[new_sizes.cumsum() - 1].set_index(self.id_col)
+        orig_dtypes = self.static_features.dtypes
+        self.static_features = self.static_features.reindex(self.uids)
+        self.static_features.update(new_statics)
+        self.static_features = self.static_features.astype(orig_dtypes)
+        self.ga = self.ga.append_several(
+            new_sizes=sizes.values.astype(np.int32),
+            new_values=values,
+            new_groups=new_groups,
+        )
+        self._ga = GroupedArray(self.ga.data, self.ga.indptr)
