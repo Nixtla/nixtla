@@ -202,6 +202,11 @@ def aggregate(df: pd.DataFrame,
     `Y_df, S_df, tags`: tuple with hierarchically structured series `Y_df` ($\mathbf{y}_{[a,b]}$),
     summing dataframe `S_df`, and hierarchical aggregation indexes `tags`.
     """
+    
+    #Ensure no null values
+    if df.isnull().values.any():
+        raise Exception('`df` contains null values')
+            
     #-------------------------------- Wrangling --------------------------------#
     # constraints S_df and collapsed Y_bottom_df with 'unique_id'
     Y_bottom_df, S_df, tags = _to_summing_dataframe(df=df, spec=spec)
@@ -242,7 +247,7 @@ def aggregate(df: pd.DataFrame,
     Y_df = Y_df.set_index('unique_id')
     return Y_df, S_df, tags
 
-# %% ../nbs/utils.ipynb 15
+# %% ../nbs/utils.ipynb 16
 class HierarchicalPlot:
     """ Hierarchical Plot
 
