@@ -22,6 +22,9 @@ website:
           - examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb
           - examples/AustralianDomesticTourism-Permbu-Intervals.ipynb
           - examples/TourismLarge-Evaluation.ipynb
+        - section: ML Forecast Reconciliation
+          contents:
+          - examples/MLFrameworksExample.ipynb
       - Methods
       - section: API Reference
         contents:
