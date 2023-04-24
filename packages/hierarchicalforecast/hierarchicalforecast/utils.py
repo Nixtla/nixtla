@@ -227,6 +227,7 @@ def aggregate(df: pd.DataFrame,
         balanced_df['y'].fillna(0, inplace=True)
         Y_bottom_df.reset_index(inplace=True)
     else:
+        dates       = Y_bottom_df['ds'].unique()
         balanced_df = Y_bottom_df.copy()
 
     #------------------------------- Aggregation -------------------------------#
