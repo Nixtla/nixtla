@@ -52,17 +52,14 @@ def _update(bst, n):
         bst.update()
 
 
-def _predict(
-    ts,
-    bst,
-    valid,
-    h,
-    id_col,
-    time_col,
-    dynamic_dfs,
-    before_predict_callback,
-    after_predict_callback,
-):
+def _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback):
+    ex_cols_to_drop = [ts.id_col, ts.time_col, ts.target_col]
+    static_features = ts.static_features.columns.tolist()
+    ex_cols_to_drop.extend(static_features)
+    has_ex = not valid.columns.drop(ex_cols_to_drop).empty
+    dynamic_dfs = (
+        [valid.drop(columns=static_features + [ts.target_col])] if has_ex else None
+    )
     preds = ts.predict(
         {"Booster": bst},
         h,
@@ -70,33 +67,14 @@ def _predict(
         before_predict_callback,
         after_predict_callback,
     )
-    return valid.merge(preds, on=[id_col, time_col], how="left")
+    return valid.merge(preds, on=[ts.id_col, ts.time_col], how="left")
 
 
 def _update_and_predict(
-    ts,
-    bst,
-    valid,
-    n,
-    h,
-    id_col,
-    time_col,
-    dynamic_dfs,
-    before_predict_callback,
-    after_predict_callback,
+    ts, bst, valid, n, h, before_predict_callback, after_predict_callback
 ):
     _update(bst, n)
-    return _predict(
-        ts,
-        bst,
-        valid,
-        h,
-        id_col,
-        time_col,
-        dynamic_dfs,
-        before_predict_callback,
-        after_predict_callback,
-    )
+    return _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback)
 
 # %% ../nbs/lgb_cv.ipynb 6
 CVResult = Tuple[int, float]
@@ -266,7 +244,6 @@ class LightGBMCV:
             ).construct()
             bst = lgb.Booster({**self.params, "num_threads": self.bst_threads}, ds)
             bst.predict = partial(bst.predict, num_threads=self.bst_threads)
-            valid = valid.set_index(time_col, append=True)
             self.items.append((ts, bst, valid))
         return self
 
@@ -274,7 +251,6 @@ class LightGBMCV:
         self,
         metric_values,
         num_iterations,
-        dynamic_dfs,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
     ):
@@ -285,9 +261,6 @@ class LightGBMCV:
                 valid=valid,
                 n=num_iterations,
                 h=self.window_size,
-                id_col=self.id_col,
-                time_col=self.time_col,
-                dynamic_dfs=dynamic_dfs,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
             )
@@ -297,7 +270,6 @@ class LightGBMCV:
         self,
         metric_values,
         num_iterations,
-        dynamic_dfs,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
     ):
@@ -311,9 +283,6 @@ class LightGBMCV:
                     bst=bst,
                     valid=valid,
                     h=self.window_size,
-                    id_col=self.id_col,
-                    time_col=self.time_col,
-                    dynamic_dfs=dynamic_dfs,
                     before_predict_callback=before_predict_callback,
                     after_predict_callback=after_predict_callback,
                 )
@@ -327,7 +296,6 @@ class LightGBMCV:
     def partial_fit(
         self,
         num_iterations: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
     ) -> float:
@@ -337,8 +305,6 @@ class LightGBMCV:
         ----------
         num_iterations : int
             Number of boosting iterations to run
-        dynamic_dfs : list of pandas DataFrame, optional (default=None)
-            Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
             Function to call on the features before computing the predictions.
                 This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
@@ -358,7 +324,6 @@ class LightGBMCV:
             self._single_threaded_partial_fit(
                 metric_values,
                 num_iterations,
-                dynamic_dfs,
                 before_predict_callback,
                 after_predict_callback,
             )
@@ -366,7 +331,6 @@ class LightGBMCV:
             self._multithreaded_partial_fit(
                 metric_values,
                 num_iterations,
-                dynamic_dfs,
                 before_predict_callback,
                 after_predict_callback,
             )
@@ -400,7 +364,6 @@ class LightGBMCV:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         eval_every: int = 10,
         weights: Optional[Sequence[float]] = None,
         metric: Union[str, Callable] = "mape",
@@ -440,8 +403,6 @@ class LightGBMCV:
             Drop rows with missing values produced by the transformations.
         keep_last_n : int, optional (default=None)
             Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
-        dynamic_dfs : list of pandas DataFrame, optional (default=None)
-            Future values of the dynamic features, e.g. prices.
         eval_every : int (default=10)
             Number of boosting iterations to train before evaluating on the whole forecast window.
         weights : sequence of float, optional (default=None)
@@ -491,7 +452,7 @@ class LightGBMCV:
         hist = []
         for i in range(0, num_iterations, eval_every):
             metric_value = self.partial_fit(
-                eval_every, dynamic_dfs, before_predict_callback, after_predict_callback
+                eval_every, before_predict_callback, after_predict_callback
             )
             rounds = eval_every + i
             hist.append((rounds, metric_value))
@@ -517,9 +478,6 @@ class LightGBMCV:
                         bst=bst,
                         valid=valid,
                         h=self.window_size,
-                        id_col=self.id_col,
-                        time_col=self.time_col,
-                        dynamic_dfs=dynamic_dfs,
                         before_predict_callback=before_predict_callback,
                         after_predict_callback=after_predict_callback,
                     )

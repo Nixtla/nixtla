@@ -22,4 +22,5 @@ dependencies:
     - fugue[ray]
     - lightgbm_ray
     - nbdev
+    - ray<2.4
     - xgboost_ray
