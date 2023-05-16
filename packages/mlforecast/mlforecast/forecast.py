@@ -318,7 +318,7 @@ class MLForecast:
         for model in self.models.keys():
             # compute absolute error for each model
             cv_results[model] = np.abs(cv_results[model] - cv_results[target_col])
-        return cv_results.drop("y", axis=1)
+        return cv_results.drop(columns=target_col)
 
     def fit(
         self,
