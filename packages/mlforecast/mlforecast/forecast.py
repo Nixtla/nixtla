@@ -36,6 +36,7 @@ def _add_conformal_distribution_intervals(
     cs_n_windows: int,
     cs_window_size: int,
     n_series: int,
+    horizon: int,
 ) -> pd.DataFrame:
     """
     Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
@@ -48,6 +49,8 @@ def _add_conformal_distribution_intervals(
     cuts.extend(1 - alpha / 200 for alpha in alphas)
     for model in model_names:
         scores = cs_df[model].values.reshape(cs_n_windows, n_series, cs_window_size)
+        # restrict scores to horizon
+        scores = scores[:, :, :horizon]
         mean = fcst_df[model].values.reshape(1, n_series, -1)
         scores = np.vstack([mean - scores, mean + scores])
         quantiles = np.quantile(
@@ -72,6 +75,7 @@ def _add_conformal_error_intervals(
     cs_n_windows: int,
     cs_window_size: int,
     n_series: int,
+    horizon: int,
 ) -> pd.DataFrame:
     """
     Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
@@ -82,8 +86,11 @@ def _add_conformal_error_intervals(
     cuts = [lv / 100 for lv in level]
     for model in model_names:
         mean = fcst_df[model].values.ravel()
+        scores = cs_df[model].values.reshape(cs_n_windows, n_series, cs_window_size)
+        # restrict scores to horizon
+        scores = scores[:, :, :horizon]
         quantiles = np.quantile(
-            cs_df[model].values.reshape(cs_n_windows, n_series, cs_window_size),
+            scores,
             cuts,
             axis=0,
         )
@@ -460,14 +467,16 @@ class MLForecast:
                 )
                 warnings.warn(warn_msg, UserWarning)
             else:
-                if self.prediction_intervals.window_size not in [1, horizon]:
+                if (self.prediction_intervals.window_size != 1) and (
+                    self.prediction_intervals.window_size < horizon
+                ):
                     raise ValueError(
                         "The `window_size` argument of PredictionIntervals "
-                        "should be equal to one or `horizon`. "
+                        "should be equal to one or greater or equal to `horizon`. "
                         "Please rerun the `fit` method passing a proper value "
                         "to prediction intervals."
                     )
-                if self.prediction_intervals.window_size != horizon:
+                if self.prediction_intervals.window_size == 1 and horizon > 1:
                     warn_msg = (
                         "Prediction intervals are calculated using 1-step ahead cross-validation, "
                         "with a constant width for all horizons. To vary the error by horizon, "
@@ -488,6 +497,7 @@ class MLForecast:
                     cs_window_size=self.prediction_intervals.window_size,
                     cs_n_windows=self.prediction_intervals.n_windows,
                     n_series=self.ts.ga.ngroups,
+                    horizon=horizon,
                 )
         return forecasts
 
