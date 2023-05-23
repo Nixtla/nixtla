@@ -19,6 +19,7 @@ dependencies:
   - xgboost
   - pip:
     - datasetsforecast
+    - duckdb<0.8
     - fugue[ray]
     - lightgbm_ray
     - nbdev

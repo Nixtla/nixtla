@@ -25,23 +25,14 @@ from .utils import backtest_splits
 from .target_transforms import BaseTargetTransform
 
 # %% ../nbs/lgb_cv.ipynb 5
-def _mape(y_true, y_pred):
+def _mape(y_true, y_pred, ids, _dates):
     abs_pct_err = abs(y_true - y_pred) / y_true
-    return (
-        abs_pct_err.groupby(y_true.index.get_level_values(0), observed=True)
-        .mean()
-        .mean()
-    )
+    return abs_pct_err.groupby(ids, observed=True).mean().mean()
 
 
-def _rmse(y_true, y_pred):
+def _rmse(y_true, y_pred, ids, _dates):
     sq_err = (y_true - y_pred) ** 2
-    return (
-        sq_err.groupby(y_true.index.get_level_values(0), observed=True)
-        .mean()
-        .pow(0.5)
-        .mean()
-    )
+    return sq_err.groupby(ids, observed=True).mean().pow(0.5).mean()
 
 
 _metric2fn = {"mape": _mape, "rmse": _rmse}
@@ -200,7 +191,7 @@ class LightGBMCV:
             self.weights = np.asarray(weights)
         if callable(metric):
             self.metric_fn = metric
-            self.metric_name = "custom_metric"
+            self.metric_name = metric.__name__
         else:
             if metric not in _metric2fn:
                 raise ValueError(
@@ -264,7 +255,12 @@ class LightGBMCV:
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
             )
-            metric_values[j] = self.metric_fn(preds[self.target_col], preds["Booster"])
+            metric_values[j] = self.metric_fn(
+                preds[self.target_col],
+                preds["Booster"],
+                preds[self.id_col],
+                preds[self.time_col],
+            )
 
     def _multithreaded_partial_fit(
         self,
@@ -289,7 +285,12 @@ class LightGBMCV:
                 futures.append(future)
             cv_preds = [f.result() for f in futures]
         metric_values[:] = [
-            self.metric_fn(preds[self.target_col], preds["Booster"])
+            self.metric_fn(
+                preds[self.target_col],
+                preds["Booster"],
+                preds[self.id_col],
+                preds[self.time_col],
+            )
             for preds in cv_preds
         ]
 
