@@ -1,0 +1,4 @@
+[tool.ruff]
+select = ["F", "ARG"]
+
+exclude = ["_nbdev.py"]

@@ -1,6 +1,0 @@
-[MAIN]
-ignore=_nbdev.py
-
-[MESSAGES CONTROL]
-disable=all
-enable=W0612,W0613

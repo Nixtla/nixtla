@@ -2,16 +2,12 @@ name: mlforecast
 channels:
   - conda-forge
 dependencies:
-  - black
-  - flake8
-  - jupyterlab
   - lightgbm
   - matplotlib
-  - mypy
+  - nbformat
   - numba
   - pandas
   - pip
-  - pylint
   - scikit-learn
   - window-ops
   - xgboost
