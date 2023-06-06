@@ -51,7 +51,7 @@ jobs:
           cache-env: true
 
       - name: Install pip requirements
-        run: pip install ./
+        run: pip install ".[dev]"
 
       - name: Run tests
         run: nbdev_test

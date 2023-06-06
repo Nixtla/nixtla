@@ -21,7 +21,7 @@ jobs:
             conda init bash
             source ~/.bashrc
             conda activate hierarchicalforecast
-            pip install ./
+            pip install ".[dev]"
             nbdev_test --do_print --timing --n_workers 1
   test-model-performance:
     resource_class: large

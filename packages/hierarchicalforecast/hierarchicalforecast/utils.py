@@ -251,6 +251,7 @@ def _to_summing_dataframe(df: pd.DataFrame,
     max_len_idx = np.argmax([len(hier) for hier in spec])
     bottom_comb = spec[max_len_idx]
     hiers_cols = []
+    df = df.copy()
     for hier in spec:
         if hier == bottom_comb:
             hier_col = 'unique_id'
@@ -275,15 +276,15 @@ def _to_summing_dataframe(df: pd.DataFrame,
     encoder = OneHotEncoder(categories=categories,
                             sparse=False, dtype=np.float32)
     S = encoder.fit_transform(S_df).T
-    S = np.concatenate([S, np.eye(len(bottom_ids))], axis=0)
+    S = np.concatenate([S, np.eye(len(bottom_ids), dtype=np.float32)], axis=0)
     S_df = pd.DataFrame(S, columns=bottom_ids,
                         index=list(chain(*categories))+bottom_ids)
 
     # Match index ordering of S_df and collapse df to Y_bottom_df
     Y_bottom_df = df.copy()
+    Y_bottom_df = Y_bottom_df.groupby(['unique_id', 'ds'])['y'].sum().reset_index()
     Y_bottom_df.unique_id = Y_bottom_df.unique_id.astype('category')
     Y_bottom_df.unique_id = Y_bottom_df.unique_id.cat.set_categories(S_df.columns)
-    Y_bottom_df = Y_bottom_df.groupby(['unique_id', 'ds'])['y'].sum().reset_index()
     return Y_bottom_df, S_df, tags
 
 def aggregate(df: pd.DataFrame,
@@ -322,7 +323,6 @@ def aggregate(df: pd.DataFrame,
         balanced_df   = balanced_df.merge(Y_bottom_df[['y']],
                                           how='left', left_on=['unique_id', 'ds'],
                                           right_index=True).reset_index()
-        balanced_df['y'].fillna(0, inplace=True)
         Y_bottom_df.reset_index(inplace=True)
     else:
         dates       = Y_bottom_df['ds'].unique()
@@ -334,19 +334,22 @@ def aggregate(df: pd.DataFrame,
     y_bottom = balanced_df.y.values
 
     y_bottom = y_bottom.reshape(len(S_df.columns), len(dates))
-    y_agg = Agg @ y_bottom
+    y_bottom_mask = np.isnan(y_bottom)
+    y_agg = Agg @ np.nan_to_num(y_bottom)
+    y_agg_mask = Agg @ y_bottom_mask
 
     # Create long format hierarchical dataframe
     y_agg = y_agg.flatten()
+    y_agg[y_agg_mask.flatten() > 1] = np.nan
     y_bottom = y_bottom.flatten()
     Y_df = pd.DataFrame(dict(
                 unique_id = np.repeat(S_df.index, len(dates)),
                 ds = np.tile(dates, len(S_df.index)),
                 y = np.concatenate([y_agg, y_bottom], axis=0)))
-    Y_df = Y_df.set_index('unique_id')
+    Y_df = Y_df.set_index('unique_id').dropna()
     return Y_df, S_df, tags
 
-# %% ../nbs/utils.ipynb 21
+# %% ../nbs/utils.ipynb 22
 class HierarchicalPlot:
     """ Hierarchical Plot
 

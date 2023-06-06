@@ -153,8 +153,8 @@ class HierarchicalReconciliation:
         
         # TODO: Complete y_hat_insample protection
         if intervals_method in ['bootstrap', 'permbu']:
-           if not (set(model_names) <= set(Y_df.columns)):
-               raise Exception('Check `Y_hat_df`s models are included in `Y_df` columns')
+            if not (set(model_names) <= set(Y_df.columns)):
+                raise Exception('Check `Y_hat_df`s models are included in `Y_df` columns')
 
         uids = Y_hat_df.index.unique()
 
@@ -168,7 +168,7 @@ class HierarchicalReconciliation:
             # Check Y_hat_df\Y_df series difference
             Y_diff  = len(Y_df.index.difference(uids))
             Y_hat_diff = len(Y_hat_df.index.difference(Y_df.index.unique()))
-            if Y_diff > 0 or  Y_hat_diff > 0:
+            if Y_diff > 0 or Y_hat_diff > 0:
                 raise Exception(f'Check `Y_hat_df`, `Y_df` series difference, Y_hat\Y={Y_hat_diff}, Y\Y_hat={Y_diff}')
 
         # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
@@ -185,7 +185,9 @@ class HierarchicalReconciliation:
                   intervals_method: str = 'normality',
                   num_samples: int = -1,
                   seed: int = 0,
-                  sort_df: bool = True):
+                  sort_df: bool = True,
+                  is_balanced: bool = False,
+        ):
         """Hierarchical Reconciliation Method.
 
         The `reconcile` method is analogous to SKLearn `fit_predict` method, it 
@@ -212,6 +214,7 @@ class HierarchicalReconciliation:
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
         `seed`: int=0, random seed for numpy generator's replicability.<br>
         `sort_df` : bool (default=True), if True, sort `df` by [`unique_id`,`ds`].<br>
+        `is_balanced`: bool=False, wether `Y_df` is balanced, set it to True to speed things up if `Y_df` is balanced.<br>
 
         **Returns:**<br>
         `Y_tilde_df`: pd.DataFrame, with reconciled predictions.
@@ -233,7 +236,10 @@ class HierarchicalReconciliation:
             tags={key: S_df.index.get_indexer(val) for key, val in tags.items()}
         )
         if Y_df is not None:
-            y_insample = Y_df['y'].values.reshape(len(S_df), -1).astype(np.float32)
+            if is_balanced:
+                y_insample = Y_df['y'].values.reshape(len(S_df), -1).astype(np.float32)
+            else:
+                y_insample = Y_df.pivot(columns='ds', values='y').loc[S_df.index].values.astype(np.float32)
             reconciler_args['y_insample'] = y_insample
 
         Y_tilde_df= Y_hat_df.copy()
@@ -252,7 +258,10 @@ class HierarchicalReconciliation:
                 reconciler_args['y_hat'] = y_hat
 
                 if (self.insample and has_fitted) or intervals_method in ['bootstrap', 'permbu']:
-                    y_hat_insample = Y_df[model_name].values.reshape(len(S_df), -1).astype(np.float32)
+                    if is_balanced:
+                        y_hat_insample = Y_df[model_name].values.reshape(len(S_df), -1).astype(np.float32)
+                    else:
+                        y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[S_df.index].values.astype(np.float32)
                     reconciler_args['y_hat_insample'] = y_hat_insample
 
                 if has_level and (level is not None):
