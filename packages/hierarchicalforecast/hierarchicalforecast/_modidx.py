@@ -181,5 +181,11 @@ d = { 'settings': { 'branch': 'main',
                                             'hierarchicalforecast.utils.cov2corr': ('utils.html#cov2corr', 'hierarchicalforecast/utils.py'),
                                             'hierarchicalforecast.utils.is_strictly_hierarchical': ( 'utils.html#is_strictly_hierarchical',
                                                                                                      'hierarchicalforecast/utils.py'),
+                                            'hierarchicalforecast.utils.level_to_outputs': ( 'utils.html#level_to_outputs',
+                                                                                             'hierarchicalforecast/utils.py'),
                                             'hierarchicalforecast.utils.numpy_balance': ( 'utils.html#numpy_balance',
-                                                                                          'hierarchicalforecast/utils.py')}}}
+                                                                                          'hierarchicalforecast/utils.py'),
+                                            'hierarchicalforecast.utils.quantiles_to_outputs': ( 'utils.html#quantiles_to_outputs',
+                                                                                                 'hierarchicalforecast/utils.py'),
+                                            'hierarchicalforecast.utils.samples_to_quantiles_df': ( 'utils.html#samples_to_quantiles_df',
+                                                                                                    'hierarchicalforecast/utils.py')}}}

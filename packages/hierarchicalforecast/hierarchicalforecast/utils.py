@@ -7,7 +7,7 @@ __all__ = ['HierarchicalPlot']
 import sys
 import timeit
 from itertools import chain
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -68,7 +68,105 @@ def cov2corr(cov, return_std=False):
     else:
         return corr
 
+# %% ../nbs/utils.ipynb 7
+# convert levels to output quantile names
+def level_to_outputs(level:Iterable[int]):
+    """ Converts list of levels into output names matching StatsForecast and NeuralForecast methods.
+
+    **Parameters:**<br>
+    `level`: int list [0,100]. Probability levels for prediction intervals.<br>
+
+    **Returns:**<br>
+    `output_names`: str list. String list with output column names.
+    """
+    qs = sum([[50-l/2, 50+l/2] for l in level], [])
+    output_names = sum([[f'-lo-{l}', f'-hi-{l}'] for l in level], [])
+
+    sort_idx = np.argsort(qs)
+    quantiles = np.array(qs)[sort_idx]
+
+    # Add default median
+    quantiles = np.concatenate([np.array([50]), quantiles]) / 100
+    output_names = list(np.array(output_names)[sort_idx])
+    output_names.insert(0, '-median')
+    
+    return quantiles, output_names
+
+# convert quantiles to output quantile names
+def quantiles_to_outputs(quantiles:Iterable[float]):
+    """Converts list of quantiles into output names matching StatsForecast and NeuralForecast methods.
+
+    **Parameters:**<br>
+    `quantiles`: float list [0., 1.]. Alternative to level, quantiles to estimate from y distribution.<br>
+
+    **Returns:**<br>
+    `output_names`: str list. String list with output column names.
+    """
+    output_names = []
+    for q in quantiles:
+        if q<.50:
+            output_names.append(f'-lo-{np.round(100-200*q,2)}')
+        elif q>.50:
+            output_names.append(f'-hi-{np.round(100-200*(1-q),2)}')
+        else:
+            output_names.append('-median')
+    return quantiles, output_names
+
 # %% ../nbs/utils.ipynb 8
+# given input array of sample forecasts and inptut quantiles/levels, 
+# output a Pandas Dataframe with columns of quantile predictions
+def samples_to_quantiles_df(samples:np.ndarray, 
+                            unique_ids:Iterable[str], 
+                            dates:Iterable, 
+                            quantiles:Optional[Iterable[float]] = None,
+                            level:Optional[Iterable[int]] = None, 
+                            model_name:Optional[str] = "model"):
+    """ Transform Samples into HierarchicalForecast input.
+    Auxiliary function to create compatible HierarchicalForecast input Y_hat_df dataframe.
+
+    **Parameters:**<br>
+    `samples`: numpy array. Samples from forecast distribution of shape [n_series, n_samples, horizon].<br>
+    `unique_ids`: string list. Unique identifiers for each time series.<br>
+    `dates`: datetime list. List of forecast dates.<br>
+    `quantiles`: float list in [0., 1.]. Alternative to level, quantiles to estimate from y distribution.<br>
+    `level`: int list in [0,100]. Probability levels for prediction intervals.<br>
+    `model_name`: string. Name of forecasting model.<br>
+
+    **Returns:**<br>
+    `quantiles`: float list in [0., 1.]. quantiles to estimate from y distribution .<br>
+    `Y_hat_df`: pd.DataFrame. With base quantile forecasts with columns ds and models to reconcile indexed by unique_id.
+    """
+    
+    # Get the shape of the array
+    n_series, n_samples, horizon = samples.shape
+
+    assert n_series == len(unique_ids)
+    assert horizon == len(dates)
+    assert (quantiles is not None) ^ (level is not None)  #check exactly one of quantiles/levels has been input
+
+    #create initial dictionary
+    forecasts_mean = np.mean(samples, axis=1).flatten()
+    unique_ids = np.repeat(unique_ids, horizon)
+    ds = np.tile(dates, n_series)
+    data = pd.DataFrame({"unique_id":unique_ids, "ds":ds, model_name:forecasts_mean})
+
+    #create quantiles and quantile names
+    quantiles, quantile_names = level_to_outputs(level) if level is not None else quantiles_to_outputs(quantiles)
+    percentiles = [quantile * 100 for quantile in quantiles]
+    col_names = np.array([model_name + quantile_name for quantile_name in quantile_names])
+    
+    #add quantiles to dataframe
+    forecasts_quantiles = np.percentile(samples, percentiles, axis=1)
+
+    forecasts_quantiles = np.transpose(forecasts_quantiles, (1,2,0)) # [Q,H,N] -> [N,H,Q]
+    forecasts_quantiles = forecasts_quantiles.reshape(-1,len(quantiles))
+
+    df = pd.DataFrame(data=forecasts_quantiles, 
+                      columns=col_names)
+    
+    return quantiles, pd.concat([data,df], axis=1).set_index('unique_id')
+
+# %% ../nbs/utils.ipynb 11
 def _to_summing_matrix(S_df: pd.DataFrame):
     """Transforms the DataFrame `df` of hierarchies to a summing matrix S."""
     categories = [S_df[col].unique() for col in S_df.columns]
@@ -81,14 +179,14 @@ def _to_summing_matrix(S_df: pd.DataFrame):
     tags = dict(zip(S_df.columns, categories))
     return S, tags
 
-# %% ../nbs/utils.ipynb 9
+# %% ../nbs/utils.ipynb 12
 def aggregate_before(df: pd.DataFrame,
               spec: List[List[str]],
               agg_fn: Callable = np.sum):
     """Utils Aggregation Function.
 
     Aggregates bottom level series contained in the pd.DataFrame `df` according 
-    to levels defined in the `spec` list applying the `agg_fn` (sum, mean).
+    to levels defined in the `spec` list applying the `agg_fn` (sum, mean).<br>
 
     **Parameters:**<br>
     `df`: pd.DataFrame with columns `['ds', 'y']` and columns to aggregate.<br>
@@ -123,7 +221,7 @@ def aggregate_before(df: pd.DataFrame,
     S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
     return Y_df, S, tags
 
-# %% ../nbs/utils.ipynb 10
+# %% ../nbs/utils.ipynb 13
 def numpy_balance(*arrs):
     """
     Fast NumPy implementation of balance function.
@@ -248,7 +346,7 @@ def aggregate(df: pd.DataFrame,
     Y_df = Y_df.set_index('unique_id')
     return Y_df, S_df, tags
 
-# %% ../nbs/utils.ipynb 16
+# %% ../nbs/utils.ipynb 21
 class HierarchicalPlot:
     """ Hierarchical Plot
 
