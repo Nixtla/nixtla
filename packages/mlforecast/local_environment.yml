@@ -9,6 +9,7 @@ dependencies:
   - pandas
   - pip
   - scikit-learn
+  - statsforecast
   - window-ops
   - xgboost
   - pip:
