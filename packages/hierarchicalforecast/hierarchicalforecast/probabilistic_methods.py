@@ -4,6 +4,7 @@
 __all__ = ['Normality']
 
 # %% ../nbs/probabilistic_methods.ipynb 3
+import warnings
 from typing import Dict
 
 import numpy as np
@@ -79,8 +80,11 @@ class Normality:
         n_series, n_horizon = self.y_hat.shape
         samples = np.empty(shape=(num_samples, n_series, n_horizon))
         for t in range(n_horizon):
-            partial_samples = state.multivariate_normal(mean=self.SP @ self.y_hat[:,t],
-                                                  cov=self.cov_rec[t], size=num_samples)
+            with warnings.catch_warnings():
+                # Avoid 'RuntimeWarning: covariance is not positive-semidefinite.'
+                # By definition the multivariate distribution is not full-rank
+                partial_samples = state.multivariate_normal(mean=self.SP @ self.y_hat[:,t],
+                                                    cov=self.cov_rec[t], size=num_samples)
             samples[:,:,t] = partial_samples
 
         # [samples, N, H] -> [N, H, samples]
