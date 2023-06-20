@@ -25,6 +25,7 @@ website:
         - section: ML Forecast Reconciliation
           contents:
           - examples/MLFrameworksExample.ipynb
+          - examples/HierarchicalForecast-GluonTS.ipynb
       - Methods
       - section: API Reference
         contents:
