@@ -14,7 +14,7 @@ from hierarchicalforecast.methods import BottomUp, TopDown, MinTrace, ERM
 
 from hierarchicalforecast.utils import is_strictly_hierarchical
 from hierarchicalforecast.utils import HierarchicalPlot, CodeTimer
-from hierarchicalforecast.evaluation import scaled_crps, msse, energy_score
+from hierarchicalforecast.evaluation import scaled_crps, rel_mse, msse
 
 from datasetsforecast.hierarchical import HierarchicalData, HierarchicalInfo
 
@@ -34,27 +34,40 @@ class HierarchicalDataset(object):
     @staticmethod
     def _get_hierarchical_scrps(hier_idxs, Y, Yq_hat, q_to_pred):
         # We use the indexes obtained from the aggregation tags
-        # to compute scaled CRPS across the hierarchy levels 
+        # to compute scaled CRPS across the hierarchy levels
         scrps_list = []
         for idxs in hier_idxs:
             y      = Y[idxs, :]
             yq_hat = Yq_hat[idxs, :, :]
-            scrps  = scaled_crps(y, yq_hat, q_to_pred)
-            scrps_list.append(scrps)
+            level_scrps  = scaled_crps(y, yq_hat, q_to_pred)
+            scrps_list.append(level_scrps)
         return scrps_list
 
     @staticmethod
     def _get_hierarchical_msse(hier_idxs, Y, Y_hat, Y_train):
         # We use the indexes obtained from the aggregation tags
-        # to compute scaled CRPS across the hierarchy levels         
+        # to compute MS scaled Error across the hierarchy levels
         msse_list = []
         for idxs in hier_idxs:
             y       = Y[idxs, :]
             y_hat   = Y_hat[idxs, :]
             y_train = Y_train[idxs, :]
-            crps    = msse(y, y_hat, y_train)
-            msse_list.append(crps)
-        return msse_list    
+            level_msse = msse(y, y_hat, y_train)
+            msse_list.append(level_msse)
+        return msse_list        
+
+    @staticmethod
+    def _get_hierarchical_rel_mse(hier_idxs, Y, Y_hat, Y_train):
+        # We use the indexes obtained from the aggregation tags
+        # to compute relative MSE across the hierarchy levels
+        rel_mse_list = []
+        for idxs in hier_idxs:
+            y       = Y[idxs, :]
+            y_hat   = Y_hat[idxs, :]
+            y_train = Y_train[idxs, :]
+            level_rel_mse = rel_mse(y, y_hat, y_train)
+            rel_mse_list.append(level_rel_mse)
+        return rel_mse_list
 
     @staticmethod
     def _sort_hier_df(Y_df, S_df):
@@ -212,6 +225,8 @@ def run_baselines(dataset, intervals_method, verbose=False, seed=0):
     with CodeTimer('Evaluate Base Forecasts  ', verbose):
         crps_results = {'Dataset': [dataset] * len(['Overall'] + list(tags.keys())),
                         'Level': ['Overall'] + list(tags.keys()),}
+        relmse_results = {'Dataset': [dataset] * len(['Overall'] + list(tags.keys())),
+                        'Level': ['Overall'] + list(tags.keys()),}
         msse_results = {'Dataset': [dataset] * len(['Overall'] + list(tags.keys())),
                         'Level': ['Overall'] + list(tags.keys()),}
         Y_hat_quantiles = Y_hat_df.drop(columns=['ds', 'AutoARIMA'])
@@ -222,6 +237,11 @@ def run_baselines(dataset, intervals_method, verbose=False, seed=0):
                                                             Y=y_test,
                                                             Yq_hat=y_hat_quantiles_np,
                                                             q_to_pred=QUANTILES,
+                                                            hier_idxs=data['hier_idxs'])
+        relmse_results['AutoARIMA'] = HierarchicalDataset._get_hierarchical_rel_mse(
+                                                            Y=y_test,
+                                                            Y_hat=y_hat_np,
+                                                            Y_train=y_train,
                                                             hier_idxs=data['hier_idxs'])
         msse_results['AutoARIMA'] = HierarchicalDataset._get_hierarchical_msse(
                                                             Y=y_test,
@@ -251,6 +271,28 @@ def run_baselines(dataset, intervals_method, verbose=False, seed=0):
 
         crps_results = pd.DataFrame(crps_results)
 
+    with CodeTimer('Evaluate Models relMSE', verbose):
+        for model in hrec.level_names.keys():
+            relmse_results[model] = []
+            for level in relmse_results['Level']:
+                if level=='Overall':
+                    row_idxs = np.arange(len(S_df))
+                else:
+                    row_idxs = S_df.index.get_indexer(tags[level])
+                col_idx = model_columns.get_loc(model)
+                _y = y_test[row_idxs,:]
+                _y_train = y_train[row_idxs,:]
+                _y_hat_seeds = y_rec[:,row_idxs,:,:][:,:,:,col_idx]
+
+                level_model_relmse = []
+                for seed_idx in range(y_rec.shape[0]):
+                    _y_hat = _y_hat_seeds[seed_idx,:,:]
+                    level_model_relmse.append(rel_mse(y=_y, y_hat=_y_hat, y_train=_y_train))
+                level_model_relmse = f'{np.mean(level_model_relmse):.4f}'
+                relmse_results[model].append(level_model_relmse)
+
+        relmse_results = pd.DataFrame(relmse_results)
+
     with CodeTimer('Evaluate Models MSSE  ', verbose):
         for model in hrec.level_names.keys():
             msse_results[model] = []
@@ -273,7 +315,7 @@ def run_baselines(dataset, intervals_method, verbose=False, seed=0):
 
         msse_results = pd.DataFrame(msse_results)
 
-        return crps_results, msse_results
+        return crps_results, relmse_results, msse_results
 
 if __name__ == '__main__':
     
@@ -305,11 +347,14 @@ if __name__ == '__main__':
     # Run experiments
     crps_results_list = []
     msse_results_list = []
-    try:
-        crps_results, msse_results = run_baselines(dataset=dataset,
+    relmse_results_list = []
+
+    try: # Hacky protection for non strictly hierarchical datasets
+        crps_results, relmse_results, msse_results = run_baselines(dataset=dataset,
                     intervals_method=intervals_method, verbose=verbose)
         crps_results_list.append(crps_results)
         msse_results_list.append(msse_results)
+        relmse_results_list.append(relmse_results)
     except Exception as e:
         print('failed ', dataset)
         print(str(e))
@@ -317,13 +362,20 @@ if __name__ == '__main__':
 
     crps_results_df = pd.concat(crps_results_list)
     msse_results_df = pd.concat(msse_results_list)
+    relmse_results_df = pd.concat(relmse_results_list)
 
     crps_results_df.to_csv(f'./data/{intervals_method}_crps.csv', index=False)
     msse_results_df.to_csv(f'./data/{intervals_method}_msse.csv', index=False)
+    relmse_results_df.to_csv(f'./data/{intervals_method}_relmse.csv', index=False)
 
     print('='*(200+24))
     print(f'{intervals_method} sCRPS:')
     print(crps_results_df)
+
     print('\n\n'+'='*(200+24))
     print(f'{intervals_method} relMSE:')
+    print(relmse_results_df)
+
+    print('\n\n'+'='*(200+24))
+    print(f'{intervals_method} MSSE:')
     print(msse_results_df)

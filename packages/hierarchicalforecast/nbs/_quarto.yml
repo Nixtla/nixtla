@@ -21,7 +21,7 @@ website:
     collapse-below: lg
     left:
       - text: "Get Started"
-        href: examples/Getting_Started_short.ipynb
+        href: examples/TourismSmall.ipynb
       - text: "NixtlaVerse"
         menu:
           - text: "MLForecast 🤖"
