@@ -624,6 +624,12 @@ class MLForecast:
             result = valid[[id_col, time_col, target_col]].merge(
                 y_pred, on=[id_col, time_col]
             )
+            if result.shape[0] < valid.shape[0]:
+                raise ValueError(
+                    "Cross validation result produced less results than expected. "
+                    "Please verify that the frequency set on the MLForecast constructor matches your series' "
+                    "and that there aren't any missing periods."
+                )
             results.append(result)
         out = pd.concat(results)
         cols_order = [id_col, time_col, "cutoff", target_col]
