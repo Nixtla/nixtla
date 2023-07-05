@@ -520,6 +520,7 @@ class MLForecast:
         prediction_intervals: Optional[PredictionIntervals] = None,
         level: Optional[List[Union[int, float]]] = None,
         input_size: Optional[int] = None,
+        fitted: bool = False,
     ):
         """Perform time series cross validation.
         Creates `n_windows` splits where each window has `window_size` test periods,
@@ -566,6 +567,8 @@ class MLForecast:
             Confidence levels between 0 and 100 for prediction intervals.
         input_size : int, optional (default=None)
             Maximum training samples per serie in each window. If None, will use an expanding window.
+        fitted : bool (default=False)
+            Store the in-sample predictions.
 
         Returns
         -------
@@ -597,6 +600,7 @@ class MLForecast:
         if static_features is not None:
             ex_cols_to_drop.extend(static_features)
         has_ex = not data.columns.drop(ex_cols_to_drop).empty
+        self.cv_fitted_values_ = []
         for i_window, (cutoffs, train, valid) in enumerate(splits):
             if refit or i_window == 0:
                 self.fit(
@@ -611,6 +615,28 @@ class MLForecast:
                     prediction_intervals=prediction_intervals,
                 )
             self.cv_models_.append(self.models_)
+            if fitted:
+                insample_results = train[[id_col, time_col]].copy()
+                trainX, _ = self.preprocess(
+                    train,
+                    id_col=id_col,
+                    time_col=time_col,
+                    target_col=target_col,
+                    static_features=static_features,
+                    dropna=False,
+                    keep_last_n=keep_last_n,
+                    max_horizon=max_horizon,
+                    return_X_y=True,
+                )
+                trainX = trainX[self.ts.features_order_]
+                for name, model in self.models_.items():
+                    insample_results[name] = model.predict(trainX)  # type: ignore[union-attr]
+                if self.ts.target_transforms is not None:
+                    for tfm in self.ts.target_transforms[::-1]:
+                        insample_results = tfm.inverse_transform(insample_results)
+                insample_results["fold"] = i_window
+                insample_results[target_col] = train[target_col].values
+                self.cv_fitted_values_.append(insample_results)
             dynamic_dfs = [valid.drop(columns=[target_col])] if has_ex else None
             y_pred = self.predict(
                 window_size,
@@ -633,4 +659,11 @@ class MLForecast:
             results.append(result)
         out = pd.concat(results)
         cols_order = [id_col, time_col, "cutoff", target_col]
+        return out[cols_order + out.columns.drop(cols_order).tolist()]
+
+    def cross_validation_fitted_values(self):
+        if not getattr(self, "cv_fitted_values_", []):
+            raise ValueError("Please run cross_validation with fitted=True first.")
+        cols_order = [self.ts.id_col, self.ts.time_col, "fold", self.ts.target_col]
+        out = pd.concat(self.cv_fitted_values_).reset_index(drop=True)
         return out[cols_order + out.columns.drop(cols_order).tolist()]
