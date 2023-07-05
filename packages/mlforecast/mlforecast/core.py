@@ -222,14 +222,19 @@ class TimeSeries:
         self.id_col = id_col
         self.target_col = target_col
         self.time_col = time_col
+        to_drop = [id_col, time_col, target_col]
+        self.static_features = static_features
         if static_features is None:
-            static_features = df.columns.drop([id_col, time_col, target_col])
-        elif id_col in static_features:
-            raise ValueError(
-                "Cannot use the id_col as a static feature. Please create a separate column."
-            )
-        self.static_features = (
-            df.set_index(id_col)[static_features].groupby(id_col, observed=True).head(1)
+            static_features = df.columns.drop([time_col, target_col]).tolist()
+        elif id_col not in static_features:
+            static_features = [id_col] + static_features
+        else:  # static_features defined and contain id_col
+            to_drop = [time_col, target_col]
+        self.static_features_ = (
+            df[static_features]
+            .groupby(id_col, observed=True)
+            .head(1)
+            .reset_index(drop=True)
         )
         sort_idxs = pd.core.sorting.lexsort_indexer([df[id_col], df[time_col]])
         self.restore_idxs = np.empty(df.shape[0], dtype=np.int32)
@@ -249,9 +254,7 @@ class TimeSeries:
         self.last_dates = sorted_df.index.get_level_values(self.time_col)[
             self.ga.indptr[1:] - 1
         ]
-        self.features_order_ = (
-            df.columns.drop([id_col, time_col, target_col]).tolist() + self.features
-        )
+        self.features_order_ = df.columns.drop(to_drop).tolist() + self.features
         return self
 
     def _apply_transforms(self, updates_only: bool = False) -> Dict[str, np.ndarray]:
@@ -433,7 +436,7 @@ class TimeSeries:
         features_df = pd.DataFrame(features, columns=self.features)
         features_df[self.id_col] = self.uids
         features_df[self.time_col] = self.curr_dates
-        return self.static_features.merge(features_df, on=self.id_col)
+        return self.static_features_.merge(features_df, on=self.id_col)
 
     def _get_raw_predictions(self) -> np.ndarray:
         return np.array(self.y_pred).ravel("F")
@@ -580,10 +583,19 @@ class TimeSeries:
         ).astype(self.last_dates.dtype)
         self.uids = sizes.index
         new_statics = df.iloc[new_sizes.cumsum() - 1].set_index(self.id_col)
-        orig_dtypes = self.static_features.dtypes
-        self.static_features = self.static_features.reindex(self.uids)
-        self.static_features.update(new_statics)
-        self.static_features = self.static_features.astype(orig_dtypes)
+        orig_dtypes = self.static_features_.dtypes
+        if pd.api.types.is_categorical_dtype(orig_dtypes[self.id_col]):
+            orig_categories = orig_dtypes[self.id_col].categories.tolist()
+            missing_categories = set(self.uids) - set(orig_categories)
+            if missing_categories:
+                orig_dtypes[self.id_col] = pd.CategoricalDtype(
+                    categories=orig_categories + list(missing_categories)
+                )
+        self.static_features_ = self.static_features_.set_index(self.id_col).reindex(
+            self.uids
+        )
+        self.static_features_.update(new_statics)
+        self.static_features_ = self.static_features_.reset_index().astype(orig_dtypes)
         self.ga = self.ga.append_several(
             new_sizes=sizes.values.astype(np.int32),
             new_values=values,

@@ -444,7 +444,7 @@ class MLForecast:
                 id_col=self.ts.id_col,
                 time_col=self.ts.time_col,
                 target_col=self.ts.target_col,
-                static_features=self.ts.static_features.columns,
+                static_features=self.ts.static_features,
                 keep_last_n=self.ts.keep_last_n,
             )
             new_ts.max_horizon = self.ts.max_horizon

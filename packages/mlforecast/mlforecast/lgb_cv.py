@@ -45,7 +45,7 @@ def _update(bst, n):
 
 def _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback):
     ex_cols_to_drop = [ts.id_col, ts.time_col, ts.target_col]
-    static_features = ts.static_features.columns.tolist()
+    static_features = ts.static_features_.columns.drop(ts.id_col).tolist()
     ex_cols_to_drop.extend(static_features)
     has_ex = not valid.columns.drop(ex_cols_to_drop).empty
     dynamic_dfs = (
