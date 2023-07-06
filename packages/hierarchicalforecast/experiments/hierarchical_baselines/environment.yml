@@ -7,5 +7,5 @@ dependencies:
   - pip
   - pip:
     - statsforecast
-    - "git+https://github.com/Nixtla/datasetsforecast.git@feat/favorita_dataset"
+    - "git+https://github.com/Nixtla/datasetsforecast.git"
     - hierarchicalforecast
