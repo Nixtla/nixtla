@@ -13,6 +13,8 @@ jobs:
   release:
     if: github.repository == 'Nixtla/mlforecast'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write    
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
@@ -30,6 +32,3 @@ jobs:
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.pypi_token }}
