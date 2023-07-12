@@ -21,7 +21,7 @@ from mlforecast.core import (
     Lags,
     TimeSeries,
 )
-from .utils import backtest_splits
+from .utils import backtest_splits, old_kw_to_pos
 from .target_transforms import BaseTargetTransform
 
 # %% ../nbs/lgb_cv.ipynb 5
@@ -128,11 +128,12 @@ class LightGBMCV:
             f"bst_threads={self.bst_threads})"
         )
 
+    @old_kw_to_pos(["data", "window_size"], [1, 3])
     def setup(
         self,
-        data: pd.DataFrame,
+        df: pd.DataFrame,
         n_windows: int,
-        window_size: int,
+        h: int,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -144,17 +145,20 @@ class LightGBMCV:
         weights: Optional[Sequence[float]] = None,
         metric: Union[str, Callable] = "mape",
         input_size: Optional[int] = None,
+        *,
+        data: Optional[pd.DataFrame] = None,  # noqa: ARG002
+        window_size: Optional[int] = None,  # noqa: ARG002
     ):
         """Initialize internal data structures to iteratively train the boosters. Use this before calling partial_fit.
 
         Parameters
         ----------
-        data : pandas DataFrame
+        df : pandas DataFrame
             Series data in long format.
         n_windows : int
             Number of windows to evaluate.
-        window_size : int
-            Number of test periods in each window.
+        h : int
+            Forecast horizon.
         id_col : str (default='unique_id')
             Column that identifies each serie.
         time_col : str (default='ds')
@@ -162,7 +166,7 @@ class LightGBMCV:
         target_col : str (default='y')
             Column that contains the target.
         step_size : int, optional (default=None)
-            Step size between each cross validation window. If None it will be equal to `window_size`.
+            Step size between each cross validation window. If None it will be equal to `h`.
         params : dict, optional(default=None)
             Parameters to be passed to the LightGBM Boosters.
         static_features : list of str, optional (default=None)
@@ -177,6 +181,10 @@ class LightGBMCV:
             Metric used to assess the performance of the models and perform early stopping.
         input_size : int, optional (default=None)
             Maximum training samples per serie in each window. If None, will use an expanding window.
+        data : pandas DataFrame
+            Series data in long format. This argument has been replaced by df and will be removed in a later release.
+        window_size : int
+            Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
         Returns
         -------
@@ -199,20 +207,20 @@ class LightGBMCV:
                 )
             self.metric_fn = _metric2fn[metric]
             self.metric_name = metric
-        if np.issubdtype(data[time_col].dtype.type, np.integer):
+        if np.issubdtype(df[time_col].dtype.type, np.integer):
             freq = 1
         else:
             freq = self.ts.freq
         self.items = []
-        self.window_size = window_size
+        self.h = h
         self.id_col = id_col
         self.time_col = time_col
         self.target_col = target_col
         self.params = {} if params is None else params
         splits = backtest_splits(
-            data,
+            df,
             n_windows=n_windows,
-            window_size=window_size,
+            h=h,
             id_col=id_col,
             time_col=time_col,
             freq=freq,
@@ -251,7 +259,7 @@ class LightGBMCV:
                 bst=bst,
                 valid=valid,
                 n=num_iterations,
-                h=self.window_size,
+                h=self.h,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
             )
@@ -278,7 +286,7 @@ class LightGBMCV:
                     ts=ts,
                     bst=bst,
                     valid=valid,
-                    h=self.window_size,
+                    h=self.h,
                     before_predict_callback=before_predict_callback,
                     after_predict_callback=after_predict_callback,
                 )
@@ -351,11 +359,12 @@ class LightGBMCV:
                 best_iter = r
         return best_iter
 
+    @old_kw_to_pos(["data", "window_size"], [1, 3])
     def fit(
         self,
-        data: pd.DataFrame,
+        df: pd.DataFrame,
         n_windows: int,
-        window_size: int,
+        h: int,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -375,17 +384,20 @@ class LightGBMCV:
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         input_size: Optional[int] = None,
+        *,
+        data: Optional[pd.DataFrame] = None,  # noqa: ARG002
+        window_size: Optional[int] = None,  # noqa: ARG002
     ) -> List[CVResult]:
         """Train boosters simultaneously and assess their performance on the complete forecasting window.
 
         Parameters
         ----------
-        data : pandas DataFrame
+        df : pandas DataFrame
             Series data in long format.
         n_windows : int
             Number of windows to evaluate.
-        window_size : int
-            Number of test periods in each window.
+        h : int
+            Forecast horizon.
         id_col : str (default='unique_id')
             Column that identifies each serie.
         time_col : str (default='ds')
@@ -393,7 +405,7 @@ class LightGBMCV:
         target_col : str (default='y')
             Column that contains the target.
         step_size : int, optional (default=None)
-            Step size between each cross validation window. If None it will be equal to `window_size`.
+            Step size between each cross validation window. If None it will be equal to `h`.
         num_iterations : int (default=100)
             Maximum number of boosting iterations to run.
         params : dict, optional(default=None)
@@ -428,6 +440,10 @@ class LightGBMCV:
                 The series identifier is on the index.
         input_size : int, optional (default=None)
             Maximum training samples per serie in each window. If None, will use an expanding window.
+        data : pandas DataFrame
+            Series data in long format. This argument has been replaced by df and will be removed in a later release.
+        window_size : int
+            Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
         Returns
         -------
@@ -435,9 +451,9 @@ class LightGBMCV:
             List of (boosting rounds, metric value) tuples.
         """
         self.setup(
-            data=data,
+            df=df,
             n_windows=n_windows,
-            window_size=window_size,
+            h=h,
             params=params,
             id_col=id_col,
             time_col=time_col,
@@ -478,7 +494,7 @@ class LightGBMCV:
                         ts=ts,
                         bst=bst,
                         valid=valid,
-                        h=self.window_size,
+                        h=self.h,
                         before_predict_callback=before_predict_callback,
                         after_predict_callback=after_predict_callback,
                     )
@@ -486,22 +502,25 @@ class LightGBMCV:
                 self.cv_preds_ = pd.concat(
                     [f.result().assign(window=i) for i, f in enumerate(futures)]
                 )
-        self.ts._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
+        self.ts._fit(df, id_col, time_col, target_col, static_features, keep_last_n)
         return hist
 
+    @old_kw_to_pos(["horizon"], [1])
     def predict(
         self,
-        horizon: int,
+        h: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        *,
+        horizon: Optional[int] = None,  # noqa: ARG002
     ) -> pd.DataFrame:
         """Compute predictions with each of the trained boosters.
 
         Parameters
         ----------
-        horizon : int
-            Number of periods to predict.
+        h : int
+            Forecast horizon.
         dynamic_dfs : list of pandas DataFrame, optional (default=None)
             Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
@@ -512,6 +531,8 @@ class LightGBMCV:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
+        horizon : int
+            Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
         Returns
         -------
@@ -520,7 +541,7 @@ class LightGBMCV:
         """
         return self.ts.predict(
             self.cv_models_,
-            horizon,
+            h,
             dynamic_dfs,
             before_predict_callback,
             after_predict_callback,

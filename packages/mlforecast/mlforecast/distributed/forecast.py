@@ -5,6 +5,7 @@ __all__ = ['DistributedMLForecast']
 
 # %% ../../nbs/distributed.forecast.ipynb 5
 import copy
+import warnings
 from collections import namedtuple
 from typing import Any, Callable, Iterable, List, Optional
 
@@ -44,7 +45,7 @@ from mlforecast.core import (
     TimeSeries,
     _name_models,
 )
-from ..utils import single_split
+from ..utils import single_split, old_kw_to_pos
 from ..target_transforms import BaseTargetTransform
 
 # %% ../../nbs/distributed.forecast.ipynb 6
@@ -167,7 +168,7 @@ class DistributedMLForecast:
                 part,
                 i_window=window_info.i_window,
                 n_windows=window_info.n_windows,
-                window_size=window_info.window_size,
+                h=window_info.window_size,
                 id_col=id_col,
                 time_col=time_col,
                 freq=base_ts.freq,
@@ -284,21 +285,24 @@ class DistributedMLForecast:
         )
         return fa.get_native_as_df(res)
 
+    @old_kw_to_pos(["data"], [1])
     def preprocess(
         self,
-        data: fugue.AnyDataFrame,
+        df: fugue.AnyDataFrame,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
+        *,
+        data: Optional[fugue.AnyDataFrame] = None,  # noqa: ARG002
     ) -> fugue.AnyDataFrame:
         """Add the features to `data`.
 
         Parameters
         ----------
-        data : dask or spark DataFrame.
+        df : dask, spark or ray DataFrame.
             Series data in long format.
         id_col : str (default='unique_id')
             Column that identifies each serie.
@@ -315,11 +319,11 @@ class DistributedMLForecast:
 
         Returns
         -------
-        result : same type as input
-            data with added features.
+        result : same type as df
+            `df` with added features.
         """
         return self._preprocess(
-            data,
+            df,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -380,21 +384,24 @@ class DistributedMLForecast:
             )
         return self
 
+    @old_kw_to_pos(["data"], [1])
     def fit(
         self,
-        data: fugue.AnyDataFrame,
+        df: fugue.AnyDataFrame,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
+        *,
+        data: Optional[fugue.AnyDataFrame] = None,  # noqa: ARG002
     ) -> "DistributedMLForecast":
         """Apply the feature engineering and train the models.
 
         Parameters
         ----------
-        data : dask or spark DataFrame
+        df : dask, spark or ray DataFrame
             Series data in long format.
         id_col : str (default='unique_id')
             Column that identifies each serie.
@@ -415,7 +422,7 @@ class DistributedMLForecast:
             Forecast object with series values and trained models.
         """
         return self._fit(
-            data,
+            df,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -459,20 +466,24 @@ class DistributedMLForecast:
         schema = f"{self.id_col}:string,{self.time_col}:datetime," + models_schema
         return schema
 
+    @old_kw_to_pos(["horizon"], [1])
     def predict(
         self,
-        horizon: int,
+        h: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        new_df: Optional[fugue.AnyDataFrame] = None,
+        *,
+        horizon: Optional[int] = None,  # noqa: ARG002
         new_data: Optional[fugue.AnyDataFrame] = None,
     ) -> fugue.AnyDataFrame:
         """Compute the predictions for the next `horizon` steps.
 
         Parameters
         ----------
-        horizon : int
-            Number of periods to predict.
+        h : int
+            Forecast horizon.
         dynamic_dfs : list of pandas DataFrame, optional (default=None)
             Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
@@ -483,10 +494,10 @@ class DistributedMLForecast:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
-        new_data : dask or spark DataFrame, optional (default=None)
+        new_df : dask or spark DataFrame, optional (default=None)
             Series data of new observations for which forecasts are to be generated.
                 This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
-                If `new_data` is not None, the method will generate forecasts for the new observations.
+                If `new_df` is not None, the method will generate forecasts for the new observations.
 
         Returns
         -------
@@ -494,8 +505,14 @@ class DistributedMLForecast:
             Predictions for each serie and timestep, with one column per model.
         """
         if new_data is not None:
+            warnings.warn(
+                "`new_data` has been deprecated, please use `new_df` instead.",
+                DeprecationWarning,
+            )
+            new_df = new_data
+        if new_df is not None:
             partition_results = self._preprocess_partitions(
-                data=new_data,
+                new_df,
                 id_col=self.id_col,
                 time_col=self.time_col,
                 target_col=self.target_col,
@@ -512,7 +529,7 @@ class DistributedMLForecast:
             DistributedMLForecast._predict,
             params={
                 "models": self.models_,
-                "horizon": horizon,
+                "horizon": h,
                 "dynamic_dfs": dynamic_dfs,
                 "before_predict_callback": before_predict_callback,
                 "after_predict_callback": after_predict_callback,
@@ -522,11 +539,12 @@ class DistributedMLForecast:
         )
         return fa.get_native_as_df(res)
 
+    @old_kw_to_pos(["data", "window_size"], [1, 3])
     def cross_validation(
         self,
-        data: fugue.AnyDataFrame,
+        df: fugue.AnyDataFrame,
         n_windows: int,
-        window_size: int,
+        h: int,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -538,18 +556,21 @@ class DistributedMLForecast:
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         input_size: Optional[int] = None,
+        *,
+        data: Optional[fugue.AnyDataFrame] = None,  # noqa: ARG002
+        window_size: Optional[int] = None,  # noqa: ARG002
     ) -> fugue.AnyDataFrame:
         """Perform time series cross validation.
-        Creates `n_windows` splits where each window has `window_size` test periods,
+        Creates `n_windows` splits where each window has `h` test periods,
         trains the models, computes the predictions and merges the actuals.
 
         Parameters
         ----------
-        data : dask, spark or ray DataFrame
+        df : dask, spark or ray DataFrame
             Series data in long format.
         n_windows : int
             Number of windows to evaluate.
-        window_size : int
+        h : int
             Number of test periods in each window.
         id_col : str (default='unique_id')
             Column that identifies each serie.
@@ -558,7 +579,7 @@ class DistributedMLForecast:
         target_col : str (default='y')
             Column that contains the target.
         step_size : int, optional (default=None)
-            Step size between each cross validation window. If None it will be equal to `window_size`.
+            Step size between each cross validation window. If None it will be equal to `h`.
         static_features : list of str, optional (default=None)
             Names of the features that are static and will be repeated when forecasting.
         dropna : bool (default=True)
@@ -587,10 +608,10 @@ class DistributedMLForecast:
         self.cv_models_ = []
         results = []
         for i in range(n_windows):
-            window_info = WindowInfo(n_windows, window_size, step_size, i, input_size)
+            window_info = WindowInfo(n_windows, h, step_size, i, input_size)
             if refit or i == 0:
                 self._fit(
-                    data,
+                    df,
                     id_col=id_col,
                     time_col=time_col,
                     target_col=target_col,
@@ -603,7 +624,7 @@ class DistributedMLForecast:
                 partition_results = self.partition_results
             elif not refit:
                 partition_results = self._preprocess_partitions(
-                    data=data,
+                    df,
                     id_col=id_col,
                     time_col=time_col,
                     target_col=target_col,
@@ -621,7 +642,7 @@ class DistributedMLForecast:
                 DistributedMLForecast._predict,
                 params={
                     "models": self.models_,
-                    "horizon": window_size,
+                    "horizon": h,
                     "before_predict_callback": before_predict_callback,
                     "after_predict_callback": after_predict_callback,
                 },
