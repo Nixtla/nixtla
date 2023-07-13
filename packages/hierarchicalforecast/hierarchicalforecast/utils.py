@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
+from scipy import sparse
 
 plt.rcParams['font.family'] = 'serif'
 
@@ -139,8 +140,9 @@ def numpy_balance(*arrs):
                         np.roll(np.arange(N + 1), -1)).reshape(-1, N)
     return out
 
-def _to_summing_dataframe(df: pd.DataFrame,
-                          spec: List[List[str]]):
+def _to_summing_dataframe(
+    df: pd.DataFrame, spec: List[List[str]], sparse_s: bool = False
+):
     #------------------------------- Wrangling -----------------------------#
     # Keep unique levels, preserving first aparison order
     all_levels = list(chain.from_iterable(spec))
@@ -160,7 +162,7 @@ def _to_summing_dataframe(df: pd.DataFrame,
             bottom_col = '/'.join(hier)
             df['unique_id'] = df[hier].agg('/'.join, axis=1)
         else:
-            hier_col = '/'.join(hier) 
+            hier_col = '/'.join(hier)
         S_df[hier_col] = S_df[hier].agg('/'.join, axis=1)
         hiers_cols.append(hier_col)
     S_df = S_df.sort_values(by=bottom_comb)
@@ -168,19 +170,32 @@ def _to_summing_dataframe(df: pd.DataFrame,
 
     #------------------------------- Encoding ------------------------------#
     # One hot encode only aggregate levels
-    # TODO: option to only operate with sparse matrices
     bottom_ids = list(S_df.unique_id)
     del S_df['unique_id']
     categories = [S_df[col].unique() for col in S_df.columns]
     tags = dict(zip(S_df.columns, categories))
     tags[bottom_col] = bottom_ids
 
-    encoder = OneHotEncoder(categories=categories,
-                            sparse=False, dtype=np.float32)
+    encoder = OneHotEncoder(
+        categories=categories, sparse=sparse_s, dtype=np.float32
+    )
     S = encoder.fit_transform(S_df).T
-    S = np.concatenate([S, np.eye(len(bottom_ids), dtype=np.float32)], axis=0)
-    S_df = pd.DataFrame(S, columns=bottom_ids,
-                        index=list(chain(*categories))+bottom_ids)
+
+    if sparse_s:
+        S = sparse.vstack(
+            [
+                sparse.csr_matrix(S),
+                sparse.identity(len(bottom_ids), dtype=np.float32, format='csr'),
+            ]
+        )
+        S_df = pd.DataFrame.sparse.from_spmatrix(
+            S, columns=bottom_ids, index=list(chain(*categories)) + bottom_ids
+        )
+    else:
+        S = np.concatenate([S, np.eye(len(bottom_ids), dtype=np.float32)], axis=0)
+        S_df = pd.DataFrame(
+            S, columns=bottom_ids, index=list(chain(*categories)) + bottom_ids
+        )
 
     # Match index ordering of S_df and collapse df to Y_bottom_df
     Y_bottom_df = df.copy()
@@ -189,10 +204,15 @@ def _to_summing_dataframe(df: pd.DataFrame,
     Y_bottom_df.unique_id = Y_bottom_df.unique_id.cat.set_categories(S_df.columns)
     return Y_bottom_df, S_df, tags
 
+
+
 # %% ../nbs/utils.ipynb 12
-def aggregate(df: pd.DataFrame,
-              spec: List[List[str]],
-              is_balanced: bool=False):
+def aggregate(
+    df: pd.DataFrame,
+    spec: List[List[str]],
+    is_balanced: bool = False,
+    sparse_s: bool = False,
+):
     """ Utils Aggregation Function.
     Aggregates bottom level series contained in the pd.DataFrame `df` according 
     to levels defined in the `spec` list applying the `agg_fn` (sum, mean).
@@ -200,7 +220,8 @@ def aggregate(df: pd.DataFrame,
     **Parameters:**<br>
     `df`: pd.DataFrame with columns `['ds', 'y']` and columns to aggregate.<br>
     `spec`: List of levels. Each element of the list contains a list of columns of `df` to aggregate.<br>
-    `is_balanced`: bool=False, wether `Y_bottom_df` is balanced, if not we balance.<br>
+    `is_balanced`: bool=False, whether `Y_bottom_df` is balanced, if not we balance.<br>
+    `sparse_s`: bool=False, whether the returned S_df should be a sparse DataFrame.<br>
     **Returns:**<br>
     `Y_df, S_df, tags`: tuple with hierarchically structured series `Y_df` ($\mathbf{y}_{[a,b]}$),
     summing dataframe `S_df`, and hierarchical aggregation indexes `tags`.
@@ -212,7 +233,7 @@ def aggregate(df: pd.DataFrame,
             
     #-------------------------------- Wrangling --------------------------------#
     # constraints S_df and collapsed Y_bottom_df with 'unique_id'
-    Y_bottom_df, S_df, tags = _to_summing_dataframe(df=df, spec=spec)
+    Y_bottom_df, S_df, tags = _to_summing_dataframe(df=df, spec=spec, sparse_s=sparse_s)
 
     # Create balanced/sorted dataset for numpy aggregation (nan=0)
     # TODO: investigate potential memory speed tradeoff

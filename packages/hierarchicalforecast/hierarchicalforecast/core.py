@@ -10,7 +10,9 @@ import time
 import copy
 from inspect import signature
 from scipy.stats import norm
+from scipy import sparse
 from typing import Callable, Dict, List, Optional
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -231,10 +233,18 @@ class HierarchicalReconciliation:
 
         # Initialize reconciler arguments
         reconciler_args = dict(
-            S=S_df.values.astype(np.float32),
             idx_bottom=S_df.index.get_indexer(S.columns),
             tags={key: S_df.index.get_indexer(val) for key, val in tags.items()}
         )
+
+        any_sparse = any([method.is_sparse_method for method in self.reconcilers])
+        if any_sparse:
+            try:
+                S_for_sparse = sparse.csr_matrix(S_df.sparse.to_coo())
+            except AttributeError:
+                warnings.warn('Using dense S matrix for sparse reconciliation method.')
+                S_for_sparse = S_df.values.astype(np.float32)
+
         if Y_df is not None:
             if is_balanced:
                 y_insample = Y_df['y'].values.reshape(len(S_df), -1).astype(np.float32)
@@ -249,6 +259,12 @@ class HierarchicalReconciliation:
         self.sample_names = {}
         for reconcile_fn, name_copy in zip(self.reconcilers, self.orig_reconcilers):
             reconcile_fn_name = _build_fn_name(name_copy)
+
+            if reconcile_fn.is_sparse_method:
+                reconciler_args["S"] = S_for_sparse
+            else:
+                reconciler_args["S"] = S_df.values.astype(np.float32)
+
             has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
             has_level = 'level' in signature(reconcile_fn).parameters
 
