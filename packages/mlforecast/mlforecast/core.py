@@ -222,6 +222,7 @@ class TimeSeries:
         self.id_col = id_col
         self.target_col = target_col
         self.time_col = time_col
+        self.keep_last_n = keep_last_n
         to_drop = [id_col, time_col, target_col]
         self.static_features = static_features
         if static_features is None:
@@ -247,9 +248,6 @@ class TimeSeries:
         sorted_df = sorted_df.set_index([id_col, time_col])
         self.uids = sorted_df.index.unique(level=0)
         self.ga = GroupedArray.from_sorted_df(sorted_df, id_col, target_col)
-        self.features_ = self._compute_transforms()
-        if keep_last_n is not None:
-            self.ga = self.ga.take_from_groups(slice(-keep_last_n, None))
         self._ga = GroupedArray(self.ga.data, self.ga.indptr)
         self.last_dates = sorted_df.index.get_level_values(self.time_col)[
             self.ga.indptr[1:] - 1
@@ -330,6 +328,7 @@ class TimeSeries:
         if `dropna=True` then all the null rows are dropped."""
         modifies_target = bool(self.target_transforms)
         df = df.copy(deep=modifies_target and not return_X_y)
+        self.features_ = self._compute_transforms()
 
         # lag transforms
         for feat in self.transforms.keys():
@@ -399,7 +398,6 @@ class TimeSeries:
         If `keep_last_n` is not None then that number of observations is kept across all series for updates.
         """
         self.dropna = dropna
-        self.keep_last_n = keep_last_n
         self._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
         return self._transform(
             data, dropna=dropna, max_horizon=max_horizon, return_X_y=return_X_y
@@ -461,6 +459,8 @@ class TimeSeries:
         self.test_dates = []
         self.y_pred = []
         self.ga = GroupedArray(self._ga.data, self._ga.indptr)
+        if self.keep_last_n is not None:
+            self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
 
     def _get_features_for_next_step(self, dynamic_dfs):
         new_x = self._update_features()
