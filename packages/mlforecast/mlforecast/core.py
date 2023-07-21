@@ -223,21 +223,7 @@ class TimeSeries:
         self.target_col = target_col
         self.time_col = time_col
         self.keep_last_n = keep_last_n
-        to_drop = [id_col, time_col, target_col]
         self.static_features = static_features
-        if static_features is None:
-            static_features = df.columns.drop([time_col, target_col]).tolist()
-        elif id_col not in static_features:
-            static_features = [id_col] + static_features
-        else:  # static_features defined and contain id_col
-            to_drop = [time_col, target_col]
-        self.static_features_ = (
-            df[static_features]
-            .groupby(id_col, observed=True)
-            .head(1)
-            .sort_values(id_col)
-            .reset_index(drop=True)
-        )
         sort_idxs = pd.core.sorting.lexsort_indexer([df[id_col], df[time_col]])
         self.restore_idxs = np.empty(df.shape[0], dtype=np.int32)
         self.restore_idxs[sort_idxs] = np.arange(df.shape[0])
@@ -250,9 +236,20 @@ class TimeSeries:
         self.uids = sorted_df.index.unique(level=0)
         self.ga = GroupedArray.from_sorted_df(sorted_df, id_col, target_col)
         self._ga = GroupedArray(self.ga.data, self.ga.indptr)
+        to_drop = [id_col, time_col, target_col]
+        if static_features is None:
+            static_features = df.columns.drop([time_col, target_col]).tolist()
+        elif id_col not in static_features:
+            static_features = [id_col] + static_features
+        else:  # static_features defined and contain id_col
+            to_drop = [time_col, target_col]
+        last_idxs_per_serie = self.ga.indptr[1:] - 1
         self.last_dates = sorted_df.index.get_level_values(self.time_col)[
-            self.ga.indptr[1:] - 1
+            last_idxs_per_serie
         ]
+        self.static_features_ = df.iloc[sort_idxs[last_idxs_per_serie]][
+            static_features
+        ].reset_index(drop=True)
         self.features_order_ = df.columns.drop(to_drop).tolist() + self.features
         return self
 
