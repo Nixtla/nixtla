@@ -596,9 +596,8 @@ class TimeSeries:
         )
         self.static_features_.update(new_statics)
         self.static_features_ = self.static_features_.reset_index().astype(orig_dtypes)
-        self.ga = self.ga.append_several(
+        self._ga = self._ga.append_several(
             new_sizes=sizes.values.astype(np.int32),
             new_values=values,
             new_groups=new_groups,
         )
-        self._ga = GroupedArray(self.ga.data, self.ga.indptr)
