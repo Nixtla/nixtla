@@ -235,6 +235,7 @@ class TimeSeries:
             df[static_features]
             .groupby(id_col, observed=True)
             .head(1)
+            .sort_values(id_col)
             .reset_index(drop=True)
         )
         sort_idxs = pd.core.sorting.lexsort_indexer([df[id_col], df[time_col]])
