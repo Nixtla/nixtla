@@ -407,6 +407,7 @@ class MLForecast:
         after_predict_callback: Optional[Callable] = None,
         new_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
+        X_df: Optional[pd.DataFrame] = None,
         *,
         horizon: Optional[int] = None,  # noqa: ARG002
         new_data: Optional[pd.DataFrame] = None,  # noqa: ARG002
@@ -433,6 +434,8 @@ class MLForecast:
                 If `new_df` is not None, the method will generate forecasts for the new observations.
         level : list of ints or floats, optional (default=None)
             Confidence levels between 0 and 100 for prediction intervals.
+        X_df : pandas DataFrame, optional (default=None)
+            Dataframe with the future exogenous features. Should have the id column and the time column.
         horizon : int
             Number of periods to predict. This argument has been replaced by h and will be removed in a later release.
         new_data : pandas DataFrame, optional (default=None)
@@ -455,6 +458,11 @@ class MLForecast:
                 DeprecationWarning,
             )
             new_df = new_data
+        if dynamic_dfs is not None:
+            warnings.warn(
+                "`dynamic_dfs` has been deprecated, please use `X_df` instead",
+                DeprecationWarning,
+            )
 
         if new_df is not None:
             new_ts = TimeSeries(
@@ -484,6 +492,7 @@ class MLForecast:
             dynamic_dfs,
             before_predict_callback,
             after_predict_callback,
+            X_df,
         )
         if level is not None:
             if self._cs_df is None:
@@ -630,10 +639,6 @@ class MLForecast:
             step_size=step_size,
             input_size=input_size,
         )
-        ex_cols_to_drop = [id_col, time_col, target_col]
-        if static_features is not None:
-            ex_cols_to_drop.extend(static_features)
-        has_ex = not df.columns.drop(ex_cols_to_drop).empty
         self.cv_fitted_values_ = []
         for i_window, (cutoffs, train, valid) in enumerate(splits):
             if refit or i_window == 0:
@@ -671,14 +676,19 @@ class MLForecast:
                 insample_results["fold"] = i_window
                 insample_results[target_col] = train[target_col].values
                 self.cv_fitted_values_.append(insample_results)
-            dynamic_dfs = [valid.drop(columns=[target_col])] if has_ex else None
+            static = self.ts.static_features_.columns.drop(id_col).tolist()
+            dynamic = valid.columns.drop(static + [id_col, time_col, target_col])
+            if not dynamic.empty:
+                X_df = valid.drop(columns=static + [target_col])
+            else:
+                X_df = None
             y_pred = self.predict(
                 h,
-                dynamic_dfs,
-                before_predict_callback,
-                after_predict_callback,
+                before_predict_callback=before_predict_callback,
+                after_predict_callback=after_predict_callback,
                 new_df=train if not refit else None,
                 level=level,
+                X_df=X_df,
             )
             y_pred = y_pred.merge(cutoffs, on=id_col, how="left")
             result = valid[[id_col, time_col, target_col]].merge(

@@ -459,16 +459,22 @@ class TimeSeries:
         self.ga = GroupedArray(self._ga.data, self._ga.indptr)
         if self.keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
+        self._h = 0
 
-    def _get_features_for_next_step(self, dynamic_dfs):
+    def _get_features_for_next_step(self, dynamic_dfs, X_df=None):
         new_x = self._update_features()
         if dynamic_dfs:
             for df in dynamic_dfs:
                 new_x = new_x.merge(df, how="left")
             new_x = new_x.sort_values(self.id_col)
+        if X_df is not None:
+            n_series = self.uids.size
+            X = X_df.iloc[self._h * n_series : (self._h + 1) * n_series]
+            new_x = pd.concat([new_x, X.reset_index(drop=True)], axis=1)
         nulls = new_x.isnull().any()
         if any(nulls):
             warnings.warn(f'Found null values in {", ".join(nulls[nulls].index)}.')
+        self._h += 1
         return new_x[self.features_order_]
 
     def _predict_recursive(
@@ -478,6 +484,7 @@ class TimeSeries:
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        X_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Use `model` to predict the next `horizon` timesteps."""
         if dynamic_dfs is None:
@@ -485,7 +492,7 @@ class TimeSeries:
         for i, (name, model) in enumerate(models.items()):
             self._predict_setup()
             for _ in range(horizon):
-                new_x = self._get_features_for_next_step(dynamic_dfs)
+                new_x = self._get_features_for_next_step(dynamic_dfs, X_df)
                 if before_predict_callback is not None:
                     new_x = before_predict_callback(new_x)
                 predictions = model.predict(new_x)
@@ -508,6 +515,7 @@ class TimeSeries:
         horizon: int,
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
+        X_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         assert self.max_horizon is not None
         if horizon > self.max_horizon:
@@ -527,7 +535,7 @@ class TimeSeries:
         result = pd.DataFrame({self.id_col: uids, self.time_col: dates})
         for name, model in models.items():
             self._predict_setup()
-            new_x = self._get_features_for_next_step(dynamic_dfs)
+            new_x = self._get_features_for_next_step(dynamic_dfs, X_df)
             if before_predict_callback is not None:
                 new_x = before_predict_callback(new_x)
             predictions = np.empty((new_x.shape[0], horizon))
@@ -544,7 +552,30 @@ class TimeSeries:
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        X_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
+        if X_df is not None:
+            if self.id_col not in X_df or self.time_col not in X_df:
+                raise ValueError(
+                    f"X_df must have '{self.id_col}' and '{self.time_col}' columns."
+                )
+            dates_validation = pd.DataFrame(
+                {
+                    self.id_col: self.uids,
+                    "_start": self.last_dates + self.freq,
+                    "_end": self.last_dates + horizon * self.freq,
+                }
+            )
+            X_df = X_df.merge(dates_validation, on=[self.id_col])
+            X_df = X_df[X_df[self.time_col].between(X_df["_start"], X_df["_end"])]
+            if X_df.shape[0] != self.uids.size * horizon:
+                raise ValueError(
+                    "Found missing inputs in X_df. "
+                    "It should have one row per id and date for the complete forecasting horizon"
+                )
+            X_df = X_df.sort_values([self.id_col, self.time_col]).drop(
+                columns=[self.id_col, self.time_col, "_start", "_end"]
+            )
         if getattr(self, "max_horizon", None) is None:
             preds = self._predict_recursive(
                 models,
@@ -552,6 +583,7 @@ class TimeSeries:
                 dynamic_dfs,
                 before_predict_callback,
                 after_predict_callback,
+                X_df,
             )
         else:
             preds = self._predict_multi(
@@ -559,6 +591,7 @@ class TimeSeries:
                 horizon,
                 dynamic_dfs,
                 before_predict_callback,
+                X_df,
             )
         if self.target_transforms is not None:
             for tfm in self.target_transforms[::-1]:

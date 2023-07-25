@@ -80,15 +80,13 @@ def generate_prices_for_series(
     unique_last_dates = series.groupby("unique_id")["ds"].max().nunique()
     if unique_last_dates > 1:
         raise ValueError("series must have equal ends.")
-    if "product_id" not in series:
-        raise ValueError("series must have a product_id column.")
     day_offset = pd.tseries.frequencies.Day()
-    starts_ends = series.groupby("product_id")["ds"].agg([min, max])
+    starts_ends = series.groupby("unique_id")["ds"].agg([min, max])
     dfs = []
     for idx, (start, end) in starts_ends.iterrows():
         product_df = pd.DataFrame(
             {
-                "product_id": idx,
+                "unique_id": idx,
                 "price": rng.rand((end - start).days + 1 + horizon),
             },
             index=pd.date_range(start, end + horizon * day_offset, name="ds"),

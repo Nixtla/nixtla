@@ -44,19 +44,19 @@ def _update(bst, n):
 
 
 def _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback):
-    ex_cols_to_drop = [ts.id_col, ts.time_col, ts.target_col]
-    static_features = ts.static_features_.columns.drop(ts.id_col).tolist()
-    ex_cols_to_drop.extend(static_features)
-    has_ex = not valid.columns.drop(ex_cols_to_drop).empty
-    dynamic_dfs = (
-        [valid.drop(columns=static_features + [ts.target_col])] if has_ex else None
-    )
+    static = ts.static_features_.columns.drop(ts.id_col).tolist()
+    dynamic = valid.columns.drop(static + [ts.id_col, ts.time_col, ts.target_col])
+    if not dynamic.empty:
+        X_df = valid.drop(columns=static + [ts.target_col])
+    else:
+        X_df = None
     preds = ts.predict(
         {"Booster": bst},
         h,
-        dynamic_dfs,
+        None,
         before_predict_callback,
         after_predict_callback,
+        X_df=X_df,
     )
     return valid.merge(preds, on=[ts.id_col, ts.time_col], how="left")
 
@@ -512,6 +512,7 @@ class LightGBMCV:
         dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        X_df: Optional[pd.DataFrame] = None,
         *,
         horizon: Optional[int] = None,  # noqa: ARG002
     ) -> pd.DataFrame:
@@ -531,6 +532,8 @@ class LightGBMCV:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
+        X_df : pandas DataFrame, optional (default=None)
+            Dataframe with the future exogenous features. Should have the id column and the time column.
         horizon : int
             Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
@@ -545,4 +548,5 @@ class LightGBMCV:
             dynamic_dfs,
             before_predict_callback,
             after_predict_callback,
+            X_df=X_df,
         )
