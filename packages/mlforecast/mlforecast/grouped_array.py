@@ -157,10 +157,9 @@ class GroupedArray:
     def from_sorted_df(
         cls, df: "pd.DataFrame", id_col: str, target_col: str
     ) -> "GroupedArray":
-        grouped = df.groupby(id_col, observed=True)
-        sizes = grouped.size().values
+        sizes = df.groupby(id_col, observed=True).size().values
         indptr = np.append(0, sizes.cumsum())
-        data = df[target_col].values
+        data = df[target_col].values.copy()
         if data.dtype not in (np.float32, np.float64):
             # since all transformations generate nulls, we need a float dtype
             data = data.astype(np.float32)

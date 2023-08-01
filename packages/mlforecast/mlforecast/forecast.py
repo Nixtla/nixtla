@@ -273,10 +273,10 @@ class MLForecast:
         for name, model in self.models.items():
             if y.ndim == 2 and y.shape[1] > 1:
                 self.models_[name] = []
-                for col in y:
-                    keep = y[col].notnull()
+                for col in range(y.shape[1]):
+                    keep = ~np.isnan(y[:, col])
                     self.models_[name].append(
-                        clone(model).fit(X.loc[keep], y.loc[keep, col])
+                        clone(model).fit(X.loc[keep], y[keep, col])
                     )
             else:
                 self.models_[name] = clone(model).fit(X, y)

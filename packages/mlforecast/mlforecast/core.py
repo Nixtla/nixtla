@@ -232,10 +232,11 @@ class TimeSeries:
             for tfm in self.target_transforms:
                 tfm.set_column_names(id_col, time_col, target_col)
                 sorted_df = tfm.fit_transform(sorted_df)
-        sorted_df = sorted_df.set_index([id_col, time_col])
-        self.uids = sorted_df.index.unique(level=0)
         self.ga = GroupedArray.from_sorted_df(sorted_df, id_col, target_col)
         self._ga = GroupedArray(self.ga.data, self.ga.indptr)
+        last_idxs_per_serie = self.ga.indptr[1:] - 1
+        self.uids = pd.Index(sorted_df[id_col].iloc[last_idxs_per_serie])
+        self.last_dates = pd.Index(sorted_df[time_col].iloc[last_idxs_per_serie])
         to_drop = [id_col, time_col, target_col]
         if static_features is None:
             static_features = df.columns.drop([time_col, target_col]).tolist()
@@ -243,10 +244,6 @@ class TimeSeries:
             static_features = [id_col] + static_features
         else:  # static_features defined and contain id_col
             to_drop = [time_col, target_col]
-        last_idxs_per_serie = self.ga.indptr[1:] - 1
-        self.last_dates = sorted_df.index.get_level_values(self.time_col)[
-            last_idxs_per_serie
-        ]
         self.static_features_ = df.iloc[sort_idxs[last_idxs_per_serie]][
             static_features
         ].reset_index(drop=True)
@@ -324,58 +321,56 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        modifies_target = bool(self.target_transforms)
-        df = df.copy(deep=modifies_target and not return_X_y)
-        self.features_ = self._compute_transforms()
-
-        # lag transforms
-        for feat in self.transforms.keys():
-            df[feat] = self.features_[feat][self.restore_idxs]
-
-        # date features
-        dates = df[self.time_col]
-        if not np.issubdtype(dates.dtype.type, np.integer):
-            dates = pd.DatetimeIndex(dates)
-        for feature in self.date_features:
-            feat_name, feat_vals = self._compute_date_feature(dates, feature)
-            df[feat_name] = feat_vals
+        features = {
+            k: v[self.restore_idxs] for k, v in self._compute_transforms().items()
+        }
 
         # target
         self.max_horizon = max_horizon
         if max_horizon is None:
-            if modifies_target:
-                target = pd.Series(self.ga.data[self.restore_idxs], index=df.index)
-            else:
-                target = df[self.target_col]
+            target = self.ga.data[self.restore_idxs]
         else:
-            target = pd.DataFrame(
-                self.ga.expand_target(max_horizon)[self.restore_idxs],
-                index=df.index,
-                columns=[f"{self.target_col}{i}" for i in range(max_horizon)],
-            )
+            target = self.ga.expand_target(max_horizon)[self.restore_idxs]
 
         # determine rows to keep
         if dropna:
-            feature_nulls = df[self.features].isnull().any(axis=1)
-            target_nulls = target.isnull()
+            feature_nulls = np.full(df.shape[0], False)
+            for feature_vals in features.values():
+                feature_nulls |= np.isnan(feature_vals)
+            target_nulls = np.isnan(target)
             if target_nulls.ndim == 2:
                 # target nulls for each horizon are dropped in MLForecast.fit_models
                 # we just drop rows here for which all the target values are null
                 target_nulls = target_nulls.all(axis=1)
-            keep_rows = ~(feature_nulls | target_nulls).values
+            keep_rows = ~(feature_nulls | target_nulls)
+            df = df[keep_rows].copy(deep=False)
+            target = target[keep_rows]
         else:
             keep_rows = np.full(df.shape[0], True)
+            df = df.copy(deep=False)
+
+        # lag transforms
+        for feat in self.transforms.keys():
+            df[feat] = features[feat][keep_rows]
+
+        # date features
+        if self.date_features:
+            dates = df[self.time_col]
+            if not np.issubdtype(dates.dtype.type, np.integer):
+                dates = pd.DatetimeIndex(dates)
+            for feature in self.date_features:
+                feat_name, feat_vals = self._compute_date_feature(dates, feature)
+                df[feat_name] = feat_vals
 
         # assemble return
-        xs = df.columns.drop(self.target_col)
         if return_X_y:
-            return df.loc[keep_rows, xs], target.loc[keep_rows]
-        if max_horizon is None:
-            if modifies_target:
-                df[self.target_col] = target
+            return df, target
+        if max_horizon is not None:
+            for i in range(max_horizon):
+                df[f"{self.target_col}{i}"] = target[:, i]
         else:
-            df = pd.concat([df[xs], target], axis=1)
-        return df.loc[keep_rows]
+            df[self.target_col] = target
+        return df
 
     def fit_transform(
         self,
