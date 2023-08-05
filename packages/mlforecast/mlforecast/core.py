@@ -554,6 +554,17 @@ class TimeSeries:
                 raise ValueError(
                     f"X_df must have '{self.id_col}' and '{self.time_col}' columns."
                 )
+            if X_df.shape[1] < 3:
+                raise ValueError("Found no exogenous features in `X_df`.")
+            statics = self.static_features_.columns.drop(self.id_col)
+            dynamics = X_df.columns.drop([self.id_col, self.time_col])
+            common = statics.intersection(dynamics).tolist()
+            if common:
+                raise ValueError(
+                    f"The following features were provided through `X_df` but were considered as static during fit: {common}.\n"
+                    "Please re-run the fit step using the `static_features` argument to indicate which features are static. "
+                    "If all your features are dynamic please pass an empty list (static_features=[])."
+                )
             dates_validation = pd.DataFrame(
                 {
                     self.id_col: self.uids,

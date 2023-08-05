@@ -354,6 +354,7 @@ class MLForecast:
             Column that contains the target.
         static_features : list of str, optional (default=None)
             Names of the features that are static and will be repeated when forecasting.
+                If `None`, will consider all columns (except id_col and time_col) as static.
         dropna : bool (default=True)
             Drop rows with missing values produced by the transformations.
         keep_last_n : int, optional (default=None)
