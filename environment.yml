@@ -12,3 +12,4 @@ dependencies:
     - flake8
     - python-dotenv
     - statsforecast
+    - requests
