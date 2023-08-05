@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/nixtlats)](https://pypi.org/project/nixtlats/)
 [![PyPi](https://img.shields.io/pypi/v/nixtlats?color=blue)](https://pypi.org/project/nixtlats/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtlats/blob/main/LICENSE)
-[![docs](https://img.shields.io/website-up-down-green-red/http/nixtla.github.io/nixtlats.svg?label=docs)](https://nixtla.github.io/nixtlats/)
+[![docs](https://img.shields.io/website-up-down-green-red/http/nixtla.github.io/nixtla.svg?label=docs)](https://nixtla.github.io/nixtla/)
 [![Downloads](https://pepy.tech/badge/nixtlats)](https://pepy.tech/project/nixtlats)
     
 **NixtlaTS** offers a collection of classes and methods to interact with the API of TimeGPT.
