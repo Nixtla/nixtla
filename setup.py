@@ -1,6 +1,6 @@
 import setuptools
 
-with open("README.md", "r", encoding='utf8') as fh:
+with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
@@ -17,4 +17,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.8',
+    install_requires=["requests", "pandas"]
 )
