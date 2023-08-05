@@ -1,0 +1,7 @@
+name: nixtlats
+channels:
+  - conda-forge
+dependencies:
+  - pandas
+  - pip:
+    - nbdev
