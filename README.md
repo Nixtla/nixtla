@@ -38,7 +38,7 @@ With `NixtlaTS`, you can easily interact with TimeGPT through simple API calls, 
 Get `NixtlaTS` up and running with a simple pip command:
 
 ```python
-pip install nixtlats
+pip install nixtlats>=0.1.0
 ```
 
 ## 🎈 Quick Start
