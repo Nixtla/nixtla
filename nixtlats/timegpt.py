@@ -135,8 +135,6 @@ class TimeGPT:
         ----------
         df : pandas.DataFrame
             DataFrame with columns [`unique_id`, `ds`, `y`] and exogenous.
-            If None, the `StatsForecast` class should have been instantiated
-            using `df`.
         h : int
             Forecast horizon.
         freq : str
