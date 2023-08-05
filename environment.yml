@@ -1,0 +1,14 @@
+name: nixtlats
+channels:
+  - conda-forge
+dependencies:
+  - jupyterlab
+  - pandas
+  - plotly
+  - pip:
+    - black
+    - nbdev
+    - mypy
+    - flake8
+    - python-dotenv
+    - statsforecast
