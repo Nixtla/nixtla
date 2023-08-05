@@ -30,7 +30,7 @@ min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
 
 setuptools.setup(
-    name = 'statsforecast',
+    name = 'nixtlats',
     license = lic[0],
     classifiers = [
         'Development Status :: ' + statuses[int(cfg['status'])],
