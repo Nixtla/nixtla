@@ -1,0 +1,10 @@
+website:
+  reader-mode: false
+  sidebar:
+    collapse-level: 1
+    contents:
+      - index.ipynb
+      - text: "--"
+      - section: "SDK"
+        contents: 
+          - timegpt.ipynb
