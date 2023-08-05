@@ -9,3 +9,4 @@ dependencies:
     - nbdev
     - mypy
     - flake8
+    - python-dotenv
