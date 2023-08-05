@@ -55,4 +55,7 @@ jobs:
         run: pip install ./ 
 
       - name: Run tests 
+        env:
+          TIMEGPT_TOKEN: ${{ secrets.TIMEGPT_TOKEN }}
+          TIMEGPT_API_URL: ${{ secrets.TIMEGPT_API_URL }}
         run: nbdev_test
