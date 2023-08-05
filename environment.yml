@@ -2,6 +2,10 @@ name: nixtlats
 channels:
   - conda-forge
 dependencies:
+  - jupyterlab
   - pandas
   - pip:
+    - black
     - nbdev
+    - mypy
+    - flake8
