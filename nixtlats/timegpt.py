@@ -39,10 +39,11 @@ class TimeGPT:
         }
         return headers
 
-    def _parse_response(self, response: str) -> Dict:
+    def _parse_response(self, response) -> Dict:
         """Parses responde."""
+        response.raise_for_status()
         try:
-            resp = json.loads(response)
+            resp = response.json()
         except Exception as e:
             raise Exception(response)
         return resp
@@ -53,7 +54,7 @@ class TimeGPT:
             json={"freq": freq},
             headers=self.request_headers,
         )
-        response_input_size = self._parse_response(response_input_size.text)
+        response_input_size = self._parse_response(response_input_size)
         return response_input_size["data"]
 
     def _validate_inputs(
@@ -150,7 +151,7 @@ class TimeGPT:
             json=payload,
             headers=self.request_headers,
         )
-        response_timegpt = self._parse_response(response_timegpt.text)
+        response_timegpt = self._parse_response(response_timegpt)
         if "weights_x" in response_timegpt["data"]:
             self.weights_x = pd.DataFrame(
                 {
@@ -178,7 +179,17 @@ class TimeGPT:
         Parameters
         ----------
         df : pandas.DataFrame
-            DataFrame with columns [`unique_id`, `ds`, `y`] and exogenous.
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
         h : int
             Forecast horizon.
         freq : str
