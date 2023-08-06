@@ -17,5 +17,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.8',
-    install_requires=["requests", "pandas"]
+    install_requires=["requests", "pandas"],
+    extras_require={"dev": ["nbdev", "plotly", "python-dotenv", "statsforecast"]},
 )
