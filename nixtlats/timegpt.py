@@ -39,10 +39,11 @@ class TimeGPT:
         }
         return headers
 
-    def _parse_response(self, response: str) -> Dict:
+    def _parse_response(self, response) -> Dict:
         """Parses responde."""
+        response.raise_for_status()
         try:
-            resp = json.loads(response)
+            resp = response.json()
         except Exception as e:
             raise Exception(response)
         return resp
@@ -53,8 +54,47 @@ class TimeGPT:
             json={"freq": freq},
             headers=self.request_headers,
         )
-        response_input_size = self._parse_response(response_input_size.text)
+        response_input_size = self._parse_response(response_input_size)
         return response_input_size["data"]
+
+    def _validate_inputs(
+        self,
+        df: pd.DataFrame,
+        X_df: pd.DataFrame,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+    ):
+        renamer = {id_col: "unique_id", time_col: "ds", target_col: "y"}
+        df = df.rename(columns=renamer)
+        drop_uid = False
+        if "unique_id" not in df.columns:
+            # Insert unique_id column
+            df = df.assign(unique_id="ts_0")
+            drop_uid = True
+        if X_df is not None:
+            X_df = X_df.rename(columns=renamer)
+            if "unique_id" not in df.columns:
+                X_df = X_df.assign(unique_id="ts_0")
+        return df, X_df, drop_uid
+
+    def _validate_outputs(
+        self,
+        fcst_df: pd.DataFrame,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        drop_uid: bool,
+    ):
+        renamer = {
+            "unique_id": id_col,
+            "ds": time_col,
+            "target_col": target_col,
+        }
+        if drop_uid:
+            fcst_df = fcst_df.drop(columns="unique_id")
+        fcst_df = fcst_df.rename(columns=renamer)
+        return fcst_df
 
     def _preprocess_inputs(
         self,
@@ -111,7 +151,7 @@ class TimeGPT:
             json=payload,
             headers=self.request_headers,
         )
-        response_timegpt = self._parse_response(response_timegpt.text)
+        response_timegpt = self._parse_response(response_timegpt)
         if "weights_x" in response_timegpt["data"]:
             self.weights_x = pd.DataFrame(
                 {
@@ -126,6 +166,9 @@ class TimeGPT:
         df: pd.DataFrame,
         h: int,
         freq: str,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
         X_df: Optional[pd.DataFrame] = None,
         level: Optional[List[int]] = None,
         finetune_steps: int = 0,
@@ -136,12 +179,28 @@ class TimeGPT:
         Parameters
         ----------
         df : pandas.DataFrame
-            DataFrame with columns [`unique_id`, `ds`, `y`] and exogenous.
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
         h : int
             Forecast horizon.
         freq : str
             Frequency of the data.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
         X_df : pandas.DataFrame, optional (default=None)
             DataFrame with [`unique_id`, `ds`] columns and `df`'s future exogenous.
         level : List[float], optional (default=None)
@@ -159,7 +218,14 @@ class TimeGPT:
             DataFrame with TimeGPT forecasts for point predictions and probabilistic
             predictions (if level is not None).
         """
-        return self._multi_series(
+        df, X_df, drop_uid = self._validate_inputs(
+            df=df,
+            X_df=X_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        fcst_df = self._multi_series(
             df=df,
             h=h,
             freq=freq,
@@ -168,3 +234,11 @@ class TimeGPT:
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
         )
+        fcst_df = self._validate_outputs(
+            fcst_df=fcst_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            drop_uid=drop_uid,
+        )
+        return fcst_df
