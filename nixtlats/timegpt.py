@@ -96,6 +96,17 @@ class TimeGPT:
         fcst_df = fcst_df.rename(columns=renamer)
         return fcst_df
 
+    def _infer_freq(self, df: pd.DataFrame):
+        unique_id = df.iloc[0]["unique_id"]
+        df_id = df.query("unique_id == @unique_id")
+        freq = pd.infer_freq(df_id["ds"])
+        if freq is None:
+            raise Exception(
+                '"Could not infer frequency of ds column. This could be due to \
+                inconsistent intervals. Please check your data for missing, duplicated or irregular timestamps."'
+            )
+        return freq
+
     def _preprocess_inputs(
         self,
         df: pd.DataFrame,
@@ -136,6 +147,8 @@ class TimeGPT:
         finetune_steps: int = 0,
         clean_ex_first: bool = True,
     ):
+        if freq is None:
+            freq = self._infer_freq(df)
         y, x, x_cols = self._preprocess_inputs(df=df, h=h, freq=freq, X_df=X_df)
         payload = dict(
             y=y,
@@ -165,7 +178,7 @@ class TimeGPT:
         self,
         df: pd.DataFrame,
         h: int,
-        freq: str,
+        freq: Optional[str] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -193,7 +206,7 @@ class TimeGPT:
         h : int
             Forecast horizon.
         freq : str
-            Frequency of the data.
+            Frequency of the data. By default, the freq will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
             Column that identifies each serie.
