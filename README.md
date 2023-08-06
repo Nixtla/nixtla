@@ -47,7 +47,7 @@ Get started with TimeGPT now:
 
 ```python
 from nixtlats import TimeGPT
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'], api_url=os.environ['TIMEGPT_API_URL'])
+timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
 fcst_df = timegpt.forecast(df, h=24, freq='H', level=[80, 90])
 ```
 
