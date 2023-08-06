@@ -17,7 +17,7 @@ class TimeGPT:
     A class used to interact with the TimeGPT API.
     """
 
-    def __init__(self, token: str, api_url: str):
+    def __init__(self, token: str):
         """
         Constructs all the necessary attributes for the TimeGPT object.
 
@@ -25,11 +25,9 @@ class TimeGPT:
         ----------
         token : str
             The authorization token to interact with the TimeGPT API.
-        api_url : str
-            The base URL for the TimeGPT API.
         """
         self.token = token
-        self.api_url = api_url
+        self.api_url = "https://dashboard.nixtla.io/api"
         self.weights_x: pd.DataFrame = None
 
     @property
