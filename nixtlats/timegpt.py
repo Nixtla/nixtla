@@ -64,14 +64,14 @@ class TimeGPT:
             valid = False
         return valid
 
-    def _input_size(self, freq: str):
+    def _model_params(self, freq: str):
         response_input_size = requests.post(
-            f"{self.api_url}/timegpt_input_size",
+            f"{self.api_url}/timegpt_model_params",
             json={"freq": freq},
             headers=self.request_headers,
         )
         response_input_size = self._parse_response(response_input_size)
-        return response_input_size["data"]
+        return response_input_size["data"]["detail"]
 
     def _validate_inputs(
         self,
@@ -134,10 +134,28 @@ class TimeGPT:
         h: int,
         freq: str,
         X_df: Optional[pd.DataFrame] = None,
+        level: Optional[List] = None,
+        finetune_steps: int = 0,
     ):
-        input_size = self._input_size(freq)
+        # restrict input only if we dont want
+        # to finetune the model
+        restrict_input = finetune_steps == 0
+        if restrict_input:
+            model_params = self._model_params(freq)
+            input_size, model_horizon = (
+                model_params["input_size"],
+                model_params["horizon"],
+            )
+            if level is not None:
+                # add sufficient info to compute
+                # conformal interval
+                input_size = 2 * input_size + model_horizon
+        else:
+            input_size = model_horizon = None
+        if restrict_input:
+            df = df.groupby("unique_id").tail(input_size)
         y_cols = ["unique_id", "ds", "y"]
-        y = df[y_cols].groupby("unique_id").tail(input_size + h)
+        y = df[y_cols]
         to_dict_args = {"orient": "split"}
         if "index" in inspect.signature(pd.DataFrame.to_dict).parameters:
             to_dict_args["index"] = False
@@ -154,17 +172,18 @@ class TimeGPT:
                     "You must include the exogenous variables in the `df` object, "
                     f'exogenous variables {",".join(x_cols)}'
                 )
-            x = (
-                df[["unique_id", "ds"] + x_cols]
-                .groupby("unique_id")
-                .tail(input_size + h)
-            )
+            if len(X_df) != df["unique_id"].nunique() * h:
+                raise Exception(
+                    f"You have to pass the {h} future values of your "
+                    "exogenous variables for each time series"
+                )
+            x = df[["unique_id", "ds"] + x_cols]
             x = pd.concat([x, X_df])
             if x[x_cols].isna().any().any():
                 raise Exception(
                     "Some of your exogenous variables contain NA, please check"
                 )
-            x = x.sort_values(["unique_id", "ds"])
+            x = x.sort_values(["unique_id", "ds"]).reset_index(drop=True)
             x = x.to_dict(**to_dict_args)
         return y, x, x_cols
 
@@ -180,7 +199,14 @@ class TimeGPT:
     ):
         if freq is None:
             freq = self._infer_freq(df)
-        y, x, x_cols = self._preprocess_inputs(df=df, h=h, freq=freq, X_df=X_df)
+        y, x, x_cols = self._preprocess_inputs(
+            df=df,
+            h=h,
+            freq=freq,
+            X_df=X_df,
+            level=level,
+            finetune_steps=finetune_steps,
+        )
         payload = dict(
             y=y,
             x=x,
