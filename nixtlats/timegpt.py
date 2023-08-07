@@ -266,11 +266,10 @@ class TimeGPT:
             DataFrame with TimeGPT forecasts for point predictions and probabilistic
             predictions (if level is not None).
         """
-        if validate_token:
-            if not self.validate_token():
-                raise Exception(
-                    "Token not valid, please go to https://dashboard.nixtla.io/ to get yours"
-                )
+        if not self.validate_token():
+            raise Exception(
+                "Token not valid, please go to https://dashboard.nixtla.io/ to get yours"
+            )
 
         df, X_df, drop_uid = self._validate_inputs(
             df=df,
