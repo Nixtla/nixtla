@@ -13,3 +13,4 @@ dependencies:
     - python-dotenv
     - statsforecast
     - requests
+    - openbb
