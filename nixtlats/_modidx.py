@@ -20,4 +20,6 @@ d = { 'settings': { 'branch': 'main',
                                                                                   'nixtlats/timegpt.py'),
                                   'nixtlats.timegpt.TimeGPT.forecast': ('timegpt.html#timegpt.forecast', 'nixtlats/timegpt.py'),
                                   'nixtlats.timegpt.TimeGPT.request_headers': ( 'timegpt.html#timegpt.request_headers',
-                                                                                'nixtlats/timegpt.py')}}}
+                                                                                'nixtlats/timegpt.py'),
+                                  'nixtlats.timegpt.TimeGPT.validate_token': ( 'timegpt.html#timegpt.validate_token',
+                                                                               'nixtlats/timegpt.py')}}}
