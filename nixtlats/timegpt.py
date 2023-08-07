@@ -7,7 +7,7 @@ __all__ = []
 import inspect
 import json
 import requests
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import pandas as pd
 
@@ -183,7 +183,7 @@ class TimeGPT:
         time_col: str = "ds",
         target_col: str = "y",
         X_df: Optional[pd.DataFrame] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[List[Union[int, float]]] = None,
         finetune_steps: int = 0,
         clean_ex_first: bool = True,
     ):
