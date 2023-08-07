@@ -67,6 +67,8 @@ class TimeGPT:
     ):
         renamer = {id_col: "unique_id", time_col: "ds", target_col: "y"}
         df = df.rename(columns=renamer)
+        if df.dtypes.ds != "object":
+            df["ds"] = df["ds"].astype(str)
         drop_uid = False
         if "unique_id" not in df.columns:
             # Insert unique_id column
@@ -76,6 +78,8 @@ class TimeGPT:
             X_df = X_df.rename(columns=renamer)
             if "unique_id" not in df.columns:
                 X_df = X_df.assign(unique_id="ts_0")
+            if X_df.dtypes.ds != "object":
+                X_df["ds"] = X_df["ds"].astype(str)
         return df, X_df, drop_uid
 
     def _validate_outputs(
@@ -122,9 +126,14 @@ class TimeGPT:
             to_dict_args["index"] = False
         y = y.to_dict(**to_dict_args)
         x_cols = df.drop(columns=y_cols).columns.to_list()
-        if len(x_cols) == 0:
+        if len(x_cols) == 0 or X_df is None:
             x = None
         else:
+            if not all(col in X_df.columns for col in x_cols):
+                raise Exception(
+                    "You must pass the future values of these "
+                    f'exogenous variables {",".join(x_cols)}'
+                )
             x = pd.concat(
                 [
                     df[["unique_id", "ds"] + x_cols]
