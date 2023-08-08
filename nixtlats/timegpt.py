@@ -237,15 +237,37 @@ class TimeGPT:
             )
         return pd.DataFrame(**response_timegpt["data"]["forecast"])
 
+    def _hit_multi_series_historic_endpoint(
+        self,
+        Y_df: pd.DataFrame,
+        freq: str,
+        level: Optional[List[Union[int, float]]],
+    ):
+        y, x = self._transform_dataframes(Y_df, None)
+        # Contruct payload
+        payload = dict(
+            y=y,
+            freq=freq,
+            level=level,
+        )
+        response_timegpt = requests.post(
+            f"{self.api_url}/timegpt_multi_series_historic",
+            json=payload,
+            headers=self.request_headers,
+        )
+        response_timegpt = self._parse_response(response_timegpt)
+        return pd.DataFrame(**response_timegpt["data"]["forecast"])
+
     def _multi_series(
         self,
         df: pd.DataFrame,
         h: int,
         freq: str,
-        X_df: Optional[pd.DataFrame] = None,
-        level: Optional[List[Union[int, float]]] = None,
-        finetune_steps: int = 0,
-        clean_ex_first: bool = True,
+        X_df: Optional[pd.DataFrame],
+        level: Optional[List[Union[int, float]]],
+        finetune_steps: int,
+        clean_ex_first: bool,
+        add_history: bool,
     ):
         if freq is None:
             freq = self._infer_freq(df)
@@ -264,6 +286,14 @@ class TimeGPT:
             x_cols=x_cols,
             level=level,
         )
+        if add_history:
+            fitted_df = self._hit_multi_series_historic_endpoint(
+                Y_df=Y_df,
+                freq=freq,
+                level=level,
+            )
+            fitted_df = fitted_df.drop(columns="y")
+            fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
         return fcst_df
 
     def forecast(
@@ -279,6 +309,7 @@ class TimeGPT:
         finetune_steps: int = 0,
         clean_ex_first: bool = True,
         validate_token: bool = False,
+        add_history: bool = False,
     ):
         """Forecast your time series using TimeGPT.
 
@@ -317,9 +348,11 @@ class TimeGPT:
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
             using TimeGPT.
-        validate_token: bool (default=False)
+        validate_token : bool (default=False)
             If True, validates token before
             sending requests.
+        add_history : bool (default=False)
+            Return fitted values of the model.
 
         Returns
         -------
@@ -347,6 +380,7 @@ class TimeGPT:
             level=level,
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
+            add_history=add_history,
         )
         fcst_df = self._validate_outputs(
             fcst_df=fcst_df,
