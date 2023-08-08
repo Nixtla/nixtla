@@ -132,17 +132,33 @@ class TimeGPT:
             )
         return freq
 
+    def _resample_dataframe(
+        self,
+        df: pd.DataFrame,
+        freq: str,
+    ):
+        df = df.copy()
+        df["ds"] = pd.to_datetime(df["ds"])
+        resampled_df = df.set_index("ds").groupby("unique_id").resample(freq).bfill()
+        resampled_df = resampled_df.drop(columns="unique_id").reset_index()
+        resampled_df["ds"] = resampled_df["ds"].astype(str)
+        return resampled_df
+
     def _preprocess_dataframes(
         self,
         df: pd.DataFrame,
         h: int,
-        X_df: Optional[pd.DataFrame] = None,
+        X_df: Optional[pd.DataFrame],
+        freq: str,
     ):
         """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
         y_cols = ["unique_id", "ds", "y"]
         Y_df = df[y_cols]
         if Y_df["y"].isna().any():
             raise Exception("Your target variable contains NA, please check")
+        # Azul: efficient this code
+        # and think about returning dates that are not in the training set
+        Y_df = self._resample_dataframe(Y_df, freq)
         x_cols = []
         if X_df is not None:
             x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
@@ -163,6 +179,7 @@ class TimeGPT:
                     "Some of your exogenous variables contain NA, please check"
                 )
             X_df = X_df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
+            X_df = self._resample_dataframe(X_df, freq)
         return Y_df, X_df, x_cols
 
     def _get_to_dict_args(self):
@@ -201,7 +218,7 @@ class TimeGPT:
             if level is not None:
                 # add sufficient info to compute
                 # conformal interval
-                input_size = 2 * input_size + model_horizon
+                input_size = 3 * input_size + max(model_horizon, h)
         else:
             input_size = model_horizon = None
         # restricting the inputs if necessary
@@ -275,6 +292,7 @@ class TimeGPT:
             df=df,
             h=h,
             X_df=X_df,
+            freq=freq,
         )
         fcst_df = self._hit_multi_series_endpoint(
             Y_df=Y_df,
