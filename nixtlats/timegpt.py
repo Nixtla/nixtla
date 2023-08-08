@@ -81,7 +81,11 @@ class TimeGPT:
         time_col: str,
         target_col: str,
     ):
-        renamer = {id_col: "unique_id", time_col: "ds", target_col: "y"}
+        renamer = {
+            id_col: "unique_id",
+            time_col: "ds",
+            target_col: "y",
+        }
         df = df.rename(columns=renamer)
         if df.dtypes.ds != "object":
             df["ds"] = df["ds"].astype(str)
@@ -128,14 +132,62 @@ class TimeGPT:
             )
         return freq
 
-    def _preprocess_inputs(
+    def _preprocess_dataframes(
         self,
         df: pd.DataFrame,
         h: int,
-        freq: str,
         X_df: Optional[pd.DataFrame] = None,
-        level: Optional[List] = None,
-        finetune_steps: int = 0,
+    ):
+        """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
+        y_cols = ["unique_id", "ds", "y"]
+        Y_df = df[y_cols]
+        if Y_df["y"].isna().any():
+            raise Exception("Your target variable contains NA, please check")
+        x_cols = []
+        if X_df is not None:
+            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
+            if not all(col in df.columns for col in x_cols):
+                raise Exception(
+                    "You must include the exogenous variables in the `df` object, "
+                    f'exogenous variables {",".join(x_cols)}'
+                )
+            if len(X_df) != df["unique_id"].nunique() * h:
+                raise Exception(
+                    f"You have to pass the {h} future values of your "
+                    "exogenous variables for each time series"
+                )
+            X_df_history = df[["unique_id", "ds"] + x_cols]
+            X_df = pd.concat([X_df_history, X_df])
+            if X_df[x_cols].isna().any().any():
+                raise Exception(
+                    "Some of your exogenous variables contain NA, please check"
+                )
+            X_df = X_df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
+        return Y_df, X_df, x_cols
+
+    def _get_to_dict_args(self):
+        to_dict_args = {"orient": "split"}
+        if "index" in inspect.signature(pd.DataFrame.to_dict).parameters:
+            to_dict_args["index"] = False
+        return to_dict_args
+
+    def _transform_dataframes(self, Y_df: pd.DataFrame, X_df: pd.DataFrame):
+        # contruction of y and x for the payload
+        to_dict_args = self._get_to_dict_args()
+        y = Y_df.to_dict(**to_dict_args)
+        x = X_df.to_dict(**to_dict_args) if X_df is not None else None
+        return y, x
+
+    def _hit_multi_series_endpoint(
+        self,
+        Y_df: pd.DataFrame,
+        X_df: pd.DataFrame,
+        x_cols: List[str],
+        h: int,
+        freq: str,
+        finetune_steps: int,
+        clean_ex_first: bool,
+        level: Optional[List[Union[int, float]]],
     ):
         # restrict input only if we dont want
         # to finetune the model
@@ -152,61 +204,15 @@ class TimeGPT:
                 input_size = 2 * input_size + model_horizon
         else:
             input_size = model_horizon = None
+        # restricting the inputs if necessary
         if restrict_input:
-            df = df.groupby("unique_id").tail(input_size)
-        y_cols = ["unique_id", "ds", "y"]
-        y = df[y_cols]
-        to_dict_args = {"orient": "split"}
-        if "index" in inspect.signature(pd.DataFrame.to_dict).parameters:
-            to_dict_args["index"] = False
-        if y["y"].isna().any():
-            raise Exception("Your target variable contains NA, please check")
-        y = y.to_dict(**to_dict_args)
-        x_cols = []
-        if X_df is None:
-            x = None
-        else:
-            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
-            if not all(col in df.columns for col in x_cols):
-                raise Exception(
-                    "You must include the exogenous variables in the `df` object, "
-                    f'exogenous variables {",".join(x_cols)}'
-                )
-            if len(X_df) != df["unique_id"].nunique() * h:
-                raise Exception(
-                    f"You have to pass the {h} future values of your "
-                    "exogenous variables for each time series"
-                )
-            x = df[["unique_id", "ds"] + x_cols]
-            x = pd.concat([x, X_df])
-            if x[x_cols].isna().any().any():
-                raise Exception(
-                    "Some of your exogenous variables contain NA, please check"
-                )
-            x = x.sort_values(["unique_id", "ds"]).reset_index(drop=True)
-            x = x.to_dict(**to_dict_args)
-        return y, x, x_cols
-
-    def _multi_series(
-        self,
-        df: pd.DataFrame,
-        h: int,
-        freq: str,
-        X_df: Optional[pd.DataFrame] = None,
-        level: Optional[List[int]] = None,
-        finetune_steps: int = 0,
-        clean_ex_first: bool = True,
-    ):
-        if freq is None:
-            freq = self._infer_freq(df)
-        y, x, x_cols = self._preprocess_inputs(
-            df=df,
-            h=h,
-            freq=freq,
-            X_df=X_df,
-            level=level,
-            finetune_steps=finetune_steps,
-        )
+            Y_df = Y_df.groupby("unique_id").tail(input_size)
+            if X_df is not None:
+                X_df = X_df.groupby("unique_id").tail(
+                    input_size + h
+                )  # history plus exogenous
+        y, x = self._transform_dataframes(Y_df, X_df)
+        # Contruct payload
         payload = dict(
             y=y,
             x=x,
@@ -231,6 +237,65 @@ class TimeGPT:
             )
         return pd.DataFrame(**response_timegpt["data"]["forecast"])
 
+    def _hit_multi_series_historic_endpoint(
+        self,
+        Y_df: pd.DataFrame,
+        freq: str,
+        level: Optional[List[Union[int, float]]],
+    ):
+        y, x = self._transform_dataframes(Y_df, None)
+        # Contruct payload
+        payload = dict(
+            y=y,
+            freq=freq,
+            level=level,
+        )
+        response_timegpt = requests.post(
+            f"{self.api_url}/timegpt_multi_series_historic",
+            json=payload,
+            headers=self.request_headers,
+        )
+        response_timegpt = self._parse_response(response_timegpt)
+        return pd.DataFrame(**response_timegpt["data"]["forecast"])
+
+    def _multi_series(
+        self,
+        df: pd.DataFrame,
+        h: int,
+        freq: str,
+        X_df: Optional[pd.DataFrame],
+        level: Optional[List[Union[int, float]]],
+        finetune_steps: int,
+        clean_ex_first: bool,
+        add_history: bool,
+    ):
+        if freq is None:
+            freq = self._infer_freq(df)
+        Y_df, X_df, x_cols = self._preprocess_dataframes(
+            df=df,
+            h=h,
+            X_df=X_df,
+        )
+        fcst_df = self._hit_multi_series_endpoint(
+            Y_df=Y_df,
+            X_df=X_df,
+            h=h,
+            freq=freq,
+            clean_ex_first=clean_ex_first,
+            finetune_steps=finetune_steps,
+            x_cols=x_cols,
+            level=level,
+        )
+        if add_history:
+            fitted_df = self._hit_multi_series_historic_endpoint(
+                Y_df=Y_df,
+                freq=freq,
+                level=level,
+            )
+            fitted_df = fitted_df.drop(columns="y")
+            fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
+        return fcst_df
+
     def forecast(
         self,
         df: pd.DataFrame,
@@ -244,6 +309,7 @@ class TimeGPT:
         finetune_steps: int = 0,
         clean_ex_first: bool = True,
         validate_token: bool = False,
+        add_history: bool = False,
     ):
         """Forecast your time series using TimeGPT.
 
@@ -282,9 +348,11 @@ class TimeGPT:
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
             using TimeGPT.
-        validate_token: bool (default=False)
+        validate_token : bool (default=False)
             If True, validates token before
             sending requests.
+        add_history : bool (default=False)
+            Return fitted values of the model.
 
         Returns
         -------
@@ -312,6 +380,7 @@ class TimeGPT:
             level=level,
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
+            add_history=add_history,
         )
         fcst_df = self._validate_outputs(
             fcst_df=fcst_df,
