@@ -10,6 +10,7 @@ import json
 import requests
 from typing import Dict, List, Optional, Union
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger()
@@ -143,6 +144,64 @@ class TimeGPT:
         resampled_df = resampled_df.drop(columns="unique_id").reset_index()
         resampled_df["ds"] = resampled_df["ds"].astype(str)
         return resampled_df
+
+    def _compute_date_feature(self, dates, feature):
+        if callable(feature):
+            feat_name = feature.__name__
+            feat_vals = feature(dates)
+        else:
+            feat_name = feature
+            if feature in ("week", "weekofyear"):
+                dates = dates.isocalendar()
+            feat_vals = getattr(dates, feature)
+        vals = np.asarray(feat_vals)
+        return feat_name, vals
+
+    def _make_future_dataframe(
+        self, df: pd.DataFrame, h: int, freq: str, reconvert: bool = True
+    ):
+        last_dates = df.groupby("unique_id")["ds"].max()
+
+        def _future_date_range(last_date):
+            future_dates = pd.date_range(last_date, freq=freq, periods=h + 1)[-h:]
+            return future_dates
+
+        future_df = last_dates.apply(_future_date_range).reset_index()
+        future_df = future_df.explode("ds").reset_index(drop=True)
+        if reconvert and df.dtypes["ds"] == "object":
+            # avoid date 000
+            future_df["ds"] = future_df["ds"].astype(str)
+        return future_df
+
+    def _add_date_features(
+        self,
+        df: pd.DataFrame,
+        X_df: Optional[pd.DataFrame],
+        h: int,
+        freq: str,
+        date_features: List[str],
+    ):
+        # df contains exogenous variables
+        # X_df are the future values of the exogenous variables
+        # construct dates
+        train_dates = df["ds"].unique().tolist()
+        # if we dont have future exogenos variables
+        # we need to compute the future dates
+        if X_df is None:
+            X_df = self._make_future_dataframe(df=df, h=h, freq=freq)
+        future_dates = X_df["ds"].unique().tolist()
+        dates = pd.DatetimeIndex(train_dates + future_dates)
+        date_features_df = pd.DataFrame({"ds": dates})
+        for feature in date_features:
+            feat_name, feat_vals = self._compute_date_feature(dates, feature)
+            date_features_df[feat_name] = feat_vals
+        if df.dtypes["ds"] == "object":
+            date_features_df["ds"] = date_features_df["ds"].astype(str)
+        # add date features to df
+        df = df.merge(date_features_df, on="ds", how="left")
+        # add date features to X_df
+        X_df = X_df.merge(date_features_df, on="ds", how="left")
+        return df, X_df
 
     def _preprocess_dataframes(
         self,
