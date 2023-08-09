@@ -180,6 +180,7 @@ class TimeGPT:
         h: int,
         freq: str,
         date_features: List[str],
+        date_features_to_one_hot: Optional[List[str]],
     ):
         # df contains exogenous variables
         # X_df are the future values of the exogenous variables
@@ -197,6 +198,20 @@ class TimeGPT:
             date_features_df[feat_name] = feat_vals
         if df.dtypes["ds"] == "object":
             date_features_df["ds"] = date_features_df["ds"].astype(str)
+        if date_features_to_one_hot is not None:
+            date_features_df = pd.get_dummies(
+                date_features_df,
+                columns=date_features_to_one_hot,
+                dtype=int,
+            )
+        # remove duplicated columns if any
+        date_features_df = date_features_df.drop(
+            columns=[
+                col
+                for col in date_features_df.columns
+                if col in df.columns and col not in ["unique_id", "ds"]
+            ]
+        )
         # add date features to df
         df = df.merge(date_features_df, on="ds", how="left")
         # add date features to X_df
@@ -344,9 +359,21 @@ class TimeGPT:
         finetune_steps: int,
         clean_ex_first: bool,
         add_history: bool,
+        date_features: Optional[List[str]],
+        date_features_to_one_hot: Optional[List[str]],
     ):
         if freq is None:
             freq = self._infer_freq(df)
+        # add date features logic
+        if date_features is not None:
+            df, X_df = self._add_date_features(
+                df=df,
+                X_df=X_df,
+                h=h,
+                freq=freq,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+            )
         Y_df, X_df, x_cols = self._preprocess_dataframes(
             df=df,
             h=h,
@@ -387,6 +414,8 @@ class TimeGPT:
         clean_ex_first: bool = True,
         validate_token: bool = False,
         add_history: bool = False,
+        date_features: Optional[List[str]] = None,
+        date_features_to_one_hot: Optional[List[str]] = None,
     ):
         """Forecast your time series using TimeGPT.
 
@@ -430,6 +459,10 @@ class TimeGPT:
             sending requests.
         add_history : bool (default=False)
             Return fitted values of the model.
+        date_features : list of str or callable, optional (default=None)
+            Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input.
+        date_features_to_one_hot : lit of str (default=None)
+            Apply one-hot encoding to these date features.
 
         Returns
         -------
@@ -458,6 +491,7 @@ class TimeGPT:
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
             add_history=add_history,
+            date_features=date_features,
         )
         fcst_df = self._validate_outputs(
             fcst_df=fcst_df,
