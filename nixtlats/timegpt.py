@@ -8,13 +8,64 @@ import logging
 import inspect
 import json
 import requests
+import warnings
 from typing import Dict, List, Optional, Union
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger()
 
 # %% ../nbs/timegpt.ipynb 7
+date_features_by_freq = {
+    # Daily frequencies
+    "B": ["year", "month", "day", "weekday"],
+    "C": ["year", "month", "day", "weekday"],
+    "D": ["year", "month", "day", "weekday"],
+    # Weekly
+    "W": ["year", "week", "weekday"],
+    # Monthly
+    "M": ["year", "month"],
+    "SM": ["year", "month", "day"],
+    "BM": ["year", "month"],
+    "CBM": ["year", "month"],
+    "MS": ["year", "month"],
+    "SMS": ["year", "month", "day"],
+    "BMS": ["year", "month"],
+    "CBMS": ["year", "month"],
+    # Quarterly
+    "Q": ["year", "quarter"],
+    "BQ": ["year", "quarter"],
+    "QS": ["year", "quarter"],
+    "BQS": ["year", "quarter"],
+    # Yearly
+    "A": ["year"],
+    "Y": ["year"],
+    "BA": ["year"],
+    "BY": ["year"],
+    "AS": ["year"],
+    "YS": ["year"],
+    "BAS": ["year"],
+    "BYS": ["year"],
+    # Hourly
+    "BH": ["year", "month", "day", "hour", "weekday"],
+    "H": ["year", "month", "day", "hour"],
+    # Minutely
+    "T": ["year", "month", "day", "hour", "minute"],
+    "min": ["year", "month", "day", "hour", "minute"],
+    # Secondly
+    "S": ["year", "month", "day", "hour", "minute", "second"],
+    # Milliseconds
+    "L": ["year", "month", "day", "hour", "minute", "second", "millisecond"],
+    "ms": ["year", "month", "day", "hour", "minute", "second", "millisecond"],
+    # Microseconds
+    "U": ["year", "month", "day", "hour", "minute", "second", "microsecond"],
+    "us": ["year", "month", "day", "hour", "minute", "second", "microsecond"],
+    # Nanoseconds
+    "N": [],
+}
+
+# %% ../nbs/timegpt.ipynb 8
 class TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -143,6 +194,79 @@ class TimeGPT:
         resampled_df = resampled_df.drop(columns="unique_id").reset_index()
         resampled_df["ds"] = resampled_df["ds"].astype(str)
         return resampled_df
+
+    def _compute_date_feature(self, dates, feature):
+        if callable(feature):
+            feat_name = feature.__name__
+            feat_vals = feature(dates)
+        else:
+            feat_name = feature
+            if feature in ("week", "weekofyear"):
+                dates = dates.isocalendar()
+            feat_vals = getattr(dates, feature)
+        vals = np.asarray(feat_vals)
+        return feat_name, vals
+
+    def _make_future_dataframe(
+        self, df: pd.DataFrame, h: int, freq: str, reconvert: bool = True
+    ):
+        last_dates = df.groupby("unique_id")["ds"].max()
+
+        def _future_date_range(last_date):
+            future_dates = pd.date_range(last_date, freq=freq, periods=h + 1)[-h:]
+            return future_dates
+
+        future_df = last_dates.apply(_future_date_range).reset_index()
+        future_df = future_df.explode("ds").reset_index(drop=True)
+        if reconvert and df.dtypes["ds"] == "object":
+            # avoid date 000
+            future_df["ds"] = future_df["ds"].astype(str)
+        return future_df
+
+    def _add_date_features(
+        self,
+        df: pd.DataFrame,
+        X_df: Optional[pd.DataFrame],
+        h: int,
+        freq: str,
+        date_features: List[str],
+        date_features_to_one_hot: Optional[List[str]],
+    ):
+        # df contains exogenous variables
+        # X_df are the future values of the exogenous variables
+        # construct dates
+        train_dates = df["ds"].unique().tolist()
+        # if we dont have future exogenos variables
+        # we need to compute the future dates
+        if X_df is None:
+            X_df = self._make_future_dataframe(df=df, h=h, freq=freq)
+        future_dates = X_df["ds"].unique().tolist()
+        dates = pd.DatetimeIndex(train_dates + future_dates)
+        date_features_df = pd.DataFrame({"ds": dates})
+        for feature in date_features:
+            feat_name, feat_vals = self._compute_date_feature(dates, feature)
+            date_features_df[feat_name] = feat_vals
+        if df.dtypes["ds"] == "object":
+            date_features_df["ds"] = date_features_df["ds"].astype(str)
+        if date_features_to_one_hot is not None:
+            date_features_df = pd.get_dummies(
+                date_features_df,
+                columns=date_features_to_one_hot,
+                dtype=int,
+            )
+        # remove duplicated columns if any
+        date_features_df = date_features_df.drop(
+            columns=[
+                col
+                for col in date_features_df.columns
+                if col in df.columns and col not in ["unique_id", "ds"]
+            ]
+        )
+        # add date features to df
+        df = df.merge(date_features_df, on="ds", how="left")
+        # add date features to X_df
+        X_df = X_df.merge(date_features_df, on="ds", how="left")
+        return df, X_df
 
     def _preprocess_dataframes(
         self,
@@ -285,9 +409,37 @@ class TimeGPT:
         finetune_steps: int,
         clean_ex_first: bool,
         add_history: bool,
+        date_features: Union[bool, List[str]],
+        date_features_to_one_hot: Union[bool, List[str]],
     ):
         if freq is None:
             freq = self._infer_freq(df)
+        # add date features logic
+        if isinstance(date_features, bool):
+            if date_features:
+                date_features = date_features_by_freq.get(freq)
+                if date_features is None:
+                    warnings.warn(
+                        f"Non default date features for {freq} "
+                        "please pass a list of date features"
+                    )
+            else:
+                date_features = None
+
+        if date_features is not None:
+            if isinstance(date_features_to_one_hot, bool):
+                if date_features_to_one_hot:
+                    date_features_to_one_hot = date_features
+                else:
+                    date_features_to_one_hot = None
+            df, X_df = self._add_date_features(
+                df=df,
+                X_df=X_df,
+                h=h,
+                freq=freq,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+            )
         Y_df, X_df, x_cols = self._preprocess_dataframes(
             df=df,
             h=h,
@@ -328,6 +480,8 @@ class TimeGPT:
         clean_ex_first: bool = True,
         validate_token: bool = False,
         add_history: bool = False,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
     ):
         """Forecast your time series using TimeGPT.
 
@@ -371,6 +525,15 @@ class TimeGPT:
             sending requests.
         add_history : bool (default=False)
             Return fitted values of the model.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
 
         Returns
         -------
@@ -399,6 +562,8 @@ class TimeGPT:
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
             add_history=add_history,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
         )
         fcst_df = self._validate_outputs(
             fcst_df=fcst_df,
