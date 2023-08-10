@@ -8,6 +8,7 @@ import logging
 import inspect
 import json
 import requests
+import warnings
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -16,6 +17,55 @@ import pandas as pd
 logger = logging.getLogger()
 
 # %% ../nbs/timegpt.ipynb 7
+date_features_by_freq = {
+    # Daily frequencies
+    "B": ["year", "month", "day", "weekday"],
+    "C": ["year", "month", "day", "weekday"],
+    "D": ["year", "month", "day", "weekday"],
+    # Weekly
+    "W": ["year", "week", "weekday"],
+    # Monthly
+    "M": ["year", "month"],
+    "SM": ["year", "month", "day"],
+    "BM": ["year", "month"],
+    "CBM": ["year", "month"],
+    "MS": ["year", "month"],
+    "SMS": ["year", "month", "day"],
+    "BMS": ["year", "month"],
+    "CBMS": ["year", "month"],
+    # Quarterly
+    "Q": ["year", "quarter"],
+    "BQ": ["year", "quarter"],
+    "QS": ["year", "quarter"],
+    "BQS": ["year", "quarter"],
+    # Yearly
+    "A": ["year"],
+    "Y": ["year"],
+    "BA": ["year"],
+    "BY": ["year"],
+    "AS": ["year"],
+    "YS": ["year"],
+    "BAS": ["year"],
+    "BYS": ["year"],
+    # Hourly
+    "BH": ["year", "month", "day", "hour", "weekday"],
+    "H": ["year", "month", "day", "hour"],
+    # Minutely
+    "T": ["year", "month", "day", "hour", "minute"],
+    "min": ["year", "month", "day", "hour", "minute"],
+    # Secondly
+    "S": ["year", "month", "day", "hour", "minute", "second"],
+    # Milliseconds
+    "L": ["year", "month", "day", "hour", "minute", "second", "millisecond"],
+    "ms": ["year", "month", "day", "hour", "minute", "second", "millisecond"],
+    # Microseconds
+    "U": ["year", "month", "day", "hour", "minute", "second", "microsecond"],
+    "us": ["year", "month", "day", "hour", "minute", "second", "microsecond"],
+    # Nanoseconds
+    "N": [],
+}
+
+# %% ../nbs/timegpt.ipynb 8
 class TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -359,13 +409,29 @@ class TimeGPT:
         finetune_steps: int,
         clean_ex_first: bool,
         add_history: bool,
-        date_features: Optional[List[str]],
-        date_features_to_one_hot: Optional[List[str]],
+        date_features: Union[bool, List[str]],
+        date_features_to_one_hot: Union[bool, List[str]],
     ):
         if freq is None:
             freq = self._infer_freq(df)
         # add date features logic
+        if isinstance(date_features, bool):
+            if date_features:
+                date_features = date_features_by_freq.get(freq)
+                if date_features is None:
+                    warnings.warn(
+                        f"Non default date features for {freq} "
+                        "please pass a list of date features"
+                    )
+            else:
+                date_features = None
+
         if date_features is not None:
+            if isinstance(date_features_to_one_hot, bool):
+                if date_features_to_one_hot:
+                    date_features_to_one_hot = date_features
+                else:
+                    date_features_to_one_hot = None
             df, X_df = self._add_date_features(
                 df=df,
                 X_df=X_df,
@@ -414,8 +480,8 @@ class TimeGPT:
         clean_ex_first: bool = True,
         validate_token: bool = False,
         add_history: bool = False,
-        date_features: Optional[List[str]] = None,
-        date_features_to_one_hot: Optional[List[str]] = None,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
     ):
         """Forecast your time series using TimeGPT.
 
@@ -459,10 +525,15 @@ class TimeGPT:
             sending requests.
         add_history : bool (default=False)
             Return fitted values of the model.
-        date_features : list of str or callable, optional (default=None)
-            Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input.
-        date_features_to_one_hot : lit of str (default=None)
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
             Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
 
         Returns
         -------
@@ -492,6 +563,7 @@ class TimeGPT:
             clean_ex_first=clean_ex_first,
             add_history=add_history,
             date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
         )
         fcst_df = self._validate_outputs(
             fcst_df=fcst_df,
