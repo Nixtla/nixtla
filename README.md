@@ -15,10 +15,6 @@
 **NixtlaTS** offers a collection of classes and methods to interact with the API of TimeGPT.
 </div>
 
-Certainly, adding a bit of personality and visual appeal can make your README stand out. Here's a reworked version:
-
----
-
 # 🕰️ TimeGPT: Revolutionizing Time-Series Analysis
 
 Developed by Nixtla, TimeGPT is a cutting-edge generative pre-trained transformer model dedicated to prediction tasks. 🚀 By leveraging the most extensive dataset ever – financial, weather, energy, and sales data – TimeGPT brings unparalleled time-series analysis right to your terminal! 👩‍💻👨‍💻
