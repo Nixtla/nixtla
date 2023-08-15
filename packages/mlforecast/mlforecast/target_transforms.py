@@ -6,7 +6,7 @@ __all__ = ['BaseTargetTransform', 'Differences', 'LocalStandardScaler']
 # %% ../nbs/target_transforms.ipynb 2
 import abc
 import reprlib
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Optional
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -17,6 +17,8 @@ from .grouped_array import GroupedArray, _apply_difference
 
 # %% ../nbs/target_transforms.ipynb 3
 class BaseTargetTransform(abc.ABC):
+    idxs: Optional[np.ndarray] = None
+
     def set_column_names(self, id_col: str, time_col: str, target_col: str):
         self.id_col = id_col
         self.time_col = time_col
@@ -53,18 +55,20 @@ class Differences(BaseTargetTransform):
             new_indptr = d * np.arange(n_series + 1, dtype=np.int32)
             _apply_difference(ga.data, ga.indptr, new_data, new_indptr, d)
             self.original_values_.append(GroupedArray(new_data, new_indptr))
-        df = df.copy()
+        df = df.copy(deep=False)
         df[self.target_col] = ga.data
         return df
 
     def inverse_transform(self, df: "pd.DataFrame") -> "pd.DataFrame":
         model_cols = df.columns.drop([self.id_col, self.time_col])
-        df = df.copy()
+        df = df.copy(deep=False)
         for model in model_cols:
             model_preds = df[model].values.copy()
             for d, ga in zip(
                 reversed(self.differences), reversed(self.original_values_)
             ):
+                if self.idxs is not None:
+                    ga = ga.take(self.idxs)
                 ga.restore_difference(model_preds, d)
             df[model] = model_preds
         return df
@@ -76,8 +80,8 @@ def _standard_scaler_transform(data, indptr, stats, out):
     for i in range(n_series):
         sl = slice(indptr[i], indptr[i + 1])
         subs = data[sl]
-        mean_ = subs.mean()
-        std_ = subs.std()
+        mean_ = np.nanmean(subs)
+        std_ = np.nanstd(subs)
         stats[i] = mean_, std_
         out[sl] = (data[sl] - mean_) / std_
 
@@ -102,15 +106,16 @@ class LocalStandardScaler(BaseTargetTransform):
         self.stats_ = np.empty((len(ga.indptr) - 1, 2))
         out = np.empty_like(ga.data)
         _standard_scaler_transform(ga.data, ga.indptr, self.stats_, out)
-        df = df.copy()
+        df = df.copy(deep=False)
         df[self.target_col] = out
         return df
 
     def inverse_transform(self, df: "pd.DataFrame") -> "pd.DataFrame":
-        df = df.copy()
+        df = df.copy(deep=False)
         model_cols = df.columns.drop([self.id_col, self.time_col])
+        stats = self.stats_ if self.idxs is None else self.stats_[self.idxs]
         for model in model_cols:
             model_preds = df[model].values
-            _standard_scaler_inverse_transform(model_preds, self.stats_)
+            _standard_scaler_inverse_transform(model_preds, stats)
             df[model] = model_preds
         return df

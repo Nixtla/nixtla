@@ -153,6 +153,14 @@ class GroupedArray:
             raise ValueError(f"vals must be of size {self[idx].size}")
         self[idx][:] = vals
 
+    def take(self, idxs: np.ndarray) -> "GroupedArray":
+        ranges = [range(self.indptr[i], self.indptr[i + 1]) for i in idxs]
+        items = [self.data[rng] for rng in ranges]
+        sizes = np.array([item.size for item in items])
+        data = np.hstack(items)
+        indptr = np.append(0, sizes.cumsum())
+        return GroupedArray(data, indptr)
+
     @classmethod
     def from_sorted_df(
         cls, df: "pd.DataFrame", id_col: str, target_col: str

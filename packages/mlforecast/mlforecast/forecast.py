@@ -129,7 +129,7 @@ class MLForecast:
         num_threads: int = 1,
         target_transforms: Optional[List[BaseTargetTransform]] = None,
     ):
-        """Create forecast object
+        """Forecasting pipeline
 
         Parameters
         ----------
@@ -409,11 +409,12 @@ class MLForecast:
         new_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
         X_df: Optional[pd.DataFrame] = None,
+        ids: Optional[List[str]] = None,
         *,
         horizon: Optional[int] = None,  # noqa: ARG002
         new_data: Optional[pd.DataFrame] = None,  # noqa: ARG002
     ) -> pd.DataFrame:
-        """Compute the predictions for the next `horizon` steps.
+        """Compute the predictions for the next `h` steps.
 
         Parameters
         ----------
@@ -437,6 +438,8 @@ class MLForecast:
             Confidence levels between 0 and 100 for prediction intervals.
         X_df : pandas DataFrame, optional (default=None)
             Dataframe with the future exogenous features. Should have the id column and the time column.
+        ids : list of str, optional (default=None)
+            List with subset of ids seen during training for which the forecasts should be computed.
         horizon : int
             Number of periods to predict. This argument has been replaced by h and will be removed in a later release.
         new_data : pandas DataFrame, optional (default=None)
@@ -488,12 +491,13 @@ class MLForecast:
             ts = self.ts
 
         forecasts = ts.predict(
-            self.models_,
-            h,
-            dynamic_dfs,
-            before_predict_callback,
-            after_predict_callback,
-            X_df,
+            models=self.models_,
+            horizon=h,
+            dynamic_dfs=dynamic_dfs,
+            before_predict_callback=before_predict_callback,
+            after_predict_callback=after_predict_callback,
+            X_df=X_df,
+            ids=ids,
         )
         if level is not None:
             if self._cs_df is None:

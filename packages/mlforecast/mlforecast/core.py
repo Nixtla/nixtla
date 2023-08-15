@@ -425,7 +425,7 @@ class TimeSeries:
             features[feat_name] = feat_vals
 
         features_df = pd.DataFrame(features, columns=self.features)
-        features_df[self.id_col] = self.uids
+        features_df[self.id_col] = self._uids
         features_df[self.time_col] = self.curr_dates
         return self.static_features_.merge(features_df, on=self.id_col)
 
@@ -436,7 +436,7 @@ class TimeSeries:
         """Get all the predicted values with their corresponding ids and datestamps."""
         n_preds = len(self.y_pred)
         uids = pd.Series(
-            np.repeat(self.uids, n_preds), name=self.id_col, dtype=self.uids.dtype
+            np.repeat(self._uids, n_preds), name=self.id_col, dtype=self.uids.dtype
         )
         df = pd.DataFrame(
             {
@@ -448,10 +448,13 @@ class TimeSeries:
         return df
 
     def _predict_setup(self) -> None:
+        self.ga = GroupedArray(self._ga.data, self._ga.indptr)
         self.curr_dates = self.last_dates.copy()
+        if self._idxs is not None:
+            self.ga = self.ga.take(self._idxs)
+            self.curr_dates = self.curr_dates[self._idxs]
         self.test_dates = []
         self.y_pred = []
-        self.ga = GroupedArray(self._ga.data, self._ga.indptr)
         if self.keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
         self._h = 0
@@ -463,7 +466,7 @@ class TimeSeries:
                 new_x = new_x.merge(df, how="left")
             new_x = new_x.sort_values(self.id_col)
         if X_df is not None:
-            n_series = self.uids.size
+            n_series = len(self._uids)
             X = X_df.iloc[self._h * n_series : (self._h + 1) * n_series]
             new_x = pd.concat([new_x, X.reset_index(drop=True)], axis=1)
         nulls = new_x.isnull().any()
@@ -492,7 +495,7 @@ class TimeSeries:
                     new_x = before_predict_callback(new_x)
                 predictions = model.predict(new_x)
                 if after_predict_callback is not None:
-                    predictions_serie = pd.Series(predictions, index=self.uids)
+                    predictions_serie = pd.Series(predictions, index=self._uids)
                     predictions = after_predict_callback(predictions_serie).values
                 self._update_y(predictions)
             if i == 0:
@@ -519,7 +522,7 @@ class TimeSeries:
             )
         if dynamic_dfs is None:
             dynamic_dfs = []
-        uids = np.repeat(self.uids, horizon)
+        uids = np.repeat(self._uids, horizon)
         dates = np.hstack(
             [
                 date + (i + 1) * self.freq
@@ -548,7 +551,21 @@ class TimeSeries:
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[pd.DataFrame] = None,
+        ids: Optional[List[str]] = None,
     ) -> pd.DataFrame:
+        if ids is not None:
+            unseen = set(ids) - set(self.uids)
+            if unseen:
+                raise ValueError(
+                    f"The following ids weren't seen during training and thus can't be forecasted: {unseen}"
+                )
+            self._uids = self.uids[self.uids.isin(ids)]
+            self._idxs: Optional[np.ndarray] = np.where(self.uids.isin(self._uids))[0]
+            last_dates = self.last_dates[self._idxs]
+        else:
+            self._uids = self.uids
+            self._idxs = None
+            last_dates = self.last_dates
         if X_df is not None:
             if self.id_col not in X_df or self.time_col not in X_df:
                 raise ValueError(
@@ -567,14 +584,14 @@ class TimeSeries:
                 )
             dates_validation = pd.DataFrame(
                 {
-                    self.id_col: self.uids,
-                    "_start": self.last_dates + self.freq,
-                    "_end": self.last_dates + horizon * self.freq,
+                    self.id_col: self._uids,
+                    "_start": last_dates + self.freq,
+                    "_end": last_dates + horizon * self.freq,
                 }
             )
             X_df = X_df.merge(dates_validation, on=[self.id_col])
             X_df = X_df[X_df[self.time_col].between(X_df["_start"], X_df["_end"])]
-            if X_df.shape[0] != self.uids.size * horizon:
+            if X_df.shape[0] != len(self._uids) * horizon:
                 raise ValueError(
                     "Found missing inputs in X_df. "
                     "It should have one row per id and date for the complete forecasting horizon"
@@ -601,7 +618,10 @@ class TimeSeries:
             )
         if self.target_transforms is not None:
             for tfm in self.target_transforms[::-1]:
+                tfm.idxs = self._idxs
                 preds = tfm.inverse_transform(preds)
+                tfm.idxs = None
+        del self._uids, self._idxs
         return preds
 
     def update(self, df: pd.DataFrame) -> None:
