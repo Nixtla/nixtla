@@ -332,7 +332,7 @@ class TimeGPT:
     ):
         # restrict input only if we dont want
         # to finetune the model
-        restrict_input = finetune_steps == 0
+        restrict_input = finetune_steps == 0 and X_df is not None
         if restrict_input:
             model_params = self._model_params(freq)
             input_size, model_horizon = (
