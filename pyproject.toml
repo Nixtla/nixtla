@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "nixtla"
+version = "0.0.0"
+description = ""
+readme = "README.md"
+authors = []
+packages = [
+    { include = "nixtlats", from = "src"}
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+httpx = "0.23.3"
+pydantic = "^1.9.2"
+
+[tool.poetry.dev-dependencies]
+mypy = "0.971"
+pytest = "^7.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
