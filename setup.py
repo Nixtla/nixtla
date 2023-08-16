@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf8") as fh:
 
 setuptools.setup(
     name="nixtlats",
-    version="0.1.7",
+    version="0.1.8",
     description="Nixtla SDK",
     long_description=long_description,
     long_description_content_type="text/markdown",
