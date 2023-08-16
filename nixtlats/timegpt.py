@@ -14,6 +14,8 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 
+from .client import Nixtla, SingleSeriesForecast
+
 logger = logging.getLogger()
 
 # %% ../nbs/timegpt.ipynb 7
@@ -80,8 +82,7 @@ class TimeGPT:
         token : str
             The authorization token to interact with the TimeGPT API.
         """
-        self.token = token
-        self.api_url = "https://dashboard.nixtla.io/api"
+        self.client = Nixtla(environment="https://dashboard.nixtla.io/api", token=token)
         self.weights_x: pd.DataFrame = None
 
     @property
@@ -89,7 +90,7 @@ class TimeGPT:
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Bearer {self.token}",
+            "authorization": f"Bearer {self.client._client_wrapper._token}",
         }
         return headers
 
@@ -104,25 +105,14 @@ class TimeGPT:
 
     def validate_token(self) -> bool:
         """Returns True if your token is valid."""
-        response = requests.post(
-            f"{self.api_url}/validate_token_front",
-            headers=self.request_headers,
-        )
-        valid = True
-        try:
-            response = self._parse_response(response)
-        except:
-            valid = False
+        validation = self.client.validate_token()
+        valid = False
+        if "message" in validation:
+            if validation["message"] == "success":
+                valid = True
+        if "support" in validation:
+            logger.info(validation["support"])
         return valid
-
-    def _model_params(self, freq: str):
-        response_input_size = requests.post(
-            f"{self.api_url}/timegpt_model_params",
-            json={"freq": freq},
-            headers=self.request_headers,
-        )
-        response_input_size = self._parse_response(response_input_size)
-        return response_input_size["data"]["detail"]
 
     def _validate_inputs(
         self,
@@ -332,9 +322,12 @@ class TimeGPT:
     ):
         # restrict input only if we dont want
         # to finetune the model
-        restrict_input = finetune_steps == 0 and X_df is not None
+        restrict_input = finetune_steps == 0 and X_df is None
         if restrict_input:
-            model_params = self._model_params(freq)
+            model_params = self.client.timegpt_model_params(
+                request=SingleSeriesForecast(freq=freq)
+            )
+            model_params = model_params["data"]["detail"]
             input_size, model_horizon = (
                 model_params["input_size"],
                 model_params["horizon"],
@@ -353,8 +346,7 @@ class TimeGPT:
                     input_size + h
                 )  # history plus exogenous
         y, x = self._transform_dataframes(Y_df, X_df)
-        # Contruct payload
-        payload = dict(
+        response_timegpt = self.client.timegpt_multi_series(
             y=y,
             x=x,
             fh=h,
@@ -363,12 +355,6 @@ class TimeGPT:
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
         )
-        response_timegpt = requests.post(
-            f"{self.api_url}/timegpt_multi_series",
-            json=payload,
-            headers=self.request_headers,
-        )
-        response_timegpt = self._parse_response(response_timegpt)
         if "weights_x" in response_timegpt["data"]:
             self.weights_x = pd.DataFrame(
                 {
@@ -385,18 +371,9 @@ class TimeGPT:
         level: Optional[List[Union[int, float]]],
     ):
         y, x = self._transform_dataframes(Y_df, None)
-        # Contruct payload
-        payload = dict(
-            y=y,
-            freq=freq,
-            level=level,
+        response_timegpt = self.client.timegpt_multi_series_historic(
+            freq=freq, level=level, y=y
         )
-        response_timegpt = requests.post(
-            f"{self.api_url}/timegpt_multi_series_historic",
-            json=payload,
-            headers=self.request_headers,
-        )
-        response_timegpt = self._parse_response(response_timegpt)
         return pd.DataFrame(**response_timegpt["data"]["forecast"])
 
     def _multi_series(
@@ -542,9 +519,7 @@ class TimeGPT:
             predictions (if level is not None).
         """
         if not self.validate_token():
-            raise Exception(
-                "Token not valid, please go to https://dashboard.nixtla.io/ to get yours"
-            )
+            raise Exception("Token not valid, please email ops@nixtla.io")
 
         df, X_df, drop_uid = self._validate_inputs(
             df=df,
