@@ -1,0 +1,12 @@
+# List of files that Fern's Python Generator should ignore
+
+nbs/
+.github/
+LICENSE
+.gitignore
+MANIFEST.ini
+README.md
+environment.yml
+settings.ini
+setup.py
+pyproject.toml
