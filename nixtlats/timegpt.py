@@ -329,7 +329,7 @@ class TimeGPT:
         require_history: bool,
     ):
         if require_history:
-            min_history = Y_df.groupby("unique_id").size().mean()
+            min_history = Y_df.groupby("unique_id").size().min()
             if min_history < input_size + model_horizon:
                 raise Exception(
                     "Your time series data is too short "
