@@ -42,9 +42,11 @@ pip install nixtlats>=0.1.0
 Get started with TimeGPT now:
 
 ```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
+
 from nixtlats import TimeGPT
 timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
-fcst_df = timegpt.forecast(df, h=24, freq='H', level=[80, 90])
+fcst_df = timegpt.forecast(df, h=24, level=[80, 90])
 ```
 
 ![](./nbs/img/forecast_readme.png)
