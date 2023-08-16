@@ -18,5 +18,5 @@ setuptools.setup(
     ],
     python_requires=">=3.7",
     install_requires=["requests", "pandas", "httpx"],
-    extras_require={"dev": ["nbdev", "plotly", "python-dotenv", "openbb", "statsforecast"]},
+    extras_require={"dev": ["black", "nbdev", "plotly", "python-dotenv", "openbb", "statsforecast"]},
 )
