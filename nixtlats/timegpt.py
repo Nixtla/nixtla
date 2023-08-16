@@ -309,6 +309,31 @@ class TimeGPT:
         x = X_df.to_dict(**to_dict_args) if X_df is not None else None
         return y, x
 
+    def _get_model_params(self, freq: str):
+        model_params = self.client.timegpt_model_params(
+            request=SingleSeriesForecast(freq=freq)
+        )
+        model_params = model_params["data"]["detail"]
+        input_size, model_horizon = model_params["input_size"], model_params["horizon"]
+        return input_size, model_horizon
+
+    def _validate_input_size(
+        self,
+        Y_df: pd.DataFrame,
+        input_size: int,
+        model_horizon: int,
+        require_history: bool,
+    ):
+        if require_history:
+            min_history = Y_df.groupby("unique_id").size().mean()
+            if min_history < input_size + model_horizon:
+                raise Exception(
+                    "Your time series data is too short "
+                    "Please be sure that your unique time series contain "
+                    f"at least {input_size + model_horizon} observations"
+                )
+        return True
+
     def _hit_multi_series_endpoint(
         self,
         Y_df: pd.DataFrame,
@@ -319,32 +344,29 @@ class TimeGPT:
         finetune_steps: int,
         clean_ex_first: bool,
         level: Optional[List[Union[int, float]]],
+        input_size: int,
+        model_horizon: int,
     ):
-        # restrict input only if we dont want
-        # to finetune the model
-        restrict_input = finetune_steps == 0 and X_df is None
+        # restrict input if
+        # - we dont want to finetune
+        # - we dont have exogenous regegressors
+        # - and we dont want to produce pred intervals
+        restrict_input = finetune_steps == 0 and X_df is None and level is not None
         if restrict_input:
-            model_params = self.client.timegpt_model_params(
-                request=SingleSeriesForecast(freq=freq)
-            )
-            model_params = model_params["data"]["detail"]
-            input_size, model_horizon = (
-                model_params["input_size"],
-                model_params["horizon"],
-            )
-            if level is not None:
-                # add sufficient info to compute
-                # conformal interval
-                input_size = 3 * input_size + max(model_horizon, h)
-        else:
-            input_size = model_horizon = None
-        # restricting the inputs if necessary
-        if restrict_input:
-            Y_df = Y_df.groupby("unique_id").tail(input_size)
+            # add sufficient info to compute
+            # conformal interval
+            new_input_size = 3 * input_size + max(model_horizon, h)
+            Y_df = Y_df.groupby("unique_id").tail(new_input_size)
             if X_df is not None:
                 X_df = X_df.groupby("unique_id").tail(
-                    input_size + h
+                    new_input_size + h
                 )  # history plus exogenous
+        self._validate_input_size(
+            Y_df=Y_df,
+            input_size=input_size,
+            model_horizon=model_horizon,
+            require_history=finetune_steps > 0 or level is not None,
+        )
         y, x = self._transform_dataframes(Y_df, X_df)
         response_timegpt = self.client.timegpt_multi_series(
             y=y,
@@ -369,7 +391,15 @@ class TimeGPT:
         Y_df: pd.DataFrame,
         freq: str,
         level: Optional[List[Union[int, float]]],
+        input_size: int,
+        model_horizon: int,
     ):
+        self._validate_input_size(
+            Y_df=Y_df,
+            input_size=input_size,
+            model_horizon=model_horizon,
+            require_history=True,
+        )
         y, x = self._transform_dataframes(Y_df, None)
         response_timegpt = self.client.timegpt_multi_series_historic(
             freq=freq, level=level, y=y
@@ -423,6 +453,7 @@ class TimeGPT:
             X_df=X_df,
             freq=freq,
         )
+        input_size, model_horizon = self._get_model_params(freq)
         fcst_df = self._hit_multi_series_endpoint(
             Y_df=Y_df,
             X_df=X_df,
@@ -432,12 +463,16 @@ class TimeGPT:
             finetune_steps=finetune_steps,
             x_cols=x_cols,
             level=level,
+            input_size=input_size,
+            model_horizon=model_horizon,
         )
         if add_history:
             fitted_df = self._hit_multi_series_historic_endpoint(
                 Y_df=Y_df,
                 freq=freq,
                 level=level,
+                input_size=input_size,
+                model_horizon=model_horizon,
             )
             fitted_df = fitted_df.drop(columns="y")
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
