@@ -16,6 +16,7 @@ website:
           - docs/electricity_peak_forecasting.ipynb
           - docs/prediction_intervals.ipynb
           - docs/transfer_learning.ipynb
+          - docs/target_transforms_guide.ipynb
       - section: API reference
         contents:
           - section: Local
@@ -24,6 +25,7 @@ website:
             - lgb_cv.ipynb
             - utils.ipynb
             - core.ipynb
+            - target_transforms.ipynb
           - section: Distributed
             contents:
             - distributed.forecast.ipynb

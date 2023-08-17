@@ -369,6 +369,11 @@ class TimeSeries:
             for i in range(max_horizon):
                 df[f"{self.target_col}{i}"] = target[:, i]
         else:
+            from packaging.version import Version
+
+            if Version(pd.__version__) < Version("1.4"):
+                # https://github.com/pandas-dev/pandas/pull/43406
+                df = df.copy()
             df[self.target_col] = target
         return df
 
