@@ -1,8 +1,5 @@
 [tool.mypy]
 ignore_missing_imports = true
-exclude = ['compat.py']
 
 [tool.ruff]
 select = ["F", "ARG"]
-
-exclude = ["_nbdev.py"]

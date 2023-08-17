@@ -13,7 +13,7 @@ try:
     from polars import DataFrame as pl_DataFrame
 except ImportError:
 
-    class pl_DataFrame:
+    class pl_DataFrame:  # type: ignore
         ...
 
 
