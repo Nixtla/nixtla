@@ -81,7 +81,7 @@ def generate_series(
 
     for i in range(n_static_features):
         static_values = np.repeat(rng.randint(0, 100, n_series), series_lengths)
-        vals_dict[f"static_{i}"] = np.concatenate(static_values)
+        vals_dict[f"static_{i}"] = static_values
         if i == 0:
             vals_dict["y"] = vals_dict["y"] * (1 + vals_dict[f"static_{i}"])
 
