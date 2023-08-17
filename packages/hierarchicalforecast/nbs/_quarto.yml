@@ -49,6 +49,6 @@ website:
   sidebar:
     style: floating
   body-footer: |
-    If you find the code useful, please ⭐ us on [Github](https://github.com/nixtla/hierachicalforecast)
+    If you find the code useful, please ⭐ us on [Github](https://github.com/nixtla/hierarchicalforecast)
 
 metadata-files: [nbdev.yml, sidebar.yml]
