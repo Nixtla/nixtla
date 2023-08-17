@@ -1,0 +1,12 @@
+name: utilsforecast
+channels:
+  - conda-forge
+dependencies:
+  - matplotlib
+  - numpy
+  - pandas
+  - plotly
+  - polars
+  - pip
+  - pip:
+    - nbdev

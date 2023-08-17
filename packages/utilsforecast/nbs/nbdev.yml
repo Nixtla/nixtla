@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "utilsforecast"
+  site-url: "https://Nixtla.github.io/utilsforecast"
+  description: "Forecasting utilities"
+  repo-branch: main
+  repo-url: "https://github.com/Nixtla/utilsforecast"

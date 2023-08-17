@@ -1,0 +1,7 @@
+website:
+  sidebar:
+    contents:
+      - section: API Reference
+        contents:
+          - data.ipynb
+          - plotting.ipynb
