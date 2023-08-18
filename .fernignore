@@ -2,6 +2,7 @@
 
 nbs/
 .github/
+tests/
 LICENSE
 .gitignore
 MANIFEST.ini
