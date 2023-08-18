@@ -351,6 +351,12 @@ class TimeGPT:
         input_size: int,
         model_horizon: int,
     ):
+        if h > model_horizon:
+            main_logger.warning(
+                'The specified horizon "h" exceeds the model horizon. '
+                "This may lead to less accurate forecasts. "
+                "Please consider using a smaller horizon."
+            )
         # restrict input if
         # - we dont want to finetune
         # - we dont have exogenous regegressors
