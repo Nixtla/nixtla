@@ -131,8 +131,8 @@ def plot(
             from plotly.subplots import make_subplots
         except ImportError:
             raise ImportError(
-                "plotly is not installed. "
-                "Please install it with `pip install utilsforecast[plotly]`"
+                "plotly is not installed. Please install it and try again.\n"
+                "You can find detailed instructions at https://github.com/plotly/plotly.py#installation"
             )
         n_rows = min(4, len(unique_ids) // 2 + 1 if len(unique_ids) > 2 else 1)
         fig = make_subplots(
@@ -149,8 +149,8 @@ def plot(
                 from plotly_resampler import FigureResampler
             except ImportError:
                 raise ImportError(
-                    "plotly-resampler is not installed. "
-                    "Please install it with `pip install utilsforecast[plotly-resampler]`"
+                    "plotly-resampler is not installed.\n"
+                    "Please install it with `pip install plotly-resampler` or `conda install -c conda-forge plotly-resampler`"
                 )
             resampler_kwargs = {} if resampler_kwargs is None else resampler_kwargs
             fig = FigureResampler(fig, **resampler_kwargs)
