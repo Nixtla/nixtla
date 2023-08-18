@@ -85,7 +85,7 @@ class TimeGPT:
         token : str
             The authorization token to interact with the TimeGPT API.
         """
-        self.client = Nixtla(environment="https://dashboard.nixtla.io/api", token=token)
+        self.client = Nixtla(base_url="https://dashboard.nixtla.io/api", token=token)
         self.weights_x: pd.DataFrame = None
 
     @property
