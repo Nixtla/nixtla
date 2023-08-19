@@ -18,6 +18,7 @@ def generate_series(
     n_static_features: int = 0,
     equal_ends: bool = False,
     with_trend: bool = False,
+    static_as_categorical: bool = True,
     engine: str = "pandas",
     seed: int = 0,
 ) -> DataFrame:
@@ -39,6 +40,8 @@ def generate_series(
         Series should end in the same date stamp `ds`.
     with_trend : bool (default=False)
         Series should have a (positive) trend.
+    static_as_categorical : bool (default=True)
+        Static features should have a categorical data type.
     engine : str (default='pandas')
         Output Dataframe type.
     seed : int (default=0)
@@ -94,13 +97,16 @@ def generate_series(
     cat_cols.append("unique_id")
     if engine == "pandas":
         df = pd.DataFrame(vals_dict)
-        df[cat_cols] = df[cat_cols].astype("category")
-        df["unique_id"] = df["unique_id"].cat.as_ordered()
+        if static_as_categorical:
+            df[cat_cols] = df[cat_cols].astype("category")
+            df["unique_id"] = df["unique_id"].cat.as_ordered()
     else:
         import polars as pl
 
         df = pl.DataFrame(vals_dict)
         df = df.with_columns(pl.col("unique_id").sort())
-        for col in cat_cols:
-            df = df.with_columns(pl.col(col).cast(str).cast(pl.Categorical))
+        if static_as_categorical:
+            df = df.with_columns(
+                *[pl.col(col).cast(str).cast(pl.Categorical) for col in cat_cols]
+            )
     return df
