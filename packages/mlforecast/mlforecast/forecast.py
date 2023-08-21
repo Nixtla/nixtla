@@ -554,7 +554,7 @@ class MLForecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
-        refit: bool = True,
+        refit: Union[bool, int] = True,
         max_horizon: Optional[int] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
@@ -594,9 +594,10 @@ class MLForecast:
             Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
         max_horizon: int, optional (default=None)
             Train this many models, where each model will predict a specific horizon.
-        refit : bool (default=True)
+        refit : bool or int (default=True)
             Retrain model for each cross validation window.
             If False, the models are trained at the beginning and then used to predict each window.
+            If positive int, the models are retrained every `refit` windows.
         before_predict_callback : callable, optional (default=None)
             Function to call on the features before computing the predictions.
                 This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
@@ -646,7 +647,8 @@ class MLForecast:
         )
         self.cv_fitted_values_ = []
         for i_window, (cutoffs, train, valid) in enumerate(splits):
-            if refit or i_window == 0:
+            should_fit = i_window == 0 or (refit > 0 and i_window % refit == 0)
+            if should_fit:
                 self.fit(
                     train,
                     id_col=id_col,
@@ -658,7 +660,7 @@ class MLForecast:
                     max_horizon=max_horizon,
                     prediction_intervals=prediction_intervals,
                 )
-            self.cv_models_.append(self.models_)
+                self.cv_models_.append(self.models_)
             if fitted:
                 insample_results = train[[id_col, time_col]].copy()
                 trainX, _ = self.preprocess(
@@ -691,7 +693,7 @@ class MLForecast:
                 h,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
-                new_df=train if not refit else None,
+                new_df=train if not should_fit else None,
                 level=level,
                 X_df=X_df,
             )
