@@ -22,6 +22,4 @@ jobs:
         run: pip install mypy ruff
 
       - name: Lint
-        run: |
-          mypy utilsforecast || exit -1
-          ruff utilsforecast || exit -1
+        run: ./action_files/lint
