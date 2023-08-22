@@ -34,4 +34,6 @@ d = { 'settings': { 'branch': 'main',
                                           'utilsforecast.processing.DataFrameProcessing._validate_dataframe': ( 'processing.html#dataframeprocessing._validate_dataframe',
                                                                                                                 'utilsforecast/processing.py'),
                                           'utilsforecast.processing.DataFrameProcessing.grouped_array': ( 'processing.html#dataframeprocessing.grouped_array',
-                                                                                                          'utilsforecast/processing.py')}}}
+                                                                                                          'utilsforecast/processing.py')},
+            'utilsforecast.validation': { 'utilsforecast.validation.validate_format': ( 'validation.html#validate_format',
+                                                                                        'utilsforecast/validation.py')}}}
