@@ -29,7 +29,6 @@ def fill_gaps(
     end: str = "global",
     id_col: str = "unique_id",
     time_col: str = "ds",
-    target_col: str = "y",
 ) -> pd.DataFrame:
     """Enforce start and end datetimes for dataframe.
 
@@ -55,6 +54,11 @@ def fill_gaps(
         Column that identifies each timestamp.
     target_col : str (default='y')
         Column that contains the target.
+
+    Returns
+    -------
+    filled_df : pandas DataFrame
+        Dataframe with gaps filled.
     """
     delta = np.timedelta64(1, freq)
     times_by_id = df.groupby(id_col)[time_col].agg(["min", "max"])
