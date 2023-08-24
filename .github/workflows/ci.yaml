@@ -58,4 +58,5 @@ jobs:
         env:
           TIMEGPT_TOKEN: ${{ secrets.TIMEGPT_TOKEN }}
           TIMEGPT_API_URL: ${{ secrets.TIMEGPT_API_URL }}
+          API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
         run: nbdev_test
