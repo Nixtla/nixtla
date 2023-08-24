@@ -337,6 +337,7 @@ class MLForecast:
         keep_last_n: Optional[int] = None,
         max_horizon: Optional[int] = None,
         prediction_intervals: Optional[PredictionIntervals] = None,
+        fitted: bool = False,
         *,
         data: Optional[pd.DataFrame] = None,  # noqa: ARG002
     ) -> "MLForecast":
@@ -363,6 +364,8 @@ class MLForecast:
             Train this many models, where each model will predict a specific horizon.
         prediction_intervals : PredictionIntervals, optional (default=None)
             Configuration to calibrate prediction intervals (Conformal Prediction).
+        fitted : bool
+            Save in-sample predictions.
         data : pandas DataFrame
             Series data in long format. This argument has been replaced by df and will be removed in a later release.
 
@@ -385,7 +388,7 @@ class MLForecast:
                 n_windows=prediction_intervals.n_windows,
                 h=prediction_intervals.h,
             )
-        X, y = self.preprocess(
+        X_with_info, y = self.preprocess(
             df=df,
             id_col=id_col,
             time_col=time_col,
@@ -396,8 +399,35 @@ class MLForecast:
             max_horizon=max_horizon,
             return_X_y=True,
         )
-        X = X[self.ts.features_order_]
-        return self.fit_models(X, y)
+        X = X_with_info[self.ts.features_order_]
+        self.fit_models(X, y)
+        if fitted:
+            base = X_with_info[[id_col, time_col, target_col]].copy(deep=False)
+            if max_horizon is None:
+                self.fcst_fitted_values_ = base
+                for name, model in self.models_.items():
+                    assert not isinstance(model, list)  # mypy
+                    self.fcst_fitted_values_[name] = model.predict(X)
+            else:
+                fitted_values = []
+                for h in range(max_horizon):
+                    horizon_base = base[[id_col, time_col]].copy()
+                    horizon_base["h"] = h
+                    horizon_base[target_col] = y[:, h]
+                    fitted_values.append(horizon_base)
+                for name, horizon_models in self.models_.items():
+                    for h, model in enumerate(horizon_models):
+                        fitted_values[h][name] = model.predict(X)
+                self.fcst_fitted_values_ = pd.concat(fitted_values).reset_index(
+                    drop=True
+                )
+        return self
+
+    def forecast_fitted_values(self):
+        """Access in-sample predictions."""
+        if not hasattr(self, "fcst_fitted_values_"):
+            raise Exception("Please run the `fit` method using `fitted=True`")
+        return self.fcst_fitted_values_
 
     @old_kw_to_pos(["horizon"], [1])
     def predict(
