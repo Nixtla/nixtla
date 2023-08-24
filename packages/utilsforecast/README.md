@@ -11,14 +11,277 @@ pip install utilsforecast
 
 ## How to use
 
+### Generate synthetic data
+
 ``` python
 from utilsforecast.data import generate_series
+```
+
+``` python
+series = generate_series(3, with_trend=True, static_as_categorical=False)
+series
+```
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>unique_id</th>
+      <th>ds</th>
+      <th>y</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0</td>
+      <td>2000-01-01</td>
+      <td>0.422133</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>0</td>
+      <td>2000-01-02</td>
+      <td>1.501407</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>0</td>
+      <td>2000-01-03</td>
+      <td>2.568495</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>0</td>
+      <td>2000-01-04</td>
+      <td>3.529085</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>0</td>
+      <td>2000-01-05</td>
+      <td>4.481929</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>481</th>
+      <td>2</td>
+      <td>2000-06-11</td>
+      <td>163.914625</td>
+    </tr>
+    <tr>
+      <th>482</th>
+      <td>2</td>
+      <td>2000-06-12</td>
+      <td>166.018479</td>
+    </tr>
+    <tr>
+      <th>483</th>
+      <td>2</td>
+      <td>2000-06-13</td>
+      <td>160.839176</td>
+    </tr>
+    <tr>
+      <th>484</th>
+      <td>2</td>
+      <td>2000-06-14</td>
+      <td>162.679603</td>
+    </tr>
+    <tr>
+      <th>485</th>
+      <td>2</td>
+      <td>2000-06-15</td>
+      <td>165.089288</td>
+    </tr>
+  </tbody>
+</table>
+<p>486 rows × 3 columns</p>
+</div>
+
+### Plotting
+
+``` python
 from utilsforecast.plotting import plot
 ```
 
 ``` python
-series = generate_series(3)
-plot(series, plot_random=False, engine='matplotlib')
+plot(series, plot_random=False, max_insample_length=50, engine='matplotlib')
 ```
 
-![](index_files/figure-gfm/cell-3-output-1.png)
+![](index_files/figure-gfm/cell-5-output-1.png)
+
+### Preprocessing
+
+``` python
+from utilsforecast.preprocessing import fill_gaps
+```
+
+``` python
+serie = series[series['unique_id'].eq(0)].tail(10)
+# drop some points
+with_gaps = serie.sample(frac=0.5, random_state=0).sort_values('ds')
+with_gaps
+```
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>unique_id</th>
+      <th>ds</th>
+      <th>y</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>213</th>
+      <td>0</td>
+      <td>2000-08-01</td>
+      <td>18.543147</td>
+    </tr>
+    <tr>
+      <th>214</th>
+      <td>0</td>
+      <td>2000-08-02</td>
+      <td>19.941764</td>
+    </tr>
+    <tr>
+      <th>216</th>
+      <td>0</td>
+      <td>2000-08-04</td>
+      <td>21.968733</td>
+    </tr>
+    <tr>
+      <th>220</th>
+      <td>0</td>
+      <td>2000-08-08</td>
+      <td>19.091509</td>
+    </tr>
+    <tr>
+      <th>221</th>
+      <td>0</td>
+      <td>2000-08-09</td>
+      <td>20.220739</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+``` python
+fill_gaps(with_gaps, freq='D')
+```
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>unique_id</th>
+      <th>ds</th>
+      <th>y</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0</td>
+      <td>2000-08-01</td>
+      <td>18.543147</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>0</td>
+      <td>2000-08-02</td>
+      <td>19.941764</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>0</td>
+      <td>2000-08-03</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>0</td>
+      <td>2000-08-04</td>
+      <td>21.968733</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>0</td>
+      <td>2000-08-05</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>0</td>
+      <td>2000-08-06</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>0</td>
+      <td>2000-08-07</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>0</td>
+      <td>2000-08-08</td>
+      <td>19.091509</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>0</td>
+      <td>2000-08-09</td>
+      <td>20.220739</td>
+    </tr>
+  </tbody>
+</table>
+</div>
