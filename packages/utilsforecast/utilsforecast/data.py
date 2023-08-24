@@ -70,10 +70,7 @@ def generate_series(
     total_length = series_lengths.sum()
 
     season = seasonalities[freq]
-    vals_dict = {
-        "unique_id": np.repeat(np.arange(n_series), series_lengths),
-        "y": np.arange(total_length) % season + rng.rand(total_length) * 0.5,
-    }
+    vals_dict = {"unique_id": np.repeat(np.arange(n_series), series_lengths)}
 
     dates = pd.date_range("2000-01-01", periods=max_length, freq=freq).values
     if equal_ends:
@@ -81,6 +78,8 @@ def generate_series(
     else:
         series_dates = [dates[:length] for length in series_lengths]
     vals_dict["ds"] = np.concatenate(series_dates)
+
+    vals_dict["y"] = np.arange(total_length) % season + rng.rand(total_length) * 0.5
 
     for i in range(n_static_features):
         static_values = np.repeat(rng.randint(0, 100, n_series), series_lengths)

@@ -4,35 +4,32 @@
 __all__ = ['plot']
 
 # %% ../nbs/plotting.ipynb 4
-import random
-import re
-from itertools import product
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors as cm
 import numpy as np
 import pandas as pd
+from packaging.version import Version, parse as parse_version
 
-from .compat import DataFrame, pl_DataFrame
-from .processing import DataFrameProcessing
+from .compat import DataFrame, pl_Series
+from .validation import validate_format
 
 # %% ../nbs/plotting.ipynb 5
-def _parse_ds_type(df: pd.DataFrame):
-    dt_col = df["ds"]
-    dt_check = pd.api.types.is_datetime64_any_dtype(dt_col)
-    int_float_check = dt_col.dtype.kind in ["i", "f"]
-    if not dt_check and not int_float_check:
-        df = df.copy()
-        try:
-            df["ds"] = pd.to_datetime(df["ds"])
-        except Exception as e:
-            msg = (
-                "Failed to parse `ds` column as datetime. "
-                "Please use `pd.to_datetime` outside to fix the error. "
-                f"{e}"
-            )
-            raise Exception(msg) from e
+def _filter_series(df, id_col, time_col, uids, models=None, max_insample_length=None):
+    out_cols = [id_col, time_col]
+    if models is not None:
+        out_cols.extend(models)
+    out_cols = [col for pat in out_cols for col in df.columns if pat in col]
+    if isinstance(df, pd.DataFrame):
+        df = df.loc[df[id_col].isin(uids), out_cols].sort_values(time_col)
+    else:
+        import polars as pl
+
+        df = df.filter(pl.col(id_col).is_in(uids)).select(*out_cols).sort(time_col)
+    if max_insample_length is not None:
+        df = df.groupby(id_col).tail(max_insample_length)
     return df
 
 # %% ../nbs/plotting.ipynb 6
@@ -41,11 +38,17 @@ def plot(
     forecasts_df: Optional[DataFrame] = None,
     unique_ids: Optional[List[str]] = None,
     plot_random: bool = True,
+    max_ids: int = 8,
     models: Optional[List[str]] = None,
     level: Optional[List[float]] = None,
     max_insample_length: Optional[int] = None,
     plot_anomalies: bool = False,
     engine: str = "matplotlib",
+    palette: str = "viridis",
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+    target_col: str = "y",
+    seed: int = 0,
     resampler_kwargs: Optional[Dict] = None,
 ):
     """Plot forecasts and insample values.
@@ -53,14 +56,16 @@ def plot(
     Parameters
     ----------
     df : pandas or polars DataFrame
-        DataFrame with columns [`unique_id`, `ds`, `y`].
+        DataFrame with columns [`id_col`, `time_col`, `target_col`].
     forecasts_df : pandas or polars DataFrame, optional (default=None)
-        DataFrame with columns [`unique_id`, `ds`] and models.
+        DataFrame with columns [`id_col`, `time_col`] and models.
     unique_ids : list of str, optional (default=None)
         Time Series to plot.
         If None, time series are selected randomly.
     plot_random : bool (default=True)
         Select time series to plot randomly.
+    max_ids : int (default=8)
+        Maximum number of ids to plot.
     models : list of str, optional (default=None)
         Models to plot.
     level : list of float, optional (default=None)
@@ -71,6 +76,16 @@ def plot(
         Plot anomalies for each prediction interval.
     engine : str (default='matplotlib')
         Library used to plot. 'plotly', 'plotly-resampler' or 'matplotlib'.
+    palette : str (default='viridis')
+        Name of the matplotlib colormap to use.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    time_col : str (default='ds')
+        Column that identifies each timestep, its values can be timestamps or integers.
+    target_col : str (default='y')
+        Column that contains the target.
+    seed : int (default=0)
+        Seed used for the random number generator. Only used if plot_random is True.
     resampler_kwargs : dict
         Keyword arguments to be passed to plotly-resampler constructor.
         For further custumization ("show_dash") call the method,
@@ -82,50 +97,95 @@ def plot(
     fig : matplotlib or plotly figure
         Plot's figure
     """
+    # checks
+    supported_engines = ["matplotlib", "plotly", "plotly-resampler"]
+    if engine not in supported_engines:
+        raise ValueError(f"engine must be one of {supported_engines}, got '{engine}'.")
+    if plot_anomalies:
+        if level is None:
+            raise ValueError(
+                "In order to plot anomalies you have to specify the `level` argument"
+            )
+        elif forecasts_df is None or not any("lo" in c for c in forecasts_df.columns):
+            raise ValueError(
+                "In order to plot anomalies you have to provide a `forecasts_df` with prediction intervals."
+            )
     if level is not None and not isinstance(level, list):
-        raise Exception(
+        raise ValueError(
             "Please use a list for the `level` argument "
             "If you only have one level, use `level=[your_level]`"
         )
+    elif level is None:
+        level = []
+    validate_format(df, id_col, time_col, target_col)
 
-    if isinstance(df, pl_DataFrame):
-        df = df.to_pandas()
-    if isinstance(forecasts_df, pl_DataFrame):
-        forecasts_df = forecasts_df.to_pandas()
+    # models to plot
+    if models is None:
+        if forecasts_df is None:
+            models = []
+        else:
+            exclude_strs = ["lo", "hi", id_col, time_col, target_col]
+            models = [
+                col
+                for col in forecasts_df.columns
+                if all(s not in col for s in exclude_strs)
+            ]
 
+    # ids
     if unique_ids is None:
-        df_pt = DataFrameProcessing(dataframe=df, sort_dataframe=True, validate=False)
-        uids_arr: pd.Index = df_pt.indices
-        uid_dtype = uids_arr.dtype
-
-        if df.index.name != "unique_id":
-            df["unique_id"] = df["unique_id"].astype(uid_dtype)
-            df = df.set_index("unique_id")
-        else:
-            df.index = df.index.astype(uid_dtype)
-
-        if forecasts_df is not None:
-            if isinstance(forecasts_df, pl_DataFrame):
-                forecasts_df = forecasts_df.to_pandas()
-
-            if forecasts_df.index.name == "unique_id":
-                forecasts_df.index = forecasts_df.index.astype(uid_dtype)
-                unique_ids = np.intersect1d(uids_arr, forecasts_df.index.unique())
-            else:
-                forecasts_df["unique_id"] = forecasts_df["unique_id"].astype(uid_dtype)
-                unique_ids = np.intersect1d(
-                    uids_arr, forecasts_df["unique_id"].unique()
-                )
-        else:
-            unique_ids = uids_arr
-
-    if plot_random:
-        unique_ids = random.sample(list(unique_ids), k=min(8, len(unique_ids)))
+        uids: Union[np.ndarray, pl_Series, List] = df[id_col].unique()
     else:
-        unique_ids = unique_ids[:8]
-    n_series = len(unique_ids)
+        uids = unique_ids
+    if len(uids) > max_ids and plot_random:
+        rng = np.random.RandomState(seed)
+        uids = rng.choice(uids, size=max_ids, replace=False)
+    else:
+        uids = uids[:max_ids]
 
-    if engine in ["plotly", "plotly-resampler"]:
+    # filtering
+    df = _filter_series(
+        df=df,
+        id_col=id_col,
+        time_col=time_col,
+        uids=uids,
+        models=[target_col],
+        max_insample_length=max_insample_length,
+    )
+    if forecasts_df is not None:
+        forecasts_df = _filter_series(
+            df=forecasts_df,
+            id_col=id_col,
+            time_col=time_col,
+            uids=uids,
+            models=[target_col] + models if target_col in forecasts_df else models,
+            max_insample_length=None,
+        )
+        if isinstance(df, pd.DataFrame):
+            df = pd.concat([df, forecasts_df])
+
+        else:
+            import polars as pl
+
+            df = pl.concat([df, forecasts_df], how="align")
+
+    # common setup
+    n_series = len(uids)
+    if n_series == 1:
+        n_cols = 1
+    else:
+        n_cols = 2
+    quot, resid = divmod(n_series, n_cols)
+    n_rows = quot + resid
+    xlabel = f"Time [{time_col}]"
+    ylabel = f"Target [{target_col}]"
+    if parse_version(mpl.__version__) < Version("3.6"):
+        cmap = plt.cm.get_cmap(palette, len(models) + 1)
+    else:
+        cmap = mpl.colormaps[palette].resampled(len(models) + 1)
+    colors = [cm.to_hex(color) for color in cmap.colors]
+
+    # define plot grid
+    if engine.startswith("plotly"):
         try:
             import plotly.graph_objects as go
             from plotly.subplots import make_subplots
@@ -134,15 +194,14 @@ def plot(
                 "plotly is not installed. Please install it and try again.\n"
                 "You can find detailed instructions at https://github.com/plotly/plotly.py#installation"
             )
-        n_rows = min(4, len(unique_ids) // 2 + 1 if len(unique_ids) > 2 else 1)
         fig = make_subplots(
             rows=n_rows,
-            cols=2 if len(unique_ids) >= 2 else 1,
-            vertical_spacing=0.1,
+            cols=n_cols,
+            vertical_spacing=0.15,
             horizontal_spacing=0.07,
-            x_title="Datestamp [ds]",
-            y_title="Target [y]",
-            subplot_titles=[str(uid) for uid in unique_ids],
+            x_title=xlabel,
+            y_title=ylabel,
+            subplot_titles=[f"{id_col}={uid}" for uid in uids],
         )
         if engine == "plotly-resampler":
             try:
@@ -154,242 +213,140 @@ def plot(
                 )
             resampler_kwargs = {} if resampler_kwargs is None else resampler_kwargs
             fig = FigureResampler(fig, **resampler_kwargs)
-        showed_legends: set = set()
-
-        def plotly(
-            df,
-            fig,
-            n_rows,
-            unique_ids,
-            models,
-            plot_anomalies,
-            max_insample_length,
-            showed_legends,
-        ):
-            if models is None:
-                exclude_str = ["lo", "hi", "unique_id", "ds"]
-                models = [
-                    c for c in df.columns if all(item not in c for item in exclude_str)
-                ]
-            if "y" not in models:
-                models = ["y"] + models
-            for uid, (idx, idy) in zip(
-                unique_ids, product(range(1, n_rows + 1), range(1, 2 + 1))
-            ):
-                df_uid = df.query("unique_id == @uid")
-                if max_insample_length:
-                    df_uid = df_uid.iloc[-max_insample_length:]
-                plot_anomalies = "y" in df_uid and plot_anomalies
-                df_uid = _parse_ds_type(df_uid)
-                colors = plt.cm.get_cmap("tab20b", len(models))
-                colors = ["#1f77b4"] + [
-                    cm.to_hex(colors(i)) for i in range(len(models))
-                ]
-                for col, color in zip(models, colors):
-                    if col in df_uid:
-                        model = df_uid[col]
-                        fig.add_trace(
-                            go.Scatter(
-                                x=df_uid["ds"],
-                                y=model,
-                                mode="lines",
-                                name=col,
-                                legendgroup=col,
-                                line=dict(color=color, width=1),
-                                showlegend=(
-                                    idx == 1 and idy == 1 and col not in showed_legends
-                                ),
-                            ),
-                            row=idx,
-                            col=idy,
-                        )
-                        showed_legends.add(col)
-                    model_has_level = any(f"{col}-lo" in c for c in df_uid)
-                    if level is not None and model_has_level:
-                        level_ = level
-                    elif model_has_level:
-                        level_col = df_uid.filter(like=f"{col}-lo").columns[0]
-                        level_col = re.findall(
-                            "[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+", level_col
-                        )[0]
-                        level_ = [level_col]
-                    else:
-                        level_ = []
-                    ds = df_uid["ds"]
-                    for lv in level_:
-                        lo = df_uid[f"{col}-lo-{lv}"]
-                        hi = df_uid[f"{col}-hi-{lv}"]
-                        plot_name = f"{col}_level_{lv}"
-                        fig.add_trace(
-                            go.Scatter(
-                                x=np.concatenate([ds, ds[::-1]]),
-                                y=np.concatenate([hi, lo[::-1]]),
-                                fill="toself",
-                                mode="lines",
-                                fillcolor=color,
-                                opacity=-float(lv) / 100 + 1,
-                                name=plot_name,
-                                legendgroup=plot_name,
-                                line=dict(color=color, width=1),
-                                showlegend=(
-                                    idx == 1
-                                    and idy == 1
-                                    and plot_name not in showed_legends
-                                ),
-                            ),
-                            row=idx,
-                            col=idy,
-                        )
-                        showed_legends.add(plot_name)
-                        if col != "y" and plot_anomalies:
-                            anomalies = (df_uid["y"] < lo) | (df_uid["y"] > hi)
-                            plot_name = f"{col}_anomalies_level_{lv}"
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=ds[anomalies],
-                                    y=df_uid["y"][anomalies],
-                                    fillcolor=color,
-                                    mode="markers",
-                                    opacity=float(lv) / 100,
-                                    name=plot_name,
-                                    legendgroup=plot_name,
-                                    line=dict(color=color, width=0.7),
-                                    marker=dict(
-                                        size=4, line=dict(color="red", width=0.5)
-                                    ),
-                                    showlegend=(
-                                        idx == 1
-                                        and idy == 1
-                                        and plot_name not in showed_legends
-                                    ),
-                                ),
-                                row=idx,
-                                col=idy,
-                            )
-                            showed_legends.add(plot_name)
-            return fig
-
-        fig = plotly(
-            df=df,
-            fig=fig,
-            n_rows=n_rows,
-            unique_ids=unique_ids,
-            models=models,
-            plot_anomalies=plot_anomalies,
-            max_insample_length=max_insample_length,
-            showed_legends=showed_legends,
-        )
-        if forecasts_df is not None:
-            fig = plotly(
-                df=forecasts_df,
-                fig=fig,
-                n_rows=n_rows,
-                unique_ids=unique_ids,
-                models=models,
-                plot_anomalies=plot_anomalies,
-                max_insample_length=None,
-                showed_legends=showed_legends,
-            )
-        fig.update_xaxes(matches=None, showticklabels=True, visible=True)
-        fig.update_layout(margin=dict(l=60, r=10, t=20, b=50))
-        fig.update_layout(template="plotly_white", font=dict(size=10))
-        fig.update_annotations(font_size=10)
-        fig.update_layout(autosize=True, height=150 * n_rows)
-
-    elif engine == "matplotlib":
-        if len(unique_ids) == 1:
-            n_cols = 1
-        else:
-            n_cols = 2
-        quot, resid = divmod(n_series, n_cols)
-        n_rows = min(4, quot + resid)
+    else:
         fig, ax = plt.subplots(
             nrows=n_rows,
             ncols=n_cols,
             figsize=(24, 3.5 * n_rows),
             squeeze=False,
-            gridspec_kw=dict(hspace=0.5),
+            gridspec_kw=dict(hspace=0.25, wspace=0.05),
         )
 
-        for uid, axi in zip(unique_ids, ax.flat):
-            train_uid = df.query("unique_id == @uid")
-            train_uid = _parse_ds_type(train_uid)
-            if max_insample_length is not None:
-                train_uid = train_uid.iloc[-max_insample_length:]
-            ds = train_uid["ds"]
-            y = train_uid["y"]
-            axi.plot(ds, y, label="y")
-            if forecasts_df is not None:
-                if models is None:
-                    exclude_str = ["lo", "hi", "unique_id", "ds"]
-                    models = [
-                        c
-                        for c in forecasts_df.columns
-                        if all(item not in c for item in exclude_str)
-                    ]
-                if "y" not in models:
-                    models = ["y"] + models
-                test_uid = forecasts_df.query("unique_id == @uid")
-                plot_anomalies = "y" in test_uid and plot_anomalies
-                test_uid = _parse_ds_type(test_uid)
-                first_ds_fcst = test_uid["ds"].min()
-                axi.axvline(
-                    x=first_ds_fcst,
-                    color="black",
-                    label="First ds Forecast",
-                    linestyle="--",
+    def _add_mpl_plot(axi, df, y_col, levels):
+        axi.plot(df[time_col], df[y_col], label=y_col, color=color)
+        if y_col == target_col:
+            return
+        times = df[time_col]
+        for level in levels:
+            lo = df[f"{y_col}-lo-{level}"]
+            hi = df[f"{y_col}-hi-{level}"]
+            axi.fill_between(
+                times,
+                lo,
+                hi,
+                alpha=-float(level) / 100 + 1,
+                color=color,
+                label=f"{y_col}_level_{level}",
+            )
+            if plot_anomalies:
+                anomalies = df[target_col].lt(lo) | df[target_col].gt(hi)
+                anomalies = anomalies.to_numpy().astype("bool")
+                if not anomalies.any():
+                    continue
+                axi.scatter(
+                    x=times.to_numpy()[anomalies],
+                    y=df[target_col].to_numpy()[anomalies],
+                    color=color,
+                    s=30,
+                    alpha=float(level) / 100,
+                    label=f"{y_col}_anomalies_level_{level}",
+                    linewidths=0.5,
+                    edgecolors="red",
                 )
-                colors = plt.cm.get_cmap("tab20b", len(models))
-                colors = ["blue"] + [colors(i) for i in range(len(models))]
-                for col, color in zip(models, colors):
-                    if col in test_uid:
-                        axi.plot(test_uid["ds"], test_uid[col], label=col, color=color)
-                    model_has_level = any(f"{col}-lo" in c for c in test_uid)
-                    if level is not None and model_has_level:
-                        level_ = level
-                    elif model_has_level:
-                        level_col = test_uid.filter(like=f"{col}-lo").columns[0]
-                        level_col = re.findall(
-                            "[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+", level_col
-                        )[0]
-                        level_ = [level_col]
-                    else:
-                        level_ = []
-                    for lv in level_:
-                        ds_test = test_uid["ds"]
-                        lo = test_uid[f"{col}-lo-{lv}"]
-                        hi = test_uid[f"{col}-hi-{lv}"]
-                        axi.fill_between(
-                            ds_test,
-                            lo,
-                            hi,
-                            alpha=-float(lv) / 100 + 1,
-                            color=color,
-                            label=f"{col}_level_{lv}",
-                        )
-                        if col != "y" and plot_anomalies:
-                            anomalies = (test_uid["y"] < lo) | (test_uid["y"] > hi)
-                            axi.scatter(
-                                x=ds_test[anomalies],
-                                y=test_uid["y"][anomalies],
-                                color=color,
-                                s=30,
-                                alpha=float(lv) / 100,
-                                label=f"{col}_anomalies_level_{lv}",
-                                linewidths=0.5,
-                                edgecolors="red",
-                            )
 
-            axi.set_title(f"{uid}")
-            axi.set_xlabel("Datestamp [ds]")
-            axi.set_ylabel("Target [y]")
-            axi.legend(loc="upper left")
-            axi.xaxis.set_major_locator(plt.MaxNLocator())
-            axi.grid()
+    def _add_plotly_plot(fig, df, y_col, levels):
+        show_legend = row == 0 and col == 0
+        fig.add_trace(
+            go.Scatter(
+                x=df[time_col],
+                y=df[y_col],
+                mode="lines",
+                name=y_col,
+                legendgroup=y_col,
+                line=dict(color=color, width=1),
+                showlegend=show_legend,
+            ),
+            row=row + 1,
+            col=col + 1,
+        )
+        if y_col == target_col:
+            return
+        x = np.concatenate([df[time_col], df[time_col][::-1]])
+        for level in levels:
+            name = f"{y_col}_level_{level}"
+            lo = df[f"{y_col}-lo-{level}"]
+            hi = df[f"{y_col}-hi-{level}"]
+            y = np.concatenate([hi, lo[::-1]])
+            fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=y,
+                    fill="toself",
+                    mode="lines",
+                    fillcolor=color,
+                    opacity=-float(level) / 100 + 1,
+                    name=name,
+                    legendgroup=name,
+                    line=dict(color=color, width=1),
+                    showlegend=show_legend,
+                ),
+                row=row + 1,
+                col=col + 1,
+            )
+            if plot_anomalies:
+                anomalies = df[target_col].lt(lo) | df[target_col].gt(hi)
+                anomalies = anomalies.to_numpy().astype("bool")
+                if not anomalies.any():
+                    continue
+                name = f"{y_col}_anomalies_level_{level}"
+                fig.add_trace(
+                    go.Scatter(
+                        x=df[time_col].to_numpy()[anomalies],
+                        y=df[target_col].to_numpy()[anomalies],
+                        fillcolor=color,
+                        mode="markers",
+                        opacity=float(level) / 100,
+                        name=name,
+                        legendgroup=name,
+                        line=dict(color=color, width=0.7),
+                        marker=dict(size=4, line=dict(color="red", width=0.5)),
+                        showlegend=show_legend,
+                    ),
+                    row=row + 1,
+                    col=col + 1,
+                )
+
+    for i, uid in enumerate(uids):
+        if isinstance(df, pd.DataFrame):
+            uid_df = df[df[id_col].eq(uid)]
+        else:
+            cond = df[id_col].eq(uid)
+            uid_df = df.filter(cond)
+        row, col = divmod(i, n_cols)
+        for y_col, color in zip([target_col] + models, colors):
+            if engine == "matplotlib":
+                _add_mpl_plot(ax[row, col], uid_df, y_col, level)
+            else:
+                _add_plotly_plot(fig, uid_df, y_col, level)
+        if engine == "matplotlib":
+            ax[row, col].set_title(f"{id_col}={uid}")
+            ax[row, col].grid()
+            if col == 0:
+                ax[row, col].set_ylabel(ylabel)
+            if row == n_rows - 1:
+                ax[row, col].set_xlabel(xlabel)
+
+    if engine == "matplotlib":
+        handles, labels = ax[0, 0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="center right")
         plt.close(fig)
         if len(ax.flat) > n_series:
             for axi in ax.flat[n_series:]:
                 axi.set_axis_off()
     else:
-        raise Exception(f"Unkwown plot engine {engine}")
+        fig.update_xaxes(matches=None, showticklabels=True, visible=True)
+        fig.update_layout(margin=dict(l=60, r=10, t=20, b=50))
+        fig.update_layout(template="plotly_white", font=dict(size=10))
+        fig.update_annotations(font_size=10)
+        fig.update_layout(autosize=True, height=200 * n_rows)
     return fig
