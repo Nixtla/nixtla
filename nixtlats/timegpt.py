@@ -165,16 +165,30 @@ class TimeGPT:
         fcst_df = fcst_df.rename(columns=renamer)
         return fcst_df
 
-    def _infer_freq(self, df: pd.DataFrame):
-        unique_id = df.iloc[0]["unique_id"]
-        df_id = df.query("unique_id == @unique_id")
-        freq = pd.infer_freq(df_id["ds"])
-        if freq is None:
-            raise Exception(
-                "Could not infer frequency of ds column. This could be due to "
-                "inconsistent intervals. Please check your data for missing, "
-                "duplicated or irregular timestamps"
-            )
+    def _infer_freq(self, df: pd.DataFrame, freq: Optional[str] = None):
+        # special freqs that need to be checked
+        # for example to ensure 'W'-> 'W-MON'
+        special_freqs = ["W", "M", "Q", "Y", "A"]
+        if freq is None or freq in special_freqs:
+            unique_id = df.iloc[0]["unique_id"]
+            df_id = df.query("unique_id == @unique_id")
+            inferred_freq = pd.infer_freq(df_id["ds"])
+            if inferred_freq is None:
+                raise Exception(
+                    "Could not infer frequency of ds column. This could be due to "
+                    "inconsistent intervals. Please check your data for missing, "
+                    "duplicated or irregular timestamps"
+                )
+            if freq is not None:
+                # check we have the same base frequency
+                # except when we have yearly frequency (A, and Y means the same)
+                if (freq != inferred_freq[0] and freq != "Y") or (
+                    freq == "Y" and inferred_freq[0] != "A"
+                ):
+                    raise Exception(
+                        f"Failed to infer special date, inferred freq {inferred_freq}"
+                    )
+            return inferred_freq
         return freq
 
     def _resample_dataframe(
@@ -429,8 +443,7 @@ class TimeGPT:
         date_features: Union[bool, List[str]],
         date_features_to_one_hot: Union[bool, List[str]],
     ):
-        if freq is None:
-            freq = self._infer_freq(df)
+        freq = self._infer_freq(df, freq)
         # add date features logic
         if isinstance(date_features, bool):
             if date_features:
