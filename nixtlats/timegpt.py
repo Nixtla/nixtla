@@ -504,7 +504,7 @@ class _TimeGPT:
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
         return fcst_df
 
-    def forecast(
+    def _forecast(
         self,
         df: pd.DataFrame,
         h: int,
@@ -609,3 +609,118 @@ class _TimeGPT:
             drop_uid=drop_uid,
         )
         return fcst_df
+
+# %% ../nbs/timegpt.ipynb 9
+class TimeGPT(_TimeGPT):
+    def forecast(
+        self,
+        df: pd.DataFrame,
+        h: int,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        X_df: Optional[pd.DataFrame] = None,
+        level: Optional[List[Union[int, float]]] = None,
+        finetune_steps: int = 0,
+        clean_ex_first: bool = True,
+        validate_token: bool = False,
+        add_history: bool = False,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
+    ):
+        """Forecast your time series using TimeGPT.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        h : int
+            Forecast horizon.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        X_df : pandas.DataFrame, optional (default=None)
+            DataFrame with [`unique_id`, `ds`] columns and `df`'s future exogenous.
+        level : List[float], optional (default=None)
+            Confidence levels between 0 and 100 for prediction intervals.
+        finetune_steps : int (default=0)
+            Number of steps used to finetune TimeGPT in the
+            new data.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        validate_token : bool (default=False)
+            If True, validates token before
+            sending requests.
+        add_history : bool (default=False)
+            Return fitted values of the model.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
+
+        Returns
+        -------
+        fcsts_df : pandas.DataFrame
+            DataFrame with TimeGPT forecasts for point predictions and probabilistic
+            predictions (if level is not None).
+        """
+        if isinstance(df, pd.DataFrame):
+            return self._forecast(
+                df=df,
+                h=h,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                X_df=X_df,
+                level=level,
+                finetune_steps=finetune_steps,
+                clean_ex_first=clean_ex_first,
+                validate_token=validate_token,
+                add_history=add_history,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+            )
+        else:
+            from nixtlats.distributed.timegpt import _DistributedTimeGPT
+
+            return _DistributedTimeGPT().forecast(
+                token=self.client._client_wrapper._token,
+                df=df,
+                h=h,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                X_df=X_df,
+                level=level,
+                finetune_steps=finetune_steps,
+                clean_ex_first=clean_ex_first,
+                validate_token=validate_token,
+                add_history=add_history,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+            )
