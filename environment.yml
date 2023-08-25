@@ -14,6 +14,7 @@ dependencies:
     - flake8
     - python-dotenv
     - statsforecast
+    - utilsforecast
     - requests
     - openbb
     - duckdb<0.8
