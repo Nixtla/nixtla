@@ -628,6 +628,7 @@ class TimeGPT(_TimeGPT):
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        num_partitions: Optional[int] = None,
     ):
         """Forecast your time series using TimeGPT.
 
