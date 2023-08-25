@@ -18,5 +18,8 @@ setuptools.setup(
     ],
     python_requires=">=3.7",
     install_requires=["requests", "pandas", "httpx", "pydantic<2"],
-    extras_require={"dev": ["black", "nbdev", "plotly", "python-dotenv", "openbb", "statsforecast"]},
+    extras_require={
+        "dev": ["black", "nbdev", "plotly", "python-dotenv", "openbb", "statsforecast", "utilsforecast"],
+        "distributed": ["dask[complete]", "fugue[ray]", "pyspark"],
+    },
 )

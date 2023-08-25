@@ -2,9 +2,11 @@ name: nixtlats
 channels:
   - conda-forge
 dependencies:
+  - dask<2023.1.1
   - jupyterlab
   - pandas
   - plotly
+  - pyspark>=3.3
   - pip:
     - black
     - nbdev
@@ -12,5 +14,9 @@ dependencies:
     - flake8
     - python-dotenv
     - statsforecast
+    - utilsforecast
     - requests
     - openbb
+    - duckdb<0.8
+    - fugue[ray]
+    - ray<2.4
