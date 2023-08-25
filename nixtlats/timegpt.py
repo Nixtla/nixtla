@@ -680,6 +680,11 @@ class TimeGPT(_TimeGPT):
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
+        num_partitions : int (default=None)
+            Number of partitions to use.
+            Only used in distributed environments (spark, ray, dask).
+            If None, the number of partitions will be equal
+            to the available parallel resources.
 
         Returns
         -------
@@ -723,4 +728,5 @@ class TimeGPT(_TimeGPT):
                 add_history=add_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
+                num_partitions=num_partitions,
             )
