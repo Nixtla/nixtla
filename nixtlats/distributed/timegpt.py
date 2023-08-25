@@ -95,7 +95,7 @@ class _DistributedTimeGPT:
         kwargs,
     ) -> pd.DataFrame:
         timegpt = self._instantiate_timegpt(token)
-        return timegpt.forecast(df=df, **kwargs)
+        return timegpt._forecast(df=df, **kwargs)
 
     @staticmethod
     def _get_forecast_schema(id_col, time_col, level):
