@@ -9,7 +9,7 @@ import inspect
 import json
 import requests
 import warnings
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -161,7 +161,7 @@ class _TimeGPT:
         time_col: str,
         target_col: str,
         drop_uid: bool,
-    ):
+    ) -> pd.DataFrame:
         renamer = {
             "unique_id": id_col,
             "ds": time_col,
@@ -172,7 +172,7 @@ class _TimeGPT:
         fcst_df = fcst_df.rename(columns=renamer)
         return fcst_df
 
-    def _infer_freq(self, df: pd.DataFrame, freq: Optional[str] = None):
+    def _infer_freq(self, df: pd.DataFrame, freq: Optional[str] = None) -> str:
         # special freqs that need to be checked
         # for example to ensure 'W'-> 'W-MON'
         special_freqs = ["W", "M", "Q", "Y", "A"]
@@ -202,7 +202,7 @@ class _TimeGPT:
         self,
         df: pd.DataFrame,
         freq: str,
-    ):
+    ) -> pd.DataFrame:
         df = df.copy()
         df["ds"] = pd.to_datetime(df["ds"])
         resampled_df = df.set_index("ds").groupby("unique_id").resample(freq).bfill()
@@ -246,7 +246,7 @@ class _TimeGPT:
         freq: str,
         date_features: List[str],
         date_features_to_one_hot: Optional[List[str]],
-    ):
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         # df contains exogenous variables
         # X_df are the future values of the exogenous variables
         # construct dates
@@ -289,7 +289,7 @@ class _TimeGPT:
         h: int,
         X_df: Optional[pd.DataFrame],
         freq: str,
-    ):
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, list]:
         """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
         y_cols = ["unique_id", "ds", "y"]
         Y_df = df[y_cols]
@@ -327,14 +327,14 @@ class _TimeGPT:
             to_dict_args["index"] = False
         return to_dict_args
 
-    def _transform_dataframes(self, Y_df: pd.DataFrame, X_df: pd.DataFrame):
+    def _transform_dataframes(self, Y_df: pd.DataFrame, X_df: pd.DataFrame) -> Tuple[dict, dict]:
         # contruction of y and x for the payload
         to_dict_args = self._get_to_dict_args()
         y = Y_df.to_dict(**to_dict_args)
         x = X_df.to_dict(**to_dict_args) if X_df is not None else None
         return y, x
 
-    def _get_model_params(self, freq: str):
+    def _get_model_params(self, freq: str) -> Tuple(Any, Any):
         model_params = self.client.timegpt_model_params(
             request=SingleSeriesForecast(freq=freq)
         )
@@ -350,14 +350,15 @@ class _TimeGPT:
         input_size: int,
         model_horizon: int,
         require_history: bool,
-    ):
+    ) -> bool:
         if require_history:
             min_history = Y_df.groupby("unique_id").size().min()
-            if min_history < input_size + model_horizon:
+            time_series_size = input_size + model_horizon
+            if min_history < time_series_size:
                 raise Exception(
                     "Your time series data is too short "
                     "Please be sure that your unique time series contain "
-                    f"at least {input_size + model_horizon} observations"
+                    f"at least {time_series_size} observations"
                 )
         return True
 
@@ -373,7 +374,7 @@ class _TimeGPT:
         level: Optional[List[Union[int, float]]],
         input_size: int,
         model_horizon: int,
-    ):
+    ) -> pd.DataFrame:
         if h > model_horizon:
             main_logger.warning(
                 'The specified horizon "h" exceeds the model horizon. '
@@ -428,7 +429,7 @@ class _TimeGPT:
         level: Optional[List[Union[int, float]]],
         input_size: int,
         model_horizon: int,
-    ):
+    ) -> pd.DataFrame:
         self._validate_input_size(
             Y_df=Y_df,
             input_size=input_size,
@@ -453,7 +454,7 @@ class _TimeGPT:
         add_history: bool,
         date_features: Union[bool, List[str]],
         date_features_to_one_hot: Union[bool, List[str]],
-    ):
+    ) -> pd.DataFrame:
         freq = self._infer_freq(df, freq)
         # add date features logic
         if isinstance(date_features, bool):
@@ -531,7 +532,7 @@ class _TimeGPT:
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-    ):
+    ) -> pd.DataFrame:
         """Forecast your time series using TimeGPT.
 
         Parameters
@@ -640,7 +641,7 @@ class TimeGPT(_TimeGPT):
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         num_partitions: Optional[int] = None,
-    ):
+    ) -> pd.DataFrame:
         """Forecast your time series using TimeGPT.
 
         Parameters
