@@ -18,6 +18,7 @@ class _DistributedTimeGPT:
     def forecast(
         self,
         token: str,
+        environment: str,
         df: fugue.AnyDataFrame,
         h: int,
         freq: Optional[str] = None,
@@ -73,6 +74,7 @@ class _DistributedTimeGPT:
             self._forecast,
             params=dict(
                 token=token,
+                environment=environment,
                 kwargs=kwargs,
             ),
             schema=schema,
@@ -82,19 +84,20 @@ class _DistributedTimeGPT:
         )
         return fa.get_native_as_df(fcst_df)
 
-    def _instantiate_timegpt(self, token: str):
+    def _instantiate_timegpt(self, token: str, environment: str):
         from nixtlats.timegpt import _TimeGPT
 
-        timegpt = _TimeGPT(token=token)
+        timegpt = _TimeGPT(token=token, environment=environment)
         return timegpt
 
     def _forecast(
         self,
         df: pd.DataFrame,
         token: str,
+        environment: str,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt(token)
+        timegpt = self._instantiate_timegpt(token, environment)
         return timegpt._forecast(df=df, **kwargs)
 
     @staticmethod
