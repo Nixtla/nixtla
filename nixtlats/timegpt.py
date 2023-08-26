@@ -76,7 +76,7 @@ class _TimeGPT:
     A class used to interact with the TimeGPT API.
     """
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, environment: Optional[str] = None):
         """
         Constructs all the necessary attributes for the TimeGPT object.
 
@@ -84,8 +84,12 @@ class _TimeGPT:
         ----------
         token : str
             The authorization token to interact with the TimeGPT API.
+        environment : str
+            Custom environment. Pass only if provided.
         """
-        self.client = Nixtla(environment="https://dashboard.nixtla.io/api", token=token)
+        if environment is None:
+            environment = "https://dashboard.nixtla.io/api"
+        self.client = Nixtla(environment=environment, token=token)
         self.weights_x: pd.DataFrame = None
 
     @property
@@ -112,6 +116,9 @@ class _TimeGPT:
         valid = False
         if "message" in validation:
             if validation["message"] == "success":
+                valid = True
+        elif "detail" in validation:
+            if "Forecasting! :)" in validation["detail"]:
                 valid = True
         if "support" in validation and log:
             main_logger.info(f'Happy Forecasting! :), {validation["support"]}')
@@ -331,7 +338,9 @@ class _TimeGPT:
         model_params = self.client.timegpt_model_params(
             request=SingleSeriesForecast(freq=freq)
         )
-        model_params = model_params["data"]["detail"]
+        if "data" in model_params:
+            model_params = model_params["data"]
+        model_params = model_params["detail"]
         input_size, model_horizon = model_params["input_size"], model_params["horizon"]
         return input_size, model_horizon
 
@@ -401,14 +410,16 @@ class _TimeGPT:
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
         )
-        if "weights_x" in response_timegpt["data"]:
+        if "data" in response_timegpt:
+            response_timegpt = response_timegpt["data"]
+        if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
                     "features": x_cols,
-                    "weights": response_timegpt["data"]["weights_x"],
+                    "weights": response_timegpt["weights_x"],
                 }
             )
-        return pd.DataFrame(**response_timegpt["data"]["forecast"])
+        return pd.DataFrame(**response_timegpt["forecast"])
 
     def _hit_multi_series_historic_endpoint(
         self,
@@ -579,7 +590,7 @@ class _TimeGPT:
             DataFrame with TimeGPT forecasts for point predictions and probabilistic
             predictions (if level is not None).
         """
-        if not self.validate_token(log=False):
+        if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
 
         df, X_df, drop_uid = self._validate_inputs(
