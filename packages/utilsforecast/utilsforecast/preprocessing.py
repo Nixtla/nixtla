@@ -4,27 +4,36 @@
 __all__ = ['fill_gaps']
 
 # %% ../nbs/preprocessing.ipynb 2
+from typing import Union
+
 import numpy as np
 import pandas as pd
 
 # %% ../nbs/preprocessing.ipynb 4
-def _determine_bound(kind, freq, times_by_id, agg) -> np.ndarray:
-    if kind == "per_serie":
+def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
+    if bound == "per_serie":
         out = times_by_id[agg].values
     else:
         # the following return a scalar
-        if kind == "global":
-            val = np.datetime64(getattr(times_by_id[agg].values, agg)())
+        if bound == "global":
+            val = getattr(times_by_id[agg].values, agg)()
+            if isinstance(freq, str):
+                val = np.datetime64(val)
         else:
-            # this raises a nice error message if it isn't a valid datetime
-            val = np.datetime64(kind)
+            if isinstance(freq, str):
+                # this raises a nice error message if it isn't a valid datetime
+                val = np.datetime64(bound)
+            else:
+                val = bound
         out = np.full(times_by_id.shape[0], val)
-    return out.astype(f"datetime64[{freq}]")
+    if isinstance(freq, str):
+        out = out.astype(f"datetime64[{freq}]")
+    return out
 
 # %% ../nbs/preprocessing.ipynb 5
 def fill_gaps(
     df: pd.DataFrame,
-    freq: str,
+    freq: Union[str, int],
     start: str = "per_serie",
     end: str = "global",
     id_col: str = "unique_id",
@@ -36,7 +45,7 @@ def fill_gaps(
     ----------
     df : pandas DataFrame
         Input data
-    freq : str or int or pd.offsets.BaseOffset
+    freq : str or int
         Series' frequency
     start : str
         Initial timestamp for the series.
@@ -60,14 +69,16 @@ def fill_gaps(
     filled_df : pandas DataFrame
         Dataframe with gaps filled.
     """
-    delta = np.timedelta64(1, freq)
+    delta = np.timedelta64(1, freq) if isinstance(freq, str) else freq
     times_by_id = df.groupby(id_col)[time_col].agg(["min", "max"])
     starts = _determine_bound(start, freq, times_by_id, "min")
     ends = _determine_bound(end, freq, times_by_id, "max") + delta
     sizes = ((ends - starts) / delta).astype(np.int64)
     times = np.concatenate(
         [np.arange(start, end, delta) for start, end in zip(starts, ends)]
-    ).astype("datetime64[ns]", copy=False)
+    )
+    if isinstance(freq, str):
+        times = times.astype("datetime64[ns]", copy=False)
     uids = np.repeat(times_by_id.index, sizes)
     idx = pd.MultiIndex.from_arrays([uids, times], names=[id_col, time_col])
     return df.set_index([id_col, time_col]).reindex(idx).reset_index()
