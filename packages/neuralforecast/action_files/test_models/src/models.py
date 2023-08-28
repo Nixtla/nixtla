@@ -29,60 +29,52 @@ from neuralforecast.auto import (
     AutoMLP, AutoNHITS, AutoNBEATS, AutoDilatedRNN, AutoTFT
 )
 
-from neuralforecast.losses.pytorch import SMAPE
+from neuralforecast.losses.pytorch import SMAPE, MAE
 from ray import tune
 
 from src.data import get_data
 
 
-def main(dataset: str = 'M3', group: str = 'Other') -> None:
+def main(dataset: str = 'M3', group: str = 'Monthly') -> None:
     train, horizon, freq, seasonality = get_data('data/', dataset, group)
     train['ds'] = pd.to_datetime(train['ds'])
-    #n_steps_epoch = len(train['unique_id']) // 1024 # WindowsBased
-    #n_steps_epoch = len(train['unique_id'].unique()) // 32 # RNNBased
 
     config_nbeats = {
-        "mlp_units": tune.choice([3 * [[512, 512]]]),
-        "input_size": tune.choice([2 * horizon, 3 * horizon, horizon, 4 * horizon]),
+        "input_size": tune.choice([2 * horizon]),
         "max_steps": 1000,
-        "val_check_steps": 100
+        "val_check_steps": 300,
+        "scaler_type": "minmax1",
+        "random_seed": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
     config = {
-        "hidden_size": tune.choice([256, 512, 1024]),
-        "num_layers": tune.choice([2, 4, 6]),
-        "input_size": tune.choice([2 * horizon, 3 * horizon, horizon]),
+        "hidden_size": tune.choice([256, 512]),
+        "num_layers": tune.choice([2, 4]),
+        "input_size": tune.choice([2 * horizon]),
         "max_steps": 1000,
-        "val_check_steps": 100
+        "val_check_steps": 300,
+        "scaler_type": "minmax1",
+        "random_seed": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
     }
-    config_drnn = {'input_size': tune.choice([2 * horizon, 3 * horizon]),
-                   'encoder_hidden_size': tune.choice([50]),
+    config_drnn = {'input_size': tune.choice([2 * horizon]),
+                   'encoder_hidden_size': tune.choice([124]),
                    "max_steps": 300,
-                   "val_check_steps": 100}
+                   "val_check_steps": 100,
+                   "random_seed": tune.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),}
     models = [
-        DilatedRNN(h=horizon, input_size=2 * horizon, encoder_hidden_size=50, max_steps=300),
+        AutoDilatedRNN(h=horizon, loss=MAE(), config=config_drnn, num_samples=2, cpus=1),
         RNN(h=horizon, input_size=2 * horizon, encoder_hidden_size=50, max_steps=300),
         TCN(h=horizon, input_size=2 * horizon, encoder_hidden_size=20, max_steps=300),
-        LSTM(h=horizon, input_size=2 * horizon, encoder_hidden_size=50, max_steps=300),
-        GRU(h=horizon, input_size=2 * horizon, encoder_hidden_size=50, max_steps=300),
-        AutoDilatedRNN(h=horizon, loss=SMAPE(), config=config_drnn, num_samples=2, cpus=1),
-        AutoNBEATS(h=horizon, loss=SMAPE(), config=config_nbeats, num_samples=2, cpus=1),
-        AutoNHITS(h=horizon, loss=SMAPE(), config=config_nbeats, num_samples=2, cpus=1),
-        AutoMLP(h=horizon, loss=SMAPE(), config=config, num_samples=2, cpus=1),
-        NHITS(h=horizon, input_size=2 * horizon, dropout_prob_theta=0.5, loss=SMAPE(), max_steps=1000),
-        #NBEATS(h=horizon, input_size=2 * horizon, loss=SMAPE(), max_steps=1000),
-        NBEATSx(h=horizon, input_size=2 * horizon, loss=SMAPE(), max_steps=1000),
-        #MLP(h=horizon, input_size=2 * horizon, num_layers=2, loss=SMAPE(), max_steps=2000),
-        TFT(h=horizon, input_size=2 * horizon, loss=SMAPE(), max_steps=1000),
-        #VanillaTransformer(h=horizon, input_size=2 * horizon, loss=SMAPE(), scaler_type='robust', max_steps=5000),
-        #Informer(h=horizon, input_size=2 * horizon, loss=SMAPE(), scaler_type='robust', max_steps=5000),
-        #Autoformer(h=horizon, input_size=2 * horizon, loss=SMAPE(), scaler_type='robust', max_steps=5000),
-        PatchTST(h=horizon, input_size=2 * horizon, patch_len=4, stride=4, loss=SMAPE(), scaler_type='robust', max_steps=1000),
-        DeepAR(h=horizon, input_size=2 * horizon, max_steps=1000),
+        NHITS(h=horizon, input_size=2 * horizon, dropout_prob_theta=0.5, loss=MAE(), max_steps=1000, val_check_steps=500),
+        AutoMLP(h=horizon, loss=MAE(), config=config, num_samples=2, cpus=1),
+        TFT(h=horizon, input_size=2 * horizon, loss=SMAPE(), hidden_size=64, scaler_type='robust', windows_batch_size=512, max_steps=1500, val_check_steps=500),
+        VanillaTransformer(h=horizon, input_size=2 * horizon, loss=MAE(), hidden_size=64, scaler_type='minmax1', windows_batch_size=512, max_steps=1500, val_check_steps=500),
+        DeepAR(h=horizon, input_size=2 * horizon, scaler_type='minmax1', max_steps=1000),
     ]
 
     # Models
     for model in models[:-1]:
         model_name = type(model).__name__
+        print(50*'-', model_name, 50*'-')
         start = time.time()
         fcst = NeuralForecast(models=[model], freq=freq)
         fcst.fit(train)
