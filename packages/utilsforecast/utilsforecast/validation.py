@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['validate_format']
 
-# %% ../nbs/validation.ipynb 1
+# %% ../nbs/validation.ipynb 2
 import numpy as np
 
 from .compat import DataFrame
@@ -15,6 +15,23 @@ def validate_format(
     time_col: str = "ds",
     target_col: str = "y",
 ) -> None:
+    """Ensure DataFrame has expected format.
+
+    Parameters
+    ----------
+    df : pandas or polars DataFrame
+        DataFrame with time series in long format.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    time_col : str (default='ds')
+        Column that identifies each timestamp.
+    target_col : str (default='y')
+        Column that contains the target.
+
+    Returns
+    -------
+    None
+    """
     # required columns
     missing_cols = sorted({id_col, time_col, target_col} - set(df.columns))
     if missing_cols:
