@@ -14,4 +14,4 @@ pyproject.toml
 nixtlats/timegpt.py
 nixtlats/_modidx.py
 nixtlats/__init__.py
-nixtlaldts/distributed/
+nixtlats/distributed/
