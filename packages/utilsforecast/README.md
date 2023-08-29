@@ -107,11 +107,11 @@ series
 ### Plotting
 
 ``` python
-from utilsforecast.plotting import plot
+from utilsforecast.plotting import plot_series
 ```
 
 ``` python
-plot(series, plot_random=False, max_insample_length=50, engine='matplotlib')
+plot_series(series, plot_random=False, max_insample_length=50, engine='matplotlib')
 ```
 
 ![](index_files/figure-gfm/cell-5-output-1.png)
