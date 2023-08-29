@@ -111,10 +111,11 @@ from utilsforecast.plotting import plot_series
 ```
 
 ``` python
-plot_series(series, plot_random=False, max_insample_length=50, engine='matplotlib')
+fig = plot_series(series, plot_random=False, max_insample_length=50, engine='matplotlib')
+fig.savefig('imgs/index.png', bbox_inches='tight')
 ```
 
-![](index_files/figure-gfm/cell-5-output-1.png)
+![](imgs/index.png)
 
 ### Preprocessing
 
