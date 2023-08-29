@@ -115,7 +115,7 @@ fig = plot_series(series, plot_random=False, max_insample_length=50, engine='mat
 fig.savefig('imgs/index.png', bbox_inches='tight')
 ```
 
-![](imgs/index.png)
+![](https://raw.githubusercontent.com/Nixtla/utilsforecast/main/nbs/imgs/index.png)
 
 ### Preprocessing
 
