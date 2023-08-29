@@ -89,17 +89,8 @@ class _TimeGPT:
         """
         if environment is None:
             environment = "https://dashboard.nixtla.io/api"
-        self.client = Nixtla(environment=environment, token=token)
+        self.client = Nixtla(base_url=environment, token=token)
         self.weights_x: pd.DataFrame = None
-
-    @property
-    def request_headers(self):
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {self.client._client_wrapper._token}",
-        }
-        return headers
 
     def _parse_response(self, response) -> Dict:
         """Parses responde."""
