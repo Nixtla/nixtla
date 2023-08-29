@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
 
       - name: Install nbdev
         run: pip install nbdev
@@ -46,7 +46,7 @@ jobs:
         python-version: ['3.7', '3.8', '3.9', '3.10']
     steps:
       - name: Clone repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up environment
         uses: mamba-org/setup-micromamba@v1
@@ -70,7 +70,7 @@ jobs:
         python-version: ['3.7', '3.8', '3.9', '3.10']
     steps:
       - name: Clone repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up environment
         uses: mamba-org/setup-micromamba@v1
@@ -89,10 +89,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
 
