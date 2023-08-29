@@ -21,14 +21,11 @@ OMIT = typing.cast(typing.Any, ...)
 
 class Nixtla:
     def __init__(
-        self,
-        *,
-        environment: str,
-        token: typing.Union[str, typing.Callable[[], str]],
-        timeout: typing.Optional[float] = 60,
+        self, *, base_url: str, token: typing.Union[str, typing.Callable[[], str]], timeout: typing.Optional[float] = 60
     ):
-        self._environment = environment
-        self._client_wrapper = SyncClientWrapper(token=token, httpx_client=httpx.Client(timeout=timeout))
+        self._client_wrapper = SyncClientWrapper(
+            base_url=base_url, token=token, httpx_client=httpx.Client(timeout=timeout)
+        )
 
     def timegpt(self, *, request: SingleSeriesForecast) -> typing.Any:
         """
@@ -37,7 +34,7 @@ class Nixtla:
         """
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt"),
             json=jsonable_encoder(request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -81,7 +78,7 @@ class Nixtla:
             _request["x"] = x
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_historic"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_historic"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -140,7 +137,7 @@ class Nixtla:
             _request["finetune_steps"] = finetune_steps
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_multi_series"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -184,7 +181,7 @@ class Nixtla:
             _request["x"] = x
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_multi_series_historic"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_historic"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -206,7 +203,7 @@ class Nixtla:
         """
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_input_size"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_input_size"),
             json=jsonable_encoder(request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -228,7 +225,7 @@ class Nixtla:
         """
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_model_params"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_model_params"),
             json=jsonable_encoder(request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -246,7 +243,7 @@ class Nixtla:
     def validate_token(self) -> typing.Any:
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "validate_token"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "validate_token"),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
         )
@@ -261,7 +258,7 @@ class Nixtla:
     def validate_token_front(self) -> typing.Any:
         _response = self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "validate_token_front"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "validate_token_front"),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
         )
@@ -276,14 +273,11 @@ class Nixtla:
 
 class AsyncNixtla:
     def __init__(
-        self,
-        *,
-        environment: str,
-        token: typing.Union[str, typing.Callable[[], str]],
-        timeout: typing.Optional[float] = 60,
+        self, *, base_url: str, token: typing.Union[str, typing.Callable[[], str]], timeout: typing.Optional[float] = 60
     ):
-        self._environment = environment
-        self._client_wrapper = AsyncClientWrapper(token=token, httpx_client=httpx.AsyncClient(timeout=timeout))
+        self._client_wrapper = AsyncClientWrapper(
+            base_url=base_url, token=token, httpx_client=httpx.AsyncClient(timeout=timeout)
+        )
 
     async def timegpt(self, *, request: SingleSeriesForecast) -> typing.Any:
         """
@@ -292,7 +286,7 @@ class AsyncNixtla:
         """
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt"),
             json=jsonable_encoder(request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -336,7 +330,7 @@ class AsyncNixtla:
             _request["x"] = x
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_historic"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_historic"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -395,7 +389,7 @@ class AsyncNixtla:
             _request["finetune_steps"] = finetune_steps
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_multi_series"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -439,7 +433,7 @@ class AsyncNixtla:
             _request["x"] = x
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_multi_series_historic"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_historic"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -461,7 +455,7 @@ class AsyncNixtla:
         """
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_input_size"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_input_size"),
             json=jsonable_encoder(request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -483,7 +477,7 @@ class AsyncNixtla:
         """
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "timegpt_model_params"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_model_params"),
             json=jsonable_encoder(request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -501,7 +495,7 @@ class AsyncNixtla:
     async def validate_token(self) -> typing.Any:
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "validate_token"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "validate_token"),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
         )
@@ -516,7 +510,7 @@ class AsyncNixtla:
     async def validate_token_front(self) -> typing.Any:
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
-            urllib.parse.urljoin(f"{self._environment}/", "validate_token_front"),
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "validate_token_front"),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
         )
