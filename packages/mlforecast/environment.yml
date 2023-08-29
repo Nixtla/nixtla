@@ -11,7 +11,7 @@ dependencies:
   - pip
   - pyspark>=3.3
   - scikit-learn
-  - statsforecast
+  - utilsforecast
   - window-ops
   - xgboost
   - pip:
