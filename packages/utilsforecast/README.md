@@ -247,3 +247,82 @@ fill_gaps(with_gaps, freq='D')
   </tbody>
 </table>
 </div>
+
+### Evaluating
+
+``` python
+from functools import partial
+
+import numpy as np
+
+from utilsforecast.evaluation import evaluate
+from utilsforecast.losses import mape, mase
+```
+
+``` python
+valid = series.groupby('unique_id').tail(7).copy()
+train = series.drop(valid.index)
+rng = np.random.RandomState(0)
+valid['seas_naive'] = train.groupby('unique_id')['y'].tail(7).values
+valid['rand_model'] = valid['y'] * rng.rand(valid['y'].shape[0])
+daily_mase = partial(mase, seasonality=7)
+evaluate(valid, metrics=[mape, daily_mase], train_df=train)
+```
+
+<div>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>unique_id</th>
+      <th>metric</th>
+      <th>seas_naive</th>
+      <th>rand_model</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0</td>
+      <td>mape</td>
+      <td>0.024139</td>
+      <td>0.440173</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>mape</td>
+      <td>0.054259</td>
+      <td>0.278123</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>2</td>
+      <td>mape</td>
+      <td>0.042642</td>
+      <td>0.480316</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>0</td>
+      <td>mase</td>
+      <td>0.907149</td>
+      <td>16.418014</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>mase</td>
+      <td>0.991635</td>
+      <td>6.404254</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>2</td>
+      <td>mase</td>
+      <td>1.013596</td>
+      <td>11.365040</td>
+    </tr>
+  </tbody>
+</table>
+</div>

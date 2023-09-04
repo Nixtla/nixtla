@@ -149,3 +149,6 @@ checklink/cookies.txt
 
 # Quarto
 .quarto
+
+*.csv
+*.parquet

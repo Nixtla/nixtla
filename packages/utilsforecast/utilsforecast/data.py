@@ -4,6 +4,8 @@
 __all__ = ['generate_series']
 
 # %% ../nbs/data.ipynb 4
+from typing import List, Optional
+
 import numpy as np
 import pandas as pd
 
@@ -19,6 +21,8 @@ def generate_series(
     equal_ends: bool = False,
     with_trend: bool = False,
     static_as_categorical: bool = True,
+    n_models: int = 0,
+    level: Optional[List[float]] = None,
     engine: str = "pandas",
     seed: int = 0,
 ) -> DataFrame:
@@ -42,6 +46,10 @@ def generate_series(
         Series should have a (positive) trend.
     static_as_categorical : bool (default=True)
         Static features should have a categorical data type.
+    n_models : int (default=0)
+        Number of models predictions to simulate.
+    level : list of float, optional (default=None)
+        Confidence level for intervals to simulate for each model.
     engine : str (default='pandas')
         Output Dataframe type.
     seed : int (default=0)
@@ -91,6 +99,15 @@ def generate_series(
         coefs = np.repeat(rng.rand(n_series), series_lengths)
         trends = np.concatenate([np.arange(length) for length in series_lengths])
         vals_dict["y"] += coefs * trends
+
+    for i in range(n_models):
+        rands = rng.rand(total_length)
+        vals_dict[f"model{i}"] = vals_dict["y"] * (0.2 * rands + 0.9)
+        level = level or []
+        for lv in level:
+            lv_rands = 0.5 * rands * lv / 100
+            vals_dict[f"model{i}-lo-{lv}"] = vals_dict[f"model{i}"] * (1 - lv_rands)
+            vals_dict[f"model{i}-hi-{lv}"] = vals_dict[f"model{i}"] * (1 + lv_rands)
 
     cat_cols = [col for col in vals_dict.keys() if "static" in col]
     cat_cols.append("unique_id")

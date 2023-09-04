@@ -29,7 +29,13 @@ def _filter_series(df, id_col, time_col, uids, models=None, max_insample_length=
 
         df = df.filter(pl.col(id_col).is_in(uids)).select(*out_cols).sort(time_col)
     if max_insample_length is not None:
-        df = df.groupby(id_col).tail(max_insample_length)
+        try:
+            df = df.group_by(id_col).tail(max_insample_length)
+        except AttributeError:
+            if isinstance(df, pd.DataFrame):
+                df = df.groupby(id_col, observed=True).tail(max_insample_length)
+            else:
+                df = df.groupby(id_col).tail(max_insample_length)
     return df
 
 # %% ../nbs/plotting.ipynb 6

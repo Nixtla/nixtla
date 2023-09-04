@@ -4,6 +4,7 @@ website:
       - section: API Reference
         contents:
           - data.ipynb
+          - evaluation.ipynb
           - losses.ipynb
           - plotting.ipynb
           - preprocessing.ipynb

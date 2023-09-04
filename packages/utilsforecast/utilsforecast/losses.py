@@ -5,129 +5,130 @@ __all__ = ['mae', 'mse', 'rmse', 'mape', 'smape', 'mase', 'rmae', 'quantile_loss
            'scaled_crps']
 
 # %% ../nbs/losses.ipynb 3
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
+
+if TYPE_CHECKING:
+    import polars as pl
 
 import numpy as np
+import pandas as pd
 
-# %% ../nbs/losses.ipynb 6
-def _divide_no_nan(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Auxiliary funtion to handle divide by 0"""
-    out_dtype = np.result_type(np.float32, a.dtype, b.dtype)
-    return np.divide(a, b, out=np.zeros(a.shape, dtype=out_dtype), where=b != 0)
-
-# %% ../nbs/losses.ipynb 7
-def _metric_protections(
-    y: np.ndarray, y_hat: np.ndarray, weights: Optional[np.ndarray] = None
-) -> None:
-    if weights is None:
-        return
-    if np.sum(weights) <= 0:
-        raise ValueError("Sum of weights must be positive")
-    if y.shape != y_hat.shape:
-        raise ValueError(
-            f"Wrong y_hat dimension. y_hat shape={y_hat.shape}, y shape={y.shape}"
-        )
-    if weights.shape != y.shape:
-        raise ValueError(
-            f"Wrong weight dimension. weights shape={weights.shape}, y shape={y.shape}"
-        )
+from .compat import DataFrame, pl_DataFrame, pl_col
 
 # %% ../nbs/losses.ipynb 11
+def _base_docstring(*args, **kwargs) -> Callable:
+    base_docstring = """
+
+    Parameters
+    ----------
+    df : pandas or polars DataFrame
+        Input dataframe with id, actual values and predictions.
+    models : list of str
+        Columns that identify the models predictions.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
+
+    Returns
+    -------
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
+    """
+
+    def docstring_decorator(f: Callable):
+        if f.__doc__ is not None:
+            f.__doc__ += base_docstring
+        return f
+
+    return docstring_decorator(*args, **kwargs)
+
+# %% ../nbs/losses.ipynb 12
+def _pl_agg_expr(
+    df: pl_DataFrame,
+    models: List[str],
+    id_col: str,
+    gen_expr: Callable[[str], "pl.Expr"],
+) -> pl_DataFrame:
+    exprs = [gen_expr(model) for model in models]
+    df = df.select([id_col, *exprs])
+    try:
+        res = df.group_by(id_col).mean()
+    except AttributeError:
+        res = df.groupby(id_col).mean()
+    return res
+
+# %% ../nbs/losses.ipynb 13
+@_base_docstring
 def mae(
-    y: np.ndarray,
-    y_hat: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
+    df: DataFrame,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """Mean Absolute Error (MAE)
 
     MAE measures the relative prediction
     accuracy of a forecasting method by calculating the
     deviation of the prediction and the true
     value at a given time and averages these devations
-    over the length of the series.
-
-    Parameters
-    ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from last to first.
-
-    Returns
-    -------
-    numpy array or double
-        MAE along the specified axis.
-    """
-    _metric_protections(y, y_hat, weights)
-
-    delta_y = np.abs(y - y_hat)
-    if weights is not None:
-        mae = np.average(
-            delta_y[~np.isnan(delta_y)], weights=weights[~np.isnan(delta_y)], axis=axis
+    over the length of the series."""
+    if isinstance(df, pd.DataFrame):
+        res = (
+            (df[models].sub(df[target_col], axis=0))
+            .abs()
+            .groupby(df[id_col], observed=True)
+            .mean()
         )
+        res.index.name = id_col
+        res = res.reset_index()
     else:
-        mae = np.nanmean(delta_y, axis=axis)
-    return mae
 
-# %% ../nbs/losses.ipynb 15
+        def gen_expr(model):
+            return pl_col(target_col).sub(pl_col(model)).abs().alias(model)
+
+        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    return res
+
+# %% ../nbs/losses.ipynb 19
+@_base_docstring
 def mse(
-    y: np.ndarray,
-    y_hat: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
+    df: DataFrame,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """Mean Squared Error (MSE)
 
     MSE measures the relative prediction
     accuracy of a forecasting method by calculating the
     squared deviation of the prediction and the true
     value at a given time, and averages these devations
-    over the length of the series.
-
-    Parameters
-    ----------
-    y : numpy array
-        Actual test values.
-    y_hat : numpy array
-        Predicted values.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the
-        elements of the input array. If axis is negative it counts
-        from the last to the first axis.
-
-    Returns
-    -------
-    numpy array or double
-        MSE along the specified axis.
-    """
-    _metric_protections(y, y_hat, weights)
-
-    delta_y = np.square(y - y_hat)
-    if weights is not None:
-        mse = np.average(
-            delta_y[~np.isnan(delta_y)], weights=weights[~np.isnan(delta_y)], axis=axis
+    over the length of the series."""
+    if isinstance(df, pd.DataFrame):
+        res = (
+            (df[models].sub(df[target_col], axis=0))
+            .pow(2)
+            .groupby(df[id_col], observed=True)
+            .mean()
         )
+        res.index.name = id_col
+        res = res.reset_index()
     else:
-        mse = np.nanmean(delta_y, axis=axis)
 
-    return mse
+        def gen_expr(model):
+            return pl_col(target_col).sub(pl_col(model)).pow(2).alias(model)
 
-# %% ../nbs/losses.ipynb 19
+        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    return res
+
+# %% ../nbs/losses.ipynb 24
+@_base_docstring
 def rmse(
-    y: np.ndarray,
-    y_hat: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
+    df: DataFrame,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
 ) -> Union[float, np.ndarray]:
     """Root Mean Squared Error (RMSE)
 
@@ -138,35 +139,31 @@ def rmse(
     Finally the RMSE will be in the same scale
     as the original time series so its comparison with other
     series is possible only if they share a common scale.
-    RMSE has a direct connection to the L2 norm.
+    RMSE has a direct connection to the L2 norm."""
+    res = mse(df, models, id_col, target_col)
+    if isinstance(res, pd.DataFrame):
+        res[models] = res[models].pow(0.5)
+    else:
+        res = res.with_columns(*[pl_col(c).pow(0.5) for c in models])
+    return res
 
-    Parameters
-    ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
+# %% ../nbs/losses.ipynb 30
+def _zero_to_nan(series: Union[pd.Series, "pl.Expr"]) -> Union[pd.Series, "pl.Expr"]:
+    if isinstance(series, pd.Series):
+        res = series.replace(0, np.nan)
+    else:
+        import polars as pl
 
-    Returns
-    -------
-    numpy array or double
-        RMSE along the specified axis.
-    """
+        res = pl.when(series == 0).then(float("nan")).otherwise(series.abs())
+    return res
 
-    return np.sqrt(mse(y, y_hat, weights, axis))
-
-# %% ../nbs/losses.ipynb 24
+# %% ../nbs/losses.ipynb 31
+@_base_docstring
 def mape(
-    y: np.ndarray,
-    y_hat: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
+    df: DataFrame,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
 ) -> Union[float, np.ndarray]:
     """Mean Absolute Percentage Error (MAPE)
 
@@ -175,42 +172,37 @@ def mape(
     of the prediction and the observed value at a given time and
     averages these devations over the length of the series.
     The closer to zero an observed value is, the higher penalty MAPE loss
-    assigns to the corresponding error.
+    assigns to the corresponding error."""
+    if isinstance(df, pd.DataFrame):
+        res = (
+            df[models]
+            .sub(df[target_col], axis=0)
+            .abs()
+            .div(_zero_to_nan(df[target_col].abs()), axis=0)
+            .fillna(0)
+            .groupby(df[id_col], observed=True)
+            .mean()
+        )
+        res.index.name = id_col
+        res = res.reset_index()
+    else:
 
-    Parameters
-    ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
+        def gen_expr(model):
+            abs_err = pl_col(target_col).sub(pl_col(model)).abs()
+            abs_target = _zero_to_nan(pl_col(target_col))
+            ratio = abs_err.truediv(abs_target).alias(model)
+            return ratio.fill_nan(0)
 
-    Returns
-    -------
-    numpy array or double
-        MAPE along the specified axis.
-    """
-    _metric_protections(y, y_hat, weights)
+        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    return res
 
-    delta_y = np.abs(y - y_hat)
-    scale = np.abs(y)
-    mape = _divide_no_nan(delta_y, scale)
-    mape = np.average(mape, weights=weights, axis=axis)
-    mape = 100 * mape
-
-    return mape
-
-# %% ../nbs/losses.ipynb 27
+# %% ../nbs/losses.ipynb 35
+@_base_docstring
 def smape(
-    y: np.ndarray,
-    y_hat: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
+    df: DataFrame,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
 ) -> Union[float, np.ndarray]:
     """Symmetric Mean Absolute Percentage Error (SMAPE)
 
@@ -221,50 +213,36 @@ def smape(
     given time, then averages these devations over the length
     of the series. This allows the SMAPE to have bounds between
     0% and 200% which is desireble compared to normal MAPE that
-    may be undetermined when the target is zero.
-
-
-    Parameters
-    ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : None or int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
-
-    Returns
-    -------
-    numpy array or double
-        SMAPE along the specified axis.
-    """
-    _metric_protections(y, y_hat, weights)
-
-    delta_y = np.abs(y - y_hat)
-    scale = np.abs(y) + np.abs(y_hat)
-    smape = _divide_no_nan(delta_y, scale)
-    smape = 200 * np.average(smape, weights=weights, axis=axis)
-
-    if isinstance(smape, float):
-        assert smape <= 200, "SMAPE should be lower than 200"
+    may be undetermined when the target is zero."""
+    if isinstance(df, pd.DataFrame):
+        delta_y = df[models].sub(df[target_col], axis=0).abs()
+        scale = df[models].abs().add(df[target_col].abs(), axis=0)
+        raw = delta_y.div(scale).fillna(0)
+        res = raw.groupby(df[id_col], observed=True).mean()
+        res.index.name = id_col
+        res = res.reset_index()
     else:
-        assert all(smape <= 200), "SMAPE should be lower than 200"
 
-    return smape
+        def gen_expr(model):
+            abs_err = pl_col(model).sub(pl_col(target_col)).abs()
+            denominator = _zero_to_nan(
+                pl_col(model).abs().add(pl_col(target_col)).abs()
+            )
+            ratio = abs_err.truediv(denominator).alias(model)
+            return ratio.fill_nan(0)
 
-# %% ../nbs/losses.ipynb 32
+        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    return res
+
+# %% ../nbs/losses.ipynb 41
 def mase(
-    y: np.ndarray,
-    y_hat: np.ndarray,
-    y_train: np.ndarray,
+    df: DataFrame,
+    models: List[str],
     seasonality: int,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
+    train_df: DataFrame,
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """Mean Absolute Scaled Error (MASE)
 
     MASE measures the relative prediction
@@ -276,49 +254,65 @@ def mase(
 
     Parameters
     ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
-    y_train : numpy array
-        Actual insample Seasonal Naive predictions.
+    df : pandas or polars DataFrame
+        Input dataframe with id, actuals and predictions.
+    models : list of str
+        Columns that identify the models predictions.
     seasonality : int
         Main frequency of the time series;
         Hourly 24, Daily 7, Weekly 52, Monthly 12, Quarterly 4, Yearly 1.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
+    train_df : pandas or polars DataFrame
+        Training dataframe with id and actual values. Must be sorted by time.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
 
     Returns
     -------
-    numpy array or double
-        MASE along the specified axis.
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
 
     References
     ----------
     [1] https://robjhyndman.com/papers/mase.pdf
     """
-    delta_y = np.abs(y - y_hat)
-    delta_y = np.average(delta_y, weights=weights, axis=axis)
+    mean_abs_err = mae(df, models, id_col, target_col)
+    if isinstance(train_df, pd.DataFrame):
+        mean_abs_err = mean_abs_err.set_index(id_col)
+        # assume train_df is sorted
+        lagged = train_df.groupby(id_col, observed=True)[target_col].shift(seasonality)
+        scale = train_df[target_col].sub(lagged).abs()
+        scale = scale.groupby(train_df[id_col], observed=True).mean()
+        res = mean_abs_err.div(_zero_to_nan(scale), axis=0).fillna(0)
+        res.index.name = id_col
+        res = res.reset_index()
+    else:
+        # assume train_df is sorted
+        lagged = pl_col(target_col).shift(seasonality).over(id_col)
+        scale_expr = pl_col(target_col).sub(lagged).abs().alias("scale")
+        scale = train_df.select([id_col, scale_expr])
+        try:
+            scale = scale.group_by(id_col).mean()
+        except AttributeError:
+            scale = scale.groupby(id_col).mean()
+        scale = scale.with_columns(_zero_to_nan(pl_col("scale")))
 
-    scale = np.abs(y_train[:-seasonality] - y_train[seasonality:])
-    scale = np.average(scale, axis=axis)
+        def gen_expr(model):
+            return pl_col(model).truediv(pl_col("scale")).fill_nan(0).alias(model)
 
-    mase = delta_y / scale
+        full_df = mean_abs_err.join(scale, on=id_col, how="left")
+        res = _pl_agg_expr(full_df, models, id_col, gen_expr)
+    return res
 
-    return mase
-
-# %% ../nbs/losses.ipynb 36
+# %% ../nbs/losses.ipynb 46
 def rmae(
-    y: np.ndarray,
-    y_hat1: np.ndarray,
-    y_hat2: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
+    df: DataFrame,
+    models: List[str],
+    baseline_models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """Relative Mean Absolute Error (RMAE)
 
     Calculates the RAME between two sets of forecasts (from two different forecasting methods).
@@ -327,38 +321,58 @@ def rmae(
 
     Parameters
     ----------
-    y : numpy array
-        Observed values.
-    y_hat1 : numpy array
-        Predicted values of first model.
-    y_hat2 : numpy array
-        Predicted values of baseline model.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
+    df : pandas or polars DataFrame
+        Input dataframe with id, times, actuals and predictions.
+    models : list of str
+        Columns that identify the models predictions.
+    baseline_models : list of str
+        Columns that identify the baseline models predictions.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
 
     Returns
     -------
-    numpy array or double
-        RMAE along the specified axis.
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
     """
-    numerator = mae(y=y, y_hat=y_hat1, weights=weights, axis=axis)
-    denominator = mae(y=y, y_hat=y_hat2, weights=weights, axis=axis)
-    rmae = numerator / denominator
+    numerator = mae(df, models, id_col, target_col)
+    denominator = mae(df, baseline_models, id_col, target_col)
+    if isinstance(numerator, pd.DataFrame):
+        res = numerator.merge(denominator, on=id_col, suffixes=("", "_denominator"))
+        out_cols = [id_col]
+        for model, baseline in zip(models, baseline_models):
+            col_name = f"{model}_div_{baseline}"
+            res[col_name] = (
+                res[model].div(_zero_to_nan(res[f"{baseline}_denominator"])).fillna(0)
+            )
+            out_cols.append(col_name)
+        res = res[out_cols]
+    else:
 
-    return rmae
+        def gen_expr(model, baseline):
+            denominator = _zero_to_nan(pl_col(f"{baseline}_denominator"))
+            return (
+                pl_col(model)
+                .truediv(denominator)
+                .fill_nan(0)
+                .alias(f"{model}_div_{baseline}")
+            )
 
-# %% ../nbs/losses.ipynb 41
+        res = numerator.join(denominator, on=id_col, suffix="_denominator")
+        exprs = [gen_expr(m1, m2) for m1, m2 in zip(models, baseline_models)]
+        res = res.select([id_col, *exprs])
+    return res
+
+# %% ../nbs/losses.ipynb 52
 def quantile_loss(
-    y: np.ndarray,
-    y_hat: np.ndarray,
+    df: DataFrame,
+    models: List[str],
     q: float = 0.5,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """Quantile Loss (QL)
 
     QL measures the deviation of a quantile forecast.
@@ -368,46 +382,49 @@ def quantile_loss(
 
     Parameters
     ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
+    df : pandas or polars DataFrame
+        Input dataframe with id, times, actuals and predictions.
+    models : list of str
+        Columns that identify the models predictions.
     q : float (default=0.5)
         Quantile for the predictions' comparison.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
 
     Returns
     -------
-    numpy array or double
-        QL along the specified axis.
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
     """
-    _metric_protections(y, y_hat, weights)
-
-    delta_y = y - y_hat
-    loss = np.maximum(q * delta_y, (q - 1) * delta_y)
-
-    if weights is not None:
-        quantile_loss = np.average(
-            loss[~np.isnan(loss)], weights=weights[~np.isnan(loss)], axis=axis
-        )
+    if isinstance(df, pd.DataFrame):
+        delta_y = df[models].sub(df[target_col], axis=0).abs()
+        res = np.maximum(q * delta_y, (q - 1) * delta_y).groupby(df[id_col]).mean()
+        res.index.name = id_col
+        res = res.reset_index()
     else:
-        quantile_loss = np.nanmean(loss, axis=axis)
+        import polars as pl
 
-    return quantile_loss
+        def gen_expr(model):
+            delta_y = pl_col(model).sub(pl_col(target_col)).abs()
+            try:
+                col_max = pl.max_horizontal([q * delta_y, (q - 1) * delta_y])
+            except AttributeError:
+                col_max = pl.max([q * delta_y, (q - 1) * delta_y])
+            return col_max.alias(model)
 
-# %% ../nbs/losses.ipynb 45
+        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    return res
+
+# %% ../nbs/losses.ipynb 57
 def mqloss(
-    y: np.ndarray,
-    y_hat: np.ndarray,
+    df: DataFrame,
+    models: List[str],
     quantiles: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """Multi-Quantile loss (MQL)
 
     MQL calculates the average multi-quantile Loss for
@@ -423,107 +440,159 @@ def mqloss(
 
     Parameters
     ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
+    df : pandas or polars DataFrame
+        Input dataframe with id, times, actuals and predictions.
+    models : list of str
+        Columns that identify the models predictions.
     quantiles : numpy array
         Quantiles to compare against.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
 
     Returns
     -------
-    numpy array or double
-        MQL along the specified axis.
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
 
     References
     ----------
     [1] https://www.jstor.org/stable/2629907
     """
-    if weights is None:
-        weights = np.ones(y.shape)
+    res: Optional[DataFrame] = None
+    quantiles = np.asarray(quantiles)
+    for model in models:
+        error = (df[target_col].to_numpy() - df[model].to_numpy()).reshape(-1, 1)
+        loss = np.maximum(error * quantiles, error * (quantiles - 1)).mean(axis=1)
+        result = type(df)({model: loss})
+        try:
+            result = result.group_by(df[id_col]).mean()
+        except AttributeError:
+            result = result.groupby(df[id_col]).mean()
+        if res is None:
+            res = result
+            if isinstance(res, pd.DataFrame):
+                res.index.name = id_col
+                res = res.reset_index()
+        else:
+            if isinstance(res, pd.DataFrame):
+                res = pd.concat([res, result], axis=1)
+            else:
+                res = res.join(result, on=id_col)
+    return res
 
-    _metric_protections(y, y_hat, weights)
-    n_q = len(quantiles)
-
-    y_rep = np.expand_dims(y, axis=-1)
-    error = y_rep - y_hat
-    mqloss = np.maximum(quantiles * error, (quantiles - 1) * error)
-
-    # Match y/weights dimensions and compute weighted average
-    weights = np.repeat(np.expand_dims(weights, axis=-1), repeats=n_q, axis=-1)
-    mqloss = np.average(mqloss, weights=weights, axis=axis)
-
-    return mqloss
-
-# %% ../nbs/losses.ipynb 48
+# %% ../nbs/losses.ipynb 61
 def coverage(
-    y: np.ndarray,
-    y_hat_lo: np.ndarray,
-    y_hat_hi: np.ndarray,
-) -> Union[float, np.ndarray]:
-    """
-    Coverage of y with y_hat_lo and y_hat_hi.
+    df: DataFrame,
+    models: List[str],
+    level: int,
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
+    """Coverage of y with y_hat_lo and y_hat_hi.
 
     Parameters
     ----------
-    y : numpy array
-        Observed values.
-    y_hat_lo : numpy array
-        Lower prediction interval.
-    y_hat_hi : numpy array
-        Higher prediction interval.
+    df : pandas or polars DataFrame
+        Input dataframe with id, times, actuals and predictions.
+    models : list of str
+        Columns that identify the models predictions.
+    level : int
+        Confidence level used for intervals.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
 
     Returns
     -------
-    numpy array or double
-        Coverage of y_hat
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
 
     References
     ----------
     [1] https://www.jstor.org/stable/2629907
     """
-    return 100 * np.logical_and(y >= y_hat_lo, y <= y_hat_hi).mean()
+    if isinstance(df, pd.DataFrame):
+        out = np.empty((df.shape[0], len(models)))
+        for j, model in enumerate(models):
+            out[:, j] = df[target_col].between(
+                df[f"{model}-lo-{level}"], df[f"{model}-hi-{level}"]
+            )
+        res = pd.DataFrame(out, columns=models).groupby(df[id_col]).mean()
+        res.index.name = id_col
+        res = res.reset_index()
+    else:
 
-# %% ../nbs/losses.ipynb 51
+        def gen_expr(model):
+            return (
+                pl_col(target_col)
+                .is_between(
+                    pl_col(f"{model}-lo-{level}"), pl_col(f"{model}-hi-{level}")
+                )
+                .alias(model)
+            )
+
+        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    return res
+
+# %% ../nbs/losses.ipynb 65
 def calibration(
-    y: np.ndarray,
-    y_hat_hi: np.ndarray,
-) -> Union[float, np.ndarray]:
+    df: DataFrame,
+    models: List[str],
+    level: int,
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """
     Fraction of y that is lower than y_hat_hi.
 
     Parameters
     ----------
-    y : numpy array
-        Observed values.
-    y_hat_hi : numpy array
-        Higher prediction interval.
+    df : pandas or polars DataFrame
+        Input dataframe with id, times, actuals and predictions.
+    models : list of str
+        Columns that identify the models predictions.
+    level : int
+        Confidence level used for intervals.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
 
     Returns
     -------
-    numpy array or double
-        Calibration of y_hat
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
 
     References
     ----------
     [1] https://www.jstor.org/stable/2629907
     """
-    return (y <= y_hat_hi).mean()
+    if isinstance(df, pd.DataFrame):
+        out = np.empty((df.shape[0], len(models)))
+        for j, model in enumerate(models):
+            out[:, j] = df[target_col].le(df[f"{model}-hi-{level}"])
+        res = pd.DataFrame(out, columns=models).groupby(df[id_col]).mean()
+        res.index.name = id_col
+        res = res.reset_index()
+    else:
 
-# %% ../nbs/losses.ipynb 54
+        def gen_expr(model):
+            return pl_col(target_col).le(pl_col(f"{model}-hi-{level}")).alias(model)
+
+        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    return res
+
+# %% ../nbs/losses.ipynb 69
 def scaled_crps(
-    y: np.ndarray,
-    y_hat: np.ndarray,
+    df: DataFrame,
+    models: List[str],
     quantiles: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
     """Scaled Continues Ranked Probability Score
 
     Calculates a scaled variation of the CRPS, as proposed by Rangapuram (2021),
@@ -531,33 +600,58 @@ def scaled_crps(
     This metric averages percentual weighted absolute deviations as
     defined by the quantile losses.
 
-
     Parameters
     ----------
-    y : numpy array
-        Observed values.
-    y_hat : numpy array
-        Predicted values.
+    df : pandas or polars DataFrame
+        Input dataframe with id, times, actuals and predictions.
+    models : list of str
+        Columns that identify the models predictions.
     quantiles : numpy array
         Quantiles to compare against.
-    weights : numpy array, optional (default=None)
-        Weights for weighted average.
-    axis : int, optional (default=None)
-        Axis or axes along which to average a.
-        The default, axis=None, will average over all of the elements of
-        the input array. If axis is negative it counts from the last to first.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    target_col : str (default='y')
+        Column that contains the target.
 
     Returns
     -------
-    numpy array or double.
-        Scaled crps along the specified axis.
+    pandas or polars Dataframe
+        dataframe with one row per id and one column per model.
 
     References
     ----------
     [1] https://proceedings.mlr.press/v139/rangapuram21a.html
     """
     eps = np.finfo(float).eps
-    norm = np.sum(np.abs(y))
-    loss = mqloss(y=y, y_hat=y_hat, quantiles=quantiles, weights=weights, axis=axis)
-    loss = 2 * loss * np.sum(np.ones(y.shape)) / (norm + eps)
-    return loss
+    quantiles = np.asarray(quantiles)
+    loss = mqloss(df, models, quantiles, id_col, target_col)
+    if isinstance(loss, pd.DataFrame):
+        loss = loss.set_index(id_col)
+        assert isinstance(df, pd.DataFrame)
+        norm = df[target_col].abs().groupby(df[id_col]).sum()
+        sizes = df[id_col].value_counts()
+        scales = sizes * (sizes + 1) / 2
+        res = 2 * loss.mul(scales, axis=0).div(norm + eps, axis=0)
+        res.index.name = id_col
+        res = res.reset_index()
+    else:
+
+        def gen_expr(model):
+            return (
+                2 * pl_col(model) * pl_col("counts") / (pl_col("norm") + eps)
+            ).alias(model)
+
+        try:
+            grouped_df = df.group_by(id_col)
+        except AttributeError:
+            grouped_df = df.groupby(id_col)
+        norm = grouped_df.agg(pl_col(target_col).abs().sum().alias("norm"))
+        sizes = (
+            df[id_col]
+            .value_counts()
+            .with_columns(pl_col("counts") * (pl_col("counts") + 1) / 2)
+        )
+        res = _pl_agg_expr(
+            loss.join(sizes, on=id_col).join(norm, on=id_col), models, id_col, gen_expr
+        )
+    return res
