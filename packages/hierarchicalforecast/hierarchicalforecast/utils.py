@@ -70,22 +70,34 @@ def cov2corr(cov, return_std=False):
         return corr
 
 # %% ../nbs/utils.ipynb 9
-def _to_summing_matrix(S_df: pd.DataFrame):
+def _to_summing_matrix(S_df: pd.DataFrame, sparse_s: bool = False):
     """Transforms the DataFrame `df` of hierarchies to a summing matrix S."""
     categories = [S_df[col].unique() for col in S_df.columns]
     cat_sizes = [len(cats) for cats in categories]
     idx_bottom = np.argmax(cat_sizes)
     cats_bottom = categories[idx_bottom]
-    encoder = OneHotEncoder(categories=categories, sparse=False, dtype=np.float32)
+
+    try:
+        encoder = OneHotEncoder(categories=categories, sparse_output=sparse_s, dtype=np.float32)
+    except TypeError:  # sklearn < 1.2
+        encoder = OneHotEncoder(categories=categories, sparse=sparse_s, dtype=np.float32)
+
     S = encoder.fit_transform(S_df).T
-    S = pd.DataFrame(S, index=chain(*categories), columns=cats_bottom)
+
+    if sparse_s:
+        df_constructor = pd.DataFrame.sparse.from_spmatrix
+    else:
+        df_constructor = pd.DataFrame
+    S = df_constructor(S, index=chain(*categories), columns=cats_bottom)
+
     tags = dict(zip(S_df.columns, categories))
     return S, tags
 
 # %% ../nbs/utils.ipynb 10
 def aggregate_before(df: pd.DataFrame,
               spec: List[List[str]],
-              agg_fn: Callable = np.sum):
+              agg_fn: Callable = np.sum,
+              sparse_s: bool = False):
     """Utils Aggregation Function.
 
     Aggregates bottom level series contained in the pd.DataFrame `df` according 
@@ -95,6 +107,8 @@ def aggregate_before(df: pd.DataFrame,
     `df`: pd.DataFrame with columns `['ds', 'y']` and columns to aggregate.<br>
     `spec`: List of levels. Each element of the list contains a list of columns of `df` to aggregate.<br>
     `agg_fn`: Function used to aggregate `'y'`.<br>
+    `sparse_s`: bool=False, whether the returned S should be a sparse DataFrame.<br>
+
 
     **Returns:**<br>
     `Y_df, S, tags`: tuple with hierarchically structured series `Y_df` ($\mathbf{y}_{[a,b]}$),
@@ -121,7 +135,7 @@ def aggregate_before(df: pd.DataFrame,
     Y_df = df_hiers[['unique_id', 'ds', 'y']].set_index('unique_id')
     
     # Aggregations constraints S definition
-    S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols])
+    S, tags = _to_summing_matrix(S_df.loc[bottom_hier, hiers_cols], sparse_s)
     return Y_df, S, tags
 
 # %% ../nbs/utils.ipynb 11
@@ -176,9 +190,11 @@ def _to_summing_dataframe(
     tags = dict(zip(S_df.columns, categories))
     tags[bottom_col] = bottom_ids
 
-    encoder = OneHotEncoder(
-        categories=categories, sparse=sparse_s, dtype=np.float32
-    )
+    try:
+        encoder = OneHotEncoder(categories=categories, sparse_output=sparse_s, dtype=np.float32)
+    except TypeError:  # sklearn < 1.2
+        encoder = OneHotEncoder(categories=categories, sparse=sparse_s, dtype=np.float32)
+
     S = encoder.fit_transform(S_df).T
 
     if sparse_s:
@@ -255,9 +271,12 @@ def aggregate(
 
     #------------------------------- Aggregation -------------------------------#
     n_agg = S_df.shape[0] - S_df.shape[1]
-    Agg = S_df.values[:n_agg, :]
-    y_bottom = balanced_df.y.values
+    if sparse_s:
+        Agg = S_df.sparse.to_coo().tocsr()[:n_agg, :]
+    else:
+        Agg = S_df.values[:n_agg, :]
 
+    y_bottom = balanced_df.y.values
     y_bottom = y_bottom.reshape(len(S_df.columns), len(dates))
     y_bottom_mask = np.isnan(y_bottom)
     y_agg = Agg @ np.nan_to_num(y_bottom)
@@ -274,7 +293,7 @@ def aggregate(
     Y_df = Y_df.set_index('unique_id').dropna()
     return Y_df, S_df, tags
 
-# %% ../nbs/utils.ipynb 19
+# %% ../nbs/utils.ipynb 20
 class HierarchicalPlot:
     """ Hierarchical Plot
 
@@ -468,7 +487,7 @@ class HierarchicalPlot:
         plt.grid()
         plt.show()
 
-# %% ../nbs/utils.ipynb 34
+# %% ../nbs/utils.ipynb 35
 # convert levels to output quantile names
 def level_to_outputs(level:Iterable[int]):
     """ Converts list of levels into output names matching StatsForecast and NeuralForecast methods.
@@ -512,7 +531,7 @@ def quantiles_to_outputs(quantiles:Iterable[float]):
             output_names.append('-median')
     return quantiles, output_names
 
-# %% ../nbs/utils.ipynb 35
+# %% ../nbs/utils.ipynb 36
 # given input array of sample forecasts and inptut quantiles/levels, 
 # output a Pandas Dataframe with columns of quantile predictions
 def samples_to_quantiles_df(samples:np.ndarray, 
