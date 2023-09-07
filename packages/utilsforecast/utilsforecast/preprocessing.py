@@ -4,6 +4,7 @@
 __all__ = ['fill_gaps']
 
 # %% ../nbs/preprocessing.ipynb 2
+import warnings
 from typing import Union
 
 import numpy as np
@@ -34,8 +35,8 @@ def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
 def fill_gaps(
     df: pd.DataFrame,
     freq: Union[str, int],
-    start: str = "per_serie",
-    end: str = "global",
+    start: Union[str, int] = "per_serie",
+    end: Union[str, int] = "global",
     id_col: str = "unique_id",
     time_col: str = "ds",
 ) -> pd.DataFrame:
@@ -51,34 +52,57 @@ def fill_gaps(
         Initial timestamp for the series.
             * 'per_serie' uses each serie's first timestamp
             * 'global' uses the first timestamp seen in the data
-            * Can also be a specific timestamp, e.g. '2000-01-01'
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01' or 2000
     end : str
         Initial timestamp for the series.
             * 'per_serie' uses each serie's last timestamp
             * 'global' uses the last timestamp seen in the data
-            * Can also be a specific timestamp, e.g. '2000-01-01'
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01' or 2000
     id_col : str (default='unique_id')
         Column that identifies each serie.
     time_col : str (default='ds')
         Column that identifies each timestamp.
-    target_col : str (default='y')
-        Column that contains the target.
 
     Returns
     -------
     filled_df : pandas DataFrame
         Dataframe with gaps filled.
     """
-    delta = np.timedelta64(1, freq) if isinstance(freq, str) else freq
-    times_by_id = df.groupby(id_col)[time_col].agg(["min", "max"])
+    if isinstance(freq, str):
+        offset = pd.tseries.frequencies.to_offset(freq)
+        if not hasattr(offset, "delta"):
+            # irregular freq, try using first letter of abbreviation
+            # such as MS = 'Month Start' -> 'M', YS = 'Year Start' -> 'Y'
+            freq = freq[0]
+        delta: Union[np.timedelta64, int] = np.timedelta64(1, freq)
+    else:
+        delta = 1
+    times_by_id = df.groupby(id_col, observed=True)[time_col].agg(["min", "max"])
     starts = _determine_bound(start, freq, times_by_id, "min")
     ends = _determine_bound(end, freq, times_by_id, "max") + delta
     sizes = ((ends - starts) / delta).astype(np.int64)
-    times = np.concatenate(
-        [np.arange(start, end, delta) for start, end in zip(starts, ends)]
+    times = pd.Index(
+        np.concatenate(
+            [np.arange(start, end, delta) for start, end in zip(starts, ends)]
+        )
     )
     if isinstance(freq, str):
         times = times.astype("datetime64[ns]", copy=False)
+        first_time = np.datetime64(df.iloc[0][time_col])
+        was_truncated = first_time != first_time.astype(f"datetime64[{freq}]")
+        if was_truncated:
+            times += offset
     uids = np.repeat(times_by_id.index, sizes)
     idx = pd.MultiIndex.from_arrays([uids, times], names=[id_col, time_col])
-    return df.set_index([id_col, time_col]).reindex(idx).reset_index()
+    res = df.set_index([id_col, time_col]).reindex(idx).reset_index()
+    extra_cols = df.columns.drop([id_col, time_col]).tolist()
+    if extra_cols:
+        check_col = extra_cols[0]
+        if res[check_col].count() < df[check_col].count():
+            warnings.warn(
+                "Some values were lost during filling, "
+                "please make sure that all your times meet the specified frequency.\n"
+                "For example if you have 'W-TUE' as your frequency, "
+                "make sure that all your times are actually Tuesdays."
+            )
+    return res
