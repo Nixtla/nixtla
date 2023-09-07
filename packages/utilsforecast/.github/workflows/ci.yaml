@@ -32,7 +32,7 @@ jobs:
         with:
           environment-file: environment.yml
           create-args: python=${{ matrix.python-version }}
-          cache-environment: true
+          cache-environment: ${{ matrix.os != 'windows-latest' }}
 
       - name: Install the library
         run: pip install ./
