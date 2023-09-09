@@ -6,14 +6,15 @@ import httpx
 
 
 class BaseClientWrapper:
-    def __init__(self, *, token: typing.Union[str, typing.Callable[[], str]]):
+    def __init__(self, *, token: typing.Union[str, typing.Callable[[], str]], base_url: str):
         self._token = token
+        self._base_url = base_url
 
     def get_headers(self) -> typing.Dict[str, str]:
         headers: typing.Dict[str, str] = {
             "X-Fern-Language": "Python",
-            "X-Fern-SDK-Name": "fern-nixtla",
-            "X-Fern-SDK-Version": "0.0.6",
+            "X-Fern-SDK-Name": "nixtla",
+            "X-Fern-SDK-Version": "0.0.0",
         }
         headers["Authorization"] = f"Bearer {self._get_token()}"
         return headers
@@ -24,14 +25,21 @@ class BaseClientWrapper:
         else:
             return self._token()
 
+    def get_base_url(self) -> str:
+        return self._base_url
+
 
 class SyncClientWrapper(BaseClientWrapper):
-    def __init__(self, *, token: typing.Union[str, typing.Callable[[], str]], httpx_client: httpx.Client):
-        super().__init__(token=token)
+    def __init__(
+        self, *, token: typing.Union[str, typing.Callable[[], str]], base_url: str, httpx_client: httpx.Client
+    ):
+        super().__init__(token=token, base_url=base_url)
         self.httpx_client = httpx_client
 
 
 class AsyncClientWrapper(BaseClientWrapper):
-    def __init__(self, *, token: typing.Union[str, typing.Callable[[], str]], httpx_client: httpx.AsyncClient):
-        super().__init__(token=token)
+    def __init__(
+        self, *, token: typing.Union[str, typing.Callable[[], str]], base_url: str, httpx_client: httpx.AsyncClient
+    ):
+        super().__init__(token=token, base_url=base_url)
         self.httpx_client = httpx_client
