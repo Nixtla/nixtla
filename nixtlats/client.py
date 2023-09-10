@@ -196,6 +196,50 @@ class Nixtla:
             raise ApiError(status_code=_response.status_code, body=_response.text)
         raise ApiError(status_code=_response.status_code, body=_response_json)
 
+    def timegpt_multi_series_anomalies(
+        self,
+        *,
+        freq: typing.Optional[str] = OMIT,
+        level: typing.Optional[typing.List[typing.Any]] = OMIT,
+        y: typing.Optional[typing.Any] = OMIT,
+        x: typing.Optional[typing.Any] = OMIT,
+    ) -> typing.Any:
+        """
+        Parameters:
+            - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - level: typing.Optional[typing.List[typing.Any]]. Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.
+
+            - y: typing.Optional[typing.Any].
+
+            - x: typing.Optional[typing.Any].
+        """
+        _request: typing.Dict[str, typing.Any] = {}
+        if freq is not OMIT:
+            _request["freq"] = freq
+        if level is not OMIT:
+            _request["level"] = level
+        if y is not OMIT:
+            _request["y"] = y
+        if x is not OMIT:
+            _request["x"] = x
+        _response = self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_anomalies"),
+            json=jsonable_encoder(_request),
+            headers=self._client_wrapper.get_headers(),
+            timeout=60,
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic.parse_obj_as(typing.Any, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(pydantic.parse_obj_as(HttpValidationError, _response.json()))  # type: ignore
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
     def timegpt_input_size(self, *, request: SingleSeriesForecast) -> typing.Any:
         """
         Parameters:
@@ -434,6 +478,50 @@ class AsyncNixtla:
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_historic"),
+            json=jsonable_encoder(_request),
+            headers=self._client_wrapper.get_headers(),
+            timeout=60,
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic.parse_obj_as(typing.Any, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(pydantic.parse_obj_as(HttpValidationError, _response.json()))  # type: ignore
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def timegpt_multi_series_anomalies(
+        self,
+        *,
+        freq: typing.Optional[str] = OMIT,
+        level: typing.Optional[typing.List[typing.Any]] = OMIT,
+        y: typing.Optional[typing.Any] = OMIT,
+        x: typing.Optional[typing.Any] = OMIT,
+    ) -> typing.Any:
+        """
+        Parameters:
+            - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - level: typing.Optional[typing.List[typing.Any]]. Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.
+
+            - y: typing.Optional[typing.Any].
+
+            - x: typing.Optional[typing.Any].
+        """
+        _request: typing.Dict[str, typing.Any] = {}
+        if freq is not OMIT:
+            _request["freq"] = freq
+        if level is not OMIT:
+            _request["level"] = level
+        if y is not OMIT:
+            _request["y"] = y
+        if x is not OMIT:
+            _request["x"] = x
+        _response = await self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_anomalies"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
