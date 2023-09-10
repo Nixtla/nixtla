@@ -3,6 +3,9 @@ import setuptools
 with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
+dev = ["black", "nbdev", "plotly", "python-dotenv", "openbb", "statsforecast", "utilsforecast"]
+distributed = ["dask[complete]", "fugue[ray]", "pyspark"]
+
 setuptools.setup(
     name="nixtlats",
     version="0.1.12",
@@ -19,7 +22,7 @@ setuptools.setup(
     python_requires=">=3.7",
     install_requires=["requests", "pandas", "httpx", "pydantic<2"],
     extras_require={
-        "dev": ["black", "nbdev", "plotly", "python-dotenv", "openbb", "statsforecast", "utilsforecast"],
-        "distributed": ["dask[complete]", "fugue[ray]", "pyspark"],
+        "dev": dev + distributed,
+        "distributed": distributed,
     },
 )
