@@ -526,7 +526,9 @@ class _TimeGPT:
         y, x = self._transform_dataframes(Y_df, None)
         response_timegpt = self.client.timegpt_multi_series_anomalies(
             freq=freq,
-            level=[level] if isinstance(level, Union[int, float]) else [level[0]],
+            level=[level]
+            if (isinstance(level, int) or isinstance(level, float))
+            else [level[0]],
             y=y,
         )
         return pd.DataFrame(**response_timegpt["data"]["forecast"])
