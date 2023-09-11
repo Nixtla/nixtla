@@ -8,7 +8,7 @@ distributed = ["dask[complete]", "fugue[ray]", "pyspark"]
 
 setuptools.setup(
     name="nixtlats",
-    version="0.1.12",
+    version="0.1.13",
     description="Nixtla SDK",
     long_description=long_description,
     long_description_content_type="text/markdown",
