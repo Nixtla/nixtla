@@ -92,6 +92,15 @@ class _TimeGPT:
         self.client = Nixtla(base_url=environment, token=token)
         self.weights_x: pd.DataFrame = None
 
+    @property
+    def request_headers(self):
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.client._client_wrapper._token}",
+        }
+        return headers
+
     def _parse_response(self, response) -> Dict:
         """Parses responde."""
         response.raise_for_status()
@@ -428,11 +437,13 @@ class _TimeGPT:
         )
         y, x = self._transform_dataframes(Y_df, None)
         response_timegpt = self.client.timegpt_multi_series_historic(
-            freq=freq, level=level, y=y
+            freq=freq,
+            level=level,
+            y=y,
         )
         return pd.DataFrame(**response_timegpt["data"]["forecast"])
 
-    def _multi_series(
+    def _multi_series_forecast(
         self,
         df: pd.DataFrame,
         h: int,
@@ -505,6 +516,45 @@ class _TimeGPT:
             fitted_df = fitted_df.drop(columns="y")
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
         return fcst_df
+
+    def _hit_multi_series_anomalies_endpoint(
+        self,
+        Y_df: pd.DataFrame,
+        freq: str,
+        level: Union[int, float],
+    ):
+        y, x = self._transform_dataframes(Y_df, None)
+        response_timegpt = self.client.timegpt_multi_series_anomalies(
+            freq=freq,
+            level=[level]
+            if (isinstance(level, int) or isinstance(level, float))
+            else [level[0]],
+            y=y,
+        )
+        return pd.DataFrame(**response_timegpt["data"]["forecast"])
+
+    def _multi_series_detect_anomalies(
+        self,
+        df: pd.DataFrame,
+        freq: str,
+        level: Union[int, float],
+    ):
+        freq = self._infer_freq(df, freq)
+        main_logger.info("Preprocessing dataframes...")
+        Y_df, X_df, x_cols = self._preprocess_dataframes(
+            df=df,
+            h=None,
+            X_df=None,
+            freq=freq,
+        )
+        main_logger.info("Calling Anomaly Detector Endpoint...")
+        anomalies_df = self._hit_multi_series_anomalies_endpoint(
+            Y_df=Y_df,
+            freq=freq,
+            level=level,
+        )
+        anomalies_df = anomalies_df.drop(columns="y")
+        return anomalies_df
 
     def _forecast(
         self,
@@ -591,7 +641,7 @@ class _TimeGPT:
             time_col=time_col,
             target_col=target_col,
         )
-        fcst_df = self._multi_series(
+        fcst_df = self._multi_series_forecast(
             df=df,
             h=h,
             freq=freq,
@@ -611,6 +661,73 @@ class _TimeGPT:
             drop_uid=drop_uid,
         )
         return fcst_df
+
+    def _detect_anomalies(
+        self,
+        df: pd.DataFrame,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Union[int, float] = 99,
+        validate_token: bool = False,
+    ):
+        """Detect anomalies in your time series using TimeGPT.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        level : float (default=99)
+            Confidence level between 0 and 100 for detecting the anomalies.
+
+        Returns
+        -------
+        anomalies_df : pandas.DataFrame
+            DataFrame with anomalies flagged with 1 detected by TimeGPT.
+        """
+        if validate_token and not self.validate_token(log=False):
+            raise Exception("Token not valid, please email ops@nixtla.io")
+
+        df, _, drop_uid = self._validate_inputs(
+            df=df,
+            X_df=None,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        anomalies_df = self._multi_series_detect_anomalies(
+            df=df,
+            freq=freq,
+            level=level,
+        )
+        anomalies_df = self._validate_outputs(
+            fcst_df=anomalies_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            drop_uid=drop_uid,
+        )
+        return anomalies_df
 
 # %% ../nbs/timegpt.ipynb 9
 class TimeGPT(_TimeGPT):
@@ -732,5 +849,72 @@ class TimeGPT(_TimeGPT):
                 add_history=add_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
+                num_partitions=num_partitions,
+            )
+
+    def detect_anomalies(
+        self,
+        df: pd.DataFrame,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Union[int, float] = 99,
+        validate_token: bool = False,
+    ):
+        """Detect anomalies in your time series using TimeGPT.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        level : float (default=99)
+            Confidence level between 0 and 100 for detecting the anomalies.
+
+        Returns
+        -------
+        anomalies_df : pandas.DataFrame
+            DataFrame with anomalies flagged with 1 detected by TimeGPT.
+        """
+        if isinstance(df, pd.DataFrame):
+            return self._detect_anomalies(
+                df=df,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                level=level,
+            )
+        else:
+            from nixtlats.distributed.timegpt import _DistributedTimeGPT
+
+            return _DistributedTimeGPT().detect_anomalies(
+                token=self.client._client_wrapper._token,
+                environment=self.client._environment,
+                df=df,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                level=level,
                 num_partitions=num_partitions,
             )
