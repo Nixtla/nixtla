@@ -535,6 +535,19 @@ class MLForecast:
             raise ValueError(
                 "No fitted models found. You have to call fit or preprocess + fit_models."
             )
+        first_model_is_list = isinstance(next(iter(self.models_.values())), list)
+        max_horizon = self.ts.max_horizon
+        if first_model_is_list and max_horizon is None:
+            raise ValueError(
+                "Found one model per horizon but `max_horizon` is None. "
+                "If you ran preprocess after fit please run fit again."
+            )
+        elif not first_model_is_list and max_horizon is not None:
+            raise ValueError(
+                "Found a single model for all horizons "
+                f"but `max_horizon` is {max_horizon}. "
+                "If you ran preprocess after fit please run fit again."
+            )
         if new_data is not None:
             warnings.warn(
                 "`new_data` has been deprecated, please use `new_df` instead.",
