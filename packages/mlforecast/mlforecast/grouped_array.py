@@ -67,6 +67,18 @@ def _restore_difference(preds, data, indptr, d):
 
 
 @njit
+def _restore_fitted_difference(diffs_data, diffs_indptr, data, indptr, d):
+    n_series = len(indptr) - 1
+    for i in range(n_series):
+        serie = data[indptr[i] : indptr[i + 1]]
+        diffs_size = diffs_indptr[i + 1] - diffs_indptr[i]
+        dropped_rows = diffs_size - serie.size
+        start_idx = max(0, d - dropped_rows)
+        for j in range(start_idx, serie.size):
+            serie[j] += diffs_data[diffs_indptr[i + 1] - serie.size - d + j]
+
+
+@njit
 def _expand_target(data, indptr, max_horizon):
     out = np.empty((data.size, max_horizon), dtype=data.dtype)
     n_series = len(indptr) - 1
@@ -178,8 +190,21 @@ class GroupedArray:
     ) -> np.ndarray:
         return _transform_series(self.data, self.indptr, updates_only, lag, func, *args)
 
-    def restore_difference(self, preds: np.ndarray, d: int):
+    def restore_difference(self, preds: np.ndarray, d: int) -> None:
         _restore_difference(preds, self.data, self.indptr, d)
+
+    def restore_fitted_difference(
+        self, series_data: np.ndarray, series_indptr: np.ndarray, d: int
+    ) -> None:
+        if len(self.indptr) != len(series_indptr):
+            raise ValueError("Found different number of groups in fitted differences.")
+        _restore_fitted_difference(
+            self.data,
+            self.indptr,
+            series_data,
+            series_indptr,
+            d,
+        )
 
     def expand_target(self, max_horizon: int) -> np.ndarray:
         return _expand_target(self.data, self.indptr, max_horizon)

@@ -17,6 +17,7 @@ from sklearn.base import BaseEstimator
 
 from .grouped_array import GroupedArray
 from .target_transforms import BaseTargetTransform, Differences
+from .utils import _ensure_shallow_copy
 
 # %% ../nbs/core.ipynb 10
 date_features_dtypes = {
@@ -369,11 +370,7 @@ class TimeSeries:
             for i in range(max_horizon):
                 df[f"{self.target_col}{i}"] = target[:, i]
         else:
-            from packaging.version import Version
-
-            if Version(pd.__version__) < Version("1.4"):
-                # https://github.com/pandas-dev/pandas/pull/43406
-                df = df.copy()
+            df = _ensure_shallow_copy(df)
             df[self.target_col] = target
         return df
 

@@ -6,7 +6,7 @@ __all__ = ['BaseTargetTransform', 'Differences', 'LocalStandardScaler', 'GlobalS
 # %% ../nbs/target_transforms.ipynb 3
 import abc
 import reprlib
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,7 @@ from sklearn.base import TransformerMixin, clone
 from numba import njit
 
 from .grouped_array import GroupedArray, _apply_difference
+from .utils import _ensure_shallow_copy
 
 # %% ../nbs/target_transforms.ipynb 5
 class BaseTargetTransform(abc.ABC):
@@ -38,13 +39,16 @@ class BaseTargetTransform(abc.ABC):
 class Differences(BaseTargetTransform):
     """Subtracts previous values of the serie. Can be used to remove trend or seasonalities."""
 
+    store_fitted = False
+
     def __init__(self, differences: Iterable[int]):
         self.differences = list(differences)
 
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        self.fitted_: List[GroupedArray] = []
         ga = GroupedArray.from_sorted_df(df, self.id_col, self.target_col)
         uids = df[self.id_col].unique()
-        original_sizes = ga.indptr[1:].cumsum()
+        original_sizes = np.diff(ga.indptr)
         total_diffs = sum(self.differences)
         small_series = uids[original_sizes < total_diffs]
         if small_series.size:
@@ -55,29 +59,41 @@ class Differences(BaseTargetTransform):
         self.original_values_ = []
         n_series = len(ga.indptr) - 1
         for d in self.differences:
+            if self.store_fitted:
+                # these are saved in order to be able to perform a correct
+                # inverse transform when trying to retrieve the fitted values.
+                self.fitted_.append(GroupedArray(ga.data.copy(), ga.indptr.copy()))
             new_data = np.empty_like(ga.data, shape=n_series * d)
             new_indptr = d * np.arange(n_series + 1, dtype=np.int32)
             _apply_difference(ga.data, ga.indptr, new_data, new_indptr, d)
             self.original_values_.append(GroupedArray(new_data, new_indptr))
         df = df.copy(deep=False)
+        df = _ensure_shallow_copy(df)
         df[self.target_col] = ga.data
         return df
 
     def inverse_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         model_cols = df.columns.drop([self.id_col, self.time_col])
         df = df.copy(deep=False)
+        df = _ensure_shallow_copy(df)
         for model in model_cols:
             model_preds = df[model].values.copy()
-            for d, ga in zip(
-                reversed(self.differences), reversed(self.original_values_)
-            ):
-                if self.idxs is not None:
-                    ga = ga.take(self.idxs)
-                ga.restore_difference(model_preds, d)
+            if self.fitted_:
+                sizes = df[self.id_col].value_counts().sort_index().values
+                indptr = np.append(0, sizes.cumsum())
+                for d, ga in zip(reversed(self.differences), reversed(self.fitted_)):
+                    ga.restore_fitted_difference(model_preds, indptr, d)
+            else:
+                for d, ga in zip(
+                    reversed(self.differences), reversed(self.original_values_)
+                ):
+                    if self.idxs is not None:
+                        ga = ga.take(self.idxs)
+                    ga.restore_difference(model_preds, d)
             df[model] = model_preds
         return df
 
-# %% ../nbs/target_transforms.ipynb 7
+# %% ../nbs/target_transforms.ipynb 9
 @njit
 def _standard_scaler_transform(data, indptr, stats, out):
     n_series = len(indptr) - 1
@@ -101,7 +117,7 @@ def _standard_scaler_inverse_transform(preds, stats):
             preds[k] = preds[k] * std_ + mean_
             k += 1
 
-# %% ../nbs/target_transforms.ipynb 8
+# %% ../nbs/target_transforms.ipynb 10
 class LocalStandardScaler(BaseTargetTransform):
     """Standardizes each serie by subtracting its mean and dividing by its standard deviation."""
 
@@ -124,7 +140,7 @@ class LocalStandardScaler(BaseTargetTransform):
             df[model] = model_preds
         return df
 
-# %% ../nbs/target_transforms.ipynb 10
+# %% ../nbs/target_transforms.ipynb 12
 class GlobalSklearnTransformer(BaseTargetTransform):
     """Applies the same scikit-learn transformer to all series."""
 

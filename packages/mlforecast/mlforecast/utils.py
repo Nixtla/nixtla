@@ -214,3 +214,12 @@ class PredictionIntervals:
 
     def __repr__(self):
         return f"PredictionIntervals(n_windows={self.n_windows}, h={self.h}, method='{self.method}')"
+
+# %% ../nbs/utils.ipynb 25
+def _ensure_shallow_copy(df: pd.DataFrame) -> pd.DataFrame:
+    from packaging.version import Version
+
+    if Version(pd.__version__) < Version("1.4"):
+        # https://github.com/pandas-dev/pandas/pull/43406
+        df = df.copy()
+    return df
