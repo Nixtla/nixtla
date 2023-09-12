@@ -70,28 +70,31 @@ def fill_gaps(
     """
     if isinstance(freq, str):
         offset = pd.tseries.frequencies.to_offset(freq)
+        if "min" in freq:
+            # minutes are represented as 'm' in numpy
+            freq = freq.replace("min", "m")
+        if offset.n > 1:
+            freq = freq.replace(str(offset.n), "")
         if not hasattr(offset, "delta"):
             # irregular freq, try using first letter of abbreviation
             # such as MS = 'Month Start' -> 'M', YS = 'Year Start' -> 'Y'
             freq = freq[0]
-        delta: Union[np.timedelta64, int] = np.timedelta64(1, freq)
+        delta: Union[np.timedelta64, int] = np.timedelta64(offset.n, freq)
     else:
-        delta = 1
+        delta = freq
     times_by_id = df.groupby(id_col, observed=True)[time_col].agg(["min", "max"])
     starts = _determine_bound(start, freq, times_by_id, "min")
     ends = _determine_bound(end, freq, times_by_id, "max") + delta
     sizes = ((ends - starts) / delta).astype(np.int64)
-    times = pd.Index(
-        np.concatenate(
-            [np.arange(start, end, delta) for start, end in zip(starts, ends)]
-        )
+    times = np.hstack(
+        [np.arange(start, end, delta) for start, end in zip(starts, ends)]
     )
     if isinstance(freq, str):
-        times = times.astype("datetime64[ns]", copy=False)
+        times = pd.Index(times.astype("datetime64[ns]", copy=False))
         first_time = np.datetime64(df.iloc[0][time_col])
         was_truncated = first_time != first_time.astype(f"datetime64[{freq}]")
         if was_truncated:
-            times += offset
+            times += offset.base
     uids = np.repeat(times_by_id.index, sizes)
     idx = pd.MultiIndex.from_arrays([uids, times], names=[id_col, time_col])
     res = df.set_index([id_col, time_col]).reindex(idx).reset_index()
