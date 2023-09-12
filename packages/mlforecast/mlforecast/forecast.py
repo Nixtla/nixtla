@@ -325,11 +325,12 @@ class MLForecast:
             cv_results[model] = np.abs(cv_results[model] - cv_results[target_col])
         return cv_results.drop(columns=target_col)
 
-    def _invert_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _invert_transforms_fitted(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.ts.target_transforms is None:
             return df
+        sizes = df.groupby(self.ts.id_col, observed=True).size().values
         for tfm in self.ts.target_transforms[::-1]:
-            df = tfm.inverse_transform(df)
+            df = tfm.inverse_transform_fitted(df, sizes)
         return df
 
     def _compute_fitted_values(
@@ -356,7 +357,7 @@ class MLForecast:
             for name, model in self.models_.items():
                 assert not isinstance(model, list)  # mypy
                 fitted_values[name] = model.predict(X)
-            fitted_values = self._invert_transforms(fitted_values)
+            fitted_values = self._invert_transforms_fitted(fitted_values)
         else:
             horizon_fitted_values = []
             for horizon in range(max_horizon):
@@ -371,7 +372,7 @@ class MLForecast:
             for horizon, horizon_df in enumerate(horizon_fitted_values):
                 keep_mask = horizon_df[target_col].notnull()
                 horizon_df = horizon_df[keep_mask].copy()
-                horizon_df = self._invert_transforms(horizon_df)
+                horizon_df = self._invert_transforms_fitted(horizon_df)
                 horizon_df["h"] = horizon + 1
                 horizon_fitted_values[horizon] = horizon_df
             fitted_values = pd.concat(horizon_fitted_values)
