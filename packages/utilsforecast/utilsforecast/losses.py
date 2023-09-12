@@ -400,7 +400,11 @@ def quantile_loss(
     """
     if isinstance(df, pd.DataFrame):
         delta_y = df[models].sub(df[target_col], axis=0).abs()
-        res = np.maximum(q * delta_y, (q - 1) * delta_y).groupby(df[id_col]).mean()
+        res = (
+            np.maximum(q * delta_y, (q - 1) * delta_y)
+            .groupby(df[id_col], observed=True)
+            .mean()
+        )
         res.index.name = id_col
         res = res.reset_index()
     else:
@@ -466,10 +470,13 @@ def mqloss(
         error = (df[target_col].to_numpy() - df[model].to_numpy()).reshape(-1, 1)
         loss = np.maximum(error * quantiles, error * (quantiles - 1)).mean(axis=1)
         result = type(df)({model: loss})
-        try:
-            result = result.group_by(df[id_col]).mean()
-        except AttributeError:
-            result = result.groupby(df[id_col]).mean()
+        if isinstance(result, pd.DataFrame):
+            result = result.groupby(df[id_col], observed=True).mean()
+        else:
+            try:
+                result = result.group_by(df[id_col]).mean()
+            except AttributeError:
+                result = result.groupby(df[id_col]).mean()
         if res is None:
             res = result
             if isinstance(res, pd.DataFrame):
@@ -520,7 +527,9 @@ def coverage(
             out[:, j] = df[target_col].between(
                 df[f"{model}-lo-{level}"], df[f"{model}-hi-{level}"]
             )
-        res = pd.DataFrame(out, columns=models).groupby(df[id_col]).mean()
+        res = (
+            pd.DataFrame(out, columns=models).groupby(df[id_col], observed=True).mean()
+        )
         res.index.name = id_col
         res = res.reset_index()
     else:
@@ -574,7 +583,9 @@ def calibration(
         out = np.empty((df.shape[0], len(models)))
         for j, model in enumerate(models):
             out[:, j] = df[target_col].le(df[f"{model}-hi-{level}"])
-        res = pd.DataFrame(out, columns=models).groupby(df[id_col]).mean()
+        res = (
+            pd.DataFrame(out, columns=models).groupby(df[id_col], observed=True).mean()
+        )
         res.index.name = id_col
         res = res.reset_index()
     else:
@@ -628,7 +639,7 @@ def scaled_crps(
     if isinstance(loss, pd.DataFrame):
         loss = loss.set_index(id_col)
         assert isinstance(df, pd.DataFrame)
-        norm = df[target_col].abs().groupby(df[id_col]).sum()
+        norm = df[target_col].abs().groupby(df[id_col], observed=True).sum()
         sizes = df[id_col].value_counts()
         scales = sizes * (sizes + 1) / 2
         res = 2 * loss.mul(scales, axis=0).div(norm + eps, axis=0)
