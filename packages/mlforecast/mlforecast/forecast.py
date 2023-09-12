@@ -330,10 +330,6 @@ class MLForecast:
             return df
         for tfm in self.ts.target_transforms[::-1]:
             df = tfm.inverse_transform(df)
-            if hasattr(tfm, "store_fitted"):
-                tfm.store_fitted = False
-            if hasattr(tfm, "fitted_"):
-                tfm.fitted_ = []
         return df
 
     def _compute_fitted_values(
@@ -374,10 +370,17 @@ class MLForecast:
                     horizon_fitted_values[horizon][name] = model.predict(X)
             for horizon, horizon_df in enumerate(horizon_fitted_values):
                 keep_mask = horizon_df[target_col].notnull()
+                horizon_df = horizon_df[keep_mask].copy()
                 horizon_df = self._invert_transforms(horizon_df)
                 horizon_df["h"] = horizon + 1
-                horizon_fitted_values[horizon] = horizon_df[keep_mask].copy()
+                horizon_fitted_values[horizon] = horizon_df
             fitted_values = pd.concat(horizon_fitted_values)
+        if self.ts.target_transforms is not None:
+            for tfm in self.ts.target_transforms[::-1]:
+                if hasattr(tfm, "store_fitted"):
+                    tfm.store_fitted = False
+                if hasattr(tfm, "fitted_"):
+                    tfm.fitted_ = []
         return fitted_values
 
     @old_kw_to_pos(["data"], [1])
