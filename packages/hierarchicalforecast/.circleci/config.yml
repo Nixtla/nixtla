@@ -3,48 +3,38 @@ jobs:
   nbdev-tests:
     resource_class: large
     docker:
-      - image: continuumio/miniconda3
+      - image: mambaorg/micromamba:1.5-focal
     steps:
       - checkout
       - run:
           name: Install dependencies
           command: |
-            conda install mamba -n base -c conda-forge
-            mamba create -n hierarchicalforecast python=3.7
-            conda init bash
-            source ~/.bashrc
-            conda activate hierarchicalforecast
-            mamba env update -f environment.yml
+            micromamba install -n base -c conda-forge -y python=3.7
+            micromamba update -n base -f environment.yml
       - run:
           name: Run nbdev tests
           command: |
-            conda init bash
-            source ~/.bashrc
-            conda activate hierarchicalforecast
+            eval "$(micromamba shell hook --shell bash)"
+            micromamba activate base
             pip install ".[dev]"
             nbdev_test --do_print --timing --n_workers 1
   test-model-performance:
     resource_class: large
     docker:
-      - image: continuumio/miniconda3
+      - image: mambaorg/micromamba:1.5-focal
     steps:
       - checkout
       - run:
           name: Install dependencies
           command: |
-            conda install mamba -n base -c conda-forge
-            mamba create -n hierarchicalforecast python=3.7
-            conda init bash
-            source ~/.bashrc
-            conda activate hierarchicalforecast
-            mamba env update -f environment.yml
+            micromamba install -n base -c conda-forge -y python=3.7
+            micromamba update -n base -f environment.yml
       - run:
           name: Run model performance tests
           command: |
-            conda init bash
-            source ~/.bashrc
-            conda activate hierarchicalforecast
-            pip install -e ".[dev]"
+            eval "$(micromamba shell hook --shell bash)"
+            micromamba activate base
+            pip install ".[dev]"
             cd ./action_files/test_models/
             pip install -r requirements.txt
             python -m src.models
