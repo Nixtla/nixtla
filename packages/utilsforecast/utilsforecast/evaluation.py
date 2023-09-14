@@ -105,7 +105,7 @@ def evaluate(
             result = result.with_columns(pl_lit(metric_name).alias("metric"))
         results_per_metric.append(result)
     if isinstance(df, pd.DataFrame):
-        df = pd.concat(results_per_metric)
+        df = pd.concat(results_per_metric).reset_index(drop=True)
         out_cols = [c for c in df.columns if c not in (id_col, "metric")]
         df = df[[id_col, "metric", *out_cols]]
     else:

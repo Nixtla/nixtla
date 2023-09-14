@@ -5,8 +5,16 @@ utilsforecast
 
 ## Install
 
+### PyPI
+
 ``` sh
 pip install utilsforecast
+```
+
+### Conda
+
+``` sh
+conda install -c conda-forge utilsforecast
 ```
 
 ## How to use
@@ -303,21 +311,21 @@ evaluate(valid, metrics=[mape, daily_mase], train_df=train)
       <td>0.480316</td>
     </tr>
     <tr>
-      <th>0</th>
+      <th>3</th>
       <td>0</td>
       <td>mase</td>
       <td>0.907149</td>
       <td>16.418014</td>
     </tr>
     <tr>
-      <th>1</th>
+      <th>4</th>
       <td>1</td>
       <td>mase</td>
       <td>0.991635</td>
       <td>6.404254</td>
     </tr>
     <tr>
-      <th>2</th>
+      <th>5</th>
       <td>2</td>
       <td>mase</td>
       <td>1.013596</td>

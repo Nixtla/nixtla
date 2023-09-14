@@ -4,11 +4,18 @@
 __all__ = ['plot_series']
 
 # %% ../nbs/plotting.ipynb 4
+import re
 from typing import Dict, List, Optional, Union
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.colors as cm
+try:
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as cm
+except ImportError:
+    raise ImportError(
+        "matplotlib is not installed. Please install it and try again.\n"
+        "You can find detailed instructions at https://matplotlib.org/stable/users/installing/index.html"
+    )
 import numpy as np
 import pandas as pd
 from packaging.version import Version, parse as parse_version
@@ -20,8 +27,12 @@ from .validation import validate_format
 def _filter_series(df, id_col, time_col, uids, models=None, max_insample_length=None):
     out_cols = [id_col, time_col]
     if models is not None:
-        out_cols.extend(models)
-    out_cols = [col for pat in out_cols for col in df.columns if pat in col]
+        interval_cols = [
+            c
+            for c in df.columns
+            if re.search(rf"^({'|'.join(models)})-(?:lo|hi)-\d+", c)
+        ]
+        out_cols.extend(models + interval_cols)
     if isinstance(df, pd.DataFrame):
         df = df.loc[df[id_col].isin(uids), out_cols].sort_values(time_col)
     else:
@@ -130,11 +141,11 @@ def plot_series(
         if forecasts_df is None:
             models = []
         else:
-            exclude_strs = ["lo", "hi", id_col, time_col, target_col]
             models = [
-                col
-                for col in forecasts_df.columns
-                if all(s not in col for s in exclude_strs)
+                c
+                for c in forecasts_df.columns
+                if c not in [id_col, time_col, target_col]
+                and not re.search(r"-(?:lo|hi)-\d+", c)
             ]
 
     # ids
