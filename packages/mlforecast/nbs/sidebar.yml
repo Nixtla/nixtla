@@ -17,6 +17,9 @@ website:
           - docs/prediction_intervals.ipynb
           - docs/transfer_learning.ipynb
           - docs/target_transforms_guide.ipynb
+      - section: Guides
+        contents:
+          - docs/prediction_intervals_in_forecasting_models.ipynb
       - section: API reference
         contents:
           - section: Local
