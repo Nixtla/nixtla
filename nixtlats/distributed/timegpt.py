@@ -10,10 +10,42 @@ import numpy as np
 import pandas as pd
 import fugue
 import fugue.api as fa
+from fugue import transform, DataFrame, FugueWorkflow, ExecutionEngine
+from fugue.collections.yielded import Yielded
+from fugue.constants import FUGUE_CONF_WORKFLOW_EXCEPTION_INJECT
 from fugue.execution.factory import make_execution_engine
 from triad import Schema
 
 # %% ../../nbs/distributed.timegpt.ipynb 3
+def _cotransform(
+    df1: Any,
+    df2: Any,
+    using: Any,
+    schema: Any = None,
+    params: Any = None,
+    partition: Any = None,
+    engine: Any = None,
+    engine_conf: Any = None,
+    force_output_fugue_dataframe: bool = False,
+    as_local: bool = False,
+) -> Any:
+    dag = FugueWorkflow(compile_conf={FUGUE_CONF_WORKFLOW_EXCEPTION_INJECT: 0})
+
+    src = dag.create_data(df1).zip(dag.create_data(df2), partition=partition)
+    tdf = src.transform(
+        using=using,
+        schema=schema,
+        params=params,
+        pre_partition=partition,
+    )
+    tdf.yield_dataframe_as("result", as_local=as_local)
+    dag.run(engine, conf=engine_conf)
+    result = dag.yields["result"].result  # type:ignore
+    if force_output_fugue_dataframe or isinstance(df1, (DataFrame, Yielded)):
+        return result
+    return result.as_pandas() if result.is_local else result.native  # type:ignore
+
+# %% ../../nbs/distributed.timegpt.ipynb 4
 class _DistributedTimeGPT:
     def _distribute_method(
         self,
@@ -37,26 +69,39 @@ class _DistributedTimeGPT:
         if num_partitions is None:
             num_partitions = engine.get_current_parallelism()
         partition = dict(by=id_col, num=num_partitions, algo="coarse")
-        if X_df is not None:
-            raise Exception(
-                "Exogenous variables not supported for "
-                "distributed environments yet. "
-                "Please rise an issue at https://github.com/Nixtla/nixtla/issues/new "
-                "requesting the feature."
-            )
-        result_df = fa.transform(
-            df,
-            method,
-            params=dict(
-                token=token,
-                environment=environment,
-                kwargs=kwargs,
-            ),
-            schema=schema,
-            engine=engine,
-            partition=partition,
-            as_fugue=True,
+        params = dict(
+            token=token,
+            environment=environment,
+            kwargs=kwargs,
         )
+        if X_df is not None:
+            # check same engine
+            engine_x = make_execution_engine(infer_by=[X_df])
+            if repr(engine) != repr(engine_x):
+                raise Exception(
+                    "Target variable and exogenous variables "
+                    "have different engines. Please provide the same "
+                    "distributed engine for both inputs."
+                )
+            result_df = _cotransform(
+                df,
+                X_df,
+                method,
+                params=params,
+                schema=schema,
+                partition=partition,
+                engine=engine,
+            )
+        else:
+            result_df = fa.transform(
+                df,
+                method,
+                params=params,
+                schema=schema,
+                engine=engine,
+                partition=partition,
+                as_fugue=True,
+            )
         return fa.get_native_as_df(result_df)
 
     def forecast(
@@ -97,7 +142,7 @@ class _DistributedTimeGPT:
             id_col=id_col, time_col=time_col, level=level
         )
         fcst_df = self._distribute_method(
-            method=self._forecast,
+            method=self._forecast if X_df is None else self._forecast_x,
             token=token,
             environment=environment,
             df=df,
@@ -159,6 +204,17 @@ class _DistributedTimeGPT:
     ) -> pd.DataFrame:
         timegpt = self._instantiate_timegpt(token, environment)
         return timegpt._forecast(df=df, **kwargs)
+
+    def _forecast_x(
+        self,
+        df: pd.DataFrame,
+        X_df: pd.DataFrame,
+        token: str,
+        environment: str,
+        kwargs,
+    ) -> pd.DataFrame:
+        timegpt = self._instantiate_timegpt(token, environment)
+        return timegpt._forecast(df=df, X_df=X_df, **kwargs)
 
     def _detect_anomalies(
         self,
