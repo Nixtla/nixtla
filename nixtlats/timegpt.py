@@ -834,7 +834,7 @@ class TimeGPT(_TimeGPT):
 
             return _DistributedTimeGPT().forecast(
                 token=self.client._client_wrapper._token,
-                environment=self.client._environment,
+                environment=self.client._client_wrapper._base_url,
                 df=df,
                 h=h,
                 freq=freq,
