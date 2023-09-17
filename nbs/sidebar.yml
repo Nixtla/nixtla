@@ -8,3 +8,5 @@ website:
       - section: "SDK"
         contents: 
           - timegpt.ipynb
+      - section: "How-To Guides"
+        contents: docs/how-to-guides/*
