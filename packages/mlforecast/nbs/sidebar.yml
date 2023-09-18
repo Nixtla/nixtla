@@ -19,6 +19,7 @@ website:
           - docs/target_transforms_guide.ipynb
       - section: Guides
         contents:
+          - docs/electricity_load_forecasting.ipynb
           - docs/prediction_intervals_in_forecasting_models.ipynb
       - section: API reference
         contents:
