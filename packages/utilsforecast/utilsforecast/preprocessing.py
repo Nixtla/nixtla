@@ -73,6 +73,11 @@ def fill_gaps(
         if "min" in freq:
             # minutes are represented as 'm' in numpy
             freq = freq.replace("min", "m")
+        elif "B" in freq:
+            # business day
+            if freq != "B":
+                raise NotImplementedError("Multiple of a business day")
+            freq = "D"
         if offset.n > 1:
             freq = freq.replace(str(offset.n), "")
         if not hasattr(offset, "delta"):
@@ -89,13 +94,18 @@ def fill_gaps(
     times = np.hstack(
         [np.arange(start, end, delta) for start, end in zip(starts, ends)]
     )
+    uids = np.repeat(times_by_id.index, sizes)
     if isinstance(freq, str):
+        if offset.base.name == "B":
+            # data was generated daily, we need to keep only business days
+            bdays = np.is_busday(times)
+            uids = uids[bdays]
+            times = times[bdays]
         times = pd.Index(times.astype("datetime64[ns]", copy=False))
         first_time = np.datetime64(df.iloc[0][time_col])
         was_truncated = first_time != first_time.astype(f"datetime64[{freq}]")
         if was_truncated:
             times += offset.base
-    uids = np.repeat(times_by_id.index, sizes)
     idx = pd.MultiIndex.from_arrays([uids, times], names=[id_col, time_col])
     res = df.set_index([id_col, time_col]).reindex(idx).reset_index()
     extra_cols = df.columns.drop([id_col, time_col]).tolist()
