@@ -125,7 +125,6 @@ class MLForecast:
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
-        differences: Optional[Iterable[int]] = None,
         num_threads: int = 1,
         target_transforms: Optional[List[BaseTargetTransform]] = None,
     ):
@@ -143,8 +142,6 @@ class MLForecast:
             Mapping of target lags to their transformations.
         date_features : list of str or callable, optional (default=None)
             Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input.
-        differences : list of int, optional (default=None)
-            Differences to take of the target before computing the features. These are restored at the forecasting step.
         num_threads : int (default=1)
             Number of threads to use when computing the features.
         target_transforms : list of transformers, optional(default=None)
@@ -163,7 +160,6 @@ class MLForecast:
             lags=lags,
             lag_transforms=lag_transforms,
             date_features=date_features,
-            differences=differences,
             num_threads=num_threads,
             target_transforms=target_transforms,
         )

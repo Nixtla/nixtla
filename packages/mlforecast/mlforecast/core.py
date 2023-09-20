@@ -16,7 +16,7 @@ from numba import njit
 from sklearn.base import BaseEstimator
 
 from .grouped_array import GroupedArray
-from .target_transforms import BaseTargetTransform, Differences
+from .target_transforms import BaseTargetTransform
 from .utils import _ensure_shallow_copy
 
 # %% ../nbs/core.ipynb 10
@@ -125,7 +125,6 @@ class TimeSeries:
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
-        differences: Optional[Iterable[int]] = None,
         num_threads: int = 1,
         target_transforms: Optional[List[BaseTargetTransform]] = None,
     ):
@@ -148,16 +147,6 @@ class TimeSeries:
         self.lags = [] if lags is None else list(lags)
         self.lag_transforms = {} if lag_transforms is None else lag_transforms
         self.date_features = [] if date_features is None else list(date_features)
-        if differences is not None:
-            warnings.warn(
-                "The differences argument is deprecated and will be removed in a future version.\n"
-                "Please pass an `mlforecast.target_transforms.Differences` instance to the `target_transforms` argument instead."
-                ""
-            )
-            if target_transforms is None:
-                target_transforms = [Differences(differences)]
-            else:
-                target_transforms = [Differences(differences)] + target_transforms
         self.num_threads = num_threads
         self.target_transforms = target_transforms
         for feature in self.date_features:
