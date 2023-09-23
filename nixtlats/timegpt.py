@@ -219,8 +219,11 @@ class _TimeGPT:
             if feature in ("week", "weekofyear"):
                 dates = dates.isocalendar()
             feat_vals = getattr(dates, feature)
-        vals = np.asarray(feat_vals)
-        return feat_name, vals
+        if not isinstance(feat_vals, pd.DataFrame):
+            vals = np.asarray(feat_vals)
+            feat_vals = pd.DataFrame({feat_name: vals})
+        feat_vals["ds"] = dates
+        return feat_vals
 
     def _make_future_dataframe(
         self, df: pd.DataFrame, h: int, freq: str, reconvert: bool = True
@@ -256,13 +259,15 @@ class _TimeGPT:
         if (h is not None) and X_df is None:
             X_df = self._make_future_dataframe(df=df, h=h, freq=freq)
             future_dates = X_df["ds"].unique().tolist()
+        elif X_df is not None:
+            future_dates = X_df["ds"].unique().tolist()
         else:
             future_dates = []
         dates = pd.DatetimeIndex(train_dates + future_dates)
         date_features_df = pd.DataFrame({"ds": dates})
         for feature in date_features:
-            feat_name, feat_vals = self._compute_date_feature(dates, feature)
-            date_features_df[feat_name] = feat_vals
+            feat_df = self._compute_date_feature(dates, feature)
+            date_features_df = date_features_df.merge(feat_df, on=["ds"], how="left")
         if df.dtypes["ds"] == "object":
             date_features_df["ds"] = date_features_df["ds"].astype(str)
         if date_features_to_one_hot is not None:
@@ -318,7 +323,14 @@ class _TimeGPT:
         if date_features is not None:
             if isinstance(date_features_to_one_hot, bool):
                 if date_features_to_one_hot:
-                    date_features_to_one_hot = date_features
+                    date_features_to_one_hot = [
+                        feat for feat in date_features if not callable(feat)
+                    ]
+                    date_features_to_one_hot = (
+                        None
+                        if not date_features_to_one_hot
+                        else date_features_to_one_hot
+                    )
                 else:
                     date_features_to_one_hot = None
             df, X_df = self._add_date_features(
@@ -356,6 +368,7 @@ class _TimeGPT:
             # case for just insample,
             # we dont need h
             X_df = df.drop(columns="y")
+            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
             X_df = self._preprocess_X_df(X_df, freq)
         return Y_df, X_df, x_cols
 
@@ -541,6 +554,7 @@ class _TimeGPT:
         self,
         Y_df: pd.DataFrame,
         X_df: pd.DataFrame,
+        x_cols: List[str],
         freq: str,
         level: Union[int, float],
         clean_ex_first: bool,
@@ -555,7 +569,16 @@ class _TimeGPT:
             x=x,
             clean_ex_first=clean_ex_first,
         )
-        return pd.DataFrame(**response_timegpt["data"]["forecast"])
+        if "data" in response_timegpt:
+            response_timegpt = response_timegpt["data"]
+        if "weights_x" in response_timegpt:
+            self.weights_x = pd.DataFrame(
+                {
+                    "features": x_cols,
+                    "weights": response_timegpt["weights_x"],
+                }
+            )
+        return pd.DataFrame(**response_timegpt["forecast"])
 
     def _multi_series_detect_anomalies(
         self,
@@ -580,6 +603,7 @@ class _TimeGPT:
         anomalies_df = self._hit_multi_series_anomalies_endpoint(
             Y_df=Y_df,
             X_df=X_df,
+            x_cols=x_cols,
             freq=freq,
             level=level,
             clean_ex_first=clean_ex_first,
