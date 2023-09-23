@@ -253,9 +253,11 @@ class _TimeGPT:
         train_dates = df["ds"].unique().tolist()
         # if we dont have future exogenos variables
         # we need to compute the future dates
-        if X_df is None:
+        if (h is not None) and X_df is None:
             X_df = self._make_future_dataframe(df=df, h=h, freq=freq)
-        future_dates = X_df["ds"].unique().tolist()
+            future_dates = X_df["ds"].unique().tolist()
+        else:
+            future_dates = []
         dates = pd.DatetimeIndex(train_dates + future_dates)
         date_features_df = pd.DataFrame({"ds": dates})
         for feature in date_features:
@@ -280,8 +282,16 @@ class _TimeGPT:
         # add date features to df
         df = df.merge(date_features_df, on="ds", how="left")
         # add date features to X_df
-        X_df = X_df.merge(date_features_df, on="ds", how="left")
+        if X_df is not None:
+            X_df = X_df.merge(date_features_df, on="ds", how="left")
         return df, X_df
+
+    def _preprocess_X_df(self, X_df: pd.DataFrame, freq: str):
+        if X_df.isna().any().any():
+            raise Exception("Some of your exogenous variables contain NA, please check")
+        X_df = X_df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
+        X_df = self._resample_dataframe(X_df, freq)
+        return X_df
 
     def _preprocess_dataframes(
         self,
@@ -289,8 +299,36 @@ class _TimeGPT:
         h: int,
         X_df: Optional[pd.DataFrame],
         freq: str,
+        date_features: Union[bool, List[str]],
+        date_features_to_one_hot: Union[bool, List[str]],
     ):
         """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
+        # add date features logic
+        if isinstance(date_features, bool):
+            if date_features:
+                date_features = date_features_by_freq.get(freq)
+                if date_features is None:
+                    warnings.warn(
+                        f"Non default date features for {freq} "
+                        "please pass a list of date features"
+                    )
+            else:
+                date_features = None
+
+        if date_features is not None:
+            if isinstance(date_features_to_one_hot, bool):
+                if date_features_to_one_hot:
+                    date_features_to_one_hot = date_features
+                else:
+                    date_features_to_one_hot = None
+            df, X_df = self._add_date_features(
+                df=df,
+                X_df=X_df,
+                h=h,
+                freq=freq,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+            )
         y_cols = ["unique_id", "ds", "y"]
         Y_df = df[y_cols]
         if Y_df["y"].isna().any():
@@ -306,19 +344,19 @@ class _TimeGPT:
                     "You must include the exogenous variables in the `df` object, "
                     f'exogenous variables {",".join(x_cols)}'
                 )
-            if len(X_df) != df["unique_id"].nunique() * h:
+            if (h is not None) and (len(X_df) != df["unique_id"].nunique() * h):
                 raise Exception(
                     f"You have to pass the {h} future values of your "
                     "exogenous variables for each time series"
                 )
             X_df_history = df[["unique_id", "ds"] + x_cols]
             X_df = pd.concat([X_df_history, X_df])
-            if X_df[x_cols].isna().any().any():
-                raise Exception(
-                    "Some of your exogenous variables contain NA, please check"
-                )
-            X_df = X_df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
-            X_df = self._resample_dataframe(X_df, freq)
+            X_df = self._preprocess_X_df(X_df, freq)
+        elif (X_df is None) and (h is None) and (len(y_cols) < df.shape[1]):
+            # case for just insample,
+            # we dont need h
+            X_df = df.drop(columns="y")
+            X_df = self._preprocess_X_df(X_df, freq)
         return Y_df, X_df, x_cols
 
     def _get_to_dict_args(self):
@@ -424,10 +462,12 @@ class _TimeGPT:
     def _hit_multi_series_historic_endpoint(
         self,
         Y_df: pd.DataFrame,
+        X_df: pd.DataFrame,
         freq: str,
         level: Optional[List[Union[int, float]]],
         input_size: int,
         model_horizon: int,
+        clean_ex_first: bool,
     ):
         self._validate_input_size(
             Y_df=Y_df,
@@ -435,11 +475,13 @@ class _TimeGPT:
             model_horizon=model_horizon,
             require_history=True,
         )
-        y, x = self._transform_dataframes(Y_df, None)
+        y, x = self._transform_dataframes(Y_df, X_df)
         response_timegpt = self.client.timegpt_multi_series_historic(
             freq=freq,
             level=level,
             y=y,
+            x=x,
+            clean_ex_first=clean_ex_first,
         )
         return pd.DataFrame(**response_timegpt["data"]["forecast"])
 
@@ -457,38 +499,14 @@ class _TimeGPT:
         date_features_to_one_hot: Union[bool, List[str]],
     ):
         freq = self._infer_freq(df, freq)
-        # add date features logic
-        if isinstance(date_features, bool):
-            if date_features:
-                date_features = date_features_by_freq.get(freq)
-                if date_features is None:
-                    warnings.warn(
-                        f"Non default date features for {freq} "
-                        "please pass a list of date features"
-                    )
-            else:
-                date_features = None
-
-        if date_features is not None:
-            if isinstance(date_features_to_one_hot, bool):
-                if date_features_to_one_hot:
-                    date_features_to_one_hot = date_features
-                else:
-                    date_features_to_one_hot = None
-            df, X_df = self._add_date_features(
-                df=df,
-                X_df=X_df,
-                h=h,
-                freq=freq,
-                date_features=date_features,
-                date_features_to_one_hot=date_features_to_one_hot,
-            )
         main_logger.info("Preprocessing dataframes...")
         Y_df, X_df, x_cols = self._preprocess_dataframes(
             df=df,
             h=h,
             X_df=X_df,
             freq=freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
         )
         input_size, model_horizon = self._get_model_params(freq)
         main_logger.info("Calling Forecast Endpoint...")
@@ -508,7 +526,9 @@ class _TimeGPT:
             main_logger.info("Calling Historical Forecast Endpoint...")
             fitted_df = self._hit_multi_series_historic_endpoint(
                 Y_df=Y_df,
+                X_df=X_df,
                 freq=freq,
+                clean_ex_first=clean_ex_first,
                 level=level,
                 input_size=input_size,
                 model_horizon=model_horizon,
@@ -520,16 +540,20 @@ class _TimeGPT:
     def _hit_multi_series_anomalies_endpoint(
         self,
         Y_df: pd.DataFrame,
+        X_df: pd.DataFrame,
         freq: str,
         level: Union[int, float],
+        clean_ex_first: bool,
     ):
-        y, x = self._transform_dataframes(Y_df, None)
+        y, x = self._transform_dataframes(Y_df, X_df)
         response_timegpt = self.client.timegpt_multi_series_anomalies(
             freq=freq,
             level=[level]
             if (isinstance(level, int) or isinstance(level, float))
             else [level[0]],
             y=y,
+            x=x,
+            clean_ex_first=clean_ex_first,
         )
         return pd.DataFrame(**response_timegpt["data"]["forecast"])
 
@@ -538,6 +562,9 @@ class _TimeGPT:
         df: pd.DataFrame,
         freq: str,
         level: Union[int, float],
+        clean_ex_first: bool,
+        date_features: Union[bool, List[str]],
+        date_features_to_one_hot: Union[bool, List[str]],
     ):
         freq = self._infer_freq(df, freq)
         main_logger.info("Preprocessing dataframes...")
@@ -546,12 +573,16 @@ class _TimeGPT:
             h=None,
             X_df=None,
             freq=freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
         )
         main_logger.info("Calling Anomaly Detector Endpoint...")
         anomalies_df = self._hit_multi_series_anomalies_endpoint(
             Y_df=Y_df,
+            X_df=X_df,
             freq=freq,
             level=level,
+            clean_ex_first=clean_ex_first,
         )
         anomalies_df = anomalies_df.drop(columns="y")
         return anomalies_df
@@ -670,7 +701,10 @@ class _TimeGPT:
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
+        clean_ex_first: bool = True,
         validate_token: bool = False,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
     ):
         """Detect anomalies in your time series using TimeGPT.
 
@@ -699,6 +733,21 @@ class _TimeGPT:
             Column that contains the target.
         level : float (default=99)
             Confidence level between 0 and 100 for detecting the anomalies.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        validate_token : bool (default=False)
+            If True, validates token before
+            sending requests.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
 
         Returns
         -------
@@ -719,6 +768,9 @@ class _TimeGPT:
             df=df,
             freq=freq,
             level=level,
+            clean_ex_first=clean_ex_first,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
         )
         anomalies_df = self._validate_outputs(
             fcst_df=anomalies_df,
@@ -860,7 +912,10 @@ class TimeGPT(_TimeGPT):
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
+        clean_ex_first: bool = True,
         validate_token: bool = False,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
     ):
         """Detect anomalies in your time series using TimeGPT.
 
@@ -889,6 +944,21 @@ class TimeGPT(_TimeGPT):
             Column that contains the target.
         level : float (default=99)
             Confidence level between 0 and 100 for detecting the anomalies.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        validate_token : bool (default=False)
+            If True, validates token before
+            sending requests.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
 
         Returns
         -------
@@ -903,6 +973,10 @@ class TimeGPT(_TimeGPT):
                 time_col=time_col,
                 target_col=target_col,
                 level=level,
+                clean_ex_first=clean_ex_first,
+                validate_token=validate_token,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
             )
         else:
             from nixtlats.distributed.timegpt import _DistributedTimeGPT
@@ -916,5 +990,9 @@ class TimeGPT(_TimeGPT):
                 time_col=time_col,
                 target_col=target_col,
                 level=level,
+                clean_ex_first=clean_ex_first,
+                validate_token=validate_token,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
                 num_partitions=num_partitions,
             )
