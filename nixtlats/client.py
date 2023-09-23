@@ -56,6 +56,7 @@ class Nixtla:
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
         x: typing.Optional[typing.Any] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
         Parameters:
@@ -66,6 +67,8 @@ class Nixtla:
             - y: typing.Optional[typing.Any].
 
             - x: typing.Optional[typing.Any].
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
         if freq is not OMIT:
@@ -76,6 +79,8 @@ class Nixtla:
             _request["y"] = y
         if x is not OMIT:
             _request["x"] = x
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
         _response = self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_historic"),
@@ -159,6 +164,7 @@ class Nixtla:
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
         x: typing.Optional[MultiSeriesInput] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
         Parameters:
@@ -169,6 +175,8 @@ class Nixtla:
             - y: typing.Optional[typing.Any].
 
             - x: typing.Optional[MultiSeriesInput]. The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {"columns": ["unique_id", "ds", "ex_1", "ex_2"], "data": [["ts_0", "2021-01-01", 0.2, 0.67], ["ts_0", "2021-01-02", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
         if freq is not OMIT:
@@ -179,6 +187,8 @@ class Nixtla:
             _request["y"] = y
         if x is not OMIT:
             _request["x"] = x
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
         _response = self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_historic"),
@@ -202,7 +212,8 @@ class Nixtla:
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
-        x: typing.Optional[typing.Any] = OMIT,
+        x: typing.Optional[MultiSeriesInput] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
         Parameters:
@@ -212,7 +223,9 @@ class Nixtla:
 
             - y: typing.Optional[typing.Any].
 
-            - x: typing.Optional[typing.Any].
+            - x: typing.Optional[MultiSeriesInput]. The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {"columns": ["unique_id", "ds", "ex_1", "ex_2"], "data": [["ts_0", "2021-01-01", 0.2, 0.67], ["ts_0", "2021-01-02", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
         if freq is not OMIT:
@@ -223,6 +236,8 @@ class Nixtla:
             _request["y"] = y
         if x is not OMIT:
             _request["x"] = x
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
         _response = self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_anomalies"),
@@ -352,6 +367,7 @@ class AsyncNixtla:
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
         x: typing.Optional[typing.Any] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
         Parameters:
@@ -362,6 +378,8 @@ class AsyncNixtla:
             - y: typing.Optional[typing.Any].
 
             - x: typing.Optional[typing.Any].
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
         if freq is not OMIT:
@@ -372,6 +390,8 @@ class AsyncNixtla:
             _request["y"] = y
         if x is not OMIT:
             _request["x"] = x
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_historic"),
@@ -455,6 +475,7 @@ class AsyncNixtla:
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
         x: typing.Optional[MultiSeriesInput] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
         Parameters:
@@ -465,6 +486,8 @@ class AsyncNixtla:
             - y: typing.Optional[typing.Any].
 
             - x: typing.Optional[MultiSeriesInput]. The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {"columns": ["unique_id", "ds", "ex_1", "ex_2"], "data": [["ts_0", "2021-01-01", 0.2, 0.67], ["ts_0", "2021-01-02", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
         if freq is not OMIT:
@@ -475,6 +498,8 @@ class AsyncNixtla:
             _request["y"] = y
         if x is not OMIT:
             _request["x"] = x
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_historic"),
@@ -498,7 +523,8 @@ class AsyncNixtla:
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
-        x: typing.Optional[typing.Any] = OMIT,
+        x: typing.Optional[MultiSeriesInput] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
         Parameters:
@@ -508,7 +534,9 @@ class AsyncNixtla:
 
             - y: typing.Optional[typing.Any].
 
-            - x: typing.Optional[typing.Any].
+            - x: typing.Optional[MultiSeriesInput]. The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {"columns": ["unique_id", "ds", "ex_1", "ex_2"], "data": [["ts_0", "2021-01-01", 0.2, 0.67], ["ts_0", "2021-01-02", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
         if freq is not OMIT:
@@ -519,6 +547,8 @@ class AsyncNixtla:
             _request["y"] = y
         if x is not OMIT:
             _request["x"] = x
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_anomalies"),
