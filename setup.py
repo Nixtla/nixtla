@@ -3,8 +3,8 @@ import setuptools
 with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
-dev = ["black", "nbdev", "plotly", "python-dotenv", "openbb", "statsforecast", "utilsforecast"]
-distributed = ["dask<2023.1.1", "fugue[ray]", "pyspark>=3.3", "ray<2.4"]
+dev = ["black", "nbdev", "plotly", "python-dotenv", "statsforecast", "utilsforecast"]
+distributed = ["dask", "fugue[ray]", "pyspark"]
 
 setuptools.setup(
     name="nixtlats",

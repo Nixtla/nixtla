@@ -16,7 +16,6 @@ dependencies:
     - statsforecast
     - utilsforecast
     - requests
-    - openbb
     - duckdb<0.8
     - fugue[ray]
     - ray<2.4
