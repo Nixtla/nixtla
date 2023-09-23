@@ -3,9 +3,10 @@ import setuptools
 with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
-dev = ["black", "holidays", "nbdev", "plotly", "python-dotenv", "statsforecast", "utilsforecast"]
+dev = ["black", "nbdev", "plotly", "python-dotenv", "statsforecast"]
 distributed = ["dask", "fugue[ray]", "pyspark"]
 plotting = ["utilsforecast[plotting]>=0.0.5"]
+date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtlats",
@@ -23,8 +24,9 @@ setuptools.setup(
     python_requires=">=3.7",
     install_requires=["requests", "pandas", "httpx", "pydantic<2"],
     extras_require={
-        "dev": dev + distributed + plotting,
+        "dev": dev + distributed + plotting + date_extras,
         "distributed": distributed,
         "plotting": plotting,
+        "date_extras": date_extras,
     },
 )
