@@ -164,7 +164,10 @@ class _DistributedTimeGPT:
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
+        clean_ex_first: bool = True,
         validate_token: bool = False,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
         num_partitions: Optional[int] = None,
     ) -> fugue.AnyDataFrame:
         kwargs = dict(
@@ -173,7 +176,10 @@ class _DistributedTimeGPT:
             time_col=time_col,
             target_col=target_col,
             level=level,
+            clean_ex_first=clean_ex_first,
             validate_token=validate_token,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
         )
         schema = self._get_anomalies_schema(id_col=id_col, time_col=time_col)
         anomalies_df = self._distribute_method(
