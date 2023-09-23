@@ -8,8 +8,8 @@ distributed = ["dask[complete]", "fugue[ray]", "pyspark"]
 
 setuptools.setup(
     name="nixtlats",
-    version="0.1.14",
-    description="Nixtla SDK",
+    version="0.1.15",
+    description="TimeGPT SDK",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Nixtla/nixtla",
