@@ -9,6 +9,7 @@ dependencies:
   - pyspark>=3.3
   - pip:
     - black
+    - holidays
     - nbdev
     - mypy
     - flake8
@@ -16,7 +17,6 @@ dependencies:
     - statsforecast
     - utilsforecast
     - requests
-    - openbb
     - duckdb<0.8
     - fugue[ray]
     - ray<2.4
