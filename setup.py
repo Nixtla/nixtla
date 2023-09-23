@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
 dev = ["black", "nbdev", "plotly", "python-dotenv", "openbb", "statsforecast", "utilsforecast"]
-distributed = ["dask[complete]", "fugue[ray]", "pyspark"]
+distributed = ["dask<2023.1.1", "fugue[ray]", "pyspark>=3.3", "ray<2.4"]
 
 setuptools.setup(
     name="nixtlats",
