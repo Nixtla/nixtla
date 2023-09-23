@@ -9,6 +9,7 @@ dependencies:
   - pyspark>=3.3
   - pip:
     - black
+    - holidays
     - nbdev
     - mypy
     - flake8

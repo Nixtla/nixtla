@@ -3,7 +3,7 @@ import setuptools
 with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
-dev = ["black", "nbdev", "plotly", "python-dotenv", "statsforecast", "utilsforecast"]
+dev = ["black", "holidays", "nbdev", "plotly", "python-dotenv", "statsforecast", "utilsforecast"]
 distributed = ["dask", "fugue[ray]", "pyspark"]
 
 setuptools.setup(
