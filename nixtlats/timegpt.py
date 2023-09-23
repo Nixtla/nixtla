@@ -842,8 +842,13 @@ class _TimeGPT:
             store the plotting object and add the extra arguments to
             its `show_dash` method.
         """
-        from utilsforecast.plotting import plot_series
-
+        try:
+            from utilsforecast.plotting import plot_series
+        except ModuleNotFoundError:
+            raise Exception(
+                "You have to install additional dependencies to use this method, "
+                'please install them using `pip install "nixtlats[plotting]"`'
+            )
         df = df.copy()
         if id_col not in df:
             df[id_col] = "ts_0"
