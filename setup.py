@@ -5,6 +5,7 @@ with open("README.md", "r", encoding="utf8") as fh:
 
 dev = ["black", "holidays", "nbdev", "plotly", "python-dotenv", "statsforecast", "utilsforecast"]
 distributed = ["dask", "fugue[ray]", "pyspark"]
+plotting = ["utilsforecast[plotting]>=0.0.5"]
 
 setuptools.setup(
     name="nixtlats",
@@ -22,7 +23,8 @@ setuptools.setup(
     python_requires=">=3.7",
     install_requires=["requests", "pandas", "httpx", "pydantic<2"],
     extras_require={
-        "dev": dev + distributed,
+        "dev": dev + distributed + plotting,
         "distributed": distributed,
+        "plotting": plotting,
     },
 )
