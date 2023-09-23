@@ -781,6 +781,110 @@ class _TimeGPT:
         )
         return anomalies_df
 
+    def plot(
+        self,
+        df: pd.DataFrame,
+        forecasts_df: Optional[pd.DataFrame] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        unique_ids: Union[Optional[List[str]], np.ndarray] = None,
+        plot_random: bool = True,
+        models: Optional[List[str]] = None,
+        level: Optional[List[float]] = None,
+        max_insample_length: Optional[int] = None,
+        plot_anomalies: bool = False,
+        engine: str = "plotly",
+        resampler_kwargs: Optional[Dict] = None,
+    ):
+        """Plot forecasts and insample values.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        forecasts_df : pandas.DataFrame, optional (default=None)
+            DataFrame with columns [`unique_id`, `ds`] and models.
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        unique_ids : List[str], optional (default=None)
+            Time Series to plot.
+            If None, time series are selected randomly.
+        plot_random : bool (default=True)
+            Select time series to plot randomly.
+        models : List[str], optional (default=None)
+            List of models to plot.
+        level : List[float], optional (default=None)
+            List of prediction intervals to plot if paseed.
+        max_insample_length : int, optional (default=None)
+            Max number of train/insample observations to be plotted.
+        plot_anomalies : bool (default=False)
+            Plot anomalies for each prediction interval.
+        engine : str (default='plotly')
+            Library used to plot. 'plotly', 'plotly-resampler' or 'matplotlib'.
+        resampler_kwargs : dict
+            Kwargs to be passed to plotly-resampler constructor.
+            For further custumization ("show_dash") call the method,
+            store the plotting object and add the extra arguments to
+            its `show_dash` method.
+        """
+        from utilsforecast.plotting import plot_series
+
+        df = df.copy()
+        if id_col not in df:
+            df[id_col] = "ts_0"
+        df[time_col] = pd.to_datetime(df[time_col])
+        if forecasts_df is not None:
+            forecasts_df = forecasts_df.copy()
+            if id_col not in forecasts_df:
+                forecasts_df[id_col] = "ts_0"
+            forecasts_df[time_col] = pd.to_datetime(forecasts_df[time_col])
+            if "anomaly" in forecasts_df:
+                # special case to plot outputs
+                # from detect_anomalies
+                forecasts_df = forecasts_df.drop(columns="anomaly")
+                cols = forecasts_df.columns
+                cols = cols[cols.str.contains("TimeGPT-lo-")]
+                level = cols.str.replace("TimeGPT-lo-", "")[0]
+                level = float(level) if "." in level else int(level)
+                level = [level]
+                plot_anomalies = True
+                models = ["TimeGPT"]
+                forecasts_df = df.merge(forecasts_df, how="left")
+                df = df.groupby("unique_id").head(1)
+                # prevent double plotting
+                df.loc[:, target_col] = np.nan
+        return plot_series(
+            df=df,
+            forecasts_df=forecasts_df,
+            ids=unique_ids,
+            plot_random=plot_random,
+            models=models,
+            level=level,
+            max_insample_length=max_insample_length,
+            plot_anomalies=plot_anomalies,
+            engine=engine,
+            resampler_kwargs=resampler_kwargs,
+            palette="tab20b",
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+
 # %% ../nbs/timegpt.ipynb 9
 class TimeGPT(_TimeGPT):
     def forecast(
