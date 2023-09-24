@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['main_logger', 'httpx_logger']
 
-# %% ../nbs/timegpt.ipynb 5
+# %% ../nbs/timegpt.ipynb 3
 import logging
 import inspect
 import json
@@ -21,7 +21,7 @@ main_logger = logging.getLogger(__name__)
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.ERROR)
 
-# %% ../nbs/timegpt.ipynb 7
+# %% ../nbs/timegpt.ipynb 5
 date_features_by_freq = {
     # Daily frequencies
     "B": ["year", "month", "day", "weekday"],
@@ -70,7 +70,7 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/timegpt.ipynb 8
+# %% ../nbs/timegpt.ipynb 6
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -914,7 +914,7 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 9
+# %% ../nbs/timegpt.ipynb 7
 class TimeGPT(_TimeGPT):
     def forecast(
         self,

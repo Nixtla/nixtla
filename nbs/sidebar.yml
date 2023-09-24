@@ -5,8 +5,13 @@ website:
     contents:
       - index.ipynb
       - text: "--"
-      - section: "SDK"
-        contents: 
-          - timegpt.ipynb
+      - section: "Getting Started"
+        contents: docs/getting-started/*
+      - section: "Tutorials"
+        contents: docs/tutorials/*
       - section: "How-To Guides"
         contents: docs/how-to-guides/*
+      - section: "API Reference"
+        contents: 
+        - timegpt.ipynb
+        - date_features.ipynb
