@@ -25,8 +25,10 @@ statuses = [ '1 - Planning', '2 - Pre-Alpha', '3 - Alpha',
 py_versions = '2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 3.0 3.1 3.2 3.3 3.4 3.5 3.6 3.7 3.8 3.9 3.10'.split()
 
 requirements = cfg.get('requirements','').split()
-distributed_requirements = cfg.get('distributed_requirements', '').split()
-dev_requirements = requirements + distributed_requirements + cfg.get('dev_requirements', '').split()
+dask_requirements = cfg.get('dask_requirements', '').split()
+ray_requirements = cfg.get('ray_requirements', '').split()
+spark_requirements = cfg.get('spark_requirements', '').split()
+dev_requirements = requirements + cfg.get('dev_requirements', '').split()
 min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
 
@@ -43,7 +45,9 @@ setuptools.setup(
     include_package_data = True,
     install_requires = requirements,
     extras_require = {
-        'distributed': distributed_requirements,
+        'dask': dask_requirements,
+        'ray': ray_requirements,
+        'spark': spark_requirements,
         'dev': dev_requirements,
     },
     dependency_links = cfg.get('dep_links','').split(),

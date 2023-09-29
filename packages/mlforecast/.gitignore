@@ -149,12 +149,11 @@ Gemfile*
 .jekyll-cache
 
 # series files
-nbs/data
+/**/data/
 
 # nbdev
 nbs/_docs
 _proc/
 index_files
 _docs
-nbs/data
 nbs/docs/**/*.xls*
