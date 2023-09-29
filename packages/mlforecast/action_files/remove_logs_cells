@@ -14,7 +14,7 @@ def cell_contains_ips(cell):
         if 'text' not in output:
             return False
         for line in output['text']:
-            if IP_REGEX.search(line) or HOURS_REGEX.search(line):
+            if IP_REGEX.search(line) or HOURS_REGEX.search(line) or 'Trying to bind port' in line:
                 return True
     return False
 
@@ -27,5 +27,5 @@ def clean_nb(nb):
 
 if __name__ == '__main__':
     repo_root = Path(__file__).parents[1]
-    for nb in (repo_root / 'nbs').glob('*distributed*'):
+    for nb in (repo_root / 'nbs').rglob('*distributed*.ipynb'):
         process_write(warn_msg='Failed to clean_nb', proc_nb=clean_nb, f_in=nb)

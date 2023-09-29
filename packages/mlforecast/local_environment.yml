@@ -12,9 +12,9 @@ dependencies:
   - prophet
   - scikit-learn
   - statsmodels
-  - utilsforecast
   - window-ops
   - xgboost
   - pip:
     - datasetsforecast
     - nbdev
+    - utilsforecast>=0.0.6

@@ -5,16 +5,16 @@ __all__ = ['generate_daily_series', 'generate_prices_for_series', 'backtest_spli
 
 # %% ../nbs/utils.ipynb 2
 import inspect
-import random
 import reprlib
 import warnings
 from functools import wraps
-from itertools import chain
 from math import ceil, log10
 from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
+
+from utilsforecast.data import generate_series
 
 # %% ../nbs/utils.ipynb 4
 def generate_daily_series(
@@ -31,48 +31,26 @@ def generate_daily_series(
 
     If `n_static_features > 0`, then each serie gets static features with random values.
     If `equal_ends == True` then all series end at the same date."""
-    rng = np.random.RandomState(seed)
-    random.seed(seed)
-    series_lengths = rng.randint(min_length, max_length + 1, n_series)
-    total_length = series_lengths.sum()
+    series = generate_series(
+        n_series=n_series,
+        freq="D",
+        min_length=min_length,
+        max_length=max_length,
+        n_static_features=n_static_features,
+        equal_ends=equal_ends,
+        static_as_categorical=static_as_categorical,
+        with_trend=with_trend,
+        seed=seed,
+    )
     n_digits = ceil(log10(n_series))
 
-    dates = pd.date_range("2000-01-01", periods=max_length, freq="D").values
-    uids = [
-        [f"id_{i:0{n_digits}}"] * serie_length
-        for i, serie_length in enumerate(series_lengths)
-    ]
-    if equal_ends:
-        ds = [dates[-serie_length:] for serie_length in series_lengths]
-    else:
-        ds = [dates[:serie_length] for serie_length in series_lengths]
-    y = np.arange(total_length) % 7 + rng.rand(total_length) * 0.5
-    series = pd.DataFrame(
-        {
-            "unique_id": list(chain.from_iterable(uids)),
-            "ds": list(chain.from_iterable(ds)),
-            "y": y,
-        }
-    )
-    for i in range(n_static_features):
-        static_values = np.repeat(rng.randint(0, 100, n_series), series_lengths)
-        series[f"static_{i}"] = static_values
-        if static_as_categorical:
-            series[f"static_{i}"] = series[f"static_{i}"].astype("category")
-        if i == 0:
-            series["y"] = series["y"] * 0.1 * (1 + static_values)
-    series["unique_id"] = series["unique_id"].astype("category")
-    series["unique_id"] = series["unique_id"].cat.as_ordered()
-    if with_trend:
-        coefs = pd.Series(
-            rng.rand(n_series), index=[f"id_{i:0{n_digits}}" for i in range(n_series)]
-        )
-        trends = series.groupby("unique_id").cumcount()
-        trends.index = series["unique_id"]
-        series["y"] += (coefs * trends).values
+    def int_id_to_str(uid):
+        return f"id_{uid:0{n_digits}}"
+
+    series["unique_id"] = series["unique_id"].map(int_id_to_str).astype("category")
     return series
 
-# %% ../nbs/utils.ipynb 15
+# %% ../nbs/utils.ipynb 14
 def generate_prices_for_series(
     series: pd.DataFrame, horizon: int = 7, seed: int = 0
 ) -> pd.DataFrame:
@@ -95,7 +73,7 @@ def generate_prices_for_series(
     prices_catalog = pd.concat(dfs).reset_index()
     return prices_catalog
 
-# %% ../nbs/utils.ipynb 18
+# %% ../nbs/utils.ipynb 17
 def single_split(
     df: pd.DataFrame,
     i_window: int,
@@ -130,7 +108,7 @@ def single_split(
     )
     return cutoffs, train_mask, valid_mask
 
-# %% ../nbs/utils.ipynb 19
+# %% ../nbs/utils.ipynb 18
 def backtest_splits(
     df: pd.DataFrame,
     n_windows: int,
@@ -158,7 +136,7 @@ def backtest_splits(
         train, valid = df[train_mask], df[valid_mask]
         yield cutoffs, train, valid
 
-# %% ../nbs/utils.ipynb 22
+# %% ../nbs/utils.ipynb 21
 def old_kw_to_pos(old_names, new_positions):
     def decorator(f):
         @wraps(f)
@@ -189,7 +167,7 @@ def old_kw_to_pos(old_names, new_positions):
 
     return decorator
 
-# %% ../nbs/utils.ipynb 24
+# %% ../nbs/utils.ipynb 23
 class PredictionIntervals:
     """Class for storing prediction intervals metadata information."""
 
@@ -215,7 +193,7 @@ class PredictionIntervals:
     def __repr__(self):
         return f"PredictionIntervals(n_windows={self.n_windows}, h={self.h}, method='{self.method}')"
 
-# %% ../nbs/utils.ipynb 25
+# %% ../nbs/utils.ipynb 24
 def _ensure_shallow_copy(df: pd.DataFrame) -> pd.DataFrame:
     from packaging.version import Version
 

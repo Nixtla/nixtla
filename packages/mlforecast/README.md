@@ -169,35 +169,35 @@ series.head()
       <th>0</th>
       <td>id_00</td>
       <td>2000-01-01</td>
-      <td>1.751917</td>
+      <td>17.519167</td>
       <td>72</td>
     </tr>
     <tr>
       <th>1</th>
       <td>id_00</td>
       <td>2000-01-02</td>
-      <td>9.196715</td>
+      <td>87.799695</td>
       <td>72</td>
     </tr>
     <tr>
       <th>2</th>
       <td>id_00</td>
       <td>2000-01-03</td>
-      <td>18.577788</td>
+      <td>177.442975</td>
       <td>72</td>
     </tr>
     <tr>
       <th>3</th>
       <td>id_00</td>
       <td>2000-01-04</td>
-      <td>24.520646</td>
+      <td>232.704110</td>
       <td>72</td>
     </tr>
     <tr>
       <th>4</th>
       <td>id_00</td>
       <td>2000-01-05</td>
-      <td>33.418028</td>
+      <td>317.510474</td>
       <td>72</td>
     </tr>
   </tbody>
@@ -216,7 +216,7 @@ import xgboost as xgb
 from sklearn.ensemble import RandomForestRegressor
 
 models = [
-    lgb.LGBMRegressor(),
+    lgb.LGBMRegressor(verbosity=-1),
     xgb.XGBRegressor(),
     RandomForestRegressor(random_state=0),
 ]
@@ -298,41 +298,41 @@ predictions
       <th>0</th>
       <td>id_00</td>
       <td>2000-04-04</td>
-      <td>69.082830</td>
-      <td>67.761337</td>
-      <td>68.226556</td>
+      <td>299.923771</td>
+      <td>309.664124</td>
+      <td>298.424164</td>
     </tr>
     <tr>
       <th>1</th>
       <td>id_00</td>
       <td>2000-04-05</td>
-      <td>75.706024</td>
-      <td>74.588699</td>
-      <td>75.484774</td>
+      <td>365.424147</td>
+      <td>382.150085</td>
+      <td>365.816014</td>
     </tr>
     <tr>
       <th>2</th>
       <td>id_00</td>
       <td>2000-04-06</td>
-      <td>82.222473</td>
-      <td>81.058289</td>
-      <td>82.853684</td>
+      <td>432.562441</td>
+      <td>453.373779</td>
+      <td>436.360620</td>
     </tr>
     <tr>
       <th>3</th>
       <td>id_00</td>
       <td>2000-04-07</td>
-      <td>89.577638</td>
-      <td>88.735947</td>
-      <td>90.351212</td>
+      <td>495.628000</td>
+      <td>527.965149</td>
+      <td>503.670100</td>
     </tr>
     <tr>
       <th>4</th>
       <td>id_00</td>
       <td>2000-04-08</td>
-      <td>44.149095</td>
-      <td>44.981384</td>
-      <td>46.291173</td>
+      <td>60.786223</td>
+      <td>75.762299</td>
+      <td>62.176080</td>
     </tr>
     <tr>
       <th>...</th>
@@ -346,41 +346,41 @@ predictions
       <th>275</th>
       <td>id_19</td>
       <td>2000-03-23</td>
-      <td>30.151270</td>
-      <td>31.814825</td>
-      <td>32.592799</td>
+      <td>36.266780</td>
+      <td>29.889120</td>
+      <td>34.799780</td>
     </tr>
     <tr>
       <th>276</th>
       <td>id_19</td>
       <td>2000-03-24</td>
-      <td>31.418104</td>
-      <td>32.653374</td>
-      <td>33.563294</td>
+      <td>44.370984</td>
+      <td>34.968884</td>
+      <td>39.920982</td>
     </tr>
     <tr>
       <th>277</th>
       <td>id_19</td>
       <td>2000-03-25</td>
-      <td>32.843567</td>
-      <td>33.586033</td>
-      <td>34.530912</td>
+      <td>50.746222</td>
+      <td>39.970238</td>
+      <td>46.196266</td>
     </tr>
     <tr>
       <th>278</th>
       <td>id_19</td>
       <td>2000-03-26</td>
-      <td>34.127210</td>
-      <td>34.541473</td>
-      <td>35.507559</td>
+      <td>58.906524</td>
+      <td>45.125305</td>
+      <td>51.653060</td>
     </tr>
     <tr>
       <th>279</th>
       <td>id_19</td>
       <td>2000-03-27</td>
-      <td>34.329202</td>
-      <td>35.450943</td>
-      <td>36.425001</td>
+      <td>63.073949</td>
+      <td>50.682716</td>
+      <td>56.845384</td>
     </tr>
   </tbody>
 </table>
@@ -390,23 +390,15 @@ predictions
 ### Visualize results
 
 ``` python
-import matplotlib.pyplot as plt
-import pandas as pd
-
-fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 6), gridspec_kw=dict(hspace=0.3))
-for i, (uid, axi) in enumerate(zip(series['unique_id'].unique(), ax.flat)):
-    fltr = lambda df: df['unique_id'].eq(uid)
-    pd.concat([series.loc[fltr, ['ds', 'y']], predictions.loc[fltr]]).set_index('ds').plot(ax=axi)
-    axi.set(title=uid, xlabel=None)
-    if i % 2 == 0:
-        axi.legend().remove()
-    else:
-        axi.legend(bbox_to_anchor=(1.01, 1.0))
-fig.savefig('figs/index.png', bbox_inches='tight')
-plt.close()
+from utilsforecast.plotting import plot_series
 ```
 
-![](https://raw.githubusercontent.com/Nixtla/mlforecast/main/figs/index.png)
+``` python
+fig = plot_series(series, predictions, max_ids=4, plot_random=False)
+fig.savefig('figs/index.png', bbox_inches='tight')
+```
+
+![](https://raw.githubusercontent.com/Nixtla/mlforecast/main/nbs/figs/index.png)
 
 ## Sample notebooks
 

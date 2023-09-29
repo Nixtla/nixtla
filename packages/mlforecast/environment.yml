@@ -14,7 +14,6 @@ dependencies:
   - pyspark>=3.3
   - scikit-learn
   - statsmodels
-  - utilsforecast
   - window-ops
   - xgboost
   - pip:
@@ -24,4 +23,5 @@ dependencies:
     - lightgbm_ray
     - nbdev
     - ray<2.4
+    - utilsforecast>=0.0.6
     - xgboost_ray
