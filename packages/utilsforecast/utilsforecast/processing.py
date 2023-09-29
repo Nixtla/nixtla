@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 
 from .compat import DataFrame, Series, pl_Series
-from .grouped_array import GroupedArray
 from .validation import validate_format
 
 # %% ../nbs/processing.ipynb 3
@@ -101,7 +100,7 @@ class DataFrameProcessor:
 
     def process(
         self, df: DataFrame
-    ) -> Tuple[Series, np.ndarray, GroupedArray, Optional[np.ndarray]]:
+    ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
         """Extract components from dataframe
 
         Parameters
@@ -115,11 +114,13 @@ class DataFrameProcessor:
             serie with the sorted unique ids present in the data.
         last_times : numpy array
             array with the last time for each serie.
+        data : numpy ndarray
+            1d array with target values.
+        indptr : numpy ndarray
+            1d array with indices to the start and end of each serie.
         sort_idxs : numpy array or None
             array with the indices that would sort the original data.
             If the data is already sorted this is `None`.
-        grouped_array : GroupedArray
-            grouped array structure with the data split and sorted by serie.
         """
         # validations
         validate_format(df, self.id_col, self.time_col, self.target_col)
@@ -149,6 +150,5 @@ class DataFrameProcessor:
         if sort_idxs is not None:
             data = data[sort_idxs]
             last_idxs = sort_idxs[last_idxs]
-        ga = GroupedArray(data, indptr)
         times = df[self.time_col].to_numpy()[last_idxs]
-        return uids, times, ga, sort_idxs
+        return uids, times, data, indptr, sort_idxs

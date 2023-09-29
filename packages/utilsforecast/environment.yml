@@ -4,11 +4,14 @@ channels:
 dependencies:
   - matplotlib
   - nbformat
+  - numba
   - numpy
   - pandas
   - plotly
   - pip
   - pyarrow
+  - scipy
   - pip:
     - nbdev
+    - plotly-resampler
     - polars
