@@ -23,7 +23,7 @@ website:
     collapse-below: lg
     left:
       - text: "Get Started"
-        href: docs/quick_start_local.ipynb
+        href: docs/getting-started/quick_start_local.ipynb
       - text: "NixtlaVerse"
         menu:
           - text: "StatsForecast ⚡️"

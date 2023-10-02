@@ -12,9 +12,14 @@ website:
           - docs/getting-started/end_to_end_walkthrough.ipynb
       - section: How-to guides
         contents:
+          - docs/how-to-guides/exogenous_features.ipynb
           - docs/how-to-guides/cross_validation.ipynb
           - docs/how-to-guides/prediction_intervals.ipynb
           - docs/how-to-guides/target_transforms_guide.ipynb
+          - docs/how-to-guides/one_model_per_horizon.ipynb
+          - docs/how-to-guides/custom_date_features.ipynb
+          - docs/how-to-guides/predict_callbacks.ipynb
+          - docs/how-to-guides/predict_subset.ipynb
           - docs/how-to-guides/transfer_learning.ipynb
       - section: Tutorials
         contents:

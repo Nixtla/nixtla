@@ -533,7 +533,8 @@ class MLForecast:
         """
         if not hasattr(self, "models_"):
             raise ValueError(
-                "No fitted models found. You have to call fit or preprocess + fit_models."
+                "No fitted models found. You have to call fit or preprocess + fit_models. "
+                "If you used cross_validation before please fit again."
             )
         first_model_is_list = isinstance(next(iter(self.models_.values())), list)
         max_horizon = self.ts.max_horizon
@@ -716,10 +717,6 @@ class MLForecast:
         result : pandas DataFrame
             Predictions for each window with the series id, timestamp, last train date, target value and predictions from each model.
         """
-        if hasattr(self, "models_"):
-            warnings.warn(
-                "Excuting `cross_validation` after `fit` can produce unexpected errors"
-            )
         results = []
         self.cv_models_ = []
         if np.issubdtype(df[time_col].dtype.type, np.integer):
@@ -809,6 +806,7 @@ class MLForecast:
                     "and that there aren't any missing periods."
                 )
             results.append(result)
+        del self.models_
         out = pd.concat(results)
         cols_order = [id_col, time_col, "cutoff", target_col]
         return out[cols_order + out.columns.drop(cols_order).tolist()]

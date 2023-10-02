@@ -14,7 +14,7 @@ def cell_contains_ips(cell):
         if 'text' not in output:
             return False
         for line in output['text']:
-            if IP_REGEX.search(line) or HOURS_REGEX.search(line) or 'Trying to bind port' in line:
+            if IP_REGEX.search(line) or HOURS_REGEX.search(line) or '[LightGBM]' in line:
                 return True
     return False
 
