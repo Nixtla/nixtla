@@ -7,7 +7,7 @@
 <div align="center">
 
 <center>
-<img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_mid.png">
+<img src="https://raw.githubusercontent.com/Nixtla/mlforecast/main/nbs/figs/logo.png">
 </center>
 <h1 align="center">
 Machine Learning 🤖 Forecast
@@ -39,7 +39,7 @@ data using remote clusters.
 `conda install -c conda-forge mlforecast`
 
 For more detailed instructions you can refer to the [installation
-page](docs/getting-started/install.html).
+page](https://nixtla.github.io/mlforecast/docs/getting-started/install.html).
 
 ## Quick Start
 
@@ -61,11 +61,11 @@ mlf.predict(12)
 ```
 
 **Get Started with this [quick
-guide](docs/getting-started/quick_start_local.html).**
+guide](https://nixtla.github.io/mlforecast/docs/getting-started/quick_start_local.html).**
 
 **Follow this [end-to-end
-walkthrough](docs/getting-started/end_to_end_walkthrough.html) for best
-practices.**
+walkthrough](https://nixtla.github.io/mlforecast/docs/getting-started/end_to_end_walkthrough.html)
+for best practices.**
 
 ### Sample notebooks
 
@@ -98,27 +98,30 @@ Missing something? Please open an issue or write us in
 ## Examples and Guides
 
 📚 [End to End
-Walkthrough](docs/getting-started/end_to_end_walkthrough.html): model
-training, evaluation and selection for multiple time series.
+Walkthrough](https://nixtla.github.io/mlforecast/docs/getting-started/end_to_end_walkthrough.html):
+model training, evaluation and selection for multiple time series.
 
 🔎 [Probabilistic
-Forecasting](docs/how-to-guides/prediction_intervals.html): use
-Conformal Prediction to produce prediciton intervals.
+Forecasting](https://nixtla.github.io/mlforecast/docs/how-to-guides/prediction_intervals.html):
+use Conformal Prediction to produce prediciton intervals.
 
-👩‍🔬 [Cross Validation](docs/how-to-guides/cross_validation.html): robust
-model’s performance evaluation.
+👩‍🔬 [Cross
+Validation](https://nixtla.github.io/mlforecast/docs/how-to-guides/cross_validation.html):
+robust model’s performance evaluation.
 
 🔌 [Predict Demand
-Peaks](docs/tutorials/electricity_peak_forecasting.html): electricity
-load forecasting for detecting daily peaks and reducing electric bills.
+Peaks](https://nixtla.github.io/mlforecast/docs/tutorials/electricity_peak_forecasting.html):
+electricity load forecasting for detecting daily peaks and reducing
+electric bills.
 
-📈 [Transfer Learning](docs/how-to-guides/transfer_learning.html):
+📈 [Transfer
+Learning](https://nixtla.github.io/mlforecast/docs/how-to-guides/transfer_learning.html):
 pretrain a model using a set of time series and then predict another one
 using that pretrained model.
 
 🌡️ [Distributed
-Training](docs/getting-started/quick_start_distributed.html): use a
-Dask, Ray or Spark cluster to train models at scale.
+Training](https://nixtla.github.io/mlforecast/docs/getting-started/quick_start_distributed.html):
+use a Dask, Ray or Spark cluster to train models at scale.
 
 ## How to use
 
