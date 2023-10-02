@@ -467,7 +467,8 @@ class TimeSeries:
             new_x = new_x.sort_values(self.id_col)
         if X_df is not None:
             n_series = len(self._uids)
-            X = X_df.iloc[self._h * n_series : (self._h + 1) * n_series]
+            h = X_df.shape[0] // n_series
+            X = X_df.iloc[np.arange(self._h, X_df.shape[0], h)]
             new_x = pd.concat([new_x, X.reset_index(drop=True)], axis=1)
         nulls = new_x.isnull().any()
         if any(nulls):
