@@ -148,7 +148,13 @@ class TimeSeries:
             warnings.warn("Setting num_threads to 1.")
             num_threads = 1
         self.lags = [] if lags is None else list(lags)
+        for lag in self.lags:
+            if lag <= 0 or not isinstance(lag, int):
+                raise ValueError("lags must be positive integers.")
         self.lag_transforms = {} if lag_transforms is None else lag_transforms
+        for lag in self.lag_transforms.keys():
+            if lag <= 0 or not isinstance(lag, int):
+                raise ValueError("keys of lag_transforms must be positive integers.")
         self.date_features = [] if date_features is None else list(date_features)
         self.num_threads = num_threads
         self.target_transforms = target_transforms
