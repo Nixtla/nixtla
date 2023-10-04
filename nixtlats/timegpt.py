@@ -142,6 +142,14 @@ class _TimeGPT:
         if df.dtypes.ds != "object":
             df["ds"] = df["ds"].astype(str)
         drop_uid = False
+        if df.dtypes.y == 'object' | df.dtypes.y == 'category':
+            raise Exception(
+                "Datatype of Target column must be numeric but found {df.dtypes.y}"
+                )
+        if 'object' in set(map(str, pd.Series(df.dtypes))) | 'category' in set(map(str, pd.Series(df.dtypes))):
+            raise Exception(
+                "Exogenous dataframe has non-numeric columns please check and convert them into numeric"
+                )
         if "unique_id" not in df.columns:
             # Insert unique_id column
             df = df.assign(unique_id="ts_0")
