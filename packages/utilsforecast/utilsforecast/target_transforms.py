@@ -97,7 +97,9 @@ class LocalStandardScaler(BaseTargetTransform):
 # %% ../nbs/target_transforms.ipynb 12
 @njit
 def _minmax_scaler_stats(data: np.ndarray) -> Tuple[float, float]:
-    return np.nanmin(data), np.nanmax(data)
+    min_ = np.nanmin(data)
+    max_ = np.nanmax(data)
+    return min_, max_ - min_
 
 # %% ../nbs/target_transforms.ipynb 13
 class LocalMinMaxScaler(BaseTargetTransform):
