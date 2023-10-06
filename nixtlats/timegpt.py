@@ -818,7 +818,7 @@ class _TimeGPT:
         level: Optional[List[float]] = None,
         max_insample_length: Optional[int] = None,
         plot_anomalies: bool = False,
-        engine: str = "plotly",
+        engine: str = "matplotlib",
         resampler_kwargs: Optional[Dict] = None,
     ):
         """Plot forecasts and insample values.
