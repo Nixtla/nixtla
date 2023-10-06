@@ -68,7 +68,8 @@ def modify_markdown(
     # Prepare the new header
     header = f"""---
 title: "{title}"
-slug: "{slug_number}_{slug}"
+slug: "{slug}"
+order: {slug_number}
 excerpt: "Learn how to do {title} with TimeGPT"
 category: {category}
 hidden: false
