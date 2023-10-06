@@ -23,7 +23,6 @@ def modify_markdown(
     dir_path = os.path.dirname(file_path)
     if not dir_path.endswith("/"):
         dir_path += "/"
-    host_url += dir_path
     
     # Extract and remove the first markdown header
     pattern_header = re.compile(r'^#\s+(.*)\n+', re.MULTILINE)
@@ -53,7 +52,8 @@ hidden: false
 
     # Modify image paths
     pattern_image = re.compile(r'!\[\]\((.*?)\)')
-    modified_content = pattern_image.sub(r'![](' + host_url + r'\1)', content)
+    content = content.replace('![figure](../../', f'![figure]({host_url}/nbs/')
+    modified_content = pattern_image.sub(r'![](' + host_url + dir_path + r'\1)', content)
 
     # Concatenate new header and modified content
     final_content = header + modified_content
