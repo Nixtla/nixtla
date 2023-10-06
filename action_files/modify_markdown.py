@@ -8,6 +8,7 @@ load_dotenv()
 
 
 def to_snake_case(s):
+    s = s.lower()
     s = re.sub(r'(?<!^)(?=[A-Z])', '_', s).lower()
     s = re.sub(r'\W', '_', s)
     s = re.sub(r'_+', '_', s)
@@ -15,6 +16,7 @@ def to_snake_case(s):
 
 def modify_markdown(
         file_path, 
+        slug_number=0,
         host_url=os.environ['README_HOST_URL'], 
         category=os.environ['README_CATEGORY'],
     ):
@@ -23,7 +25,6 @@ def modify_markdown(
     dir_path = os.path.dirname(file_path)
     if not dir_path.endswith("/"):
         dir_path += "/"
-    host_url += dir_path
     
     # Extract and remove the first markdown header
     pattern_header = re.compile(r'^#\s+(.*)\n+', re.MULTILINE)
@@ -39,7 +40,7 @@ def modify_markdown(
     # Prepare the new header
     header = f"""---
 title: "{title}"
-slug: "{slug}"
+slug: "{slug_number}_{slug}"
 excerpt: "Learn how to do {title} with TimeGPT"
 category: {category}
 hidden: false
@@ -53,7 +54,8 @@ hidden: false
 
     # Modify image paths
     pattern_image = re.compile(r'!\[\]\((.*?)\)')
-    modified_content = pattern_image.sub(r'![](' + host_url + r'\1)', content)
+    content = content.replace('![figure](../../', f'![figure]({host_url}/nbs/')
+    modified_content = pattern_image.sub(r'![](' + host_url + dir_path + r'\1)', content)
 
     # Concatenate new header and modified content
     final_content = header + modified_content

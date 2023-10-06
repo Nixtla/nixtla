@@ -20,3 +20,4 @@ dependencies:
     - duckdb<0.8
     - fugue[ray]
     - ray<2.4
+    - fire
