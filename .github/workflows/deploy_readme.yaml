@@ -49,8 +49,8 @@ jobs:
       - name: Push PNGs to readme_docs branch
         run: |
           git checkout readme_docs || git checkout --orphan readme_docs
-          git --work-tree=nbs add "*.png"
-          git --work-tree=nbs commit -m "Add/Update PNG files" || echo "No changes to commit"
+          git add "*.png"
+          git commit -m "Add/Update PNG files" || echo "No changes to commit"
           git push https://${{secrets.TOKEN_GITHUB}}@github.com/${{github.repository}} HEAD:readme_docs
 
       - name: Deploy to docs.readme
