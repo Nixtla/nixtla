@@ -43,15 +43,15 @@ jobs:
 
       - name: Set up Git User
         run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config --global user.name 'FedericoGarza'
+          git config --global user.email 'fede.garza.ramirez@gmail.com'
 
       - name: Push PNGs to readme_docs branch
         run: |
           git checkout readme_docs || git checkout --orphan readme_docs
           git --work-tree=nbs add "*.png"
           git --work-tree=nbs commit -m "Add/Update PNG files" || echo "No changes to commit"
-          git push origin readme_docs
+          git push https://${{secrets.TOKEN_GITHUB}}@github.com/${{github.repository}} HEAD:readme_docs
 
       - name: Deploy to docs.readme
         uses: readmeio/rdme@v8
