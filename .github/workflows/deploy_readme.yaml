@@ -41,13 +41,10 @@ jobs:
           README_CATEGORY: ${{ secrets.README_CATEGORY }}
         run: ./action_files/create_readme_docs.sh
 
-      - name: Set up Git User
+      - name: Push PNGs to readme_docs branch
         run: |
           git config --global user.name 'FedericoGarza'
           git config --global user.email 'fede.garza.ramirez@gmail.com'
-
-      - name: Push PNGs to readme_docs branch
-        run: |
           git push origin --delete readme_docs || true
           git checkout -b readme_docs 
           git add -f "*.png"
