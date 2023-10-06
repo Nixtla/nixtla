@@ -14,6 +14,34 @@ def to_snake_case(s):
     s = re.sub(r'_+', '_', s)
     return s
 
+def merge_lines(md_text):
+    code_block_pattern = re.compile(r'``` python([\s\S]*?)```', re.MULTILINE)
+    code_blocks = code_block_pattern.findall(md_text)
+    md_text_no_code = code_block_pattern.sub('CODEBLOCK', md_text)
+    lines = md_text_no_code.split('\n')
+    merged_lines = []
+    buffer_line = ""
+    in_div_block = False
+    for line in lines:
+        if line.strip().lower().startswith('<div>'):
+            in_div_block = True
+        elif line.strip().lower().endswith('</div>'):
+            in_div_block = False
+        if (in_div_block or 
+            line.startswith(('    ', '> ', '#', '-', '*', '1.', '2.', '3.', 'CODEBLOCK', '!', '['))):
+            if buffer_line:
+                merged_lines.append(buffer_line.strip())
+                buffer_line = ""
+            merged_lines.append(line)
+        else:
+            buffer_line += line.strip() + " "
+    if buffer_line:
+        merged_lines.append(buffer_line.strip())
+    md_text_merged = '\n'.join(merged_lines)
+    for code_block in code_blocks:
+        md_text_merged = md_text_merged.replace('CODEBLOCK', f'\n``` python\n{code_block}\n```\n', 1)
+    return md_text_merged
+
 def modify_markdown(
         file_path, 
         slug_number=0,
@@ -40,7 +68,9 @@ def modify_markdown(
     # Prepare the new header
     header = f"""---
 title: "{title}"
-slug: "{slug_number}_{slug}"
+slug: "{slug}"
+parentDocSlug: sdk-tutorials
+order: {slug_number}
 excerpt: "Learn how to do {title} with TimeGPT"
 category: {category}
 hidden: false
@@ -58,7 +88,7 @@ hidden: false
     modified_content = pattern_image.sub(r'![](' + host_url + dir_path + r'\1)', content)
 
     # Concatenate new header and modified content
-    final_content = header + modified_content
+    final_content = header + merge_lines(modified_content)
     
     with open(file_path, 'w', encoding='utf-8') as file:
         file.write(final_content)
