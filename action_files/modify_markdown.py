@@ -16,6 +16,7 @@ def to_snake_case(s):
 
 def modify_markdown(
         file_path, 
+        slug_number=0,
         host_url=os.environ['README_HOST_URL'], 
         category=os.environ['README_CATEGORY'],
     ):
@@ -39,7 +40,7 @@ def modify_markdown(
     # Prepare the new header
     header = f"""---
 title: "{title}"
-slug: "{slug}"
+slug: "{slug_number}_{slug}"
 excerpt: "Learn how to do {title} with TimeGPT"
 category: {category}
 hidden: false
