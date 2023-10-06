@@ -13,6 +13,7 @@ dependencies:
   - prophet
   - pyspark>=3.3
   - scikit-learn
+  - shap
   - statsmodels
   - window-ops
   - xgboost

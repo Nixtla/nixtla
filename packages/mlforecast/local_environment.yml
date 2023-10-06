@@ -11,6 +11,7 @@ dependencies:
   - pip
   - prophet
   - scikit-learn
+  - shap
   - statsmodels
   - window-ops
   - xgboost

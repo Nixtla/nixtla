@@ -8,6 +8,8 @@ import pandas as pd
 
 # %% ../nbs/callbacks.ipynb 4
 class SaveFeatures:
+    """Saves the features in every timestamp."""
+
     def __init__(self):
         self._inputs = []
 
@@ -16,4 +18,5 @@ class SaveFeatures:
         return new_x
 
     def get_features(self):
+        """Retrieves the input features for every timestep"""
         return pd.concat(self._inputs)

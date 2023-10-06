@@ -1,7 +1,7 @@
 website:
   reader-mode: false
   sidebar:
-    collapse-level: 2
+    collapse-level: 1
     contents:
       - index.ipynb
       - section: Getting started
@@ -16,6 +16,8 @@ website:
           - docs/how-to-guides/cross_validation.ipynb
           - docs/how-to-guides/prediction_intervals.ipynb
           - docs/how-to-guides/target_transforms_guide.ipynb
+          - docs/how-to-guides/analyzing_models.ipynb
+          - docs/how-to-guides/custom_training.ipynb
           - docs/how-to-guides/one_model_per_horizon.ipynb
           - docs/how-to-guides/custom_date_features.ipynb
           - docs/how-to-guides/predict_callbacks.ipynb
@@ -35,6 +37,7 @@ website:
             - utils.ipynb
             - core.ipynb
             - target_transforms.ipynb
+            - callbacks.ipynb
           - section: Distributed
             contents:
             - distributed.forecast.ipynb
