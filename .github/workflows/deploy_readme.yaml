@@ -46,6 +46,7 @@ jobs:
           git config --global user.name 'FedericoGarza'
           git config --global user.email 'fede.garza.ramirez@gmail.com'
           git push origin --delete readme_docs || true
+          git pull origin main
           git checkout -b readme_docs 
           git add -f "*.png"
           git commit -m "[cd] update png images" || echo "No changes to commit"
