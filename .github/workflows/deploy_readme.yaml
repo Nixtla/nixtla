@@ -51,7 +51,7 @@ jobs:
           git checkout readme_docs || git checkout --orphan readme_docs
           git --work-tree=nbs add "*.png"
           git --work-tree=nbs commit -m "Add/Update PNG files" || echo "No changes to commit"
-          git push HEAD:readme_docs
+          git push origin readme_docs
 
       - name: Deploy to docs.readme
         uses: readmeio/rdme@v8
