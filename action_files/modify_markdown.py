@@ -69,6 +69,7 @@ def modify_markdown(
     header = f"""---
 title: "{title}"
 slug: "{slug}"
+parentDocSlug: sdk-tutorials
 order: {slug_number}
 excerpt: "Learn how to do {title} with TimeGPT"
 category: {category}
