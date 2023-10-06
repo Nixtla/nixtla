@@ -49,9 +49,7 @@ jobs:
           git checkout -b readme_docs 
           git add -f "*.png"
           git commit -m "[cd] update png images" || echo "No changes to commit"
-          git push --set-upstream origin readme_docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+          git push https://${{ secrets.TOKEN_GITHUB }}@github.com/${{ github.repository }} HEAD:readme_docs
 
       - name: Deploy to docs.readme
         uses: readmeio/rdme@v8
