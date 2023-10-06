@@ -8,6 +8,7 @@ load_dotenv()
 
 
 def to_snake_case(s):
+    s = s.lower()
     s = re.sub(r'(?<!^)(?=[A-Z])', '_', s).lower()
     s = re.sub(r'\W', '_', s)
     s = re.sub(r'_+', '_', s)
