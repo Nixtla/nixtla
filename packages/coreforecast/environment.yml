@@ -1,0 +1,11 @@
+name: coreforecast
+channels:
+  - conda-forge
+dependencies:
+  - black
+  - clang-format
+  - cmake
+  - make
+  - numpy
+  - pip
+  - pytest

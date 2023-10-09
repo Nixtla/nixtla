@@ -1,0 +1,10 @@
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "coreforecast"
+version = "0.0.1"
+dependencies = [
+    "numpy",
+]
