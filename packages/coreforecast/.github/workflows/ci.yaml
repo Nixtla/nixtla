@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        python-version: ['3.10']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Set up environment
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          create-args: python=${{ matrix.python-version }}
+          cache-environment: true
+
+      - name: Install the library
+        run: pip install --no-build-isolation -v .
+
+      - name: Run tests
+        run: pytest

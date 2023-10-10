@@ -1,9 +1,24 @@
 import ctypes
+import platform
 
 import numpy as np
+from importlib_resources import files
 
 
-_LIB = ctypes.CDLL("build/libcoreforecast.so")
+if platform.system() in ("Windows", "Microsoft"):
+    prefix = "Release"
+    extension = "dll"
+else:
+    prefix = ""
+    extension = "so"
+
+_LIB = ctypes.CDLL(
+    str(files("coreforecast").joinpath("lib", prefix, f"libcoreforecast.{extension}"))
+)
+
+
+def _data_as_ptr(arr: np.ndarray, dtype):
+    return arr.ctypes.data_as(ctypes.POINTER(dtype))
 
 
 class GroupedArray:
@@ -12,9 +27,9 @@ class GroupedArray:
         self.indptr = indptr
         self._handle = ctypes.c_void_p()
         _LIB.GroupedArray_CreateFromArrays(
-            data.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            _data_as_ptr(data, ctypes.c_float),
             ctypes.c_int32(data.size),
-            indptr.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+            _data_as_ptr(indptr, ctypes.c_int32),
             ctypes.c_int32(indptr.size),
             ctypes.byref(self._handle),
         )
@@ -25,12 +40,12 @@ class GroupedArray:
     def __len__(self):
         return self.indptr.size - 1
 
-    def scaler_fit(self, stats_fn_name: str) -> None:
+    def scaler_fit(self, stats_fn_name: str) -> np.ndarray:
         stats = np.empty((len(self), 2), dtype=np.float64)
-        stats_fn = getattr(_LIB, stats_fn_name)
+        stats_fn = _LIB[stats_fn_name]
         stats_fn(
             self._handle,
-            stats.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            _data_as_ptr(stats, ctypes.c_double),
         )
         return stats
 
@@ -38,8 +53,8 @@ class GroupedArray:
         out = np.full_like(self.data, np.nan)
         _LIB.GroupedArray_ScalerTransform(
             self._handle,
-            stats.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            _data_as_ptr(stats, ctypes.c_double),
+            _data_as_ptr(out, ctypes.c_float),
         )
         return out
 
@@ -47,7 +62,7 @@ class GroupedArray:
         out = np.empty_like(self.data)
         _LIB.GroupedArray_ScalerInverseTransform(
             self._handle,
-            stats.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            _data_as_ptr(stats, ctypes.c_double),
+            _data_as_ptr(out, ctypes.c_float),
         )
         return out

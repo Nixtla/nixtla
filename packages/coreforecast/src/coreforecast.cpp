@@ -1,16 +1,16 @@
 #include <algorithm>
-#include <math.h>
+#include <cmath>
 #include <numeric>
 
 #include "coreforecast.h"
 
 inline float CommonScalerTransform(float data, double scale, double offset) {
-  return (data - offset) / scale;
+  return static_cast<float>((data - offset) / scale);
 }
 
 inline float CommonScalerInverseTransform(float data, double scale,
                                           double offset) {
-  return data * scale + offset;
+  return static_cast<float>(data * scale + offset);
 }
 
 inline int FirstNotNaN(const float *data, int n) {
@@ -68,7 +68,7 @@ inline void RobustScalerMadStats(const float *data, int n, double *stats) {
   float *buffer = new float[n];
   std::copy(data, data + n, buffer);
   std::sort(buffer, buffer + n);
-  const float median = Quantile(buffer, 0.5F, n);
+  const float median = static_cast<float>(Quantile(buffer, 0.5F, n));
   for (int i = 0; i < n; ++i) {
     buffer[i] = std::abs(buffer[i] - median);
   }

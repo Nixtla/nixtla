@@ -33,3 +33,6 @@
 
 # Python
 __pycache__
+
+# CMake
+build
