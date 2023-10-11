@@ -1,8 +1,13 @@
 import ctypes
 import platform
+import sys
 
 import numpy as np
-from importlib_resources import files
+
+if sys.version_info < (3, 10):
+    from importlib_resources import files
+else:
+    from importlib.resources import files
 
 
 if platform.system() in ("Windows", "Microsoft"):
