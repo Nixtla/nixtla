@@ -42,3 +42,7 @@ sdist.reproducible = true
 wheel.install-dir = ["coreforecast"]
 wheel.packages = ["coreforecast"]
 wheel.py-api = "cp37"
+
+[tool.cibuildwheel]
+test-requires = "pytest"
+test-command = "pytest {project}/tests"
