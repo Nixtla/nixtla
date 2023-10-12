@@ -52,10 +52,9 @@ def _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback)
         X_df = None
     preds = ts.predict(
         {"Booster": bst},
-        h,
-        None,
-        before_predict_callback,
-        after_predict_callback,
+        horizon=h,
+        before_predict_callback=before_predict_callback,
+        after_predict_callback=after_predict_callback,
         X_df=X_df,
     )
     return valid.merge(preds, on=[ts.id_col, ts.time_col], how="left")
@@ -505,7 +504,6 @@ class LightGBMCV:
     def predict(
         self,
         h: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[pd.DataFrame] = None,
@@ -518,8 +516,6 @@ class LightGBMCV:
         ----------
         h : int
             Forecast horizon.
-        dynamic_dfs : list of pandas DataFrame, optional (default=None)
-            Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
             Function to call on the features before computing the predictions.
                 This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
@@ -540,9 +536,8 @@ class LightGBMCV:
         """
         return self.ts.predict(
             self.cv_models_,
-            h,
-            dynamic_dfs,
-            before_predict_callback,
-            after_predict_callback,
+            horizon=h,
+            before_predict_callback=before_predict_callback,
+            after_predict_callback=after_predict_callback,
             X_df=X_df,
         )

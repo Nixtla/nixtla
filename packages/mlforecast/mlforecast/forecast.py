@@ -482,7 +482,6 @@ class MLForecast:
     def predict(
         self,
         h: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         new_df: Optional[pd.DataFrame] = None,
@@ -499,8 +498,6 @@ class MLForecast:
         ----------
         h : int
             Number of periods to predict.
-        dynamic_dfs : list of pandas DataFrame, optional (default=None)
-            Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
             Function to call on the features before computing the predictions.
                 This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
@@ -555,11 +552,6 @@ class MLForecast:
                 DeprecationWarning,
             )
             new_df = new_data
-        if dynamic_dfs is not None:
-            warnings.warn(
-                "`dynamic_dfs` has been deprecated, please use `X_df` instead",
-                DeprecationWarning,
-            )
 
         if new_df is not None:
             new_ts = TimeSeries(
@@ -586,7 +578,6 @@ class MLForecast:
         forecasts = ts.predict(
             models=self.models_,
             horizon=h,
-            dynamic_dfs=dynamic_dfs,
             before_predict_callback=before_predict_callback,
             after_predict_callback=after_predict_callback,
             X_df=X_df,

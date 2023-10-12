@@ -465,12 +465,8 @@ class TimeSeries:
             self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
         self._h = 0
 
-    def _get_features_for_next_step(self, dynamic_dfs, X_df=None):
+    def _get_features_for_next_step(self, X_df=None):
         new_x = self._update_features()
-        if dynamic_dfs:
-            for df in dynamic_dfs:
-                new_x = new_x.merge(df, how="left")
-            new_x = new_x.sort_values(self.id_col)
         if X_df is not None:
             n_series = len(self._uids)
             h = X_df.shape[0] // n_series
@@ -486,18 +482,15 @@ class TimeSeries:
         self,
         models: Dict[str, BaseEstimator],
         horizon: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Use `model` to predict the next `horizon` timesteps."""
-        if dynamic_dfs is None:
-            dynamic_dfs = []
         for i, (name, model) in enumerate(models.items()):
             self._predict_setup()
             for _ in range(horizon):
-                new_x = self._get_features_for_next_step(dynamic_dfs, X_df)
+                new_x = self._get_features_for_next_step(X_df)
                 if before_predict_callback is not None:
                     new_x = before_predict_callback(new_x)
                 predictions = model.predict(new_x)
@@ -518,7 +511,6 @@ class TimeSeries:
         self,
         models: Dict[str, BaseEstimator],
         horizon: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         X_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
@@ -527,8 +519,6 @@ class TimeSeries:
             raise ValueError(
                 f"horizon must be at most max_horizon ({self.max_horizon})"
             )
-        if dynamic_dfs is None:
-            dynamic_dfs = []
         uids = np.repeat(self._uids, horizon)
         dates = np.hstack(
             [
@@ -540,7 +530,7 @@ class TimeSeries:
         result = pd.DataFrame({self.id_col: uids, self.time_col: dates})
         for name, model in models.items():
             self._predict_setup()
-            new_x = self._get_features_for_next_step(dynamic_dfs, X_df)
+            new_x = self._get_features_for_next_step(X_df)
             if before_predict_callback is not None:
                 new_x = before_predict_callback(new_x)
             predictions = np.empty((new_x.shape[0], horizon))
@@ -554,7 +544,6 @@ class TimeSeries:
         self,
         models: Dict[str, Union[BaseEstimator, List[BaseEstimator]]],
         horizon: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[pd.DataFrame] = None,
@@ -608,20 +597,18 @@ class TimeSeries:
             )
         if getattr(self, "max_horizon", None) is None:
             preds = self._predict_recursive(
-                models,
-                horizon,
-                dynamic_dfs,
-                before_predict_callback,
-                after_predict_callback,
-                X_df,
+                models=models,
+                horizon=horizon,
+                before_predict_callback=before_predict_callback,
+                after_predict_callback=after_predict_callback,
+                X_df=X_df,
             )
         else:
             preds = self._predict_multi(
-                models,
-                horizon,
-                dynamic_dfs,
-                before_predict_callback,
-                X_df,
+                models=models,
+                horizon=horizon,
+                before_predict_callback=before_predict_callback,
+                X_df=X_df,
             )
         if self.target_transforms is not None:
             for tfm in self.target_transforms[::-1]:

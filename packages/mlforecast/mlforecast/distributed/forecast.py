@@ -432,23 +432,15 @@ class DistributedMLForecast:
         items: List[List[Any]],
         models,
         horizon,
-        dynamic_dfs=None,
         before_predict_callback=None,
         after_predict_callback=None,
     ) -> Iterable[pd.DataFrame]:
         for serialized_ts, _, serialized_valid in items:
             valid = cloudpickle.loads(serialized_valid)
             ts = cloudpickle.loads(serialized_ts)
-            if valid is not None:
-                dynamic_features = valid.columns.drop(
-                    [ts.id_col, ts.time_col, ts.target_col]
-                )
-                if not dynamic_features.empty:
-                    dynamic_dfs = [valid.drop(columns=ts.target_col)]
             res = ts.predict(
                 models=models,
                 horizon=horizon,
-                dynamic_dfs=dynamic_dfs,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
             )
@@ -466,7 +458,6 @@ class DistributedMLForecast:
     def predict(
         self,
         h: int,
-        dynamic_dfs: Optional[List[pd.DataFrame]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         new_df: Optional[fugue.AnyDataFrame] = None,
@@ -480,8 +471,6 @@ class DistributedMLForecast:
         ----------
         h : int
             Forecast horizon.
-        dynamic_dfs : list of pandas DataFrame, optional (default=None)
-            Future values of the dynamic features, e.g. prices.
         before_predict_callback : callable, optional (default=None)
             Function to call on the features before computing the predictions.
                 This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
@@ -526,7 +515,6 @@ class DistributedMLForecast:
             params={
                 "models": self.models_,
                 "horizon": h,
-                "dynamic_dfs": dynamic_dfs,
                 "before_predict_callback": before_predict_callback,
                 "after_predict_callback": after_predict_callback,
             },
