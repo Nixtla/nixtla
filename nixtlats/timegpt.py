@@ -128,16 +128,27 @@ class _TimeGPT:
         self,
         df: pd.DataFrame,
         X_df: pd.DataFrame,
+        freq: str,
         id_col: str,
         time_col: str,
         target_col: str,
     ):
+        main_logger.info("Validating inputs...")
+        if freq is None and hasattr(df.index, "freq"):
+            freq = df.index.freq
+            if freq is not None:
+                freq = freq.rule_code
+                main_logger.info(f"Inferred freq: {freq}")
+            time_col = df.index.name
+            if time_col is None:
+                time_col = "ds"
+                df.index.name = time_col
+            df = df.reset_index()
         renamer = {
             id_col: "unique_id",
             time_col: "ds",
             target_col: "y",
         }
-        main_logger.info("Validating inputs...")
         df = df.rename(columns=renamer)
         if df.dtypes.ds != "object":
             df["ds"] = df["ds"].astype(str)
@@ -152,7 +163,7 @@ class _TimeGPT:
                 X_df = X_df.assign(unique_id="ts_0")
             if X_df.dtypes.ds != "object":
                 X_df["ds"] = X_df["ds"].astype(str)
-        return df, X_df, drop_uid
+        return df, X_df, drop_uid, freq
 
     def _validate_outputs(
         self,
@@ -195,6 +206,7 @@ class _TimeGPT:
                     raise Exception(
                         f"Failed to infer special date, inferred freq {inferred_freq}"
                     )
+            main_logger.info(f"Inferred freq: {inferred_freq}")
             return inferred_freq
         return freq
 
@@ -689,9 +701,10 @@ class _TimeGPT:
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
 
-        df, X_df, drop_uid = self._validate_inputs(
+        df, X_df, drop_uid, freq = self._validate_inputs(
             df=df,
             X_df=X_df,
+            freq=freq,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -781,9 +794,10 @@ class _TimeGPT:
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
 
-        df, _, drop_uid = self._validate_inputs(
+        df, _, drop_uid, freq = self._validate_inputs(
             df=df,
             X_df=None,
+            freq=freq,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -818,7 +832,7 @@ class _TimeGPT:
         level: Optional[List[float]] = None,
         max_insample_length: Optional[int] = None,
         plot_anomalies: bool = False,
-        engine: str = "plotly",
+        engine: str = "matplotlib",
         resampler_kwargs: Optional[Dict] = None,
     ):
         """Plot forecasts and insample values.

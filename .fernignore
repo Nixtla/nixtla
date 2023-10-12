@@ -15,3 +15,4 @@ nixtlats/timegpt.py
 nixtlats/_modidx.py
 nixtlats/__init__.py
 nixtlats/distributed/
+nixtlats/date_features.py
