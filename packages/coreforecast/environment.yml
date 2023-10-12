@@ -4,6 +4,9 @@ channels:
 dependencies:
   - cmake
   - ninja
+  - numba
   - numpy
   - pytest
+  - pytest-benchmark
   - scikit-build-core
+  - utilsforecast>=0.0.7

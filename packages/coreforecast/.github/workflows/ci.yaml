@@ -38,4 +38,4 @@ jobs:
         run: pip install --no-build-isolation -v .
 
       - name: Run tests
-        run: pytest
+        run: pytest --benchmark-group-by=param:scaler_name --benchmark-sort=fullname

@@ -45,4 +45,4 @@ wheel.py-api = "cp37"
 
 [tool.cibuildwheel]
 test-requires = "pytest"
-test-command = "pytest {project}/tests"
+test-command = "pytest {project}/tests -k correct"

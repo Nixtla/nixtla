@@ -36,11 +36,13 @@ jobs:
           CIBW_TEST_SKIP: '*-macosx_arm64'
 
       - uses: actions/upload-artifact@v3
+        if: github.event_name == 'push'
         with:
           path: ./wheelhouse/*.whl
 
   build_sdist:
     name: Build sdist
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:
@@ -59,7 +61,8 @@ jobs:
         with:
           path: ./dist/*.tar.gz
 
-  upload_all:
+  upload_artifacts:
+    name: 'Upload to PyPI'
     if: github.repository == 'Nixtla/coreforecast' && startsWith(github.ref, 'refs/tags/v')
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest

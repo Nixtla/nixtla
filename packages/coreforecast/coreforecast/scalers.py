@@ -25,9 +25,9 @@ class LocalStandardScaler(BaseLocalScaler):
     stats_fn_name = "GroupedArray_StandardScalerStats"
 
 
-class LocalRobustScalerIqr(BaseLocalScaler):
-    stats_fn_name = "GroupedArray_RobustScalerIqrStats"
-
-
-class LocalRobustScalerMad(BaseLocalScaler):
-    stats_fn_name = "GroupedArray_RobustScalerMadStats"
+class LocalRobustScaler(BaseLocalScaler):
+    def __init__(self, scale: str):
+        if scale == "iqr":
+            self.stats_fn_name = "GroupedArray_RobustScalerIqrStats"
+        else:
+            self.stats_fn_name = "GroupedArray_RobustScalerMadStats"

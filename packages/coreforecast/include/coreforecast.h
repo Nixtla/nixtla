@@ -10,28 +10,34 @@
 
 typedef void *GroupedArrayHandle;
 
+#define DTYPE_FLOAT32 (0)
+#define DTYPE_FLOAT64 (1)
+
 extern "C" {
-DLL_EXPORT int GroupedArray_CreateFromArrays(float *data, int32_t n_data,
+DLL_EXPORT int GroupedArray_CreateFromArrays(const void *data, int32_t n_data,
                                              int32_t *indptr, int32_t n_groups,
+                                             int data_type,
                                              GroupedArrayHandle *out);
 
-DLL_EXPORT int GroupedArray_Delete(GroupedArrayHandle handle);
+DLL_EXPORT int GroupedArray_Delete(GroupedArrayHandle handle, int data_type);
 
 DLL_EXPORT int GroupedArray_MinMaxScalerStats(GroupedArrayHandle handle,
-                                              double *out);
+                                              int data_type, void *out);
 
 DLL_EXPORT int GroupedArray_StandardScalerStats(GroupedArrayHandle handle,
-                                                double *out);
+                                                int data_type, void *out);
 
 DLL_EXPORT int GroupedArray_RobustScalerIqrStats(GroupedArrayHandle handle,
-                                                 double *out);
+                                                 int data_type, void *out);
 
 DLL_EXPORT int GroupedArray_RobustScalerMadStats(GroupedArrayHandle handle,
-                                                 double *out);
+                                                 int data_type, void *out);
 
 DLL_EXPORT int GroupedArray_ScalerTransform(GroupedArrayHandle handle,
-                                            double *stats, float *out);
+                                            const void *stats, int data_type,
+                                            void *out);
 
 DLL_EXPORT int GroupedArray_ScalerInverseTransform(GroupedArrayHandle handle,
-                                                   double *stats, float *out);
+                                                   const void *stats,
+                                                   int data_type, void *out);
 }
