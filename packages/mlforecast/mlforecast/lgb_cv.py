@@ -21,7 +21,7 @@ from mlforecast.core import (
     Lags,
     TimeSeries,
 )
-from .utils import backtest_splits, old_kw_to_pos
+from .utils import backtest_splits
 from .target_transforms import BaseTargetTransform
 
 # %% ../nbs/lgb_cv.ipynb 5
@@ -123,7 +123,6 @@ class LightGBMCV:
             f"bst_threads={self.bst_threads})"
         )
 
-    @old_kw_to_pos(["data", "window_size"], [1, 3])
     def setup(
         self,
         df: pd.DataFrame,
@@ -140,9 +139,6 @@ class LightGBMCV:
         weights: Optional[Sequence[float]] = None,
         metric: Union[str, Callable] = "mape",
         input_size: Optional[int] = None,
-        *,
-        data: Optional[pd.DataFrame] = None,  # noqa: ARG002
-        window_size: Optional[int] = None,  # noqa: ARG002
     ):
         """Initialize internal data structures to iteratively train the boosters. Use this before calling partial_fit.
 
@@ -176,10 +172,6 @@ class LightGBMCV:
             Metric used to assess the performance of the models and perform early stopping.
         input_size : int, optional (default=None)
             Maximum training samples per serie in each window. If None, will use an expanding window.
-        data : pandas DataFrame
-            Series data in long format. This argument has been replaced by df and will be removed in a later release.
-        window_size : int
-            Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
         Returns
         -------
@@ -354,7 +346,6 @@ class LightGBMCV:
                 best_iter = r
         return best_iter
 
-    @old_kw_to_pos(["data", "window_size"], [1, 3])
     def fit(
         self,
         df: pd.DataFrame,
@@ -379,9 +370,6 @@ class LightGBMCV:
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         input_size: Optional[int] = None,
-        *,
-        data: Optional[pd.DataFrame] = None,  # noqa: ARG002
-        window_size: Optional[int] = None,  # noqa: ARG002
     ) -> List[CVResult]:
         """Train boosters simultaneously and assess their performance on the complete forecasting window.
 
@@ -435,10 +423,6 @@ class LightGBMCV:
                 The series identifier is on the index.
         input_size : int, optional (default=None)
             Maximum training samples per serie in each window. If None, will use an expanding window.
-        data : pandas DataFrame
-            Series data in long format. This argument has been replaced by df and will be removed in a later release.
-        window_size : int
-            Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
         Returns
         -------
@@ -500,15 +484,12 @@ class LightGBMCV:
         self.ts._fit(df, id_col, time_col, target_col, static_features, keep_last_n)
         return hist
 
-    @old_kw_to_pos(["horizon"], [1])
     def predict(
         self,
         h: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[pd.DataFrame] = None,
-        *,
-        horizon: Optional[int] = None,  # noqa: ARG002
     ) -> pd.DataFrame:
         """Compute predictions with each of the trained boosters.
 
@@ -526,8 +507,6 @@ class LightGBMCV:
                 The series identifier is on the index.
         X_df : pandas DataFrame, optional (default=None)
             Dataframe with the future exogenous features. Should have the id column and the time column.
-        horizon : int
-            Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
         Returns
         -------

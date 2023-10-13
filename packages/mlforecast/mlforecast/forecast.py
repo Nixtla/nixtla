@@ -25,7 +25,7 @@ from mlforecast.core import (
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
 from .target_transforms import BaseTargetTransform
-from .utils import PredictionIntervals, backtest_splits, old_kw_to_pos
+from .utils import PredictionIntervals, backtest_splits
 
 # %% ../nbs/forecast.ipynb 6
 def _add_conformal_distribution_intervals(
@@ -189,7 +189,6 @@ class MLForecast:
         fcst.ts = copy.deepcopy(cv.ts)
         return fcst
 
-    @old_kw_to_pos(["data"], [1])
     def preprocess(
         self,
         df: pd.DataFrame,
@@ -201,8 +200,6 @@ class MLForecast:
         keep_last_n: Optional[int] = None,
         max_horizon: Optional[int] = None,
         return_X_y: bool = False,
-        *,
-        data: Optional[pd.DataFrame] = None,  # noqa: ARG002
     ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Union[pd.Series, pd.DataFrame]]]:
         """Add the features to `data`.
 
@@ -226,8 +223,6 @@ class MLForecast:
             Train this many models, where each model will predict a specific horizon.
         return_X_y: bool (default=False)
             Return a tuple with the features and the target. If False will return a single dataframe.
-        data : pandas DataFrame
-            Series data in long format. This argument has been replaced by df and will be removed in a later release.
 
         Returns
         -------
@@ -380,7 +375,6 @@ class MLForecast:
                     tfm.fitted_ = []
         return fitted_values
 
-    @old_kw_to_pos(["data"], [1])
     def fit(
         self,
         df: pd.DataFrame,
@@ -393,8 +387,6 @@ class MLForecast:
         max_horizon: Optional[int] = None,
         prediction_intervals: Optional[PredictionIntervals] = None,
         fitted: bool = False,
-        *,
-        data: Optional[pd.DataFrame] = None,  # noqa: ARG002
     ) -> "MLForecast":
         """Apply the feature engineering and train the models.
 
@@ -421,8 +413,6 @@ class MLForecast:
             Configuration to calibrate prediction intervals (Conformal Prediction).
         fitted : bool
             Save in-sample predictions.
-        data : pandas DataFrame
-            Series data in long format. This argument has been replaced by df and will be removed in a later release.
 
         Returns
         -------
@@ -478,7 +468,6 @@ class MLForecast:
             raise Exception("Please run the `fit` method using `fitted=True`")
         return self.fcst_fitted_values_
 
-    @old_kw_to_pos(["horizon"], [1])
     def predict(
         self,
         h: int,
@@ -488,9 +477,6 @@ class MLForecast:
         level: Optional[List[Union[int, float]]] = None,
         X_df: Optional[pd.DataFrame] = None,
         ids: Optional[List[str]] = None,
-        *,
-        horizon: Optional[int] = None,  # noqa: ARG002
-        new_data: Optional[pd.DataFrame] = None,  # noqa: ARG002
     ) -> pd.DataFrame:
         """Compute the predictions for the next `h` steps.
 
@@ -516,12 +502,6 @@ class MLForecast:
             Dataframe with the future exogenous features. Should have the id column and the time column.
         ids : list of str, optional (default=None)
             List with subset of ids seen during training for which the forecasts should be computed.
-        horizon : int
-            Number of periods to predict. This argument has been replaced by h and will be removed in a later release.
-        new_data : pandas DataFrame, optional (default=None)
-            Series data of new observations for which forecasts are to be generated.
-                This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
-                If `new_data` is not None, the method will generate forecasts for the new observations.
 
         Returns
         -------
@@ -546,12 +526,6 @@ class MLForecast:
                 f"but `max_horizon` is {max_horizon}. "
                 "If you ran preprocess after fit please run fit again."
             )
-        if new_data is not None:
-            warnings.warn(
-                "`new_data` has been deprecated, please use `new_df` instead.",
-                DeprecationWarning,
-            )
-            new_df = new_data
 
         if new_df is not None:
             new_ts = TimeSeries(
@@ -625,7 +599,6 @@ class MLForecast:
                 )
         return forecasts
 
-    @old_kw_to_pos(["data", "window_size"], [1, 3])
     def cross_validation(
         self,
         df: pd.DataFrame,
@@ -646,9 +619,6 @@ class MLForecast:
         level: Optional[List[Union[int, float]]] = None,
         input_size: Optional[int] = None,
         fitted: bool = False,
-        *,
-        data: Optional[pd.DataFrame] = None,  # noqa: ARG002
-        window_size: Optional[int] = None,  # noqa: ARG002
     ):
         """Perform time series cross validation.
         Creates `n_windows` splits where each window has `h` test periods,
@@ -698,10 +668,6 @@ class MLForecast:
             Maximum training samples per serie in each window. If None, will use an expanding window.
         fitted : bool (default=False)
             Store the in-sample predictions.
-        data : pandas DataFrame
-            Series data in long format. This argument has been replaced by df and will be removed in a later release.
-        window_size : int
-            Forecast horizon. This argument has been replaced by h and will be removed in a later release.
 
         Returns
         -------

@@ -4,10 +4,7 @@
 __all__ = ['generate_daily_series', 'generate_prices_for_series', 'backtest_splits', 'PredictionIntervals']
 
 # %% ../nbs/utils.ipynb 2
-import inspect
 import reprlib
-import warnings
-from functools import wraps
 from math import ceil, log10
 from typing import Optional, Union
 
@@ -137,47 +134,14 @@ def backtest_splits(
         yield cutoffs, train, valid
 
 # %% ../nbs/utils.ipynb 21
-def old_kw_to_pos(old_names, new_positions):
-    def decorator(f):
-        @wraps(f)
-        def inner(*args, **kwargs):
-            arg_names = inspect.getfullargspec(f).args
-            new_args = list(args)
-            for old_name, pos in zip(old_names, new_positions):
-                if old_name in kwargs:
-                    new_name = arg_names[pos]
-                    warnings.warn(
-                        f"`{old_name}` has been deprecated, please use `{new_name}` instead.",
-                        DeprecationWarning,
-                    )
-                    if len(new_args) > pos:
-                        new_args = [
-                            *new_args[:pos],
-                            kwargs[old_name],
-                            *new_args[pos + 1 :],
-                        ]
-                    else:
-                        new_args = list(new_args)
-                        for i in range(len(new_args), pos):
-                            new_args.append(kwargs.pop(arg_names[i]))
-                        new_args.append(kwargs.pop(old_name))
-            return f(*new_args, **kwargs)
-
-        return inner
-
-    return decorator
-
-# %% ../nbs/utils.ipynb 23
 class PredictionIntervals:
     """Class for storing prediction intervals metadata information."""
 
-    @old_kw_to_pos(["window_size"], [2])
     def __init__(
         self,
         n_windows: int = 2,
         h: int = 1,
         method: str = "conformal_distribution",
-        window_size: Optional[int] = None,  # noqa: ARG002
     ):
         if n_windows < 2:
             raise ValueError(
@@ -193,7 +157,7 @@ class PredictionIntervals:
     def __repr__(self):
         return f"PredictionIntervals(n_windows={self.n_windows}, h={self.h}, method='{self.method}')"
 
-# %% ../nbs/utils.ipynb 24
+# %% ../nbs/utils.ipynb 22
 def _ensure_shallow_copy(df: pd.DataFrame) -> pd.DataFrame:
     from packaging.version import Version
 

@@ -252,5 +252,4 @@ d = { 'settings': { 'branch': 'main',
                                   'mlforecast.utils.generate_daily_series': ('utils.html#generate_daily_series', 'mlforecast/utils.py'),
                                   'mlforecast.utils.generate_prices_for_series': ( 'utils.html#generate_prices_for_series',
                                                                                    'mlforecast/utils.py'),
-                                  'mlforecast.utils.old_kw_to_pos': ('utils.html#old_kw_to_pos', 'mlforecast/utils.py'),
                                   'mlforecast.utils.single_split': ('utils.html#single_split', 'mlforecast/utils.py')}}}
