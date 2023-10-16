@@ -9,7 +9,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from .compat import DataFrame
+from .compat import DataFrame, pl
 
 # %% ../nbs/data.ipynb 5
 def generate_series(
@@ -117,8 +117,6 @@ def generate_series(
             df[cat_cols] = df[cat_cols].astype("category")
             df["unique_id"] = df["unique_id"].cat.as_ordered()
     else:
-        import polars as pl
-
         df = pl.DataFrame(vals_dict)
         df = df.with_columns(pl.col("unique_id").sort())
         if static_as_categorical:

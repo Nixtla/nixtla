@@ -10,24 +10,15 @@ import pandas as pd
 
 # %% ../nbs/compat.ipynb 2
 try:
+    import polars as pl
     from polars import DataFrame as pl_DataFrame
     from polars import Series as pl_Series
-    from polars import col as pl_col
-    from polars import concat as pl_concat
-    from polars import lit as pl_lit
 
     POLARS_INSTALLED = True
 except ImportError:
-
-    class pl_DataFrame:  # type: ignore
-        ...
-
-    class pl_Series:  # type: ignore
-        ...
-
-    pl_col = None  # type: ignore
-    pl_concat = None  # type: ignore
-    pl_lit = None  # type: ignore
+    pl = None
+    pl_DataFrame = type(None)
+    pl_Series = type(None)
 
     POLARS_INSTALLED = False
 

@@ -16,13 +16,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  all-tests:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
@@ -38,5 +38,26 @@ jobs:
         run: pip install ./
 
       - name: Run tests
-        run: nbdev_test --do_print --timing
+        run: nbdev_test --do_print --timing --flags 'matplotlib polars'
 
+  minimal-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Set up python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip3 install . nbdev
+
+      - name: Run tests
+        run: nbdev_test --do_print --timing --skip_file_re '(plotting|target_transforms)'
