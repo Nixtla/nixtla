@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-mypy mlforecast || exit -1
 ruff mlforecast || exit -1
+mypy mlforecast || exit -1

@@ -4,6 +4,8 @@
 __all__ = ['generate_daily_series', 'generate_prices_for_series', 'backtest_splits', 'PredictionIntervals']
 
 # %% ../nbs/utils.ipynb 3
+import reprlib
+import warnings
 from math import ceil, log10
 from typing import Generator, Optional, Tuple, Union
 
@@ -130,6 +132,7 @@ def single_split(
     train_ends = offset_dates(max_dates, freq, -offset)
     valid_ends = offset_dates(train_ends, freq, h)
     train_mask = df[time_col].le(train_ends)
+    valid_mask = df[time_col].gt(train_ends) & df[time_col].le(valid_ends)
     if input_size is not None:
         train_starts = offset_dates(train_ends, freq, -input_size)
         train_mask &= df[time_col].gt(train_starts)
@@ -137,10 +140,21 @@ def single_split(
     if isinstance(train_sizes, pd.Series):
         train_sizes = train_sizes.reset_index()
     zeros_mask = train_sizes[time_col].eq(0)
-    if zeros_mask.any():
-        ids = list(filter_with_mask(train_sizes[id_col], zeros_mask))
-        raise ValueError(f"The following series are too short for the window: {ids}")
-    valid_mask = df[time_col].gt(train_ends) & df[time_col].le(valid_ends)
+    if zeros_mask.all():
+        raise ValueError(
+            "All series are too short for the cross validation settings, "
+            f"at least {offset + 1} samples are required.\n"
+            "Please reduce `n_windows` or `h`."
+        )
+    elif zeros_mask.any():
+        ids = filter_with_mask(train_sizes[id_col], zeros_mask)
+        warnings.warn(
+            "The following series are too short for the window "
+            f"and will be dropped: {reprlib.repr(list(ids))}"
+        )
+        isin_attr = "isin" if isinstance(df, pd.DataFrame) else "is_in"
+        dropped_ids = getattr(df[id_col], isin_attr)(ids)
+        valid_mask &= ~dropped_ids
     proc = DataFrameProcessor(id_col, "", "")
     last_idx_per_serie = proc.counts_by_id(df)["counts"].to_numpy().cumsum() - 1
     cutoff_dates = take_rows(train_ends, last_idx_per_serie)
