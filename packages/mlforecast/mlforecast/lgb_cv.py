@@ -19,10 +19,10 @@ from mlforecast.core import (
     Freq,
     LagTransforms,
     Lags,
+    TargetTransform,
     TimeSeries,
 )
 from .utils import backtest_splits
-from .target_transforms import BaseTargetTransform
 
 # %% ../nbs/lgb_cv.ipynb 5
 def _mape(y_true, y_pred, ids, _dates):
@@ -78,7 +78,7 @@ class LightGBMCV:
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
         num_threads: int = 1,
-        target_transforms: Optional[List[BaseTargetTransform]] = None,
+        target_transforms: Optional[List[TargetTransform]] = None,
     ):
         """Create LightGBM CV object.
 
@@ -194,10 +194,7 @@ class LightGBMCV:
                 )
             self.metric_fn = _metric2fn[metric]
             self.metric_name = metric
-        if np.issubdtype(df[time_col].dtype.type, np.integer):
-            freq = 1
-        else:
-            freq = self.ts.freq
+        self.ts._validate_freq(df, time_col)
         self.items = []
         self.h = h
         self.id_col = id_col
@@ -210,7 +207,7 @@ class LightGBMCV:
             h=h,
             id_col=id_col,
             time_col=time_col,
-            freq=freq,
+            freq=self.ts.freq,
             step_size=step_size,
             input_size=input_size,
         )
@@ -225,6 +222,7 @@ class LightGBMCV:
                 dropna,
                 keep_last_n,
             )
+            assert isinstance(prep, pd.DataFrame)
             ds = lgb.Dataset(
                 prep.drop(columns=[id_col, time_col, target_col]), prep[target_col]
             ).construct()
@@ -429,6 +427,7 @@ class LightGBMCV:
         cv_result : list of tuple.
             List of (boosting rounds, metric value) tuples.
         """
+        self.ts._validate_freq(df, time_col)
         self.setup(
             df=df,
             n_windows=n_windows,

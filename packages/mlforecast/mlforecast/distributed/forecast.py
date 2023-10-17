@@ -41,11 +41,11 @@ from mlforecast.core import (
     Freq,
     LagTransforms,
     Lags,
+    TargetTransform,
     TimeSeries,
     _name_models,
 )
 from ..utils import single_split
-from ..target_transforms import BaseTargetTransform
 
 # %% ../../nbs/distributed.forecast.ipynb 6
 WindowInfo = namedtuple(
@@ -64,7 +64,7 @@ class DistributedMLForecast:
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
         num_threads: int = 1,
-        target_transforms: Optional[List[BaseTargetTransform]] = None,
+        target_transforms: Optional[List[TargetTransform]] = None,
         engine=None,
         num_partitions: Optional[int] = None,
     ):
@@ -138,6 +138,7 @@ class DistributedMLForecast:
         fit_ts_only: bool = False,
     ) -> List[List[Any]]:
         ts = copy.deepcopy(base_ts)
+        ts._validate_freq(part, time_col)
         if fit_ts_only:
             ts._fit(
                 part,
@@ -166,7 +167,7 @@ class DistributedMLForecast:
                 h=window_info.window_size,
                 id_col=id_col,
                 time_col=time_col,
-                freq=base_ts.freq,
+                freq=ts.freq,
                 max_dates=max_dates,
                 step_size=window_info.step_size,
                 input_size=window_info.input_size,

@@ -11,6 +11,7 @@ dependencies:
   - pandas
   - pip
   - prophet
+  - pyarrow
   - pyspark>=3.3
   - scikit-learn
   - shap
@@ -23,6 +24,7 @@ dependencies:
     - fugue[ray]
     - lightgbm_ray
     - nbdev
+    - polars
     - ray<2.4
-    - utilsforecast>=0.0.6
+    - utilsforecast>=0.0.9
     - xgboost_ray

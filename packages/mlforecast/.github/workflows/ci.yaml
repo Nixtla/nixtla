@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10']
+        python-version: ['3.8', '3.9', '3.10']
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
@@ -59,7 +59,7 @@ jobs:
         run: pip install ./
 
       - name: Run all tests
-        run: nbdev_test --n_workers 1 --do_print --timing
+        run: nbdev_test --n_workers 1 --do_print --timing --flags polars
 
   run-local-tests:
     runs-on: ${{ matrix.os }}
@@ -67,7 +67,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
-        python-version: ['3.7', '3.8', '3.9', '3.10']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
@@ -83,7 +83,7 @@ jobs:
         run: pip install ./
 
       - name: Run local tests
-        run: nbdev_test --n_workers 1 --do_print --timing --skip_file_glob "*distributed*"
+        run: nbdev_test --n_workers 1 --do_print --timing --skip_file_glob "*distributed*" --flags polars
 
   check-deps:
     runs-on: ubuntu-latest
@@ -95,11 +95,13 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
+          cache: 'pip'
 
-      - name: Install the library and import it
-        run: |
-          pip install .
-          python -c 'import mlforecast'
+      - name: Install forecast notebook dependencies
+        run: pip install . datasetsforecast lightgbm matplotlib nbdev xgboost
+
+      - name: Run forecast notebook
+        run: nbdev_test --path nbs/forecast.ipynb
 
   performance-tests:
     runs-on: ubuntu-latest

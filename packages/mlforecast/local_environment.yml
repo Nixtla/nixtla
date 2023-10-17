@@ -10,6 +10,7 @@ dependencies:
   - pandas
   - pip
   - prophet
+  - pyarrow
   - scikit-learn
   - shap
   - statsmodels
@@ -18,4 +19,5 @@ dependencies:
   - pip:
     - datasetsforecast
     - nbdev
-    - utilsforecast>=0.0.6
+    - polars
+    - utilsforecast>=0.0.9
