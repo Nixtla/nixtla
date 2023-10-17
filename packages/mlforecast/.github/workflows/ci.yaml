@@ -100,3 +100,19 @@ jobs:
         run: |
           pip install .
           python -c 'import mlforecast'
+
+  performance-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install . pytest pytest-benchmark
+
+      - name: Run performance tests
+        run: pytest --benchmark-group-by=func --benchmark-sort=fullname
