@@ -207,6 +207,8 @@ class DataFrameProcessor:
     def counts_by_id(self, df: DataFrame) -> DataFrame:
         if isinstance(df, pd.DataFrame):
             id_counts = df.groupby(self.id_col, observed=True).size()
+            if not id_counts.index.is_monotonic_increasing:
+                id_counts = id_counts.sort_index()
             id_counts = id_counts.reset_index()
             id_counts.columns = [self.id_col, "counts"]
         else:
