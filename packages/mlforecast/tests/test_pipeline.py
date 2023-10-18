@@ -21,7 +21,7 @@ class SeasonalNaive(BaseEstimator):
 
 @pytest.fixture(scope="module")
 def series():
-    n_series = 1_000
+    n_series = 2_000
     n_static = 10
     return generate_daily_series(
         n_series=n_series,
