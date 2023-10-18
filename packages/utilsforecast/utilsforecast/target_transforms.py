@@ -5,6 +5,7 @@ __all__ = ['BaseTargetTransform', 'LocalStandardScaler', 'LocalMinMaxScaler', 'L
            'GlobalFuncTransformer']
 
 # %% ../nbs/target_transforms.ipynb 3
+import math
 from typing import Callable, Tuple
 
 try:
@@ -26,7 +27,7 @@ def _fit(
     stats_fn: Callable,
 ) -> np.ndarray:
     n_groups = len(indptr) - 1
-    stats = np.empty((n_groups, 2))
+    stats = np.empty((n_groups, 2), dtype=data.dtype)
     for i in range(n_groups):
         sl = slice(indptr[i], indptr[i + 1])
         stats[i] = stats_fn(data[sl])
@@ -53,6 +54,8 @@ def _transform(
 def _common_scaler_transform(
     data: np.ndarray, offset: float, scale: float
 ) -> np.ndarray:
+    if abs(scale) < np.finfo(data.dtype).eps:
+        return data
     return (data - offset) / scale
 
 
@@ -60,6 +63,8 @@ def _common_scaler_transform(
 def _common_scaler_inverse_transform(
     data: np.ndarray, offset: float, scale: float
 ) -> np.ndarray:
+    if abs(scale) < np.finfo(data.dtype).eps:
+        return data
     return data * scale + offset
 
 # %% ../nbs/target_transforms.ipynb 5
@@ -156,8 +161,18 @@ class LocalBoxCox(BaseTargetTransform):
         for i in range(ga.n_groups):
             sl = slice(ga.indptr[i], ga.indptr[i + 1])
             mask = ~np.isnan(ga.data[sl])
-            transformed, self.lmbdas_[i] = boxcox(ga.data[sl][mask] + 1.0, lmbda=None)
-            if np.isclose(transformed * self.lmbdas_[i], -1).any():
+            try:
+                transformed, self.lmbdas_[i] = boxcox(
+                    ga.data[sl][mask] + 1.0, lmbda=None
+                )
+            except ValueError:
+                # this can happen for constant series, fallback to log
+                self.lmbdas_[i] = 0.0
+                transformed = np.log1p(ga.data[sl][mask])
+            if (
+                not math.isclose(self.lmbdas_[i], 0.0)
+                and np.isclose(transformed * self.lmbdas_[i], -1).any()
+            ):
                 # in this case we can't reliably invert the transformation
                 # fallback to log
                 self.lmbdas_[i] = 0.0
