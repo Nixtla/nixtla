@@ -55,7 +55,7 @@ def _common_scaler_transform(
     data: np.ndarray, offset: float, scale: float
 ) -> np.ndarray:
     if abs(scale) < np.finfo(data.dtype).eps:
-        return data
+        return data - offset
     return (data - offset) / scale
 
 
@@ -64,7 +64,7 @@ def _common_scaler_inverse_transform(
     data: np.ndarray, offset: float, scale: float
 ) -> np.ndarray:
     if abs(scale) < np.finfo(data.dtype).eps:
-        return data
+        return data + offset
     return data * scale + offset
 
 # %% ../nbs/target_transforms.ipynb 5

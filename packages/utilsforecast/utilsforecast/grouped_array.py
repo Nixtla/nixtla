@@ -7,15 +7,9 @@ __all__ = ['GroupedArray']
 from typing import Sequence, Tuple, Union
 
 import numpy as np
-import pandas as pd
 
 from .compat import DataFrame
-from utilsforecast.processing import (
-    DataFrameProcessor,
-    counts_by_id,
-    group_by,
-    value_cols_to_numpy,
-)
+from .processing import counts_by_id, value_cols_to_numpy
 
 # %% ../nbs/grouped_array.ipynb 2
 def _append_one(

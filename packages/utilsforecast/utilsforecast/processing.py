@@ -322,12 +322,6 @@ class DataFrameProcessor:
         self.time_col = time_col
         self.target_col = target_col
 
-    def counts_by_id(self, df: DataFrame) -> DataFrame:
-        return counts_by_id(df, self.id_col)
-
-    def maybe_compute_sort_indices(self, df: DataFrame) -> Optional[np.ndarray]:
-        return maybe_compute_sort_indices(df, self.id_col, self.time_col)
-
     def process(
         self, df: DataFrame
     ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
