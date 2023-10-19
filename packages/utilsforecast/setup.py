@@ -42,6 +42,7 @@ setuptools.setup(
     url = cfg['git_url'],
     packages = setuptools.find_packages(),
     include_package_data = True,
+    package_data={'utilsforecast': ['py.typed']},
     install_requires = requirements,
     extras_require={
         'plotting': plotting_requirements,
