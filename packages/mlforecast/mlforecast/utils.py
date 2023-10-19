@@ -15,9 +15,10 @@ import pandas as pd
 from utilsforecast.compat import DataFrame, Series, pl
 from utilsforecast.data import generate_series
 from utilsforecast.processing import (
-    DataFrameProcessor,
+    counts_by_id,
     filter_with_mask,
     group_by,
+    is_in,
     offset_dates,
     take_rows,
 )
@@ -152,11 +153,9 @@ def single_split(
             "The following series are too short for the window "
             f"and will be dropped: {reprlib.repr(list(ids))}"
         )
-        isin_attr = "isin" if isinstance(df, pd.DataFrame) else "is_in"
-        dropped_ids = getattr(df[id_col], isin_attr)(ids)
+        dropped_ids = is_in(df[id_col], ids)
         valid_mask &= ~dropped_ids
-    proc = DataFrameProcessor(id_col, "", "")
-    last_idx_per_serie = proc.counts_by_id(df)["counts"].to_numpy().cumsum() - 1
+    last_idx_per_serie = counts_by_id(df, id_col)["counts"].to_numpy().cumsum() - 1
     cutoff_dates = take_rows(train_ends, last_idx_per_serie)
     if isinstance(cutoff_dates, pd.Series):
         cutoff_dates = cutoff_dates.reset_index()[time_col]

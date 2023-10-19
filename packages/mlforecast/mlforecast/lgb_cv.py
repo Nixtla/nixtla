@@ -481,6 +481,7 @@ class LightGBMCV:
                     [f.result().assign(window=i) for i, f in enumerate(futures)]
                 )
         self.ts._fit(df, id_col, time_col, target_col, static_features, keep_last_n)
+        self.ts.as_numpy = False
         return hist
 
     def predict(

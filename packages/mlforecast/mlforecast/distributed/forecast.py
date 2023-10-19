@@ -148,6 +148,7 @@ class DistributedMLForecast:
                 static_features=static_features,
                 keep_last_n=keep_last_n,
             )
+            ts.as_numpy = False
             return [
                 [
                     cloudpickle.dumps(ts),

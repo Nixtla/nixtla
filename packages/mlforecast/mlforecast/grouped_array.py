@@ -8,8 +8,6 @@ from typing import Callable, Tuple, Union
 
 import numpy as np
 from numba import njit
-from utilsforecast.compat import DataFrame
-from utilsforecast.processing import DataFrameProcessor
 from window_ops.shift import shift_array
 
 # %% ../nbs/grouped_array.ipynb 2
@@ -176,20 +174,6 @@ class GroupedArray:
         data = np.hstack(items)
         indptr = np.append(0, sizes.cumsum())
         return GroupedArray(data, indptr)
-
-    @classmethod
-    def from_sorted_df(
-        cls, df: DataFrame, id_col: str, time_col: str, target_col: str
-    ) -> "GroupedArray":
-        proc = DataFrameProcessor(id_col, time_col, target_col)
-        id_counts = proc.counts_by_id(df)
-        sizes = id_counts["counts"].to_numpy()
-        indptr = np.append(0, sizes.cumsum()).astype(np.int32, copy=False)
-        data = df[target_col].to_numpy().copy()
-        if data.dtype not in (np.float32, np.float64):
-            # since all transformations generate nulls, we need a float dtype
-            data = data.astype(np.float32)
-        return cls(data, indptr)
 
     def transform_series(
         self, updates_only: bool, lag: int, func: Callable, *args

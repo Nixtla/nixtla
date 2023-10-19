@@ -27,12 +27,14 @@ from utilsforecast.processing import (
     drop_index_if_pandas,
     filter_with_mask,
     horizontal_concat,
+    is_in,
     is_nan_or_none,
     join,
     offset_dates,
     rename,
     sort,
     take_rows,
+    to_numpy,
 )
 from utilsforecast.validation import validate_format
 
@@ -376,6 +378,7 @@ class TimeSeries:
         dropna: bool = True,
         max_horizon: Optional[int] = None,
         return_X_y: bool = False,
+        as_numpy: bool = False,
     ) -> pd.DataFrame:
         """Add the features to `df`.
 
@@ -431,9 +434,14 @@ class TimeSeries:
 
         # assemble return
         if return_X_y:
-            x_cols = [c for c in df.columns if c != self.target_col]
-            return df[x_cols], target
+            X = df[self.features_order_]
+            if as_numpy:
+                X = to_numpy(X)
+            return X, target
         if max_horizon is not None:
+            # remove original target
+            out_cols = [c for c in df.columns if c != self.target_col]
+            df = df[out_cols]
             target_names = [f"{self.target_col}{i}" for i in range(max_horizon)]
             df = assign_columns(df, target_names, target)
         else:
@@ -453,6 +461,7 @@ class TimeSeries:
         keep_last_n: Optional[int] = None,
         max_horizon: Optional[int] = None,
         return_X_y: bool = False,
+        as_numpy: bool = False,
     ) -> Union[DataFrame, Tuple[DataFrame, np.ndarray]]:
         """Add the features to `data` and save the required information for the predictions step.
 
@@ -461,9 +470,21 @@ class TimeSeries:
         If `keep_last_n` is not None then that number of observations is kept across all series for updates.
         """
         self.dropna = dropna
-        self._fit(data, id_col, time_col, target_col, static_features, keep_last_n)
+        self.as_numpy = as_numpy
+        self._fit(
+            df=data,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            static_features=static_features,
+            keep_last_n=keep_last_n,
+        )
         return self._transform(
-            data, dropna=dropna, max_horizon=max_horizon, return_X_y=return_X_y
+            df=data,
+            dropna=dropna,
+            max_horizon=max_horizon,
+            return_X_y=return_X_y,
+            as_numpy=as_numpy,
         )
 
     def _update_y(self, new: np.ndarray) -> None:
@@ -566,7 +587,10 @@ class TimeSeries:
         if cols_with_nulls:
             warnings.warn(f'Found null values in {", ".join(cols_with_nulls)}.')
         self._h += 1
-        return new_x[self.features_order_]
+        new_x = new_x[self.features_order_]
+        if self.as_numpy:
+            new_x = to_numpy(new_x)
+        return new_x
 
     def _predict_recursive(
         self,
@@ -608,10 +632,11 @@ class TimeSeries:
             raise ValueError(
                 f"horizon must be at most max_horizon ({self.max_horizon})"
             )
+        self._predict_setup()
         uids = self._get_future_ids(horizon)
-        if isinstance(self.last_dates, pl_Series):
-            starts = offset_dates(self.last_dates, self.freq, 1)
-            ends = offset_dates(self.last_dates, self.freq, horizon)
+        if isinstance(self.curr_dates, pl_Series):
+            starts = offset_dates(self.curr_dates, self.freq, 1)
+            ends = offset_dates(self.curr_dates, self.freq, horizon)
             dates = pl.date_ranges(
                 starts, ends, interval=self.freq, eager=True
             ).explode()
@@ -621,7 +646,7 @@ class TimeSeries:
             dates = np.hstack(
                 [
                     date + (i + 1) * self.freq
-                    for date in self.last_dates
+                    for date in self.curr_dates
                     for i in range(horizon)
                 ]
             )
@@ -654,7 +679,7 @@ class TimeSeries:
                 raise ValueError(
                     f"The following ids weren't seen during training and thus can't be forecasted: {unseen}"
                 )
-            self._idxs: Optional[np.ndarray] = np.where(self.uids.isin(ids))[0]
+            self._idxs: Optional[np.ndarray] = np.where(is_in(self.uids, ids))[0]
             self._uids = self.uids[self._idxs]
             last_dates = self.last_dates[self._idxs]
         else:
