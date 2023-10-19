@@ -3,7 +3,8 @@
 # %% auto 0
 __all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_columns', 'take_rows', 'filter_with_mask', 'is_nan',
            'is_none', 'is_nan_or_none', 'vertical_concat', 'horizontal_concat', 'copy_if_pandas', 'join',
-           'drop_index_if_pandas', 'rename', 'sort', 'offset_dates', 'group_by', 'is_in', 'DataFrameProcessor']
+           'drop_index_if_pandas', 'rename', 'sort', 'offset_dates', 'group_by', 'is_in', 'value_cols_to_numpy',
+           'process_df', 'DataFrameProcessor']
 
 # %% ../nbs/processing.ipynb 2
 import re
@@ -59,6 +60,18 @@ def counts_by_id(df: DataFrame, id_col: str) -> DataFrame:
 def maybe_compute_sort_indices(
     df: DataFrame, id_col: str, time_col: str
 ) -> Optional[np.ndarray]:
+    """Compute indices that would sort dataframe
+
+    Parameters
+    ----------
+    df : pandas or polars DataFrame
+        Input dataframe with id, times and target values.
+
+    Returns
+    -------
+    numpy array or None
+        Array with indices to sort the dataframe or None if it's already sorted.
+    """
     if isinstance(df, pd.DataFrame):
         idx = pd.MultiIndex.from_frame(df[[id_col, time_col]])
     else:
@@ -95,7 +108,7 @@ def assign_columns(
     return df
 
 # %% ../nbs/processing.ipynb 11
-def take_rows(df: Union[DataFrame, Series], idxs: np.ndarray) -> DataFrame:
+def take_rows(df: Union[DataFrame, Series, np.ndarray], idxs: np.ndarray) -> DataFrame:
     if isinstance(df, (pd.DataFrame, pd.Series)):
         df = df.iloc[idxs]
     else:
@@ -104,10 +117,10 @@ def take_rows(df: Union[DataFrame, Series], idxs: np.ndarray) -> DataFrame:
 
 # %% ../nbs/processing.ipynb 13
 def filter_with_mask(
-    df: Union[Series, DataFrame, pd.Index],
+    df: Union[Series, DataFrame, pd.Index, np.ndarray],
     mask: Union[np.ndarray, pd.Series, pl_Series],
 ) -> DataFrame:
-    if isinstance(df, (pd.DataFrame, pd.Series, pd.Index)):
+    if isinstance(df, (pd.DataFrame, pd.Series, pd.Index, np.ndarray)):
         out = df[mask]
     else:
         out = df.filter(mask)  # type: ignore
@@ -239,6 +252,65 @@ def is_in(s: Series, collection) -> Series:
     return out
 
 # %% ../nbs/processing.ipynb 34
+def value_cols_to_numpy(
+    df: DataFrame, id_col: str, time_col: str, target_col: str
+) -> np.ndarray:
+    exclude_cols = [id_col, time_col, target_col]
+    value_cols = [target_col] + [col for col in df.columns if col not in exclude_cols]
+    data = to_numpy(df[value_cols])
+    if data.dtype not in (np.float32, np.float64):
+        data = data.astype(np.float32)
+    return data
+
+# %% ../nbs/processing.ipynb 35
+def process_df(
+    df: DataFrame, id_col: str, time_col: str, target_col: str
+) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
+    """Extract components from dataframe
+
+    Parameters
+    ----------
+    df : pandas or polars DataFrame
+        Input dataframe with id, times and target values.
+
+    Returns
+    -------
+    ids : pandas or polars Serie
+        serie with the sorted unique ids present in the data.
+    last_times : numpy array
+        array with the last time for each serie.
+    data : numpy ndarray
+        2d array with target plus features values.
+    indptr : numpy ndarray
+        1d array with indices to the start and end of each serie.
+    sort_idxs : numpy array or None
+        array with the indices that would sort the original data.
+        If the data is already sorted this is `None`.
+    """
+    # validations
+    validate_format(df, id_col, time_col, target_col)
+
+    # ids
+    id_counts = counts_by_id(df, id_col)
+    uids = id_counts[id_col]
+
+    # indices
+    sizes = id_counts["counts"].to_numpy()
+    indptr = np.append(0, sizes.cumsum()).astype(np.int32)
+    last_idxs = indptr[1:] - 1
+
+    # data
+    data = value_cols_to_numpy(df, id_col, time_col, target_col)
+
+    # check if we need to sort
+    sort_idxs = maybe_compute_sort_indices(df, id_col, time_col)
+    if sort_idxs is not None:
+        data = data[sort_idxs]
+        last_idxs = sort_idxs[last_idxs]
+    times = df[time_col].to_numpy()[last_idxs]
+    return uids, times, data, indptr, sort_idxs
+
+# %% ../nbs/processing.ipynb 36
 class DataFrameProcessor:
     def __init__(
         self,
@@ -246,17 +318,6 @@ class DataFrameProcessor:
         time_col: str = "ds",
         target_col: str = "y",
     ):
-        """Class to  extract common structures from pandas and polars dataframes.
-
-        Parameters
-        ----------
-        id_col : str (default='unique_id')
-            Column that identifies each serie.
-        time_col : str (default='ds')
-            Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str (default='y')
-            Column that contains the target.
-        """
         self.id_col = id_col
         self.time_col = time_col
         self.target_col = target_col
@@ -264,79 +325,10 @@ class DataFrameProcessor:
     def counts_by_id(self, df: DataFrame) -> DataFrame:
         return counts_by_id(df, self.id_col)
 
-    def value_cols_to_numpy(self, df: DataFrame) -> np.ndarray:
-        exclude_cols = [self.id_col, self.time_col, self.target_col]
-        value_cols = [col for col in df.columns if col not in exclude_cols]
-        # ensure target is the first column
-        value_cols = [self.target_col] + value_cols
-        return to_numpy(df[value_cols])
-
     def maybe_compute_sort_indices(self, df: DataFrame) -> Optional[np.ndarray]:
-        """Compute indices that would sort dataframe
-
-        Parameters
-        ----------
-        df : pandas or polars DataFrame
-            Input dataframe with id, times and target values.
-
-        Returns
-        -------
-        numpy array or None
-            Array with indices to sort the dataframe or None if it's already sorted.
-        """
         return maybe_compute_sort_indices(df, self.id_col, self.time_col)
 
     def process(
         self, df: DataFrame
     ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
-        """Extract components from dataframe
-
-        Parameters
-        ----------
-        df : pandas or polars DataFrame
-            Input dataframe with id, times and target values.
-
-        Returns
-        -------
-        ids : pandas or polars Serie
-            serie with the sorted unique ids present in the data.
-        last_times : numpy array
-            array with the last time for each serie.
-        data : numpy ndarray
-            1d array with target values.
-        indptr : numpy ndarray
-            1d array with indices to the start and end of each serie.
-        sort_idxs : numpy array or None
-            array with the indices that would sort the original data.
-            If the data is already sorted this is `None`.
-        """
-        # validations
-        validate_format(df, self.id_col, self.time_col, self.target_col)
-
-        # ids
-        id_counts = self.counts_by_id(df)
-        uids = id_counts[self.id_col]
-
-        # indices
-        indptr = np.append(
-            np.int64(0),
-            id_counts["counts"].to_numpy().cumsum().astype(np.int64),
-        )
-        last_idxs = indptr[1:] - 1
-
-        # data
-        data = self.value_cols_to_numpy(df)
-        # ensure float dtype
-        if data.dtype not in (np.float32, np.float64):
-            data = data.astype(np.float32)
-        # ensure 2d
-        if data.ndim == 1:
-            data = data.reshape(-1, 1)
-
-        # check if we need to sort
-        sort_idxs = self.maybe_compute_sort_indices(df)
-        if sort_idxs is not None:
-            data = data[sort_idxs]
-            last_idxs = sort_idxs[last_idxs]
-        times = df[self.time_col].to_numpy()[last_idxs]
-        return uids, times, data, indptr, sort_idxs
+        return process_df(df, self.id_col, self.time_col, self.target_col)

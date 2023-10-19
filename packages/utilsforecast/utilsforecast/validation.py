@@ -5,8 +5,9 @@ __all__ = ['validate_format']
 
 # %% ../nbs/validation.ipynb 2
 import numpy as np
+import pandas as pd
 
-from .compat import DataFrame
+from .compat import DataFrame, pl_DataFrame
 
 # %% ../nbs/validation.ipynb 3
 def validate_format(
@@ -32,6 +33,11 @@ def validate_format(
     -------
     None
     """
+    if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+        raise ValueError(
+            f"`df` must be either pandas or polars dataframe, got {type(df)}"
+        )
+
     # required columns
     missing_cols = sorted({id_col, time_col, target_col} - set(df.columns))
     if missing_cols:
@@ -44,7 +50,7 @@ def validate_format(
         or np.issubdtype(times_dtype, np.integer)
     ):
         raise ValueError(
-            f"The time column ('{time_col}') should have either datetimes or integers, got '{times_dtype}'."
+            f"The time column ('{time_col}') should have either timestamps or integers, got '{times_dtype}'."
         )
 
     # target col

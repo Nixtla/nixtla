@@ -10,7 +10,12 @@ import numpy as np
 import pandas as pd
 
 from .compat import DataFrame
-from .processing import DataFrameProcessor, group_by
+from utilsforecast.processing import (
+    DataFrameProcessor,
+    counts_by_id,
+    group_by,
+    value_cols_to_numpy,
+)
 
 # %% ../nbs/grouped_array.ipynb 2
 def _append_one(
@@ -79,15 +84,10 @@ class GroupedArray:
     def from_sorted_df(
         cls, df: DataFrame, id_col: str, time_col: str, target_col: str
     ) -> "GroupedArray":
-        if isinstance(df, pd.DataFrame):
-            sizes = df.groupby(id_col, observed=True).size().values
-        else:
-            group_sizes = group_by(df, id_col, maintain_order=True).count()
-            sizes = group_sizes["count"].to_numpy()
-
+        id_counts = counts_by_id(df, id_col)
+        sizes = id_counts["counts"].to_numpy()
         indptr = np.append(0, sizes.cumsum())
-        proc = DataFrameProcessor(id_col, time_col, target_col)
-        data = proc.value_cols_to_numpy(df)
+        data = value_cols_to_numpy(df, id_col, time_col, target_col)
         if data.dtype not in (np.float32, np.float64):
             data = data.astype(np.float32)
         return cls(data, indptr)

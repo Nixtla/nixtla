@@ -17,8 +17,12 @@ try:
     POLARS_INSTALLED = True
 except ImportError:
     pl = None
-    pl_DataFrame = type(None)
-    pl_Series = type(None)
+
+    class pl_DataFrame:
+        ...
+
+    class pl_Series:
+        ...
 
     POLARS_INSTALLED = False
 
