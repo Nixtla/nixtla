@@ -3,6 +3,7 @@
 nbs/
 .github/
 tests/
+action_files/
 LICENSE
 .gitignore
 MANIFEST.ini
