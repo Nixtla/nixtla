@@ -29,6 +29,8 @@ class Nixtla:
 
     def timegpt(self, *, request: SingleSeriesForecast) -> typing.Any:
         """
+        This endpoint predicts the future values of a single time series based on the provided data. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io
+
         Parameters:
             - request: SingleSeriesForecast.
         """
@@ -59,6 +61,8 @@ class Nixtla:
         clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -110,6 +114,8 @@ class Nixtla:
         finetune_steps: typing.Optional[int] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -167,6 +173,8 @@ class Nixtla:
         clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -216,6 +224,8 @@ class Nixtla:
         clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has a anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -241,6 +251,67 @@ class Nixtla:
         _response = self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_anomalies"),
+            json=jsonable_encoder(_request),
+            headers=self._client_wrapper.get_headers(),
+            timeout=60,
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic.parse_obj_as(typing.Any, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(pydantic.parse_obj_as(HttpValidationError, _response.json()))  # type: ignore
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    def timegpt_multi_series_cross_validation(
+        self,
+        *,
+        freq: typing.Optional[str] = OMIT,
+        level: typing.Optional[typing.List[typing.Any]] = OMIT,
+        fh: typing.Optional[int] = OMIT,
+        y: typing.Optional[typing.Any] = OMIT,
+        n_windows: typing.Optional[int] = OMIT,
+        step_size: typing.Optional[int] = OMIT,
+        finetune_steps: typing.Optional[int] = OMIT,
+    ) -> typing.Any:
+        """
+        Perform Cross Validation for multiple series
+
+        Parameters:
+            - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
+
+            - fh: typing.Optional[int]. The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
+
+            - y: typing.Optional[typing.Any].
+
+            - n_windows: typing.Optional[int]. Number of windows to evaluate.
+
+            - step_size: typing.Optional[int]. Step size between each cross validation window. If None it will be equal to the forecasting horizon.
+
+            - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
+        """
+        _request: typing.Dict[str, typing.Any] = {}
+        if freq is not OMIT:
+            _request["freq"] = freq
+        if level is not OMIT:
+            _request["level"] = level
+        if fh is not OMIT:
+            _request["fh"] = fh
+        if y is not OMIT:
+            _request["y"] = y
+        if n_windows is not OMIT:
+            _request["n_windows"] = n_windows
+        if step_size is not OMIT:
+            _request["step_size"] = step_size
+        if finetune_steps is not OMIT:
+            _request["finetune_steps"] = finetune_steps
+        _response = self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_cross_validation"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
@@ -340,6 +411,8 @@ class AsyncNixtla:
 
     async def timegpt(self, *, request: SingleSeriesForecast) -> typing.Any:
         """
+        This endpoint predicts the future values of a single time series based on the provided data. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io
+
         Parameters:
             - request: SingleSeriesForecast.
         """
@@ -370,6 +443,8 @@ class AsyncNixtla:
         clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -421,6 +496,8 @@ class AsyncNixtla:
         finetune_steps: typing.Optional[int] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -478,6 +555,8 @@ class AsyncNixtla:
         clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -527,6 +606,8 @@ class AsyncNixtla:
         clean_ex_first: typing.Optional[bool] = OMIT,
     ) -> typing.Any:
         """
+        Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has a anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
@@ -552,6 +633,67 @@ class AsyncNixtla:
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_anomalies"),
+            json=jsonable_encoder(_request),
+            headers=self._client_wrapper.get_headers(),
+            timeout=60,
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic.parse_obj_as(typing.Any, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(pydantic.parse_obj_as(HttpValidationError, _response.json()))  # type: ignore
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def timegpt_multi_series_cross_validation(
+        self,
+        *,
+        freq: typing.Optional[str] = OMIT,
+        level: typing.Optional[typing.List[typing.Any]] = OMIT,
+        fh: typing.Optional[int] = OMIT,
+        y: typing.Optional[typing.Any] = OMIT,
+        n_windows: typing.Optional[int] = OMIT,
+        step_size: typing.Optional[int] = OMIT,
+        finetune_steps: typing.Optional[int] = OMIT,
+    ) -> typing.Any:
+        """
+        Perform Cross Validation for multiple series
+
+        Parameters:
+            - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
+
+            - fh: typing.Optional[int]. The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
+
+            - y: typing.Optional[typing.Any].
+
+            - n_windows: typing.Optional[int]. Number of windows to evaluate.
+
+            - step_size: typing.Optional[int]. Step size between each cross validation window. If None it will be equal to the forecasting horizon.
+
+            - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
+        """
+        _request: typing.Dict[str, typing.Any] = {}
+        if freq is not OMIT:
+            _request["freq"] = freq
+        if level is not OMIT:
+            _request["level"] = level
+        if fh is not OMIT:
+            _request["fh"] = fh
+        if y is not OMIT:
+            _request["y"] = y
+        if n_windows is not OMIT:
+            _request["n_windows"] = n_windows
+        if step_size is not OMIT:
+            _request["step_size"] = step_size
+        if finetune_steps is not OMIT:
+            _request["finetune_steps"] = finetune_steps
+        _response = await self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "timegpt_multi_series_cross_validation"),
             json=jsonable_encoder(_request),
             headers=self._client_wrapper.get_headers(),
             timeout=60,
