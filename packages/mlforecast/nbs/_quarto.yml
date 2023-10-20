@@ -17,6 +17,7 @@ website:
     image: "https://github.com/Nixtla/styles/blob/2abf51612584169874c90cd7c4d347e3917eaf73/images/Banner%20Github.png"
   google-analytics: "G-NXJNCVR18L"
   repo-actions: [issue]
+  favicon: favicon.png
   navbar:
     background: primary
     search: true
