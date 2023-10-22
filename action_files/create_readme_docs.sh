@@ -15,6 +15,8 @@ for sub_dir in "${SUB_DIRS[@]}"; do
             python -m action_files.modify_markdown --file_path "$md_file" --slug_number "$counter"
 	    ((counter++))
 	done < <(find "$DIR" -type f -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" | sort)
+
+	python -m action_files.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/
     else
         echo "Directory $DIR does not exist."
     fi
