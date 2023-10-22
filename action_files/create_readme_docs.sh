@@ -19,3 +19,5 @@ for sub_dir in "${SUB_DIRS[@]}"; do
         echo "Directory $DIR does not exist."
     fi
 done
+
+python -m action_files.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/
