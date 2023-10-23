@@ -2,13 +2,13 @@
 
 # %% auto 0
 __all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_columns', 'take_rows', 'filter_with_mask', 'is_nan',
-           'is_none', 'is_nan_or_none', 'vertical_concat', 'horizontal_concat', 'copy_if_pandas', 'join',
-           'drop_index_if_pandas', 'rename', 'sort', 'offset_dates', 'group_by', 'is_in', 'value_cols_to_numpy',
-           'process_df', 'DataFrameProcessor']
+           'is_none', 'is_nan_or_none', 'match_if_categorical', 'vertical_concat', 'horizontal_concat',
+           'copy_if_pandas', 'join', 'drop_index_if_pandas', 'rename', 'sort', 'offset_dates', 'group_by',
+           'group_by_agg', 'is_in', 'between', 'fill_null', 'value_cols_to_numpy', 'process_df', 'DataFrameProcessor']
 
 # %% ../nbs/processing.ipynb 2
 import re
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -147,18 +147,87 @@ def is_nan_or_none(s: Series) -> Series:
     return is_nan(s) | is_none(s)
 
 # %% ../nbs/processing.ipynb 20
+def match_if_categorical(
+    s1: Union[Series, pd.Index], s2: Series
+) -> Tuple[Series, Series]:
+    if isinstance(s1.dtype, pd.CategoricalDtype):
+        if isinstance(s1, pd.Index):
+            cat1 = s1.categories
+        else:
+            cat1 = s1.cat.categories
+        if isinstance(s2.dtype, pd.CategoricalDtype):
+            cat2 = s2.cat.categories
+        else:
+            cat2 = s2.unique().astype(cat1.dtype)
+        missing = set(cat2) - set(cat1)
+        if missing:
+            # we assume the original is s1, so we extend its categories
+            new_dtype = pd.CategoricalDtype(categories=cat1.tolist() + sorted(missing))
+            s1 = s1.astype(new_dtype)
+            s2 = s2.astype(new_dtype)
+    elif isinstance(s1, pl_Series) and s1.dtype == pl.Categorical:
+        with pl.StringCache():
+            cat1 = s1.cat.get_categories()
+            if s2.dtype == pl.Categorical:
+                cat2 = s2.cat.get_categories()
+            else:
+                cat2 = s2.unique().sort().cast(cat1.dtype)
+            # populate cache, keep original categories first
+            pl.concat([cat1, cat2]).cast(pl.Categorical)
+            s1 = s1.cast(pl.Utf8).cast(pl.Categorical)
+            s2 = s2.cast(pl.Utf8).cast(pl.Categorical)
+    return s1, s2
+
+# %% ../nbs/processing.ipynb 21
 def vertical_concat(dfs: List[DataFrame]) -> DataFrame:
     if not dfs:
         raise ValueError("Can't concatenate empty list.")
+    if len(dfs) == 1:
+        return dfs
     if isinstance(dfs[0], pd.DataFrame):
-        out = pd.concat(dfs)
-    elif isinstance(dfs[0], pl_DataFrame):
-        out = pl.concat(dfs)
+        cat_cols = [
+            c
+            for c, dtype in dfs[0].dtypes.items()
+            if isinstance(dtype, pd.CategoricalDtype)
+        ]
+        if cat_cols:
+            if len(dfs) > 2:
+                raise NotImplementedError(
+                    "Categorical replacement for more than two dataframes"
+                )
+            assert len(dfs) == 2
+            df1, df2 = dfs
+            df1 = df1.copy(deep=False)
+            df2 = df2.copy(deep=False)
+            for col in cat_cols:
+                s1, s2 = match_if_categorical(df1[col], df2[col])
+                df1[col] = s1
+                df2[col] = s2
+            dfs = [df1, df2]
+        out = pd.concat(dfs).reset_index(drop=True)
     else:
-        raise ValueError(f"Got list of unexpected types: {type(dfs[0])}.")
+        all_cols = dfs[0].columns
+        cat_cols = [
+            all_cols[i]
+            for i, dtype in enumerate(dfs[0].dtypes)
+            if dtype == pl.Categorical
+        ]
+        if cat_cols:
+            if len(dfs) > 2:
+                raise NotImplementedError(
+                    "Categorical replacement for more than two dataframes"
+                )
+            assert len(dfs) == 2
+            df1, df2 = dfs
+            for col in cat_cols:
+                s1, s2 = match_if_categorical(df1[col], df2[col])
+                df1 = df1.with_columns(s1)
+                df2 = df2.with_columns(s2)
+            dfs = [df1, df2]
+        out = pl.concat(dfs)
     return out
 
-# %% ../nbs/processing.ipynb 22
+# %% ../nbs/processing.ipynb 25
 def horizontal_concat(dfs: List[DataFrame]) -> DataFrame:
     if not dfs:
         raise ValueError("Can't concatenate empty list.")
@@ -170,29 +239,36 @@ def horizontal_concat(dfs: List[DataFrame]) -> DataFrame:
         raise ValueError(f"Got list of unexpected types: {type(dfs[0])}.")
     return out
 
-# %% ../nbs/processing.ipynb 24
+# %% ../nbs/processing.ipynb 27
 def copy_if_pandas(df: DataFrame, deep: bool = False) -> DataFrame:
     if isinstance(df, pd.DataFrame):
         df = df.copy(deep=deep)
     return df
 
-# %% ../nbs/processing.ipynb 25
+# %% ../nbs/processing.ipynb 28
 def join(
-    df1: DataFrame, df2: DataFrame, on: Union[str, List[str]], how: str = "inner"
+    df1: Union[DataFrame, Series],
+    df2: Union[DataFrame, Series],
+    on: Union[str, List[str]],
+    how: str = "inner",
 ) -> DataFrame:
+    if isinstance(df1, (pd.Series, pl_Series)):
+        df1 = df1.to_frame()
+    if isinstance(df2, (pd.Series, pl_Series)):
+        df2 = df2.to_frame()
     if isinstance(df1, pd.DataFrame):
         out = df1.merge(df2, on=on, how=how)
     else:
         out = df1.join(df2, on=on, how=how)  # type: ignore
     return out
 
-# %% ../nbs/processing.ipynb 26
+# %% ../nbs/processing.ipynb 29
 def drop_index_if_pandas(df: DataFrame) -> DataFrame:
     if isinstance(df, pd.DataFrame):
         df = df.reset_index(drop=True)
     return df
 
-# %% ../nbs/processing.ipynb 27
+# %% ../nbs/processing.ipynb 30
 def rename(df: DataFrame, mapping: Dict[str, str]) -> DataFrame:
     if isinstance(df, pd.DataFrame):
         df = df.rename(columns=mapping, copy=False)
@@ -200,15 +276,21 @@ def rename(df: DataFrame, mapping: Dict[str, str]) -> DataFrame:
         df = df.rename(mapping)
     return df
 
-# %% ../nbs/processing.ipynb 28
-def sort(df: DataFrame, by: Union[str, List[str]]) -> DataFrame:
+# %% ../nbs/processing.ipynb 31
+def sort(df: DataFrame, by: Optional[Union[str, List[str]]] = None) -> DataFrame:
     if isinstance(df, pd.DataFrame):
-        out = df.sort_values(by)
-    else:
+        out = df.sort_values(by).reset_index(drop=True)
+    elif isinstance(df, (pd.Series, pd.Index)):
+        out = df.sort_values()
+        if isinstance(out, pd.Series):
+            out = out.reset_index(drop=True)
+    elif isinstance(df, pl_DataFrame):
         out = df.sort(by)
+    else:
+        out = df.sort()
     return out
 
-# %% ../nbs/processing.ipynb 29
+# %% ../nbs/processing.ipynb 34
 def offset_dates(
     dates: Union[pd.Index, pl_Series],
     freq: Union[int, str, BaseOffset],
@@ -230,7 +312,7 @@ def offset_dates(
         )
     return out
 
-# %% ../nbs/processing.ipynb 30
+# %% ../nbs/processing.ipynb 35
 def group_by(df: Union[Series, DataFrame], by, maintain_order=False):
     if isinstance(df, (pd.Series, pd.DataFrame)):
         out = df.groupby(by, observed=True, sort=not maintain_order)
@@ -243,7 +325,17 @@ def group_by(df: Union[Series, DataFrame], by, maintain_order=False):
             out = df.groupby(by, maintain_order=maintain_order)
     return out
 
-# %% ../nbs/processing.ipynb 31
+# %% ../nbs/processing.ipynb 36
+def group_by_agg(df: DataFrame, by, aggs, maintain_order=False) -> DataFrame:
+    if isinstance(df, pd.DataFrame):
+        out = group_by(df, by, maintain_order).agg(aggs).reset_index()
+    else:
+        out = group_by(df, by, maintain_order).agg(
+            *[getattr(pl.col(c), agg)() for c, agg in aggs.items()]
+        )
+    return out
+
+# %% ../nbs/processing.ipynb 39
 def is_in(s: Series, collection) -> Series:
     if isinstance(s, pl_Series):
         out = s.is_in(collection)
@@ -251,7 +343,23 @@ def is_in(s: Series, collection) -> Series:
         out = s.isin(collection)
     return out
 
-# %% ../nbs/processing.ipynb 34
+# %% ../nbs/processing.ipynb 42
+def between(s: Series, lower: Series, upper: Series) -> Series:
+    if isinstance(s, pd.Series):
+        out = s.between(lower, upper)
+    else:
+        out = s.is_between(lower, upper)
+    return out
+
+# %% ../nbs/processing.ipynb 45
+def fill_null(df: DataFrame, mapping: Dict[str, Any]) -> DataFrame:
+    if isinstance(df, pd.DataFrame):
+        out = df.fillna(mapping)
+    else:
+        out = df.with_columns(*[pl.col(col).fill_null(v) for col, v in mapping.items()])
+    return out
+
+# %% ../nbs/processing.ipynb 48
 def value_cols_to_numpy(
     df: DataFrame, id_col: str, time_col: str, target_col: str
 ) -> np.ndarray:
@@ -262,7 +370,7 @@ def value_cols_to_numpy(
         data = data.astype(np.float32)
     return data
 
-# %% ../nbs/processing.ipynb 35
+# %% ../nbs/processing.ipynb 49
 def process_df(
     df: DataFrame, id_col: str, time_col: str, target_col: str
 ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
@@ -310,7 +418,7 @@ def process_df(
     times = df[time_col].to_numpy()[last_idxs]
     return uids, times, data, indptr, sort_idxs
 
-# %% ../nbs/processing.ipynb 36
+# %% ../nbs/processing.ipynb 50
 class DataFrameProcessor:
     def __init__(
         self,
