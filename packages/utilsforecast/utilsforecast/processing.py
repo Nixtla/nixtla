@@ -4,7 +4,8 @@
 __all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_columns', 'take_rows', 'filter_with_mask', 'is_nan',
            'is_none', 'is_nan_or_none', 'match_if_categorical', 'vertical_concat', 'horizontal_concat',
            'copy_if_pandas', 'join', 'drop_index_if_pandas', 'rename', 'sort', 'offset_dates', 'group_by',
-           'group_by_agg', 'is_in', 'between', 'fill_null', 'value_cols_to_numpy', 'process_df', 'DataFrameProcessor']
+           'group_by_agg', 'is_in', 'between', 'fill_null', 'cast', 'value_cols_to_numpy', 'process_df',
+           'DataFrameProcessor']
 
 # %% ../nbs/processing.ipynb 2
 import re
@@ -358,6 +359,14 @@ def fill_null(df: DataFrame, mapping: Dict[str, Any]) -> DataFrame:
     return out
 
 # %% ../nbs/processing.ipynb 48
+def cast(s: Series, dtype: type) -> Series:
+    if isinstance(s, pd.Series):
+        s = s.astype(dtype)
+    else:
+        s = s.cast(dtype)
+    return s
+
+# %% ../nbs/processing.ipynb 51
 def value_cols_to_numpy(
     df: DataFrame, id_col: str, time_col: str, target_col: str
 ) -> np.ndarray:
@@ -368,7 +377,7 @@ def value_cols_to_numpy(
         data = data.astype(np.float32)
     return data
 
-# %% ../nbs/processing.ipynb 49
+# %% ../nbs/processing.ipynb 52
 def process_df(
     df: DataFrame, id_col: str, time_col: str, target_col: str
 ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
@@ -416,7 +425,7 @@ def process_df(
     times = df[time_col].to_numpy()[last_idxs]
     return uids, times, data, indptr, sort_idxs
 
-# %% ../nbs/processing.ipynb 50
+# %% ../nbs/processing.ipynb 53
 class DataFrameProcessor:
     def __init__(
         self,
