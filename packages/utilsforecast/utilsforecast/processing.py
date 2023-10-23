@@ -179,18 +179,16 @@ def match_if_categorical(
     return s1, s2
 
 # %% ../nbs/processing.ipynb 21
-def vertical_concat(dfs: List[DataFrame]) -> DataFrame:
+def vertical_concat(dfs: List[DataFrame], match_categories: bool = True) -> DataFrame:
     if not dfs:
         raise ValueError("Can't concatenate empty list.")
-    if len(dfs) == 1:
-        return dfs
     if isinstance(dfs[0], pd.DataFrame):
         cat_cols = [
             c
             for c, dtype in dfs[0].dtypes.items()
             if isinstance(dtype, pd.CategoricalDtype)
         ]
-        if cat_cols:
+        if match_categories and cat_cols:
             if len(dfs) > 2:
                 raise NotImplementedError(
                     "Categorical replacement for more than two dataframes"
@@ -212,7 +210,7 @@ def vertical_concat(dfs: List[DataFrame]) -> DataFrame:
             for i, dtype in enumerate(dfs[0].dtypes)
             if dtype == pl.Categorical
         ]
-        if cat_cols:
+        if match_categories and cat_cols:
             if len(dfs) > 2:
                 raise NotImplementedError(
                     "Categorical replacement for more than two dataframes"
