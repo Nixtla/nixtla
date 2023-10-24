@@ -15,12 +15,10 @@ import pandas as pd
 from utilsforecast.compat import DataFrame, Series, pl
 from utilsforecast.data import generate_series
 from utilsforecast.processing import (
-    counts_by_id,
     filter_with_mask,
     group_by,
     is_in,
     offset_dates,
-    take_rows,
 )
 
 # %% ../nbs/utils.ipynb 5
@@ -154,16 +152,22 @@ def single_split(
         )
         dropped_ids = is_in(df[id_col], ids)
         valid_mask &= ~dropped_ids
-    last_idx_per_serie = counts_by_id(df, id_col)["counts"].to_numpy().cumsum() - 1
-    cutoff_dates = take_rows(train_ends, last_idx_per_serie)
-    if isinstance(cutoff_dates, pd.Series):
-        cutoff_dates = cutoff_dates.reset_index()[time_col]
-    cutoffs = type(df)(
-        {
-            id_col: train_sizes[id_col],
-            "cutoff": cutoff_dates,
-        }
-    )
+    if isinstance(train_ends, pd.Series):
+        cutoffs: DataFrame = (
+            train_ends.set_axis(df[id_col])
+            .groupby(id_col, observed=True)
+            .head(1)
+            .rename("cutoff")
+            .reset_index()
+        )
+    else:
+        cutoffs = train_ends.to_frame().with_columns(df[id_col])
+        cutoffs = (
+            group_by(cutoffs, id_col)
+            .agg(pl.col(time_col).head(1))
+            .explode(pl.col(time_col))
+            .rename({time_col: "cutoff"})
+        )
     return cutoffs, train_mask, valid_mask
 
 # %% ../nbs/utils.ipynb 20

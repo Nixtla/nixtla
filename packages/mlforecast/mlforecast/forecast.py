@@ -766,9 +766,6 @@ class MLForecast:
         results = []
         self.cv_models_ = []
         self.ts._validate_freq(df, time_col)
-        sort_idxs = maybe_compute_sort_indices(df, id_col, time_col)
-        if sort_idxs is not None:
-            df = take_rows(df, sort_idxs)
         splits = backtest_splits(
             df,
             n_windows=n_windows,
@@ -858,6 +855,9 @@ class MLForecast:
                 y_pred,
                 on=[id_col, time_col],
             )
+            sort_idxs = maybe_compute_sort_indices(result, id_col, time_col)
+            if sort_idxs is not None:
+                result = take_rows(result, sort_idxs)
             if result.shape[0] < valid.shape[0]:
                 raise ValueError(
                     "Cross validation result produced less results than expected. "
