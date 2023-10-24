@@ -16,13 +16,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build_wheels:
+    name: Build wheels for ${{ matrix.platform-id }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            platform-id: manylinux_x86_64
+          - os: windows-2019
+            platform-id: win_amd64
+          - os: macos-latest
+            platform-id: macosx_x86_64
+          - os: macos-latest
+            platform-id: macosx_arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.16.2
+        env:
+          CIBW_BUILD: cp38-${{ matrix.platform-id }}
+          CIBW_ARCHS: all
+          CIBW_TEST_SKIP: '*-macosx_arm64'
+
+      - uses: actions/upload-artifact@v3
+        with:
+          path: ./wheelhouse/*.whl
+          retention-days: 1
+
   run-tests:
+    needs: [build_wheels]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        python-version: ['3.10']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
@@ -34,8 +66,51 @@ jobs:
           create-args: python=${{ matrix.python-version }}
           cache-environment: true
 
+      - name: Download wheels
+        uses: actions/download-artifact@v3
+        with:
+          name: artifact
+          path: dist
+
       - name: Install the library
-        run: pip install --no-build-isolation -v .
+        run: pip install --no-index --find-links dist coreforecast
 
       - name: Run tests
         run: pytest --benchmark-group-by=param:scaler_name --benchmark-sort=fullname
+
+  build_sdist:
+    name: Build sdist
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Build sdist
+        run: |
+          python -m pip install build scikit-build-core
+          python -m build --sdist --outdir dist
+
+      - uses: actions/upload-artifact@v3
+        with:
+          path: ./dist/*.tar.gz
+
+  upload_to_pypi:
+    name: 'Upload to PyPI'
+    if: github.repository == 'Nixtla/coreforecast' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+    - uses: actions/download-artifact@v3
+      with:
+        name: artifact
+        path: dist
+
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
