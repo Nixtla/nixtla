@@ -118,6 +118,7 @@ class _TimeGPTModel:
             if time_col is None:
                 time_col = "ds"
                 df.index.name = time_col
+            self.time_col = time_col
             df = df.reset_index()
         else:
             self.freq = self.base_freq
