@@ -19,6 +19,7 @@ from utilsforecast.processing import (
     counts_by_id,
     drop_index_if_pandas,
     filter_with_mask,
+    is_in,
     is_nan,
     join,
     maybe_compute_sort_indices,
@@ -311,6 +312,7 @@ class MLForecast:
         max_horizon: Optional[int] = None,
         n_windows: int = 2,
         h: int = 1,
+        as_numpy: bool = False,
     ):
         """Compute conformity scores.
 
@@ -335,6 +337,7 @@ class MLForecast:
             keep_last_n=keep_last_n,
             max_horizon=max_horizon,
             prediction_intervals=None,
+            as_numpy=as_numpy,
         )
         # conformity score for each model
         for model in self.models.keys():
@@ -420,7 +423,9 @@ class MLForecast:
                 horizon_df = self._invert_transforms_fitted(horizon_df)
                 horizon_df = assign_columns(horizon_df, "h", horizon + 1)
                 horizon_fitted_values[horizon] = horizon_df
-            fitted_values = vertical_concat(horizon_fitted_values)
+            fitted_values = vertical_concat(
+                horizon_fitted_values, match_categories=False
+            )
         if self.ts.target_transforms is not None:
             for tfm in self.ts.target_transforms[::-1]:
                 if hasattr(tfm, "store_fitted"):
@@ -493,6 +498,7 @@ class MLForecast:
                 keep_last_n=keep_last_n,
                 n_windows=prediction_intervals.n_windows,
                 h=prediction_intervals.h,
+                as_numpy=as_numpy,
             )
         prep = self.preprocess(
             df=df,
@@ -655,14 +661,21 @@ class MLForecast:
                 conformal_method = _get_conformal_method(
                     self.prediction_intervals.method
                 )
+                if ids is not None:
+                    ids_mask = is_in(self._cs_df[self.ts.id_col], ids)
+                    cs_df = filter_with_mask(self._cs_df, ids_mask)
+                    n_series = len(ids)
+                else:
+                    cs_df = self._cs_df
+                    n_series = self.ts.ga.n_groups
                 forecasts = conformal_method(
                     forecasts,
-                    self._cs_df,
+                    cs_df,
                     model_names=list(model_names),
                     level=level_,
                     cs_h=self.prediction_intervals.h,
                     cs_n_windows=self.prediction_intervals.n_windows,
-                    n_series=self.ts.ga.n_groups,
+                    n_series=n_series,
                     horizon=h,
                 )
         return forecasts
@@ -848,7 +861,7 @@ class MLForecast:
                 )
             results.append(result)
         del self.models_
-        out = vertical_concat(results)
+        out = vertical_concat(results, match_categories=False)
         out = drop_index_if_pandas(out)
         first_out_cols = [id_col, time_col, "cutoff", target_col]
         remaining_cols = [c for c in out.columns if c not in first_out_cols]
@@ -857,7 +870,7 @@ class MLForecast:
     def cross_validation_fitted_values(self):
         if not getattr(self, "cv_fitted_values_", []):
             raise ValueError("Please run cross_validation with fitted=True first.")
-        out = vertical_concat(self.cv_fitted_values_)
+        out = vertical_concat(self.cv_fitted_values_, match_categories=False)
         first_out_cols = [self.ts.id_col, self.ts.time_col, "fold", self.ts.target_col]
         remaining_cols = [c for c in out.columns if c not in first_out_cols]
         out = drop_index_if_pandas(out)

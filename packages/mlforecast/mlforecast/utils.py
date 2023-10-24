@@ -77,16 +77,15 @@ def generate_daily_series(
     )
     n_digits = ceil(log10(n_series))
 
-    def int_id_to_str(uid):
-        return f"id_{uid:0{n_digits}}"
-
     if engine == "pandas":
-        series["unique_id"] = series["unique_id"].map(int_id_to_str).astype("category")
+        series["unique_id"] = (
+            "id_" + series["unique_id"].astype(str).str.rjust(n_digits, "0")
+        ).astype("category")
     else:
-        import polars as pl
-
         series = series.with_columns(
-            pl.col("unique_id").map_elements(int_id_to_str).cast(pl.Categorical)
+            ("id_" + pl.col("unique_id").cast(pl.Utf8).str.rjust(n_digits, "0"))
+            .alias("unique_id")
+            .cast(pl.Categorical)
         )
     return series
 

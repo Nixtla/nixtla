@@ -44,6 +44,6 @@ class SaveFeatures:
             dfs = [assign_columns(df, "step", i) for i, df in enumerate(self._inputs)]
         else:
             dfs = self._inputs
-        res = vertical_concat(dfs)
+        res = vertical_concat(dfs, match_categories=False)
         res = drop_index_if_pandas(res)
         return res
