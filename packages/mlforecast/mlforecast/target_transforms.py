@@ -99,10 +99,12 @@ class Differences(BaseGroupedArrayTargetTransform):
             orig_vals_ga.restore_difference(ga.data, d)
         return ga
 
-    def inverse_transform_fitted(self, ga: GroupedArray) -> pd.DataFrame:
+    def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
         ga = copy.copy(ga)
-        for d, orig_vals_ga in zip(reversed(self.differences), reversed(self.fitted_)):
-            orig_vals_ga.restore_fitted_difference(ga.data, ga.indptr, d)
+        for d, fitted in zip(reversed(self.differences), reversed(self.fitted_)):
+            if self.idxs is not None:
+                fitted = fitted.take(self.idxs)
+            fitted.restore_fitted_difference(ga.data, ga.indptr, d)
         return ga
 
 # %% ../nbs/target_transforms.ipynb 10
@@ -120,6 +122,8 @@ class BaseLocalScaler(BaseGroupedArrayTargetTransform):
         stats = self.scaler_.stats_
         if self.idxs is not None:
             stats = stats[self.idxs]
+        if stats.shape[0] != ga.n_groups:
+            raise ValueError("Found different number of groups in scaler.")
         transformed = _transform(
             ga.data, ga.indptr, stats, _common_scaler_inverse_transform
         )

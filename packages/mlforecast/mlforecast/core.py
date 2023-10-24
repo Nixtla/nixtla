@@ -5,7 +5,9 @@ __all__ = ['TimeSeries']
 
 # %% ../nbs/core.ipynb 3
 import concurrent.futures
+import copy
 import inspect
+import reprlib
 import warnings
 from collections import Counter, OrderedDict
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -267,7 +269,7 @@ class TimeSeries:
         self.static_features = static_features
         sorted_df = df[[id_col, time_col, target_col]]
         sorted_df = copy_if_pandas(sorted_df, deep=False)
-        uids, times, data, indptr, sort_idxs = process_df(
+        uids, times, data, indptr, self._sort_idxs = process_df(
             df=sorted_df,
             id_col=id_col,
             time_col=time_col,
@@ -282,14 +284,14 @@ class TimeSeries:
         else:
             self.uids = uids
             self.last_dates = pl_Series(times)
-        if sort_idxs is not None:
-            self.restore_idxs: Optional[np.ndarray] = np.empty(
+        if self._sort_idxs is not None:
+            self._restore_idxs: Optional[np.ndarray] = np.empty(
                 df.shape[0], dtype=np.int32
             )
-            self.restore_idxs[sort_idxs] = np.arange(df.shape[0])
-            sorted_df = take_rows(sorted_df, sort_idxs)
+            self._restore_idxs[self._sort_idxs] = np.arange(df.shape[0])
+            sorted_df = take_rows(sorted_df, self._sort_idxs)
         else:
-            self.restore_idxs = None
+            self._restore_idxs = None
         if self.target_transforms is not None:
             for tfm in self.target_transforms:
                 if isinstance(tfm, BaseGroupedArrayTargetTransform):
@@ -300,7 +302,6 @@ class TimeSeries:
                     sorted_df = tfm.fit_transform(sorted_df)
                     ga.data = sorted_df[target_col].to_numpy()
         self.ga = ga
-        self._ga = GroupedArray(self.ga.data, self.ga.indptr)
         last_idxs_per_serie = self.ga.indptr[1:] - 1
         to_drop = [id_col, time_col, target_col]
         if static_features is None:
@@ -309,8 +310,8 @@ class TimeSeries:
             static_features = [id_col] + static_features
         else:  # static_features defined and contain id_col
             to_drop = [time_col, target_col]
-        if sort_idxs is not None:
-            last_idxs_per_serie = sort_idxs[last_idxs_per_serie]
+        if self._sort_idxs is not None:
+            last_idxs_per_serie = self._sort_idxs[last_idxs_per_serie]
         self.static_features_ = take_rows(df, last_idxs_per_serie)[static_features]
         self.static_features_ = drop_index_if_pandas(self.static_features_)
         self.features_order_ = [
@@ -395,9 +396,9 @@ class TimeSeries:
 
         if `dropna=True` then all the null rows are dropped."""
         features = self._compute_transforms()
-        if self.restore_idxs is not None:
+        if self._restore_idxs is not None:
             for k, v in features.items():
-                features[k] = v[self.restore_idxs]
+                features[k] = v[self._restore_idxs]
 
         # target
         self.max_horizon = max_horizon
@@ -405,9 +406,12 @@ class TimeSeries:
             target = self.ga.data
         else:
             target = self.ga.expand_target(max_horizon)
-        if self.restore_idxs is not None:
-            target = target[self.restore_idxs]
-        del self.restore_idxs
+        if self._restore_idxs is not None:
+            target = target[self._restore_idxs]
+
+        # once we've computed the features and target we can slice the series
+        if self.keep_last_n is not None:
+            self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
 
         # determine rows to keep
         if dropna:
@@ -422,11 +426,29 @@ class TimeSeries:
             keep_rows = ~(feature_nulls | target_nulls)
             for k, v in features.items():
                 features[k] = v[keep_rows]
+            target = target[keep_rows]
             df = filter_with_mask(df, keep_rows)
             df = copy_if_pandas(df, deep=False)
-            target = target[keep_rows]
+            last_idxs = self.ga.indptr[1:] - 1
+            if self._sort_idxs is not None:
+                last_idxs = self._sort_idxs[last_idxs]
+            last_vals_nan = ~keep_rows[last_idxs]
+            if last_vals_nan.any():
+                self._dropped_series: Optional[np.ndarray] = np.where(last_vals_nan)[0]
+                dropped_ids = reprlib.repr(list(self.uids[self._dropped_series]))
+                warnings.warn(
+                    "The following series were dropped completely "
+                    f"due to the transformations and features: {dropped_ids}.\n"
+                    "These series won't show up if you use `MLForecast.forecast_fitted_values()`.\n"
+                    "You can set `dropna=False` or use transformations that require less samples to mitigate this"
+                )
+            else:
+                self._dropped_series = None
         elif isinstance(df, pd.DataFrame):
             df = df.copy(deep=False)
+            self._dropped_series = None
+
+        del self._restore_idxs, self._sort_idxs
 
         # lag transforms
         for feat in self.transforms.keys():
@@ -561,7 +583,7 @@ class TimeSeries:
         return df
 
     def _predict_setup(self) -> None:
-        self.ga = GroupedArray(self._ga.data, self._ga.indptr)
+        self._ga = copy.copy(self.ga)
         if isinstance(self.last_dates, pl_Series):
             self.curr_dates = self.last_dates.clone()
         else:
@@ -571,8 +593,6 @@ class TimeSeries:
             self.curr_dates = self.curr_dates[self._idxs]
         self.test_dates: List[Union[pd.Index, pl_Series]] = []
         self.y_pred = []
-        if self.keep_last_n is not None:
-            self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
         self._h = 0
 
     def _get_features_for_next_step(self, X_df=None):
@@ -767,7 +787,8 @@ class TimeSeries:
                     tfm.idxs = None
                 else:
                     preds = tfm.inverse_transform(preds)
-        del self._uids, self._idxs, self._static_features
+        self.ga = self._ga
+        del self._uids, self._idxs, self._static_features, self._ga
         return preds
 
     def update(self, df: DataFrame) -> None:
@@ -805,7 +826,7 @@ class TimeSeries:
                 [self.static_features_, new_statics]
             )
             self.static_features_ = sort(self.static_features_, self.id_col)
-        self._ga = self._ga.append_several(
+        self.ga = self.ga.append_several(
             new_sizes=sizes["counts"].to_numpy().astype(np.int32),
             new_values=values,
             new_groups=new_groups.to_numpy(),

@@ -361,10 +361,15 @@ class MLForecast:
             indptr = np.append(0, sizes.cumsum())
         for tfm in self.ts.target_transforms[::-1]:
             if isinstance(tfm, BaseGroupedArrayTargetTransform):
+                if self.ts._dropped_series is not None:
+                    tfm.idxs = np.delete(
+                        np.arange(self.ts.ga.n_groups), self.ts._dropped_series
+                    )
                 for col in model_cols:
                     ga = GroupedArray(df[col].to_numpy(), indptr)
                     ga = tfm.inverse_transform_fitted(ga)
                     df = assign_columns(df, col, ga.data)
+                tfm.idxs = None
             else:
                 df = tfm.inverse_transform(df)
         return df
