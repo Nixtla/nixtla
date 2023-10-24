@@ -52,7 +52,7 @@ from mlforecast.target_transforms import (
     BaseGroupedArrayTargetTransform,
     BaseTargetTransform,
 )
-from .utils import _ensure_shallow_copy
+from .utils import _ShortSeriesException, _ensure_shallow_copy
 
 # %% ../nbs/core.ipynb 10
 date_features_dtypes = {
@@ -295,7 +295,14 @@ class TimeSeries:
         if self.target_transforms is not None:
             for tfm in self.target_transforms:
                 if isinstance(tfm, BaseGroupedArrayTargetTransform):
-                    ga = tfm.fit_transform(ga)
+                    try:
+                        ga = tfm.fit_transform(ga)
+                    except _ShortSeriesException as exc:
+                        tfm_name = tfm.__class__.__name__
+                        uids = reprlib.repr(list(self.uids[exc.args]))
+                        raise ValueError(
+                            f"The following series are too short for the '{tfm_name}' transformation: {uids}."
+                        ) from None
                     sorted_df = assign_columns(sorted_df, target_col, ga.data)
                 else:
                     tfm.set_column_names(id_col, time_col, target_col)
@@ -409,10 +416,6 @@ class TimeSeries:
         if self._restore_idxs is not None:
             target = target[self._restore_idxs]
 
-        # once we've computed the features and target we can slice the series
-        if self.keep_last_n is not None:
-            self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
-
         # determine rows to keep
         if dropna:
             feature_nulls = np.full(df.shape[0], False)
@@ -448,6 +451,9 @@ class TimeSeries:
             df = df.copy(deep=False)
             self._dropped_series = None
 
+        # once we've computed the features and target we can slice the series
+        if self.keep_last_n is not None:
+            self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
         del self._restore_idxs, self._sort_idxs
 
         # lag transforms
