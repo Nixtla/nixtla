@@ -385,8 +385,12 @@ class _TimeGPTModel:
         # - we dont want to finetune
         # - we dont have exogenous regegressors
         # - and we dont want to produce pred intervals
+        # - no add history
         restrict_input = (
-            self.finetune_steps == 0 and X_df is None and self.level is not None
+            self.finetune_steps == 0
+            and X_df is None
+            and self.level is not None
+            and not add_history
         )
         if restrict_input:
             # add sufficient info to compute
