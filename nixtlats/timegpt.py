@@ -317,7 +317,9 @@ class _TimeGPTModel:
                     "You must include the exogenous variables in the `df` object, "
                     f'exogenous variables {",".join(x_cols)}'
                 )
-            if (self.h is not None) and (len(X_df) != df["unique_id"].nunique() * h):
+            if (self.h is not None) and (
+                len(X_df) != df["unique_id"].nunique() * self.h
+            ):
                 raise Exception(
                     f"You have to pass the {self.h} future values of your "
                     "exogenous variables for each time series"
