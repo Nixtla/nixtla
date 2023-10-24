@@ -106,6 +106,7 @@ class _TimeGPTModel:
         self.model_horizon: int
 
     def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
+        df = df.copy()
         main_logger.info("Validating inputs...")
         if self.base_freq is None and hasattr(df.index, "freq"):
             inferred_freq = df.index.freq
