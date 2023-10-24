@@ -98,6 +98,7 @@ class _TimeGPTModel:
         self.date_features = date_features
         self.date_features_to_one_hot = date_features_to_one_hot
         # variables defined by each flow
+        self.weights_x: pd.DataFrame = None
         self.freq: str = self.base_freq
         self.drop_uid: bool = False
         self.x_cols: List[str]
@@ -605,6 +606,7 @@ class _TimeGPT:
             date_features_to_one_hot=date_features_to_one_hot,
         )
         fcst_df = model.forecast(df=df, X_df=X_df, add_history=add_history)
+        self.weights_x = model.weights_x
         return fcst_df
 
     def _detect_anomalies(
@@ -683,6 +685,7 @@ class _TimeGPT:
             date_features_to_one_hot=date_features_to_one_hot,
         )
         anomalies_df = model.detect_anomalies(df=df)
+        self.weights_x = model.weights_x
         return anomalies_df
 
     def plot(
