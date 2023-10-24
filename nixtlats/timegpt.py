@@ -70,7 +70,7 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/timegpt.ipynb 7
+# %% ../nbs/timegpt.ipynb 6
 class _TimeGPTModel:
     def __init__(
         self,
@@ -479,7 +479,44 @@ class _TimeGPTModel:
         anomalies_df = self.transform_outputs(anomalies_df)
         return anomalies_df
 
-# %% ../nbs/timegpt.ipynb 8
+    def cross_validation(self, df: pd.DataFrame, n_windows: int, step_size: int):
+        # Azul
+        # Remember the input X_df is the FUTURE ex vars
+        # there is a misleading notation here
+        # because X_df inputs in the following methods
+        # returns X_df outputs that means something different
+        # ie X_df = [X_df_history, X_df]
+        # exogenous variables are passed after df
+        df, _ = self.transform_inputs(df=df, X_df=None)
+        main_logger.info("Preprocessing dataframes...")
+        Y_df, X_df = self.preprocess_dataframes(df=df, X_df=None)
+        main_logger.info("Calling Cross Validation Endpoint...")
+        y, x = self.dataframes_to_dict(Y_df, X_df)
+        response_timegpt = self.client.timegpt_multi_series_cross_validation(
+            y=y,
+            x=x,
+            fh=self.h,
+            freq=self.freq,
+            level=self.level,
+            n_windows=n_windows,
+            step_size=step_size,
+            finetune_steps=self.finetune_steps,
+            clean_ex_first=self.clean_ex_first,
+        )
+        if "data" in response_timegpt:
+            response_timegpt = response_timegpt["data"]
+        if "weights_x" in response_timegpt:
+            self.weights_x = pd.DataFrame(
+                {
+                    "features": self.x_cols,
+                    "weights": response_timegpt["weights_x"],
+                }
+            )
+        cv_df = pd.DataFrame(**response_timegpt["forecast"])
+        cv_df = self.transform_outputs(cv_df)
+        return cv_df
+
+# %% ../nbs/timegpt.ipynb 7
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -688,6 +725,98 @@ class _TimeGPT:
         self.weights_x = model.weights_x
         return anomalies_df
 
+    def _cross_validation(
+        self,
+        df: pd.DataFrame,
+        h: int,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Optional[List[Union[int, float]]] = None,
+        validate_token: bool = False,
+        n_windows: int = 1,
+        step_size: Optional[int] = None,
+        finetune_steps: int = 0,
+        clean_ex_first: bool = True,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
+    ):
+        """Perform cross validation in your time series using TimeGPT.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        h : int
+            Forecast horizon.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        level : float (default=99)
+            Confidence level between 0 and 100 for detecting the anomalies.
+        validate_token : bool (default=False)
+            If True, validates token before
+            sending requests.
+        n_windows : int (defaul=1)
+            Number of windows to evaluate.
+        step_size : int, optional (default=None)
+            Step size between each cross validation window. If None it will be equal to `h`.
+        finetune_steps : int (default=0)
+            Number of steps used to finetune TimeGPT in the
+            new data.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
+
+        Returns
+        -------
+        cv_df : pandas.DataFrame
+            DataFrame with anomalies flagged with 1 detected by TimeGPT.
+        """
+        if validate_token and not self.validate_token(log=False):
+            raise Exception("Token not valid, please email ops@nixtla.io")
+        model = _TimeGPTModel(
+            client=self.client,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            freq=freq,
+            level=level,
+            clean_ex_first=clean_ex_first,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+        )
+        cv_df = model.cross_validation(df=df, n_windows=n_windows, step_size=step_size)
+        self.weights_x = model.weights_x
+        return cv_df
+
     def plot(
         self,
         df: pd.DataFrame,
@@ -797,7 +926,7 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 9
+# %% ../nbs/timegpt.ipynb 8
 class TimeGPT(_TimeGPT):
     def forecast(
         self,
@@ -1011,4 +1140,102 @@ class TimeGPT(_TimeGPT):
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 num_partitions=num_partitions,
+            )
+
+    def cross_validation(
+        self,
+        df: pd.DataFrame,
+        h: int,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Optional[List[Union[int, float]]] = None,
+        validate_token: bool = False,
+        n_windows: int = 1,
+        step_size: Optional[int] = None,
+        finetune_steps: int = 0,
+        clean_ex_first: bool = True,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
+    ):
+        """Perform cross validation in your time series using TimeGPT.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        h : int
+            Forecast horizon.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        level : float (default=99)
+            Confidence level between 0 and 100 for detecting the anomalies.
+        validate_token : bool (default=False)
+            If True, validates token before
+            sending requests.
+        n_windows : int (defaul=1)
+            Number of windows to evaluate.
+        step_size : int, optional (default=None)
+            Step size between each cross validation window. If None it will be equal to `h`.
+        finetune_steps : int (default=0)
+            Number of steps used to finetune TimeGPT in the
+            new data.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
+
+        Returns
+        -------
+        cv_df : pandas.DataFrame
+            DataFrame with cross validation fitted values.
+        """
+        if isinstance(df, pd.DataFrame):
+            return self._cross_validation(
+                df=df,
+                h=h,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                level=level,
+                validate_token=validate_token,
+                n_windows=n_windows,
+                step_size=step_size,
+                finetune_steps=finetune_steps,
+                clean_ex_first=clean_ex_first,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+            )
+        else:
+            raise Exception(
+                "Only pandas supported. "
+                "Please raise an issue on Github or mail to ops@nixtla.io. "
+                "Or ask Az."
             )
