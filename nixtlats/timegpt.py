@@ -70,7 +70,409 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/timegpt.ipynb 6
+# %% ../nbs/timegpt.ipynb 7
+class _TimeGPTModel:
+    def __init__(
+        self,
+        client: Nixtla,
+        h: int,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        freq: str = None,
+        level: Optional[List[Union[int, float]]] = None,
+        finetune_steps: int = 0,
+        clean_ex_first: bool = True,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
+    ):
+        self.client = client
+        self.h = h
+        self.id_col = id_col
+        self.time_col = time_col
+        self.target_col = target_col
+        self.base_freq = freq
+        self.level = level
+        self.finetune_steps = finetune_steps
+        self.clean_ex_first = clean_ex_first
+        self.date_features = date_features
+        self.date_features_to_one_hot = date_features_to_one_hot
+        # variables defined by each flow
+        self.freq: str = self.base_freq
+        self.drop_uid: bool = False
+        self.x_cols: List[str]
+        self.input_size: int
+        self.model_horizon: int
+
+    def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
+        main_logger.info("Validating inputs...")
+        if self.base_freq is None and hasattr(df.index, "freq"):
+            inferred_freq = df.index.freq
+            if inferred_freq is not None:
+                inferred_freq = inferred_freq.rule_code
+                main_logger.info(f"Inferred freq: {inferred_freq}")
+            self.freq = inferred_freq
+            time_col = df.index.name
+            if time_col is None:
+                time_col = "ds"
+                df.index.name = time_col
+            df = df.reset_index()
+        else:
+            self.freq = self.base_freq
+        renamer = {
+            self.id_col: "unique_id",
+            self.time_col: "ds",
+            self.target_col: "y",
+        }
+        df = df.rename(columns=renamer)
+        if df.dtypes.ds != "object":
+            df["ds"] = df["ds"].astype(str)
+        if "unique_id" not in df.columns:
+            # Insert unique_id column
+            df = df.assign(unique_id="ts_0")
+            self.drop_uid = True
+        if X_df is not None:
+            X_df = X_df.rename(columns=renamer)
+            if "unique_id" not in X_df.columns:
+                X_df = X_df.assign(unique_id="ts_0")
+            if X_df.dtypes.ds != "object":
+                X_df["ds"] = X_df["ds"].astype(str)
+        return df, X_df
+
+    def transform_outputs(self, fcst_df: pd.DataFrame):
+        renamer = {
+            "unique_id": self.id_col,
+            "ds": self.time_col,
+            "target_col": self.target_col,
+        }
+        if self.drop_uid:
+            fcst_df = fcst_df.drop(columns="unique_id")
+        fcst_df = fcst_df.rename(columns=renamer)
+        return fcst_df
+
+    def infer_freq(self, df: pd.DataFrame):
+        # special freqs that need to be checked
+        # for example to ensure 'W'-> 'W-MON'
+        special_freqs = ["W", "M", "Q", "Y", "A"]
+        if self.freq is None or self.freq in special_freqs:
+            unique_id = df.iloc[0]["unique_id"]
+            df_id = df.query("unique_id == @unique_id")
+            inferred_freq = pd.infer_freq(df_id["ds"])
+            if inferred_freq is None:
+                raise Exception(
+                    "Could not infer frequency of ds column. This could be due to "
+                    "inconsistent intervals. Please check your data for missing, "
+                    "duplicated or irregular timestamps"
+                )
+            if self.freq is not None:
+                # check we have the same base frequency
+                # except when we have yearly frequency (A, and Y means the same)
+                if (self.freq != inferred_freq[0] and self.freq != "Y") or (
+                    self.freq == "Y" and inferred_freq[0] != "A"
+                ):
+                    raise Exception(
+                        f"Failed to infer special date, inferred freq {inferred_freq}"
+                    )
+            main_logger.info(f"Inferred freq: {inferred_freq}")
+            self.freq = inferred_freq
+
+    def resample_dataframe(self, df: pd.DataFrame):
+        df = df.copy()
+        df["ds"] = pd.to_datetime(df["ds"])
+        resampled_df = (
+            df.set_index("ds").groupby("unique_id").resample(self.freq).bfill()
+        )
+        resampled_df = resampled_df.drop(columns="unique_id").reset_index()
+        resampled_df["ds"] = resampled_df["ds"].astype(str)
+        return resampled_df
+
+    def make_future_dataframe(self, df: pd.DataFrame, reconvert: bool = True):
+        last_dates = df.groupby("unique_id")["ds"].max()
+
+        def _future_date_range(last_date):
+            future_dates = pd.date_range(last_date, freq=self.freq, periods=self.h + 1)
+            future_dates = future_dates[-self.h :]
+            return future_dates
+
+        future_df = last_dates.apply(_future_date_range).reset_index()
+        future_df = future_df.explode("ds").reset_index(drop=True)
+        if reconvert and df.dtypes["ds"] == "object":
+            # avoid date 000
+            future_df["ds"] = future_df["ds"].astype(str)
+        return future_df
+
+    def compute_date_feature(self, dates, feature):
+        if callable(feature):
+            feat_name = feature.__name__
+            feat_vals = feature(dates)
+        else:
+            feat_name = feature
+            if feature in ("week", "weekofyear"):
+                dates = dates.isocalendar()
+            feat_vals = getattr(dates, feature)
+        if not isinstance(feat_vals, pd.DataFrame):
+            vals = np.asarray(feat_vals)
+            feat_vals = pd.DataFrame({feat_name: vals})
+        feat_vals["ds"] = dates
+        return feat_vals
+
+    def add_date_features(
+        self,
+        df: pd.DataFrame,
+        X_df: Optional[pd.DataFrame],
+    ):
+        # df contains exogenous variables
+        # X_df are the future values of the exogenous variables
+        # construct dates
+        train_dates = df["ds"].unique().tolist()
+        # if we dont have future exogenos variables
+        # we need to compute the future dates
+        if (self.h is not None) and X_df is None:
+            X_df = self.make_future_dataframe(df=df)
+            future_dates = X_df["ds"].unique().tolist()
+        elif X_df is not None:
+            future_dates = X_df["ds"].unique().tolist()
+        else:
+            future_dates = []
+        dates = pd.DatetimeIndex(train_dates + future_dates)
+        date_features_df = pd.DataFrame({"ds": dates})
+        for feature in self.date_features:
+            feat_df = self.compute_date_feature(dates, feature)
+            date_features_df = date_features_df.merge(feat_df, on=["ds"], how="left")
+        if df.dtypes["ds"] == "object":
+            date_features_df["ds"] = date_features_df["ds"].astype(str)
+        if self.date_features_to_one_hot is not None:
+            date_features_df = pd.get_dummies(
+                date_features_df,
+                columns=self.date_features_to_one_hot,
+                dtype=int,
+            )
+        # remove duplicated columns if any
+        date_features_df = date_features_df.drop(
+            columns=[
+                col
+                for col in date_features_df.columns
+                if col in df.columns and col not in ["unique_id", "ds"]
+            ]
+        )
+        # add date features to df
+        df = df.merge(date_features_df, on="ds", how="left")
+        # add date features to X_df
+        if X_df is not None:
+            X_df = X_df.merge(date_features_df, on="ds", how="left")
+        return df, X_df
+
+    def preprocess_X_df(self, X_df: pd.DataFrame, freq: str):
+        if X_df.isna().any().any():
+            raise Exception("Some of your exogenous variables contain NA, please check")
+        X_df = X_df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
+        X_df = self.resample_dataframe(X_df)
+        return X_df
+
+    def preprocess_dataframes(
+        self,
+        df: pd.DataFrame,
+        X_df: Optional[pd.DataFrame],
+    ):
+        self.infer_freq(df=df)
+        """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
+        # add date features logic
+        if isinstance(self.date_features, bool):
+            if self.date_features:
+                self.date_features = date_features_by_freq.get(self.freq)
+                if self.date_features is None:
+                    warnings.warn(
+                        f"Non default date features for {self.freq} "
+                        "please pass a list of date features"
+                    )
+            else:
+                self.date_features = None
+
+        if self.date_features is not None:
+            if isinstance(self.date_features_to_one_hot, bool):
+                if self.date_features_to_one_hot:
+                    self.date_features_to_one_hot = [
+                        feat for feat in self.date_features if not callable(feat)
+                    ]
+                    self.date_features_to_one_hot = (
+                        None
+                        if not self.date_features_to_one_hot
+                        else self.date_features_to_one_hot
+                    )
+                else:
+                    self.date_features_to_one_hot = None
+            df, X_df = self.add_date_features(df=df, X_df=X_df)
+        y_cols = ["unique_id", "ds", "y"]
+        Y_df = df[y_cols]
+        if Y_df["y"].isna().any():
+            raise Exception("Your target variable contains NA, please check")
+        # Azul: efficient this code
+        # and think about returning dates that are not in the training set
+        Y_df = self.resample_dataframe(Y_df)
+        x_cols = []
+        if X_df is not None:
+            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
+            if not all(col in df.columns for col in x_cols):
+                raise Exception(
+                    "You must include the exogenous variables in the `df` object, "
+                    f'exogenous variables {",".join(x_cols)}'
+                )
+            if (self.h is not None) and (len(X_df) != df["unique_id"].nunique() * h):
+                raise Exception(
+                    f"You have to pass the {self.h} future values of your "
+                    "exogenous variables for each time series"
+                )
+            X_df_history = df[["unique_id", "ds"] + x_cols]
+            X_df = pd.concat([X_df_history, X_df])
+            X_df = self.preprocess_X_df(X_df)
+        elif (X_df is None) and (self.h is None) and (len(y_cols) < df.shape[1]):
+            # case for just insample,
+            # we dont need h
+            X_df = df.drop(columns="y")
+            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
+            X_df = self.preprocess_X_df(X_df)
+        self.x_cols = x_cols
+        return Y_df, X_df
+
+    def dataframes_to_dict(self, Y_df: pd.DataFrame, X_df: pd.DataFrame):
+        to_dict_args = {"orient": "split"}
+        if "index" in inspect.signature(pd.DataFrame.to_dict).parameters:
+            to_dict_args["index"] = False
+        y = Y_df.to_dict(**to_dict_args)
+        x = X_df.to_dict(**to_dict_args) if X_df is not None else None
+        return y, x
+
+    def set_model_params(self):
+        model_params = self.client.timegpt_model_params(
+            request=SingleSeriesForecast(freq=self.freq)
+        )
+        if "data" in model_params:
+            model_params = model_params["data"]
+        model_params = model_params["detail"]
+        self.input_size, self.model_horizon = (
+            model_params["input_size"],
+            model_params["horizon"],
+        )
+
+    def validate_input_size(self, Y_df: pd.DataFrame):
+        min_history = Y_df.groupby("unique_id").size().min()
+        if min_history < self.input_size + self.model_horizon:
+            raise Exception(
+                "Your time series data is too short "
+                "Please be sure that your unique time series contain "
+                f"at least {self.input_size + self.model_horizon} observations"
+            )
+
+    def forecast(
+        self,
+        df: pd.DataFrame,
+        X_df: Optional[pd.DataFrame] = None,
+        add_history: bool = False,
+    ):
+        df, X_df = self.transform_inputs(df=df, X_df=X_df)
+        main_logger.info("Preprocessing dataframes...")
+        Y_df, X_df = self.preprocess_dataframes(df=df, X_df=X_df)
+        self.set_model_params()
+        if self.h > self.model_horizon:
+            main_logger.warning(
+                'The specified horizon "h" exceeds the model horizon. '
+                "This may lead to less accurate forecasts. "
+                "Please consider using a smaller horizon."
+            )
+        # restrict input if
+        # - we dont want to finetune
+        # - we dont have exogenous regegressors
+        # - and we dont want to produce pred intervals
+        restrict_input = (
+            self.finetune_steps == 0 and X_df is None and self.level is not None
+        )
+        if restrict_input:
+            # add sufficient info to compute
+            # conformal interval
+            new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
+            Y_df = Y_df.groupby("unique_id").tail(new_input_size)
+            if X_df is not None:
+                X_df = X_df.groupby("unique_id").tail(
+                    new_input_size + self.h
+                )  # history plus exogenous
+        if self.finetune_steps > 0 or self.level is not None:
+            self.validate_input_size(Y_df=Y_df)
+        y, x = self.dataframes_to_dict(Y_df, X_df)
+        main_logger.info("Calling Forecast Endpoint...")
+        response_timegpt = self.client.timegpt_multi_series(
+            y=y,
+            x=x,
+            fh=self.h,
+            freq=self.freq,
+            level=self.level,
+            finetune_steps=self.finetune_steps,
+            clean_ex_first=self.clean_ex_first,
+        )
+        if "data" in response_timegpt:
+            response_timegpt = response_timegpt["data"]
+        if "weights_x" in response_timegpt:
+            self.weights_x = pd.DataFrame(
+                {
+                    "features": self.x_cols,
+                    "weights": response_timegpt["weights_x"],
+                }
+            )
+        fcst_df = pd.DataFrame(**response_timegpt["forecast"])
+        if add_history:
+            main_logger.info("Calling Historical Forecast Endpoint...")
+            self.validate_input_size(Y_df=Y_df)
+            if "data" in response_timegpt:
+                response_timegpt = response_timegpt["data"]
+            response_timegpt = self.client.timegpt_multi_series_historic(
+                y=y,
+                x=x,
+                freq=self.freq,
+                level=self.level,
+                clean_ex_first=self.clean_ex_first,
+            )
+            fitted_df = pd.DataFrame(**response_timegpt["data"]["forecast"])
+            fitted_df = fitted_df.drop(columns="y")
+            fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
+        fcst_df = self.transform_outputs(fcst_df)
+        return fcst_df
+
+    def detect_anomalies(self, df: pd.DataFrame):
+        # Azul
+        # Remember the input X_df is the FUTURE ex vars
+        # there is a misleading notation here
+        # because X_df inputs in the following methods
+        # returns X_df outputs that means something different
+        # ie X_df = [X_df_history, X_df]
+        # exogenous variables are passed after df
+        df, _ = self.transform_inputs(df=df, X_df=None)
+        main_logger.info("Preprocessing dataframes...")
+        Y_df, X_df = self.preprocess_dataframes(df=df, X_df=None)
+        main_logger.info("Calling Anomaly Detector Endpoint...")
+        y, x = self.dataframes_to_dict(Y_df, X_df)
+        response_timegpt = self.client.timegpt_multi_series_anomalies(
+            y=y,
+            x=x,
+            freq=self.freq,
+            level=[self.level]
+            if (isinstance(self.level, int) or isinstance(self.level, float))
+            else [self.level[0]],
+            clean_ex_first=self.clean_ex_first,
+        )
+        if "data" in response_timegpt:
+            response_timegpt = response_timegpt["data"]
+        if "weights_x" in response_timegpt:
+            self.weights_x = pd.DataFrame(
+                {
+                    "features": self.x_cols,
+                    "weights": response_timegpt["weights_x"],
+                }
+            )
+        anomalies_df = pd.DataFrame(**response_timegpt["forecast"])
+        anomalies_df = anomalies_df.drop(columns="y")
+        anomalies_df = self.transform_outputs(anomalies_df)
+        return anomalies_df
+
+# %% ../nbs/timegpt.ipynb 8
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -92,24 +494,6 @@ class _TimeGPT:
         self.client = Nixtla(base_url=environment, token=token)
         self.weights_x: pd.DataFrame = None
 
-    @property
-    def request_headers(self):
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {self.client._client_wrapper._token}",
-        }
-        return headers
-
-    def _parse_response(self, response) -> Dict:
-        """Parses responde."""
-        response.raise_for_status()
-        try:
-            resp = response.json()
-        except Exception as e:
-            raise Exception(response)
-        return resp
-
     def validate_token(self, log: bool = True) -> bool:
         """Returns True if your token is valid."""
         validation = self.client.validate_token()
@@ -123,505 +507,6 @@ class _TimeGPT:
         if "support" in validation and log:
             main_logger.info(f'Happy Forecasting! :), {validation["support"]}')
         return valid
-
-    def _validate_inputs(
-        self,
-        df: pd.DataFrame,
-        X_df: pd.DataFrame,
-        freq: str,
-        id_col: str,
-        time_col: str,
-        target_col: str,
-    ):
-        main_logger.info("Validating inputs...")
-        if freq is None and hasattr(df.index, "freq"):
-            freq = df.index.freq
-            if freq is not None:
-                freq = freq.rule_code
-                main_logger.info(f"Inferred freq: {freq}")
-            time_col = df.index.name
-            if time_col is None:
-                time_col = "ds"
-                df.index.name = time_col
-            df = df.reset_index()
-        renamer = {
-            id_col: "unique_id",
-            time_col: "ds",
-            target_col: "y",
-        }
-        df = df.rename(columns=renamer)
-        if df.dtypes.ds != "object":
-            df["ds"] = df["ds"].astype(str)
-        drop_uid = False
-        if "unique_id" not in df.columns:
-            # Insert unique_id column
-            df = df.assign(unique_id="ts_0")
-            drop_uid = True
-        if X_df is not None:
-            X_df = X_df.rename(columns=renamer)
-            if "unique_id" not in X_df.columns:
-                X_df = X_df.assign(unique_id="ts_0")
-            if X_df.dtypes.ds != "object":
-                X_df["ds"] = X_df["ds"].astype(str)
-        return df, X_df, drop_uid, freq
-
-    def _validate_outputs(
-        self,
-        fcst_df: pd.DataFrame,
-        id_col: str,
-        time_col: str,
-        target_col: str,
-        drop_uid: bool,
-    ):
-        renamer = {
-            "unique_id": id_col,
-            "ds": time_col,
-            "target_col": target_col,
-        }
-        if drop_uid:
-            fcst_df = fcst_df.drop(columns="unique_id")
-        fcst_df = fcst_df.rename(columns=renamer)
-        return fcst_df
-
-    def _infer_freq(self, df: pd.DataFrame, freq: Optional[str] = None):
-        # special freqs that need to be checked
-        # for example to ensure 'W'-> 'W-MON'
-        special_freqs = ["W", "M", "Q", "Y", "A"]
-        if freq is None or freq in special_freqs:
-            unique_id = df.iloc[0]["unique_id"]
-            df_id = df.query("unique_id == @unique_id")
-            inferred_freq = pd.infer_freq(df_id["ds"])
-            if inferred_freq is None:
-                raise Exception(
-                    "Could not infer frequency of ds column. This could be due to "
-                    "inconsistent intervals. Please check your data for missing, "
-                    "duplicated or irregular timestamps"
-                )
-            if freq is not None:
-                # check we have the same base frequency
-                # except when we have yearly frequency (A, and Y means the same)
-                if (freq != inferred_freq[0] and freq != "Y") or (
-                    freq == "Y" and inferred_freq[0] != "A"
-                ):
-                    raise Exception(
-                        f"Failed to infer special date, inferred freq {inferred_freq}"
-                    )
-            main_logger.info(f"Inferred freq: {inferred_freq}")
-            return inferred_freq
-        return freq
-
-    def _resample_dataframe(
-        self,
-        df: pd.DataFrame,
-        freq: str,
-    ):
-        df = df.copy()
-        df["ds"] = pd.to_datetime(df["ds"])
-        resampled_df = df.set_index("ds").groupby("unique_id").resample(freq).bfill()
-        resampled_df = resampled_df.drop(columns="unique_id").reset_index()
-        resampled_df["ds"] = resampled_df["ds"].astype(str)
-        return resampled_df
-
-    def _compute_date_feature(self, dates, feature):
-        if callable(feature):
-            feat_name = feature.__name__
-            feat_vals = feature(dates)
-        else:
-            feat_name = feature
-            if feature in ("week", "weekofyear"):
-                dates = dates.isocalendar()
-            feat_vals = getattr(dates, feature)
-        if not isinstance(feat_vals, pd.DataFrame):
-            vals = np.asarray(feat_vals)
-            feat_vals = pd.DataFrame({feat_name: vals})
-        feat_vals["ds"] = dates
-        return feat_vals
-
-    def _make_future_dataframe(
-        self, df: pd.DataFrame, h: int, freq: str, reconvert: bool = True
-    ):
-        last_dates = df.groupby("unique_id")["ds"].max()
-
-        def _future_date_range(last_date):
-            future_dates = pd.date_range(last_date, freq=freq, periods=h + 1)[-h:]
-            return future_dates
-
-        future_df = last_dates.apply(_future_date_range).reset_index()
-        future_df = future_df.explode("ds").reset_index(drop=True)
-        if reconvert and df.dtypes["ds"] == "object":
-            # avoid date 000
-            future_df["ds"] = future_df["ds"].astype(str)
-        return future_df
-
-    def _add_date_features(
-        self,
-        df: pd.DataFrame,
-        X_df: Optional[pd.DataFrame],
-        h: int,
-        freq: str,
-        date_features: List[str],
-        date_features_to_one_hot: Optional[List[str]],
-    ):
-        # df contains exogenous variables
-        # X_df are the future values of the exogenous variables
-        # construct dates
-        train_dates = df["ds"].unique().tolist()
-        # if we dont have future exogenos variables
-        # we need to compute the future dates
-        if (h is not None) and X_df is None:
-            X_df = self._make_future_dataframe(df=df, h=h, freq=freq)
-            future_dates = X_df["ds"].unique().tolist()
-        elif X_df is not None:
-            future_dates = X_df["ds"].unique().tolist()
-        else:
-            future_dates = []
-        dates = pd.DatetimeIndex(train_dates + future_dates)
-        date_features_df = pd.DataFrame({"ds": dates})
-        for feature in date_features:
-            feat_df = self._compute_date_feature(dates, feature)
-            date_features_df = date_features_df.merge(feat_df, on=["ds"], how="left")
-        if df.dtypes["ds"] == "object":
-            date_features_df["ds"] = date_features_df["ds"].astype(str)
-        if date_features_to_one_hot is not None:
-            date_features_df = pd.get_dummies(
-                date_features_df,
-                columns=date_features_to_one_hot,
-                dtype=int,
-            )
-        # remove duplicated columns if any
-        date_features_df = date_features_df.drop(
-            columns=[
-                col
-                for col in date_features_df.columns
-                if col in df.columns and col not in ["unique_id", "ds"]
-            ]
-        )
-        # add date features to df
-        df = df.merge(date_features_df, on="ds", how="left")
-        # add date features to X_df
-        if X_df is not None:
-            X_df = X_df.merge(date_features_df, on="ds", how="left")
-        return df, X_df
-
-    def _preprocess_X_df(self, X_df: pd.DataFrame, freq: str):
-        if X_df.isna().any().any():
-            raise Exception("Some of your exogenous variables contain NA, please check")
-        X_df = X_df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
-        X_df = self._resample_dataframe(X_df, freq)
-        return X_df
-
-    def _preprocess_dataframes(
-        self,
-        df: pd.DataFrame,
-        h: int,
-        X_df: Optional[pd.DataFrame],
-        freq: str,
-        date_features: Union[bool, List[str]],
-        date_features_to_one_hot: Union[bool, List[str]],
-    ):
-        """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
-        # add date features logic
-        if isinstance(date_features, bool):
-            if date_features:
-                date_features = date_features_by_freq.get(freq)
-                if date_features is None:
-                    warnings.warn(
-                        f"Non default date features for {freq} "
-                        "please pass a list of date features"
-                    )
-            else:
-                date_features = None
-
-        if date_features is not None:
-            if isinstance(date_features_to_one_hot, bool):
-                if date_features_to_one_hot:
-                    date_features_to_one_hot = [
-                        feat for feat in date_features if not callable(feat)
-                    ]
-                    date_features_to_one_hot = (
-                        None
-                        if not date_features_to_one_hot
-                        else date_features_to_one_hot
-                    )
-                else:
-                    date_features_to_one_hot = None
-            df, X_df = self._add_date_features(
-                df=df,
-                X_df=X_df,
-                h=h,
-                freq=freq,
-                date_features=date_features,
-                date_features_to_one_hot=date_features_to_one_hot,
-            )
-        y_cols = ["unique_id", "ds", "y"]
-        Y_df = df[y_cols]
-        if Y_df["y"].isna().any():
-            raise Exception("Your target variable contains NA, please check")
-        # Azul: efficient this code
-        # and think about returning dates that are not in the training set
-        Y_df = self._resample_dataframe(Y_df, freq)
-        x_cols = []
-        if X_df is not None:
-            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
-            if not all(col in df.columns for col in x_cols):
-                raise Exception(
-                    "You must include the exogenous variables in the `df` object, "
-                    f'exogenous variables {",".join(x_cols)}'
-                )
-            if (h is not None) and (len(X_df) != df["unique_id"].nunique() * h):
-                raise Exception(
-                    f"You have to pass the {h} future values of your "
-                    "exogenous variables for each time series"
-                )
-            X_df_history = df[["unique_id", "ds"] + x_cols]
-            X_df = pd.concat([X_df_history, X_df])
-            X_df = self._preprocess_X_df(X_df, freq)
-        elif (X_df is None) and (h is None) and (len(y_cols) < df.shape[1]):
-            # case for just insample,
-            # we dont need h
-            X_df = df.drop(columns="y")
-            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
-            X_df = self._preprocess_X_df(X_df, freq)
-        return Y_df, X_df, x_cols
-
-    def _get_to_dict_args(self):
-        to_dict_args = {"orient": "split"}
-        if "index" in inspect.signature(pd.DataFrame.to_dict).parameters:
-            to_dict_args["index"] = False
-        return to_dict_args
-
-    def _transform_dataframes(self, Y_df: pd.DataFrame, X_df: pd.DataFrame):
-        # contruction of y and x for the payload
-        to_dict_args = self._get_to_dict_args()
-        y = Y_df.to_dict(**to_dict_args)
-        x = X_df.to_dict(**to_dict_args) if X_df is not None else None
-        return y, x
-
-    def _get_model_params(self, freq: str):
-        model_params = self.client.timegpt_model_params(
-            request=SingleSeriesForecast(freq=freq)
-        )
-        if "data" in model_params:
-            model_params = model_params["data"]
-        model_params = model_params["detail"]
-        input_size, model_horizon = model_params["input_size"], model_params["horizon"]
-        return input_size, model_horizon
-
-    def _validate_input_size(
-        self,
-        Y_df: pd.DataFrame,
-        input_size: int,
-        model_horizon: int,
-        require_history: bool,
-    ):
-        if require_history:
-            min_history = Y_df.groupby("unique_id").size().min()
-            if min_history < input_size + model_horizon:
-                raise Exception(
-                    "Your time series data is too short "
-                    "Please be sure that your unique time series contain "
-                    f"at least {input_size + model_horizon} observations"
-                )
-        return True
-
-    def _hit_multi_series_endpoint(
-        self,
-        Y_df: pd.DataFrame,
-        X_df: pd.DataFrame,
-        x_cols: List[str],
-        h: int,
-        freq: str,
-        finetune_steps: int,
-        clean_ex_first: bool,
-        level: Optional[List[Union[int, float]]],
-        input_size: int,
-        model_horizon: int,
-    ):
-        if h > model_horizon:
-            main_logger.warning(
-                'The specified horizon "h" exceeds the model horizon. '
-                "This may lead to less accurate forecasts. "
-                "Please consider using a smaller horizon."
-            )
-        # restrict input if
-        # - we dont want to finetune
-        # - we dont have exogenous regegressors
-        # - and we dont want to produce pred intervals
-        restrict_input = finetune_steps == 0 and X_df is None and level is not None
-        if restrict_input:
-            # add sufficient info to compute
-            # conformal interval
-            new_input_size = 3 * input_size + max(model_horizon, h)
-            Y_df = Y_df.groupby("unique_id").tail(new_input_size)
-            if X_df is not None:
-                X_df = X_df.groupby("unique_id").tail(
-                    new_input_size + h
-                )  # history plus exogenous
-        self._validate_input_size(
-            Y_df=Y_df,
-            input_size=input_size,
-            model_horizon=model_horizon,
-            require_history=finetune_steps > 0 or level is not None,
-        )
-        y, x = self._transform_dataframes(Y_df, X_df)
-        response_timegpt = self.client.timegpt_multi_series(
-            y=y,
-            x=x,
-            fh=h,
-            freq=freq,
-            level=level,
-            finetune_steps=finetune_steps,
-            clean_ex_first=clean_ex_first,
-        )
-        if "data" in response_timegpt:
-            response_timegpt = response_timegpt["data"]
-        if "weights_x" in response_timegpt:
-            self.weights_x = pd.DataFrame(
-                {
-                    "features": x_cols,
-                    "weights": response_timegpt["weights_x"],
-                }
-            )
-        return pd.DataFrame(**response_timegpt["forecast"])
-
-    def _hit_multi_series_historic_endpoint(
-        self,
-        Y_df: pd.DataFrame,
-        X_df: pd.DataFrame,
-        freq: str,
-        level: Optional[List[Union[int, float]]],
-        input_size: int,
-        model_horizon: int,
-        clean_ex_first: bool,
-    ):
-        self._validate_input_size(
-            Y_df=Y_df,
-            input_size=input_size,
-            model_horizon=model_horizon,
-            require_history=True,
-        )
-        y, x = self._transform_dataframes(Y_df, X_df)
-        response_timegpt = self.client.timegpt_multi_series_historic(
-            freq=freq,
-            level=level,
-            y=y,
-            x=x,
-            clean_ex_first=clean_ex_first,
-        )
-        return pd.DataFrame(**response_timegpt["data"]["forecast"])
-
-    def _multi_series_forecast(
-        self,
-        df: pd.DataFrame,
-        h: int,
-        freq: str,
-        X_df: Optional[pd.DataFrame],
-        level: Optional[List[Union[int, float]]],
-        finetune_steps: int,
-        clean_ex_first: bool,
-        add_history: bool,
-        date_features: Union[bool, List[str]],
-        date_features_to_one_hot: Union[bool, List[str]],
-    ):
-        freq = self._infer_freq(df, freq)
-        main_logger.info("Preprocessing dataframes...")
-        Y_df, X_df, x_cols = self._preprocess_dataframes(
-            df=df,
-            h=h,
-            X_df=X_df,
-            freq=freq,
-            date_features=date_features,
-            date_features_to_one_hot=date_features_to_one_hot,
-        )
-        input_size, model_horizon = self._get_model_params(freq)
-        main_logger.info("Calling Forecast Endpoint...")
-        fcst_df = self._hit_multi_series_endpoint(
-            Y_df=Y_df,
-            X_df=X_df,
-            h=h,
-            freq=freq,
-            clean_ex_first=clean_ex_first,
-            finetune_steps=finetune_steps,
-            x_cols=x_cols,
-            level=level,
-            input_size=input_size,
-            model_horizon=model_horizon,
-        )
-        if add_history:
-            main_logger.info("Calling Historical Forecast Endpoint...")
-            fitted_df = self._hit_multi_series_historic_endpoint(
-                Y_df=Y_df,
-                X_df=X_df,
-                freq=freq,
-                clean_ex_first=clean_ex_first,
-                level=level,
-                input_size=input_size,
-                model_horizon=model_horizon,
-            )
-            fitted_df = fitted_df.drop(columns="y")
-            fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
-        return fcst_df
-
-    def _hit_multi_series_anomalies_endpoint(
-        self,
-        Y_df: pd.DataFrame,
-        X_df: pd.DataFrame,
-        x_cols: List[str],
-        freq: str,
-        level: Union[int, float],
-        clean_ex_first: bool,
-    ):
-        y, x = self._transform_dataframes(Y_df, X_df)
-        response_timegpt = self.client.timegpt_multi_series_anomalies(
-            freq=freq,
-            level=[level]
-            if (isinstance(level, int) or isinstance(level, float))
-            else [level[0]],
-            y=y,
-            x=x,
-            clean_ex_first=clean_ex_first,
-        )
-        if "data" in response_timegpt:
-            response_timegpt = response_timegpt["data"]
-        if "weights_x" in response_timegpt:
-            self.weights_x = pd.DataFrame(
-                {
-                    "features": x_cols,
-                    "weights": response_timegpt["weights_x"],
-                }
-            )
-        return pd.DataFrame(**response_timegpt["forecast"])
-
-    def _multi_series_detect_anomalies(
-        self,
-        df: pd.DataFrame,
-        freq: str,
-        level: Union[int, float],
-        clean_ex_first: bool,
-        date_features: Union[bool, List[str]],
-        date_features_to_one_hot: Union[bool, List[str]],
-    ):
-        freq = self._infer_freq(df, freq)
-        main_logger.info("Preprocessing dataframes...")
-        Y_df, X_df, x_cols = self._preprocess_dataframes(
-            df=df,
-            h=None,
-            X_df=None,
-            freq=freq,
-            date_features=date_features,
-            date_features_to_one_hot=date_features_to_one_hot,
-        )
-        main_logger.info("Calling Anomaly Detector Endpoint...")
-        anomalies_df = self._hit_multi_series_anomalies_endpoint(
-            Y_df=Y_df,
-            X_df=X_df,
-            x_cols=x_cols,
-            freq=freq,
-            level=level,
-            clean_ex_first=clean_ex_first,
-        )
-        anomalies_df = anomalies_df.drop(columns="y")
-        return anomalies_df
 
     def _forecast(
         self,
@@ -700,34 +585,20 @@ class _TimeGPT:
         """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
-
-        df, X_df, drop_uid, freq = self._validate_inputs(
-            df=df,
-            X_df=X_df,
-            freq=freq,
+        model = _TimeGPTModel(
+            client=self.client,
+            h=h,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-        )
-        fcst_df = self._multi_series_forecast(
-            df=df,
-            h=h,
             freq=freq,
-            X_df=X_df,
             level=level,
             finetune_steps=finetune_steps,
             clean_ex_first=clean_ex_first,
-            add_history=add_history,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
         )
-        fcst_df = self._validate_outputs(
-            fcst_df=fcst_df,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            drop_uid=drop_uid,
-        )
+        fcst_df = model.forecast(df=df, X_df=X_df, add_history=add_history)
         return fcst_df
 
     def _detect_anomalies(
@@ -793,30 +664,19 @@ class _TimeGPT:
         """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
-
-        df, _, drop_uid, freq = self._validate_inputs(
-            df=df,
-            X_df=None,
-            freq=freq,
+        model = _TimeGPTModel(
+            client=self.client,
+            h=None,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-        )
-        anomalies_df = self._multi_series_detect_anomalies(
-            df=df,
             freq=freq,
             level=level,
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
         )
-        anomalies_df = self._validate_outputs(
-            fcst_df=anomalies_df,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            drop_uid=drop_uid,
-        )
+        anomalies_df = model.detect_anomalies(df=df)
         return anomalies_df
 
     def plot(
@@ -928,7 +788,7 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 7
+# %% ../nbs/timegpt.ipynb 9
 class TimeGPT(_TimeGPT):
     def forecast(
         self,
