@@ -1,3 +1,7 @@
 [submodule "docs/assets"]
 	path = docs/assets
 	url = https://github.com/Nixtla/styles.git
+[submodule "docs-scripts"]
+	path = docs-scripts
+	url = git@github.com:Nixtla/docs.git
+	branch = scripts
