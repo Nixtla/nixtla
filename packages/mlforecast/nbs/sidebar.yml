@@ -18,6 +18,7 @@ website:
           - docs/how-to-guides/target_transforms_guide.ipynb
           - docs/how-to-guides/analyzing_models.ipynb
           - docs/how-to-guides/custom_training.ipynb
+          - docs/how-to-guides/training_with_numpy.ipynb
           - docs/how-to-guides/one_model_per_horizon.ipynb
           - docs/how-to-guides/custom_date_features.ipynb
           - docs/how-to-guides/predict_callbacks.ipynb
