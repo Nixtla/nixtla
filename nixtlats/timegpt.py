@@ -262,7 +262,7 @@ class _TimeGPTModel:
             X_df = X_df.merge(date_features_df, on="ds", how="left")
         return df, X_df
 
-    def preprocess_X_df(self, X_df: pd.DataFrame, freq: str):
+    def preprocess_X_df(self, X_df: pd.DataFrame):
         if X_df.isna().any().any():
             raise Exception("Some of your exogenous variables contain NA, please check")
         X_df = X_df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
