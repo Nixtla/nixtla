@@ -4,7 +4,6 @@
 __all__ = ['TimeSeries']
 
 # %% ../nbs/core.ipynb 3
-import concurrent.futures
 import copy
 import inspect
 import reprlib
@@ -152,6 +151,21 @@ Models = Union[BaseEstimator, List[BaseEstimator], Dict[str, BaseEstimator]]
 TargetTransform = Union[BaseTargetTransform, BaseGroupedArrayTargetTransform]
 
 # %% ../nbs/core.ipynb 17
+def _parse_transforms(
+    lags: Lags,
+    lag_transforms: LagTransforms,
+) -> Dict[str, Tuple[Any, ...]]:
+    transforms: Dict[str, Tuple[Any, ...]] = OrderedDict()
+    for lag in lags:
+        transforms[f"lag{lag}"] = (lag, _identity)
+    for lag in lag_transforms.keys():
+        for tfm_args in lag_transforms[lag]:
+            tfm, *args = _as_tuple(tfm_args)
+            tfm_name = _build_transform_name(lag, tfm, *args)
+            transforms[tfm_name] = (lag, tfm, *args)
+    return transforms
+
+# %% ../nbs/core.ipynb 18
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
@@ -184,16 +198,7 @@ class TimeSeries:
                 raise ValueError(
                     "Can't use a lambda as a date feature because the function name gets used as the feature name."
                 )
-
-        self.transforms: Dict[str, Tuple[Any, ...]] = OrderedDict()
-        for lag in self.lags:
-            self.transforms[f"lag{lag}"] = (lag, _identity)
-        for lag in self.lag_transforms.keys():
-            for tfm_args in self.lag_transforms[lag]:
-                tfm, *args = _as_tuple(tfm_args)
-                tfm_name = _build_transform_name(lag, tfm, *args)
-                self.transforms[tfm_name] = (lag, tfm, *args)
-
+        self.transforms = _parse_transforms(self.lags, self.lag_transforms)
         self.ga: GroupedArray
 
     @property
@@ -326,51 +331,17 @@ class TimeSeries:
         ] + self.features
         return self
 
-    def _apply_transforms(self, updates_only: bool = False) -> Dict[str, np.ndarray]:
-        """Apply the transformations using the main process.
-
-        If `updates_only` then only the updates are returned.
-        """
-        results = {}
-        offset = 1 if updates_only else 0
-        for tfm_name, (lag, tfm, *args) in self.transforms.items():
-            results[tfm_name] = self.ga.transform_series(
-                updates_only, lag - offset, tfm, *args
-            )
-        return results
-
-    def _apply_multithreaded_transforms(
-        self, updates_only: bool = False
-    ) -> Dict[str, np.ndarray]:
-        """Apply the transformations using multithreading.
-
-        If `updates_only` then only the updates are returned.
-        """
-        future_to_result = {}
-        results = {}
-        offset = 1 if updates_only else 0
-        with concurrent.futures.ThreadPoolExecutor(self.num_threads) as executor:
-            for tfm_name, (lag, tfm, *args) in self.transforms.items():
-                future = executor.submit(
-                    self.ga.transform_series,
-                    updates_only,
-                    lag - offset,
-                    tfm,
-                    *args,
-                )
-                future_to_result[future] = tfm_name
-            for future in concurrent.futures.as_completed(future_to_result):
-                tfm_name = future_to_result[future]
-                results[tfm_name] = future.result()
-        return results
-
     def _compute_transforms(self) -> Dict[str, np.ndarray]:
         """Compute the transformations defined in the constructor.
 
         If `self.num_threads > 1` these are computed using multithreading."""
         if self.num_threads == 1 or len(self.transforms) == 1:
-            return self._apply_transforms()
-        return self._apply_multithreaded_transforms()
+            out = self.ga.apply_transforms(self.transforms, updates_only=False)
+        else:
+            out = self.ga.apply_multithreaded_transforms(
+                self.transforms, num_threads=self.num_threads, updates_only=False
+            )
+        return out
 
     def _compute_date_feature(self, dates, feature):
         if callable(feature):
@@ -545,9 +516,11 @@ class TimeSeries:
         self.test_dates.append(self.curr_dates)
 
         if self.num_threads == 1 or len(self.transforms) == 1:
-            features = self._apply_transforms(updates_only=True)
+            features = self.ga.apply_transforms(self.transforms, updates_only=True)
         else:
-            features = self._apply_multithreaded_transforms(updates_only=True)
+            features = self.ga.apply_multithreaded_transforms(
+                self.transforms, num_threads=self.num_threads, updates_only=True
+            )
 
         for feature in self.date_features:
             feat_name, feat_vals = self._compute_date_feature(self.curr_dates, feature)

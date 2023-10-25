@@ -4,7 +4,8 @@
 __all__ = ['GroupedArray']
 
 # %% ../nbs/grouped_array.ipynb 1
-from typing import Callable, Tuple, Union
+import concurrent.futures
+from typing import Any, Dict, Tuple, Union
 
 import numpy as np
 from numba import njit
@@ -175,10 +176,50 @@ class GroupedArray:
         indptr = np.append(0, sizes.cumsum())
         return GroupedArray(data, indptr)
 
-    def transform_series(
-        self, updates_only: bool, lag: int, func: Callable, *args
-    ) -> np.ndarray:
-        return _transform_series(self.data, self.indptr, updates_only, lag, func, *args)
+    def apply_transforms(
+        self, transforms: Dict[str, Tuple[Any, ...]], updates_only: bool = False
+    ) -> Dict[str, np.ndarray]:
+        """Apply the transformations using the main process.
+
+        If `updates_only` then only the updates are returned.
+        """
+        results = {}
+        offset = 1 if updates_only else 0
+        for tfm_name, (lag, tfm, *args) in transforms.items():
+            results[tfm_name] = _transform_series(
+                self.data, self.indptr, updates_only, lag - offset, tfm, *args
+            )
+        return results
+
+    def apply_multithreaded_transforms(
+        self,
+        transforms: Dict[str, Tuple[Any, ...]],
+        num_threads: int,
+        updates_only: bool = False,
+    ) -> Dict[str, np.ndarray]:
+        """Apply the transformations using multithreading.
+
+        If `updates_only` then only the updates are returned.
+        """
+        future_to_result = {}
+        results = {}
+        offset = 1 if updates_only else 0
+        with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
+            for tfm_name, (lag, tfm, *args) in transforms.items():
+                future = executor.submit(
+                    _transform_series,
+                    self.data,
+                    self.indptr,
+                    updates_only,
+                    lag - offset,
+                    tfm,
+                    *args,
+                )
+                future_to_result[future] = tfm_name
+            for future in concurrent.futures.as_completed(future_to_result):
+                tfm_name = future_to_result[future]
+                results[tfm_name] = future.result()
+        return results
 
     def restore_difference(self, preds: np.ndarray, d: int) -> None:
         _restore_difference(preds, self.data, self.indptr, d)

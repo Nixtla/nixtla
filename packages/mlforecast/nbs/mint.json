@@ -41,6 +41,7 @@
       "group": "How-to guides",
       "pages": [
         "docs/how-to-guides/exogenous_features.html",
+        "docs/how-to-guides/transforming_exog.html",
         "docs/how-to-guides/cross_validation.html",
         "docs/how-to-guides/prediction_intervals.html",
         "docs/how-to-guides/target_transforms_guide.html",
@@ -73,6 +74,7 @@
             "utils.html",
             "core.html",
             "target_transforms.html",
+            "feature_engineering.html",
             "callbacks.html"
           ]
         },
