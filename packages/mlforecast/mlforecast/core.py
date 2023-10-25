@@ -527,9 +527,10 @@ class TimeSeries:
             features[feat_name] = feat_vals
 
         if isinstance(self.last_dates, pl_Series):
-            features_df = pl_DataFrame(features, schema=self.features)
+            df_constructor = pl_DataFrame
         else:
-            features_df = pd.DataFrame(features, columns=self.features)
+            df_constructor = pd.DataFrame
+        features_df = df_constructor(features)[self.features]
         return horizontal_concat([self._static_features, features_df])
 
     def _get_raw_predictions(self) -> np.ndarray:
