@@ -1,0 +1,67 @@
+---
+output-file: date_features.html
+title: Date Features
+
+---
+
+Useful classes to generate date features and add them to `TimeGPT`.
+
+------------------------------------------------------------------------
+
+#### CountryHolidays
+
+> ``` text
+>  CountryHolidays (countries:List[str])
+> ```
+
+Given a list of countries, returns a dataframe with holidays for each
+country.
+
+```python
+c_holidays = CountryHolidays(countries=['US', 'MX'])
+periods = 365 * 5
+dates = pd.date_range(end='2023-09-01', periods=periods)
+holidays_df = c_holidays(dates)
+holidays_df.head()
+```
+
+|            | US_New Year's Day | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Memorial Day | US_Independence Day | US_Labor Day | US_Columbus Day | US_Veterans Day | US_Veterans Day (Observed) | US_Thanksgiving | ... | MX_Día de la Independencia \[Independence Day\] | MX_Día de la Independencia \[Independence Day\] (Observed) | MX_Día de la Revolución \[Revolution Day\] (Observed) | MX_Día de la Revolución \[Revolution Day\] | MX_Transmisión del Poder Ejecutivo Federal \[Change of Federal Government\] | MX_Transmisión del Poder Ejecutivo Federal \[Change of Federal Government\] (Observed) | MX_Navidad \[Christmas\] | MX_Día de la Constitución \[Constitution Day\] | MX_Año Nuevo \[New Year's Day\] (Observed) | MX_Día del Trabajo \[Labour Day\] (Observed) |
+|------------|-------------------|-------------------------------|--------------------------|-----------------|---------------------|--------------|-----------------|-----------------|----------------------------|-----------------|-----|-------------------------------------------------|------------------------------------------------------------|-------------------------------------------------------|--------------------------------------------|-----------------------------------------------------------------------------|----------------------------------------------------------------------------------------|--------------------------|------------------------------------------------|--------------------------------------------|----------------------------------------------|
+| 2018-09-03 | 0                 | 0                             | 0                        | 0               | 0                   | 1            | 0               | 0               | 0                          | 0               | ... | 0                                               | 0                                                          | 0                                                     | 0                                          | 0                                                                           | 0                                                                                      | 0                        | 0                                              | 0                                          | 0                                            |
+| 2018-09-04 | 0                 | 0                             | 0                        | 0               | 0                   | 0            | 0               | 0               | 0                          | 0               | ... | 0                                               | 0                                                          | 0                                                     | 0                                          | 0                                                                           | 0                                                                                      | 0                        | 0                                              | 0                                          | 0                                            |
+| 2018-09-05 | 0                 | 0                             | 0                        | 0               | 0                   | 0            | 0               | 0               | 0                          | 0               | ... | 0                                               | 0                                                          | 0                                                     | 0                                          | 0                                                                           | 0                                                                                      | 0                        | 0                                              | 0                                          | 0                                            |
+| 2018-09-06 | 0                 | 0                             | 0                        | 0               | 0                   | 0            | 0               | 0               | 0                          | 0               | ... | 0                                               | 0                                                          | 0                                                     | 0                                          | 0                                                                           | 0                                                                                      | 0                        | 0                                              | 0                                          | 0                                            |
+| 2018-09-07 | 0                 | 0                             | 0                        | 0               | 0                   | 0            | 0               | 0               | 0                          | 0               | ... | 0                                               | 0                                                          | 0                                                     | 0                                          | 0                                                                           | 0                                                                                      | 0                        | 0                                              | 0                                          | 0                                            |
+
+------------------------------------------------------------------------
+
+#### SpecialDates
+
+> ``` text
+>  SpecialDates (special_dates:Dict[str,List[str]])
+> ```
+
+Given a dictionary of categories and dates, returns a dataframe with the
+special dates.
+
+```python
+special_dates = SpecialDates(
+    special_dates={
+        'Important Dates': ['2021-02-26', '2020-02-26'],
+        'Very Important Dates': ['2021-01-26', '2020-01-26', '2019-01-26']
+    }
+)
+periods = 365 * 5
+dates = pd.date_range(end='2023-09-01', periods=periods)
+holidays_df = special_dates(dates)
+holidays_df.head()
+```
+
+|            | Important Dates | Very Important Dates |
+|------------|-----------------|----------------------|
+| 2018-09-03 | 0               | 0                    |
+| 2018-09-04 | 0               | 0                    |
+| 2018-09-05 | 0               | 0                    |
+| 2018-09-06 | 0               | 0                    |
+| 2018-09-07 | 0               | 0                    |
+

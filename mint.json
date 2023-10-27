@@ -1,0 +1,53 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Nixtla",
+  "logo": {
+    "light": "/light.png",
+    "dark": "/dark.png"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E",
+    "anchors": {
+      "from": "#2AD0CA",
+      "to": "#0E00F8"
+    }
+  },
+  "topbarCtaButton": {
+    "type": "github",
+    "url": "https://github.com/Nixtla/nixtla"
+  },
+  "navigation": [
+    {
+      "group": "",
+      "pages": ["index.html"]
+    },
+    {
+      "group": "Getting Started",
+      "pages": ["docs/getting-started/getting_started_short.html"]
+    },
+    {
+      "group": "Tutorials",
+      "pages": [
+        "docs/tutorials/anomaly_detection.html",
+        "docs/tutorials/exogenous_variables.html",
+        "docs/tutorials/finetuning.html",
+        "docs/tutorials/historical_forecast.html",
+        "docs/tutorials/holidays.html",
+        "docs/tutorials/irregular_timestamps.html",
+        "docs/tutorials/multiple_series.html",
+        "docs/tutorials/prediction_intervals.html"
+      ]
+    },
+    {
+      "group": "How-To Guides",
+      "pages": ["docs/how-to-guides/distributed.spark.html"]
+    },
+    {
+      "group": "API Reference",
+      "pages": ["timegpt.html", "date_features.html"]
+    }
+  ]
+}

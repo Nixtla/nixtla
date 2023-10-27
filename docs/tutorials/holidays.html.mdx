@@ -1,0 +1,149 @@
+---
+output-file: holidays.html
+title: Holidays and Special Dates
+
+---
+
+Calendar variables and special dates are one of the most common types of
+exogenous variables used in forecasting applications. They provide
+additional context on the current state of the time series, especially
+for window-based models such as TimeGPT-1. These variables often include
+adding information on each observation’s month, week, day, or hour. For
+example, in high-frequency hourly data, providing the current month of
+the year provides more context than the limited history available in the
+input window to improve the forecasts.
+
+In this tutorial we will show how to add calendar variables
+automatically to a dataset using the `date_features` function.
+
+```python
+import os
+
+import pandas as pd
+from nixtlats import TimeGPT
+```
+
+
+```python
+timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+```
+
+Given the predominance usage of calendar variables, we included an
+automatic creation of common calendar variables to the forecast method
+as a pre-processing step. To automatically add calendar variables, use
+the `date_features` argument.
+
+```python
+pltr_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/pltr.csv')
+```
+
+
+```python
+fcst_pltr_calendar_df = timegpt.forecast(
+    df=pltr_df.tail(2 * 14), h=14, freq='B',
+    time_col='date', target_col='Close',
+    date_features=['month','weekday']
+)
+fcst_pltr_calendar_df.head()
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+```
+
+|     | date       | TimeGPT   |
+|-----|------------|-----------|
+| 0   | 2023-09-25 | 14.790440 |
+| 1   | 2023-09-26 | 14.980692 |
+| 2   | 2023-09-27 | 15.161821 |
+| 3   | 2023-09-28 | 14.490647 |
+| 4   | 2023-09-29 | 14.354399 |
+
+```python
+timegpt.plot(
+    pltr_df, 
+    fcst_pltr_calendar_df, 
+    id_col='series_id',
+    time_col='date',
+    target_col='Close',
+    max_insample_length=90,
+)
+```
+
+![](/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-6-output-1.png)
+
+We can also plot the importance of each of the date features:
+
+```python
+timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
+```
+
+``` text
+<AxesSubplot:ylabel='features'>
+```
+
+![](/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-7-output-2.png)
+
+You can also add country holidays using the `CountryHolidays` class.
+
+```python
+from nixtlats.date_features import CountryHolidays
+```
+
+
+```python
+fcst_pltr_calendar_df = timegpt.forecast(
+    df=pltr_df, h=14, freq='B',
+    time_col='date', target_col='Close',
+    date_features=[CountryHolidays(['US'])]
+)
+timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+```
+
+``` text
+<AxesSubplot:ylabel='features'>
+```
+
+![](/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-9-output-3.png)
+
+Here’s a breakdown of how the `date_features` parameter works:
+
+-   **`date_features` (bool or list of str or callable)**: This
+    parameter specifies which date attributes to consider.
+    -   If set to `True`, the model will automatically add the most
+        common date features related to the frequency of the given
+        dataframe (`df`). For a daily frequency, this could include
+        features like day of the week, month, and year.
+    -   If provided a list of strings, it will consider those specific
+        date attributes. For example,
+        `date_features=['weekday', 'month']` will only add the day of
+        the week and month as features.
+    -   If provided a callable, it should be a function that takes dates
+        as input and returns the desired feature. This gives flexibility
+        in computing custom date features.
+-   **`date_features_to_one_hot` (bool or list of str)**: After
+    determining the date features, one might want to one-hot encode
+    them, especially if they are categorical in nature (like weekdays).
+    One-hot encoding transforms these categorical features into a binary
+    matrix, making them more suitable for many machine learning
+    algorithms.
+    -   If `date_features=True`, then by default, all computed date
+        features will be one-hot encoded.
+    -   If provided a list of strings, only those specific date features
+        will be one-hot encoded.
+
+By leveraging the `date_features` and `date_features_to_one_hot`
+parameters, one can efficiently incorporate the temporal effects of date
+attributes into their forecasting model, potentially enhancing its
+accuracy and interpretability.
+

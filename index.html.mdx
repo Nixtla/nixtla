@@ -1,0 +1,43 @@
+---
+description: "TimeGPT, developed by Nixtla, is a generative pre-trained transformer\
+  \ model specialized in prediction tasks. TimeGPT was trained on the largest collection\
+  \ of data in history \u2013 over 100 billion rows of financial, weather, energy,\
+  \ and web data \u2013 and democratizes the power of time-series analysis. This tool\
+  \ is capable of discerning patterns and predicting future data points in a matter\
+  \ of seconds."
+output-file: index.html
+title: TimeGPT
+
+---
+
+## Install
+
+```bash
+pip install nixtlats
+```
+
+## How to use
+
+Just import the library, set your credentials, and start forecasting in
+two lines of code!
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
+
+from nixtlats import TimeGPT
+timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+fcst_df = timegpt.forecast(df, h=24, level=[80, 90])
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+```
+
+```python
+timegpt.plot(df, fcst_df, level=[80, 90], max_insample_length=24 * 5)
+```
+
+![](/index_files/figure-markdown_strict/cell-3-output-1.png)
+

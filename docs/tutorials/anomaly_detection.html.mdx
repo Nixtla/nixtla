@@ -1,0 +1,226 @@
+---
+output-file: anomaly_detection.html
+title: Anomaly Detection
+
+---
+
+Anomaly detection in time series data plays a pivotal role in numerous
+sectors including finance, healthcare, security, and infrastructure. In
+essence, time series data represents a sequence of data points indexed
+(or listed or graphed) in time order, often with equal intervals. As
+systems and processes become increasingly digitized and interconnected,
+the need to monitor and ensure their normal behavior grows
+proportionally. Detecting anomalies can indicate potential problems,
+malfunctions, or even malicious activities. By promptly identifying
+these deviations from the expected pattern, organizations can take
+preemptive measures, optimize processes, or protect resources. `TimeGPT`
+includes the `detect_anomalies` method to detect anomalies
+automatically.
+
+```python
+import os
+
+import pandas as pd
+from nixtlats import TimeGPT
+```
+
+
+```python
+timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+```
+
+The `detect_anomalies` method is designed to process a dataframe
+containing series and subsequently label each observation based on its
+anomalous nature. The method evaluates each observation of the input
+dataframe against its context within the series, using statistical
+measures to determine its likelihood of being an anomaly. By default,
+the method identifies anomalies based on a 99 percent prediction
+interval. Observations that fall outside this interval are considered
+anomalies. The resultant dataframe will feature an added label,
+`anomaly`, that is set to 1 for anomalous observations and 0 otherwise.
+
+```python
+pm_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+timegpt_anomalies_df = timegpt.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D')
+timegpt_anomalies_df.head()
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+```
+
+|     | timestamp  | anomaly | TimeGPT-lo-99 | TimeGPT  | TimeGPT-hi-99 |
+|-----|------------|---------|---------------|----------|---------------|
+| 0   | 2008-01-10 | 0       | 6.936009      | 8.224194 | 9.512378      |
+| 1   | 2008-01-11 | 0       | 6.863336      | 8.151521 | 9.439705      |
+| 2   | 2008-01-12 | 0       | 6.839064      | 8.127249 | 9.415433      |
+| 3   | 2008-01-13 | 0       | 7.629072      | 8.917256 | 10.205441     |
+| 4   | 2008-01-14 | 0       | 7.714111      | 9.002295 | 10.290480     |
+
+```python
+timegpt.plot(pm_df, 
+             timegpt_anomalies_df,
+             time_col='timestamp', 
+             target_col='value')
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-5-output-1.png)
+
+While the default behavior of the detect_anomalies method is to operate
+using a 99 percent prediction interval, users have the flexibility to
+adjust this threshold to their requirements. This is achieved by
+modifying the `level` argument. Decreasing the value of the level
+argument will result in a narrower prediction interval, subsequently
+identifying more observations as anomalies. See the next example.
+
+```python
+timegpt_anomalies_df = timegpt.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=90)
+timegpt.plot(pm_df, 
+             timegpt_anomalies_df,
+             time_col='timestamp', 
+             target_col='value')
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-6-output-2.png)
+
+Conversely, increasing the value will make prediction intervals larger,
+detecting fewer anomalies. This customization allows users to calibrate
+the sensitivity of the method to align with their specific use case,
+ensuring the most relevant and actionable insights are derived from the
+data.
+
+```python
+timegpt_anomalies_df = timegpt.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=99.99)
+timegpt.plot(pm_df, 
+             timegpt_anomalies_df,
+             time_col='timestamp', 
+             target_col='value')
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-7-output-2.png)
+
+You can also include `date_features` to better detect anomalies:
+
+```python
+timegpt_anomalies_df_x = timegpt.detect_anomalies(
+    pm_df, time_col='timestamp', 
+    target_col='value', 
+    freq='D', 
+    date_features=True,
+    level=99.99,
+)
+timegpt.plot(
+    pm_df, 
+    timegpt_anomalies_df_x,
+    time_col='timestamp', 
+    target_col='value',
+)
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-8-output-2.png)
+
+#### Exogenous variables
+
+Additionally you can pass exogenous variables to better inform `TimeGPT`
+about the data. You just simply have to add the exogenous regressors
+after the target column.
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+df.head()
+```
+
+|     | unique_id | ds                  | y     | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----|-----------|---------------------|-------|------------|------------|-------|-------|-------|-------|-------|-------|-------|
+| 0   | BE        | 2016-12-01 00:00:00 | 72.00 | 61507.0    | 71066.0    | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   | 0.0   | 0.0   |
+| 1   | BE        | 2016-12-01 01:00:00 | 65.80 | 59528.0    | 67311.0    | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   | 0.0   | 0.0   |
+| 2   | BE        | 2016-12-01 02:00:00 | 59.99 | 58812.0    | 67470.0    | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   | 0.0   | 0.0   |
+| 3   | BE        | 2016-12-01 03:00:00 | 50.69 | 57676.0    | 64529.0    | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   | 0.0   | 0.0   |
+| 4   | BE        | 2016-12-01 04:00:00 | 52.58 | 56804.0    | 62773.0    | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   | 0.0   | 0.0   |
+
+Now let’s compute anomalies considering this information
+
+```python
+timegpt_anomalies_df_x = timegpt.detect_anomalies(df=df)
+timegpt.plot(
+    df, 
+    timegpt_anomalies_df_x,
+)
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-10-output-2.png)
+
+We can also explore the relative importance of each of the features.
+
+```python
+timegpt.weights_x.plot.barh(x='features', y='weights')
+```
+
+``` text
+<Axes: ylabel='features'>
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-11-output-2.png)
+
+You can also add special days for different countries:
+
+```python
+from nixtlats.date_features import CountryHolidays
+```
+
+
+```python
+timegpt_anomalies_df_x = timegpt.detect_anomalies(
+    df=df,
+    date_features=[CountryHolidays(countries=['FR'])]
+)
+timegpt.plot(
+    df, 
+    timegpt_anomalies_df_x,
+)
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-13-output-2.png)
+
+```python
+timegpt.weights_x.plot.barh(x='features', y='weights')
+```
+
+``` text
+<Axes: ylabel='features'>
+```
+
+![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-14-output-2.png)
+
