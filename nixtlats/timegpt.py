@@ -279,32 +279,7 @@ class _TimeGPTModel:
     ):
         self.infer_freq(df=df)
         """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
-        # add date features logic
-        if isinstance(self.date_features, bool):
-            if self.date_features:
-                self.date_features = date_features_by_freq.get(self.freq)
-                if self.date_features is None:
-                    warnings.warn(
-                        f"Non default date features for {self.freq} "
-                        "please pass a list of date features"
-                    )
-            else:
-                self.date_features = None
 
-        if self.date_features is not None:
-            if isinstance(self.date_features_to_one_hot, bool):
-                if self.date_features_to_one_hot:
-                    self.date_features_to_one_hot = [
-                        feat for feat in self.date_features if not callable(feat)
-                    ]
-                    self.date_features_to_one_hot = (
-                        None
-                        if not self.date_features_to_one_hot
-                        else self.date_features_to_one_hot
-                    )
-                else:
-                    self.date_features_to_one_hot = None
-            df, X_df = self.add_date_features(df=df, X_df=X_df)
         y_cols = ["unique_id", "ds", "y"]
         Y_df = df[y_cols]
         if Y_df["y"].isna().any():
@@ -358,6 +333,12 @@ class _TimeGPTModel:
             model_params["input_size"],
             model_params["horizon"],
         )
+        if self.h > self.model_horizon:
+            main_logger.warning(
+                'The specified horizon "h" exceeds the model horizon. '
+                "This may lead to less accurate forecasts. "
+                "Please consider using a smaller horizon."
+            )
 
     def validate_input_size(self, Y_df: pd.DataFrame):
         min_history = Y_df.groupby("unique_id").size().min()
@@ -378,12 +359,6 @@ class _TimeGPTModel:
         main_logger.info("Preprocessing dataframes...")
         Y_df, X_df = self.preprocess_dataframes(df=df, X_df=X_df)
         self.set_model_params()
-        if self.h > self.model_horizon:
-            main_logger.warning(
-                'The specified horizon "h" exceeds the model horizon. '
-                "This may lead to less accurate forecasts. "
-                "Please consider using a smaller horizon."
-            )
         # restrict input if
         # - we dont want to finetune
         # - we dont have exogenous regegressors
@@ -407,6 +382,8 @@ class _TimeGPTModel:
         if self.finetune_steps > 0 or self.level is not None:
             self.validate_input_size(Y_df=Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
+        print(y, x)
+        print(self.x_cols)
         main_logger.info("Calling Forecast Endpoint...")
         response_timegpt = self.client.timegpt_multi_series(
             y=y,
@@ -420,6 +397,7 @@ class _TimeGPTModel:
         if "data" in response_timegpt:
             response_timegpt = response_timegpt["data"]
         if "weights_x" in response_timegpt:
+            print(response_timegpt["weights_x"])
             self.weights_x = pd.DataFrame(
                 {
                     "features": self.x_cols,
@@ -439,7 +417,7 @@ class _TimeGPTModel:
                 level=self.level,
                 clean_ex_first=self.clean_ex_first,
             )
-            fitted_df = pd.DataFrame(**response_timegpt["data"]["forecast"])
+            fitted_df = pd.DataFrame(**response_timegpt["forecast"])
             fitted_df = fitted_df.drop(columns="y")
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
         fcst_df = self.transform_outputs(fcst_df)
@@ -494,6 +472,8 @@ class _TimeGPTModel:
         Y_df, X_df = self.preprocess_dataframes(df=df, X_df=None)
         main_logger.info("Calling Cross Validation Endpoint...")
         y, x = self.dataframes_to_dict(Y_df, X_df)
+        print(y, x)
+        print(self.x_cols)
         response_timegpt = self.client.timegpt_multi_series_cross_validation(
             y=y,
             x=x,
@@ -631,6 +611,7 @@ class _TimeGPT:
         """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
+        self.weights_x = None
         model = _TimeGPTModel(
             client=self.client,
             h=h,
@@ -711,6 +692,7 @@ class _TimeGPT:
         """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
+        self.weights_x = None
         model = _TimeGPTModel(
             client=self.client,
             h=None,
@@ -803,6 +785,7 @@ class _TimeGPT:
         """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
+        self.weights_x = None
         model = _TimeGPTModel(
             client=self.client,
             h=h,
