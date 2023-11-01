@@ -131,7 +131,10 @@ class Experiment:
             cv_df = fcst_df.assign(cutoff=self.df_cutoffs["cutoff"].iloc[0])
             # add y column
             merge_cols = [self.time_col]
-        cv_df = cv_df.merge(self.df_test, on=merge_cols)
+        cv_df = cv_df.merge(
+            self.df_test[merge_cols + [self.target_col]],
+            on=merge_cols,
+        )
         return cv_df
 
     def evaluate_timegpt(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
