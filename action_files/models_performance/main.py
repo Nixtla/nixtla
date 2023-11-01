@@ -10,7 +10,6 @@ from statsforecast import StatsForecast
 from statsforecast.models import Naive, SeasonalNaive
 from utilsforecast.evaluation import evaluate
 from utilsforecast.losses import mae, mape, mse
-from utilsforecast.plotting import plot_series
 
 from nixtlats import TimeGPT
 
@@ -293,6 +292,7 @@ class ExperimentConfig:
                         )
                         eval_models_df = pd.concat(eval_models_df, axis=1)
                         eval_models_df["plot_path"] = plot_path
+                        eval_models_df["experiment"] = experiment_name
                         eval_df.append(eval_models_df.reset_index())
         eval_df = pd.concat(eval_df)
         return eval_df, exp.benchmark_models
@@ -304,6 +304,7 @@ class ExperimentConfig:
         with open(summary_path, "w") as f:
             results_comb = ["metric"] + models
             exp_config = [col for col in eval_df.columns if col not in results_comb]
+            print(exp_config)
             for exp_number, (exp_desc, eval_exp_df) in enumerate(
                 eval_df.groupby(exp_config), start=1
             ):

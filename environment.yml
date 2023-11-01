@@ -21,3 +21,4 @@ dependencies:
     - fugue[ray]
     - ray<2.4
     - fire
+    - tabulate
