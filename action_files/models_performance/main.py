@@ -300,11 +300,12 @@ class ExperimentConfig:
     def summary_performance(
         self, eval_df: pd.DataFrame, summary_path: str, benchmark_models: List[str]
     ):
+        logger.info("Summarizing performance")
         models = self.default_models + benchmark_models
         with open(summary_path, "w") as f:
             results_comb = ["metric"] + models
             exp_config = [col for col in eval_df.columns if col not in results_comb]
-            print(exp_config)
+            eval_df = eval_df.fillna("None")
             for exp_number, (exp_desc, eval_exp_df) in enumerate(
                 eval_df.groupby(exp_config), start=1
             ):
@@ -337,8 +338,6 @@ if __name__ == "__main__":
         plot_dir="./action_files/models_performance/plots",
     )
     eval_df, benchmark_models = exp_config.run_experiments()
-    print(eval_df)
-    print(benchmark_models)
     exp_config.summary_performance(
         eval_df, "./action_files/models_performance/summary.md", benchmark_models
     )
