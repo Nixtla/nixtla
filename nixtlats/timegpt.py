@@ -345,12 +345,18 @@ class _TimeGPTModel:
         x = X_df.to_dict(**to_dict_args) if X_df is not None else None
         return y, x
 
+    @staticmethod
+    def _call_api(method, kwargs):
+        response = method(**kwargs)
+        if "data" in response:
+            response = response["data"]
+        return response
+
     def set_model_params(self):
-        model_params = self.client.timegpt_model_params(
-            request=SingleSeriesForecast(freq=self.freq)
+        model_params = self._call_api(
+            self.client.timegpt_model_params,
+            {"request": SingleSeriesForecast(freq=self.freq)},
         )
-        if "data" in model_params:
-            model_params = model_params["data"]
         model_params = model_params["detail"]
         self.input_size, self.model_horizon = (
             model_params["input_size"],
@@ -406,17 +412,18 @@ class _TimeGPTModel:
             self.validate_input_size(Y_df=Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
         main_logger.info("Calling Forecast Endpoint...")
-        response_timegpt = self.client.timegpt_multi_series(
-            y=y,
-            x=x,
-            fh=self.h,
-            freq=self.freq,
-            level=self.level,
-            finetune_steps=self.finetune_steps,
-            clean_ex_first=self.clean_ex_first,
+        response_timegpt = self._call_api(
+            self.client.timegpt_multi_series,
+            dict(
+                y=y,
+                x=x,
+                fh=self.h,
+                freq=self.freq,
+                level=self.level,
+                finetune_steps=self.finetune_steps,
+                clean_ex_first=self.clean_ex_first,
+            ),
         )
-        if "data" in response_timegpt:
-            response_timegpt = response_timegpt["data"]
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
@@ -428,16 +435,17 @@ class _TimeGPTModel:
         if add_history:
             main_logger.info("Calling Historical Forecast Endpoint...")
             self.validate_input_size(Y_df=Y_df)
-            if "data" in response_timegpt:
-                response_timegpt = response_timegpt["data"]
-            response_timegpt = self.client.timegpt_multi_series_historic(
-                y=y,
-                x=x,
-                freq=self.freq,
-                level=self.level,
-                clean_ex_first=self.clean_ex_first,
+            response_timegpt = self._call_api(
+                self.client.timegpt_multi_series_historic,
+                dict(
+                    y=y,
+                    x=x,
+                    freq=self.freq,
+                    level=self.level,
+                    clean_ex_first=self.clean_ex_first,
+                ),
             )
-            fitted_df = pd.DataFrame(**response_timegpt["data"]["forecast"])
+            fitted_df = pd.DataFrame(**response_timegpt["forecast"])
             fitted_df = fitted_df.drop(columns="y")
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
         fcst_df = self.transform_outputs(fcst_df)
@@ -456,17 +464,18 @@ class _TimeGPTModel:
         Y_df, X_df = self.preprocess_dataframes(df=df, X_df=None)
         main_logger.info("Calling Anomaly Detector Endpoint...")
         y, x = self.dataframes_to_dict(Y_df, X_df)
-        response_timegpt = self.client.timegpt_multi_series_anomalies(
-            y=y,
-            x=x,
-            freq=self.freq,
-            level=[self.level]
-            if (isinstance(self.level, int) or isinstance(self.level, float))
-            else [self.level[0]],
-            clean_ex_first=self.clean_ex_first,
+        response_timegpt = self._call_api(
+            self.client.timegpt_multi_series_anomalies,
+            dict(
+                y=y,
+                x=x,
+                freq=self.freq,
+                level=[self.level]
+                if (isinstance(self.level, int) or isinstance(self.level, float))
+                else [self.level[0]],
+                clean_ex_first=self.clean_ex_first,
+            ),
         )
-        if "data" in response_timegpt:
-            response_timegpt = response_timegpt["data"]
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
