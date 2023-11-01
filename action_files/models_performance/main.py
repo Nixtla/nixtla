@@ -315,8 +315,10 @@ class ExperimentConfig:
                         "experiment": exp_desc,
                     }
                 )
-                exp_metadata.query("variable != 'plot_path'", inplace=True)
-                f.write(f"## Experiment {exp_number}\n")
+                exp_metadata.query(
+                    "variable not in ['plot_path', 'experiment']", inplace=True
+                )
+                f.write(f"## Experiment {exp_number}: {exp_desc.experiment}\n")
                 f.write("### Description:\n")
                 f.write(f"{exp_metadata.to_markdown(index=False)}\n\n")
                 f.write("### Results:\n")

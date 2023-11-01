@@ -21,6 +21,7 @@ jobs:
       fail-fast: false
     env:
       TIMEGPT_TOKEN: ${{ secrets.TIMEGPT_TOKEN }}
+      PLOTS_REPO_URL: https://github.com/Nixtla/nixtla/blob/docs-figs-model-performance
     steps:
       - name: Clone repo
         uses: actions/checkout@v2
