@@ -325,7 +325,7 @@ class ExperimentConfig:
                     "experiment"
                 ].iloc[0]
                 exp_metadata.query(
-                    "variable not in ['plot_path', 'experiment']", inplace=True
+                    "variable not in ['plot_path', 'experiment_name']", inplace=True
                 )
                 f.write(f"## Experiment {exp_number}: {experiment_name}\n\n")
                 f.write("### Description:\n")
