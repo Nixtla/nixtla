@@ -15,10 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  run-all-tests:
+  run-models-performance:
     runs-on: ubuntu-latest 
     strategy:
       fail-fast: false
+    env:
+      TIMEGPT_TOKEN: ${{ secrets.TIMEGPT_TOKEN }}
     steps:
       - name: Clone repo
         uses: actions/checkout@v2
@@ -34,15 +36,9 @@ jobs:
         run: pip install ./ 
 
       - name: Run evaluation 
-        env:
-          TIMEGPT_TOKEN: ${{ secrets.TIMEGPT_TOKEN }}
-          TIMEGPT_API_URL: ${{ secrets.TIMEGPT_API_URL }}
-          TIMEGPT_CUSTOM_URL_TOKEN: ${{ secrets.TIMEGPT_CUSTOM_URL_TOKEN }}
-          TIMEGPT_CUSTOM_URL: ${{ secrets.TIMEGPT_CUSTOM_URL }}
-          API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
         run: python -m action_files.models_performance.main
 
-    - name: Upload images to new branch main
+      - name: Upload images to new branch main
         run: |
           git config --global user.email azul@nixtla.io
           git config --global user.name AzulGarza
