@@ -1,0 +1,33 @@
+experiments:
+
+  - air-passengers:
+    - dataset_url: https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv
+    - time_col: timestamp
+    - target_col: value
+    - season_length: 12 # for benchmarks
+    - freq:
+      - MS
+    - h:
+      - 12
+      - 24
+
+  - electricity-multiple-series:
+    - dataset_url: https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv
+    - season_length: 24 # for benchmarks
+    - freq:
+    - freq:
+      - H
+    - h:
+      - 24
+      - 168
+
+  - electricity-multiple-series-with-ex-vars:
+    # we can perform evaluation 
+    # without the future exogenous variables
+    - dataset_url: https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv
+    - season_length: 24 # for benchmarks
+    - freq:
+      - H
+    - h:
+      - 24 
+      - 168

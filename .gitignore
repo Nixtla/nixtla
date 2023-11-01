@@ -22,3 +22,5 @@ nbs/.last_checked
 .venv
 .idea
 .env
+*/summary.md
+*/*.png
