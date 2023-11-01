@@ -27,6 +27,7 @@ class Experiment:
     def __init__(
         self,
         df: pd.DataFrame,
+        experiment_name: str,
         id_col: str,
         time_col: str,
         target_col: str,
@@ -38,6 +39,8 @@ class Experiment:
         level: Optional[List[int]] = None,
         n_windows: int = 1,  # @A: this should be replaced with cross validation
     ):
+        self.df = df
+        self.experiment_name = experiment_name
         self.id_col = id_col
         self.time_col = time_col
         self.target_col = target_col
@@ -47,6 +50,7 @@ class Experiment:
         self.level = level
         self.n_windows = n_windows
         self.eval_index = [
+            "experiment_name",
             "h",
             "season_length",
             "freq",
@@ -54,7 +58,6 @@ class Experiment:
             "n_windows",
             "metric",
         ]
-        self.df = df
         (
             self.df_train,
             self.df_test,
@@ -199,7 +202,7 @@ class Experiment:
             df[self.id_col] = "ts_0"
         cv_df[self.time_col] = pd.to_datetime(cv_df[self.time_col])
         fig = timegpt.plot(
-            df,
+            df[[self.id_col, self.time_col, self.target_col]],
             cv_df,
             max_insample_length=self.h * (self.n_windows + 4),
             id_col=self.id_col,
@@ -258,6 +261,7 @@ class ExperimentConfig:
                         )
                         exp = Experiment(
                             df=df,
+                            experiment_name=experiment_name,
                             id_col=id_col,
                             time_col=time_col,
                             target_col=target_col,
@@ -292,7 +296,6 @@ class ExperimentConfig:
                         )
                         eval_models_df = pd.concat(eval_models_df, axis=1)
                         eval_models_df["plot_path"] = plot_path
-                        eval_models_df["experiment"] = experiment_name
                         eval_df.append(eval_models_df.reset_index())
         eval_df = pd.concat(eval_df)
         return eval_df, exp.benchmark_models
@@ -315,12 +318,13 @@ class ExperimentConfig:
                         "experiment": exp_desc,
                     }
                 )
-                f.write(
-                    f"## Experiment {exp_number}: {exp_metadata['experiment'].iloc[0]}\n"
-                )
+                experiment_name = exp_metadata.query("variable == 'experiment_name'")[
+                    "experiment"
+                ].iloc[0]
                 exp_metadata.query(
                     "variable not in ['plot_path', 'experiment']", inplace=True
                 )
+                f.write(f"## Experiment {exp_number}: {experiment_name}\n\n")
                 f.write("### Description:\n")
                 f.write(f"{exp_metadata.to_markdown(index=False)}\n\n")
                 f.write("### Results:\n")
