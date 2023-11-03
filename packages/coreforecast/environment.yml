@@ -10,3 +10,4 @@ dependencies:
   - pytest-benchmark
   - scikit-build-core
   - utilsforecast>=0.0.7
+  - window-ops

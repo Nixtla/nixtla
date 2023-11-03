@@ -63,10 +63,11 @@ scaler2core = {
     "robust-mad": LocalRobustScaler("mad"),
 }
 scalers = list(scaler2fns.keys())
+dtypes = [np.float32, np.float64]
 
 
 @pytest.mark.parametrize("scaler_name", scalers)
-@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("dtype", dtypes)
 def test_correctness(data, indptr, scaler_name, dtype):
     # introduce some nans at the starts of groups
     data = data.astype(dtype, copy=True)
@@ -128,4 +129,15 @@ def test_performance(benchmark, data, indptr, scaler_name, dtype, lib):
         scaler = scaler2core[scaler_name]
     else:
         scaler = scaler2utils[scaler_name]
-    benchmark(lambda: scaler.fit(ga))
+    benchmark(scaler.fit, ga)
+
+
+@pytest.mark.parametrize("scaler_name", scalers)
+@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("num_threads", [1, 2])
+def test_multithreaded_performance(
+    benchmark, data, indptr, scaler_name, dtype, num_threads
+):
+    ga = GroupedArray(data.astype(dtype), indptr, num_threads=num_threads)
+    scaler = scaler2core[scaler_name]
+    benchmark(scaler.fit, ga)

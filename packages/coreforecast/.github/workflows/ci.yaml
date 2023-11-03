@@ -9,7 +9,7 @@ on:
 
 defaults:
   run:
-    shell: bash -l {0}
+    shell: bash
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,7 +27,7 @@ jobs:
             platform-id: manylinux_x86_64
           - os: windows-2019
             platform-id: win_amd64
-          - os: macos-latest
+          - os: macos-11
             platform-id: macosx_x86_64
           - os: macos-latest
             platform-id: macosx_arm64
@@ -41,6 +41,11 @@ jobs:
           CIBW_BUILD: cp38-${{ matrix.platform-id }}
           CIBW_ARCHS: all
           CIBW_TEST_SKIP: '*-macosx_arm64'
+          CIBW_BUILD_VERBOSITY: 3
+          CIBW_BEFORE_BUILD_MACOS: |
+            sudo xcode-select -s /Applications/Xcode_11.7.app/Contents/Developer
+            pip install toml
+            python scripts/disable_omp_arm64.py
 
       - uses: actions/upload-artifact@v3
         with:
@@ -59,12 +64,13 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@v3
 
-      - name: Set up environment
-        uses: mamba-org/setup-micromamba@v1
+      - uses: actions/setup-python@v4
         with:
-          environment-file: environment.yml
-          create-args: python=${{ matrix.python-version }}
-          cache-environment: true
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-test.txt
 
       - name: Download wheels
         uses: actions/download-artifact@v3

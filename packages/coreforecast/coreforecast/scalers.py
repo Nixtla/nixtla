@@ -4,10 +4,10 @@ from .grouped_array import GroupedArray
 
 
 class BaseLocalScaler:
-    stats_fn_name: str
+    scaler_type: str
 
     def fit(self, ga: GroupedArray) -> "BaseLocalScaler":
-        self.stats_ = ga.scaler_fit(self.stats_fn_name)
+        self.stats_ = ga.scaler_fit(self.scaler_type)
         return self
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
@@ -18,16 +18,16 @@ class BaseLocalScaler:
 
 
 class LocalMinMaxScaler(BaseLocalScaler):
-    stats_fn_name = "GroupedArray_MinMaxScalerStats"
+    scaler_type = "MinMax"
 
 
 class LocalStandardScaler(BaseLocalScaler):
-    stats_fn_name = "GroupedArray_StandardScalerStats"
+    scaler_type = "Standard"
 
 
 class LocalRobustScaler(BaseLocalScaler):
     def __init__(self, scale: str):
         if scale == "iqr":
-            self.stats_fn_name = "GroupedArray_RobustScalerIqrStats"
+            self.scaler_type = "RobustIqr"
         else:
-            self.stats_fn_name = "GroupedArray_RobustScalerMadStats"
+            self.scaler_type = "RobustMad"
