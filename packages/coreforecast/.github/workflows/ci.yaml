@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -52,7 +53,7 @@ jobs:
           path: ./wheelhouse/*.whl
           retention-days: 1
 
-  run-tests:
+  run_tests:
     needs: [build_wheels]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -108,7 +109,7 @@ jobs:
   upload_to_pypi:
     name: 'Upload to PyPI'
     if: github.repository == 'Nixtla/coreforecast' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels, build_sdist, run_tests]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
