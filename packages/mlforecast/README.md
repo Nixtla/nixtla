@@ -7,7 +7,7 @@
 <div align="center">
 
 <center>
-<img src="https://raw.githubusercontent.com/Nixtla/mlforecast/main/nbs/figs/logo.png">
+<img src="https://raw.githubusercontent.com/Nixtla/mlforecast/main/nbs/figs/logo.png" />
 </center>
 <h1 align="center">
 Machine Learning 🤖 Forecast
@@ -70,6 +70,7 @@ for best practices.**
 ### Sample notebooks
 
 - [m5](https://www.kaggle.com/code/lemuz90/m5-mlforecast-eval)
+- [m5-polars](https://www.kaggle.com/code/lemuz90/m5-mlforecast-eval-polars)
 - [m4](https://www.kaggle.com/code/lemuz90/m4-competition)
 - [m4-cv](https://www.kaggle.com/code/lemuz90/m4-competition-cv)
 
