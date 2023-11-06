@@ -6,6 +6,7 @@ __all__ = ['TimeSeries']
 # %% ../nbs/core.ipynb 3
 import copy
 import inspect
+import re
 import reprlib
 import warnings
 from collections import Counter, OrderedDict
@@ -14,7 +15,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from numba import njit
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, clone
 from utilsforecast.compat import (
     DataFrame,
     pl,
@@ -46,6 +47,7 @@ from utilsforecast.processing import (
 )
 from utilsforecast.validation import validate_format
 
+from .compat import CORE_INSTALLED, BaseLagTransform, Lag
 from .grouped_array import GroupedArray
 from mlforecast.target_transforms import (
     BaseGroupedArrayTargetTransform,
@@ -94,6 +96,23 @@ def _build_transform_name(lag, tfm, *args) -> str:
     return tfm_name
 
 # %% ../nbs/core.ipynb 13
+def _pascal2camel(pascal_str: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_str).lower()
+
+# %% ../nbs/core.ipynb 14
+def _build_lag_transform_name(tfm: BaseLagTransform, lag: int) -> str:
+    tfm_params = list(inspect.signature(tfm.__init__).parameters.items())  # type: ignore
+    tfm_name = f"{_pascal2camel(tfm.__class__.__name__)}_lag{lag}"
+    changed_params = [
+        f"{name}{getattr(tfm, name)}"
+        for name, arg in tfm_params
+        if arg.default != getattr(tfm, name)
+    ]
+    if changed_params:
+        tfm_name += "_" + "_".join(changed_params)
+    return tfm_name
+
+# %% ../nbs/core.ipynb 16
 def _name_models(current_names):
     ctr = Counter(current_names)
     if not ctr:
@@ -111,7 +130,7 @@ def _name_models(current_names):
         names[-i] = name
     return names
 
-# %% ../nbs/core.ipynb 15
+# %% ../nbs/core.ipynb 18
 @njit
 def _identity(x: np.ndarray) -> np.ndarray:
     """Do nothing to the input."""
@@ -141,7 +160,7 @@ def _expand_target(data, indptr, max_horizon):
             n += 1
     return out
 
-# %% ../nbs/core.ipynb 16
+# %% ../nbs/core.ipynb 19
 Freq = Union[int, str, pd.offsets.BaseOffset]
 Lags = Iterable[int]
 LagTransform = Union[Callable, Tuple[Callable, Any]]
@@ -150,22 +169,29 @@ DateFeature = Union[str, Callable]
 Models = Union[BaseEstimator, List[BaseEstimator], Dict[str, BaseEstimator]]
 TargetTransform = Union[BaseTargetTransform, BaseGroupedArrayTargetTransform]
 
-# %% ../nbs/core.ipynb 17
+# %% ../nbs/core.ipynb 20
 def _parse_transforms(
     lags: Lags,
     lag_transforms: LagTransforms,
 ) -> Dict[str, Tuple[Any, ...]]:
-    transforms: Dict[str, Tuple[Any, ...]] = OrderedDict()
+    transforms: Dict[str, Union[Tuple[Any, ...], BaseLagTransform]] = OrderedDict()
     for lag in lags:
-        transforms[f"lag{lag}"] = (lag, _identity)
+        if CORE_INSTALLED:
+            transforms[f"lag{lag}"] = Lag(lag)
+        else:
+            transforms[f"lag{lag}"] = (lag, _identity)
     for lag in lag_transforms.keys():
-        for tfm_args in lag_transforms[lag]:
-            tfm, *args = _as_tuple(tfm_args)
-            tfm_name = _build_transform_name(lag, tfm, *args)
-            transforms[tfm_name] = (lag, tfm, *args)
+        for tfm in lag_transforms[lag]:
+            if isinstance(tfm, BaseLagTransform):
+                tfm_name = _build_lag_transform_name(tfm, lag)
+                transforms[tfm_name] = clone(tfm)._set_core_tfm(lag)
+            else:
+                tfm, *args = _as_tuple(tfm)
+                tfm_name = _build_transform_name(lag, tfm, *args)
+                transforms[tfm_name] = (lag, tfm, *args)
     return transforms
 
-# %% ../nbs/core.ipynb 18
+# %% ../nbs/core.ipynb 21
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
@@ -331,15 +357,15 @@ class TimeSeries:
         ] + self.features
         return self
 
-    def _compute_transforms(self) -> Dict[str, np.ndarray]:
+    def _compute_transforms(self, updates_only: bool) -> Dict[str, np.ndarray]:
         """Compute the transformations defined in the constructor.
 
         If `self.num_threads > 1` these are computed using multithreading."""
         if self.num_threads == 1 or len(self.transforms) == 1:
-            out = self.ga.apply_transforms(self.transforms, updates_only=False)
+            out = self.ga.apply_transforms(self.transforms, updates_only=updates_only)
         else:
             out = self.ga.apply_multithreaded_transforms(
-                self.transforms, num_threads=self.num_threads, updates_only=False
+                self.transforms, num_threads=self.num_threads, updates_only=updates_only
             )
         return out
 
@@ -373,7 +399,7 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        features = self._compute_transforms()
+        features = self._compute_transforms(updates_only=False)
         if self._restore_idxs is not None:
             for k, v in features.items():
                 features[k] = v[self._restore_idxs]
@@ -515,12 +541,7 @@ class TimeSeries:
         )
         self.test_dates.append(self.curr_dates)
 
-        if self.num_threads == 1 or len(self.transforms) == 1:
-            features = self.ga.apply_transforms(self.transforms, updates_only=True)
-        else:
-            features = self.ga.apply_multithreaded_transforms(
-                self.transforms, num_threads=self.num_threads, updates_only=True
-            )
+        features = self._compute_transforms(updates_only=True)
 
         for feature in self.date_features:
             feat_name, feat_vals = self._compute_date_feature(self.curr_dates, feature)

@@ -28,6 +28,7 @@ requirements = cfg.get('requirements','').split()
 dask_requirements = cfg.get('dask_requirements', '').split()
 ray_requirements = cfg.get('ray_requirements', '').split()
 spark_requirements = cfg.get('spark_requirements', '').split()
+lag_tfms_requirements = cfg.get('lag_tfms_requirements', '').split()
 dev_requirements = requirements + cfg.get('dev_requirements', '').split()
 min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
@@ -48,6 +49,7 @@ setuptools.setup(
         'dask': dask_requirements,
         'ray': ray_requirements,
         'spark': spark_requirements,
+        'lag_transforms': lag_tfms_requirements,
         'dev': dev_requirements,
     },
     dependency_links = cfg.get('dep_links','').split(),

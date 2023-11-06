@@ -13,6 +13,7 @@ website:
       - section: How-to guides
         contents:
           - docs/how-to-guides/exogenous_features.ipynb
+          - docs/how-to-guides/lag_transforms_guide.ipynb
           - docs/how-to-guides/transforming_exog.ipynb
           - docs/how-to-guides/cross_validation.ipynb
           - docs/how-to-guides/prediction_intervals.ipynb
@@ -39,6 +40,7 @@ website:
             - utils.ipynb
             - core.ipynb
             - target_transforms.ipynb
+            - lag_transforms.ipynb
             - feature_engineering.ipynb
             - callbacks.ipynb
           - section: Distributed

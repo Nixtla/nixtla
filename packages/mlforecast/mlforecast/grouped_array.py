@@ -11,6 +11,8 @@ import numpy as np
 from numba import njit
 from window_ops.shift import shift_array
 
+from .compat import BaseLagTransform, CoreGroupedArray
+
 # %% ../nbs/grouped_array.ipynb 2
 @njit(nogil=True)
 def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
@@ -177,7 +179,9 @@ class GroupedArray:
         return GroupedArray(data, indptr)
 
     def apply_transforms(
-        self, transforms: Dict[str, Tuple[Any, ...]], updates_only: bool = False
+        self,
+        transforms: Dict[str, Union[Tuple[Any, ...], BaseLagTransform]],
+        updates_only: bool = False,
     ) -> Dict[str, np.ndarray]:
         """Apply the transformations using the main process.
 
@@ -185,15 +189,24 @@ class GroupedArray:
         """
         results = {}
         offset = 1 if updates_only else 0
-        for tfm_name, (lag, tfm, *args) in transforms.items():
-            results[tfm_name] = _transform_series(
-                self.data, self.indptr, updates_only, lag - offset, tfm, *args
-            )
+        if any(isinstance(tfm, BaseLagTransform) for tfm in transforms.values()):
+            core_ga = CoreGroupedArray(self.data, self.indptr)
+        for tfm_name, tfm in transforms.items():
+            if isinstance(tfm, BaseLagTransform):
+                if updates_only:
+                    results[tfm_name] = tfm.update(core_ga)
+                else:
+                    results[tfm_name] = tfm.transform(core_ga)
+            else:
+                lag, tfm, *args = tfm
+                results[tfm_name] = _transform_series(
+                    self.data, self.indptr, updates_only, lag - offset, tfm, *args
+                )
         return results
 
     def apply_multithreaded_transforms(
         self,
-        transforms: Dict[str, Tuple[Any, ...]],
+        transforms: Dict[str, Union[Tuple[Any, ...], BaseLagTransform]],
         num_threads: int,
         updates_only: bool = False,
     ) -> Dict[str, np.ndarray]:
@@ -204,8 +217,15 @@ class GroupedArray:
         future_to_result = {}
         results = {}
         offset = 1 if updates_only else 0
+        numba_tfms = {}
+        core_tfms = {}
+        for name, tfm in transforms.items():
+            if isinstance(tfm, BaseLagTransform):
+                core_tfms[name] = tfm
+            else:
+                numba_tfms[name] = tfm
         with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
-            for tfm_name, (lag, tfm, *args) in transforms.items():
+            for tfm_name, (lag, tfm, *args) in numba_tfms.items():
                 future = executor.submit(
                     _transform_series,
                     self.data,
@@ -219,6 +239,13 @@ class GroupedArray:
             for future in concurrent.futures.as_completed(future_to_result):
                 tfm_name = future_to_result[future]
                 results[tfm_name] = future.result()
+        if core_tfms:
+            core_ga = CoreGroupedArray(self.data, self.indptr, num_threads)
+            for name, tfm in core_tfms.items():
+                if updates_only:
+                    results[name] = tfm.update(core_ga)
+                else:
+                    results[name] = tfm.transform(core_ga)
         return results
 
     def restore_difference(self, preds: np.ndarray, d: int) -> None:
