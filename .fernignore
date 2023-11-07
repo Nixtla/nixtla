@@ -4,7 +4,10 @@ nbs/
 .github/
 tests/
 action_files/
+docs-scripts/
 LICENSE
+CONTRIBUTING.md
+.gitmodules
 .gitignore
 MANIFEST.ini
 README.md
