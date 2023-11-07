@@ -54,6 +54,7 @@ class Nixtla:
     def timegpt_historic(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
@@ -64,6 +65,8 @@ class Nixtla:
         Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -75,6 +78,8 @@ class Nixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -105,6 +110,7 @@ class Nixtla:
     def timegpt_multi_series(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         fh: typing.Optional[int] = OMIT,
@@ -117,6 +123,8 @@ class Nixtla:
         Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -132,6 +140,8 @@ class Nixtla:
             - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -166,6 +176,7 @@ class Nixtla:
     def timegpt_multi_series_historic(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
@@ -176,6 +187,8 @@ class Nixtla:
         Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -187,6 +200,8 @@ class Nixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -217,6 +232,7 @@ class Nixtla:
     def timegpt_multi_series_anomalies(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
@@ -227,6 +243,8 @@ class Nixtla:
         Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has a anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.
@@ -238,6 +256,8 @@ class Nixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -268,6 +288,7 @@ class Nixtla:
     def timegpt_multi_series_cross_validation(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         fh: typing.Optional[int] = OMIT,
@@ -282,6 +303,8 @@ class Nixtla:
         Perform Cross Validation for multiple series
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -301,6 +324,8 @@ class Nixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -446,6 +471,7 @@ class AsyncNixtla:
     async def timegpt_historic(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
@@ -456,6 +482,8 @@ class AsyncNixtla:
         Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -467,6 +495,8 @@ class AsyncNixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -497,6 +527,7 @@ class AsyncNixtla:
     async def timegpt_multi_series(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         fh: typing.Optional[int] = OMIT,
@@ -509,6 +540,8 @@ class AsyncNixtla:
         Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -524,6 +557,8 @@ class AsyncNixtla:
             - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -558,6 +593,7 @@ class AsyncNixtla:
     async def timegpt_multi_series_historic(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
@@ -568,6 +604,8 @@ class AsyncNixtla:
         Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -579,6 +617,8 @@ class AsyncNixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -609,6 +649,7 @@ class AsyncNixtla:
     async def timegpt_multi_series_anomalies(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         y: typing.Optional[typing.Any] = OMIT,
@@ -619,6 +660,8 @@ class AsyncNixtla:
         Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has a anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.
@@ -630,6 +673,8 @@ class AsyncNixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
@@ -660,6 +705,7 @@ class AsyncNixtla:
     async def timegpt_multi_series_cross_validation(
         self,
         *,
+        model: typing.Optional[str] = OMIT,
         freq: typing.Optional[str] = OMIT,
         level: typing.Optional[typing.List[typing.Any]] = OMIT,
         fh: typing.Optional[int] = OMIT,
@@ -674,6 +720,8 @@ class AsyncNixtla:
         Perform Cross Validation for multiple series
 
         Parameters:
+            - model: typing.Optional[str]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
             - freq: typing.Optional[str]. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
             - level: typing.Optional[typing.List[typing.Any]]. A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
@@ -693,6 +741,8 @@ class AsyncNixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
         """
         _request: typing.Dict[str, typing.Any] = {}
+        if model is not OMIT:
+            _request["model"] = model
         if freq is not OMIT:
             _request["freq"] = freq
         if level is not OMIT:
