@@ -9,19 +9,20 @@ import inspect
 import json
 import requests
 import warnings
+from typing import Dict, List, Optional, Union
+
+import numpy as np
+import pandas as pd
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_fixed,
     stop_after_delay,
+    retry_if_not_exception_type,
     RetryCallState,
 )
-from typing import Dict, List, Optional, Union
 
-import numpy as np
-import pandas as pd
-
-from .client import Nixtla, SingleSeriesForecast
+from .client import ApiError, Nixtla, SingleSeriesForecast
 
 logging.basicConfig(level=logging.INFO)
 main_logger = logging.getLogger(__name__)
@@ -131,6 +132,7 @@ class _TimeGPTModel:
             wait=wait_fixed(self.retry_interval),
             reraise=True,
             after=after_retry,
+            retry=retry_if_not_exception_type(ApiError),
         )
 
     def _call_api(self, method, kwargs):
