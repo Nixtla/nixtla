@@ -95,7 +95,7 @@ class _TimeGPTModel:
         date_features_to_one_hot: Union[bool, List[str]] = True,
         max_retries: int = 6,
         retry_interval: int = 10,
-        max_wait_time: int = 60,
+        max_wait_time: int = 6 * 60,
     ):
         self.client = client
         self.h = h
@@ -529,7 +529,7 @@ class _TimeGPT:
         environment: Optional[str] = None,
         max_retries: int = 6,
         retry_interval: int = 10,
-        max_wait_time: int = 60,
+        max_wait_time: int = 6 * 60,
     ):
         """
         Constructs all the necessary attributes for the TimeGPT object.
@@ -548,12 +548,14 @@ class _TimeGPT:
             The interval in seconds between consecutive retry attempts.
             This is the waiting period before the client tries to call the API again after a failed attempt.
             Default value is 10 seconds, meaning the client waits for 10 seconds between retries.
-        max_wait_time : int, (default=60)
+        max_wait_time : int, (default=360)
             The maximum total time in seconds that the client will spend on all retry attempts before giving up.
             This sets an upper limit on the cumulative waiting time for all retry attempts.
             If this time is exceeded, the client will stop retrying and raise an exception.
-            Default value is 60 seconds, meaning the client will cease retrying if the total time
-            spent on retries exceeds 60 seconds.
+            Default value is 360 seconds, meaning the client will cease retrying if the total time
+            spent on retries exceeds 360 seconds.
+            The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to
+            catch these errors, use max_wait_time >> 60.
         """
         if environment is None:
             environment = "https://dashboard.nixtla.io/api"
