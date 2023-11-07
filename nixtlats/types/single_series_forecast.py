@@ -9,6 +9,9 @@ from ..core.datetime_utils import serialize_datetime
 
 
 class SingleSeriesForecast(pydantic.BaseModel):
+    model: typing.Optional[str] = pydantic.Field(
+        description="Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data."
+    )
     freq: typing.Optional[str] = pydantic.Field(
         description="The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
     )
