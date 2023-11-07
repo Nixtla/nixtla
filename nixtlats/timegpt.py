@@ -967,9 +967,14 @@ class TimeGPT(_TimeGPT):
         else:
             from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
-            return _DistributedTimeGPT().forecast(
+            dist_timegpt = _DistributedTimeGPT(
                 token=self.client._client_wrapper._token,
                 environment=self.client._client_wrapper._base_url,
+                max_retries=self.max_retries,
+                retry_interval=self.retry_interval,
+                max_wait_time=self.max_wait_time,
+            )
+            return dist_timegpt.forecast(
                 df=df,
                 h=h,
                 freq=freq,
@@ -1064,9 +1069,14 @@ class TimeGPT(_TimeGPT):
         else:
             from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
-            return _DistributedTimeGPT().detect_anomalies(
+            dist_timegpt = _DistributedTimeGPT(
                 token=self.client._client_wrapper._token,
-                environment=self.client._environment,
+                environment=self.client._client_wrapper._base_url,
+                max_retries=self.max_retries,
+                retry_interval=self.retry_interval,
+                max_wait_time=self.max_wait_time,
+            )
+            return dist_timegpt.detect_anomalies(
                 df=df,
                 freq=freq,
                 id_col=id_col,
