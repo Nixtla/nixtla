@@ -9,15 +9,19 @@ title: TimeGPT
 ### TimeGPT
 
 > ``` text
->  TimeGPT (token:str, environment:Optional[str]=None)
+>  TimeGPT (token:str, environment:Optional[str]=None, max_retries:int=6,
+>           retry_interval:int=10, max_wait_time:int=60)
 > ```
 
 Constructs all the necessary attributes for the TimeGPT object.
 
-|             | **Type** | **Default** | **Details**                                               |
+|                | **Type** | **Default** | **Details**                                                                                                                                                                                                                                                                                                                                                                                                     |
 |------|------------------|-------------------------|-------------------------|
-| token       | str      |             | The authorization token to interact with the TimeGPT API. |
-| environment | Optional | None        | Custom environment. Pass only if provided.                |
+| token          | str      |             | The authorization token to interact with the TimeGPT API.                                                                                                                                                                                                                                                                                                                                                       |
+| environment    | Optional | None        | Custom environment. Pass only if provided.                                                                                                                                                                                                                                                                                                                                                                      |
+| max_retries    | int      | 6           | The maximum number of attempts to make when calling the API before giving up. <br/>It defines how many times the client will retry the API call if it fails. <br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total                                                                                                                                                      |
+| retry_interval | int      | 10          | The interval in seconds between consecutive retry attempts. <br/>This is the waiting period before the client tries to call the API again after a failed attempt. <br/>Default value is 10 seconds, meaning the client waits for 10 seconds between retries.                                                                                                                                                      |
+| max_wait_time  | int      | 60          | The maximum total time in seconds that the client will spend on all retry attempts before giving up. <br/>This sets an upper limit on the cumulative waiting time for all retry attempts. <br/>If this time is exceeded, the client will stop retrying and raise an exception. <br/>Default value is 60 seconds, meaning the client will cease retrying if the total time <br/>spent on retries exceeds 60 seconds. |
 
 ------------------------------------------------------------------------
 

@@ -35,7 +35,7 @@ spark = SparkSession.builder.getOrCreate()
 ``` text
 Setting default log level to "WARN".
 To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
-23/09/17 22:57:14 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+23/11/07 07:00:55 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
 ```
 
 ### Forecast
@@ -47,7 +47,7 @@ spark_df.show(5)
 ```
 
 ``` text
-[Stage 0:>                                                          (0 + 1) / 1]                                                                                
+                                                                                
 ```
 
 ``` text
@@ -68,8 +68,9 @@ fcst_df = timegpt.forecast(spark_df, h=12).show(5)
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...====>                   (13 + 7) / 20]
+INFO:nixtlats.timegpt:Validating inputs...                        (4 + 16) / 20]
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...=============>  (19 + 1) / 20]
                                                                                 
 ```
