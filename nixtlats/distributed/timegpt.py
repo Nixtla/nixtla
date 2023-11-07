@@ -47,11 +47,13 @@ def _cotransform(
 
 # %% ../../nbs/distributed.timegpt.ipynb 4
 class _DistributedTimeGPT:
+    def __init__(self, token: str, environment: str):
+        self.token = token
+        self.environment = environment
+
     def _distribute_method(
         self,
         method: Callable,
-        token: str,
-        environment: str,
         df: fugue.AnyDataFrame,
         kwargs: dict,
         schema: str,
@@ -70,8 +72,6 @@ class _DistributedTimeGPT:
             num_partitions = engine.get_current_parallelism()
         partition = dict(by=id_col, num=num_partitions, algo="coarse")
         params = dict(
-            token=token,
-            environment=environment,
             kwargs=kwargs,
         )
         if X_df is not None:
@@ -106,8 +106,6 @@ class _DistributedTimeGPT:
 
     def forecast(
         self,
-        token: str,
-        environment: str,
         df: fugue.AnyDataFrame,
         h: int,
         freq: Optional[str] = None,
@@ -143,8 +141,6 @@ class _DistributedTimeGPT:
         )
         fcst_df = self._distribute_method(
             method=self._forecast if X_df is None else self._forecast_x,
-            token=token,
-            environment=environment,
             df=df,
             kwargs=kwargs,
             schema=schema,
@@ -156,8 +152,6 @@ class _DistributedTimeGPT:
 
     def detect_anomalies(
         self,
-        token: str,
-        environment: str,
         df: pd.DataFrame,
         freq: Optional[str] = None,
         id_col: str = "unique_id",
@@ -184,8 +178,6 @@ class _DistributedTimeGPT:
         schema = self._get_anomalies_schema(id_col=id_col, time_col=time_col)
         anomalies_df = self._distribute_method(
             method=self._detect_anomalies,
-            token=token,
-            environment=environment,
             df=df,
             kwargs=kwargs,
             schema=schema,
@@ -195,41 +187,35 @@ class _DistributedTimeGPT:
         )
         return anomalies_df
 
-    def _instantiate_timegpt(self, token: str, environment: str):
+    def _instantiate_timegpt(self):
         from nixtlats.timegpt import _TimeGPT
 
-        timegpt = _TimeGPT(token=token, environment=environment)
+        timegpt = _TimeGPT(token=self.token, environment=self.environment)
         return timegpt
 
     def _forecast(
         self,
         df: pd.DataFrame,
-        token: str,
-        environment: str,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt(token, environment)
+        timegpt = self._instantiate_timegpt()
         return timegpt._forecast(df=df, **kwargs)
 
     def _forecast_x(
         self,
         df: pd.DataFrame,
         X_df: pd.DataFrame,
-        token: str,
-        environment: str,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt(token, environment)
+        timegpt = self._instantiate_timegpt()
         return timegpt._forecast(df=df, X_df=X_df, **kwargs)
 
     def _detect_anomalies(
         self,
         df: pd.DataFrame,
-        token: str,
-        environment: str,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt(token, environment)
+        timegpt = self._instantiate_timegpt()
         return timegpt._detect_anomalies(df=df, **kwargs)
 
     @staticmethod
