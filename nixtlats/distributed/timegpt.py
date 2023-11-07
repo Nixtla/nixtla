@@ -47,9 +47,19 @@ def _cotransform(
 
 # %% ../../nbs/distributed.timegpt.ipynb 4
 class _DistributedTimeGPT:
-    def __init__(self, token: str, environment: str):
+    def __init__(
+        self,
+        token: str,
+        environment: str,
+        max_retries: int = 6,
+        retry_interval: int = 10,
+        max_wait_time: int = 60,
+    ):
         self.token = token
         self.environment = environment
+        self.max_retries = max_retries
+        self.retry_interval = retry_interval
+        self.max_wait_time = max_wait_time
 
     def _distribute_method(
         self,
@@ -190,7 +200,13 @@ class _DistributedTimeGPT:
     def _instantiate_timegpt(self):
         from nixtlats.timegpt import _TimeGPT
 
-        timegpt = _TimeGPT(token=self.token, environment=self.environment)
+        timegpt = _TimeGPT(
+            token=self.token,
+            environment=self.environment,
+            max_retries=self.max_retries,
+            retry_interval=self.retry_interval,
+            max_wait_time=self.max_wait_time,
+        )
         return timegpt
 
     def _forecast(
