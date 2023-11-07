@@ -13,8 +13,16 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_fixed,
+    stop_after_delay,
+    retry_if_not_exception_type,
+    RetryCallState,
+)
 
-from .client import Nixtla, SingleSeriesForecast
+from .client import ApiError, Nixtla, SingleSeriesForecast
 
 logging.basicConfig(level=logging.INFO)
 main_logger = logging.getLogger(__name__)
@@ -70,7 +78,7 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/timegpt.ipynb 7
+# %% ../nbs/timegpt.ipynb 6
 class _TimeGPTModel:
     def __init__(
         self,
@@ -85,6 +93,9 @@ class _TimeGPTModel:
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        max_retries: int = 6,
+        retry_interval: int = 10,
+        max_wait_time: int = 60,
     ):
         self.client = client
         self.h = h
@@ -97,6 +108,9 @@ class _TimeGPTModel:
         self.clean_ex_first = clean_ex_first
         self.date_features = date_features
         self.date_features_to_one_hot = date_features_to_one_hot
+        self.max_retries = max_retries
+        self.retry_interval = retry_interval
+        self.max_wait_time = max_wait_time
         # variables defined by each flow
         self.weights_x: pd.DataFrame = None
         self.freq: str = self.base_freq
@@ -104,6 +118,28 @@ class _TimeGPTModel:
         self.x_cols: List[str]
         self.input_size: int
         self.model_horizon: int
+
+    def _retry_strategy(self):
+        def after_retry(retry_state: RetryCallState):
+            """Called after each retry attempt."""
+            main_logger.info(f"Attempt {retry_state.attempt_number} failed...")
+
+        return retry(
+            stop=(
+                stop_after_attempt(self.max_retries)
+                | stop_after_delay(self.max_wait_time)
+            ),
+            wait=wait_fixed(self.retry_interval),
+            reraise=True,
+            after=after_retry,
+            retry=retry_if_not_exception_type(ApiError),
+        )
+
+    def _call_api(self, method, kwargs):
+        response = self._retry_strategy()(method)(**kwargs)
+        if "data" in response:
+            response = response["data"]
+        return response
 
     def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
         main_logger.info("Validating inputs...")
@@ -345,13 +381,6 @@ class _TimeGPTModel:
         x = X_df.to_dict(**to_dict_args) if X_df is not None else None
         return y, x
 
-    @staticmethod
-    def _call_api(method, kwargs):
-        response = method(**kwargs)
-        if "data" in response:
-            response = response["data"]
-        return response
-
     def set_model_params(self):
         model_params = self._call_api(
             self.client.timegpt_model_params,
@@ -488,13 +517,20 @@ class _TimeGPTModel:
         anomalies_df = self.transform_outputs(anomalies_df)
         return anomalies_df
 
-# %% ../nbs/timegpt.ipynb 8
+# %% ../nbs/timegpt.ipynb 7
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
     """
 
-    def __init__(self, token: str, environment: Optional[str] = None):
+    def __init__(
+        self,
+        token: str,
+        environment: Optional[str] = None,
+        max_retries: int = 6,
+        retry_interval: int = 10,
+        max_wait_time: int = 60,
+    ):
         """
         Constructs all the necessary attributes for the TimeGPT object.
 
@@ -504,10 +540,28 @@ class _TimeGPT:
             The authorization token to interact with the TimeGPT API.
         environment : str
             Custom environment. Pass only if provided.
+        max_retries : int, (default=6)
+            The maximum number of attempts to make when calling the API before giving up.
+            It defines how many times the client will retry the API call if it fails.
+            Default value is 6, indicating the client will attempt the API call up to 6 times in total
+        retry_interval : int, (default=10)
+            The interval in seconds between consecutive retry attempts.
+            This is the waiting period before the client tries to call the API again after a failed attempt.
+            Default value is 10 seconds, meaning the client waits for 10 seconds between retries.
+        max_wait_time : int, (default=60)
+            The maximum total time in seconds that the client will spend on all retry attempts before giving up.
+            This sets an upper limit on the cumulative waiting time for all retry attempts.
+            If this time is exceeded, the client will stop retrying and raise an exception.
+            Default value is 60 seconds, meaning the client will cease retrying if the total time
+            spent on retries exceeds 60 seconds.
         """
         if environment is None:
             environment = "https://dashboard.nixtla.io/api"
         self.client = Nixtla(base_url=environment, token=token)
+        self.max_retries = max_retries
+        self.retry_interval = retry_interval
+        self.max_wait_time = max_wait_time
+        # custom attr
         self.weights_x: pd.DataFrame = None
 
     def validate_token(self, log: bool = True) -> bool:
@@ -613,6 +667,9 @@ class _TimeGPT:
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
+            max_retries=self.max_retries,
+            retry_interval=self.retry_interval,
+            max_wait_time=self.max_wait_time,
         )
         fcst_df = model.forecast(df=df, X_df=X_df, add_history=add_history)
         self.weights_x = model.weights_x
@@ -692,6 +749,9 @@ class _TimeGPT:
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
+            max_retries=self.max_retries,
+            retry_interval=self.retry_interval,
+            max_wait_time=self.max_wait_time,
         )
         anomalies_df = model.detect_anomalies(df=df)
         self.weights_x = model.weights_x
@@ -806,7 +866,7 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 9
+# %% ../nbs/timegpt.ipynb 8
 class TimeGPT(_TimeGPT):
     def forecast(
         self,
@@ -909,9 +969,14 @@ class TimeGPT(_TimeGPT):
         else:
             from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
-            return _DistributedTimeGPT().forecast(
+            dist_timegpt = _DistributedTimeGPT(
                 token=self.client._client_wrapper._token,
                 environment=self.client._client_wrapper._base_url,
+                max_retries=self.max_retries,
+                retry_interval=self.retry_interval,
+                max_wait_time=self.max_wait_time,
+            )
+            return dist_timegpt.forecast(
                 df=df,
                 h=h,
                 freq=freq,
@@ -1006,9 +1071,14 @@ class TimeGPT(_TimeGPT):
         else:
             from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
-            return _DistributedTimeGPT().detect_anomalies(
+            dist_timegpt = _DistributedTimeGPT(
                 token=self.client._client_wrapper._token,
-                environment=self.client._environment,
+                environment=self.client._client_wrapper._base_url,
+                max_retries=self.max_retries,
+                retry_interval=self.retry_interval,
+                max_wait_time=self.max_wait_time,
+            )
+            return dist_timegpt.detect_anomalies(
                 df=df,
                 freq=freq,
                 id_col=id_col,

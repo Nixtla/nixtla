@@ -22,7 +22,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.7",
-    install_requires=["requests", "pandas", "httpx", "pydantic<2"],
+    install_requires=["requests", "pandas", "httpx", "pydantic<2", "tenacity"],
     extras_require={
         "dev": dev + distributed + plotting + date_extras,
         "distributed": distributed,
