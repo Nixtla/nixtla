@@ -57,7 +57,9 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
+        shell: bash
         run: pip3 install . nbdev
 
       - name: Run tests
+        shell: bash
         run: nbdev_test --do_print --timing --skip_file_re '(plotting|target_transforms)'
