@@ -1242,6 +1242,7 @@ class TimeGPT(_TimeGPT):
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
+        num_partitions: Optional[int] = None,
     ):
         """Detect anomalies in your time series using TimeGPT.
 
@@ -1290,6 +1291,11 @@ class TimeGPT(_TimeGPT):
             We recommend using `timegpt-1-long-horizon` for forecasting
             if you want to predict more than one seasonal
             period given the frequency of your data.
+        num_partitions : int (default=None)
+            Number of partitions to use.
+            Only used in distributed environments (spark, ray, dask).
+            If None, the number of partitions will be equal
+            to the available parallel resources.
 
         Returns
         -------
@@ -1344,6 +1350,7 @@ class TimeGPT(_TimeGPT):
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
+        num_partitions: Optional[int] = None,
     ):
         """Perform cross validation in your time series using TimeGPT.
 
@@ -1401,6 +1408,11 @@ class TimeGPT(_TimeGPT):
             We recommend using `timegpt-1-long-horizon` for forecasting
             if you want to predict more than one seasonal
             period given the frequency of your data.
+        num_partitions : int (default=None)
+            Number of partitions to use.
+            Only used in distributed environments (spark, ray, dask).
+            If None, the number of partitions will be equal
+            to the available parallel resources.
 
         Returns
         -------
