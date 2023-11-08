@@ -137,7 +137,7 @@ class Experiment:
         )
         return cv_df
 
-    def evaluate_timegpt(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def evaluate_timegpt(self, model: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         init_time = time()
         # A: this sould be replaced with
         # cross validation
@@ -153,10 +153,12 @@ class Experiment:
             id_col=self.id_col,
             time_col=self.time_col,
             target_col=self.target_col,
+            model=model,
         )
         cv_df = self._convert_fcst_df_to_cv_df(fcst_df)
         total_time = time() - init_time
-        eval_df = self._evaluate_cv(cv_df, total_time, "TimeGPT")
+        cv_df = cv_df.rename({"TimeGPT": model}, axis=1)
+        eval_df = self._evaluate_cv(cv_df, total_time, model)
         return eval_df, cv_df.drop(columns=[self.target_col, "cutoff"])
 
     def evaluate_benchmark_performace(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -230,7 +232,7 @@ class ExperimentConfig:
     ):
         self.config_path = config_path
         self.plot_dir = plot_dir
-        self.default_models = ["TimeGPT"]
+        self.default_models = ["timegpt-1", "timegpt-1-long-horizon"]
 
     def _parse_yaml(self):
         with open(self.config_path, "r") as file:
@@ -285,14 +287,15 @@ class ExperimentConfig:
                         cv_models_df = [cv_bench_df]
                         # models evaluation
                         logger.info("Running TimeGPT evaluation")
-                        (
-                            eval_model_df,
-                            cv_model_df,
-                        ) = exp.evaluate_timegpt()
-                        eval_model_df = eval_model_df.set_index(exp.eval_index)
-                        eval_models_df.append(eval_model_df)
-                        cv_model_df = cv_model_df.set_index(exp.comb_cv)
-                        cv_models_df.append(cv_model_df)
+                        for model in self.default_models:
+                            (
+                                eval_model_df,
+                                cv_model_df,
+                            ) = exp.evaluate_timegpt(model=model)
+                            eval_model_df = eval_model_df.set_index(exp.eval_index)
+                            eval_models_df.append(eval_model_df)
+                            cv_model_df = cv_model_df.set_index(exp.comb_cv)
+                            cv_models_df.append(cv_model_df)
                         cv_models_df = pd.concat(cv_models_df, axis=1).reset_index()
                         plot_path = exp.plot_and_save_forecasts(
                             cv_models_df, self.plot_dir
