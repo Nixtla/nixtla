@@ -15,7 +15,7 @@ dependencies:
     - flake8
     - python-dotenv
     - statsforecast
-    - utilsforecast
+    - utilsforecast>=0.0.12
     - requests
     - duckdb<0.8
     - fugue[ray]
@@ -23,3 +23,4 @@ dependencies:
     - fire
     - tabulate
     - tenacity
+    - mlforecast
