@@ -94,6 +94,7 @@ class _TimeGPTModel:
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 6 * 60,
@@ -109,6 +110,7 @@ class _TimeGPTModel:
         self.clean_ex_first = clean_ex_first
         self.date_features = date_features
         self.date_features_to_one_hot = date_features_to_one_hot
+        self.model = model
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.max_wait_time = max_wait_time
@@ -395,7 +397,7 @@ class _TimeGPTModel:
     def set_model_params(self):
         model_params = self._call_api(
             self.client.timegpt_model_params,
-            {"request": SingleSeriesForecast(freq=self.freq)},
+            {"request": SingleSeriesForecast(freq=self.freq, model=self.model)},
         )
         model_params = model_params["detail"]
         self.input_size, self.model_horizon = (
@@ -462,6 +464,7 @@ class _TimeGPTModel:
                 level=self.level,
                 finetune_steps=self.finetune_steps,
                 clean_ex_first=self.clean_ex_first,
+                model=self.model,
             ),
         )
         if "weights_x" in response_timegpt:
@@ -483,6 +486,7 @@ class _TimeGPTModel:
                     freq=self.freq,
                     level=self.level,
                     clean_ex_first=self.clean_ex_first,
+                    model=self.model,
                 ),
             )
             fitted_df = pd.DataFrame(**response_timegpt["forecast"])
@@ -514,6 +518,7 @@ class _TimeGPTModel:
                 if (isinstance(self.level, int) or isinstance(self.level, float))
                 else [self.level[0]],
                 clean_ex_first=self.clean_ex_first,
+                model=self.model,
             ),
         )
         if "weights_x" in response_timegpt:
@@ -607,6 +612,7 @@ class _TimeGPT:
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
     ):
         """Forecast your time series using TimeGPT.
 
@@ -659,6 +665,11 @@ class _TimeGPT:
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
+        model : str (default='timegpt=1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
 
         Returns
         -------
@@ -668,7 +679,7 @@ class _TimeGPT:
         """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
-        model = _TimeGPTModel(
+        timegpt_model = _TimeGPTModel(
             client=self.client,
             h=h,
             id_col=id_col,
@@ -680,12 +691,13 @@ class _TimeGPT:
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
             max_retries=self.max_retries,
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        fcst_df = model.forecast(df=df, X_df=X_df, add_history=add_history)
-        self.weights_x = model.weights_x
+        fcst_df = timegpt_model.forecast(df=df, X_df=X_df, add_history=add_history)
+        self.weights_x = timegpt_model.weights_x
         return fcst_df
 
     def _detect_anomalies(
@@ -700,6 +712,7 @@ class _TimeGPT:
         validate_token: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
     ):
         """Detect anomalies in your time series using TimeGPT.
 
@@ -743,6 +756,11 @@ class _TimeGPT:
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
+        model : str (default='timegpt=1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
 
         Returns
         -------
@@ -751,7 +769,7 @@ class _TimeGPT:
         """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
-        model = _TimeGPTModel(
+        timegpt_model = _TimeGPTModel(
             client=self.client,
             h=None,
             id_col=id_col,
@@ -762,12 +780,13 @@ class _TimeGPT:
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
             max_retries=self.max_retries,
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        anomalies_df = model.detect_anomalies(df=df)
-        self.weights_x = model.weights_x
+        anomalies_df = timegpt_model.detect_anomalies(df=df)
+        self.weights_x = timegpt_model.weights_x
         return anomalies_df
 
     def plot(
@@ -896,6 +915,7 @@ class TimeGPT(_TimeGPT):
         validate_token: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
+        model: str = "timegpt-1",
         date_features_to_one_hot: Union[bool, List[str]] = True,
         num_partitions: Optional[int] = None,
     ):
@@ -950,6 +970,11 @@ class TimeGPT(_TimeGPT):
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
+        model : str (default='timegpt=1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
         num_partitions : int (default=None)
             Number of partitions to use.
             Only used in distributed environments (spark, ray, dask).
@@ -978,6 +1003,7 @@ class TimeGPT(_TimeGPT):
                 add_history=add_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
             )
         else:
             from nixtlats.distributed.timegpt import _DistributedTimeGPT
@@ -1004,6 +1030,7 @@ class TimeGPT(_TimeGPT):
                 add_history=add_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
                 num_partitions=num_partitions,
             )
 
@@ -1019,6 +1046,7 @@ class TimeGPT(_TimeGPT):
         validate_token: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
     ):
         """Detect anomalies in your time series using TimeGPT.
 
@@ -1062,6 +1090,11 @@ class TimeGPT(_TimeGPT):
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
+        model : str (default='timegpt=1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
 
         Returns
         -------
@@ -1080,6 +1113,7 @@ class TimeGPT(_TimeGPT):
                 validate_token=validate_token,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
             )
         else:
             from nixtlats.distributed.timegpt import _DistributedTimeGPT
@@ -1102,5 +1136,6 @@ class TimeGPT(_TimeGPT):
                 validate_token=validate_token,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
                 num_partitions=num_partitions,
             )
