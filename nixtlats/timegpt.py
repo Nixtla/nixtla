@@ -534,6 +534,18 @@ class _TimeGPTModel:
         return anomalies_df
 
 # %% ../nbs/timegpt.ipynb 7
+def validate_model_parameter(func):
+    def wrapper(self, *args, **kwargs):
+        if "model" in kwargs and kwargs["model"] not in self.supported_models:
+            raise ValueError(
+                f'unsupported model: {kwargs["model"]} '
+                f'supported models: {", ".join(self.supported_models)}'
+            )
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+# %% ../nbs/timegpt.ipynb 8
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -579,6 +591,7 @@ class _TimeGPT:
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.max_wait_time = max_wait_time
+        self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
         # custom attr
         self.weights_x: pd.DataFrame = None
 
@@ -596,6 +609,7 @@ class _TimeGPT:
             main_logger.info(f'Happy Forecasting! :), {validation["support"]}')
         return valid
 
+    @validate_model_parameter
     def _forecast(
         self,
         df: pd.DataFrame,
@@ -700,6 +714,7 @@ class _TimeGPT:
         self.weights_x = timegpt_model.weights_x
         return fcst_df
 
+    @validate_model_parameter
     def _detect_anomalies(
         self,
         df: pd.DataFrame,
@@ -898,7 +913,7 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 8
+# %% ../nbs/timegpt.ipynb 9
 class TimeGPT(_TimeGPT):
     def forecast(
         self,
