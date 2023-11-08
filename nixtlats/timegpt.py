@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
+from mlforecast.utils import backtest_splits
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -21,6 +22,13 @@ from tenacity import (
     RetryCallState,
     retry_if_exception,
     retry_if_not_exception_type,
+)
+from utilsforecast.processing import (
+    drop_index_if_pandas,
+    join,
+    maybe_compute_sort_indices,
+    take_rows,
+    vertical_concat,
 )
 
 from .client import ApiError, Nixtla, SingleSeriesForecast
@@ -155,6 +163,7 @@ class _TimeGPTModel:
         return response
 
     def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
+        df = df.copy()
         main_logger.info("Validating inputs...")
         if self.base_freq is None and hasattr(df.index, "freq"):
             inferred_freq = df.index.freq
@@ -182,6 +191,7 @@ class _TimeGPTModel:
             df = df.assign(unique_id="ts_0")
             self.drop_uid = True
         if X_df is not None:
+            X_df = X_df.copy()
             X_df = X_df.rename(columns=renamer)
             if "unique_id" not in X_df.columns:
                 X_df = X_df.assign(unique_id="ts_0")
@@ -444,6 +454,7 @@ class _TimeGPTModel:
         if restrict_input:
             # add sufficient info to compute
             # conformal interval
+            main_logger.info("Restricting input...")
             new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
             Y_df = Y_df.groupby("unique_id").tail(new_input_size)
             if X_df is not None:
@@ -454,18 +465,19 @@ class _TimeGPTModel:
             self.validate_input_size(Y_df=Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
         main_logger.info("Calling Forecast Endpoint...")
+        payload = dict(
+            y=y,
+            x=x,
+            fh=self.h,
+            freq=self.freq,
+            level=self.level,
+            finetune_steps=self.finetune_steps,
+            clean_ex_first=self.clean_ex_first,
+            model=self.model,
+        )
         response_timegpt = self._call_api(
             self.client.timegpt_multi_series,
-            dict(
-                y=y,
-                x=x,
-                fh=self.h,
-                freq=self.freq,
-                level=self.level,
-                finetune_steps=self.finetune_steps,
-                clean_ex_first=self.clean_ex_first,
-                model=self.model,
-            ),
+            payload,
         )
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
@@ -532,6 +544,64 @@ class _TimeGPTModel:
         anomalies_df = anomalies_df.drop(columns="y")
         anomalies_df = self.transform_outputs(anomalies_df)
         return anomalies_df
+
+    def cross_validation(
+        self,
+        df: pd.DataFrame,
+        n_windows: int = 1,
+        step_size: Optional[int] = None,
+    ):
+        df, X_df = self.transform_inputs(df=df, X_df=None)
+        self.infer_freq(df)
+        df["ds"] = pd.to_datetime(df["ds"])
+        if X_df is not None:
+            X_df["ds"] = pd.to_datetime(X_df["ds"])
+        # mlforecast cv code
+        results = []
+        sort_idxs = maybe_compute_sort_indices(df, "unique_id", "ds")
+        if sort_idxs is not None:
+            df = take_rows(df, sort_idxs)
+        splits = backtest_splits(
+            df,
+            n_windows=n_windows,
+            h=self.h,
+            id_col="unique_id",
+            time_col="ds",
+            freq=pd.tseries.frequencies.to_offset(self.freq),
+            step_size=self.h if step_size is None else step_size,
+        )
+        for i_window, (cutoffs, train, valid) in enumerate(splits):
+            if X_df is not None:
+                train = train[["unique_id", "ds", "y"]].merge(X_df)
+                train_future = valid[["unique_id", "ds"]].merge(X_df)
+            else:
+                train_future = None
+            y_pred = self.forecast(
+                df=train,
+                X_df=train_future,
+            )
+            y_pred = join(y_pred, cutoffs, on="unique_id", how="left")
+            y_pred["ds"] = pd.to_datetime(y_pred["ds"])
+            result = join(
+                valid[["unique_id", "ds", "y"]],
+                y_pred,
+                on=["unique_id", "ds"],
+            )
+            if result.shape[0] < valid.shape[0]:
+                raise ValueError(
+                    "Cross validation result produced less results than expected. "
+                    "Please verify that the frequency parameter (freq) matches your series' "
+                    "and that there aren't any missing periods."
+                )
+            results.append(result)
+        out = vertical_concat(results)
+        out = drop_index_if_pandas(out)
+        first_out_cols = ["unique_id", "ds", "cutoff", "y"]
+        remaining_cols = [c for c in out.columns if c not in first_out_cols]
+        fcst_cv_df = out[first_out_cols + remaining_cols]
+        fcst_cv_df["ds"] = fcst_cv_df["ds"].astype(str)
+        fcst_cv_df = self.transform_outputs(fcst_cv_df)
+        return fcst_cv_df
 
 # %% ../nbs/timegpt.ipynb 7
 def validate_model_parameter(func):
@@ -804,6 +874,111 @@ class _TimeGPT:
         self.weights_x = timegpt_model.weights_x
         return anomalies_df
 
+    @validate_model_parameter
+    def _cross_validation(
+        self,
+        df: pd.DataFrame,
+        h: int,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Optional[List[Union[int, float]]] = None,
+        validate_token: bool = False,
+        n_windows: int = 1,
+        step_size: Optional[int] = None,
+        finetune_steps: int = 0,
+        clean_ex_first: bool = True,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
+    ):
+        """Perform cross validation in your time series using TimeGPT.
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        h : int
+            Forecast horizon.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        level : float (default=99)
+            Confidence level between 0 and 100 for detecting the anomalies.
+        validate_token : bool (default=False)
+            If True, validates token before
+            sending requests.
+        n_windows : int (defaul=1)
+            Number of windows to evaluate.
+        step_size : int, optional (default=None)
+            Step size between each cross validation window. If None it will be equal to `h`.
+        finetune_steps : int (default=0)
+            Number of steps used to finetune TimeGPT in the
+            new data.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
+        model : str (default='timegpt=1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
+
+        Returns
+        -------
+        cv_df : pandas.DataFrame
+            DataFrame with cross validation forecasts.
+        """
+        if validate_token and not self.validate_token(log=False):
+            raise Exception("Token not valid, please email ops@nixtla.io")
+        timegpt_model = _TimeGPTModel(
+            client=self.client,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            freq=freq,
+            level=level,
+            finetune_steps=finetune_steps,
+            clean_ex_first=clean_ex_first,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
+            max_retries=self.max_retries,
+            retry_interval=self.retry_interval,
+            max_wait_time=self.max_wait_time,
+        )
+        cv_df = timegpt_model.cross_validation(
+            df=df, n_windows=n_windows, step_size=step_size
+        )
+        self.weights_x = timegpt_model.weights_x
+        return cv_df
+
     def plot(
         self,
         df: pd.DataFrame,
@@ -915,6 +1090,18 @@ class _TimeGPT:
 
 # %% ../nbs/timegpt.ipynb 9
 class TimeGPT(_TimeGPT):
+    def _instantiate_distributed_timegpt(self):
+        from nixtlats.distributed.timegpt import _DistributedTimeGPT
+
+        dist_timegpt = _DistributedTimeGPT(
+            token=self.client._client_wrapper._token,
+            environment=self.client._client_wrapper._base_url,
+            max_retries=self.max_retries,
+            retry_interval=self.retry_interval,
+            max_wait_time=self.max_wait_time,
+        )
+        return dist_timegpt
+
     def forecast(
         self,
         df: pd.DataFrame,
@@ -930,8 +1117,8 @@ class TimeGPT(_TimeGPT):
         validate_token: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
-        model: str = "timegpt-1",
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ):
         """Forecast your time series using TimeGPT.
@@ -1021,15 +1208,7 @@ class TimeGPT(_TimeGPT):
                 model=model,
             )
         else:
-            from nixtlats.distributed.timegpt import _DistributedTimeGPT
-
-            dist_timegpt = _DistributedTimeGPT(
-                token=self.client._client_wrapper._token,
-                environment=self.client._client_wrapper._base_url,
-                max_retries=self.max_retries,
-                retry_interval=self.retry_interval,
-                max_wait_time=self.max_wait_time,
-            )
+            dist_timegpt = self._instantiate_distributed_timegpt()
             return dist_timegpt.forecast(
                 df=df,
                 h=h,
@@ -1131,15 +1310,7 @@ class TimeGPT(_TimeGPT):
                 model=model,
             )
         else:
-            from nixtlats.distributed.timegpt import _DistributedTimeGPT
-
-            dist_timegpt = _DistributedTimeGPT(
-                token=self.client._client_wrapper._token,
-                environment=self.client._client_wrapper._base_url,
-                max_retries=self.max_retries,
-                retry_interval=self.retry_interval,
-                max_wait_time=self.max_wait_time,
-            )
+            dist_timegpt = self._instantiate_distributed_timegpt()
             return dist_timegpt.detect_anomalies(
                 df=df,
                 freq=freq,
@@ -1153,4 +1324,123 @@ class TimeGPT(_TimeGPT):
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=num_partitions,
+            )
+
+    def cross_validation(
+        self,
+        df: pd.DataFrame,
+        h: int,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Optional[List[Union[int, float]]] = None,
+        validate_token: bool = False,
+        n_windows: int = 1,
+        step_size: Optional[int] = None,
+        finetune_steps: int = 0,
+        clean_ex_first: bool = True,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
+    ):
+        """Perform cross validation in your time series using TimeGPT.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        h : int
+            Forecast horizon.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        level : float (default=99)
+            Confidence level between 0 and 100 for detecting the anomalies.
+        validate_token : bool (default=False)
+            If True, validates token before
+            sending requests.
+        n_windows : int (defaul=1)
+            Number of windows to evaluate.
+        step_size : int, optional (default=None)
+            Step size between each cross validation window. If None it will be equal to `h`.
+        finetune_steps : int (default=0)
+            Number of steps used to finetune TimeGPT in the
+            new data.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
+        model : str (default='timegpt=1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
+
+        Returns
+        -------
+        cv_df : pandas.DataFrame
+            DataFrame with cross validation forecasts.
+        """
+        if isinstance(df, pd.DataFrame):
+            return self._cross_validation(
+                df=df,
+                h=h,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                level=level,
+                finetune_steps=finetune_steps,
+                clean_ex_first=clean_ex_first,
+                validate_token=validate_token,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
+                n_windows=n_windows,
+                step_size=step_size,
+            )
+        else:
+            dist_timegpt = self._instantiate_distributed_timegpt()
+            return dist_timegpt.cross_validation(
+                df=df,
+                h=h,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                level=level,
+                finetune_steps=finetune_steps,
+                clean_ex_first=clean_ex_first,
+                validate_token=validate_token,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
+                num_partitions=num_partitions,
+                n_windows=n_windows,
+                step_size=step_size,
             )
