@@ -442,14 +442,7 @@ class _TimeGPTModel:
             and not add_history
         )
         if restrict_input:
-            # add sufficient info to compute
-            # conformal interval
-            new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
-            Y_df = Y_df.groupby("unique_id").tail(new_input_size)
-            if X_df is not None:
-                X_df = X_df.groupby("unique_id").tail(
-                    new_input_size + self.h
-                )  # history plus exogenous
+            Y_df = Y_df.groupby("unique_id").tail(self.input_size)
         if self.finetune_steps > 0 or self.level is not None:
             self.validate_input_size(Y_df=Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
