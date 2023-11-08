@@ -17,8 +17,11 @@ def _append_one(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Append each value of new to each group in data formed by indptr."""
     n_groups = len(indptr) - 1
-    rows = data.shape[0] + new.shape[0]
-    new_data = np.empty((rows, data.shape[1]), dtype=data.dtype)
+    n_rows = data.shape[0] + new.shape[0]
+    if data.ndim == 2:
+        new_data = np.empty_like(data, shape=(n_rows, data.shape[1]))
+    else:
+        new_data = np.empty_like(data, shape=n_rows)
     new_indptr = indptr.copy()
     new_indptr[1:] += np.arange(1, n_groups + 1)
     for i in range(n_groups):
@@ -36,9 +39,12 @@ def _append_several(
     new_values: np.ndarray,
     new_groups: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    rows = data.shape[0] + new_values.shape[0]
-    new_data = np.empty((rows, data.shape[1]), dtype=data.dtype)
-    new_indptr = np.empty(new_sizes.size + 1, dtype=indptr.dtype)
+    n_rows = data.shape[0] + new_values.shape[0]
+    if data.ndim == 2:
+        new_data = np.empty_like(data, shape=(n_rows, data.shape[1]))
+    else:
+        new_data = np.empty_like(data, shape=n_rows)
+    new_indptr = np.empty_like(indptr, shape=new_sizes.size + 1)
     new_indptr[0] = 0
     old_indptr_idx = 0
     new_vals_idx = 0
@@ -86,19 +92,22 @@ class GroupedArray:
             data = data.astype(np.float32)
         return cls(data, indptr)
 
-    def _take_from_ranges(self, ranges: Sequence) -> "GroupedArray":
+    def _take_from_ranges(self, ranges: Sequence) -> Tuple[np.ndarray, np.ndarray]:
         items = [self.data[r] for r in ranges]
         sizes = np.array([item.shape[0] for item in items])
-        data = np.vstack(items)
+        if self.data.ndim == 2:
+            data = np.vstack(items)
+        else:
+            data = np.hstack(items)
         indptr = np.append(0, sizes.cumsum())
-        return GroupedArray(data, indptr)
+        return data, indptr
 
-    def take(self, idxs: Sequence[int]) -> "GroupedArray":
+    def take(self, idxs: Sequence[int]) -> Tuple[np.ndarray, np.ndarray]:
         """Subset specific groups by their indices."""
         ranges = [range(self.indptr[i], self.indptr[i + 1]) for i in idxs]
         return self._take_from_ranges(ranges)
 
-    def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
+    def take_from_groups(self, idx: Union[int, slice]) -> Tuple[np.ndarray, np.ndarray]:
         """Select a subset from each group."""
         if isinstance(idx, int):
             # this preserves the 2d structure of data when indexing with the range
@@ -108,20 +117,18 @@ class GroupedArray:
         ]
         return self._take_from_ranges(ranges)
 
-    def append(self, new: np.ndarray) -> "GroupedArray":
+    def append(self, new: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Appends each element of `new` to each existing group. Returns a copy."""
         if new.shape[0] != self.n_groups:
             raise ValueError(f"new must have {self.n_groups} rows.")
-        new_data, new_indptr = _append_one(self.data, self.indptr, new)
-        return GroupedArray(new_data, new_indptr)
+        return _append_one(self.data, self.indptr, new)
 
     def append_several(
         self, new_sizes: np.ndarray, new_values: np.ndarray, new_groups: np.ndarray
-    ) -> "GroupedArray":
-        new_data, new_indptr = _append_several(
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        return _append_several(
             self.data, self.indptr, new_sizes, new_values, new_groups
         )
-        return GroupedArray(new_data, new_indptr)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(n_rows={self.data.shape[0]:,}, n_groups={self.n_groups:,})"
