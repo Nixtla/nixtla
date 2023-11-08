@@ -18,8 +18,9 @@ from tenacity import (
     stop_after_attempt,
     wait_fixed,
     stop_after_delay,
-    retry_if_not_exception_type,
     RetryCallState,
+    retry_if_exception,
+    retry_if_not_exception_type,
 )
 
 from .client import ApiError, Nixtla, SingleSeriesForecast
@@ -124,6 +125,15 @@ class _TimeGPTModel:
             """Called after each retry attempt."""
             main_logger.info(f"Attempt {retry_state.attempt_number} failed...")
 
+        # we want to retry when:
+        # there is no ApiError
+        # there is an ApiError with string body
+        def is_api_error_with_text_body(exception):
+            if isinstance(exception, ApiError):
+                if isinstance(exception.body, str):
+                    return True
+            return False
+
         return retry(
             stop=(
                 stop_after_attempt(self.max_retries)
@@ -132,7 +142,8 @@ class _TimeGPTModel:
             wait=wait_fixed(self.retry_interval),
             reraise=True,
             after=after_retry,
-            retry=retry_if_not_exception_type(ApiError),
+            retry=retry_if_exception(is_api_error_with_text_body)
+            | retry_if_not_exception_type(ApiError),
         )
 
     def _call_api(self, method, kwargs):
