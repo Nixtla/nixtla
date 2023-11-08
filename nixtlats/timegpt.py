@@ -203,7 +203,7 @@ class _TimeGPTModel:
         renamer = {
             "unique_id": self.id_col,
             "ds": self.time_col,
-            "target_col": self.target_col,
+            "y": self.target_col,
         }
         if self.drop_uid:
             fcst_df = fcst_df.drop(columns="unique_id")
@@ -580,6 +580,7 @@ class _TimeGPTModel:
                 df=train,
                 X_df=train_future,
             )
+            y_pred, _ = self.transform_inputs(df=y_pred, X_df=None)
             y_pred = join(y_pred, cutoffs, on="unique_id", how="left")
             y_pred["ds"] = pd.to_datetime(y_pred["ds"])
             result = join(
