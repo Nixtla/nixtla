@@ -201,6 +201,54 @@ class _DistributedTimeGPT:
         )
         return anomalies_df
 
+    def cross_validation(
+        self,
+        df: fugue.AnyDataFrame,
+        h: int,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Optional[List[Union[int, float]]] = None,
+        finetune_steps: int = 0,
+        clean_ex_first: bool = True,
+        validate_token: bool = False,
+        date_features: Union[bool, List[str]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
+        n_windows: int = 1,
+        step_size: Optional[int] = None,
+        num_partitions: Optional[int] = None,
+    ) -> fugue.AnyDataFrame:
+        kwargs = dict(
+            h=h,
+            freq=freq,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            level=level,
+            finetune_steps=finetune_steps,
+            clean_ex_first=clean_ex_first,
+            validate_token=validate_token,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
+            n_windows=n_windows,
+            step_size=step_size,
+        )
+        schema = self._get_forecast_schema(
+            id_col=id_col, time_col=time_col, level=level, cv=True
+        )
+        fcst_df = self._distribute_method(
+            method=self._cross_validation,
+            df=df,
+            kwargs=kwargs,
+            schema=schema,
+            num_partitions=num_partitions,
+            id_col=id_col,
+        )
+        return fcst_df
+
     def _instantiate_timegpt(self):
         from nixtlats.timegpt import _TimeGPT
 
@@ -238,9 +286,20 @@ class _DistributedTimeGPT:
         timegpt = self._instantiate_timegpt()
         return timegpt._detect_anomalies(df=df, **kwargs)
 
+    def _cross_validation(
+        self,
+        df: pd.DataFrame,
+        kwargs,
+    ) -> pd.DataFrame:
+        timegpt = self._instantiate_timegpt()
+        return timegpt._cross_validation(df=df, **kwargs)
+
     @staticmethod
-    def _get_forecast_schema(id_col, time_col, level):
-        schema = f"{id_col}:string,{time_col}:datetime,TimeGPT:double"
+    def _get_forecast_schema(id_col, time_col, level, cv=False):
+        schema = f"{id_col}:string,{time_col}:datetime"
+        if cv:
+            schema = f"{schema},cutoff:datetime"
+        schema = f"{schema},TimeGPT:double"
         if level is not None:
             level = sorted(level)
             schema = f'{schema},{",".join([f"TimeGPT-lo-{lv}:double" for lv in reversed(level)])}'
