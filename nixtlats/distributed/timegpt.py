@@ -130,6 +130,7 @@ class _DistributedTimeGPT:
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ) -> fugue.AnyDataFrame:
         kwargs = dict(
@@ -145,6 +146,7 @@ class _DistributedTimeGPT:
             add_history=add_history,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
         )
         schema = self._get_forecast_schema(
             id_col=id_col, time_col=time_col, level=level
@@ -172,6 +174,7 @@ class _DistributedTimeGPT:
         validate_token: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
+        model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ) -> fugue.AnyDataFrame:
         kwargs = dict(
@@ -184,6 +187,7 @@ class _DistributedTimeGPT:
             validate_token=validate_token,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
         )
         schema = self._get_anomalies_schema(id_col=id_col, time_col=time_col)
         anomalies_df = self._distribute_method(
