@@ -35,7 +35,8 @@ spark = SparkSession.builder.getOrCreate()
 ``` text
 Setting default log level to "WARN".
 To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
-23/11/07 07:00:55 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+23/11/08 02:44:31 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+23/11/08 02:44:31 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
 ```
 
 ### Forecast
@@ -64,7 +65,8 @@ only showing top 5 rows
 ```
 
 ```python
-fcst_df = timegpt.forecast(spark_df, h=12).show(5)
+fcst_df = timegpt.forecast(spark_df, h=12)
+fcst_df.show(5)
 ```
 
 ``` text
