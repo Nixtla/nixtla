@@ -5,11 +5,13 @@ __all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_col
            'is_none', 'is_nan_or_none', 'match_if_categorical', 'vertical_concat', 'horizontal_concat',
            'copy_if_pandas', 'join', 'drop_index_if_pandas', 'rename', 'sort', 'offset_dates', 'group_by',
            'group_by_agg', 'is_in', 'between', 'fill_null', 'cast', 'value_cols_to_numpy', 'process_df',
-           'DataFrameProcessor']
+           'DataFrameProcessor', 'backtest_splits']
 
 # %% ../nbs/processing.ipynb 2
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+import reprlib
+import warnings
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -441,3 +443,95 @@ class DataFrameProcessor:
         self, df: DataFrame
     ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
         return process_df(df, self.id_col, self.time_col, self.target_col)
+
+# %% ../nbs/processing.ipynb 57
+def _single_split(
+    df: DataFrame,
+    i_window: int,
+    n_windows: int,
+    h: int,
+    id_col: str,
+    time_col: str,
+    freq: Union[int, str, pd.offsets.BaseOffset],
+    max_dates: Series,
+    step_size: Optional[int] = None,
+    input_size: Optional[int] = None,
+) -> Tuple[DataFrame, Series, Series]:
+    if step_size is None:
+        step_size = h
+    test_size = h + step_size * (n_windows - 1)
+    offset = test_size - i_window * step_size
+    train_ends = offset_dates(max_dates, freq, -offset)
+    valid_ends = offset_dates(train_ends, freq, h)
+    train_mask = df[time_col].le(train_ends)
+    valid_mask = df[time_col].gt(train_ends) & df[time_col].le(valid_ends)
+    if input_size is not None:
+        train_starts = offset_dates(train_ends, freq, -input_size)
+        train_mask &= df[time_col].gt(train_starts)
+    train_sizes = group_by(train_mask, df[id_col], maintain_order=True).sum()
+    if isinstance(train_sizes, pd.Series):
+        train_sizes = train_sizes.reset_index()
+    zeros_mask = train_sizes[time_col].eq(0)
+    if zeros_mask.all():
+        raise ValueError(
+            "All series are too short for the cross validation settings, "
+            f"at least {offset + 1} samples are required.\n"
+            "Please reduce `n_windows` or `h`."
+        )
+    elif zeros_mask.any():
+        ids = filter_with_mask(train_sizes[id_col], zeros_mask)
+        warnings.warn(
+            "The following series are too short for the window "
+            f"and will be dropped: {reprlib.repr(list(ids))}"
+        )
+        dropped_ids = is_in(df[id_col], ids)
+        valid_mask &= ~dropped_ids
+    if isinstance(train_ends, pd.Series):
+        cutoffs: DataFrame = (
+            train_ends.set_axis(df[id_col])
+            .groupby(id_col, observed=True)
+            .head(1)
+            .rename("cutoff")
+            .reset_index()
+        )
+    else:
+        cutoffs = train_ends.to_frame().with_columns(df[id_col])
+        cutoffs = (
+            group_by(cutoffs, id_col)
+            .agg(pl.col(time_col).head(1))
+            .explode(pl.col(time_col))
+            .rename({time_col: "cutoff"})
+        )
+    return cutoffs, train_mask, valid_mask
+
+# %% ../nbs/processing.ipynb 58
+def backtest_splits(
+    df: DataFrame,
+    n_windows: int,
+    h: int,
+    id_col: str,
+    time_col: str,
+    freq: Union[int, str, pd.offsets.BaseOffset],
+    step_size: Optional[int] = None,
+    input_size: Optional[int] = None,
+) -> Generator[Tuple[DataFrame, DataFrame, DataFrame], None, None]:
+    if isinstance(df, pd.DataFrame):
+        max_dates = df.groupby(id_col, observed=True)[time_col].transform("max")
+    else:
+        max_dates = df.select(pl.col(time_col).max().over(id_col))[time_col]
+    for i in range(n_windows):
+        cutoffs, train_mask, valid_mask = _single_split(
+            df,
+            i_window=i,
+            n_windows=n_windows,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+            freq=freq,
+            max_dates=max_dates,
+            step_size=step_size,
+            input_size=input_size,
+        )
+        train = filter_with_mask(df, train_mask)
+        valid = filter_with_mask(df, valid_mask)
+        yield cutoffs, train, valid
