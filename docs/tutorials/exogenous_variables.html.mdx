@@ -17,6 +17,8 @@ sales may increase.
 To incorporate exogenous variables in TimeGPT, you’ll need to pair each
 point in your time series data with the corresponding external data.
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/1_exogenous_variables.ipynb)
+
 ```python
 import pandas as pd
 from nixtlats import TimeGPT
@@ -102,7 +104,7 @@ timegpt.plot(
 )
 ```
 
-![](/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-7-output-1.png)
+![](/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-8-output-1.png)
 
 We also can get the importance of the features.
 
@@ -114,7 +116,7 @@ timegpt.weights_x.plot.barh(x='features', y='weights')
 <Axes: ylabel='features'>
 ```
 
-![](/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-8-output-2.png)
+![](/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-9-output-2.png)
 
 You can also add country holidays using the `CountryHolidays` class.
 
@@ -142,5 +144,5 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 <Axes: ylabel='features'>
 ```
 
-![](/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-10-output-3.png)
+![](/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-11-output-3.png)
 

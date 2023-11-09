@@ -20,6 +20,8 @@ When using TimeGPT for time series forecasting, you have the option to
 set the level of prediction intervals according to your requirements.
 TimeGPT uses conformal prediction to calibrate the intervals.
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/4_prediction_intervals.ipynb)
+
 ```python
 import pandas as pd
 from nixtlats import TimeGPT
@@ -86,7 +88,7 @@ timegpt.plot(
 )
 ```
 
-![](/docs/tutorials/4_prediction_intervals_files/figure-markdown_strict/cell-6-output-1.png)
+![](/docs/tutorials/4_prediction_intervals_files/figure-markdown_strict/cell-7-output-1.png)
 
 It’s essential to note that the choice of prediction interval level
 depends on your specific use case. For high-stakes predictions, you
@@ -131,5 +133,5 @@ timegpt.plot(
 )
 ```
 
-![](/docs/tutorials/4_prediction_intervals_files/figure-markdown_strict/cell-8-output-1.png)
+![](/docs/tutorials/4_prediction_intervals_files/figure-markdown_strict/cell-9-output-1.png)
 

@@ -4,6 +4,8 @@ title: Forecasting Time Series with Irregular Timestamps
 
 ---
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/8_irregular_timestamps.ipynb)
+
 ```python
 import pandas as pd
 from nixtlats import TimeGPT
@@ -65,7 +67,7 @@ series.
 timegpt.plot(pltr_df, time_col='date', target_col='Close')
 ```
 
-![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-7-output-1.png)
+![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-8-output-1.png)
 
 To forecast this data, you can use our `forecast` method. Importantly,
 remember to specify the frequency of the data using the `freq` argument.
@@ -120,7 +122,7 @@ timegpt.plot(
 )
 ```
 
-![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-10-output-1.png)
+![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-11-output-1.png)
 
 You can also add uncertainty quantification to your forecasts using the
 `level` argument:
@@ -152,7 +154,7 @@ timegpt.plot(
 )
 ```
 
-![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-12-output-1.png)
+![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-13-output-1.png)
 
 If you want to forecast another just change the `target_col` parameter.
 Let’s forecast `Volume` now:
@@ -178,7 +180,7 @@ WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. Th
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
-![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-13-output-2.png)
+![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-14-output-2.png)
 
 But what if we want to predict all the time series at once? We can do
 that reshaping our dataframe. Currently, the dataframe is in wide format
@@ -249,7 +251,7 @@ timegpt.plot(
 )
 ```
 
-![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-18-output-1.png)
+![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-19-output-1.png)
 
 #### Adding extra information
 
@@ -426,7 +428,7 @@ timegpt.plot(
 )
 ```
 
-![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-31-output-1.png)
+![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-32-output-1.png)
 
 We can also see the importance of the revenue:
 
@@ -438,5 +440,5 @@ timegpt.weights_x.plot.barh(x='features', y='weights')
 <Axes: ylabel='features'>
 ```
 
-![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-32-output-2.png)
+![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-33-output-2.png)
 

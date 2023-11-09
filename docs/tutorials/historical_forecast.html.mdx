@@ -9,6 +9,8 @@ retrieve historical forecasts alongside the prospective predictions.
 This functionality is accessible through the forecast method by setting
 the add_history=True argument.
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/7_historical_forecast.ipynb)
+
 ```python
 import pandas as pd
 from nixtlats import TimeGPT
@@ -45,7 +47,7 @@ df.head()
 timegpt.plot(df, time_col='timestamp', target_col='value')
 ```
 
-![](/docs/tutorials/7_historical_forecast_files/figure-markdown_strict/cell-5-output-1.png)
+![](/docs/tutorials/7_historical_forecast_files/figure-markdown_strict/cell-6-output-1.png)
 
 Let’s add fitted values. When `add_history` is set to True, the output
 DataFrame will include not only the future forecasts determined by the h
@@ -89,7 +91,7 @@ for evaluating its performance over time.
 timegpt.plot(df, timegpt_fcst_with_history_df, time_col='timestamp', target_col='value')
 ```
 
-![](/docs/tutorials/7_historical_forecast_files/figure-markdown_strict/cell-8-output-1.png)
+![](/docs/tutorials/7_historical_forecast_files/figure-markdown_strict/cell-9-output-1.png)
 
 Please note, however, that the initial values of the series are not
 included in these historical forecasts. This is because our model,
