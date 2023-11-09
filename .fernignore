@@ -16,6 +16,7 @@ settings.ini
 setup.py
 pyproject.toml
 nixtlats/timegpt.py
+nixtlats/utils.py
 nixtlats/_modidx.py
 nixtlats/__init__.py
 nixtlats/distributed/
