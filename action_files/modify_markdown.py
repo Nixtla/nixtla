@@ -16,7 +16,7 @@ def to_snake_case(s):
 
 
 def merge_lines(md_text):
-    code_block_pattern = re.compile(r"``` python([\s\S]*?)```", re.MULTILINE)
+    code_block_pattern = re.compile(r"``` (?:python|bash)([\s\S]*?)```", re.MULTILINE)
     code_blocks = code_block_pattern.findall(md_text)
     md_text_no_code = code_block_pattern.sub("CODEBLOCK", md_text)
     lines = md_text_no_code.split("\n")
@@ -75,7 +75,6 @@ def modify_markdown(
 title: "{title}"
 slug: "{slug}"
 order: {slug_number}
-excerpt: "Learn how to do {title} with TimeGPT"
 category: {category}
 hidden: false
 ---
@@ -88,7 +87,7 @@ hidden: false
 
     # Modify image paths
     content = content.replace("![figure](../../", f"![figure]({host_url}/nbs/")
-    pattern_image = re.compile(r"!\[\]\(((?!\.svg)*?)\)")
+    pattern_image = re.compile(r"!\[\]\(((?!.*\.svg).*?)\)")
     modified_content = pattern_image.sub(
         r"![](" + host_url + dir_path + r"\1)", content
     )
