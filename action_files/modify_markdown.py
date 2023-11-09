@@ -88,7 +88,7 @@ hidden: false
 
     # Modify image paths
     content = content.replace("![figure](../../", f"![figure]({host_url}/nbs/")
-    pattern_image = re.compile(r"!\[\]\(((?!\.svg)*?)\)")
+    pattern_image = re.compile(r"!\[\]\(((?!.*\.svg).*?)\)")
     modified_content = pattern_image.sub(
         r"![](" + host_url + dir_path + r"\1)", content
     )
