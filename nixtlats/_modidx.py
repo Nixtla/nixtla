@@ -120,5 +120,4 @@ d = { 'settings': { 'branch': 'main',
             'nixtlats.types.single_series_forecast': {},
             'nixtlats.types.validation_error': {},
             'nixtlats.types.validation_error_loc_item': {},
-            'nixtlats.utils': {'nixtlats.utils.colab_badge': ('utils.html#colab_badge', 'nixtlats/utils.py')},
-            'nixtlats.wrapper': {}}}
+            'nixtlats.utils': {'nixtlats.utils.colab_badge': ('utils.html#colab_badge', 'nixtlats/utils.py')}}}
