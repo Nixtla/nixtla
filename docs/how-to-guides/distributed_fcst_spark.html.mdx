@@ -1,7 +1,7 @@
 ---
 description: Run TimeGPT distributedly on top of Spark.
-output-file: distributed.spark.html
-title: How to use TimeGPT on Spark
+output-file: distributed_fcst_spark.html
+title: 'How to on Spark: Forecasting'
 
 ---
 
@@ -174,5 +174,9 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...=============>  (19 + 1) / 20]
 |       FR|2016-12-31 04:00:00|54.400922806813526|44.925772896840385|49.65213255412798|59.14971305949907|63.876072716786666|
 +---------+-------------------+------------------+------------------+-----------------+-----------------+------------------+
 only showing top 5 rows
+```
+
+```python
+spark.stop()
 ```
 
