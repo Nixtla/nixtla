@@ -37,6 +37,27 @@ jobs:
           git status -s # display the status to see which nbs need cleaning up
           if [ -n "$(git status -uno -s)" ]; then echo -e "!!! Detected unstripped out notebooks\n!!!Remember to run nbdev_install_git_hooks"; false; fi
 
+  check-import:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.9, '3.10']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Set up python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install nixtla
+        run: pip install ./
+
+      - name: Check import
+        run: python -c "from nixtlats import TimeGPT;"
+
   run-tests:
     runs-on: ${{ matrix.os }}
     strategy:
