@@ -23,15 +23,31 @@ two lines of code!
 
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
+```
 
+
+```python
 from nixtlats import TimeGPT
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+```
+
+
+```python
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
+```
+
+
+```python
 fcst_df = timegpt.forecast(df, h=24, level=[80, 90])
 ```
 
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
+INFO:nixtlats.timegpt:Restricting input...
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
@@ -39,5 +55,5 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 timegpt.plot(df, fcst_df, level=[80, 90], max_insample_length=24 * 5)
 ```
 
-![](/index_files/figure-markdown_strict/cell-3-output-1.png)
+![](/index_files/figure-markdown_strict/cell-6-output-1.png)
 

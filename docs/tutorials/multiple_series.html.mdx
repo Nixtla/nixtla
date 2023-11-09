@@ -11,15 +11,20 @@ series, enabling you to tailor the model to suit your specific needs or
 tasks.
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 The following dataset contains prices of different electricity markets.
@@ -62,14 +67,16 @@ timegpt_fcst_multiseries_df.head()
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
+INFO:nixtlats.timegpt:Restricting input...
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 |     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
 |-----|-----------|---------------------|-----------|---------------|---------------|---------------|---------------|
 | 0   | BE        | 2016-12-31 00:00:00 | 46.151176 | 36.660475     | 38.337019     | 53.965334     | 55.641878     |
-| 1   | BE        | 2016-12-31 01:00:00 | 42.426601 | 31.602235     | 33.976728     | 50.876475     | 53.250968     |
-| 2   | BE        | 2016-12-31 02:00:00 | 40.242889 | 30.439970     | 33.634985     | 46.850794     | 50.045809     |
+| 1   | BE        | 2016-12-31 01:00:00 | 42.426598 | 31.602227     | 33.976717     | 50.876478     | 53.250968     |
+| 2   | BE        | 2016-12-31 02:00:00 | 40.242889 | 30.439966     | 33.634981     | 46.850798     | 50.045813     |
 | 3   | BE        | 2016-12-31 03:00:00 | 38.265339 | 26.841481     | 31.022096     | 45.508582     | 49.689197     |
 | 4   | BE        | 2016-12-31 04:00:00 | 36.618801 | 18.541384     | 27.981348     | 45.256255     | 54.696218     |
 
@@ -92,17 +99,18 @@ timegpt_fcst_multiseries_with_history_df.head()
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 INFO:nixtlats.timegpt:Calling Historical Forecast Endpoint...
 ```
 
 |     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-80 | TimeGPT-lo-90 | TimeGPT-hi-80 | TimeGPT-hi-90 |
 |-----|-----------|---------------------|-----------|---------------|---------------|---------------|---------------|
-| 0   | BE        | 2016-12-06 00:00:00 | 55.756317 | 42.066461     | 38.185578     | 69.446173     | 73.327057     |
+| 0   | BE        | 2016-12-06 00:00:00 | 55.756325 | 42.066469     | 38.185585     | 69.446180     | 73.327064     |
 | 1   | BE        | 2016-12-06 01:00:00 | 52.820198 | 39.130342     | 35.249458     | 66.510054     | 70.390938     |
-| 2   | BE        | 2016-12-06 02:00:00 | 46.851070 | 33.161215     | 29.280331     | 60.540926     | 64.421810     |
+| 2   | BE        | 2016-12-06 02:00:00 | 46.851078 | 33.161222     | 29.280338     | 60.540934     | 64.421818     |
 | 3   | BE        | 2016-12-06 03:00:00 | 50.640884 | 36.951029     | 33.070145     | 64.330740     | 68.211624     |
-| 4   | BE        | 2016-12-06 04:00:00 | 52.420403 | 38.730547     | 34.849663     | 66.110258     | 69.991142     |
+| 4   | BE        | 2016-12-06 04:00:00 | 52.420395 | 38.730539     | 34.849655     | 66.110251     | 69.991134     |
 
 ```python
 timegpt.plot(

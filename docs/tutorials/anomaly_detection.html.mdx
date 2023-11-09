@@ -18,15 +18,16 @@ includes the `detect_anomalies` method to detect anomalies
 automatically.
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 The `detect_anomalies` method is designed to process a dataframe
@@ -171,6 +172,7 @@ timegpt.plot(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 ```
 
@@ -209,6 +211,7 @@ timegpt.plot(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 ```
 

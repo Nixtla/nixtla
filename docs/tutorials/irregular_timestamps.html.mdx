@@ -5,15 +5,20 @@ title: Forecasting Time Series with Irregular Timestamps
 ---
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 The first step is to fetch your time series data. The data must include
@@ -79,8 +84,8 @@ fcst_pltr_df = timegpt.forecast(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -89,11 +94,11 @@ fcst_pltr_df.head()
 
 |     | date       | TimeGPT   |
 |-----|------------|-----------|
-| 0   | 2023-09-25 | 14.365891 |
-| 1   | 2023-09-26 | 14.460796 |
-| 2   | 2023-09-27 | 14.413015 |
-| 3   | 2023-09-28 | 14.488708 |
-| 4   | 2023-09-29 | 14.470786 |
+| 0   | 2023-09-25 | 14.688427 |
+| 1   | 2023-09-26 | 14.742798 |
+| 2   | 2023-09-27 | 14.781240 |
+| 3   | 2023-09-28 | 14.824156 |
+| 4   | 2023-09-29 | 14.795214 |
 
 Remember, for business days, the frequency is ‘B’. For other
 frequencies, you can refer to the pandas offset aliases documentation:
@@ -132,8 +137,8 @@ fcst_pltr_levels_df = timegpt.forecast(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 INFO:nixtlats.timegpt:Calling Historical Forecast Endpoint...
 ```
 
@@ -169,8 +174,8 @@ timegpt.plot(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 ![](/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-13-output-2.png)
@@ -214,8 +219,8 @@ fcst_pltr_long_df = timegpt.forecast(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -224,11 +229,11 @@ fcst_pltr_long_df.head()
 
 |     | series_id | date       | TimeGPT   |
 |-----|-----------|------------|-----------|
-| 0   | Adj Close | 2023-09-25 | 14.365891 |
-| 1   | Adj Close | 2023-09-26 | 14.460796 |
-| 2   | Adj Close | 2023-09-27 | 14.413015 |
-| 3   | Adj Close | 2023-09-28 | 14.488708 |
-| 4   | Adj Close | 2023-09-29 | 14.470786 |
+| 0   | Adj Close | 2023-09-25 | 14.688427 |
+| 1   | Adj Close | 2023-09-26 | 14.742798 |
+| 2   | Adj Close | 2023-09-27 | 14.781240 |
+| 3   | Adj Close | 2023-09-28 | 14.824156 |
+| 4   | Adj Close | 2023-09-29 | 14.795214 |
 
 Then we can forecast the `Open` series:
 
@@ -300,6 +305,7 @@ fcst_pltr_revenue = timegpt.forecast(revenue_pltr, h=1, time_col='fiscalDateEndi
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: Q-DEC
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
@@ -309,7 +315,7 @@ fcst_pltr_revenue.head()
 
 |     | fiscalDateEnding | TimeGPT   |
 |-----|------------------|-----------|
-| 0   | 2023-09-30       | 547264448 |
+| 0   | 2023-09-30       | 540005888 |
 
 Continuing from where we left off, the next crucial step in our
 forecasting pipeline is to adjust the frequency of our data to match the
@@ -382,11 +388,11 @@ future_df.head()
 
 |     | date       | totalRevenue |
 |-----|------------|--------------|
-| 0   | 2023-07-03 | 547264448    |
-| 1   | 2023-07-04 | 547264448    |
-| 2   | 2023-07-05 | 547264448    |
-| 3   | 2023-07-06 | 547264448    |
-| 4   | 2023-07-07 | 547264448    |
+| 0   | 2023-07-03 | 540005888    |
+| 1   | 2023-07-04 | 540005888    |
+| 2   | 2023-07-05 | 540005888    |
+| 3   | 2023-07-06 | 540005888    |
+| 4   | 2023-07-07 | 540005888    |
 
 And then we can pass the future revenue in the `forecast` method using
 the `X_df` argument. Since the revenue is in the historic dataframe,
@@ -405,8 +411,8 @@ fcst_pltr_df = timegpt.forecast(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 ```python

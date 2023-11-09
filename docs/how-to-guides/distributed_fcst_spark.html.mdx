@@ -20,8 +20,18 @@ Instantiate `TimeGPT` class.
 
 ```python
 from nixtlats import TimeGPT
+```
 
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
+
+```python
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 Use Spark as an engine.
@@ -35,8 +45,8 @@ spark = SparkSession.builder.getOrCreate()
 ``` text
 Setting default log level to "WARN".
 To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
-23/11/08 02:44:31 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
-23/11/08 02:44:31 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+23/11/09 17:49:01 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+23/11/09 17:49:02 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
 ```
 
 ### Forecast
@@ -157,8 +167,9 @@ timegpt_fcst_ex_vars_df.show(5)
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...                                      
+INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...=============>  (19 + 1) / 20]
                                                                                 
 ```

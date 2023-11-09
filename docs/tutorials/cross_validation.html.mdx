@@ -23,15 +23,20 @@ ensuring your time series forecasting models are not just
 well-constructed, but also validated for trustworthiness and precision.
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 The `cross_validation` method within the `TimeGPT` class is an advanced

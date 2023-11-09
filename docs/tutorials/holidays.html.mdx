@@ -17,15 +17,20 @@ In this tutorial we will show how to add calendar variables
 automatically to a dataset using the `date_features` function.
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 Given the predominance usage of calendar variables, we included an
@@ -50,17 +55,17 @@ fcst_pltr_calendar_df.head()
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 |     | date       | TimeGPT   |
 |-----|------------|-----------|
-| 0   | 2023-09-25 | 14.790440 |
-| 1   | 2023-09-26 | 14.980692 |
-| 2   | 2023-09-27 | 15.161821 |
-| 3   | 2023-09-28 | 14.490647 |
-| 4   | 2023-09-29 | 14.354399 |
+| 0   | 2023-09-25 | 14.677374 |
+| 1   | 2023-09-26 | 14.825757 |
+| 2   | 2023-09-27 | 15.126798 |
+| 3   | 2023-09-28 | 14.398899 |
+| 4   | 2023-09-29 | 14.387407 |
 
 ```python
 timegpt.plot(
@@ -82,7 +87,7 @@ timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
 ```
 
 ``` text
-<AxesSubplot:ylabel='features'>
+<Axes: ylabel='features'>
 ```
 
 ![](/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-7-output-2.png)
@@ -106,12 +111,12 @@ timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 ``` text
-<AxesSubplot:ylabel='features'>
+<Axes: ylabel='features'>
 ```
 
 ![](/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-9-output-3.png)

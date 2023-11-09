@@ -18,15 +18,20 @@ To incorporate exogenous variables in TimeGPT, you’ll need to pair each
 point in your time series data with the corresponding external data.
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 Let’s see an example on predicting day-ahead electricity prices. The
@@ -76,6 +81,7 @@ timegpt_fcst_ex_vars_df.head()
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
@@ -128,6 +134,7 @@ timegpt.weights_x.plot.barh(x='features', y='weights')
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 

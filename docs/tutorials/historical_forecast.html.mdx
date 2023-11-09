@@ -10,15 +10,20 @@ This functionality is accessible through the forecast method by setting
 the add_history=True argument.
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 Now you can start to make forecasts! Let’s import an example:
@@ -59,6 +64,7 @@ timegpt_fcst_with_history_df = timegpt.forecast(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 INFO:nixtlats.timegpt:Calling Historical Forecast Endpoint...
 ```

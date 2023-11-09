@@ -21,15 +21,20 @@ set the level of prediction intervals according to your requirements.
 TimeGPT uses conformal prediction to calibrate the intervals.
 
 ```python
-import os
-
 import pandas as pd
 from nixtlats import TimeGPT
 ```
 
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
 
 ```python
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 When using TimeGPT for time series forecasting, you can set the level
@@ -60,6 +65,8 @@ timegpt_fcst_pred_int_df.head()
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Restricting input...
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
@@ -103,16 +110,17 @@ timegpt_fcst_pred_int_historical_df.head()
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 INFO:nixtlats.timegpt:Calling Historical Forecast Endpoint...
 ```
 
 |     | timestamp  | TimeGPT    | TimeGPT-lo-80 | TimeGPT-lo-90 | TimeGPT-hi-80 | TimeGPT-hi-90 |
 |-----|------------|------------|---------------|---------------|---------------|---------------|
-| 0   | 1951-01-01 | 135.483673 | 111.937768    | 105.262831    | 159.029579    | 165.704516    |
-| 1   | 1951-02-01 | 144.442398 | 120.896493    | 114.221556    | 167.988304    | 174.663241    |
+| 0   | 1951-01-01 | 135.483673 | 111.937767    | 105.262830    | 159.029579    | 165.704516    |
+| 1   | 1951-02-01 | 144.442413 | 120.896508    | 114.221571    | 167.988319    | 174.663256    |
 | 2   | 1951-03-01 | 157.191910 | 133.646004    | 126.971067    | 180.737815    | 187.412752    |
-| 3   | 1951-04-01 | 148.769363 | 125.223458    | 118.548521    | 172.315269    | 178.990206    |
+| 3   | 1951-04-01 | 148.769379 | 125.223473    | 118.548536    | 172.315284    | 178.990221    |
 | 4   | 1951-05-01 | 140.472946 | 116.927041    | 110.252104    | 164.018852    | 170.693789    |
 
 ```python

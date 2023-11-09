@@ -20,8 +20,18 @@ Instantiate `TimeGPT` class.
 
 ```python
 from nixtlats import TimeGPT
+```
 
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
+
+```python
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 ```
 
 Use Spark as an engine.
@@ -35,8 +45,10 @@ spark = SparkSession.builder.getOrCreate()
 ``` text
 Setting default log level to "WARN".
 To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
-23/11/09 00:34:59 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
-23/11/09 00:34:59 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+23/11/09 17:49:20 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+23/11/09 17:49:21 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+23/11/09 17:49:21 WARN Utils: Service 'SparkUI' could not bind on port 4041. Attempting port 4042.
+23/11/09 17:49:21 WARN Utils: Service 'SparkUI' could not bind on port 4042. Attempting port 4043.
 ```
 
 ### Cross validation
@@ -70,7 +82,7 @@ fcst_df.show(5)
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...                        (4 + 16) / 20]
+INFO:nixtlats.timegpt:Validating inputs...                        (5 + 15) / 20]
 INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
@@ -162,7 +174,7 @@ timegpt_cv_ex_vars_df.show(5)
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...=====================>  (19 + 1) / 20]
+INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
@@ -170,7 +182,7 @@ INFO:nixtlats.timegpt:Inferred freq: H
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtlats.timegpt:Restricting input...
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Validating inputs...=====================>  (19 + 1) / 20]
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: H
