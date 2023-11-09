@@ -1,0 +1,257 @@
+---
+output-file: faqs.html
+title: FAQS
+
+---
+
+## Setting Up Your Authentication Token for Nixtla SDK
+
+### What is a token?
+
+A token is a unique string of characters that serves as a key to
+authenticate your requests when using the Nixtla SDK. It ensures that
+the person making the requests is allowed to do so.
+
+### How do I use my token with Nixtla SDK?
+
+Nixtla will provide you with a personal token upon registration or via
+your account settings. To integrate this token into your development
+workflow with the Nixtla SDK, you have two primary methods:
+
+1.  **Direct Copy and Paste:**
+    -   **Step 1:** Copy the token provided to you by Nixtla.
+    -   **Step 2:** Instantiate the `TimeGPT` class by directly pasting
+        your token into the code, as shown below:
+
+```python
+from nixtlats import TimeGPT
+timegpt = TimeGPT(token='paste your token here')
+```
+
+``` text
+/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from tqdm.autonotebook import tqdm
+```
+
+This approach is straightforward and best for quick tests or scripts
+that won’t be shared.
+
+1.  **Using an Environment Variable:**
+
+    -   **Step 1:** Store your token in an environment variable named
+        `TIMEGPT_TOKEN`. This can be done for a session or permanently,
+        depending on your preference.
+
+    -   **Step 2:** When you instantiate the `TimeGPT` class, it will
+        automatically look for the `TIMEGPT_TOKEN` environment variable.
+
+```python
+from nixtlats import TimeGPT
+timegpt = TimeGPT()
+```
+
+There are several ways to set an environment variable:
+
+-   **From the Terminal:** Use the export command to set the
+    `TIMEGPT_TOKEN`.
+
+```bash
+export TIMEGPT_TOKEN=your_token
+```
+
+-   **Using a `.env` File:** For a more persistent solution that can be
+    version-controlled if private, or for ease of use across different
+    projects, place your token in a `.env` file.
+
+```bash
+# Inside a file named .env
+TIMEGPT_TOKEN=your_token
+```
+
+-   **Within Python:** If using a `.env` file, you can load the
+    environment variable within your Python script. Use the `dotenv`
+    package to load the `.env` file, then instantiate the `TimeGPT`
+    class.
+
+```python
+from dotenv import load_dotenv
+
+load_dotenv()
+from nixtlats import TimeGPT
+timegpt = TimeGPT()
+```
+
+This approach is more secure and suitable for applications that will be
+deployed or shared, as it keeps tokens out of the source code.
+
+Remember, your token is like a password - keep it secret, keep it safe!
+
+## Long Horizon in Time Series
+
+When managing long horizon forecasting tasks in time series analysis,
+understanding the data’s frequency and seasonality is crucial.
+Seasonality refers to periodic fluctuations in time series data that
+occur at regular intervals, like daily, weekly, or annually.
+
+### What is Long Horizon?
+
+-   **Definition**: A “long horizon” in time series forecasting refers
+    to predictions that extend beyond the range of one or two seasonal
+    cycles. The exact definition depends on the data’s frequency and
+    inherent seasonality. For example, with daily data that shows weekly
+    seasonality (7 days), forecasting beyond two weeks would typically
+    be considered a long horizon.
+
+-   **Challenges**: Forecasting over a long horizon is challenging due
+    to the increased uncertainty and the potential influence of many
+    more unknown factors as the forecast period extends. Also, the
+    further out the forecast, the more likely it is that the seasonal
+    patterns may change or be influenced by other factors.
+
+### How do I use `TimeGPT` for Long Horizon tasks?
+
+To effectively forecast long horizons, especially when you need to
+predict more than two seasonal cycles, it’s recommended to use
+specialized models. The `TimeGPT` model in the Nixtla SDK is designed to
+handle these kinds of tasks:
+
+-   **Model Selection**: Choose the appropriate model variant designed
+    for long horizons. For the Nixtla SDK, this is done by setting the
+    `model` parameter to `'timegpt-1-long-horizon'`.
+
+-   **Forecasting**: Use the `forecast` method to predict the future
+    values of your time series. You can specify the number of periods to
+    forecast (`h`) corresponding to your long-horizon needs.
+
+Here’s how you can implement it:
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+df.head()
+```
+
+|     | timestamp  | value |
+|-----|------------|-------|
+| 0   | 1949-01-01 | 112   |
+| 1   | 1949-02-01 | 118   |
+| 2   | 1949-03-01 | 132   |
+| 3   | 1949-04-01 | 129   |
+| 4   | 1949-05-01 | 121   |
+
+```python
+from nixtlats import TimeGPT
+timegpt = TimeGPT()
+
+# df is your time series dataframe
+# h is the forecast horizon
+# 'timegpt-1-long-horizon' is the model variant for long horizon forecasting
+fcst_df = timegpt.forecast(df=df, h=36, model='timegpt-1-long-horizon', time_col='timestamp', target_col='value')
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+```
+
+```python
+timegpt.plot(df, fcst_df, time_col='timestamp', target_col='value')
+```
+
+![](/docs/misc/0_faqs_files/figure-markdown_strict/cell-8-output-1.png)
+
+**The model argument is also supported by `TimeGPT.cross_validation` and
+`TimeGPT.detect_anomalies`.**
+
+In this example, `df` is your time series data frame, `h=36` would be
+forecasting for three years ahead, assuming a monthly frequency with a
+yearly seasonality, which qualifies as a long horizon forecast.
+
+It’s important to note that while the `TimeGPT` model is designed to
+handle long horizon tasks, the quality of the forecast can still depend
+on several factors, including data quality, inherent noise in the data,
+and any external factors that might influence the trend or seasonality
+over time.
+
+## Exogenous variables
+
+Exogenous variables are external factors that can influence the target
+variable you are forecasting in a time series model. In the context of
+the SDK you’re using, these exogenous variables are included in the
+forecasting model to improve the accuracy of the predictions.
+
+Here’s a detailed explanation of how to incorporate exogenous variables
+in the SDK:
+
+### How do I use Exogenous Variables in the SDK?
+
+1.  **Prepare Your Data:** Ensure that your main dataframe (`df`)
+    contains the historical data including the target variable (`y`) and
+    all exogenous variables that align with the temporal component
+    (`ds`). These exogenous variables (`Exogenous1`, `Exogenous2`, etc.)
+    represent the known values up to the current date.
+
+2.  **Forecasting with Exogenous Variables:** To forecast future values,
+    you must also provide the future values of these exogenous
+    variables. This is done with a separate dataframe (`X_df`), which
+    contains the future timestamps and the expected values of the
+    exogenous variables for those times.
+
+The following image shows graphically the distinction between `df` and
+`X_df`. `df` must include all the information (historical values of the
+target variable given by `Historical y` in the plot and the exogenous
+variables: `Historical Exogenous 1`, and `Historical Exogenous 2`)
+before the `Forecast Starting Point` given by the vertical black line.
+Since we want to generate forecasts for `Historical y` (i.e. to fill in
+the bottom-right part of the plot), we need the future values of the
+exogenous variables (`Future Exogenous 1`, and `Future Exogenous 2`).
+That information must be included in `X_df`.
+
+![](/docs/misc/0_faqs_files/figure-markdown_strict/cell-9-output-1.png)
+
+1.  **TimeGPT:** When calling the `forecast` method, pass the historical
+    dataframe (`df`), specify the horizon (`h`) for the forecast, and
+    pass the future exogenous values `X_df`. The model will
+    automatically consider the exogenous variables in `df` for the
+    historical periods.
+
+```python
+from nixtlats import TimeGPT
+timegpt = TimeGPT()
+
+# df is your historical dataframe including the target and exogenous variables
+# X_df is your future dataframe with expected values for the exogenous variables
+# h is the number of periods you want to forecast into the future
+forecasted_values = timegpt.forecast(df=df, X_df=X_df, h=21)
+```
+
+#### Note on API Endpoint Usage
+
+When using direct API endpoints (REST API calls), the approach differs
+slightly:
+
+-   **Unified Dataframe:** You must concatenate your historical and
+    future exogenous variable data into one unified dataframe (`x`).
+    This dataframe should contain both the past values used for training
+    and the future values for which you want predictions.
+
+-   **API Payload Structure:** The API expects a payload where the
+    target variable (`y`) and the unified exogenous variables (`x`) are
+    passed separately.
+
+-   **Calling the API:** When making a REST API call, you will typically
+    send a request to the API endpoint with the payload structured as
+    described above.
+
+Remember that while the SDK abstracts some of the complexities and can
+automatically handle different dataframes for historical and future
+values, the API endpoint requires a more manual approach to data
+preparation.
+
