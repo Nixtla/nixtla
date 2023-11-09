@@ -13,7 +13,6 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
-from mlforecast.utils import backtest_splits
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -24,6 +23,7 @@ from tenacity import (
     retry_if_not_exception_type,
 )
 from utilsforecast.processing import (
+    backtest_splits,
     drop_index_if_pandas,
     join,
     maybe_compute_sort_indices,

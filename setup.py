@@ -24,12 +24,11 @@ setuptools.setup(
     python_requires=">=3.7",
     install_requires=[
         "httpx",
-        "mlforecast",
         "pandas",
         "pydantic<2",
         "requests",
         "tenacity",
-        "utilsforecast>=0.0.12",
+        "utilsforecast>=0.0.13",
     ],
     extras_require={
         "dev": dev + distributed + plotting + date_extras,
