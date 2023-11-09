@@ -15,7 +15,7 @@ dependencies:
     - flake8
     - python-dotenv
     - statsforecast
-    - utilsforecast
+    - utilsforecast>=0.0.13
     - requests
     - duckdb<0.8
     - fugue[ray]
