@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+from utilsforecast.processing import backtest_splits
 
 from mlforecast.core import (
     DateFeature,
@@ -22,7 +23,6 @@ from mlforecast.core import (
     TargetTransform,
     TimeSeries,
 )
-from .utils import backtest_splits
 
 # %% ../nbs/lgb_cv.ipynb 5
 def _mape(y_true, y_pred, ids, _dates):

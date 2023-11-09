@@ -35,6 +35,7 @@ try:
 except ModuleNotFoundError:
     RAY_INSTALLED = False
 from sklearn.base import clone
+from utilsforecast.processing import _single_split
 
 from mlforecast.core import (
     DateFeature,
@@ -45,7 +46,6 @@ from mlforecast.core import (
     TimeSeries,
     _name_models,
 )
-from ..utils import single_split
 
 # %% ../../nbs/distributed.forecast.ipynb 6
 WindowInfo = namedtuple(
@@ -161,7 +161,7 @@ class DistributedMLForecast:
             valid = None
         else:
             max_dates = part.groupby(id_col, observed=True)[time_col].transform("max")
-            cutoffs, train_mask, valid_mask = single_split(
+            cutoffs, train_mask, valid_mask = _single_split(
                 part,
                 i_window=window_info.i_window,
                 n_windows=window_info.n_windows,

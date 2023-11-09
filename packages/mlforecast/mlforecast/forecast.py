@@ -15,6 +15,7 @@ from sklearn.base import BaseEstimator, clone
 from utilsforecast.compat import DataFrame
 from utilsforecast.processing import (
     assign_columns,
+    backtest_splits,
     copy_if_pandas,
     counts_by_id,
     drop_index_if_pandas,
@@ -43,7 +44,7 @@ from .grouped_array import GroupedArray
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
 from .target_transforms import BaseGroupedArrayTargetTransform
-from .utils import PredictionIntervals, backtest_splits
+from .utils import PredictionIntervals
 
 # %% ../nbs/forecast.ipynb 6
 def _add_conformal_distribution_intervals(
