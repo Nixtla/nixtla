@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BASE_DIR="nbs/docs/"
-SUB_DIRS=("getting-started" "tutorials" "how-to-guides")
+SUB_DIRS=("getting-started" "tutorials" "how-to-guides" "misc")
 
 counter=0
 for sub_dir in "${SUB_DIRS[@]}"; do
