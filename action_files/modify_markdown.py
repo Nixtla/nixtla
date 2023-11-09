@@ -75,7 +75,6 @@ def modify_markdown(
 title: "{title}"
 slug: "{slug}"
 order: {slug_number}
-excerpt: "Learn how to do {title} with TimeGPT"
 category: {category}
 hidden: false
 ---
