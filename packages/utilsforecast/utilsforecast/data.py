@@ -33,7 +33,8 @@ def generate_series(
     n_series : int
         Number of series for synthetic panel.
     freq : str (default='D')
-        Frequency of the data, 'D' or 'M'.
+        Frequency of the data (pandas alias).
+        Seasonalities are implemented for 'H', 'D' and 'M'.
     min_length : int (default=50)
         Minimum length of synthetic panel's series.
     max_length : int (default=500)
@@ -66,18 +67,14 @@ def generate_series(
         raise ValueError(
             f"{engine} is not a correct engine; available options: {available_engines}"
         )
-    seasonalities = {"D": 7, "M": 12}
-    available_frequencies = seasonalities.keys()
-    if freq not in available_frequencies:
-        raise ValueError(
-            f"Currently soported frequencies are: {available_frequencies}, got {freq}"
-        )
+    seasonalities = {"H": 24, "D": 7, "M": 12}
+    season = seasonalities.get(freq, 1)
+    freq = pd.tseries.frequencies.to_offset(freq)
 
     rng = np.random.RandomState(seed)
     series_lengths = rng.randint(min_length, max_length + 1, n_series)
     total_length = series_lengths.sum()
 
-    season = seasonalities[freq]
     vals_dict = {"unique_id": np.repeat(np.arange(n_series), series_lengths)}
 
     dates = pd.date_range("2000-01-01", periods=max_length, freq=freq).values
