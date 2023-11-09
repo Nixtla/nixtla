@@ -45,7 +45,10 @@ Get started with TimeGPT now:
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
 
 from nixtlats import TimeGPT
-timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
 fcst_df = timegpt.forecast(df, h=24, level=[80, 90])
 ```
 

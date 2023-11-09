@@ -49,8 +49,8 @@ def _cotransform(
 class _DistributedTimeGPT:
     def __init__(
         self,
-        token: str,
-        environment: str,
+        token: Optional[str] = None,
+        environment: Optional[str] = None,
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 60,

@@ -4,9 +4,10 @@
 __all__ = ['main_logger', 'httpx_logger']
 
 # %% ../nbs/timegpt.ipynb 3
-import logging
 import inspect
 import json
+import logging
+import os
 import requests
 import warnings
 from typing import Dict, List, Optional, Union
@@ -624,7 +625,7 @@ class _TimeGPT:
 
     def __init__(
         self,
-        token: str,
+        token: Optional[str] = None,
         environment: Optional[str] = None,
         max_retries: int = 6,
         retry_interval: int = 10,
@@ -635,9 +636,10 @@ class _TimeGPT:
 
         Parameters
         ----------
-        token : str
-            The authorization token to interact with the TimeGPT API.
-        environment : str
+        token : str, (default=None)
+            The authorization token interacts with the TimeGPT API.
+            If not provided, it will be inferred by the TIMEGPT_TOKEN environment variable.
+        environment : str, (default=None)
             Custom environment. Pass only if provided.
         max_retries : int, (default=6)
             The maximum number of attempts to make when calling the API before giving up.
@@ -656,6 +658,13 @@ class _TimeGPT:
             The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to
             catch these errors, use max_wait_time >> 60.
         """
+        if token is None:
+            token = os.environ.get("TIMEGPT_TOKEN")
+        if token is None:
+            raise Exception(
+                "The token must be set either by passing `token` "
+                "or by setting the TIMEGPT_TOKEN environment variable."
+            )
         if environment is None:
             environment = "https://dashboard.nixtla.io/api"
         self.client = Nixtla(base_url=environment, token=token)
