@@ -46,6 +46,10 @@
       "pages": ["docs/how-to-guides/distributed.spark.html"]
     },
     {
+      "group": "FAQS & Misc",
+      "pages": ["docs/misc/faqs.html"]
+    },
+    {
       "group": "API Reference",
       "pages": ["timegpt.html", "date_features.html"]
     }
