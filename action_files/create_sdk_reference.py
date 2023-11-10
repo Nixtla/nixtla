@@ -19,7 +19,7 @@ title: "SDK Reference"
 slug: "sdk_reference"
 order: {slug_number}
 type: "link"
-link_url: "https://nixtla.github.io/nixtla/timegpt.html"
+link_url: "https://nixtla.mintlify.app/nixtla/timegpt.html" 
 link_external: true
 category: {category}
 ---

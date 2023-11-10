@@ -20,4 +20,13 @@ for sub_dir in "${SUB_DIRS[@]}"; do
     fi
 done
 
-python -m action_files.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/
+# Process SDK API Reference link
+echo $counter
+python -m actecho ion_files.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/
+((counter++))
+
+# process changelog
+echo $counter
+file_changelog="./nbs/_docs/docs/CHANGELOG.md"
+cp ./CHANGELOG.md ${file_changelog} 
+python -m action_files.modify_markdown --file_path "$file_changelog" --slug_number "$counter"
