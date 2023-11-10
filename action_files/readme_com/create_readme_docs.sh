@@ -12,7 +12,7 @@ for sub_dir in "${SUB_DIRS[@]}"; do
             md_file="${ipynb_file%.ipynb}.md"
             md_file="${md_file/docs/_docs/docs}"
             quarto render "$ipynb_file" --to md
-            python -m action_files.modify_markdown --file_path "$md_file" --slug_number "$counter"
+            python -m action_files.readme_com.modify_markdown --file_path "$md_file" --slug_number "$counter"
 	    ((counter++))
 	done < <(find "$DIR" -type f -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" | sort)
     else
@@ -20,4 +20,13 @@ for sub_dir in "${SUB_DIRS[@]}"; do
     fi
 done
 
-python -m action_files.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/
+# Process SDK API Reference link
+echo $counter
+python -m action_files.readme_com.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/
+((counter++))
+
+# process changelog
+echo $counter
+file_changelog="./nbs/_docs/docs/CHANGELOG.md"
+cp ./CHANGELOG.md ${file_changelog} 
+python -m action_files.readme_com.modify_markdown --file_path "$file_changelog" --slug_number "$counter"
