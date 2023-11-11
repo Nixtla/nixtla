@@ -581,7 +581,7 @@ class _TimeGPTModel:
             step_size=self.h if step_size is None else step_size,
         )
         for i_window, (cutoffs, train, valid) in enumerate(splits):
-            if len(valid) > 3:
+            if len(valid.columns) > 3:
                 # if we have uid, ds, y + exogenous vars
                 train_future = valid.drop(columns="y")
             else:
