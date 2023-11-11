@@ -403,6 +403,14 @@ class _TimeGPTModel:
             to_dict_args["index"] = False
         y = Y_df.to_dict(**to_dict_args)
         x = X_df.to_dict(**to_dict_args) if X_df is not None else None
+        # A: I'm aware that sel.x_cols exists, but
+        # I want to be sure that we are logging the correct
+        # x cols :kiss:
+        if x:
+            x_cols = [col for col in x["columns"] if col not in ["unique_id", "ds"]]
+            main_logger.info(
+                f'Using the following exogenous variables: {", ".join(x_cols)}'
+            )
         return y, x
 
     def set_model_params(self):
@@ -552,11 +560,12 @@ class _TimeGPTModel:
         n_windows: int = 1,
         step_size: Optional[int] = None,
     ):
-        df, X_df = self.transform_inputs(df=df, X_df=None)
+        # A: see `transform_inputs`
+        # the code always will return X_df=None
+        # if X_df=None
+        df, _ = self.transform_inputs(df=df, X_df=None)
         self.infer_freq(df)
         df["ds"] = pd.to_datetime(df["ds"])
-        if X_df is not None:
-            X_df["ds"] = pd.to_datetime(X_df["ds"])
         # mlforecast cv code
         results = []
         sort_idxs = maybe_compute_sort_indices(df, "unique_id", "ds")
@@ -572,9 +581,9 @@ class _TimeGPTModel:
             step_size=self.h if step_size is None else step_size,
         )
         for i_window, (cutoffs, train, valid) in enumerate(splits):
-            if X_df is not None:
-                train = train[["unique_id", "ds", "y"]].merge(X_df)
-                train_future = valid[["unique_id", "ds"]].merge(X_df)
+            if len(valid.columns) > 3:
+                # if we have uid, ds, y + exogenous vars
+                train_future = valid.drop(columns="y")
             else:
                 train_future = None
             y_pred = self.forecast(
