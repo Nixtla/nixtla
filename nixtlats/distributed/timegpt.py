@@ -82,8 +82,8 @@ class _DistributedTimeGPT:
             num_partitions = engine.get_current_parallelism()
         partition = dict(by=id_col, num=num_partitions, algo="coarse")
         params = dict(
-            kwargs=kwargs,
-        )
+            kwargs={**kwargs, "num_partitions": 1},
+        )  # local num_partitions
         if X_df is not None:
             # check same engine
             engine_x = make_execution_engine(infer_by=[X_df])
