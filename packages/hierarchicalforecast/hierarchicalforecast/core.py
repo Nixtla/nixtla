@@ -23,9 +23,9 @@ def _build_fn_name(fn) -> str:
     func_params = fn.__dict__
 
     # Take default parameter out of names
-    args_to_remove = ['insample']
+    args_to_remove = ['insample', 'num_threads']
     if not func_params.get('nonnegative', False):
-        args_to_remove += ['nonnegative']
+        args_to_remove.append('nonnegative')
 
     if fn_name == 'MinTrace' and \
         func_params['method']=='mint_shrink':

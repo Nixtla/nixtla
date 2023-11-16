@@ -6,6 +6,7 @@ __all__ = ['BottomUp', 'BottomUpSparse', 'TopDown', 'MiddleOut', 'MinTrace', 'Mi
 # %% ../nbs/methods.ipynb 3
 import warnings
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Union
 
@@ -136,7 +137,7 @@ class BottomUp(HReconciler):
 
     **References:**<br>
     - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American 
-    Economic Review, 58 , 773{787)](http://www.jstor.org/stable/1815532).
+    Economic Review, 58 , 773(787)](http://www.jstor.org/stable/1815532).
     """
     insample = False
 
@@ -565,13 +566,16 @@ class MinTrace(HReconciler):
     minimizes the squared errors for the coherent forecasts under an unbiasedness assumption; the solution has a 
     closed form.<br>
 
-    $$\mathbf{P}_{\\text{MinT}}=\\left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S}\\right)^{-1}
-    \mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}$$
+    $$
+    \mathbf{P}_{\\text{MinT}}=\\left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S}\\right)^{-1}
+    \mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}
+    $$
 
     **Parameters:**<br>
     `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.<br>
     `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
     `mint_shr_ridge`: float=2e-8, ridge numeric protection to MinTrace-shr covariance estimator.<br>
+    `num_threads`: int=1, number of threads to use for solving the optimization problems.
 
     **References:**<br>
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
@@ -584,12 +588,14 @@ class MinTrace(HReconciler):
     def __init__(self, 
                  method: str,
                  nonnegative: bool = False,
-                 mint_shr_ridge: Optional[float] = 2e-8):
+                 mint_shr_ridge: Optional[float] = 2e-8,
+                 num_threads: int = 1):
         self.method = method
         self.nonnegative = nonnegative
         self.insample = method in ['wls_var', 'mint_cov', 'mint_shrink']
         if method == 'mint_shrink':
             self.mint_shr_ridge = mint_shr_ridge
+        self.num_threads = num_threads
 
     def _get_PW_matrices(self, 
                   S: np.ndarray,
@@ -708,9 +714,11 @@ class MinTrace(HReconciler):
         if self.nonnegative:
             _, n_bottom = S.shape
             W_inv = np.linalg.pinv(self.W)
-            warnings.warn('Replacing negative forecasts with zero.')
-            y_hat = np.copy(y_hat)
-            y_hat[y_hat < 0] = 0.
+            negatives = y_hat < 0
+            if negatives.any():
+                warnings.warn('Replacing negative forecasts with zero.')
+                y_hat = np.copy(y_hat)
+                y_hat[negatives] = 0.
             # Quadratic progamming formulation
             # here we are solving the quadratic programming problem
             # formulated in the origial paper
@@ -724,8 +732,16 @@ class MinTrace(HReconciler):
             b = np.zeros(n_bottom)
             # the quadratic programming problem
             # returns the forecasts of the bottom series
-            bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0], 
-                                              axis=0, arr=y_hat)
+            if self.num_threads == 1:
+                bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0], 
+                                                  axis=0, arr=y_hat)
+            else:
+                futures = []
+                with ThreadPoolExecutor(self.num_threads) as executor:
+                    for j in range(y_hat.shape[1]):
+                        future = executor.submit(solve_qp, G=G, a=a @ y_hat[:, j], C=C, b=b)
+                        futures.append(future)
+                    bottom_fcts = np.hstack([f.result()[0][:, None] for f in futures])
             if not np.all(bottom_fcts > -1e-8):
                 raise Exception('nonnegative optimization failed')
             # remove negative values close to zero
@@ -933,13 +949,12 @@ class OptimalCombination(MinTrace):
     """
     def __init__(self,
                  method: str,
-                 nonnegative: bool = False):
+                 nonnegative: bool = False,
+                 num_threads: int = 1):
         comb_methods = ['ols', 'wls_struct']
         if method not in comb_methods:
             raise ValueError(f"Optimal Combination class does not support method: \"{method}\"")
-
-        self.method = method
-        self.nonnegative = nonnegative
+        super().__init__(method=method, nonnegative=nonnegative, num_threads=num_threads)
         self.insample = False
 
 # %% ../nbs/methods.ipynb 58
@@ -996,7 +1011,7 @@ class ERM(HReconciler):
     **References:**<br>
     - [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without 
     unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge 
-    Discovery & Data Mining KDD '19 (p. 1337{1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).<br>
+    Discovery & Data Mining KDD '19 (p. 1337-1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).<br>
     """
     def __init__(self,
                  method: str,

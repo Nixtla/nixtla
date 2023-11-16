@@ -378,7 +378,10 @@ class PERMBU:
 
         # Initialize PERMBU utility
         rec_samples = base_samples.copy()
-        encoder = OneHotEncoder(sparse=False, dtype=np.float32)
+        try:
+            encoder = OneHotEncoder(sparse_output=False, dtype=np.float32)
+        except TypeError:
+            encoder = OneHotEncoder(sparse=False, dtype=np.float32)
         hier_links = np.vstack(self._nonzero_indexes_by_row(self.S.T))
 
         # BottomUp hierarchy traversing
