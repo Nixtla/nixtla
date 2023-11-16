@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['HierarchicalReconciliation']
 
-# %% ../nbs/core.ipynb 3
+# %% ../nbs/core.ipynb 4
 import re
 import gc
 import time
@@ -17,7 +17,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-# %% ../nbs/core.ipynb 5
+# %% ../nbs/core.ipynb 6
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
@@ -37,7 +37,7 @@ def _build_fn_name(fn) -> str:
         fn_name += '_' + '_'.join(func_params)
     return fn_name
 
-# %% ../nbs/core.ipynb 9
+# %% ../nbs/core.ipynb 10
 def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name):
     """
     This function assumes that the model creates prediction intervals
@@ -73,7 +73,7 @@ def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name):
 
     return sigmah
 
-# %% ../nbs/core.ipynb 10
+# %% ../nbs/core.ipynb 11
 class HierarchicalReconciliation:
     """Hierarchical Reconciliation Class.
 
