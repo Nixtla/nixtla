@@ -26,6 +26,7 @@ dependencies:
     - lightgbm_ray
     - nbdev
     - polars
-    - ray<2.4
+    - ray<2.8
+    - triad==0.9.1
     - utilsforecast>=0.0.13
     - xgboost_ray
