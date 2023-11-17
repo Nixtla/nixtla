@@ -748,10 +748,13 @@ class TimeSeries:
             mask = between(X_df[self.time_col], X_df["_start"], X_df["_end"])
             X_df = filter_with_mask(X_df, mask)
             if X_df.shape[0] != len(self._uids) * horizon:
-                raise ValueError(
+                msg = (
                     "Found missing inputs in X_df. "
-                    "It should have one row per id and date for the complete forecasting horizon"
+                    "It should have one row per id and date for the complete forecasting horizon.\n"
+                    f"Got: {X_df.shape[0]:,} rows, expected: {len(self._uids) * horizon:,} rows "
+                    f"(horizon={horizon:,}, n_ids={len(self._uids):,})."
                 )
+                raise ValueError(msg)
             drop_cols = [self.id_col, self.time_col, "_start", "_end"]
             X_df = sort(X_df, [self.id_col, self.time_col]).drop(columns=drop_cols)
         if getattr(self, "max_horizon", None) is None:
