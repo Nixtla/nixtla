@@ -116,7 +116,7 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install . pytest pytest-benchmark
+        run: pip install ".[lag_transforms]" pytest pytest-benchmark
 
       - name: Run performance tests
         run: pytest --benchmark-group-by=func --benchmark-sort=fullname

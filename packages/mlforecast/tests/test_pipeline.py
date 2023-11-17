@@ -1,12 +1,11 @@
 import numpy as np
-import pandas as pd
 import pytest
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import LinearRegression
 from utilsforecast.losses import smape
-from window_ops.rolling import rolling_mean, rolling_max, rolling_min
 
 from mlforecast import MLForecast
+from mlforecast.lag_transforms import RollingMean, RollingMax, RollingMin
 from mlforecast.target_transforms import Differences, LocalStandardScaler
 from mlforecast.utils import generate_daily_series
 
@@ -52,10 +51,10 @@ def fcst():
         freq="D",
         lags=[1, 7, 14, 28],
         lag_transforms={
-            1: [(rolling_mean, 7)],
-            7: [(rolling_mean, 7), (rolling_min, 7), (rolling_max, 7)],
-            14: [(rolling_mean, 7), (rolling_min, 7), (rolling_max, 7)],
-            28: [(rolling_mean, 7), (rolling_min, 7), (rolling_max, 7)],
+            1 : [RollingMean(7)],
+            7 : [RollingMean(7), RollingMin(7), RollingMax(7)],
+            14: [RollingMean(7), RollingMin(7), RollingMax(7)],
+            28: [RollingMean(7), RollingMin(7), RollingMax(7)],
         },
         date_features=["dayofweek", "month", "year", "day"],
         target_transforms=[Differences([1, 7]), LocalStandardScaler()],
