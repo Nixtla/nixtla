@@ -5,10 +5,14 @@ __all__ = ['fill_gaps']
 
 # %% ../nbs/preprocessing.ipynb 2
 import warnings
+from datetime import datetime
 from typing import Union
 
 import numpy as np
 import pandas as pd
+
+from .compat import DataFrame, pl, pl_DataFrame, pl_Series
+from .processing import group_by, repeat
 
 # %% ../nbs/preprocessing.ipynb 4
 def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
@@ -32,11 +36,27 @@ def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
     return out
 
 # %% ../nbs/preprocessing.ipynb 5
+def _determine_bound_pl(
+    bound: Union[str, int, datetime],
+    times_by_id: pl_DataFrame,
+    agg: str,
+) -> pl_Series:
+    if bound == "per_serie":
+        out = times_by_id[agg]
+    else:
+        if bound == "global":
+            val = getattr(times_by_id[agg], agg)()
+        else:
+            val = bound
+        out = repeat(pl_Series([val]), times_by_id.shape[0])
+    return out
+
+# %% ../nbs/preprocessing.ipynb 6
 def fill_gaps(
-    df: pd.DataFrame,
+    df: DataFrame,
     freq: Union[str, int],
-    start: Union[str, int] = "per_serie",
-    end: Union[str, int] = "global",
+    start: Union[str, int, datetime] = "per_serie",
+    end: Union[str, int, datetime] = "global",
     id_col: str = "unique_id",
     time_col: str = "ds",
 ) -> pd.DataFrame:
@@ -44,20 +64,20 @@ def fill_gaps(
 
     Parameters
     ----------
-    df : pandas DataFrame
+    df : pandas or polars DataFrame
         Input data
     freq : str or int
         Series' frequency
-    start : str
+    start : str, int or datetime.
         Initial timestamp for the series.
             * 'per_serie' uses each serie's first timestamp
             * 'global' uses the first timestamp seen in the data
-            * Can also be a specific timestamp or integer, e.g. '2000-01-01' or 2000
-    end : str
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
+    end : str, int or datetime.
         Initial timestamp for the series.
             * 'per_serie' uses each serie's last timestamp
             * 'global' uses the last timestamp seen in the data
-            * Can also be a specific timestamp or integer, e.g. '2000-01-01' or 2000
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
     id_col : str (default='unique_id')
         Column that identifies each serie.
     time_col : str (default='ds')
@@ -65,9 +85,37 @@ def fill_gaps(
 
     Returns
     -------
-    filled_df : pandas DataFrame
+    filled_df : pandas or polars DataFrame
         Dataframe with gaps filled.
     """
+    if isinstance(df, pl_DataFrame):
+        times_by_id = (
+            group_by(df, id_col)
+            .agg(
+                pl.col(time_col).min().alias("min"),
+                pl.col(time_col).max().alias("max"),
+            )
+            .sort(id_col)
+        )
+        starts = _determine_bound_pl(start, times_by_id, "min")
+        ends = _determine_bound_pl(end, times_by_id, "max")
+        grid = pl_DataFrame({id_col: times_by_id[id_col]})
+        if starts.is_integer():
+            grid = grid.with_columns(
+                pl.int_ranges(starts, ends, step=freq, eager=True).alias(time_col)
+            )
+        else:
+            grid = grid.with_columns(
+                pl.datetime_ranges(
+                    starts,
+                    ends,
+                    interval=freq,
+                    eager=True,
+                    time_unit=df[time_col].dtype.time_unit,
+                ).alias(time_col)
+            )
+        grid = grid.explode(time_col)
+        return grid.join(df, on=[id_col, time_col], how="left")
     if isinstance(freq, str):
         offset = pd.tseries.frequencies.to_offset(freq)
         if "min" in freq:
