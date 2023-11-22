@@ -328,13 +328,18 @@ def offset_times(
     elif isinstance(times, pl_Series) and isinstance(freq, str):
         total_offset = _multiply_pl_freq(freq, n)
         out = times.dt.offset_by(total_offset)
+        if "mo" in freq:
+            next_days = times.dt.offset_by("1d")
+            month_ends = (next_days.dt.month() != times.dt.month()).all()
+            if month_ends:
+                out = out.dt.month_end()
     else:
         raise ValueError(
             f"Can't process the following combination {(type(times), type(freq))}"
         )
     return out
 
-# %% ../nbs/processing.ipynb 38
+# %% ../nbs/processing.ipynb 40
 def offset_dates(
     dates: Union[Series, pd.Index],
     freq: Union[int, str, BaseOffset],
@@ -345,7 +350,7 @@ def offset_dates(
     )
     return offset_times(dates, freq, n)
 
-# %% ../nbs/processing.ipynb 39
+# %% ../nbs/processing.ipynb 41
 def time_ranges(
     starts: Union[Series, pd.Index],
     freq: Union[int, str, BaseOffset],
@@ -384,7 +389,7 @@ def time_ranges(
         out = out.alias(starts.name)
     return out
 
-# %% ../nbs/processing.ipynb 42
+# %% ../nbs/processing.ipynb 44
 def repeat(
     s: Union[Series, pd.Index, np.ndarray], n: Union[int, np.ndarray, Series]
 ) -> Union[Series, pd.Index, np.ndarray]:
@@ -403,7 +408,7 @@ def repeat(
             out = out.reset_index(drop=True)
     return out
 
-# %% ../nbs/processing.ipynb 45
+# %% ../nbs/processing.ipynb 47
 def cv_times(
     times: np.ndarray,
     uids: Union[Series, pd.Index],
@@ -435,6 +440,8 @@ def cv_times(
         )
         out_times.append(times[valid_idxs])
         out_cutoffs.append(np.repeat(times[cutoff_idxs], h))
+        if isinstance(uids, pl_Series):
+            use_series = pl_Series(use_series)
         out_ids.append(repeat(filter_with_mask(uids, use_series), h))
     return df_constructor(
         {
@@ -444,7 +451,7 @@ def cv_times(
         }
     )
 
-# %% ../nbs/processing.ipynb 47
+# %% ../nbs/processing.ipynb 49
 def group_by(df: Union[Series, DataFrame], by, maintain_order=False):
     if isinstance(df, (pd.Series, pd.DataFrame)):
         out = df.groupby(by, observed=True, sort=not maintain_order)
@@ -457,7 +464,7 @@ def group_by(df: Union[Series, DataFrame], by, maintain_order=False):
             out = df.groupby(by, maintain_order=maintain_order)
     return out
 
-# %% ../nbs/processing.ipynb 48
+# %% ../nbs/processing.ipynb 50
 def group_by_agg(df: DataFrame, by, aggs, maintain_order=False) -> DataFrame:
     if isinstance(df, pd.DataFrame):
         out = group_by(df, by, maintain_order).agg(aggs).reset_index()
@@ -467,7 +474,7 @@ def group_by_agg(df: DataFrame, by, aggs, maintain_order=False) -> DataFrame:
         )
     return out
 
-# %% ../nbs/processing.ipynb 51
+# %% ../nbs/processing.ipynb 53
 def is_in(s: Series, collection) -> Series:
     if isinstance(s, pl_Series):
         out = s.is_in(collection)
@@ -475,7 +482,7 @@ def is_in(s: Series, collection) -> Series:
         out = s.isin(collection)
     return out
 
-# %% ../nbs/processing.ipynb 54
+# %% ../nbs/processing.ipynb 56
 def between(s: Series, lower: Series, upper: Series) -> Series:
     if isinstance(s, pd.Series):
         out = s.between(lower, upper)
@@ -483,7 +490,7 @@ def between(s: Series, lower: Series, upper: Series) -> Series:
         out = s.is_between(lower, upper)
     return out
 
-# %% ../nbs/processing.ipynb 57
+# %% ../nbs/processing.ipynb 59
 def fill_null(df: DataFrame, mapping: Dict[str, Any]) -> DataFrame:
     if isinstance(df, pd.DataFrame):
         out = df.fillna(mapping)
@@ -491,7 +498,7 @@ def fill_null(df: DataFrame, mapping: Dict[str, Any]) -> DataFrame:
         out = df.with_columns(*[pl.col(col).fill_null(v) for col, v in mapping.items()])
     return out
 
-# %% ../nbs/processing.ipynb 60
+# %% ../nbs/processing.ipynb 62
 def cast(s: Series, dtype: type) -> Series:
     if isinstance(s, pd.Series):
         s = s.astype(dtype)
@@ -499,7 +506,7 @@ def cast(s: Series, dtype: type) -> Series:
         s = s.cast(dtype)
     return s
 
-# %% ../nbs/processing.ipynb 63
+# %% ../nbs/processing.ipynb 65
 def value_cols_to_numpy(
     df: DataFrame, id_col: str, time_col: str, target_col: str
 ) -> np.ndarray:
@@ -510,7 +517,7 @@ def value_cols_to_numpy(
         data = data.astype(np.float32)
     return data
 
-# %% ../nbs/processing.ipynb 64
+# %% ../nbs/processing.ipynb 66
 def process_df(
     df: DataFrame, id_col: str, time_col: str, target_col: str
 ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
@@ -558,7 +565,7 @@ def process_df(
     times = df[time_col].to_numpy()[last_idxs]
     return uids, times, data, indptr, sort_idxs
 
-# %% ../nbs/processing.ipynb 66
+# %% ../nbs/processing.ipynb 68
 class DataFrameProcessor:
     def __init__(
         self,
@@ -575,7 +582,7 @@ class DataFrameProcessor:
     ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
         return process_df(df, self.id_col, self.time_col, self.target_col)
 
-# %% ../nbs/processing.ipynb 70
+# %% ../nbs/processing.ipynb 72
 def _single_split(
     df: DataFrame,
     i_window: int,
@@ -635,7 +642,7 @@ def _single_split(
         )
     return cutoffs, train_mask, valid_mask
 
-# %% ../nbs/processing.ipynb 71
+# %% ../nbs/processing.ipynb 73
 def backtest_splits(
     df: DataFrame,
     n_windows: int,
