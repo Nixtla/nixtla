@@ -69,7 +69,7 @@ class RollingMean(RollingBase):
 
 
 class RollingStd(RollingBase):
-    tfm_name = "Rollingstd"
+    tfm_name = "RollingStd"
 
 
 class RollingMin(RollingBase):
