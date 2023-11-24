@@ -46,6 +46,7 @@
         "docs/how-to-guides/cross_validation.html",
         "docs/how-to-guides/prediction_intervals.html",
         "docs/how-to-guides/target_transforms_guide.html",
+        "docs/how-to-guides/sklearn_pipelines.html",
         "docs/how-to-guides/analyzing_models.html",
         "docs/how-to-guides/custom_training.html",
         "docs/how-to-guides/training_with_numpy.html",
