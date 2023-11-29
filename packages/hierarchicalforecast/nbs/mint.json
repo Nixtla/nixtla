@@ -56,13 +56,7 @@
             "examples/tourismlarge-evaluation.html"
           ]
         },
-        {
-          "group": "ML Forecast Reconciliation",
-          "pages": [
-            "examples/hierarchicalforecast-gluonts.html",
-            "examples/mlframeworksexample.html"
-          ]
-        }
+        "examples/mlframeworksexample.html"
       ]
     },
     {
