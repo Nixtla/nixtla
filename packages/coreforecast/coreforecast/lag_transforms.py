@@ -4,14 +4,17 @@ __all__ = [
     "RollingStd",
     "RollingMin",
     "RollingMax",
+    "RollingQuantile",
     "SeasonalRollingMean",
     "SeasonalRollingStd",
     "SeasonalRollingMin",
     "SeasonalRollingMax",
+    "SeasonalRollingQuantile",
     "ExpandingMean",
     "ExpandingStd",
     "ExpandingMin",
     "ExpandingMax",
+    "ExpandingQuantile",
     "ExponentiallyWeightedMean",
 ]
 
@@ -86,6 +89,24 @@ class RollingMax(RollingBase):
     stat_name = "Max"
 
 
+class RollingQuantile(RollingBase):
+    def __init__(
+        self, lag: int, p: float, window_size: int, min_samples: Optional[int] = None
+    ):
+        super().__init__(lag=lag, window_size=window_size, min_samples=min_samples)
+        self.p = p
+
+    def transform(self, ga: GroupedArray) -> np.ndarray:
+        return ga.rolling_quantile_transform(
+            self.lag, self.p, self.window_size, self.min_samples
+        )
+
+    def update(self, ga: GroupedArray) -> np.ndarray:
+        return ga.rolling_quantile_update(
+            self.lag - 1, self.p, self.window_size, self.min_samples
+        )
+
+
 class SeasonalRollingBase(RollingBase):
     season_length: int
 
@@ -132,6 +153,42 @@ class SeasonalRollingMin(SeasonalRollingBase):
 
 class SeasonalRollingMax(SeasonalRollingBase):
     stat_name = "Max"
+
+
+class SeasonalRollingQuantile(SeasonalRollingBase):
+    def __init__(
+        self,
+        lag: int,
+        p: float,
+        season_length: int,
+        window_size: int,
+        min_samples: Optional[int] = None,
+    ):
+        super().__init__(
+            lag=lag,
+            season_length=season_length,
+            window_size=window_size,
+            min_samples=min_samples,
+        )
+        self.p = p
+
+    def transform(self, ga: GroupedArray) -> np.ndarray:
+        return ga.seasonal_rolling_quantile_transform(
+            lag=self.lag,
+            p=self.p,
+            season_length=self.season_length,
+            window_size=self.window_size,
+            min_samples=self.min_samples,
+        )
+
+    def update(self, ga: GroupedArray) -> np.ndarray:
+        return ga.seasonal_rolling_quantile_update(
+            lag=self.lag - 1,
+            p=self.p,
+            season_length=self.season_length,
+            window_size=self.window_size,
+            min_samples=self.min_samples,
+        )
 
 
 class ExpandingBase(BaseLagTransform):
@@ -191,6 +248,18 @@ class ExpandingMin(ExpandingComp):
 class ExpandingMax(ExpandingComp):
     stat = "Max"
     comp_fn = np.maximum
+
+
+class ExpandingQuantile(BaseLagTransform):
+    def __init__(self, lag: int, p: float):
+        self.lag = lag
+        self.p = p
+
+    def transform(self, ga: GroupedArray) -> np.ndarray:
+        return ga.expanding_quantile_transform(self.lag, self.p)
+
+    def update(self, ga: GroupedArray) -> np.ndarray:
+        return ga.expanding_quantile_update(self.lag - 1, self.p)
 
 
 class ExponentiallyWeightedMean(BaseLagTransform):

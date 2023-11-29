@@ -43,5 +43,5 @@ wheel.packages = ["coreforecast"]
 wheel.py-api = "py3"
 
 [tool.cibuildwheel]
-test-requires = "pytest window-ops"
+test-requires = "pandas pytest window-ops"
 test-command = "pytest {project}/tests -k correct"

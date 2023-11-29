@@ -106,6 +106,15 @@ GroupedArrayFloat64_RollingMaxTransform(GroupedArrayHandle handle, int lag,
                                         int window_size, int min_samples,
                                         double *out);
 
+DLL_EXPORT int
+GroupedArrayFloat32_RollingQuantileTransform(GroupedArrayHandle handle, int lag,
+                                             float p, int window_size,
+                                             int min_samples, float *out);
+DLL_EXPORT int
+GroupedArrayFloat64_RollingQuantileTransform(GroupedArrayHandle handle, int lag,
+                                             double p, int window_size,
+                                             int min_samples, double *out);
+
 DLL_EXPORT int GroupedArrayFloat32_RollingMeanUpdate(GroupedArrayHandle handle,
                                                      int lag, int window_size,
                                                      int min_samples,
@@ -142,6 +151,15 @@ DLL_EXPORT int GroupedArrayFloat64_RollingMaxUpdate(GroupedArrayHandle handle,
                                                     int min_samples,
                                                     double *out);
 
+DLL_EXPORT int
+GroupedArrayFloat32_RollingQuantileUpdate(GroupedArrayHandle handle, int lag,
+                                          float p, int window_size,
+                                          int min_samples, float *out);
+DLL_EXPORT int
+GroupedArrayFloat64_RollingQuantileUpdate(GroupedArrayHandle handle, int lag,
+                                          double p, int window_size,
+                                          int min_samples, double *out);
+
 DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingMeanTransform(
     GroupedArrayHandle handle, int lag, int season_length, int window_size,
     int min_samples, float *out);
@@ -169,6 +187,13 @@ DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingMaxTransform(
 DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingMaxTransform(
     GroupedArrayHandle handle, int lag, int season_length, int window_size,
     int min_samples, double *out);
+
+DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingQuantileTransform(
+    GroupedArrayHandle handle, int lag, int season_length, float p,
+    int window_size, int min_samples, float *out);
+DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingQuantileTransform(
+    GroupedArrayHandle handle, int lag, int season_length, double p,
+    int window_size, int min_samples, double *out);
 
 DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingMeanUpdate(
     GroupedArrayHandle handle, int lag, int season_length, int window_size,
@@ -204,6 +229,13 @@ GroupedArrayFloat64_SeasonalRollingMaxUpdate(GroupedArrayHandle handle, int lag,
                                              int season_length, int window_size,
                                              int min_samples, double *out);
 
+DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingQuantileUpdate(
+    GroupedArrayHandle handle, int lag, int season_length, float p,
+    int window_size, int min_samples, float *out);
+DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingQuantileUpdate(
+    GroupedArrayHandle handle, int lag, int season_length, double p,
+    int window_size, int min_samples, double *out);
+
 DLL_EXPORT int
 GroupedArrayFloat32_ExpandingMeanTransform(GroupedArrayHandle handle, int lag,
                                            float *out, float *agg);
@@ -231,6 +263,20 @@ GroupedArrayFloat32_ExpandingMaxTransform(GroupedArrayHandle handle, int lag,
 DLL_EXPORT int
 GroupedArrayFloat64_ExpandingMaxTransform(GroupedArrayHandle handle, int lag,
                                           double *out);
+
+DLL_EXPORT int
+GroupedArrayFloat32_ExpandingQuantileTransform(GroupedArrayHandle handle,
+                                               int lag, float p, float *out);
+DLL_EXPORT int
+GroupedArrayFloat64_ExpandingQuantileTransform(GroupedArrayHandle handle,
+                                               int lag, double p, double *out);
+
+DLL_EXPORT int
+GroupedArrayFloat32_ExpandingQuantileUpdate(GroupedArrayHandle handle, int lag,
+                                            float p, float *out);
+DLL_EXPORT int
+GroupedArrayFloat64_ExpandingQuantileUpdate(GroupedArrayHandle handle, int lag,
+                                            double p, double *out);
 
 DLL_EXPORT int GroupedArrayFloat32_ExponentiallyWeightedMeanTransform(
     GroupedArrayHandle handle, int lag, float alpha, float *out);

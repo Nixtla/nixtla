@@ -1,6 +1,7 @@
 import ctypes
 import platform
 import sys
+from typing import Union
 
 import numpy as np
 
@@ -59,6 +60,13 @@ class GroupedArray:
     def __getitem__(self, i):
         return self.data[self.indptr[i] : self.indptr[i + 1]]
 
+    def _pyfloat_to_c(self, x: float) -> Union[ctypes.c_float, ctypes.c_double]:
+        if self.prefix == "GroupedArrayFloat32":
+            out = ctypes.c_float(x)
+        else:
+            out = ctypes.c_double(x)
+        return out
+
     def scaler_fit(self, scaler_type: str) -> np.ndarray:
         stats = np.full_like(self.data, np.nan, shape=(len(self), 2))
         _LIB[f"{self.prefix}_{scaler_type}ScalerStats"](
@@ -116,6 +124,20 @@ class GroupedArray:
         )
         return out
 
+    def rolling_quantile_transform(
+        self, lag: int, p: float, window_size: int, min_samples: int
+    ) -> np.ndarray:
+        out = np.full_like(self.data, np.nan)
+        _LIB[f"{self.prefix}_RollingQuantileTransform"](
+            self._handle,
+            ctypes.c_int(lag),
+            self._pyfloat_to_c(p),
+            ctypes.c_int(window_size),
+            ctypes.c_int(min_samples),
+            _data_as_void_ptr(out),
+        )
+        return out
+
     def rolling_update(
         self, stat_name: str, lag: int, window_size: int, min_samples: int
     ) -> np.ndarray:
@@ -123,6 +145,20 @@ class GroupedArray:
         _LIB[f"{self.prefix}_Rolling{stat_name}Update"](
             self._handle,
             ctypes.c_int(lag),
+            ctypes.c_int(window_size),
+            ctypes.c_int(min_samples),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def rolling_quantile_update(
+        self, lag: int, p: float, window_size: int, min_samples: int
+    ) -> np.ndarray:
+        out = np.empty_like(self.data, shape=len(self))
+        _LIB[f"{self.prefix}_RollingQuantileUpdate"](
+            self._handle,
+            ctypes.c_int(lag),
+            self._pyfloat_to_c(p),
             ctypes.c_int(window_size),
             ctypes.c_int(min_samples),
             _data_as_void_ptr(out),
@@ -167,6 +203,46 @@ class GroupedArray:
         )
         return out
 
+    def seasonal_rolling_quantile_transform(
+        self,
+        lag: int,
+        p: float,
+        season_length: int,
+        window_size: int,
+        min_samples: int,
+    ) -> np.ndarray:
+        out = np.full_like(self.data, np.nan)
+        _LIB[f"{self.prefix}_SeasonalRollingQuantileTransform"](
+            self._handle,
+            ctypes.c_int(lag),
+            ctypes.c_int(season_length),
+            self._pyfloat_to_c(p),
+            ctypes.c_int(window_size),
+            ctypes.c_int(min_samples),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def seasonal_rolling_quantile_update(
+        self,
+        lag: int,
+        p: float,
+        season_length: int,
+        window_size: int,
+        min_samples: int,
+    ) -> np.ndarray:
+        out = np.empty_like(self.data, shape=len(self))
+        _LIB[f"{self.prefix}_SeasonalRollingQuantileUpdate"](
+            self._handle,
+            ctypes.c_int(lag),
+            ctypes.c_int(season_length),
+            self._pyfloat_to_c(p),
+            ctypes.c_int(window_size),
+            ctypes.c_int(min_samples),
+            _data_as_void_ptr(out),
+        )
+        return out
+
     def expanding_transform_with_aggs(
         self,
         stat_name: str,
@@ -195,6 +271,26 @@ class GroupedArray:
         )
         return out
 
+    def expanding_quantile_transform(self, lag: int, p: float) -> np.ndarray:
+        out = np.full_like(self.data, np.nan)
+        _LIB[f"{self.prefix}_ExpandingQuantileTransform"](
+            self._handle,
+            ctypes.c_int(lag),
+            self._pyfloat_to_c(p),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def expanding_quantile_update(self, lag: int, p: float) -> np.ndarray:
+        out = np.empty_like(self.data, shape=len(self))
+        _LIB[f"{self.prefix}_ExpandingQuantileUpdate"](
+            self._handle,
+            ctypes.c_int(lag),
+            self._pyfloat_to_c(p),
+            _data_as_void_ptr(out),
+        )
+        return out
+
     def exponentially_weighted_transform(
         self,
         stat_name: str,
@@ -202,14 +298,10 @@ class GroupedArray:
         alpha: float,
     ) -> np.ndarray:
         out = np.full_like(self.data, np.nan)
-        if self.prefix == "GroupedArrayFloat32":
-            alpha = ctypes.c_float(alpha)
-        else:
-            alpha = ctypes.c_double(alpha)
         _LIB[f"{self.prefix}_ExponentiallyWeighted{stat_name}Transform"](
             self._handle,
             ctypes.c_int(lag),
-            alpha,
+            self._pyfloat_to_c(alpha),
             _data_as_void_ptr(out),
         )
         return out
