@@ -23,6 +23,16 @@ template <typename T> inline indptr_t FirstNotNaN(const T *data, indptr_t n) {
 }
 
 template <typename T>
+inline indptr_t FirstNotNaN(const T *data, indptr_t n, T *out) {
+  indptr_t i = 0;
+  while (std::isnan(data[i]) && i < n) {
+    out[i] = std::numeric_limits<T>::quiet_NaN();
+    ++i;
+  }
+  return i;
+}
+
+template <typename T>
 inline void TakeFromGroups(const T *data, int n, T *out, int k) {
   if (k > n) {
     *out = std::numeric_limits<T>::quiet_NaN();
@@ -118,8 +128,11 @@ inline void RollingMeanTransform(const T *data, int n, T *out, int window_size,
   int upper_limit = std::min(window_size, n);
   for (int i = 0; i < upper_limit; ++i) {
     accum += data[i];
-    if (i + 1 >= min_samples)
+    if (i + 1 < min_samples) {
+      out[i] = std::numeric_limits<T>::quiet_NaN();
+    } else {
       out[i] = accum / (i + 1);
+    }
   }
 
   for (int i = window_size; i < n; ++i) {
@@ -140,8 +153,11 @@ inline void RollingStdTransformWithStats(const T *data, int n, T *out, T *agg,
     prev_avg = curr_avg;
     curr_avg = prev_avg + (data[i] - prev_avg) / (i + 1);
     m2 += (data[i] - prev_avg) * (data[i] - curr_avg);
-    if (i + 1 >= min_samples)
+    if (i + 1 < min_samples) {
+      out[i] = std::numeric_limits<T>::quiet_NaN();
+    } else {
       out[i] = sqrt(m2 / i);
+    }
   }
   for (int i = window_size; i < n; ++i) {
     T delta = data[i] - data[i - window_size];
@@ -176,7 +192,9 @@ inline void RollingCompTransform(Func Comp, const T *data, int n, T *out,
     if (Comp(data[i], pivot)) {
       pivot = data[i];
     }
-    if (i + 1 >= min_samples) {
+    if (i + 1 < min_samples) {
+      out[i] = std::numeric_limits<T>::quiet_NaN();
+    } else {
       out[i] = pivot;
     }
   }
@@ -490,6 +508,13 @@ inline void ExponentiallyWeightedMeanTransform(const T *data, int n, T *out,
   }
 }
 
+template <typename T> inline void SkipLags(T *out, int n, int lag) {
+  int replacements = std::min(lag, n);
+  for (int i = 0; i < replacements; ++i) {
+    out[i] = std::numeric_limits<T>::quiet_NaN();
+  }
+}
+
 template <class T> class GroupedArray {
 private:
   const T *data_;
@@ -515,7 +540,8 @@ public:
       indptr_t start_idx = FirstNotNaN(data_ + start, n);
       if (start_idx + lag >= n)
         continue;
-      f(data_ + start + start_idx, n - start_idx - lag, out + n_out * i,
+      start += start_idx;
+      f(data_ + start, n - start_idx - lag, out + n_out * i,
         std::forward<Args>(args)...);
     }
   }
@@ -544,7 +570,8 @@ public:
       indptr_t start = indptr_[i];
       indptr_t end = indptr_[i + 1];
       indptr_t n = end - start;
-      indptr_t start_idx = FirstNotNaN(data_ + start, n);
+      indptr_t start_idx = FirstNotNaN(data_ + start, n, out + start);
+      SkipLags(out + start + start_idx, n - start_idx, lag);
       if (start_idx + lag >= n) {
         continue;
       }
@@ -562,7 +589,8 @@ public:
       indptr_t start = indptr_[i];
       indptr_t end = indptr_[i + 1];
       indptr_t n = end - start;
-      indptr_t start_idx = FirstNotNaN(data_ + start, n);
+      indptr_t start_idx = FirstNotNaN(data_ + start, n, out + start);
+      SkipLags(out + start + start_idx, n - start_idx, lag);
       if (start_idx + lag >= n) {
         continue;
       }

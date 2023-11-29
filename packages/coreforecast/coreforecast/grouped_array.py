@@ -68,7 +68,7 @@ class GroupedArray:
         return out
 
     def scaler_fit(self, scaler_type: str) -> np.ndarray:
-        stats = np.full_like(self.data, np.nan, shape=(len(self), 2))
+        stats = np.empty_like(self.data, shape=(len(self), 2))
         _LIB[f"{self.prefix}_{scaler_type}ScalerStats"](
             self._handle,
             _data_as_void_ptr(stats),
@@ -76,7 +76,7 @@ class GroupedArray:
         return stats
 
     def scaler_transform(self, stats: np.ndarray) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ScalerTransform"](
             self._handle,
             _data_as_void_ptr(stats),
@@ -103,7 +103,7 @@ class GroupedArray:
         return out
 
     def lag_transform(self, lag: int) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_LagTransform"](
             self._handle,
             ctypes.c_int(lag),
@@ -114,7 +114,7 @@ class GroupedArray:
     def rolling_transform(
         self, stat_name: str, lag: int, window_size: int, min_samples: int
     ) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Rolling{stat_name}Transform"](
             self._handle,
             ctypes.c_int(lag),
@@ -127,7 +127,7 @@ class GroupedArray:
     def rolling_quantile_transform(
         self, lag: int, p: float, window_size: int, min_samples: int
     ) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_RollingQuantileTransform"](
             self._handle,
             ctypes.c_int(lag),
@@ -173,7 +173,7 @@ class GroupedArray:
         window_size: int,
         min_samples: int,
     ) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_SeasonalRolling{stat_name}Transform"](
             self._handle,
             ctypes.c_int(lag),
@@ -211,7 +211,7 @@ class GroupedArray:
         window_size: int,
         min_samples: int,
     ) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_SeasonalRollingQuantileTransform"](
             self._handle,
             ctypes.c_int(lag),
@@ -249,7 +249,7 @@ class GroupedArray:
         lag: int,
         aggs: np.ndarray,
     ) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Expanding{stat_name}Transform"](
             self._handle,
             ctypes.c_int(lag),
@@ -263,7 +263,7 @@ class GroupedArray:
         stat_name: str,
         lag: int,
     ) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Expanding{stat_name}Transform"](
             self._handle,
             ctypes.c_int(lag),
@@ -272,7 +272,7 @@ class GroupedArray:
         return out
 
     def expanding_quantile_transform(self, lag: int, p: float) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ExpandingQuantileTransform"](
             self._handle,
             ctypes.c_int(lag),
@@ -297,7 +297,7 @@ class GroupedArray:
         lag: int,
         alpha: float,
     ) -> np.ndarray:
-        out = np.full_like(self.data, np.nan)
+        out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ExponentiallyWeighted{stat_name}Transform"](
             self._handle,
             ctypes.c_int(lag),
