@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
@@ -36,6 +36,28 @@ jobs:
 
       - name: Install the library
         run: pip install ./
+
+      - name: Run tests
+        run: nbdev_test --do_print --timing --flags 'matplotlib polars'
+
+  windows-tests:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Set up environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install the library
+        run: pip install ".[dev]"
 
       - name: Run tests
         run: nbdev_test --do_print --timing --flags 'matplotlib polars'

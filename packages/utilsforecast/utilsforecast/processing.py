@@ -5,7 +5,8 @@ __all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_col
            'is_none', 'is_nan_or_none', 'match_if_categorical', 'vertical_concat', 'horizontal_concat',
            'copy_if_pandas', 'join', 'drop_index_if_pandas', 'rename', 'sort', 'offset_times', 'offset_dates',
            'time_ranges', 'repeat', 'cv_times', 'group_by', 'group_by_agg', 'is_in', 'between', 'fill_null', 'cast',
-           'value_cols_to_numpy', 'process_df', 'DataFrameProcessor', 'backtest_splits']
+           'value_cols_to_numpy', 'make_future_dataframe', 'anti_join', 'process_df', 'DataFrameProcessor',
+           'backtest_splits']
 
 # %% ../nbs/processing.ipynb 2
 import re
@@ -544,6 +545,42 @@ def value_cols_to_numpy(
     return data
 
 # %% ../nbs/processing.ipynb 67
+def make_future_dataframe(
+    uids: Series,
+    last_times: Union[Series, pd.Index],
+    freq: Union[int, str, BaseOffset],
+    h: int,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+) -> DataFrame:
+    starts = offset_times(last_times, freq, 1)
+    if isinstance(uids, pl_Series):
+        df_constructor = pl_DataFrame
+    else:
+        df_constructor = pd.DataFrame
+    return df_constructor(
+        {
+            id_col: repeat(uids, h),
+            time_col: time_ranges(starts, freq=freq, periods=h),
+        }
+    )
+
+# %% ../nbs/processing.ipynb 70
+def anti_join(df1: DataFrame, df2: DataFrame, on: Union[str, List[str]]) -> DataFrame:
+    if isinstance(df1, pd.DataFrame) and isinstance(df2, pd.DataFrame):
+        out = df1.merge(df2, on=on, how="left", indicator=True)
+        out = out[out["_merge"] == "left_only"].drop(columns="_merge")
+        out = out.reset_index(drop=True)
+    elif isinstance(df1, pl_DataFrame) and isinstance(df2, pl_DataFrame):
+        out = join(df1, df2, on=on, how="anti")
+    else:
+        raise ValueError(
+            "df1 and df2 must be pandas or polars dataframes of the same type. "
+            f"Got type(df1): '{type(df1)}', type(df2): '{type(df2)}'"
+        )
+    return out
+
+# %% ../nbs/processing.ipynb 73
 def process_df(
     df: DataFrame, id_col: str, time_col: str, target_col: str
 ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
@@ -591,7 +628,7 @@ def process_df(
     times = df[time_col].to_numpy()[last_idxs]
     return uids, times, data, indptr, sort_idxs
 
-# %% ../nbs/processing.ipynb 69
+# %% ../nbs/processing.ipynb 75
 class DataFrameProcessor:
     def __init__(
         self,
@@ -608,7 +645,7 @@ class DataFrameProcessor:
     ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
         return process_df(df, self.id_col, self.time_col, self.target_col)
 
-# %% ../nbs/processing.ipynb 73
+# %% ../nbs/processing.ipynb 79
 def _single_split(
     df: DataFrame,
     i_window: int,
@@ -668,7 +705,7 @@ def _single_split(
         )
     return cutoffs, train_mask, valid_mask
 
-# %% ../nbs/processing.ipynb 74
+# %% ../nbs/processing.ipynb 80
 def backtest_splits(
     df: DataFrame,
     n_windows: int,
