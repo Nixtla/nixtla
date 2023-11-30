@@ -5,7 +5,7 @@ __all__ = ['fill_gaps']
 
 # %% ../nbs/preprocessing.ipynb 2
 import warnings
-from datetime import datetime
+from datetime import date, datetime
 from typing import Union
 
 import numpy as np
@@ -37,7 +37,7 @@ def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
 
 # %% ../nbs/preprocessing.ipynb 5
 def _determine_bound_pl(
-    bound: Union[str, int, datetime],
+    bound: Union[str, int, date, datetime],
     times_by_id: pl_DataFrame,
     agg: str,
 ) -> pl_Series:
@@ -55,8 +55,8 @@ def _determine_bound_pl(
 def fill_gaps(
     df: DataFrame,
     freq: Union[str, int],
-    start: Union[str, int, datetime] = "per_serie",
-    end: Union[str, int, datetime] = "global",
+    start: Union[str, int, date, datetime] = "per_serie",
+    end: Union[str, int, date, datetime] = "global",
     id_col: str = "unique_id",
     time_col: str = "ds",
 ) -> pd.DataFrame:
@@ -68,12 +68,12 @@ def fill_gaps(
         Input data
     freq : str or int
         Series' frequency
-    start : str, int or datetime.
+    start : str, int, date or datetime.
         Initial timestamp for the series.
             * 'per_serie' uses each serie's first timestamp
             * 'global' uses the first timestamp seen in the data
             * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
-    end : str, int or datetime.
+    end : str, int, date or datetime.
         Initial timestamp for the series.
             * 'per_serie' uses each serie's last timestamp
             * 'global' uses the last timestamp seen in the data
@@ -102,16 +102,21 @@ def fill_gaps(
         grid = pl_DataFrame({id_col: times_by_id[id_col]})
         if starts.is_integer():
             grid = grid.with_columns(
-                pl.int_ranges(starts, ends, step=freq, eager=True).alias(time_col)
+                pl.int_ranges(starts, ends + freq, step=freq, eager=True).alias(
+                    time_col
+                )
             )
         else:
+            if starts.dtype == pl.Date:
+                ranges_fn = pl.date_ranges
+            else:
+                ranges_fn = pl.datetime_ranges
             grid = grid.with_columns(
-                pl.datetime_ranges(
+                ranges_fn(
                     starts,
                     ends,
                     interval=freq,
                     eager=True,
-                    time_unit=df[time_col].dtype.time_unit,
                 ).alias(time_col)
             )
         grid = grid.explode(time_col)

@@ -18,7 +18,13 @@ import pandas as pd
 from pandas.tseries.offsets import BaseOffset
 
 from .compat import DataFrame, Series, pl, pl_DataFrame, pl_Series
-from .validation import validate_format
+from utilsforecast.validation import (
+    _get_np_dtype,
+    _is_dt_dtype,
+    _is_int_dtype,
+    ensure_shallow_copy,
+    validate_format,
+)
 
 # %% ../nbs/processing.ipynb 5
 def _polars_categorical_to_numerical(serie: pl_Series) -> pl_Series:
@@ -36,6 +42,7 @@ def to_numpy(df: DataFrame) -> np.ndarray:
         ]
         if cat_cols:
             df = df.copy(deep=False)
+            df = ensure_shallow_copy(df)
             for col in cat_cols:
                 df[col] = df[col].cat.codes
         df = df.to_numpy()
@@ -331,10 +338,15 @@ def offset_times(
     if isinstance(times, (pd.Series, pd.Index)):
         if isinstance(freq, str):
             freq = pd.tseries.frequencies.to_offset(freq)
+        times_dtype = _get_np_dtype(times)
+        ints = _is_int_dtype(times_dtype) and isinstance(freq, int)
+        dts = _is_dt_dtype(times_dtype) and isinstance(freq, BaseOffset)
+        if not ints and not dts:
+            raise ValueError(
+                f"Cannot offset times with data type: '{times_dtype}' "
+                f"using a frequency of type: '{type(freq)}'."
+            )
         out = times + n * freq
-        if isinstance(n, np.ndarray) and pd.api.types.is_datetime64_dtype(times):
-            # multiplying an offset by a series returns object dtype
-            out = pd.to_datetime(out)
     elif isinstance(times, pl_Series) and isinstance(freq, int):
         out = times + n * freq
     elif isinstance(times, pl_Series) and isinstance(freq, str):
@@ -343,7 +355,8 @@ def offset_times(
         out = _ensure_month_ends(out, times, freq)
     else:
         raise ValueError(
-            f"Can't process the following combination {(type(times), type(freq))}"
+            f"Cannot offset times of type: '{type(times)}' "
+            f"using a frequency of type: '{type(freq)}'."
         )
     return out
 
@@ -393,7 +406,11 @@ def time_ranges(
             out = pl.int_ranges(starts, ends, freq, eager=True).explode()
         else:
             ends = offset_times(starts, freq, periods - 1)
-            out = pl.datetime_ranges(starts, ends, interval=freq, eager=True).explode()
+            if starts.dtype == pl.Date:
+                ranges_fn = pl.date_ranges
+            else:
+                ranges_fn = pl.datetime_ranges
+            out = ranges_fn(starts, ends, interval=freq, eager=True).explode()
             out = _ensure_month_ends(out, starts, freq)
         out = out.alias(starts.name)
     return out
