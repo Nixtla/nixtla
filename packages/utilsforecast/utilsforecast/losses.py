@@ -205,7 +205,7 @@ def smape(
     absolute values for the prediction and observed value at a
     given time, then averages these devations over the length
     of the series. This allows the SMAPE to have bounds between
-    0% and 200% which is desireble compared to normal MAPE that
+    0% and 100% which is desirable compared to normal MAPE that
     may be undetermined when the target is zero."""
     if isinstance(df, pd.DataFrame):
         delta_y = df[models].sub(df[target_col], axis=0).abs()
