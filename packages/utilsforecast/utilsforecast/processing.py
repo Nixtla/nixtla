@@ -443,6 +443,8 @@ def cv_times(
     h: int,
     test_size: int,
     step_size: int,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
 ) -> DataFrame:
     if test_size < h:
         raise ValueError("`test_size` should be greater or equal to `h`.")
@@ -472,8 +474,8 @@ def cv_times(
         out_ids.append(repeat(filter_with_mask(uids, use_series), h))
     return df_constructor(
         {
-            "unique_id": vertical_concat(out_ids),
-            "ds": np.hstack(out_times),
+            id_col: vertical_concat(out_ids),
+            time_col: np.hstack(out_times),
             "cutoff": np.hstack(out_cutoffs),
         }
     )
