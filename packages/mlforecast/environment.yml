@@ -28,5 +28,5 @@ dependencies:
     - polars
     - ray<2.8
     - triad==0.9.1
-    - utilsforecast>=0.0.13
+    - utilsforecast>=0.0.21
     - xgboost_ray

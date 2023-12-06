@@ -168,13 +168,14 @@ LagTransforms = Dict[int, List[LagTransform]]
 DateFeature = Union[str, Callable]
 Models = Union[BaseEstimator, List[BaseEstimator], Dict[str, BaseEstimator]]
 TargetTransform = Union[BaseTargetTransform, BaseGroupedArrayTargetTransform]
+Transforms = Dict[str, Union[Tuple[Any, ...], BaseLagTransform]]
 
 # %% ../nbs/core.ipynb 20
 def _parse_transforms(
     lags: Lags,
     lag_transforms: LagTransforms,
-) -> Dict[str, Tuple[Any, ...]]:
-    transforms: Dict[str, Union[Tuple[Any, ...], BaseLagTransform]] = OrderedDict()
+) -> Transforms:
+    transforms: Transforms = OrderedDict()
     for lag in lags:
         if CORE_INSTALLED:
             transforms[f"lag{lag}"] = Lag(lag)
@@ -357,15 +358,21 @@ class TimeSeries:
         ] + self.features
         return self
 
-    def _compute_transforms(self, updates_only: bool) -> Dict[str, np.ndarray]:
+    def _compute_transforms(
+        self, transforms: Transforms, updates_only: bool
+    ) -> Dict[str, np.ndarray]:
         """Compute the transformations defined in the constructor.
 
         If `self.num_threads > 1` these are computed using multithreading."""
-        if self.num_threads == 1 or len(self.transforms) == 1:
-            out = self.ga.apply_transforms(self.transforms, updates_only=updates_only)
+        if self.num_threads == 1 or len(transforms) == 1:
+            out = self.ga.apply_transforms(
+                transforms=transforms, updates_only=updates_only
+            )
         else:
             out = self.ga.apply_multithreaded_transforms(
-                self.transforms, num_threads=self.num_threads, updates_only=updates_only
+                transforms=transforms,
+                num_threads=self.num_threads,
+                updates_only=updates_only,
             )
         return out
 
@@ -399,7 +406,8 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        features = self._compute_transforms(updates_only=False)
+        transforms = {k: v for k, v in self.transforms.items() if k not in df}
+        features = self._compute_transforms(transforms=transforms, updates_only=False)
         if self._restore_idxs is not None:
             for k, v in features.items():
                 features[k] = v[self._restore_idxs]
@@ -454,7 +462,7 @@ class TimeSeries:
         del self._restore_idxs, self._sort_idxs
 
         # lag transforms
-        for feat in self.transforms.keys():
+        for feat in transforms.keys():
             df = assign_columns(df, feat, features[feat])
 
         # date features
@@ -465,7 +473,10 @@ class TimeSeries:
             ):
                 dates = pd.DatetimeIndex(dates)
             for feature in self.date_features:
-                feat_name, feat_vals = self._compute_date_feature(dates, feature)
+                feat_name = feature.__name__ if callable(feature) else feature
+                if feat_name in df:
+                    continue
+                _, feat_vals = self._compute_date_feature(dates, feature)
                 df = assign_columns(df, feat_name, feat_vals)
 
         # assemble return
@@ -541,7 +552,7 @@ class TimeSeries:
         )
         self.test_dates.append(self.curr_dates)
 
-        features = self._compute_transforms(updates_only=True)
+        features = self._compute_transforms(self.transforms, updates_only=True)
 
         for feature in self.date_features:
             feat_name, feat_vals = self._compute_date_feature(self.curr_dates, feature)
