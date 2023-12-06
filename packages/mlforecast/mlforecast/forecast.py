@@ -144,6 +144,7 @@ class MLForecast:
         date_features: Optional[Iterable[DateFeature]] = None,
         num_threads: int = 1,
         target_transforms: Optional[List[TargetTransform]] = None,
+        lag_transforms_namer: Optional[Callable] = None,
     ):
         """Forecasting pipeline
 
@@ -163,6 +164,8 @@ class MLForecast:
             Number of threads to use when computing the features.
         target_transforms : list of transformers, optional(default=None)
             Transformations that will be applied to the target before computing the features and restored after the forecasting step.
+        lag_transforms_namer : callable, optional(default=None)
+            Function that takes a transformation (either function or class), a lag and extra arguments and produces a name.
         """
         if not isinstance(models, dict) and not isinstance(models, list):
             models = [models]
@@ -179,6 +182,7 @@ class MLForecast:
             date_features=date_features,
             num_threads=num_threads,
             target_transforms=target_transforms,
+            lag_transforms_namer=lag_transforms_namer,
         )
 
     def __repr__(self):
