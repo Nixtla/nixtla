@@ -114,7 +114,7 @@ def assign_columns(
         else:
             if isinstance(names, str):
                 names = [names]
-            vals = pl.from_numpy(values, schema=names)
+            vals = pl.from_numpy(values, schema=names, orient="row")
         df = df.with_columns(vals)
     return df
 
