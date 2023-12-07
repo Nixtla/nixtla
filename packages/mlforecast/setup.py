@@ -29,7 +29,12 @@ dask_requirements = cfg.get('dask_requirements', '').split()
 ray_requirements = cfg.get('ray_requirements', '').split()
 spark_requirements = cfg.get('spark_requirements', '').split()
 lag_tfms_requirements = cfg.get('lag_tfms_requirements', '').split()
-dev_requirements = requirements + cfg.get('dev_requirements', '').split()
+dev_requirements = cfg.get('dev_requirements', '').split()
+dev_requirements.extend(dask_requirements)
+dev_requirements.extend(ray_requirements)
+dev_requirements.extend(spark_requirements)
+dev_requirements.extend(lag_tfms_requirements)
+dev_requirements = list(set(dev_requirements))
 min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
 
