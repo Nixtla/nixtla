@@ -49,10 +49,11 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up environment
-        uses: mamba-org/provision-with-micromamba@main
+        uses: mamba-org/setup-micromamba@v1
         with:
-          extra-specs: python=${{ matrix.python-version }}
-          cache-env: true
+          environment-file: environment.yml
+          create-args: python=${{ matrix.python-version }}
+          cache-environment: true
 
       - name: Install pip requirements
         run: pip install ".[dev]"

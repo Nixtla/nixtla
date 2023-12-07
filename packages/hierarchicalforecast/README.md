@@ -115,7 +115,7 @@ def mse(y, y_hat):
     return np.mean((y-y_hat)**2)
 
 evaluator = HierarchicalEvaluation(evaluators=[mse])
-evaluator.evaluate(Y_hat_df=Y_rec_df, Y_test=Y_test_df.set_index('unique_id'),
+evaluator.evaluate(Y_hat_df=Y_rec_df, Y_test_df=Y_test_df.set_index('unique_id'),
                    tags=tags, benchmark='Naive')
 ```
 
