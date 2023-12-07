@@ -539,6 +539,49 @@ class MLForecast:
             raise Exception("Please run the `fit` method using `fitted=True`")
         return self.fcst_fitted_values_
 
+    def make_future_dataframe(self, h: int) -> DataFrame:
+        """Create a dataframe with all ids and future times in the forecasting horizon.
+
+        Parameters
+        ----------
+        h : int
+            Number of periods to predict.
+
+        Returns
+        -------
+        pandas or polars DataFrame
+            DataFrame with expected ids and future times
+        """
+        if not hasattr(self.ts, "id_col"):
+            raise ValueError("You must call fit first")
+        return ufp.make_future_dataframe(
+            uids=self.ts.uids,
+            last_times=self.ts.last_dates,
+            freq=self.freq,
+            h=h,
+            id_col=self.ts.id_col,
+            time_col=self.ts.time_col,
+        )
+
+    def get_missing_future(self, h: int, X_df: DataFrame) -> DataFrame:
+        """Get the missing id and time combinations in `X_df`.
+
+        Parameters
+        ----------
+        h : int
+            Number of periods to predict.
+        X_df : pandas or polars DataFrame, optional (default=None)
+            Dataframe with the future exogenous features. Should have the id column and the time column.
+
+        Returns
+        -------
+        pandas or polars DataFrame
+            DataFrame with expected ids and future times missing in `X_df`
+        """
+        expected = self.make_future_dataframe(h=h)
+        ids = [self.ts.id_col, self.ts.time_col]
+        return ufp.anti_join(expected, X_df[ids], on=ids)
+
     def predict(
         self,
         h: int,
