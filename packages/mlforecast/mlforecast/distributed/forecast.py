@@ -138,7 +138,6 @@ class DistributedMLForecast:
         fit_ts_only: bool = False,
     ) -> List[List[Any]]:
         ts = copy.deepcopy(base_ts)
-        ts._validate_freq(part, time_col)
         if fit_ts_only:
             ts._fit(
                 part,

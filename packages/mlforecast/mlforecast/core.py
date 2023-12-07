@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import utilsforecast.processing as ufp
 from numba import njit
 from sklearn.base import BaseEstimator, clone
 from utilsforecast.compat import (
@@ -22,30 +23,7 @@ from utilsforecast.compat import (
     pl_DataFrame,
     pl_Series,
 )
-from utilsforecast.processing import (
-    assign_columns,
-    between,
-    cast,
-    copy_if_pandas,
-    counts_by_id,
-    drop_index_if_pandas,
-    fill_null,
-    filter_with_mask,
-    group_by_agg,
-    horizontal_concat,
-    is_in,
-    is_nan_or_none,
-    join,
-    match_if_categorical,
-    offset_dates,
-    process_df,
-    rename,
-    sort,
-    take_rows,
-    to_numpy,
-    vertical_concat,
-)
-from utilsforecast.validation import validate_format
+from utilsforecast.validation import validate_format, validate_freq
 
 from .compat import CORE_INSTALLED, BaseLagTransform, Lag
 from .grouped_array import GroupedArray
@@ -212,7 +190,7 @@ class TimeSeries:
 
     def __init__(
         self,
-        freq: Optional[Freq] = None,
+        freq: Freq,
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
@@ -264,41 +242,6 @@ class TimeSeries:
             f"num_threads={self.num_threads})"
         )
 
-    def _validate_freq(self, df: DataFrame, time_col) -> None:
-        if isinstance(df, pd.DataFrame):
-            time_col_is_datetime = pd.api.types.is_datetime64_dtype(df[time_col])
-        else:
-            time_col_is_datetime = isinstance(df[time_col].dtype, pl.Datetime)
-        if isinstance(self.freq, str):
-            if isinstance(df, pd.DataFrame):
-                self.freq = pd.tseries.frequencies.to_offset(self.freq)
-                if not time_col_is_datetime:
-                    raise ValueError(
-                        f"Time col ({time_col}) has integers "
-                        "but specified frequency implies datetime."
-                    )
-        elif isinstance(self.freq, pd.tseries.offsets.BaseOffset):
-            if not isinstance(df, pd.DataFrame):
-                raise ValueError(
-                    f"Inferred frequency for pandas dataframe, but got {type(df)}."
-                )
-        elif isinstance(self.freq, int):
-            if time_col_is_datetime:
-                raise ValueError(
-                    "Must set frequency when using a datetime type column."
-                )
-        elif self.freq is None:
-            warnings.warn(
-                "Setting `freq=1` since it wasn't provided. "
-                "The `freq` argument will become required in a future version."
-            )
-            self.freq = 1
-        else:
-            raise ValueError(
-                "Unknown frequency type "
-                "Please use a str, int or offset frequency type."
-            )
-
     def _fit(
         self,
         df: DataFrame,
@@ -310,17 +253,17 @@ class TimeSeries:
     ) -> "TimeSeries":
         """Save the series values, ids and last dates."""
         validate_format(df, id_col, time_col, target_col)
-        if is_nan_or_none(df[target_col]).any():
+        validate_freq(df[time_col], self.freq)
+        if ufp.is_nan_or_none(df[target_col]).any():
             raise ValueError(f"{target_col} column contains null values.")
-        self._validate_freq(df, time_col)
         self.id_col = id_col
         self.target_col = target_col
         self.time_col = time_col
         self.keep_last_n = keep_last_n
         self.static_features = static_features
         sorted_df = df[[id_col, time_col, target_col]]
-        sorted_df = copy_if_pandas(sorted_df, deep=False)
-        uids, times, data, indptr, self._sort_idxs = process_df(
+        sorted_df = ufp.copy_if_pandas(sorted_df, deep=False)
+        uids, times, data, indptr, self._sort_idxs = ufp.process_df(
             df=sorted_df,
             id_col=id_col,
             time_col=time_col,
@@ -340,7 +283,7 @@ class TimeSeries:
                 df.shape[0], dtype=np.int32
             )
             self._restore_idxs[self._sort_idxs] = np.arange(df.shape[0])
-            sorted_df = take_rows(sorted_df, self._sort_idxs)
+            sorted_df = ufp.take_rows(sorted_df, self._sort_idxs)
         else:
             self._restore_idxs = None
         if self.target_transforms is not None:
@@ -354,7 +297,7 @@ class TimeSeries:
                         raise ValueError(
                             f"The following series are too short for the '{tfm_name}' transformation: {uids}."
                         ) from None
-                    sorted_df = assign_columns(sorted_df, target_col, ga.data)
+                    sorted_df = ufp.assign_columns(sorted_df, target_col, ga.data)
                 else:
                     tfm.set_column_names(id_col, time_col, target_col)
                     sorted_df = tfm.fit_transform(sorted_df)
@@ -370,8 +313,8 @@ class TimeSeries:
             to_drop = [time_col, target_col]
         if self._sort_idxs is not None:
             last_idxs_per_serie = self._sort_idxs[last_idxs_per_serie]
-        self.static_features_ = take_rows(df, last_idxs_per_serie)[static_features]
-        self.static_features_ = drop_index_if_pandas(self.static_features_)
+        self.static_features_ = ufp.take_rows(df, last_idxs_per_serie)[static_features]
+        self.static_features_ = ufp.drop_index_if_pandas(self.static_features_)
         self.features_order_ = [
             c for c in df.columns if c not in to_drop
         ] + self.features
@@ -454,8 +397,8 @@ class TimeSeries:
             for k, v in features.items():
                 features[k] = v[keep_rows]
             target = target[keep_rows]
-            df = filter_with_mask(df, keep_rows)
-            df = copy_if_pandas(df, deep=False)
+            df = ufp.filter_with_mask(df, keep_rows)
+            df = ufp.copy_if_pandas(df, deep=False)
             last_idxs = self.ga.indptr[1:] - 1
             if self._sort_idxs is not None:
                 last_idxs = self._sort_idxs[last_idxs]
@@ -482,7 +425,7 @@ class TimeSeries:
 
         # lag transforms
         for feat in transforms.keys():
-            df = assign_columns(df, feat, features[feat])
+            df = ufp.assign_columns(df, feat, features[feat])
 
         # date features
         if self.date_features:
@@ -496,24 +439,24 @@ class TimeSeries:
                 if feat_name in df:
                     continue
                 _, feat_vals = self._compute_date_feature(dates, feature)
-                df = assign_columns(df, feat_name, feat_vals)
+                df = ufp.assign_columns(df, feat_name, feat_vals)
 
         # assemble return
         if return_X_y:
             X = df[self.features_order_]
             if as_numpy:
-                X = to_numpy(X)
+                X = ufp.to_numpy(X)
             return X, target
         if max_horizon is not None:
             # remove original target
             out_cols = [c for c in df.columns if c != self.target_col]
             df = df[out_cols]
             target_names = [f"{self.target_col}{i}" for i in range(max_horizon)]
-            df = assign_columns(df, target_names, target)
+            df = ufp.assign_columns(df, target_names, target)
         else:
             if isinstance(df, pd.DataFrame):
                 df = _ensure_shallow_copy(df)
-            df = assign_columns(df, self.target_col, target)
+            df = ufp.assign_columns(df, self.target_col, target)
         return df
 
     def fit_transform(
@@ -566,7 +509,7 @@ class TimeSeries:
 
     def _update_features(self) -> DataFrame:
         """Compute the current values of all the features using the latest values of the time series."""
-        self.curr_dates: Union[pd.Index, pl_Series] = offset_dates(
+        self.curr_dates: Union[pd.Index, pl_Series] = ufp.offset_times(
             self.curr_dates, self.freq, 1
         )
         self.test_dates.append(self.curr_dates)
@@ -582,7 +525,7 @@ class TimeSeries:
         else:
             df_constructor = pd.DataFrame
         features_df = df_constructor(features)[self.features]
-        return horizontal_concat([self._static_features, features_df])
+        return ufp.horizontal_concat([self._static_features, features_df])
 
     def _get_raw_predictions(self) -> np.ndarray:
         return np.array(self.y_pred).ravel("F")
@@ -632,9 +575,9 @@ class TimeSeries:
             n_series = len(self._uids)
             h = X_df.shape[0] // n_series
             rows = np.arange(self._h, X_df.shape[0], h)
-            X = take_rows(X_df, rows)
-            X = drop_index_if_pandas(X)
-            new_x = horizontal_concat([new_x, X])
+            X = ufp.take_rows(X_df, rows)
+            X = ufp.drop_index_if_pandas(X)
+            new_x = ufp.horizontal_concat([new_x, X])
         if isinstance(new_x, pd.DataFrame):
             nulls = new_x.isnull().any()
             cols_with_nulls = nulls[nulls].index.tolist()
@@ -646,7 +589,7 @@ class TimeSeries:
         self._h += 1
         new_x = new_x[self.features_order_]
         if self.as_numpy:
-            new_x = to_numpy(new_x)
+            new_x = ufp.to_numpy(new_x)
         return new_x
 
     def _predict_recursive(
@@ -671,10 +614,10 @@ class TimeSeries:
             if i == 0:
                 preds = self._get_predictions()
                 rename_dict = {f"{self.target_col}_pred": name}
-                preds = rename(preds, rename_dict)
+                preds = ufp.rename(preds, rename_dict)
             else:
                 raw_preds = self._get_raw_predictions()
-                preds = assign_columns(preds, name, raw_preds)
+                preds = ufp.assign_columns(preds, name, raw_preds)
         return preds
 
     def _predict_multi(
@@ -691,22 +634,11 @@ class TimeSeries:
             )
         self._predict_setup()
         uids = self._get_future_ids(horizon)
+        starts = ufp.offset_times(self.curr_dates, self.freq, 1)
+        dates = ufp.time_ranges(starts, self.freq, periods=horizon)
         if isinstance(self.curr_dates, pl_Series):
-            starts = offset_dates(self.curr_dates, self.freq, 1)
-            ends = offset_dates(self.curr_dates, self.freq, horizon)
-            dates = pl.date_ranges(
-                starts, ends, interval=self.freq, eager=True
-            ).explode()
             df_constructor = pl_DataFrame
         else:
-            assert isinstance(self.freq, (pd.offsets.BaseOffset, int))
-            dates = np.hstack(
-                [
-                    date + (i + 1) * self.freq
-                    for date in self.curr_dates
-                    for i in range(horizon)
-                ]
-            )
             df_constructor = pd.DataFrame
         result = df_constructor({self.id_col: uids, self.time_col: dates})
         for name, model in models.items():
@@ -718,7 +650,7 @@ class TimeSeries:
             for i in range(horizon):
                 predictions[:, i] = model[i].predict(new_x)
             raw_preds = predictions.ravel()
-            result = assign_columns(result, name, raw_preds)
+            result = ufp.assign_columns(result, name, raw_preds)
         return result
 
     def predict(
@@ -736,10 +668,10 @@ class TimeSeries:
                 raise ValueError(
                     f"The following ids weren't seen during training and thus can't be forecasted: {unseen}"
                 )
-            self._idxs: Optional[np.ndarray] = np.where(is_in(self.uids, ids))[0]
+            self._idxs: Optional[np.ndarray] = np.where(ufp.is_in(self.uids, ids))[0]
             self._uids = self.uids[self._idxs]
-            self._static_features = take_rows(self.static_features_, self._idxs)
-            self._static_features = drop_index_if_pandas(self._static_features)
+            self._static_features = ufp.take_rows(self.static_features_, self._idxs)
+            self._static_features = ufp.drop_index_if_pandas(self._static_features)
             last_dates = self.last_dates[self._idxs]
         else:
             self._idxs = None
@@ -764,8 +696,8 @@ class TimeSeries:
                     "Please re-run the fit step using the `static_features` argument to indicate which features are static. "
                     "If all your features are dynamic please pass an empty list (static_features=[])."
                 )
-            starts = offset_dates(last_dates, self.freq, 1)
-            ends = offset_dates(last_dates, self.freq, horizon)
+            starts = ufp.offset_times(last_dates, self.freq, 1)
+            ends = ufp.offset_times(last_dates, self.freq, horizon)
             df_constructor = type(X_df)
             dates_validation = df_constructor(
                 {
@@ -774,9 +706,9 @@ class TimeSeries:
                     "_end": ends,
                 }
             )
-            X_df = join(X_df, dates_validation, on=self.id_col)
-            mask = between(X_df[self.time_col], X_df["_start"], X_df["_end"])
-            X_df = filter_with_mask(X_df, mask)
+            X_df = ufp.join(X_df, dates_validation, on=self.id_col)
+            mask = ufp.between(X_df[self.time_col], X_df["_start"], X_df["_end"])
+            X_df = ufp.filter_with_mask(X_df, mask)
             if X_df.shape[0] != len(self._uids) * horizon:
                 msg = (
                     "Found missing inputs in X_df. "
@@ -786,7 +718,7 @@ class TimeSeries:
                 )
                 raise ValueError(msg)
             drop_cols = [self.id_col, self.time_col, "_start", "_end"]
-            X_df = sort(X_df, [self.id_col, self.time_col]).drop(columns=drop_cols)
+            X_df = ufp.sort(X_df, [self.id_col, self.time_col]).drop(columns=drop_cols)
         if getattr(self, "max_horizon", None) is None:
             preds = self._predict_recursive(
                 models=models,
@@ -817,7 +749,7 @@ class TimeSeries:
                     for col in model_cols:
                         ga = GroupedArray(preds[col].to_numpy(), indptr)
                         ga = tfm.inverse_transform(ga)
-                        preds = assign_columns(preds, col, ga.data)
+                        preds = ufp.assign_columns(preds, col, ga.data)
                     tfm.idxs = None
                 else:
                     preds = tfm.inverse_transform(preds)
@@ -831,35 +763,37 @@ class TimeSeries:
         uids = self.uids
         if isinstance(uids, pd.Index):
             uids = pd.Series(uids)
-        uids, new_ids = match_if_categorical(uids, df[self.id_col])
-        df = assign_columns(df, self.id_col, new_ids)
-        df = sort(df, by=[self.id_col, self.time_col])
+        uids, new_ids = ufp.match_if_categorical(uids, df[self.id_col])
+        df = ufp.assign_columns(df, self.id_col, new_ids)
+        df = ufp.sort(df, by=[self.id_col, self.time_col])
         values = df[self.target_col].to_numpy()
-        id_counts = counts_by_id(df, self.id_col)
-        sizes = join(uids, id_counts, on=self.id_col, how="outer")
-        sizes = fill_null(sizes, {"counts": 0})
-        sizes = sort(sizes, by=self.id_col)
-        new_groups = ~is_in(sizes[self.id_col], uids)
-        last_dates = group_by_agg(df, self.id_col, {self.time_col: "max"})
-        last_dates = join(sizes, last_dates, on=self.id_col, how="left")
+        id_counts = ufp.counts_by_id(df, self.id_col)
+        sizes = ufp.join(uids, id_counts, on=self.id_col, how="outer")
+        sizes = ufp.fill_null(sizes, {"counts": 0})
+        sizes = ufp.sort(sizes, by=self.id_col)
+        new_groups = ~ufp.is_in(sizes[self.id_col], uids)
+        last_dates = ufp.group_by_agg(df, self.id_col, {self.time_col: "max"})
+        last_dates = ufp.join(sizes, last_dates, on=self.id_col, how="left")
         curr_last_dates = type(df)({self.id_col: uids, "_curr": self.last_dates})
-        last_dates = join(last_dates, curr_last_dates, on=self.id_col, how="left")
-        last_dates = fill_null(last_dates, {self.time_col: last_dates["_curr"]})
-        last_dates = sort(last_dates, by=self.id_col)
-        self.last_dates = cast(last_dates[self.time_col], self.last_dates.dtype)
-        self.uids = sort(sizes[self.id_col])
+        last_dates = ufp.join(last_dates, curr_last_dates, on=self.id_col, how="left")
+        last_dates = ufp.fill_null(last_dates, {self.time_col: last_dates["_curr"]})
+        last_dates = ufp.sort(last_dates, by=self.id_col)
+        self.last_dates = ufp.cast(last_dates[self.time_col], self.last_dates.dtype)
+        self.uids = ufp.sort(sizes[self.id_col])
         if isinstance(self.uids, pd.Series):
             self.uids = pd.Index(self.uids)
         if new_groups.any():
-            new_ids = filter_with_mask(sizes[self.id_col], new_groups)
-            new_ids_df = filter_with_mask(df, is_in(df[self.id_col], new_ids))
-            new_ids_counts = counts_by_id(new_ids_df, self.id_col)
-            new_statics = take_rows(df, new_ids_counts["counts"].cumsum() - 1)
+            new_ids = ufp.filter_with_mask(sizes[self.id_col], new_groups)
+            new_ids_df = ufp.filter_with_mask(df, ufp.is_in(df[self.id_col], new_ids))
+            new_ids_counts = ufp.counts_by_id(new_ids_df, self.id_col)
+            new_statics = ufp.take_rows(
+                df, new_ids_counts["counts"].to_numpy().cumsum() - 1
+            )
             new_statics = new_statics[self.static_features_.columns]
-            self.static_features_ = vertical_concat(
+            self.static_features_ = ufp.vertical_concat(
                 [self.static_features_, new_statics]
             )
-            self.static_features_ = sort(self.static_features_, self.id_col)
+            self.static_features_ = ufp.sort(self.static_features_, self.id_col)
         self.ga = self.ga.append_several(
             new_sizes=sizes["counts"].to_numpy().astype(np.int32),
             new_values=values,
