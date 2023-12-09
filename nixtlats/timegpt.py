@@ -403,6 +403,14 @@ class _TimeGPTModel:
             to_dict_args["index"] = False
         y = Y_df.to_dict(**to_dict_args)
         x = X_df.to_dict(**to_dict_args) if X_df is not None else None
+        # A: I'm aware that sel.x_cols exists, but
+        # I want to be sure that we are logging the correct
+        # x cols :kiss:
+        if x:
+            x_cols = [col for col in x["columns"] if col not in ["unique_id", "ds"]]
+            main_logger.info(
+                f'Using the following exogenous variables: {", ".join(x_cols)}'
+            )
         return y, x
 
     def set_model_params(self):
@@ -552,11 +560,12 @@ class _TimeGPTModel:
         n_windows: int = 1,
         step_size: Optional[int] = None,
     ):
-        df, X_df = self.transform_inputs(df=df, X_df=None)
+        # A: see `transform_inputs`
+        # the code always will return X_df=None
+        # if X_df=None
+        df, _ = self.transform_inputs(df=df, X_df=None)
         self.infer_freq(df)
         df["ds"] = pd.to_datetime(df["ds"])
-        if X_df is not None:
-            X_df["ds"] = pd.to_datetime(X_df["ds"])
         # mlforecast cv code
         results = []
         sort_idxs = maybe_compute_sort_indices(df, "unique_id", "ds")
@@ -572,9 +581,9 @@ class _TimeGPTModel:
             step_size=self.h if step_size is None else step_size,
         )
         for i_window, (cutoffs, train, valid) in enumerate(splits):
-            if X_df is not None:
-                train = train[["unique_id", "ds", "y"]].merge(X_df)
-                train_future = valid[["unique_id", "ds"]].merge(X_df)
+            if len(valid.columns) > 3:
+                # if we have uid, ds, y + exogenous vars
+                train_future = valid.drop(columns="y")
             else:
                 train_future = None
             y_pred = self.forecast(
@@ -618,6 +627,44 @@ def validate_model_parameter(func):
     return wrapper
 
 # %% ../nbs/timegpt.ipynb 8
+def remove_unused_categories(df: pd.DataFrame, col: str):
+    """Check if col exists in df and if it is a category column.
+    In that case, it removes the unused levels."""
+    if df is not None and col in df:
+        if df[col].dtype == "category":
+            df = df.copy()
+            df[col] = df[col].cat.remove_unused_categories()
+    return df
+
+# %% ../nbs/timegpt.ipynb 9
+def partition_by_uid(func):
+    def wrapper(self, num_partitions, **kwargs):
+        if num_partitions is None or num_partitions == 1:
+            return func(self, **kwargs, num_partitions=1)
+        df = kwargs.pop("df")
+        X_df = kwargs.pop("X_df", None)
+        id_col = kwargs["id_col"]
+        uids = df["unique_id"].unique()
+        results_df = []
+        for uids_split in np.array_split(uids, num_partitions):
+            df_uids = df.query("unique_id in @uids_split")
+            if X_df is not None:
+                X_df_uids = X_df.query("unique_id in @uids_split")
+            else:
+                X_df_uids = None
+            df_uids = remove_unused_categories(df_uids, col=id_col)
+            X_df_uids = remove_unused_categories(X_df_uids, col=id_col)
+            kwargs_uids = {"df": df_uids, **kwargs}
+            if X_df_uids is not None:
+                kwargs_uids["X_df"] = X_df_uids
+            results_uids = func(self, **kwargs_uids, num_partitions=1)
+            results_df.append(results_uids)
+        results_df = pd.concat(results_df).reset_index(drop=True)
+        return results_df
+
+    return wrapper
+
+# %% ../nbs/timegpt.ipynb 10
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -690,6 +737,7 @@ class _TimeGPT:
         return valid
 
     @validate_model_parameter
+    @partition_by_uid
     def _forecast(
         self,
         df: pd.DataFrame,
@@ -707,70 +755,8 @@ class _TimeGPT:
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
+        num_partitions: int = 1,
     ):
-        """Forecast your time series using TimeGPT.
-
-        Parameters
-        ----------
-        df : pandas.DataFrame
-            The DataFrame on which the function will operate. Expected to contain at least the following columns:
-            - time_col:
-                Column name in `df` that contains the time indices of the time series. This is typically a datetime
-                column with regular intervals, e.g., hourly, daily, monthly data points.
-            - target_col:
-                Column name in `df` that contains the target variable of the time series, i.e., the variable we
-                wish to predict or analyze.
-            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
-            - id_col:
-                Column name in `df` that identifies unique time series. Each unique value in this column
-                corresponds to a unique time series.
-        h : int
-            Forecast horizon.
-        freq : str
-            Frequency of the data. By default, the freq will be inferred automatically.
-            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-        id_col : str (default='unique_id')
-            Column that identifies each serie.
-        time_col : str (default='ds')
-            Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str (default='y')
-            Column that contains the target.
-        X_df : pandas.DataFrame, optional (default=None)
-            DataFrame with [`unique_id`, `ds`] columns and `df`'s future exogenous.
-        level : List[float], optional (default=None)
-            Confidence levels between 0 and 100 for prediction intervals.
-        finetune_steps : int (default=0)
-            Number of steps used to finetune TimeGPT in the
-            new data.
-        clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts
-            using TimeGPT.
-        validate_token : bool (default=False)
-            If True, validates token before
-            sending requests.
-        add_history : bool (default=False)
-            Return fitted values of the model.
-        date_features : bool or list of str or callable, optional (default=False)
-            Features computed from the dates.
-            Can be pandas date attributes or functions that will take the dates as input.
-            If True automatically adds most used date features for the
-            frequency of `df`.
-        date_features_to_one_hot : bool or list of str (default=True)
-            Apply one-hot encoding to these date features.
-            If `date_features=True`, then all date features are
-            one-hot encoded by default.
-        model : str (default='timegpt=1')
-            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
-            We recommend using `timegpt-1-long-horizon` for forecasting
-            if you want to predict more than one seasonal
-            period given the frequency of your data.
-
-        Returns
-        -------
-        fcsts_df : pandas.DataFrame
-            DataFrame with TimeGPT forecasts for point predictions and probabilistic
-            predictions (if level is not None).
-        """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
         timegpt_model = _TimeGPTModel(
@@ -795,6 +781,7 @@ class _TimeGPT:
         return fcst_df
 
     @validate_model_parameter
+    @partition_by_uid
     def _detect_anomalies(
         self,
         df: pd.DataFrame,
@@ -808,60 +795,8 @@ class _TimeGPT:
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
+        num_partitions: int = 1,
     ):
-        """Detect anomalies in your time series using TimeGPT.
-
-        Parameters
-        ----------
-        df : pandas.DataFrame
-            The DataFrame on which the function will operate. Expected to contain at least the following columns:
-            - time_col:
-                Column name in `df` that contains the time indices of the time series. This is typically a datetime
-                column with regular intervals, e.g., hourly, daily, monthly data points.
-            - target_col:
-                Column name in `df` that contains the target variable of the time series, i.e., the variable we
-                wish to predict or analyze.
-            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
-            - id_col:
-                Column name in `df` that identifies unique time series. Each unique value in this column
-                corresponds to a unique time series.
-        freq : str
-            Frequency of the data. By default, the freq will be inferred automatically.
-            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-        id_col : str (default='unique_id')
-            Column that identifies each serie.
-        time_col : str (default='ds')
-            Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str (default='y')
-            Column that contains the target.
-        level : float (default=99)
-            Confidence level between 0 and 100 for detecting the anomalies.
-        clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts
-            using TimeGPT.
-        validate_token : bool (default=False)
-            If True, validates token before
-            sending requests.
-        date_features : bool or list of str or callable, optional (default=False)
-            Features computed from the dates.
-            Can be pandas date attributes or functions that will take the dates as input.
-            If True automatically adds most used date features for the
-            frequency of `df`.
-        date_features_to_one_hot : bool or list of str (default=True)
-            Apply one-hot encoding to these date features.
-            If `date_features=True`, then all date features are
-            one-hot encoded by default.
-        model : str (default='timegpt=1')
-            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
-            We recommend using `timegpt-1-long-horizon` for forecasting
-            if you want to predict more than one seasonal
-            period given the frequency of your data.
-
-        Returns
-        -------
-        anomalies_df : pandas.DataFrame
-            DataFrame with anomalies flagged with 1 detected by TimeGPT.
-        """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
         timegpt_model = _TimeGPTModel(
@@ -885,6 +820,7 @@ class _TimeGPT:
         return anomalies_df
 
     @validate_model_parameter
+    @partition_by_uid
     def _cross_validation(
         self,
         df: pd.DataFrame,
@@ -902,68 +838,8 @@ class _TimeGPT:
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
+        num_partitions: int = 1,
     ):
-        """Perform cross validation in your time series using TimeGPT.
-        Parameters
-        ----------
-        df : pandas.DataFrame
-            The DataFrame on which the function will operate. Expected to contain at least the following columns:
-            - time_col:
-                Column name in `df` that contains the time indices of the time series. This is typically a datetime
-                column with regular intervals, e.g., hourly, daily, monthly data points.
-            - target_col:
-                Column name in `df` that contains the target variable of the time series, i.e., the variable we
-                wish to predict or analyze.
-            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
-            - id_col:
-                Column name in `df` that identifies unique time series. Each unique value in this column
-                corresponds to a unique time series.
-        h : int
-            Forecast horizon.
-        freq : str
-            Frequency of the data. By default, the freq will be inferred automatically.
-            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-        id_col : str (default='unique_id')
-            Column that identifies each serie.
-        time_col : str (default='ds')
-            Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str (default='y')
-            Column that contains the target.
-        level : float (default=99)
-            Confidence level between 0 and 100 for detecting the anomalies.
-        validate_token : bool (default=False)
-            If True, validates token before
-            sending requests.
-        n_windows : int (defaul=1)
-            Number of windows to evaluate.
-        step_size : int, optional (default=None)
-            Step size between each cross validation window. If None it will be equal to `h`.
-        finetune_steps : int (default=0)
-            Number of steps used to finetune TimeGPT in the
-            new data.
-        clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts
-            using TimeGPT.
-        date_features : bool or list of str or callable, optional (default=False)
-            Features computed from the dates.
-            Can be pandas date attributes or functions that will take the dates as input.
-            If True automatically adds most used date features for the
-            frequency of `df`.
-        date_features_to_one_hot : bool or list of str (default=True)
-            Apply one-hot encoding to these date features.
-            If `date_features=True`, then all date features are
-            one-hot encoded by default.
-        model : str (default='timegpt=1')
-            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
-            We recommend using `timegpt-1-long-horizon` for forecasting
-            if you want to predict more than one seasonal
-            period given the frequency of your data.
-
-        Returns
-        -------
-        cv_df : pandas.DataFrame
-            DataFrame with cross validation forecasts.
-        """
         if validate_token and not self.validate_token(log=False):
             raise Exception("Token not valid, please email ops@nixtla.io")
         timegpt_model = _TimeGPTModel(
@@ -1098,7 +974,7 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 9
+# %% ../nbs/timegpt.ipynb 11
 class TimeGPT(_TimeGPT):
     def _instantiate_distributed_timegpt(self):
         from nixtlats.distributed.timegpt import _DistributedTimeGPT
@@ -1189,9 +1065,8 @@ class TimeGPT(_TimeGPT):
             period given the frequency of your data.
         num_partitions : int (default=None)
             Number of partitions to use.
-            Only used in distributed environments (spark, ray, dask).
             If None, the number of partitions will be equal
-            to the available parallel resources.
+            to the available parallel resources in distributed environments.
 
         Returns
         -------
@@ -1216,6 +1091,7 @@ class TimeGPT(_TimeGPT):
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
+                num_partitions=num_partitions,
             )
         else:
             dist_timegpt = self._instantiate_distributed_timegpt()
@@ -1302,9 +1178,8 @@ class TimeGPT(_TimeGPT):
             period given the frequency of your data.
         num_partitions : int (default=None)
             Number of partitions to use.
-            Only used in distributed environments (spark, ray, dask).
             If None, the number of partitions will be equal
-            to the available parallel resources.
+            to the available parallel resources in distributed environments.
 
         Returns
         -------
@@ -1324,6 +1199,7 @@ class TimeGPT(_TimeGPT):
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
+                num_partitions=num_partitions,
             )
         else:
             dist_timegpt = self._instantiate_distributed_timegpt()
@@ -1419,9 +1295,8 @@ class TimeGPT(_TimeGPT):
             period given the frequency of your data.
         num_partitions : int (default=None)
             Number of partitions to use.
-            Only used in distributed environments (spark, ray, dask).
             If None, the number of partitions will be equal
-            to the available parallel resources.
+            to the available parallel resources in distributed environments.
 
         Returns
         -------
@@ -1445,6 +1320,7 @@ class TimeGPT(_TimeGPT):
                 model=model,
                 n_windows=n_windows,
                 step_size=step_size,
+                num_partitions=num_partitions,
             )
         else:
             dist_timegpt = self._instantiate_distributed_timegpt()
