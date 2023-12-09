@@ -26,7 +26,7 @@ jobs:
         uses: mamba-org/setup-micromamba@v1 
         with:
           environment-file: environment.yml
-          create-args: python=${{ matrix.python-version }}
+          create-args: python=3.9
           cache-environment: true
 
       - name: Install pip requirements
