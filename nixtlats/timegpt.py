@@ -218,7 +218,7 @@ class _TimeGPTModel:
         if self.freq is None or self.freq in special_freqs:
             unique_id = df.iloc[0]["unique_id"]
             df_id = df.query("unique_id == @unique_id")
-            inferred_freq = pd.infer_freq(df_id["ds"])
+            inferred_freq = pd.infer_freq(df_id["ds"].sort_values())
             if inferred_freq is None:
                 raise Exception(
                     "Could not infer frequency of ds column. This could be due to "
