@@ -6,6 +6,7 @@ dependencies:
   - jupyterlab
   - pandas
   - plotly
+  - prophet
   - pyspark>=3.3
   - pip:
     - black
@@ -18,7 +19,7 @@ dependencies:
     - utilsforecast>=0.0.13
     - requests
     - duckdb<0.8
-    - fugue[ray]
+    - fugue[ray]>=0.8.7
     - ray<2.4
     - fire
     - tabulate
