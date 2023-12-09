@@ -295,7 +295,7 @@ class _TimeGPTModel:
             future_dates = X_df["ds"].unique().tolist()
         else:
             future_dates = []
-        dates = pd.DatetimeIndex(train_dates + future_dates)
+        dates = pd.DatetimeIndex(np.unique(train_dates + future_dates).tolist())
         date_features_df = pd.DataFrame({"ds": dates})
         for feature in self.date_features:
             feat_df = self.compute_date_feature(dates, feature)
