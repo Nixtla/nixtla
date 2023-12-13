@@ -428,6 +428,7 @@ class DistributedMLForecast:
         horizon,
         before_predict_callback=None,
         after_predict_callback=None,
+        X_df=None,
     ) -> Iterable[pd.DataFrame]:
         for serialized_ts, _, serialized_valid in items:
             valid = cloudpickle.loads(serialized_valid)
@@ -437,6 +438,7 @@ class DistributedMLForecast:
                 horizon=horizon,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
+                X_df=X_df,
             )
             if valid is not None:
                 res = res.merge(valid, how="left")
@@ -453,6 +455,7 @@ class DistributedMLForecast:
         h: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        X_df: Optional[pd.DataFrame] = None,
         new_df: Optional[fugue.AnyDataFrame] = None,
     ) -> fugue.AnyDataFrame:
         """Compute the predictions for the next `horizon` steps.
@@ -469,6 +472,8 @@ class DistributedMLForecast:
             Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index.
+        X_df : pandas DataFrame, optional (default=None)
+            Dataframe with the future exogenous features. Should have the id column and the time column.
         new_df : dask or spark DataFrame, optional (default=None)
             Series data of new observations for which forecasts are to be generated.
                 This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
@@ -493,6 +498,8 @@ class DistributedMLForecast:
         else:
             partition_results = self.partition_results
         schema = self._get_predict_schema()
+        if X_df is not None and not isinstance(X_df, pd.DataFrame):
+            raise ValueError("`X_df` should be a pandas DataFrame")
         res = fa.transform(
             partition_results,
             DistributedMLForecast._predict,
@@ -501,6 +508,7 @@ class DistributedMLForecast:
                 "horizon": h,
                 "before_predict_callback": before_predict_callback,
                 "after_predict_callback": after_predict_callback,
+                "X_df": X_df,
             },
             schema=schema,
             engine=self.engine,
