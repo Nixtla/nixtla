@@ -5,7 +5,7 @@ __all__ = ['ensure_shallow_copy', 'ensure_time_dtype', 'validate_format', 'valid
 
 # %% ../nbs/validation.ipynb 2
 import re
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -75,7 +75,7 @@ def validate_format(
     df: DataFrame,
     id_col: str = "unique_id",
     time_col: str = "ds",
-    target_col: str = "y",
+    target_col: Optional[str] = "y",
 ) -> None:
     """Ensure DataFrame has expected format.
 
@@ -87,7 +87,7 @@ def validate_format(
         Column that identifies each serie.
     time_col : str (default='ds')
         Column that identifies each timestamp.
-    target_col : str (default='y')
+    target_col : str, optional (default='y')
         Column that contains the target.
 
     Returns
@@ -100,7 +100,10 @@ def validate_format(
         )
 
     # required columns
-    missing_cols = sorted({id_col, time_col, target_col} - set(df.columns))
+    expected_cols = {id_col, time_col}
+    if target_col is not None:
+        expected_cols.add(target_col)
+    missing_cols = sorted(expected_cols - set(df.columns))
     if missing_cols:
         raise ValueError(f"The following columns are missing: {missing_cols}")
 
@@ -112,6 +115,8 @@ def validate_format(
         )
 
     # target col
+    if target_col is None:
+        return None
     target = df[target_col]
     if isinstance(target, pd.Series):
         is_numeric = np.issubdtype(target.dtype.type, np.number)
