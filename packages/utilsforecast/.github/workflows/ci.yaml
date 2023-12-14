@@ -38,7 +38,7 @@ jobs:
         run: pip install ./
 
       - name: Run tests
-        run: nbdev_test --do_print --timing --flags 'matplotlib polars'
+        run: nbdev_test --do_print --timing --flags 'matplotlib polars scipy'
 
   windows-tests:
     runs-on: windows-latest

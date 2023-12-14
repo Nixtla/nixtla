@@ -6,7 +6,7 @@ __all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_col
            'copy_if_pandas', 'join', 'drop_index_if_pandas', 'rename', 'sort', 'offset_times', 'offset_dates',
            'time_ranges', 'repeat', 'cv_times', 'group_by', 'group_by_agg', 'is_in', 'between', 'fill_null', 'cast',
            'value_cols_to_numpy', 'make_future_dataframe', 'anti_join', 'process_df', 'DataFrameProcessor',
-           'backtest_splits']
+           'backtest_splits', 'add_insample_levels']
 
 # %% ../nbs/processing.ipynb 2
 import re
@@ -738,3 +738,37 @@ def backtest_splits(
         train = filter_with_mask(df, train_mask)
         valid = filter_with_mask(df, valid_mask)
         yield cutoffs, train, valid
+
+# %% ../nbs/processing.ipynb 83
+def add_insample_levels(
+    df: DataFrame,
+    models: List[str],
+    level: List[Union[int, float]],
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> DataFrame:
+    import operator
+
+    from scipy.stats import norm
+
+    df = copy_if_pandas(df, deep=False)
+    cuts = norm.ppf(0.5 + np.asarray(level) / 200).reshape(1, -1)
+    if isinstance(df, pd.DataFrame):
+        errors = df[models].sub(df[target_col], axis=0)
+        stds = errors.groupby(df[id_col], observed=True).transform("std")
+    else:
+        exprs = (pl.col(m).sub(pl.col(target_col)).std().over(id_col) for m in models)
+        stds = df.select(exprs)
+    stds = to_numpy(stds)
+    preds = to_numpy(df[models])
+    vals = np.empty_like(preds, shape=(preds.shape[0], len(models) * 2 * len(level)))
+    cols = []
+    k = 0
+    for i, model in enumerate(models):
+        widths = cuts * stds[:, [i]]
+        for side, op in {"lo": operator.sub, "hi": operator.add}.items():
+            for j, lvl in enumerate(level):
+                cols.append(f"{model}-{side}-{lvl}")
+                vals[:, k] = op(preds[:, i], widths[:, j])
+                k += 1
+    return assign_columns(df, cols, vals)
