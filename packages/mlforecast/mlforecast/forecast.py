@@ -533,11 +533,33 @@ class MLForecast:
             self.fcst_fitted_values_ = fitted_values
         return self
 
-    def forecast_fitted_values(self):
-        """Access in-sample predictions."""
+    def forecast_fitted_values(
+        self, level: Optional[List[Union[int, float]]] = None
+    ) -> DataFrame:
+        """Access in-sample predictions.
+
+        Parameters
+        ----------
+        level : list of ints or floats, optional (default=None)
+            Confidence levels between 0 and 100 for prediction intervals.
+
+        Returns
+        -------
+        pandas or polars DataFrame
+            Dataframe with predictions for the training set
+        """
         if not hasattr(self, "fcst_fitted_values_"):
             raise Exception("Please run the `fit` method using `fitted=True`")
-        return self.fcst_fitted_values_
+        res = self.fcst_fitted_values_
+        if level is not None:
+            res = ufp.add_insample_levels(
+                res,
+                models=self.models_.keys(),
+                level=level,
+                id_col=self.ts.id_col,
+                target_col=self.ts.target_col,
+            )
+        return res
 
     def make_future_dataframe(self, h: int) -> DataFrame:
         """Create a dataframe with all ids and future times in the forecasting horizon.
