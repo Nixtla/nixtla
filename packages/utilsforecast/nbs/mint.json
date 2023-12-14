@@ -27,12 +27,12 @@
     {
       "group": "API Reference",
       "pages": [
-        "data.html",
+        "preprocessing.html",
+        "feature_engineering.html",
         "evaluation.html",
         "losses.html",
         "plotting.html",
-        "preprocessing.html",
-        "validation.html"
+        "data.html"
       ]
     }
   ]
