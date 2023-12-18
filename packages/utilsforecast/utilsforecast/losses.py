@@ -465,7 +465,8 @@ def mqloss(
         if isinstance(result, pd.DataFrame):
             result = result.groupby(df[id_col], observed=True).mean()
         else:
-            result = group_by(result, df[id_col]).mean()
+            result = result.with_columns(df[id_col])
+            result = group_by(result, id_col).mean()
         if res is None:
             res = result
             if isinstance(res, pd.DataFrame):
@@ -643,11 +644,9 @@ def scaled_crps(
 
         grouped_df = group_by(df, id_col)
         norm = grouped_df.agg(pl.col(target_col).abs().sum().alias("norm"))
-        sizes = (
-            df[id_col]
-            .value_counts()
-            .with_columns(pl.col("counts") * (pl.col("counts") + 1) / 2)
-        )
+        sizes = df[id_col].value_counts()
+        sizes.columns = [id_col, "counts"]
+        sizes = sizes.with_columns(pl.col("counts") * (pl.col("counts") + 1) / 2)
         res = _pl_agg_expr(
             loss.join(sizes, on=id_col).join(norm, on=id_col), models, id_col, gen_expr
         )

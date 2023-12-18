@@ -62,9 +62,9 @@ def counts_by_id(df: DataFrame, id_col: str) -> DataFrame:
         if not id_counts.index.is_monotonic_increasing:
             id_counts = id_counts.sort_index()
         id_counts = id_counts.reset_index()
-        id_counts.columns = [id_col, "counts"]
     else:
         id_counts = df[id_col].value_counts().sort(id_col)
+    id_counts.columns = [id_col, "counts"]
     return id_counts
 
 # %% ../nbs/processing.ipynb 8
