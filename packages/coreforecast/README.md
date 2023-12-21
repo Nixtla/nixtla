@@ -24,8 +24,11 @@ The base data structure is the "grouped array" which holds two numpy 1d arrays:
 * **indptr**: series boundaries such that `data[indptr[i] : indptr[i + 1]]` returns the `i-th` series. For example, if you have two series of sizes 5 and 10 the indptr would be [0, 5, 15].
 
 ```python
+import numpy as np
 from coreforecast.grouped_array import GroupedArray
 
+data = np.arange(10)
+indptr = np.array([0, 3, 10])
 ga = GroupedArray(data, indptr)
 ```
 
@@ -35,7 +38,7 @@ Once you have this structure you can run any of the provided transformations, fo
 from coreforecast.lag_transforms import ExpandingMean
 from coreforecast.scalers import LocalStandardScaler
 
-exp_mean = ExpandingMean().transform(ga)
+exp_mean = ExpandingMean(lag=1).transform(ga)
 scaler = LocalStandardScaler().fit(ga)
 standardized = scaler.transform(ga)
 ```
