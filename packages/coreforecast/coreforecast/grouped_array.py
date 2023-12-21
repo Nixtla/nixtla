@@ -12,14 +12,14 @@ else:
 
 
 if platform.system() in ("Windows", "Microsoft"):
-    prefix = "Release"
-    extension = "dll"
+    _prefix = "Release"
+    _extension = "dll"
 else:
-    prefix = ""
-    extension = "so"
+    _prefix = ""
+    _extension = "so"
 
 _LIB = ctypes.CDLL(
-    str(files("coreforecast").joinpath("lib", prefix, f"libcoreforecast.{extension}"))
+    str(files("coreforecast").joinpath("lib", _prefix, f"libcoreforecast.{_extension}"))
 )
 
 
@@ -28,6 +28,13 @@ def _data_as_void_ptr(arr: np.ndarray):
 
 
 class GroupedArray:
+    """Array of grouped data
+
+    Args:
+        data (np.ndarray): 1d array with the values.
+        indptr (np.ndarray): 1d array with the group boundaries.
+        num_threads (int): Number of threads to use when computing transformations."""
+
     def __init__(self, data: np.ndarray, indptr: np.ndarray, num_threads: int = 1):
         data = np.ascontiguousarray(data, dtype=data.dtype)
         if data.dtype == np.float32:
@@ -67,7 +74,7 @@ class GroupedArray:
             out = ctypes.c_double(x)
         return out
 
-    def scaler_fit(self, scaler_type: str) -> np.ndarray:
+    def _scaler_fit(self, scaler_type: str) -> np.ndarray:
         stats = np.empty_like(self.data, shape=(len(self), 2))
         _LIB[f"{self.prefix}_{scaler_type}ScalerStats"](
             self._handle,
@@ -75,7 +82,7 @@ class GroupedArray:
         )
         return stats
 
-    def scaler_transform(self, stats: np.ndarray) -> np.ndarray:
+    def _scaler_transform(self, stats: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ScalerTransform"](
             self._handle,
@@ -84,7 +91,7 @@ class GroupedArray:
         )
         return out
 
-    def scaler_inverse_transform(self, stats: np.ndarray) -> np.ndarray:
+    def _scaler_inverse_transform(self, stats: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ScalerInverseTransform"](
             self._handle,
@@ -93,7 +100,7 @@ class GroupedArray:
         )
         return out
 
-    def take_from_groups(self, k: int) -> np.ndarray:
+    def _take_from_groups(self, k: int) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_TakeFromGroups"](
             self._handle,
@@ -102,7 +109,7 @@ class GroupedArray:
         )
         return out
 
-    def lag_transform(self, lag: int) -> np.ndarray:
+    def _lag_transform(self, lag: int) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_LagTransform"](
             self._handle,
@@ -111,7 +118,7 @@ class GroupedArray:
         )
         return out
 
-    def rolling_transform(
+    def _rolling_transform(
         self, stat_name: str, lag: int, window_size: int, min_samples: int
     ) -> np.ndarray:
         out = np.empty_like(self.data)
@@ -124,7 +131,7 @@ class GroupedArray:
         )
         return out
 
-    def rolling_quantile_transform(
+    def _rolling_quantile_transform(
         self, lag: int, p: float, window_size: int, min_samples: int
     ) -> np.ndarray:
         out = np.empty_like(self.data)
@@ -138,7 +145,7 @@ class GroupedArray:
         )
         return out
 
-    def rolling_update(
+    def _rolling_update(
         self, stat_name: str, lag: int, window_size: int, min_samples: int
     ) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
@@ -151,7 +158,7 @@ class GroupedArray:
         )
         return out
 
-    def rolling_quantile_update(
+    def _rolling_quantile_update(
         self, lag: int, p: float, window_size: int, min_samples: int
     ) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
@@ -165,7 +172,7 @@ class GroupedArray:
         )
         return out
 
-    def seasonal_rolling_transform(
+    def _seasonal_rolling_transform(
         self,
         stat_name: str,
         lag: int,
@@ -184,7 +191,7 @@ class GroupedArray:
         )
         return out
 
-    def seasonal_rolling_update(
+    def _seasonal_rolling_update(
         self,
         stat_name: str,
         lag: int,
@@ -203,7 +210,7 @@ class GroupedArray:
         )
         return out
 
-    def seasonal_rolling_quantile_transform(
+    def _seasonal_rolling_quantile_transform(
         self,
         lag: int,
         p: float,
@@ -223,7 +230,7 @@ class GroupedArray:
         )
         return out
 
-    def seasonal_rolling_quantile_update(
+    def _seasonal_rolling_quantile_update(
         self,
         lag: int,
         p: float,
@@ -243,7 +250,7 @@ class GroupedArray:
         )
         return out
 
-    def expanding_transform_with_aggs(
+    def _expanding_transform_with_aggs(
         self,
         stat_name: str,
         lag: int,
@@ -258,7 +265,7 @@ class GroupedArray:
         )
         return out
 
-    def expanding_transform(
+    def _expanding_transform(
         self,
         stat_name: str,
         lag: int,
@@ -271,7 +278,7 @@ class GroupedArray:
         )
         return out
 
-    def expanding_quantile_transform(self, lag: int, p: float) -> np.ndarray:
+    def _expanding_quantile_transform(self, lag: int, p: float) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ExpandingQuantileTransform"](
             self._handle,
@@ -281,7 +288,7 @@ class GroupedArray:
         )
         return out
 
-    def expanding_quantile_update(self, lag: int, p: float) -> np.ndarray:
+    def _expanding_quantile_update(self, lag: int, p: float) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_ExpandingQuantileUpdate"](
             self._handle,
@@ -291,7 +298,7 @@ class GroupedArray:
         )
         return out
 
-    def exponentially_weighted_transform(
+    def _exponentially_weighted_transform(
         self,
         stat_name: str,
         lag: int,

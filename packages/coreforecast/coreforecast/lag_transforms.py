@@ -26,28 +26,56 @@ import numpy as np
 from .grouped_array import GroupedArray
 
 
-class BaseLagTransform(abc.ABC):
+class _BaseLagTransform(abc.ABC):
     @abc.abstractmethod
     def transform(self, ga: GroupedArray) -> np.ndarray:
+        """Apply the transformation by group.
+
+        Args:
+            ga (GroupedArray): Array with the grouped data.
+
+        Returns:
+            np.ndarray: Array with the transformed data."""
         ...
 
     @abc.abstractmethod
     def update(self, ga: GroupedArray) -> np.ndarray:
+        """Compute the most recent value of the transformation for each group.
+
+        Args:
+            ga (GroupedArray): Array with the grouped data.
+
+        Returns:
+            np.ndarray: Array with the updates for each group."""
         ...
 
 
-class Lag(BaseLagTransform):
+class Lag(_BaseLagTransform):
+    """Simple lag operator
+
+    Args:
+        lag (int): Number of periods to offset"""
+
     def __init__(self, lag: int):
         self.lag = lag
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        return ga.lag_transform(self.lag)
+        return ga._lag_transform(self.lag)
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga.take_from_groups(self.lag - 1)
+        return ga._take_from_groups(self.lag - 1)
 
 
-class RollingBase(BaseLagTransform):
+_rolling_base_docstring = """Rolling {stat_name}
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation.
+        window_size (int): Length of the rolling window.
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size."""
+
+
+class _RollingBase(_BaseLagTransform):
     stat_name: str
     lag: int
     window_size: int
@@ -63,33 +91,54 @@ class RollingBase(BaseLagTransform):
         self.min_samples = min_samples
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        return ga.rolling_transform(
+        return ga._rolling_transform(
             self.stat_name, self.lag, self.window_size, self.min_samples
         )
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga.rolling_update(
+        return ga._rolling_update(
             self.stat_name, self.lag - 1, self.window_size, self.min_samples
         )
 
 
-class RollingMean(RollingBase):
+class RollingMean(_RollingBase):
     stat_name = "Mean"
 
 
-class RollingStd(RollingBase):
+RollingMean.__doc__ = _rolling_base_docstring.format(stat_name="Mean")
+
+
+class RollingStd(_RollingBase):
     stat_name = "Std"
 
 
-class RollingMin(RollingBase):
+RollingStd.__doc__ = _rolling_base_docstring.format(stat_name="Standard Deviation")
+
+
+class RollingMin(_RollingBase):
     stat_name = "Min"
 
 
-class RollingMax(RollingBase):
+RollingMin.__doc__ = _rolling_base_docstring.format(stat_name="Minimum")
+
+
+class RollingMax(_RollingBase):
     stat_name = "Max"
 
 
-class RollingQuantile(RollingBase):
+RollingMax.__doc__ = _rolling_base_docstring.format(stat_name="Maximum")
+
+
+class RollingQuantile(_RollingBase):
+    """Rolling quantile
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        p (float): Quantile to compute
+        window_size (int): Length of the rolling window
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size."""
+
     def __init__(
         self, lag: int, p: float, window_size: int, min_samples: Optional[int] = None
     ):
@@ -97,17 +146,27 @@ class RollingQuantile(RollingBase):
         self.p = p
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        return ga.rolling_quantile_transform(
+        return ga._rolling_quantile_transform(
             self.lag, self.p, self.window_size, self.min_samples
         )
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga.rolling_quantile_update(
+        return ga._rolling_quantile_update(
             self.lag - 1, self.p, self.window_size, self.min_samples
         )
 
 
-class SeasonalRollingBase(RollingBase):
+_seasonal_rolling_docstring = """Seasonal rolling {stat_name}
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        season_length (int): Length of the seasonal period, e.g. 7 for weekly data
+        window_size (int): Length of the rolling window
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size."""
+
+
+class _SeasonalRollingBase(_RollingBase):
     season_length: int
 
     def __init__(
@@ -121,7 +180,7 @@ class SeasonalRollingBase(RollingBase):
         self.season_length = season_length
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        return ga.seasonal_rolling_transform(
+        return ga._seasonal_rolling_transform(
             self.stat_name,
             self.lag,
             self.season_length,
@@ -130,7 +189,7 @@ class SeasonalRollingBase(RollingBase):
         )
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga.seasonal_rolling_update(
+        return ga._seasonal_rolling_update(
             self.stat_name,
             self.lag - 1,
             self.season_length,
@@ -139,23 +198,47 @@ class SeasonalRollingBase(RollingBase):
         )
 
 
-class SeasonalRollingMean(SeasonalRollingBase):
+class SeasonalRollingMean(_SeasonalRollingBase):
     stat_name = "Mean"
 
 
-class SeasonalRollingStd(SeasonalRollingBase):
+SeasonalRollingMean.__doc__ = _seasonal_rolling_docstring.format(stat_name="Mean")
+
+
+class SeasonalRollingStd(_SeasonalRollingBase):
     stat_name = "Std"
 
 
-class SeasonalRollingMin(SeasonalRollingBase):
+SeasonalRollingStd.__doc__ = _seasonal_rolling_docstring.format(
+    stat_name="Standard Deviation"
+)
+
+
+class SeasonalRollingMin(_SeasonalRollingBase):
     stat_name = "Min"
 
 
-class SeasonalRollingMax(SeasonalRollingBase):
+SeasonalRollingMin.__doc__ = _seasonal_rolling_docstring.format(stat_name="Minimum")
+
+
+class SeasonalRollingMax(_SeasonalRollingBase):
     stat_name = "Max"
 
 
-class SeasonalRollingQuantile(SeasonalRollingBase):
+SeasonalRollingMax.__doc__ = _seasonal_rolling_docstring.format(stat_name="Maximum")
+
+
+class SeasonalRollingQuantile(_SeasonalRollingBase):
+    """Seasonal rolling statistic
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        p (float): Quantile to compute
+        season_length (int): Length of the seasonal period, e.g. 7 for weekly data
+        window_size (int): Length of the rolling window
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size."""
+
     def __init__(
         self,
         lag: int,
@@ -173,7 +256,7 @@ class SeasonalRollingQuantile(SeasonalRollingBase):
         self.p = p
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        return ga.seasonal_rolling_quantile_transform(
+        return ga._seasonal_rolling_quantile_transform(
             lag=self.lag,
             p=self.p,
             season_length=self.season_length,
@@ -182,7 +265,7 @@ class SeasonalRollingQuantile(SeasonalRollingBase):
         )
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga.seasonal_rolling_quantile_update(
+        return ga._seasonal_rolling_quantile_update(
             lag=self.lag - 1,
             p=self.p,
             season_length=self.season_length,
@@ -191,32 +274,41 @@ class SeasonalRollingQuantile(SeasonalRollingBase):
         )
 
 
-class ExpandingBase(BaseLagTransform):
+_expanding_docstring = """Expanding {stat_name}
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation"""
+
+
+class _ExpandingBase(_BaseLagTransform):
     def __init__(self, lag: int):
         self.lag = lag
 
 
-class ExpandingMean(ExpandingBase):
+class ExpandingMean(_ExpandingBase):
     def transform(self, ga: GroupedArray) -> np.ndarray:
         self.n = np.empty_like(ga.data, shape=len(ga))
-        out = ga.expanding_transform_with_aggs("Mean", self.lag, self.n)
+        out = ga._expanding_transform_with_aggs("Mean", self.lag, self.n)
         self.cumsum = out[ga.indptr[1:] - 1] * self.n
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
         self.n += 1
-        self.cumsum += ga.take_from_groups(self.lag - 1)
+        self.cumsum += ga._take_from_groups(self.lag - 1)
         return self.cumsum / self.n
 
 
-class ExpandingStd(ExpandingBase):
+ExpandingMean.__doc__ = _expanding_docstring.format(stat_name="Mean")
+
+
+class ExpandingStd(_ExpandingBase):
     def transform(self, ga: GroupedArray) -> np.ndarray:
         self.stats = np.empty_like(ga.data, shape=(len(ga), 3))
-        out = ga.expanding_transform_with_aggs("Std", self.lag, self.stats)
+        out = ga._expanding_transform_with_aggs("Std", self.lag, self.stats)
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        x = ga.take_from_groups(self.lag - 1)
+        x = ga._take_from_groups(self.lag - 1)
         self.stats[:, 0] += 1.0
         n = self.stats[:, 0]
         prev_avg = self.stats[:, 1].copy()
@@ -226,53 +318,76 @@ class ExpandingStd(ExpandingBase):
         return np.sqrt(self.stats[:, 2] / (n - 1))
 
 
-class ExpandingComp(ExpandingBase):
+ExpandingStd.__doc__ = _expanding_docstring.format(stat_name="Standard Deviation")
+
+
+class _ExpandingComp(_ExpandingBase):
     stat: str
-    comp_fn: Callable
+    _comp_fn: Callable
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        out = ga.expanding_transform(self.stat, self.lag)
+        out = ga._expanding_transform(self.stat, self.lag)
         self.stats = out[ga.indptr[1:] - 1]
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        self.stats = self.comp_fn(self.stats, ga.take_from_groups(self.lag - 1))
+        self.stats = self._comp_fn(self.stats, ga._take_from_groups(self.lag - 1))
         return self.stats
 
 
-class ExpandingMin(ExpandingComp):
+class ExpandingMin(_ExpandingComp):
     stat = "Min"
-    comp_fn = np.minimum
+    _comp_fn = np.minimum
 
 
-class ExpandingMax(ExpandingComp):
+ExpandingMin.__doc__ = _expanding_docstring.format(stat_name="Minimum")
+
+
+class ExpandingMax(_ExpandingComp):
     stat = "Max"
-    comp_fn = np.maximum
+    _comp_fn = np.maximum
 
 
-class ExpandingQuantile(BaseLagTransform):
+ExpandingMax.__doc__ = _expanding_docstring.format(stat_name="Maximum")
+
+
+class ExpandingQuantile(_BaseLagTransform):
+    """Expanding quantile
+
+    Args:
+        lag (int):
+            Number of periods to offset by before applying the transformation
+        p (float):
+            Quantile to compute"""
+
     def __init__(self, lag: int, p: float):
         self.lag = lag
         self.p = p
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        return ga.expanding_quantile_transform(self.lag, self.p)
+        return ga._expanding_quantile_transform(self.lag, self.p)
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga.expanding_quantile_update(self.lag - 1, self.p)
+        return ga._expanding_quantile_update(self.lag - 1, self.p)
 
 
-class ExponentiallyWeightedMean(BaseLagTransform):
+class ExponentiallyWeightedMean(_BaseLagTransform):
+    """Exponentially weighted mean
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        alpha (float): Smoothing factor"""
+
     def __init__(self, lag: int, alpha: float):
         self.lag = lag
         self.alpha = alpha
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        out = ga.exponentially_weighted_transform("Mean", self.lag, self.alpha)
+        out = ga._exponentially_weighted_transform("Mean", self.lag, self.alpha)
         self.ewm = out[ga.indptr[1:] - 1]
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        x = ga.take_from_groups(self.lag - 1)
+        x = ga._take_from_groups(self.lag - 1)
         self.ewm = self.alpha * x + (1 - self.alpha) * self.ewm
         return self.ewm
