@@ -313,7 +313,11 @@ def _multiply_pl_freq(freq: str, n: Union[int, Series]) -> str:
         total_n = freq_n * n
         out = f"{total_n}{freq_offset}"
     else:
-        if not n.is_integer():
+        try:
+            is_int = n.dtype.is_integer()
+        except AttributeError:
+            is_int = n.is_integer()
+        if not is_int:
             raise ValueError("`n` must be an integer or a polars series of integers.")
         out = (n * freq_n).cast(pl.Utf8) + freq_offset
     return out
@@ -402,7 +406,11 @@ def time_ranges(
             )
         out = pd.Series(out)
     else:
-        if starts.is_integer():
+        try:
+            is_int = starts.dtype.is_integer()
+        except AttributeError:
+            is_int = starts.is_integer()
+        if is_int:
             ends = starts + freq * periods
             out = pl.int_ranges(starts, ends, freq, eager=True).explode()
         else:
@@ -671,9 +679,14 @@ def _single_split(
     if input_size is not None:
         train_starts = offset_times(train_ends, freq, -input_size)
         train_mask &= df[time_col].gt(train_starts)
-    train_sizes = group_by(train_mask, df[id_col], maintain_order=True).sum()
-    if isinstance(train_sizes, pd.Series):
+    if isinstance(train_mask, pd.Series):
+        train_sizes = train_mask.groupby(df[id_col], observed=True, sort=False).sum()
         train_sizes = train_sizes.reset_index()
+    else:
+        tmp_df = pl.DataFrame({id_col: df[id_col], time_col: train_mask})
+        train_sizes = group_by_agg(
+            tmp_df, id_col, {time_col: "sum"}, maintain_order=True
+        )
     zeros_mask = train_sizes[time_col].eq(0)
     if zeros_mask.all():
         raise ValueError(
