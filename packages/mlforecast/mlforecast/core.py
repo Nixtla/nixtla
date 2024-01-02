@@ -768,7 +768,11 @@ class TimeSeries:
         df = ufp.sort(df, by=[self.id_col, self.time_col])
         values = df[self.target_col].to_numpy()
         id_counts = ufp.counts_by_id(df, self.id_col)
-        sizes = ufp.join(uids, id_counts, on=self.id_col, how="outer")
+        try:
+            sizes = ufp.join(uids, id_counts, on=self.id_col, how="outer_coalesce")
+        except (KeyError, ValueError):
+            # pandas raises key error, polars before coalesce raises value error
+            sizes = ufp.join(uids, id_counts, on=self.id_col, how="outer")
         sizes = ufp.fill_null(sizes, {"counts": 0})
         sizes = ufp.sort(sizes, by=self.id_col)
         new_groups = ~ufp.is_in(sizes[self.id_col], uids)
