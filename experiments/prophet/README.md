@@ -47,7 +47,7 @@ The repository includes a Makefile to streamline the process of running experime
 
 ## Getting Started
 
-1. **Prepare Data**: Ensure your Parquet files are in `/data`.
+1. **Prepare Data**: Ensure your Parquet files are in `/data`. If you want access to the original datasets, please write to `ops@nixtla.io` with your use case.
 2. **Create conda environment**: Run `conda env create -f environment.yml` and activate the environment using `conda activate timegpt-benchmark`.
 3. **Run Benchmarks**: Use the Makefile commands to run evaluations and summarize results.
 
