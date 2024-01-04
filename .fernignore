@@ -4,6 +4,7 @@ nbs/
 .github/
 tests/
 action_files/
+experiments/
 docs-scripts/
 LICENSE
 CONTRIBUTING.md
