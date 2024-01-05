@@ -6,10 +6,12 @@ import typing
 import pydantic
 
 from ..core.datetime_utils import serialize_datetime
+from .single_series_forecast_finetune_loss import SingleSeriesForecastFinetuneLoss
+from .single_series_forecast_model import SingleSeriesForecastModel
 
 
 class SingleSeriesForecast(pydantic.BaseModel):
-    model: typing.Optional[str] = pydantic.Field(
+    model: typing.Optional[SingleSeriesForecastModel] = pydantic.Field(
         description="Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data."
     )
     freq: typing.Optional[str] = pydantic.Field(
@@ -30,6 +32,9 @@ class SingleSeriesForecast(pydantic.BaseModel):
     )
     finetune_steps: typing.Optional[int] = pydantic.Field(
         description="The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning."
+    )
+    finetune_loss: typing.Optional[SingleSeriesForecastFinetuneLoss] = pydantic.Field(
+        description="The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers."
     )
 
     def json(self, **kwargs: typing.Any) -> str:
