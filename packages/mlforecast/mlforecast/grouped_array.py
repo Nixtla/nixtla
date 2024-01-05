@@ -80,6 +80,23 @@ def _restore_fitted_difference(diffs_data, diffs_indptr, data, indptr, d):
 
 
 @njit
+def _update_difference(
+    d: int,
+    orig_data: np.ndarray,
+    orig_indptr: np.ndarray,
+    data: np.ndarray,
+    indptr: np.ndarray,
+):
+    n_series = len(indptr) - 1
+    for i in range(n_series):
+        orig = orig_data[orig_indptr[i] : orig_indptr[i + 1]]
+        transformed = data[indptr[i] : indptr[i + 1]]
+        combined = np.append(orig, transformed)
+        data[indptr[i] : indptr[i + 1]] = _diff(combined, d)[-transformed.size :]
+        orig_data[orig_indptr[i] : orig_indptr[i + 1]] = combined[-d:]
+
+
+@njit
 def _expand_target(data, indptr, max_horizon):
     out = np.empty((data.size, max_horizon), dtype=data.dtype)
     n_series = len(indptr) - 1
@@ -263,6 +280,9 @@ class GroupedArray:
             series_indptr,
             d,
         )
+
+    def update_difference(self, d: int, ga: "GroupedArray") -> None:
+        _update_difference(d, self.data, self.indptr, ga.data, ga.indptr)
 
     def expand_target(self, max_horizon: int) -> np.ndarray:
         return _expand_target(self.data, self.indptr, max_horizon)

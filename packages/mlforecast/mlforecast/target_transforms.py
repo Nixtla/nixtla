@@ -34,13 +34,16 @@ class BaseTargetTransform(abc.ABC):
         self.time_col = time_col
         self.target_col = target_col
 
-    @abc.abstractmethod
-    def fit_transform(self, df: DataFrame) -> DataFrame:
+    def update(self, df: DataFrame) -> DataFrame:
         raise NotImplementedError
 
     @abc.abstractmethod
+    def fit_transform(self, df: DataFrame) -> DataFrame:
+        ...
+
+    @abc.abstractmethod
     def inverse_transform(self, df: DataFrame) -> DataFrame:
-        raise NotImplementedError
+        ...
 
 # %% ../nbs/target_transforms.ipynb 6
 class BaseGroupedArrayTargetTransform(abc.ABC):
@@ -49,12 +52,16 @@ class BaseGroupedArrayTargetTransform(abc.ABC):
     idxs: Optional[np.ndarray] = None
 
     @abc.abstractmethod
+    def update(self, ga: GroupedArray) -> GroupedArray:
+        ...
+
+    @abc.abstractmethod
     def fit_transform(self, ga: GroupedArray) -> GroupedArray:
-        raise NotImplementedError
+        ...
 
     @abc.abstractmethod
     def inverse_transform(self, ga: GroupedArray) -> GroupedArray:
-        raise NotImplementedError
+        ...
 
     def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
         return self.inverse_transform(ga)
@@ -89,6 +96,12 @@ class Differences(BaseGroupedArrayTargetTransform):
             self.original_values_.append(GroupedArray(new_data, new_indptr))
         return ga
 
+    def update(self, ga: GroupedArray) -> GroupedArray:
+        transformed = copy.copy(ga)
+        for d, orig_ga in zip(self.differences, self.original_values_):
+            orig_ga.update_difference(d, transformed)
+        return transformed
+
     def inverse_transform(self, ga: GroupedArray) -> GroupedArray:
         ga = copy.copy(ga)
         for d, orig_vals_ga in zip(
@@ -109,9 +122,10 @@ class Differences(BaseGroupedArrayTargetTransform):
 
 # %% ../nbs/target_transforms.ipynb 10
 class BaseLocalScaler(BaseGroupedArrayTargetTransform):
-    """Standardizes each serie by subtracting its mean and dividing by its standard deviation."""
-
     scaler_factory: type
+
+    def update(self, ga: GroupedArray) -> GroupedArray:
+        return GroupedArray(self.scaler_.transform(ga), ga.indptr)
 
     def fit_transform(self, ga: GroupedArray) -> GroupedArray:
         self.scaler_ = self.scaler_factory()
@@ -162,16 +176,16 @@ class LocalBoxCox(BaseLocalScaler):
     """Finds the optimum lambda for each serie and applies the Box-Cox transformation"""
 
     def __init__(self):
-        self.scaler = BoxCox()
+        self.scaler_ = BoxCox()
 
     def fit_transform(self, ga: GroupedArray) -> GroupedArray:
-        return GroupedArray(self.scaler.fit_transform(ga), ga.indptr)
+        return GroupedArray(self.scaler_.fit_transform(ga), ga.indptr)
 
     def inverse_transform(self, ga: GroupedArray) -> GroupedArray:
         from scipy.special import inv_boxcox1p
 
         sizes = np.diff(ga.indptr)
-        lmbdas = self.scaler.lmbdas_
+        lmbdas = self.scaler_.lmbdas_
         if self.idxs is not None:
             lmbdas = lmbdas[self.idxs]
         lmbdas = np.repeat(lmbdas, sizes, axis=0)
@@ -183,6 +197,11 @@ class GlobalSklearnTransformer(BaseTargetTransform):
 
     def __init__(self, transformer: TransformerMixin):
         self.transformer = transformer
+
+    def update(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy(deep=False)
+        df[self.target_col] = self.transformer_.transform(df[[self.target_col]].values)
+        return df
 
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy(deep=False)
