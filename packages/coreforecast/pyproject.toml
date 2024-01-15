@@ -38,7 +38,7 @@ cmake.verbose = true
 logging.level = "INFO"
 sdist.exclude = ["tests", "*.yml"]
 sdist.reproducible = true
-wheel.install-dir = ["coreforecast"]
+wheel.install-dir = "coreforecast"
 wheel.packages = ["coreforecast"]
 wheel.py-api = "py3"
 

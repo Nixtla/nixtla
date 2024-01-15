@@ -19,7 +19,7 @@ else:
     _extension = "so"
 
 _LIB = ctypes.CDLL(
-    str(files("coreforecast").joinpath("lib", _prefix, f"libcoreforecast.{_extension}"))
+    str(files("coreforecast") / "lib" / _prefix / f"libcoreforecast.{_extension}")
 )
 
 
@@ -69,10 +69,8 @@ class GroupedArray:
 
     def _pyfloat_to_c(self, x: float) -> Union[ctypes.c_float, ctypes.c_double]:
         if self.prefix == "GroupedArrayFloat32":
-            out = ctypes.c_float(x)
-        else:
-            out = ctypes.c_double(x)
-        return out
+            return ctypes.c_float(x)
+        return ctypes.c_double(x)
 
     def _scaler_fit(self, scaler_type: str) -> np.ndarray:
         stats = np.empty_like(self.data, shape=(len(self), 2))
