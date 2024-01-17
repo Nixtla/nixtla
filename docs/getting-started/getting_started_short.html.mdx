@@ -27,7 +27,7 @@ forecasting capabilities to predict future events. TimeGPT can also be
 used for other time series-related tasks, such as what-if scenarios,
 anomaly detection, and more.
 
-![figure](/docs/getting-started/../../img/timegpt-arch.png)
+![figure](/nixtla/docs/getting-started/../../img/timegpt-arch.png)
 
 ## Usage
 
@@ -91,7 +91,7 @@ df.head()
 timegpt.plot(df, time_col='timestamp', target_col='value')
 ```
 
-![](/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-8-output-1.png)
 
 <Tip>
 
@@ -143,7 +143,7 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 timegpt.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-![](/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-10-output-1.png)
+![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-10-output-1.png)
 
 You can also produce a longer forecasts increasing the horizon
 parameter. For example, let’s forecast the next 36 months:
@@ -172,7 +172,7 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 timegpt.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-![](/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-12-output-1.png)
 
 Or a shorter one:
 
@@ -187,7 +187,7 @@ INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
-![](/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-13-output-2.png)
+![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-13-output-2.png)
 
 <Warning>
 

@@ -69,7 +69,7 @@ timegpt.plot(pm_df,
              target_col='value')
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-6-output-1.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-6-output-1.png)
 
 While the default behavior of the detect_anomalies method is to operate
 using a 99 percent prediction interval, users have the flexibility to
@@ -92,7 +92,7 @@ INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-7-output-2.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-7-output-2.png)
 
 Conversely, increasing the value will make prediction intervals larger,
 detecting fewer anomalies. This customization allows users to calibrate
@@ -114,7 +114,7 @@ INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-8-output-2.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-8-output-2.png)
 
 You can also include `date_features` to better detect anomalies:
 
@@ -140,7 +140,7 @@ INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-9-output-2.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-9-output-2.png)
 
 #### Exogenous variables
 
@@ -178,7 +178,7 @@ INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-11-output-2.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-11-output-2.png)
 
 We can also explore the relative importance of each of the features.
 
@@ -190,7 +190,7 @@ timegpt.weights_x.plot.barh(x='features', y='weights')
 <Axes: ylabel='features'>
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-12-output-2.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-12-output-2.png)
 
 You can also add special days for different countries:
 
@@ -217,7 +217,7 @@ INFO:nixtlats.timegpt:Inferred freq: H
 INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-14-output-2.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-14-output-2.png)
 
 ```python
 timegpt.weights_x.plot.barh(x='features', y='weights')
@@ -227,5 +227,5 @@ timegpt.weights_x.plot.barh(x='features', y='weights')
 <Axes: ylabel='features'>
 ```
 
-![](/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-15-output-2.png)
+![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-15-output-2.png)
 
