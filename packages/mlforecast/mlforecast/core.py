@@ -10,8 +10,11 @@ import re
 import reprlib
 import warnings
 from collections import Counter, OrderedDict
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
+import cloudpickle
+import fsspec
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
@@ -218,6 +221,7 @@ class TimeSeries:
                 raise ValueError(
                     "Can't use a lambda as a date feature because the function name gets used as the feature name."
                 )
+        self.lag_transforms_namer = lag_transforms_namer
         self.transforms = _parse_transforms(
             lags=self.lags,
             lag_transforms=self.lag_transforms,
@@ -767,6 +771,16 @@ class TimeSeries:
                     preds = tfm.inverse_transform(preds)
         del self._uids, self._idxs, self._static_features
         return preds
+
+    def save(self, path: Union[str, Path]) -> None:
+        with fsspec.open(path, "wb") as f:
+            cloudpickle.dump(self, f)
+
+    @staticmethod
+    def load(path: Union[str, Path], protocol: Optional[str] = None) -> "TimeSeries":
+        with fsspec.open(path, "rb", protocol=protocol) as f:
+            ts = cloudpickle.load(f)
+        return ts
 
     def update(self, df: DataFrame) -> None:
         """Update the values of the stored series."""

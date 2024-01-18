@@ -7,8 +7,11 @@ __all__ = ['MLForecast']
 import copy
 import re
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
+import cloudpickle
+import fsspec
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
@@ -671,6 +674,7 @@ class MLForecast:
                 date_features=self.ts.date_features,
                 num_threads=self.ts.num_threads,
                 target_transforms=self.ts.target_transforms,
+                lag_transforms_namer=self.ts.lag_transforms_namer,
             )
             new_ts._fit(
                 new_df,
@@ -937,3 +941,30 @@ class MLForecast:
         remaining_cols = [c for c in out.columns if c not in first_out_cols]
         out = ufp.drop_index_if_pandas(out)
         return out[first_out_cols + remaining_cols]
+
+    def save(self, path: Union[str, Path]) -> None:
+        """Save forecast object
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Directory where artifacts will be stored."""
+        self.ts.save(f"{path}/ts.pkl")
+        with fsspec.open(f"{path}/models.pkl", "wb") as f:
+            cloudpickle.dump(self.models_, f)
+
+    @staticmethod
+    def load(path: Union[str, Path]) -> "MLForecast":
+        """Load forecast object
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Directory with saved artifacts."""
+        ts = TimeSeries.load(f"{path}/ts.pkl")
+        with fsspec.open(f"{path}/models.pkl", "rb") as f:
+            models = cloudpickle.load(f)
+        fcst = MLForecast(models=models, freq=ts.freq)
+        fcst.ts = ts
+        fcst.models_ = models
+        return fcst

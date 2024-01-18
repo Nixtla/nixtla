@@ -9,6 +9,7 @@ from collections import namedtuple
 from typing import Any, Callable, Iterable, List, Optional
 
 import cloudpickle
+import fsspec
 
 try:
     import dask.dataframe as dd
@@ -224,7 +225,7 @@ class DistributedMLForecast:
             partition = dict(by=id_col)
         else:
             partition = None
-        return fa.transform(
+        res = fa.transform(
             data,
             DistributedMLForecast._preprocess_partition,
             params={
@@ -243,6 +244,8 @@ class DistributedMLForecast:
             as_fugue=True,
             partition=partition,
         )
+        # so that we don't need to recompute this on predict
+        return fa.persist(res, lazy=False, engine=self.engine, as_fugue=True)
 
     def _preprocess(
         self,
@@ -255,13 +258,13 @@ class DistributedMLForecast:
         keep_last_n: Optional[int] = None,
         window_info: Optional[WindowInfo] = None,
     ) -> fugue.AnyDataFrame:
-        self.id_col = id_col
-        self.time_col = time_col
-        self.target_col = target_col
-        self.static_features = static_features
-        self.dropna = dropna
-        self.keep_last_n = keep_last_n
-        self.partition_results = self._preprocess_partitions(
+        self._base_ts.id_col = id_col
+        self._base_ts.time_col = time_col
+        self._base_ts.target_col = target_col
+        self._base_ts.static_features = static_features
+        self._base_ts.dropna = dropna
+        self._base_ts.keep_last_n = keep_last_n
+        self._partition_results = self._preprocess_partitions(
             data=data,
             id_col=id_col,
             time_col=time_col,
@@ -274,7 +277,7 @@ class DistributedMLForecast:
         base_schema = str(fa.get_schema(data))
         features_schema = ",".join(f"{feat}:double" for feat in self._base_ts.features)
         res = fa.transform(
-            self.partition_results,
+            self._partition_results,
             DistributedMLForecast._retrieve_df,
             schema=f"{base_schema},{features_schema}",
             engine=self.engine,
@@ -447,7 +450,10 @@ class DistributedMLForecast:
     def _get_predict_schema(self) -> str:
         model_names = self.models.keys()
         models_schema = ",".join(f"{model_name}:double" for model_name in model_names)
-        schema = f"{self.id_col}:string,{self.time_col}:datetime," + models_schema
+        schema = (
+            f"{self._base_ts.id_col}:string,{self._base_ts.time_col}:datetime,"
+            + models_schema
+        )
         return schema
 
     def predict(
@@ -487,16 +493,16 @@ class DistributedMLForecast:
         if new_df is not None:
             partition_results = self._preprocess_partitions(
                 new_df,
-                id_col=self.id_col,
-                time_col=self.time_col,
-                target_col=self.target_col,
-                static_features=self.static_features,
-                dropna=self.dropna,
-                keep_last_n=self.keep_last_n,
+                id_col=self._base_ts.id_col,
+                time_col=self._base_ts.time_col,
+                target_col=self._base_ts.target_col,
+                static_features=self._base_ts.static_features,
+                dropna=self._base_ts.dropna,
+                keep_last_n=self._base_ts.keep_last_n,
                 fit_ts_only=True,
             )
         else:
-            partition_results = self.partition_results
+            partition_results = self._partition_results
         schema = self._get_predict_schema()
         if X_df is not None and not isinstance(X_df, pd.DataFrame):
             raise ValueError("`X_df` should be a pandas DataFrame")
@@ -593,7 +599,7 @@ class DistributedMLForecast:
                     window_info=window_info,
                 )
                 self.cv_models_.append(self.models_)
-                partition_results = self.partition_results
+                partition_results = self._partition_results
             elif not refit:
                 partition_results = self._preprocess_partitions(
                     df,
@@ -607,7 +613,7 @@ class DistributedMLForecast:
                 )
             schema = (
                 self._get_predict_schema()
-                + f",cutoff:datetime,{self.target_col}:double"
+                + f",cutoff:datetime,{self._base_ts.target_col}:double"
             )
             preds = fa.transform(
                 partition_results,
@@ -623,3 +629,82 @@ class DistributedMLForecast:
             )
             results.append(fa.get_native_as_df(preds))
         return fa.union(*results)
+
+    @staticmethod
+    def _save_ts(items: List[List[Any]], path: str) -> Iterable[pd.DataFrame]:
+        for serialized_ts, _, _ in items:
+            ts = cloudpickle.loads(serialized_ts)
+            first_uid = ts.uids[0]
+            last_uid = ts.uids[-1]
+            ts.save(f"{path}/ts_{first_uid}-{last_uid}.pkl")
+            yield pd.DataFrame({"x": [True]})
+
+    def save(self, path: str) -> None:
+        """Save forecast object
+
+        Parameters
+        ----------
+        path : str
+            Directory where artifacts will be stored."""
+        dummy_df = fa.transform(
+            self._partition_results,
+            DistributedMLForecast._save_ts,
+            schema="x:bool",
+            params={"path": path},
+            engine=self.engine,
+        )
+        # trigger computation
+        dummy_df.as_pandas()
+        with fsspec.open(f"{path}/models.pkl", "wb") as f:
+            cloudpickle.dump(self.models_, f)
+        self._base_ts.save(f"{path}/_base_ts.pkl")
+
+    @staticmethod
+    def _load_ts(paths: List[List[Any]], protocol: str) -> Iterable[pd.DataFrame]:
+        for [path] in paths:
+            ts = TimeSeries.load(path, protocol=protocol)
+            yield pd.DataFrame(
+                {
+                    "ts": [cloudpickle.dumps(ts)],
+                    "train": [cloudpickle.dumps(None)],
+                    "valid": [cloudpickle.dumps(None)],
+                }
+            )
+
+    @staticmethod
+    def load(path: str, engine) -> "DistributedMLForecast":
+        """Load forecast object
+
+        Parameters
+        ----------
+        path : str
+            Directory with saved artifacts.
+        engine : fugue execution engine
+            Dask Client, Spark Session, etc to use for the distributed computation.
+        """
+        fs, _, paths = fsspec.get_fs_token_paths(f"{path}/ts*")
+        protocol = fs.protocol
+        if isinstance(protocol, tuple):
+            protocol = protocol[0]
+        names_df = pd.DataFrame({"path": paths})
+        partition_results = fa.transform(
+            names_df,
+            DistributedMLForecast._load_ts,
+            schema="ts:binary,train:binary,valid:binary",
+            partition="per_row",
+            params={"protocol": protocol},
+            engine=engine,
+            as_fugue=True,
+        )
+        with fsspec.open(f"{path}/models.pkl", "rb") as f:
+            models = cloudpickle.load(f)
+        base_ts = TimeSeries.load(f"{path}/_base_ts.pkl")
+        fcst = DistributedMLForecast(models=models, freq=base_ts.freq)
+        fcst._base_ts = base_ts
+        fcst._partition_results = fa.persist(
+            partition_results, lazy=False, engine=engine, as_fugue=True
+        )
+        fcst.models_ = models
+        fcst.engine = engine
+        fcst.num_partitions = len(paths)
+        return fcst

@@ -4,6 +4,8 @@ channels:
 dependencies:
   - coreforecast>=0.0.3
   - dask<2023.1.1
+  - fsspec
+  - gitpython
   - holidays<0.21
   - lightgbm
   - matplotlib
@@ -14,6 +16,7 @@ dependencies:
   - prophet
   - pyarrow
   - pyspark>=3.3
+  - s3fs
   - scikit-learn
   - shap
   - statsmodels
