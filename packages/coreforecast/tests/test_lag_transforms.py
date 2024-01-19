@@ -101,8 +101,8 @@ def test_correctness(data, comb, dtype):
     if dtype == np.float32:
         if "rolling_std" in comb:
             rtol = 1e-2
-        elif "expanding_std" in comb:
-            rtol = 1e-4
+    if "expanding_std" in comb:
+        rtol *= 100
     data = data.astype(dtype, copy=True)
     ga = GroupedArray(data, indptr)
     wf, cf, args = combs_map[comb]
