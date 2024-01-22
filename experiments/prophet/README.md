@@ -4,6 +4,9 @@
 
 This repository offers a detailed benchmarking framework for comparing the performance of TimeGPT against Prophet and StatsForecast in time series forecasting. We provide datasets with over 300,000 series across various frequencies, including daily, weekly, 10-minute, and hourly intervals. Users can also incorporate their own datasets for a more personalized analysis. **TimeGPT was not trained on this datasets.**
 
+## Results
+
+The results show that, on average, TimeGPT zero-shot forecasts are **58% more accurate and 92% faster than Prophet's**. The improvements are consistent across 8 frequencies, ranging from minute to quarterly data.
 
 ## Notes
 
