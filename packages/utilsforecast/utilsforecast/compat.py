@@ -4,8 +4,11 @@
 __all__ = ['DataFrame', 'Series']
 
 # %% ../nbs/compat.ipynb 1
+import warnings
+from functools import wraps
 from typing import Union
 
+import numpy as np
 import pandas as pd
 
 # %% ../nbs/compat.ipynb 2
@@ -39,6 +42,26 @@ try:
     PLOTLY_RESAMPLER_INSTALLED = True
 except ImportError:
     PLOTLY_RESAMPLER_INSTALLED = False
+
+try:
+    from numba import njit  # noqa: F04
+except ImportError:
+
+    def njit(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            warnings.warn(
+                "numba is not installed, some operations may be very slow. "
+                "You can find install instructions at "
+                "https://numba.pydata.org/numba-doc/latest/user/installing.html"
+            )
+            # remove object from class methods
+            if not isinstance(args[0], np.ndarray):
+                args = args[1:]
+            return f(*args, **kwargs)
+
+        return wrapper
+
 
 DataFrame = Union[pd.DataFrame, pl_DataFrame]
 Series = Union[pd.Series, pl_Series]

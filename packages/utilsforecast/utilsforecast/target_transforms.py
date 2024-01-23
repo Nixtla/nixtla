@@ -8,15 +8,9 @@ __all__ = ['BaseTargetTransform', 'LocalStandardScaler', 'LocalMinMaxScaler', 'L
 import math
 from typing import Callable, Tuple
 
-try:
-    from numba import njit
-except ImportError:
-    raise ImportError(
-        "Please install numba. "
-        "You can find detailed instructions at https://numba.pydata.org/numba-doc/latest/user/installing.html"
-    )
 import numpy as np
 
+from .compat import njit
 from .grouped_array import GroupedArray
 
 # %% ../nbs/target_transforms.ipynb 4

@@ -60,7 +60,7 @@ jobs:
         run: pip install ".[dev]"
 
       - name: Run tests
-        run: nbdev_test --do_print --timing --flags 'matplotlib polars'
+        run: nbdev_test --do_print --timing --flags 'matplotlib polars scipy'
 
   minimal-tests:
     runs-on: ${{ matrix.os }}
@@ -84,4 +84,4 @@ jobs:
 
       - name: Run tests
         shell: bash
-        run: nbdev_test --do_print --timing --skip_file_re '(plotting|target_transforms)'
+        run: nbdev_test --do_print --timing --skip_file_re 'plotting'
