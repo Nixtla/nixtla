@@ -121,7 +121,10 @@ def validate_format(
     if isinstance(target, pd.Series):
         is_numeric = np.issubdtype(target.dtype.type, np.number)
     else:
-        is_numeric = target.is_numeric()
+        try:
+            is_numeric = target.dtype.is_numeric()
+        except AttributeError:
+            is_numeric = target.is_numeric()
     if not is_numeric:
         raise ValueError(
             f"The target column ('{target_col}') should have a numeric data type, got '{target.dtype}')"
