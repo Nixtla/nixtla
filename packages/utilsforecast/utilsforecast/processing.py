@@ -20,7 +20,6 @@ from pandas.tseries.offsets import BaseOffset
 
 from .compat import DataFrame, Series, pl, pl_DataFrame, pl_Series
 from utilsforecast.validation import (
-    _get_np_dtype,
     _is_dt_dtype,
     _is_int_dtype,
     ensure_shallow_copy,
@@ -343,12 +342,11 @@ def offset_times(
     if isinstance(times, (pd.Series, pd.Index)):
         if isinstance(freq, str):
             freq = pd.tseries.frequencies.to_offset(freq)
-        times_dtype = _get_np_dtype(times)
-        ints = _is_int_dtype(times_dtype) and isinstance(freq, int)
-        dts = _is_dt_dtype(times_dtype) and isinstance(freq, BaseOffset)
+        ints = _is_int_dtype(times) and isinstance(freq, int)
+        dts = _is_dt_dtype(times) and isinstance(freq, BaseOffset)
         if not ints and not dts:
             raise ValueError(
-                f"Cannot offset times with data type: '{times_dtype}' "
+                f"Cannot offset times with data type: '{times.dtype}' "
                 f"using a frequency of type: '{type(freq)}'."
             )
         out = times + n * freq

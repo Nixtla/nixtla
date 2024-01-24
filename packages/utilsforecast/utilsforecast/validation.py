@@ -7,31 +7,32 @@ __all__ = ['ensure_shallow_copy', 'ensure_time_dtype', 'validate_format', 'valid
 import re
 from typing import Optional, Union
 
-import numpy as np
 import pandas as pd
 
 from .compat import DataFrame, Series, pl_DataFrame, pl_Series, pl
 
 # %% ../nbs/validation.ipynb 5
-def _get_np_dtype(s: Union[Series, pd.Index]) -> type:
-    if isinstance(s, (pd.Series, pd.Index)):
-        dtype = s.dtype.type
+def _is_int_dtype(s: Union[pd.Index, Series]) -> bool:
+    if isinstance(s, (pd.Index, pd.Series)):
+        out = pd.api.types.is_integer_dtype(s.dtype)
     else:
-        dtype = s.head(1).to_numpy().dtype.type
-    return dtype
+        try:
+            out = s.dtype.is_integer()
+        except AttributeError:
+            out = s.is_integer()
+    return out
 
-# %% ../nbs/validation.ipynb 8
-def _is_int_dtype(dtype: type) -> bool:
-    return np.issubdtype(dtype, np.integer)
 
-
-def _is_dt_dtype(dtype: type) -> bool:
-    return np.issubdtype(dtype, np.datetime64)
+def _is_dt_dtype(s: Union[pd.Index, Series]) -> bool:
+    if isinstance(s, (pd.Index, pd.Series)):
+        out = pd.api.types.is_datetime64_any_dtype(s.dtype)
+    else:
+        out = s.dtype in (pl.Date, pl.Datetime)
+    return out
 
 # %% ../nbs/validation.ipynb 9
 def _is_dt_or_int(s: Series) -> bool:
-    dtype = _get_np_dtype(s)
-    return _is_dt_dtype(dtype) or _is_int_dtype(dtype)
+    return _is_dt_dtype(s) or _is_int_dtype(s)
 
 # %% ../nbs/validation.ipynb 10
 def ensure_shallow_copy(df: pd.DataFrame) -> pd.DataFrame:
@@ -109,7 +110,7 @@ def validate_format(
 
     # time col
     if not _is_dt_or_int(df[time_col]):
-        times_dtype = df[time_col].head(1).to_numpy().dtype
+        times_dtype = df[time_col].dtype
         raise ValueError(
             f"The time column ('{time_col}') should have either timestamps or integers, got '{times_dtype}'."
         )
@@ -119,7 +120,7 @@ def validate_format(
         return None
     target = df[target_col]
     if isinstance(target, pd.Series):
-        is_numeric = np.issubdtype(target.dtype.type, np.number)
+        is_numeric = pd.api.types.is_numeric_dtype(target.dtype)
     else:
         try:
             is_numeric = target.dtype.is_numeric()
@@ -135,13 +136,12 @@ def validate_freq(
     times: Series,
     freq: Union[str, int],
 ) -> None:
-    time_dtype = times.head(1).to_numpy().dtype
-    if _is_int_dtype(time_dtype) and not isinstance(freq, int):
+    if _is_int_dtype(times) and not isinstance(freq, int):
         raise ValueError(
             "Time column contains integers but the specified frequency is not an integer. "
             "Please provide a valid integer, e.g. `freq=1`"
         )
-    if _is_dt_dtype(time_dtype) and isinstance(freq, int):
+    if _is_dt_dtype(times) and isinstance(freq, int):
         raise ValueError(
             "Time column contains timestamps but the specified frequency is an integer. "
             "Please provide a valid pandas or polars offset, e.g. `freq='D'` or `freq='1d'`."

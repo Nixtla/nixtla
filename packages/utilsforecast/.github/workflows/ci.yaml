@@ -38,7 +38,7 @@ jobs:
         run: pip install ./
 
       - name: Run tests
-        run: nbdev_test --do_print --timing --flags 'matplotlib polars scipy'
+        run: nbdev_test --do_print --timing --flags 'matplotlib polars pyarrow scipy'
 
   windows-tests:
     runs-on: windows-latest
@@ -60,7 +60,7 @@ jobs:
         run: pip install ".[dev]"
 
       - name: Run tests
-        run: nbdev_test --do_print --timing --flags 'matplotlib polars scipy'
+        run: nbdev_test --do_print --timing --flags 'matplotlib polars pyarrow scipy'
 
   minimal-tests:
     runs-on: ${{ matrix.os }}
