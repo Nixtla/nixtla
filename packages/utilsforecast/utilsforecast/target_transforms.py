@@ -93,20 +93,20 @@ class LocalStandardScaler(BaseTargetTransform):
 
     stats_fn = _standard_scaler_stats
 
-# %% ../nbs/target_transforms.ipynb 12
+# %% ../nbs/target_transforms.ipynb 11
 @njit
 def _minmax_scaler_stats(data: np.ndarray) -> Tuple[float, float]:
     min_ = np.nanmin(data)
     max_ = np.nanmax(data)
     return min_, max_ - min_
 
-# %% ../nbs/target_transforms.ipynb 13
+# %% ../nbs/target_transforms.ipynb 12
 class LocalMinMaxScaler(BaseTargetTransform):
     """Scales each serie to be in the [0, 1] interval."""
 
     stats_fn = _minmax_scaler_stats
 
-# %% ../nbs/target_transforms.ipynb 15
+# %% ../nbs/target_transforms.ipynb 14
 @njit
 def _robust_scaler_iqr_stats(data: np.ndarray) -> Tuple[float, float]:
     q25, median, q75 = np.nanquantile(data, (0.25, 0.5, 0.75))
@@ -119,7 +119,7 @@ def _robust_scaler_mad_stats(data: np.ndarray) -> Tuple[float, float]:
     mad = np.nanmedian(np.abs(data - median))
     return median, mad
 
-# %% ../nbs/target_transforms.ipynb 16
+# %% ../nbs/target_transforms.ipynb 15
 class LocalRobustScaler(BaseTargetTransform):
     """Scaler robust to outliers.
 
@@ -143,14 +143,13 @@ class LocalRobustScaler(BaseTargetTransform):
         self.stats_ = _fit(ga.data, ga.indptr, stats_fn)
         return self
 
-# %% ../nbs/target_transforms.ipynb 18
+# %% ../nbs/target_transforms.ipynb 17
 class LocalBoxCox(BaseTargetTransform):
     """Finds optimum lambda for each serie and applies Box-Cox transformation."""
 
-    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+    def fit(self, ga: GroupedArray) -> np.ndarray:
         from scipy.stats import boxcox
 
-        out = np.full(ga.data.shape, np.nan)
         self.lmbdas_ = np.empty(ga.n_groups)
         for i in range(ga.n_groups):
             sl = slice(ga.indptr[i], ga.indptr[i + 1])
@@ -161,8 +160,8 @@ class LocalBoxCox(BaseTargetTransform):
                 )
             except ValueError:
                 # this can happen for constant series, fallback to log
-                self.lmbdas_[i] = 0.0
                 transformed = np.log1p(ga.data[sl][mask])
+                self.lmbdas_[i] = 0.0
             if (
                 not math.isclose(self.lmbdas_[i], 0.0)
                 and np.isclose(transformed * self.lmbdas_[i], -1).any()
@@ -170,9 +169,7 @@ class LocalBoxCox(BaseTargetTransform):
                 # in this case we can't reliably invert the transformation
                 # fallback to log
                 self.lmbdas_[i] = 0.0
-                transformed = np.log1p(ga.data[sl][mask])
-            out[sl][mask] = transformed
-        return out
+        return self
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
         from scipy.special import boxcox1p
@@ -188,7 +185,7 @@ class LocalBoxCox(BaseTargetTransform):
         lmbdas = np.repeat(self.lmbdas_, sizes, axis=0)
         return inv_boxcox1p(ga.data, lmbdas)
 
-# %% ../nbs/target_transforms.ipynb 20
+# %% ../nbs/target_transforms.ipynb 19
 class GlobalFuncTransformer(BaseTargetTransform):
     """Uses `func` and `inverse_func` for applying the same transformation to all series.
 
