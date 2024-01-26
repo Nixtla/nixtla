@@ -1,15 +1,18 @@
 #include "scalers.h"
+#include "brent.h"
 #include "stats.h"
 
+#include <algorithm>
 #include <numeric>
+#include <vector>
 
 template <typename T>
-inline T CommonScalerTransform(T data, T scale, T offset) {
+inline T CommonScalerTransform(T data, T offset, T scale) {
   return (data - offset) / scale;
 }
 
 template <typename T>
-inline T CommonScalerInverseTransform(T data, T scale, T offset) {
+inline T CommonScalerInverseTransform(T data, T offset, T scale) {
   return data * scale + offset;
 }
 
@@ -29,14 +32,10 @@ inline void MinMaxScalerStats(const T *data, int n, T *stats) {
 
 template <typename T>
 inline void StandardScalerStats(const T *data, int n, T *stats) {
-  double sum = std::accumulate(data, data + n, 0.0);
-  double mean = sum / n;
-  double sum_sq = 0.0;
-  for (int i = 0; i < n; ++i) {
-    sum_sq += (data[i] - mean) * (data[i] - mean);
-  }
+  double mean = Mean(data, n);
+  double std = StandardDeviation(data, n, mean);
   stats[0] = static_cast<T>(mean);
-  stats[1] = static_cast<T>(sqrt(sum_sq / n));
+  stats[1] = static_cast<T>(std);
 }
 
 template <typename T>
@@ -63,6 +62,143 @@ inline void RobustScalerMadStats(const T *data, int n, T *stats) {
   stats[0] = median;
   stats[1] = mad;
   delete[] buffer;
+}
+
+template <typename T>
+T GuerreroCV(T lambda, const std::vector<T> &x_mean,
+             const std::vector<T> &x_std) {
+  auto x_rat = std::vector<T>(x_std.size());
+  int start_idx = 0;
+  for (size_t i = 0; i < x_rat.size(); ++i) {
+    if (std::isnan(x_std[i])) {
+      start_idx++;
+      continue;
+    }
+    x_rat[i] = x_std[i] / std::exp((1.0 - lambda) * std::log(x_mean[i]));
+  }
+  double mean = Mean(x_rat.data() + start_idx, x_rat.size() - start_idx);
+  double std = StandardDeviation(x_rat.data() + start_idx,
+                                 x_rat.size() - start_idx, mean, 1);
+  if (std::isnan(std)) {
+    return std::numeric_limits<T>::max();
+  }
+  return std / mean;
+}
+
+template <typename T>
+void BoxCoxLambda_Guerrero(const T *x, int n, T *out, int period, T lower,
+                           T upper) {
+  if (n <= 2 * period) {
+    *out = static_cast<T>(1.0);
+    return;
+  }
+  for (int i = 0; i < n; ++i) {
+    if (x[i] <= 0.0) {
+      lower = std::max(lower, static_cast<T>(0.0));
+      break;
+    }
+  }
+  int n_seasons = n / period;
+  int n_full = n_seasons * period;
+  // build matrix with subseries having full periods
+  auto x_mat = std::vector<T>(n_seasons * period);
+  std::copy(x + n - n_full, x + n, x_mat.begin());
+  // means of subseries
+  auto x_mean = std::vector<T>(n_seasons, 0.0);
+  auto x_n = std::vector<int>(n_seasons, 0);
+  for (int i = 0; i < n_seasons; ++i) {
+    for (int j = 0; j < period; ++j) {
+      if (std::isnan(x_mat[i * period + j])) {
+        continue;
+      }
+      x_mean[i] += x_mat[i * period + j];
+      x_n[i]++;
+    }
+    x_mean[i] /= x_n[i];
+  }
+  // stds of subseries
+  auto x_std = std::vector<T>(x_mean.size(), 0.0);
+  for (size_t i = 0; i < x_std.size(); ++i) {
+    if (std::isnan(x_mean[i]) || x_n[i] < 2) {
+      x_std[i] = std::numeric_limits<T>::quiet_NaN();
+      continue;
+    }
+    for (int j = 0; j < period; ++j) {
+      if (std::isnan(x_mat[i * period + j])) {
+        continue;
+      }
+      T tmp = x_mat[i * period + j] - x_mean[i];
+      x_std[i] += tmp * tmp / (x_n[i] - 1);
+    }
+    x_std[i] = std::sqrt(x_std[i]);
+  }
+  T tol = std::pow(std::numeric_limits<T>::epsilon(), 0.25);
+  *out = Brent(GuerreroCV<T>, lower, upper, tol, x_mean, x_std);
+}
+
+template <typename T> inline T BoxCoxTransform(T x, T lambda, T /*unused*/) {
+  if (lambda < 0 && x < 0) {
+    return std::numeric_limits<T>::quiet_NaN();
+  }
+  if (std::abs(lambda) < 1e-19) {
+    return std::log(x);
+  }
+  if (x > 0) {
+    return std::expm1(lambda * std::log(x)) / lambda;
+  }
+  return (-std::exp(lambda * std::log(-x)) - 1) / lambda;
+}
+
+template <typename T>
+inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
+  if (lambda < 0 && lambda * x + 1 > 0) {
+    return std::numeric_limits<T>::quiet_NaN();
+  }
+  if (lambda == 0) {
+    return std::exp(x);
+  }
+  if (lambda * x + 1 > 0) {
+    return std::exp(std::log1p(lambda * x) / lambda);
+  }
+  return -std::exp(std::log(-lambda * x - 1) / lambda);
+}
+
+float Float32_BoxCoxLambdaGuerrero(const float *x, int n, int period,
+                                   float lower, float upper) {
+  float out;
+  BoxCoxLambda_Guerrero<float>(x, n, &out, period, lower, upper);
+  return out;
+}
+double Float64_BoxCoxLambdaGuerrero(const double *x, int n, int period,
+                                    double lower, double upper) {
+  double out;
+  BoxCoxLambda_Guerrero<double>(x, n, &out, period, lower, upper);
+  return out;
+}
+
+void Float32_BoxCoxTransform(const float *x, int n, float lambda, float *out) {
+  std::transform(x, x + n, out, [lambda](float x) {
+    return BoxCoxTransform<float>(x, lambda, 0.0);
+  });
+}
+void Float64_BoxCoxTransform(const double *x, int n, double lambda,
+                             double *out) {
+  std::transform(x, x + n, out, [lambda](double x) {
+    return BoxCoxTransform<double>(x, lambda, 0.0);
+  });
+}
+
+void Float32_BoxCoxInverseTransform(const float *x, int n, float lambda,
+                                    float *out) {
+  std::transform(x, x + n, out, [lambda](float x) {
+    return BoxCoxInverseTransform<float>(x, lambda, 0.0);
+  });
+}
+void Float64_BoxCoxInverseTransform(const double *x, int n, double lambda,
+                                    double *out) {
+  std::transform(x, x + n, out, [lambda](double x) {
+    return BoxCoxInverseTransform<double>(x, lambda, 0.0);
+  });
 }
 
 int GroupedArrayFloat32_MinMaxScalerStats(GroupedArrayHandle handle,
@@ -141,5 +277,48 @@ int GroupedArrayFloat64_ScalerInverseTransform(GroupedArrayHandle handle,
                                                double *out) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
   ga->ScalerTransform(CommonScalerInverseTransform<double>, stats, out);
+  return 0;
+}
+
+int GroupedArrayFloat32_BoxCoxLambdaGuerrero(GroupedArrayHandle handle,
+                                             int period, float lower,
+                                             float upper, float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->Reduce(BoxCoxLambda_Guerrero<float>, 2, out, 0, period, lower, upper);
+  return 0;
+}
+int GroupedArrayFloat64_BoxCoxLambdaGuerrero(GroupedArrayHandle handle,
+                                             int period, double lower,
+                                             double upper, double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->Reduce(BoxCoxLambda_Guerrero<double>, 2, out, 0, period, lower, upper);
+  return 0;
+}
+
+int GroupedArrayFloat32_BoxCoxTransform(GroupedArrayHandle handle,
+                                        const float *lambdas, float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->ScalerTransform(BoxCoxTransform<float>, lambdas, out);
+  return 0;
+}
+int GroupedArrayFloat64_BoxCoxTransform(GroupedArrayHandle handle,
+                                        const double *lambdas, double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->ScalerTransform(BoxCoxTransform<double>, lambdas, out);
+  return 0;
+}
+
+int GroupedArrayFloat32_BoxCoxInverseTransform(GroupedArrayHandle handle,
+                                               const float *lambdas,
+                                               float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->ScalerTransform(BoxCoxInverseTransform<float>, lambdas, out);
+  return 0;
+}
+int GroupedArrayFloat64_BoxCoxInverseTransform(GroupedArrayHandle handle,
+                                               const double *lambdas,
+                                               double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->ScalerTransform(BoxCoxInverseTransform<double>, lambdas, out);
   return 0;
 }

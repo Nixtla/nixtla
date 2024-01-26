@@ -27,6 +27,18 @@ def _data_as_void_ptr(arr: np.ndarray):
     return arr.ctypes.data_as(ctypes.POINTER(ctypes.c_void_p))
 
 
+def _ensure_float(x: np.ndarray) -> np.ndarray:
+    if x.dtype not in (np.float32, np.float64):
+        x = x.astype(np.float32)
+    return x
+
+
+def _pyfloat_to_np_c(x: float, t: np.dtype) -> Union[ctypes.c_float, ctypes.c_double]:
+    if t == np.float32:
+        return ctypes.c_float(x)
+    return ctypes.c_double(x)
+
+
 class GroupedArray:
     """Array of grouped data
 
@@ -37,14 +49,11 @@ class GroupedArray:
 
     def __init__(self, data: np.ndarray, indptr: np.ndarray, num_threads: int = 1):
         data = np.ascontiguousarray(data, dtype=data.dtype)
-        if data.dtype == np.float32:
+        self.data = _ensure_float(data)
+        if self.data.dtype == np.float32:
             self.prefix = "GroupedArrayFloat32"
-        elif data.dtype == np.float64:
-            self.prefix = "GroupedArrayFloat64"
         else:
-            self.prefix = "GroupedArrayFloat32"
-            data = data.astype(np.float32)
-        self.data = data
+            self.prefix = "GroupedArrayFloat64"
         if indptr.dtype != np.int32:
             indptr = indptr.astype(np.int32)
         self.indptr = indptr
@@ -307,6 +316,37 @@ class GroupedArray:
             self._handle,
             ctypes.c_int(lag),
             self._pyfloat_to_c(alpha),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def _boxcox_fit(
+        self, season_length: int, lower: float, upper: float, method: str
+    ) -> np.ndarray:
+        out = np.empty_like(self.data, shape=(len(self), 2))
+        _LIB[f"{self.prefix}_BoxCoxLambda{method}"](
+            self._handle,
+            ctypes.c_int(season_length),
+            _pyfloat_to_np_c(lower, self.data.dtype),
+            _pyfloat_to_np_c(upper, self.data.dtype),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def _boxcox_transform(self, stats: np.ndarray) -> np.ndarray:
+        out = np.empty_like(self.data)
+        _LIB[f"{self.prefix}_BoxCoxTransform"](
+            self._handle,
+            _data_as_void_ptr(stats),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def _boxcox_inverse_transform(self, stats: np.ndarray) -> np.ndarray:
+        out = np.empty_like(self.data)
+        _LIB[f"{self.prefix}_BoxCoxInverseTransform"](
+            self._handle,
+            _data_as_void_ptr(stats),
             _data_as_void_ptr(out),
         )
         return out

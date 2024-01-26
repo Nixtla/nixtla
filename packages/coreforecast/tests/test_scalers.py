@@ -3,9 +3,13 @@ import pytest
 
 from coreforecast.grouped_array import GroupedArray
 from coreforecast.scalers import (
+    LocalBoxCoxScaler,
     LocalMinMaxScaler,
     LocalRobustScaler,
     LocalStandardScaler,
+    boxcox,
+    boxcox_lambda,
+    inv_boxcox,
 )
 
 
@@ -105,6 +109,28 @@ def test_correctness(data, indptr, scaler_name, dtype):
         ]
     )
     np.testing.assert_allclose(restored, expected_restored, atol=1e-6, rtol=1e-6)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_boxcox_correctness(data, indptr, dtype):
+    data = data.astype(dtype, copy=True)
+    # introduce some nans
+    for i in [1, 90, 177]:
+        data[indptr[i] : indptr[i] + 19] = np.nan
+    ga = GroupedArray(data, indptr)
+    sc = LocalBoxCoxScaler(season_length=10)
+    sc.fit(ga)
+    transformed = sc.transform(ga)
+    restored = sc.inverse_transform(GroupedArray(transformed, ga.indptr))
+    atol = 5e-4 if dtype == np.float32 else 1e-8
+    np.testing.assert_allclose(ga.data, restored, atol=atol)
+    lmbda = boxcox_lambda(ga[0], 10)
+    np.testing.assert_allclose(lmbda, sc.stats[0, 0])
+    first_grp = slice(indptr[0], indptr[1])
+    first_tfm = boxcox(ga[0], lmbda)
+    first_restored = inv_boxcox(first_tfm, lmbda)
+    np.testing.assert_allclose(first_tfm, transformed[first_grp])
+    np.testing.assert_allclose(first_restored, restored[first_grp])
 
 
 @pytest.mark.parametrize("scaler_name", scalers)

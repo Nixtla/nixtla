@@ -42,3 +42,10 @@ exp_mean = ExpandingMean(lag=1).transform(ga)
 scaler = LocalStandardScaler().fit(ga)
 standardized = scaler.transform(ga)
 ```
+
+### Single-array functions
+We've also implemented the following functions that work on single arrays:
+
+* [boxcox_lambda](https://nixtlaverse.nixtla.io/coreforecast/scalers#function-boxcox-lambda)
+* [boxcox](https://nixtlaverse.nixtla.io/coreforecast/scalers#function-boxcox)
+* [inv_boxcox](https://nixtlaverse.nixtla.io/coreforecast/scalers#function-inv-boxcox)

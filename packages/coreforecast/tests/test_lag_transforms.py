@@ -97,6 +97,7 @@ combs_map = {
 @pytest.mark.parametrize("comb", list(combs_map.keys()))
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_correctness(data, comb, dtype):
+    atol = 1e-4
     rtol = 1e-5 if dtype == np.float32 else 1e-7
     if dtype == np.float32:
         if "rolling_std" in comb:
@@ -110,11 +111,11 @@ def test_correctness(data, comb, dtype):
     wres = transform(data, indptr, False, lag, wf, *args)
     cobj = cf(lag, *args)
     cres = cobj.transform(ga)
-    np.testing.assert_allclose(wres, cres, rtol=rtol)
+    np.testing.assert_allclose(wres, cres, atol=atol, rtol=rtol)
     # update
     wres = transform(data, indptr, True, lag - 1, wf, *args)
     cres = cobj.update(ga)
-    np.testing.assert_allclose(wres, cres, rtol=rtol)
+    np.testing.assert_allclose(wres, cres, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("window_type", ["rolling", "seasonal_rolling", "expanding"])

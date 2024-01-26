@@ -86,7 +86,7 @@ public:
         scale = static_cast<T>(1.0);
       }
       for (indptr_t j = start; j < end; ++j) {
-        out[j] = f(data_[j], scale, offset);
+        out[j] = f(data_[j], offset, scale);
       }
     }
   }
