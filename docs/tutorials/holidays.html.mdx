@@ -1,8 +1,8 @@
 ---
 output-file: holidays.html
 title: Holidays and Special Dates
-
 ---
+
 
 Calendar variables and special dates are one of the most common types of
 exogenous variables used in forecasting applications. They provide
@@ -88,11 +88,7 @@ We can also plot the importance of each of the date features:
 timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
 ```
 
-``` text
-<Axes: ylabel='features'>
-```
-
-![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-8-output-2.png)
+![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-8-output-1.png)
 
 You can also add country holidays using the `CountryHolidays` class.
 
@@ -117,11 +113,7 @@ WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. Th
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
-``` text
-<Axes: ylabel='features'>
-```
-
-![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-10-output-3.png)
+![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-10-output-2.png)
 
 Here’s a breakdown of how the `date_features` parameter works:
 

@@ -1,10 +1,11 @@
 ---
-description: Unlock the power of accurate predictions and confidently navigate uncertainty.
+description: >-
+  Unlock the power of accurate predictions and confidently navigate uncertainty.
   Reduce uncertainty and resource limitations.
 output-file: getting_started_short.html
 title: TimeGPT Quickstart
-
 ---
+
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/getting-started/1_getting_started_short.ipynb)
 
@@ -27,7 +28,10 @@ forecasting capabilities to predict future events. TimeGPT can also be
 used for other time series-related tasks, such as what-if scenarios,
 anomaly detection, and more.
 
-![figure](/nixtla/docs/getting-started/../../img/timegpt-arch.png)
+<figure>
+<img src="../../img/timegpt-arch.png" alt="figure" />
+<figcaption aria-hidden="true">figure</figcaption>
+</figure>
 
 ## Usage
 
@@ -93,21 +97,17 @@ timegpt.plot(df, time_col='timestamp', target_col='value')
 
 ![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-8-output-1.png)
 
-<Tip>
-
-### Important requirements of the data
-
--   Make sure the target variable column does not have missing or
-    non-numeric values.
--   Do not include gaps/jumps in the datestamps (for the given
-    frequency) between the first and late datestamps. The forecast
-    function will not impute missing dates.
--   The format of the datestamp column should be readable by Pandas (see
-    [this
-    link](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html)
-    for more details).
-
-</Tip>
+> **Important requirements of the data**
+>
+> -   Make sure the target variable column does not have missing or
+>     non-numeric values.
+> -   Do not include gaps/jumps in the datestamps (for the given
+>     frequency) between the first and late datestamps. The forecast
+>     function will not impute missing dates.
+> -   The format of the datestamp column should be readable by Pandas
+>     (see [this
+>     link](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html)
+>     for more details).
 
 Next, forecast the next 12 months using the SDK `forecast` method. Set
 the following parameters:
@@ -189,14 +189,12 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 
 ![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-13-output-2.png)
 
-<Warning>
-
-TimeGPT-1 is currently optimized for short horizon forecasting. While
-the `forecast` mehtod will allow any positive and large horizon, the
-accuracy of the forecasts might degrade. We are currently working to
-improve the accuracy on longer forecasts.
-
-</Warning>
+> **Warning**
+>
+> TimeGPT-1 is currently optimized for short horizon forecasting. While
+> the `forecast` mehtod will allow any positive and large horizon, the
+> accuracy of the forecasts might degrade. We are currently working to
+> improve the accuracy on longer forecasts.
 
 ## Using DateTime index to infer frequency
 
