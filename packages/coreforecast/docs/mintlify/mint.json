@@ -29,7 +29,8 @@
       "pages": [
         "grouped_array",
         "lag_transforms",
-        "scalers"
+        "scalers",
+        "differences"
       ]
     }
   ]

@@ -30,7 +30,7 @@ jobs:
             platform-id: win_amd64
           - os: macos-11
             platform-id: macosx_x86_64
-          - os: macos-latest
+          - os: macos-14
             platform-id: macosx_arm64
 
     steps:
@@ -39,7 +39,7 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.16.5
         env:
-          CIBW_BUILD: cp38-${{ matrix.platform-id }}
+          CIBW_BUILD: cp310-${{ matrix.platform-id }}
 
       - uses: actions/upload-artifact@v3
         with:
@@ -54,6 +54,37 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Download wheels
+        uses: actions/download-artifact@v3
+        with:
+          name: artifact
+          path: dist
+
+      - name: Install the library
+        run: pip install --no-index --find-links dist coreforecast
+
+      - name: Run tests
+        run: pytest --benchmark-group-by=param:scaler_name --benchmark-sort=fullname
+
+  run_tests-macos-arm64:
+    needs: [build_wheels]
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
