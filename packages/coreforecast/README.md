@@ -43,9 +43,8 @@ scaler = LocalStandardScaler().fit(ga)
 standardized = scaler.transform(ga)
 ```
 
-### Single-array functions
-We've also implemented the following functions that work on single arrays:
+## Single-array functions
+We've also implemented some functions that work on single arrays, you can refer to the following pages:
 
-* [boxcox_lambda](https://nixtlaverse.nixtla.io/coreforecast/scalers#function-boxcox-lambda)
-* [boxcox](https://nixtlaverse.nixtla.io/coreforecast/scalers#function-boxcox)
-* [inv_boxcox](https://nixtlaverse.nixtla.io/coreforecast/scalers#function-inv-boxcox)
+* [differences](https://nixtlaverse.nixtla.io/coreforecast/differences)
+* [scalers](https://nixtlaverse.nixtla.io/coreforecast/scalers)

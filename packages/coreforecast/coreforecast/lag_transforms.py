@@ -26,7 +26,7 @@ import numpy as np
 from .grouped_array import GroupedArray
 
 
-class _BaseLagTransform(abc.ABC):
+class BaseLagTransform(abc.ABC):
     @abc.abstractmethod
     def transform(self, ga: GroupedArray) -> np.ndarray:
         """Apply the transformation by group.
@@ -50,7 +50,7 @@ class _BaseLagTransform(abc.ABC):
         ...
 
 
-class Lag(_BaseLagTransform):
+class Lag(BaseLagTransform):
     """Simple lag operator
 
     Args:
@@ -63,7 +63,7 @@ class Lag(_BaseLagTransform):
         return ga._lag_transform(self.lag)
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga._take_from_groups(self.lag - 1)
+        return ga.index_from_end(self.lag - 1)
 
 
 _rolling_base_docstring = """Rolling {stat_name}
@@ -75,7 +75,7 @@ _rolling_base_docstring = """Rolling {stat_name}
             If None, defaults to window_size."""
 
 
-class _RollingBase(_BaseLagTransform):
+class _RollingBase(BaseLagTransform):
     stat_name: str
     lag: int
     window_size: int
@@ -280,7 +280,7 @@ _expanding_docstring = """Expanding {stat_name}
         lag (int): Number of periods to offset by before applying the transformation"""
 
 
-class _ExpandingBase(_BaseLagTransform):
+class _ExpandingBase(BaseLagTransform):
     def __init__(self, lag: int):
         self.lag = lag
 
@@ -294,7 +294,7 @@ class ExpandingMean(_ExpandingBase):
 
     def update(self, ga: GroupedArray) -> np.ndarray:
         self.n += 1
-        self.cumsum += ga._take_from_groups(self.lag - 1)
+        self.cumsum += ga.index_from_end(self.lag - 1)
         return self.cumsum / self.n
 
 
@@ -308,7 +308,7 @@ class ExpandingStd(_ExpandingBase):
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        x = ga._take_from_groups(self.lag - 1)
+        x = ga.index_from_end(self.lag - 1)
         self.stats[:, 0] += 1.0
         n = self.stats[:, 0]
         prev_avg = self.stats[:, 1].copy()
@@ -331,7 +331,7 @@ class _ExpandingComp(_ExpandingBase):
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        self.stats = self._comp_fn(self.stats, ga._take_from_groups(self.lag - 1))
+        self.stats = self._comp_fn(self.stats, ga.index_from_end(self.lag - 1))
         return self.stats
 
 
@@ -351,7 +351,7 @@ class ExpandingMax(_ExpandingComp):
 ExpandingMax.__doc__ = _expanding_docstring.format(stat_name="Maximum")
 
 
-class ExpandingQuantile(_BaseLagTransform):
+class ExpandingQuantile(BaseLagTransform):
     """Expanding quantile
 
     Args:
@@ -371,7 +371,7 @@ class ExpandingQuantile(_BaseLagTransform):
         return ga._expanding_quantile_update(self.lag - 1, self.p)
 
 
-class ExponentiallyWeightedMean(_BaseLagTransform):
+class ExponentiallyWeightedMean(BaseLagTransform):
     """Exponentially weighted mean
 
     Args:
@@ -388,6 +388,6 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        x = ga._take_from_groups(self.lag - 1)
+        x = ga.index_from_end(self.lag - 1)
         self.ewm = self.alpha * x + (1 - self.alpha) * self.ewm
         return self.ewm

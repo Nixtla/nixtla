@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+version=$(sw_vers -productVersion)
+major_version=${version%%.*}
+if [ "$major_version" -eq "11" ]; then
+    sudo xcode-select -s /Applications/Xcode_11.7.app/Contents/Developer
+fi

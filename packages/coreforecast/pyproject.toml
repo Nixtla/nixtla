@@ -43,5 +43,14 @@ wheel.packages = ["coreforecast"]
 wheel.py-api = "py3"
 
 [tool.cibuildwheel]
+archs = "all"
+build-verbosity = 3
+macos.before-build = [
+    "brew install libomp",
+    "./scripts/switch_xcode",
+    "pip install toml",
+    "python scripts/disable_omp_arm64.py",
+]
+test-skip = "*-macosx_arm64"
 test-requires = "pandas pytest window-ops"
 test-command = "pytest {project}/tests -k correct"

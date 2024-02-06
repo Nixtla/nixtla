@@ -33,7 +33,7 @@ template <typename T> double Mean(const T *data, int n) {
 }
 
 template <typename T>
-double StandardDeviation(const T *data, int n, double mean, int ddof = 0) {
+double Variance(const T *data, int n, double mean, int ddof = 0) {
   if (n <= ddof) {
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -41,5 +41,10 @@ double StandardDeviation(const T *data, int n, double mean, int ddof = 0) {
   for (int i = 0; i < n; ++i) {
     sum_sq += (data[i] - mean) * (data[i] - mean);
   }
-  return std::sqrt(sum_sq / (n - ddof));
+  return sum_sq / (n - ddof);
+}
+
+template <typename T>
+double StandardDeviation(const T *data, int n, double mean, int ddof = 0) {
+  return std::sqrt(Variance<T>(data, n, mean, ddof));
 }

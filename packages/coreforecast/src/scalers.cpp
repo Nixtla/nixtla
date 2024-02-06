@@ -128,9 +128,9 @@ void BoxCoxLambda_Guerrero(const T *x, int n, T *out, int period, T lower,
         continue;
       }
       T tmp = x_mat[i * period + j] - x_mean[i];
-      x_std[i] += tmp * tmp / (x_n[i] - 1);
+      x_std[i] += tmp * tmp;
     }
-    x_std[i] = std::sqrt(x_std[i]);
+    x_std[i] = std::sqrt(x_std[i] / (x_n[i] - 1));
   }
   T tol = std::pow(std::numeric_limits<T>::epsilon(), 0.25);
   *out = Brent(GuerreroCV<T>, lower, upper, tol, x_mean, x_std);

@@ -34,15 +34,6 @@ template <typename T> inline void SkipLags(T *out, int n, int lag) {
   }
 }
 
-template <typename T>
-inline void TakeFromGroups(const T *data, int n, T *out, int k) {
-  if (k > n) {
-    *out = std::numeric_limits<T>::quiet_NaN();
-  } else {
-    *out = data[n - 1 - k];
-  }
-}
-
 template <class T> class GroupedArray {
 private:
   const T *data_;

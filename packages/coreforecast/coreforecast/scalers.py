@@ -1,13 +1,15 @@
 import ctypes
+from typing import List, Tuple
 
 import numpy as np
 
-from .grouped_array import (
-    _LIB,
+from ._lib import _LIB
+from .grouped_array import GroupedArray
+from .utils import (
     _data_as_void_ptr,
     _ensure_float,
+    _float_arr_to_prefix,
     _pyfloat_to_np_c,
-    GroupedArray,
 )
 
 
@@ -49,10 +51,8 @@ def boxcox_lambda(
     if lower >= upper:
         raise ValueError("lower must be less than upper")
     x = _ensure_float(x)
-    if x.dtype == np.float32:
-        fn = "Float32_BoxCoxLambdaGuerrero"
-    else:
-        fn = "Float64_BoxCoxLambdaGuerrero"
+    prefix = _float_arr_to_prefix(x)
+    fn = f"{prefix}_BoxCoxLambdaGuerrero"
     # _LIB[fn] doesn't get the restype assignment (keeps c_int)
     return getattr(_LIB, fn)(
         _data_as_void_ptr(x),
@@ -73,10 +73,8 @@ def boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
     Returns:
         np.ndarray: Array with the transformed data."""
     x = _ensure_float(x)
-    if x.dtype == np.float32:
-        fn = "Float32_BoxCoxTransform"
-    else:
-        fn = "Float64_BoxCoxTransform"
+    prefix = _float_arr_to_prefix(x)
+    fn = f"{prefix}_BoxCoxTransform"
     out = np.empty_like(x)
     getattr(_LIB, fn)(
         _data_as_void_ptr(x),
@@ -97,10 +95,8 @@ def inv_boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
     Returns:
         np.ndarray: Array with the inverted transformation."""
     x = _ensure_float(x)
-    if x.dtype == np.float32:
-        fn = "Float32_BoxCoxInverseTransform"
-    else:
-        fn = "Float64_BoxCoxInverseTransform"
+    prefix = _float_arr_to_prefix(x)
+    fn = f"{prefix}_BoxCoxInverseTransform"
     out = np.empty_like(x)
     getattr(_LIB, fn)(
         _data_as_void_ptr(x),
@@ -134,6 +130,16 @@ class _BaseLocalScaler:
         Returns:
             np.ndarray: Array with the transformed data."""
         return ga._scaler_transform(self.stats_)
+
+    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+        """ "Compute the statistics for each group and apply the transformation.
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the transformed data."""
+        return self.fit(ga).transform(ga)
 
     def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
         """Use the computed statistics to invert the transformation.
@@ -228,3 +234,103 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
         Returns:
             np.ndarray: Array with the inverted transformation."""
         return ga._boxcox_inverse_transform(self.stats)
+
+
+class AutoDifferences:
+    """Find and apply the optimal number of differences to each group.
+
+    Args:
+        max_diffs (int): Maximum number of differences to apply."""
+
+    def __init__(self, max_diffs: int):
+        if not isinstance(max_diffs, int) or max_diffs <= 0:
+            raise ValueError("max_diff must be a positive integer")
+        self.max_diffs = max_diffs
+
+    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Compute and apply the optimal number of differences for each group
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the transformed data."""
+        self.diffs_ = ga._num_diffs(self.max_diffs)
+        self.tails_ = []
+        max_d = int(self.diffs_.max())
+        transformed = ga.data.copy()
+        dtype = ga.data.dtype.type
+        for i in range(max_d):
+            ga = ga.with_data(transformed)
+            self.tails_.append(ga._tail(1))
+            mask = np.where(self.diffs_ > i, dtype(1), dtype(0))
+            transformed = ga._conditional_diff(1, mask)
+        return transformed
+
+    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Invert the differences
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the inverted transformation."""
+        transformed = ga.data.copy()
+        n_diffs = len(self.tails_)
+        dtype = ga.data.dtype.type
+        for i, tails in enumerate(self.tails_[::-1]):
+            ga = ga.with_data(transformed)
+            mask = np.where(self.diffs_ >= n_diffs - i, dtype(1), dtype(0))
+            transformed = ga._conditional_inv_diff(1, mask, tails)
+        return transformed
+
+
+class AutoSeasonalDifferences:
+    """Find and apply the optimal number of seasonal differences to each group.
+
+    Args:
+        season_length (int): Length of the seasonal period.
+        max_diff (int): Maximum number of seasonal differences to apply."""
+
+    def __init__(self, season_length: int, max_diffs: int):
+        if not isinstance(max_diffs, int) or max_diffs <= 0:
+            raise ValueError("max_diff must be a positive integer")
+        self.max_diffs = max_diffs
+        self.season_length = season_length
+
+    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Compute and apply the optimal number of seasonal differences for each group
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the transformed data."""
+        self.diffs_ = ga._num_seas_diffs(self.season_length, self.max_diffs)
+        self.tails_ = []
+        max_d = int(self.diffs_.max())
+        transformed = ga.data.copy()
+        dtype = ga.data.dtype.type
+        for i in range(max_d):
+            ga = ga.with_data(transformed)
+            self.tails_.append(ga._tail(self.season_length))
+            mask = np.where(self.diffs_ > i, dtype(1), dtype(0))
+            transformed = ga._conditional_diff(self.season_length, mask)
+        return transformed
+
+    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Invert the seasonal differences
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the inverted transformation."""
+        transformed = ga.data.copy()
+        n_diffs = len(self.tails_)
+        dtype = ga.data.dtype.type
+        for i, tails in enumerate(self.tails_[::-1]):
+            ga = ga.with_data(transformed)
+            mask = np.where(self.diffs_ >= (n_diffs - i), dtype(1), dtype(0))
+            transformed = ga._conditional_inv_diff(self.season_length, mask, tails)
+        return transformed

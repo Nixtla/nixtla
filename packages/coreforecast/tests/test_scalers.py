@@ -1,8 +1,12 @@
+import math
+
 import numpy as np
 import pytest
 
 from coreforecast.grouped_array import GroupedArray
 from coreforecast.scalers import (
+    AutoDifferences,
+    AutoSeasonalDifferences,
     LocalBoxCoxScaler,
     LocalMinMaxScaler,
     LocalRobustScaler,
@@ -131,6 +135,85 @@ def test_boxcox_correctness(data, indptr, dtype):
     first_restored = inv_boxcox(first_tfm, lmbda)
     np.testing.assert_allclose(first_tfm, transformed[first_grp])
     np.testing.assert_allclose(first_restored, restored[first_grp])
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_differences_correctness(data, indptr, dtype):
+    data = data.astype(dtype)
+    with_trend = np.empty_like(data)
+    expected = data.copy()
+    for start, end in zip(indptr[:-1], indptr[1:]):
+        with_trend[start:end] = data[start:end].cumsum()
+        expected[start] = np.nan
+    ga = GroupedArray(with_trend, indptr)
+    sc = AutoDifferences(max_diffs=1)
+    transformed = sc.fit_transform(ga)
+    # we should've got that almost all series require a difference
+    assert sc.diffs_.mean() > 0.9
+    # the transformation should revert the cumsum, except for those where
+    # the test said it was not necessary
+    mask = np.repeat(sc.diffs_ == 1, np.diff(indptr))
+    expected = np.where(mask, expected, with_trend)
+    np.testing.assert_allclose(transformed, expected, atol=1e-5)
+    # inverting on zeros should restore the last values
+    tails = ga._tail(1)
+    horizon = 5
+    preds_data = np.zeros_like(data, shape=horizon * len(ga))
+    preds_indptr = np.arange(0, (len(ga) + 1) * horizon, horizon)
+    preds_ga = GroupedArray(preds_data, preds_indptr)
+    np.testing.assert_allclose(
+        sc.inverse_transform(preds_ga),
+        np.repeat(tails * (sc.diffs_ == 1), horizon),
+    )
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_seasonal_differences_correctness(data, indptr, dtype):
+    season_length = 10
+    seasonality = np.arange(season_length)
+
+    # this can take a long time, so we'll use fewer series
+    indptr = indptr[:100]
+    data = data[: indptr[-1]]
+
+    with_season = np.empty_like(data)
+    expected = data.copy()
+    keep_as_is = np.random.choice(len(indptr) - 1, size=10, replace=False)
+    for i, (start, end) in enumerate(zip(indptr[:-1], indptr[1:])):
+        if i in keep_as_is:
+            with_season[start:end] = data[start:end]
+            continue
+        size = end - start
+        repeats = math.ceil(size / season_length)
+        seasonality = np.tile(np.arange(season_length), repeats)
+        with_season[start:end] = seasonality[:size] + data[start:end]
+        expected[start : start + season_length] = np.nan
+        expected[start + season_length : end] -= data[start : end - season_length]
+    ga = GroupedArray(with_season, indptr, num_threads=2)
+    sc = AutoSeasonalDifferences(season_length, max_diffs=1)
+    transformed = sc.fit_transform(ga)
+    # we should've got that almost all series require a seasonal difference
+    assert 0.8 < sc.diffs_.mean() < 1.0
+    # the transformation should revert the seasonality, except for those where
+    # the test said it was not necessary
+    mask = np.repeat(sc.diffs_ == 1, np.diff(indptr))
+    expected = np.where(mask, expected, with_season)
+    np.testing.assert_allclose(transformed, expected, atol=1e-5)
+    # inverting on zeros should restore the last season values
+    tails = ga._tail(season_length)
+    horizon = 20
+    preds_data = np.zeros_like(data, shape=horizon * len(ga))
+    preds_indptr = np.arange(0, (len(ga) + 1) * horizon, horizon)
+    preds_ga = GroupedArray(preds_data, preds_indptr)
+    expected2 = preds_data.copy()
+    repeats = horizon // season_length
+    for i in range(len(ga)):
+        if sc.diffs_[i] == 0:
+            continue
+        grp_tails = tails[i * season_length : (i + 1) * season_length]
+        expected2[horizon * i : horizon * (i + 1)] = np.tile(grp_tails, repeats)
+    restored = sc.inverse_transform(preds_ga)
+    np.testing.assert_allclose(restored, expected2)
 
 
 @pytest.mark.parametrize("scaler_name", scalers)

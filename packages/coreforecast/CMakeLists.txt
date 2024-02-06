@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(coreforecast)
 
+include(FetchContent)
 option(USE_OPENMP "Enable OpenMP" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -46,6 +47,13 @@ else()
 endif()
 
 include_directories(include)
+FetchContent_Declare(
+    stl-cpp
+    GIT_REPOSITORY https://github.com/jmoralez/stl-cpp.git
+    GIT_TAG 13d26c0d0653ddcdbf853de3f92f56faa831a330
+)
+FetchContent_MakeAvailable(stl-cpp)
+include_directories(${stl-cpp_SOURCE_DIR}/include)
 file(GLOB SOURCES src/*.cpp)
 add_library(coreforecast SHARED ${SOURCES})
 if(MSVC)
