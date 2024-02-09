@@ -1,5 +1,5 @@
 import ctypes
-from typing import List, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -261,7 +261,7 @@ class AutoDifferences:
         transformed = ga.data.copy()
         dtype = ga.data.dtype.type
         for i in range(max_d):
-            ga = ga.with_data(transformed)
+            ga = ga._with_data(transformed)
             self.tails_.append(ga._tail(1))
             mask = np.where(self.diffs_ > i, dtype(1), dtype(0))
             transformed = ga._conditional_diff(1, mask)
@@ -279,7 +279,7 @@ class AutoDifferences:
         n_diffs = len(self.tails_)
         dtype = ga.data.dtype.type
         for i, tails in enumerate(self.tails_[::-1]):
-            ga = ga.with_data(transformed)
+            ga = ga._with_data(transformed)
             mask = np.where(self.diffs_ >= n_diffs - i, dtype(1), dtype(0))
             transformed = ga._conditional_inv_diff(1, mask, tails)
         return transformed
@@ -290,13 +290,23 @@ class AutoSeasonalDifferences:
 
     Args:
         season_length (int): Length of the seasonal period.
-        max_diff (int): Maximum number of seasonal differences to apply."""
+        max_diffs (int): Maximum number of differences to apply.
+        n_seasons (int | None): Number of seasons to use to determine the number of differences. Defaults to 10.
+            If `None` will use all samples, otherwise `season_length` * `n_seasons` samples will be used for the test.
+            Smaller values will be faster but could be less accurate.
+    """
 
-    def __init__(self, season_length: int, max_diffs: int):
-        if not isinstance(max_diffs, int) or max_diffs <= 0:
-            raise ValueError("max_diff must be a positive integer")
-        self.max_diffs = max_diffs
+    def __init__(
+        self,
+        season_length: int,
+        max_diffs: int,
+        n_seasons: Optional[int] = 10,
+    ):
         self.season_length = season_length
+        self.max_diffs = max_diffs
+        if isinstance(n_seasons, int) and n_seasons < 2:
+            raise ValueError("n_seasons must be at least 2")
+        self.n_seasons = n_seasons
 
     def fit_transform(self, ga: GroupedArray) -> np.ndarray:
         """Compute and apply the optimal number of seasonal differences for each group
@@ -306,13 +316,22 @@ class AutoSeasonalDifferences:
 
         Returns:
             np.ndarray: Array with the transformed data."""
-        self.diffs_ = ga._num_seas_diffs(self.season_length, self.max_diffs)
+        if self.n_seasons is None:
+            tails_ga = ga
+        else:
+            n_samples = self.season_length * self.n_seasons
+            tails_ga = GroupedArray(
+                ga._tail(n_samples),
+                np.arange(0, (len(ga) + 1) * n_samples, n_samples),
+                num_threads=ga.num_threads,
+            )
+        self.diffs_ = tails_ga._num_seas_diffs(self.season_length, self.max_diffs)
         self.tails_ = []
         max_d = int(self.diffs_.max())
-        transformed = ga.data.copy()
         dtype = ga.data.dtype.type
+        transformed = ga.data.copy()
         for i in range(max_d):
-            ga = ga.with_data(transformed)
+            ga = ga._with_data(transformed)
             self.tails_.append(ga._tail(self.season_length))
             mask = np.where(self.diffs_ > i, dtype(1), dtype(0))
             transformed = ga._conditional_diff(self.season_length, mask)
@@ -330,7 +349,70 @@ class AutoSeasonalDifferences:
         n_diffs = len(self.tails_)
         dtype = ga.data.dtype.type
         for i, tails in enumerate(self.tails_[::-1]):
-            ga = ga.with_data(transformed)
+            ga = ga._with_data(transformed)
             mask = np.where(self.diffs_ >= (n_diffs - i), dtype(1), dtype(0))
             transformed = ga._conditional_inv_diff(self.season_length, mask, tails)
+        return transformed
+
+
+class AutoSeasonalityAndDifferences:
+    """Find the length of the seasonal period and apply the optimal number of differences to each group.
+
+    Args:
+        max_season_length (int): Maximum length of the seasonal period.
+        max_diffs (int): Maximum number of differences to apply.
+        n_seasons (int | None): Number of seasons to use to determine the number of differences. Defaults to 10.
+            If `None` will use all samples, otherwise `max_season_length` * `n_seasons` samples will be used for the test.
+            Smaller values will be faster but could be less accurate.
+    """
+
+    def __init__(
+        self, max_season_length: int, max_diffs: int, n_seasons: Optional[int] = 10
+    ):
+        self.max_season_length = max_season_length
+        self.max_diffs = max_diffs
+        if isinstance(n_seasons, int) and n_seasons < 2:
+            raise ValueError("n_seasons must be at least 2")
+        self.n_seasons = n_seasons
+
+    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Compute the optimal length of the seasonal period and apply the optimal number of differences for each group
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the transformed data."""
+        self.diffs_ = []
+        self.tails_ = []
+        transformed = ga.data.copy()
+        for i in range(self.max_diffs):
+            ga = ga._with_data(transformed)
+            if self.n_seasons is None:
+                tails_ga = ga
+            else:
+                n_samples = self.max_season_length * self.n_seasons
+                tails_ga = GroupedArray(
+                    ga._tail(n_samples),
+                    np.arange(0, (len(ga) + 1) * n_samples, n_samples),
+                    num_threads=ga.num_threads,
+                )
+            periods = tails_ga._periods(self.max_season_length)
+            self.diffs_.append(periods * tails_ga._num_seas_diffs_periods(1, periods))
+            self.tails_.append(ga._tails(self.max_season_length, self.diffs_[i]))
+            transformed = ga._diffs(self.diffs_[i])
+        return transformed
+
+    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Invert the seasonal differences
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the inverted transformation."""
+        transformed = ga.data.copy()
+        for diffs, tails in zip(self.diffs_[::-1], self.tails_[::-1]):
+            ga = ga._with_data(transformed)
+            transformed = ga._inv_diffs(self.max_season_length, diffs, tails)
         return transformed

@@ -7,14 +7,6 @@
 #include <numeric>
 #include <vector>
 
-template <typename T> inline T Dot(const T *x, const T *y, size_t n) {
-  T result = 0.0;
-  for (size_t i = 0; i < n; ++i) {
-    result += x[i] * y[i];
-  }
-  return result;
-}
-
 template <typename T> T KPSS(const T *x, size_t n, size_t lags) {
   T mean = Mean(x, n);
   auto resids = std::vector<T>(n);

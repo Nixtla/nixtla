@@ -63,7 +63,7 @@ class Lag(BaseLagTransform):
         return ga._lag_transform(self.lag)
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        return ga.index_from_end(self.lag - 1)
+        return ga._index_from_end(self.lag - 1)
 
 
 _rolling_base_docstring = """Rolling {stat_name}
@@ -294,7 +294,7 @@ class ExpandingMean(_ExpandingBase):
 
     def update(self, ga: GroupedArray) -> np.ndarray:
         self.n += 1
-        self.cumsum += ga.index_from_end(self.lag - 1)
+        self.cumsum += ga._index_from_end(self.lag - 1)
         return self.cumsum / self.n
 
 
@@ -308,7 +308,7 @@ class ExpandingStd(_ExpandingBase):
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        x = ga.index_from_end(self.lag - 1)
+        x = ga._index_from_end(self.lag - 1)
         self.stats[:, 0] += 1.0
         n = self.stats[:, 0]
         prev_avg = self.stats[:, 1].copy()
@@ -331,7 +331,7 @@ class _ExpandingComp(_ExpandingBase):
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        self.stats = self._comp_fn(self.stats, ga.index_from_end(self.lag - 1))
+        self.stats = self._comp_fn(self.stats, ga._index_from_end(self.lag - 1))
         return self.stats
 
 
@@ -388,6 +388,6 @@ class ExponentiallyWeightedMean(BaseLagTransform):
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        x = ga.index_from_end(self.lag - 1)
+        x = ga._index_from_end(self.lag - 1)
         self.ewm = self.alpha * x + (1 - self.alpha) * self.ewm
         return self.ewm

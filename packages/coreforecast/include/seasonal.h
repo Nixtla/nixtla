@@ -1,6 +1,8 @@
 #pragma once
 
+#include "diff.h"
 #include "export.h"
+#include "stats.h"
 #include "stl.hpp"
 
 #include <cmath>
@@ -28,13 +30,21 @@ template <typename T> T SeasHeuristic(const T *x, size_t n, size_t period) {
   return stl_fit.seasonal_strength();
 }
 
-extern "C" {
-DLL_EXPORT float Float32_SeasHeuristic(const float *x, size_t n,
-                                       size_t period) {
-  return SeasHeuristic(x, n, period);
-}
-DLL_EXPORT float Float64_SeasHeuristic(const double *x, size_t n,
-                                       size_t period) {
-  return SeasHeuristic(x, n, period);
-}
+template <typename T>
+void GreatestAutocovariance(const T *x, size_t n, T *out, size_t max_lag) {
+  T *resids = new T[n];
+  Difference(x, n, resids, 1);
+  indptr_t start = FirstNotNaN(resids, n);
+  max_lag = std::min(max_lag, n - start - 1);
+  T max_cov = -std::numeric_limits<T>::infinity();
+  size_t lag = 0;
+  for (size_t i = 2; i < max_lag + 1; ++i) {
+    T cov = Dot(resids + start, resids + start + i, n - start - i);
+    if (cov > max_cov) {
+      max_cov = cov;
+      lag = i;
+    }
+  }
+  delete[] resids;
+  *out = static_cast<T>(lag);
 }

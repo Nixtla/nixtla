@@ -11,15 +11,16 @@ template <typename T> inline bool IsConstant(const T *data, int n) {
   return true;
 }
 
-template <typename T> void Difference(const T *data, int n, T *out, int d) {
-  std::fill(out, out + d, std::numeric_limits<T>::quiet_NaN());
-  for (int i = d; i < n; ++i) {
-    out[i] = data[i] - data[i - d];
-  }
+template <typename T> void Differences(const T *data, int n, T *out, T *d) {
+  Difference(data, n, out, static_cast<int>(d[0]));
 }
 
 template <typename T>
 void InvertDifference(const T *data, int n, T *out, T *tails, int d) {
+  if (d == 0) {
+    std::copy(data, data + n, out);
+    return;
+  }
   int upper = std::min(d, n);
   for (int i = 0; i < upper; ++i) {
     out[i] = data[i] + tails[i];
@@ -27,6 +28,13 @@ void InvertDifference(const T *data, int n, T *out, T *tails, int d) {
   for (int i = upper; i < n; ++i) {
     out[i] = data[i] + out[i - d];
   }
+}
+
+template <typename T>
+void InvertDifferences(const T *data, int n, T *out, T *d_and_tails) {
+  int d = static_cast<int>(d_and_tails[0]);
+  T *tails = d_and_tails + 1;
+  InvertDifference(data, n, out, tails, d);
 }
 
 template <typename T> void NumDiffs(const T *x, indptr_t n, T *out, int max_d) {
@@ -101,6 +109,13 @@ void NumSeasDiffs(const T *x, indptr_t n, T *out, int period, int max_d) {
 }
 
 template <typename T>
+void NumSeasDiffsPeriods(const T *x, indptr_t n, T *period_and_out, int max_d) {
+  int period = static_cast<int>(period_and_out[0]);
+  T *out = period_and_out + 1;
+  NumSeasDiffs(x, n, out, period, max_d);
+}
+
+template <typename T>
 void ConditionalDifference(const T *data, int n, T *out, T *apply, int period) {
   if (apply[0] == 0) {
     std::copy(data, data + n, out);
@@ -148,6 +163,17 @@ int Float64_NumSeasDiffs(const double *x, indptr_t n, int period, int max_d) {
   return static_cast<int>(out);
 }
 
+int Float32_Period(const float *x, size_t n, int max_lag) {
+  float tmp;
+  GreatestAutocovariance(x, n, &tmp, max_lag);
+  return static_cast<int>(tmp);
+}
+int Float64_Period(const double *x, size_t n, int max_lag) {
+  double tmp;
+  GreatestAutocovariance(x, n, &tmp, max_lag);
+  return static_cast<int>(tmp);
+}
+
 void GroupedArrayFloat32_NumDiffs(GroupedArrayHandle handle, int max_d,
                                   float *out) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
@@ -170,6 +196,30 @@ void GroupedArrayFloat64_NumSeasDiffs(GroupedArrayHandle handle, int period,
   ga->Reduce(NumSeasDiffs<double>, 1, out, 0, period, max_d);
 }
 
+void GroupedArrayFloat32_NumSeasDiffsPeriods(GroupedArrayHandle handle,
+                                             int max_d,
+                                             float *periods_and_out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->Reduce(NumSeasDiffsPeriods<float>, 2, periods_and_out, 0, max_d);
+}
+void GroupedArrayFloat64_NumSeasDiffsPeriods(GroupedArrayHandle handle,
+                                             int max_d,
+                                             double *periods_and_out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->Reduce(NumSeasDiffsPeriods<double>, 2, periods_and_out, 0, max_d);
+}
+
+void GroupedArrayFloat32_Period(GroupedArrayHandle handle, size_t max_lag,
+                                float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->Reduce(GreatestAutocovariance<float>, 1, out, 0, max_lag);
+}
+void GroupedArrayFloat64_Period(GroupedArrayHandle handle, size_t max_lag,
+                                double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->Reduce(GreatestAutocovariance<double>, 1, out, 0, max_lag);
+}
+
 void GroupedArrayFloat32_Difference(GroupedArrayHandle handle, int d,
                                     float *out) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
@@ -181,6 +231,17 @@ void GroupedArrayFloat64_Difference(GroupedArrayHandle handle, int d,
   ga->Transform(Difference<double>, 0, out, d);
 }
 
+void GroupedArrayFloat32_Differences(GroupedArrayHandle handle, float *ds,
+                                     float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->TransformAndReduce(Differences<float>, 0, out, 1, ds);
+}
+void GroupedArrayFloat64_Differences(GroupedArrayHandle handle, double *ds,
+                                     double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->TransformAndReduce(Differences<double>, 0, out, 1, ds);
+}
+
 void GroupedArrayFloat32_InvertDifference(GroupedArrayHandle handle, int d,
                                           float *tails, float *out) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
@@ -190,6 +251,19 @@ void GroupedArrayFloat64_InvertDifference(GroupedArrayHandle handle, int d,
                                           double *tails, double *out) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
   ga->TransformAndReduce(InvertDifference<double>, 0, out, d, tails, d);
+}
+
+void GroupedArrayFloat32_InvertDifferences(GroupedArrayHandle handle, int max_d,
+                                           float *d_and_tails, float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->TransformAndReduce(InvertDifferences<float>, 0, out, max_d + 1,
+                         d_and_tails);
+}
+void GroupedArrayFloat64_InvertDifferences(GroupedArrayHandle handle, int max_d,
+                                           double *d_and_tails, double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->TransformAndReduce(InvertDifferences<double>, 0, out, max_d + 1,
+                         d_and_tails);
 }
 
 void GroupedArrayFloat32_ConditionalDifference(GroupedArrayHandle handle,

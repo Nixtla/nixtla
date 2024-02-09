@@ -48,3 +48,4 @@ We've also implemented some functions that work on single arrays, you can refer 
 
 * [differences](https://nixtlaverse.nixtla.io/coreforecast/differences)
 * [scalers](https://nixtlaverse.nixtla.io/coreforecast/scalers)
+* [seasonal](https://nixtlaverse.nixtla.io/coreforecast/seasonal)

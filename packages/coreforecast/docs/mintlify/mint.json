@@ -30,7 +30,8 @@
         "grouped_array",
         "lag_transforms",
         "scalers",
-        "differences"
+        "differences",
+        "seasonal"
       ]
     }
   ]

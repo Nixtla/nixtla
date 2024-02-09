@@ -34,7 +34,7 @@ class GroupedArray:
             ctypes.byref(self._handle),
         )
 
-    def with_data(self, data: np.ndarray) -> "GroupedArray":
+    def _with_data(self, data: np.ndarray) -> "GroupedArray":
         data = data.astype(self.data.dtype, copy=False)
         data = np.ascontiguousarray(data)
         return GroupedArray(data, self.indptr, self.num_threads)
@@ -79,7 +79,7 @@ class GroupedArray:
         )
         return out
 
-    def index_from_end(self, k: int) -> np.ndarray:
+    def _index_from_end(self, k: int) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_IndexFromEnd"](
             self._handle,
@@ -105,6 +105,16 @@ class GroupedArray:
             _data_as_void_ptr(out),
         )
         return out
+
+    def _tails(self, max_k: int, ks: np.ndarray) -> np.ndarray:
+        ks_and_tails = np.empty_like(self.data, shape=(len(self), max_k + 1))
+        ks_and_tails[:, 0] = ks
+        _LIB[f"{self.prefix}_Tails"](
+            self._handle,
+            ctypes.c_int(max_k),
+            _data_as_void_ptr(ks_and_tails),
+        )
+        return ks_and_tails[:, 1:].ravel()
 
     def _lag_transform(self, lag: int) -> np.ndarray:
         out = np.empty_like(self.data)
@@ -360,11 +370,39 @@ class GroupedArray:
         )
         return out
 
+    def _num_seas_diffs_periods(self, max_d: int, periods: np.ndarray) -> np.ndarray:
+        periods_and_out = np.empty_like(self.data, shape=(len(self), 2))
+        periods_and_out[:, 0] = periods
+        _LIB[f"{self.prefix}_NumSeasDiffsPeriods"](
+            self._handle,
+            ctypes.c_int(max_d),
+            _data_as_void_ptr(periods_and_out),
+        )
+        return periods_and_out[:, 1]
+
+    def _periods(self, max_period: int) -> np.ndarray:
+        out = np.empty_like(self.data, shape=len(self))
+        _LIB[f"{self.prefix}_Period"](
+            self._handle,
+            ctypes.c_size_t(max_period),
+            _data_as_void_ptr(out),
+        )
+        return out
+
     def _diff(self, d: int) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Difference"](
             self._handle,
             ctypes.c_int(d),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def _diffs(self, ds: np.ndarray) -> np.ndarray:
+        out = np.empty_like(self.data)
+        _LIB[f"{self.prefix}_Differences"](
+            self._handle,
+            _data_as_void_ptr(ds),
             _data_as_void_ptr(out),
         )
         return out
@@ -375,6 +413,17 @@ class GroupedArray:
             self._handle,
             ctypes.c_int(d),
             _data_as_void_ptr(tails),
+            _data_as_void_ptr(out),
+        )
+        return out
+
+    def _inv_diffs(self, max_d: int, ds: np.ndarray, tails: np.ndarray) -> np.ndarray:
+        ds_and_tails = np.hstack([ds.reshape(-1, 1), tails.reshape(-1, max_d)])
+        out = np.empty_like(self.data)
+        _LIB[f"{self.prefix}_InvertDifferences"](
+            self._handle,
+            ctypes.c_int(max_d),
+            _data_as_void_ptr(ds_and_tails),
             _data_as_void_ptr(out),
         )
         return out

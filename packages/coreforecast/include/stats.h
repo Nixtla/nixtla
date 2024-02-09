@@ -48,3 +48,11 @@ template <typename T>
 double StandardDeviation(const T *data, int n, double mean, int ddof = 0) {
   return std::sqrt(Variance<T>(data, n, mean, ddof));
 }
+
+template <typename T> inline T Dot(const T *x, const T *y, size_t n) {
+  T result = 0.0;
+  for (size_t i = 0; i < n; ++i) {
+    result += x[i] * y[i];
+  }
+  return result;
+}

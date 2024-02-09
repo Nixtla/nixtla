@@ -3,10 +3,12 @@ import math
 import numpy as np
 import pytest
 
+from coreforecast.differences import diff
 from coreforecast.grouped_array import GroupedArray
 from coreforecast.scalers import (
     AutoDifferences,
     AutoSeasonalDifferences,
+    AutoSeasonalityAndDifferences,
     LocalBoxCoxScaler,
     LocalMinMaxScaler,
     LocalRobustScaler,
@@ -15,6 +17,7 @@ from coreforecast.scalers import (
     boxcox_lambda,
     inv_boxcox,
 )
+from coreforecast.seasonal import find_season_length
 
 
 @pytest.fixture
@@ -214,6 +217,39 @@ def test_seasonal_differences_correctness(data, indptr, dtype):
         expected2[horizon * i : horizon * (i + 1)] = np.tile(grp_tails, repeats)
     restored = sc.inverse_transform(preds_ga)
     np.testing.assert_allclose(restored, expected2)
+
+
+def test_seasonality_and_differences_correctness():
+    amplitudes = [3, 5]
+    seasonal_periods = [5, 24]
+    t = 1 + np.arange(500)
+    x = np.random.normal(t.size)
+    for amplitude, period in zip(amplitudes, seasonal_periods):
+        x += amplitude * np.cos(2 * np.pi * t / period)
+
+    period1 = find_season_length(x, 24)
+    y = diff(x, period1)
+    period2 = find_season_length(y, 24)
+    z = diff(y, period2)
+    period3 = find_season_length(z, 24)
+    assert period3 == 0
+    assert sorted([period1, period2]) == seasonal_periods
+
+    sc = AutoSeasonalityAndDifferences(
+        max_season_length=24, max_diffs=2, n_seasons=None
+    )
+    ga = GroupedArray(np.hstack([x, x]), np.array([0, x.size, 2 * x.size]))
+    diffed = sc.fit_transform(ga)
+    np.testing.assert_allclose(diffed, np.hstack([z, z]))
+    min_period = min(seasonal_periods)
+    zeros_ga = GroupedArray(
+        np.zeros(2 * min_period), np.array([0, min_period, 2 * min_period])
+    )
+    inv_transformed = sc.inverse_transform(zeros_ga)
+    inv_ga = zeros_ga._with_data(inv_transformed)
+    actual = np.hstack([inv_ga[0][:min_period], inv_ga[1][:min_period]])
+    expected = x[-period1:][:min_period] + y[-period2:][:min_period]
+    np.testing.assert_allclose(actual, np.hstack([expected, expected]))
 
 
 @pytest.mark.parametrize("scaler_name", scalers)

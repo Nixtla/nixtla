@@ -18,12 +18,19 @@ DLL_EXPORT int GroupedArrayFloat32_IndexFromEnd(GroupedArrayHandle handle,
                                                 int k, float *out);
 DLL_EXPORT int GroupedArrayFloat64_IndexFromEnd(GroupedArrayHandle handle,
                                                 int k, double *out);
+
 DLL_EXPORT void GroupedArrayFloat32_Head(GroupedArrayHandle handle, int k,
                                          float *out);
 DLL_EXPORT void GroupedArrayFloat64_Head(GroupedArrayHandle handle, int k,
                                          double *out);
+
 DLL_EXPORT void GroupedArrayFloat32_Tail(GroupedArrayHandle handle, int k,
                                          float *out);
 DLL_EXPORT void GroupedArrayFloat64_Tail(GroupedArrayHandle handle, int k,
                                          double *out);
+
+DLL_EXPORT void GroupedArrayFloat32_Tails(GroupedArrayHandle handle, int max_k,
+                                          float *ks_and_out);
+DLL_EXPORT void GroupedArrayFloat64_Tails(GroupedArrayHandle handle, int max_k,
+                                          double *ks_and_out);
 }
