@@ -4,7 +4,7 @@ from typing import Union
 import numpy as np
 
 from ._lib import _LIB, _indptr_dtype, _indptr_t
-from .utils import _ensure_float, _data_as_void_ptr, _pyfloat_to_np_c
+from .utils import _diffs_to_indptr, _ensure_float, _data_as_void_ptr, _pyfloat_to_np_c
 
 
 class GroupedArray:
@@ -34,11 +34,6 @@ class GroupedArray:
             ctypes.byref(self._handle),
         )
 
-    def _with_data(self, data: np.ndarray) -> "GroupedArray":
-        data = data.astype(self.data.dtype, copy=False)
-        data = np.ascontiguousarray(data)
-        return GroupedArray(data, self.indptr, self.num_threads)
-
     def __del__(self):
         _LIB[f"{self.prefix}_Delete"](self._handle)
 
@@ -47,6 +42,26 @@ class GroupedArray:
 
     def __getitem__(self, i):
         return self.data[self.indptr[i] : self.indptr[i + 1]]
+
+    def _with_data(self, data: np.ndarray) -> "GroupedArray":
+        data = data.astype(self.data.dtype, copy=False)
+        data = np.ascontiguousarray(data)
+        return GroupedArray(data, self.indptr, self.num_threads)
+
+    def _append(self, other: "GroupedArray") -> "GroupedArray":
+        if self.data.dtype != other.data.dtype:
+            other = other._with_data(other.data.astype(self.data.dtype))
+        if self.indptr.size != other.indptr.size:
+            raise ValueError("Can only append arrays with the same number of groups")
+        new_indptr = self.indptr + other.indptr
+        new_data = np.empty_like(self.data, shape=new_indptr[-1])
+        _LIB[f"{self.prefix}_Append"](
+            self._handle,
+            other._handle,
+            _data_as_void_ptr(new_indptr),
+            _data_as_void_ptr(new_data),
+        )
+        return GroupedArray(new_data, new_indptr, self.num_threads)
 
     def _pyfloat_to_c(self, x: float) -> Union[ctypes.c_float, ctypes.c_double]:
         if self.prefix == "GroupedArrayFloat32":
@@ -106,15 +121,14 @@ class GroupedArray:
         )
         return out
 
-    def _tails(self, max_k: int, ks: np.ndarray) -> np.ndarray:
-        ks_and_tails = np.empty_like(self.data, shape=(len(self), max_k + 1))
-        ks_and_tails[:, 0] = ks
+    def _tails(self, ks: np.ndarray) -> np.ndarray:
+        out = np.empty_like(self.data, shape=ks[-1])
         _LIB[f"{self.prefix}_Tails"](
             self._handle,
-            ctypes.c_int(max_k),
-            _data_as_void_ptr(ks_and_tails),
+            _data_as_void_ptr(ks),
+            _data_as_void_ptr(out),
         )
-        return ks_and_tails[:, 1:].ravel()
+        return out
 
     def _lag_transform(self, lag: int) -> np.ndarray:
         out = np.empty_like(self.data)
@@ -417,36 +431,14 @@ class GroupedArray:
         )
         return out
 
-    def _inv_diffs(self, max_d: int, ds: np.ndarray, tails: np.ndarray) -> np.ndarray:
-        ds_and_tails = np.hstack([ds.reshape(-1, 1), tails.reshape(-1, max_d)])
+    def _inv_diffs(self, ds: np.ndarray, tails: np.ndarray) -> np.ndarray:
+        tails_indptr = _diffs_to_indptr(ds)
+        tails_ga = GroupedArray(tails, tails_indptr)
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_InvertDifferences"](
             self._handle,
-            ctypes.c_int(max_d),
-            _data_as_void_ptr(ds_and_tails),
-            _data_as_void_ptr(out),
-        )
-        return out
-
-    def _conditional_diff(self, d: int, mask: np.ndarray) -> np.ndarray:
-        out = np.empty_like(self.data)
-        _LIB[f"{self.prefix}_ConditionalDifference"](
-            self._handle,
-            ctypes.c_int(d),
-            _data_as_void_ptr(mask),
-            _data_as_void_ptr(out),
-        )
-        return out
-
-    def _conditional_inv_diff(
-        self, d: int, mask: np.ndarray, tails: np.ndarray
-    ) -> np.ndarray:
-        mask_with_tails = np.hstack([mask.reshape(-1, 1), tails.reshape(-1, d)])
-        out = np.empty_like(self.data)
-        _LIB[f"{self.prefix}_ConditionalInvertDifference"](
-            self._handle,
-            ctypes.c_int(d),
-            _data_as_void_ptr(mask_with_tails),
+            tails_ga._handle,
+            _data_as_void_ptr(self.indptr),
             _data_as_void_ptr(out),
         )
         return out

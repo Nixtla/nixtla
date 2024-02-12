@@ -26,7 +26,7 @@ import numpy as np
 from .grouped_array import GroupedArray
 
 
-class BaseLagTransform(abc.ABC):
+class _BaseLagTransform(abc.ABC):
     @abc.abstractmethod
     def transform(self, ga: GroupedArray) -> np.ndarray:
         """Apply the transformation by group.
@@ -50,7 +50,7 @@ class BaseLagTransform(abc.ABC):
         ...
 
 
-class Lag(BaseLagTransform):
+class Lag(_BaseLagTransform):
     """Simple lag operator
 
     Args:
@@ -75,7 +75,7 @@ _rolling_base_docstring = """Rolling {stat_name}
             If None, defaults to window_size."""
 
 
-class _RollingBase(BaseLagTransform):
+class _RollingBase(_BaseLagTransform):
     stat_name: str
     lag: int
     window_size: int
@@ -280,7 +280,7 @@ _expanding_docstring = """Expanding {stat_name}
         lag (int): Number of periods to offset by before applying the transformation"""
 
 
-class _ExpandingBase(BaseLagTransform):
+class _ExpandingBase(_BaseLagTransform):
     def __init__(self, lag: int):
         self.lag = lag
 
@@ -351,7 +351,7 @@ class ExpandingMax(_ExpandingComp):
 ExpandingMax.__doc__ = _expanding_docstring.format(stat_name="Maximum")
 
 
-class ExpandingQuantile(BaseLagTransform):
+class ExpandingQuantile(_BaseLagTransform):
     """Expanding quantile
 
     Args:
@@ -371,7 +371,7 @@ class ExpandingQuantile(BaseLagTransform):
         return ga._expanding_quantile_update(self.lag - 1, self.p)
 
 
-class ExponentiallyWeightedMean(BaseLagTransform):
+class ExponentiallyWeightedMean(_BaseLagTransform):
     """Exponentially weighted mean
 
     Args:

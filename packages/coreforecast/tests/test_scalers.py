@@ -168,6 +168,21 @@ def test_differences_correctness(data, indptr, dtype):
         sc.inverse_transform(preds_ga),
         np.repeat(tails * (sc.diffs_ == 1), horizon),
     )
+    # update method
+    ga = GroupedArray(np.arange(10, dtype=dtype), np.array([0, 5, 10]))
+    sc = AutoDifferences(1)
+    _ = sc.fit_transform(ga)
+    # should've applied a diff for both series
+    np.testing.assert_equal(sc.diffs_, [1, 1])
+    # check the tails
+    np.testing.assert_equal(sc.tails_[0], np.array([4, 9], dtype=dtype))
+    # update should update the tails and take the difference
+    new_ga = GroupedArray(
+        np.array([6, 7, 11, 12, 13, 14], dtype=dtype), np.array([0, 2, 6])
+    )
+    updates = sc.update(new_ga)
+    np.testing.assert_equal(updates, np.array([2, 1, 2, 1, 1, 1], dtype=dtype))
+    np.testing.assert_equal(sc.tails_[0], np.array([7, 14], dtype=dtype))
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
@@ -177,7 +192,7 @@ def test_seasonal_differences_correctness(data, indptr, dtype):
 
     # this can take a long time, so we'll use fewer series
     indptr = indptr[:100]
-    data = data[: indptr[-1]]
+    data = data[: indptr[-1]].astype(dtype)
 
     with_season = np.empty_like(data)
     expected = data.copy()
@@ -217,39 +232,66 @@ def test_seasonal_differences_correctness(data, indptr, dtype):
         expected2[horizon * i : horizon * (i + 1)] = np.tile(grp_tails, repeats)
     restored = sc.inverse_transform(preds_ga)
     np.testing.assert_allclose(restored, expected2)
+    # update method
+    seasonal_x = np.arange(7, dtype=dtype)
+    offset = 10
+    ga = GroupedArray(seasonal_x[np.arange(28) % 7], np.array([0, 28]))
+    sc = AutoSeasonalDifferences(7, 1)
+    _ = sc.fit_transform(ga)
+    np.testing.assert_equal(sc.diffs_, np.array([1.0], dtype=dtype))
+    np.testing.assert_equal(sc.tails_[0], seasonal_x)
+    new_ga = GroupedArray(seasonal_x + offset, np.array([0, 7]))
+    updates = sc.update(new_ga)
+    np.testing.assert_equal(updates, np.repeat(offset, 7))
+    np.testing.assert_equal(sc.tails_[0], seasonal_x + offset)
 
 
-def test_seasonality_and_differences_correctness():
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_seasonality_and_differences_correctness(dtype):
     amplitudes = [3, 5]
     seasonal_periods = [5, 24]
+    max_season_length = 24
     t = 1 + np.arange(500)
-    x = np.random.normal(t.size)
+    x = np.random.normal(scale=0.1, size=t.size).astype(dtype)
     for amplitude, period in zip(amplitudes, seasonal_periods):
         x += amplitude * np.cos(2 * np.pi * t / period)
 
-    period1 = find_season_length(x, 24)
+    period1 = find_season_length(x, max_season_length)
     y = diff(x, period1)
-    period2 = find_season_length(y, 24)
+    period2 = find_season_length(y, max_season_length)
     z = diff(y, period2)
-    period3 = find_season_length(z, 24)
+    period3 = find_season_length(z, max_season_length)
     assert period3 == 0
     assert sorted([period1, period2]) == seasonal_periods
 
     sc = AutoSeasonalityAndDifferences(
-        max_season_length=24, max_diffs=2, n_seasons=None
+        max_season_length=max_season_length, max_diffs=2, n_seasons=None
     )
     ga = GroupedArray(np.hstack([x, x]), np.array([0, x.size, 2 * x.size]))
     diffed = sc.fit_transform(ga)
     np.testing.assert_allclose(diffed, np.hstack([z, z]))
     min_period = min(seasonal_periods)
     zeros_ga = GroupedArray(
-        np.zeros(2 * min_period), np.array([0, min_period, 2 * min_period])
+        np.zeros(2 * min_period, dtype=dtype), np.array([0, min_period, 2 * min_period])
     )
     inv_transformed = sc.inverse_transform(zeros_ga)
     inv_ga = zeros_ga._with_data(inv_transformed)
     actual = np.hstack([inv_ga[0][:min_period], inv_ga[1][:min_period]])
     expected = x[-period1:][:min_period] + y[-period2:][:min_period]
     np.testing.assert_allclose(actual, np.hstack([expected, expected]))
+
+    # update
+    new_n = 50
+    new_data = np.arange(new_n, dtype=dtype)
+    first_diff = sc.diffs_[0][0]
+    second_diff = sc.diffs_[1][0]
+    t1 = diff(np.append(sc.tails_[0][:first_diff], new_data), first_diff)[-new_n:]
+    t2 = diff(np.append(sc.tails_[1][:second_diff], t1), second_diff)[-new_n:]
+    expected_updates = np.hstack([t2, t2])
+    new_ga = GroupedArray(np.tile(new_data, 2), np.array([0, new_n, 2 * new_n]))
+    updates = sc.update(new_ga)
+    np.testing.assert_equal(sc.tails_[0], np.tile(new_data[-min_period:], 2))
+    np.testing.assert_allclose(updates, expected_updates)
 
 
 @pytest.mark.parametrize("scaler_name", scalers)

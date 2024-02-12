@@ -21,10 +21,11 @@ template <typename T> inline void Tail(const T *data, int n, T *out, int k) {
   std::copy(data + n - m, data + n, out + k - m);
 }
 
-template <typename T> inline void Tails(const T *data, int n, T *k_and_out) {
-  int k = static_cast<int>(k_and_out[0]);
-  T *out = k_and_out + 1;
-  Tail(data, n, out, k);
+template <typename T>
+inline void Append(const T *data, int n, const T *other_data, int other_n,
+                   T *out) {
+  std::copy(data, data + n, out);
+  std::copy(other_data, other_data + other_n, out + n);
 }
 
 int GroupedArrayFloat32_Create(const float *data, indptr_t n_data,
@@ -80,13 +81,28 @@ void GroupedArrayFloat64_Tail(GroupedArrayHandle handle, int k, double *out) {
   ga->Reduce(Tail<double>, k, out, 0, k);
 }
 
-void GroupedArrayFloat32_Tails(GroupedArrayHandle handle, int max_k,
-                               float *ks_and_out) {
+void GroupedArrayFloat32_Append(GroupedArrayHandle handle,
+                                GroupedArrayHandle other_handle,
+                                const indptr_t *out_indptr, float *out_data) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(Tails<float>, 1 + max_k, ks_and_out, 0);
+  auto other = reinterpret_cast<const GroupedArray<float> *>(other_handle);
+  ga->Zip(Append<float>, other, out_indptr, out_data);
 }
-void GroupedArrayFloat64_Tails(GroupedArrayHandle handle, int max_k,
-                               double *ks_and_out) {
+void GroupedArrayFloat64_Append(GroupedArrayHandle handle,
+                                GroupedArrayHandle other_handle,
+                                const indptr_t *out_indptr, double *out_data) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(Tails<double>, 1 + max_k, ks_and_out, 0);
+  auto other = reinterpret_cast<const GroupedArray<double> *>(other_handle);
+  ga->Zip(Append<double>, other, out_indptr, out_data);
+}
+
+void GroupedArrayFloat32_Tails(GroupedArrayHandle handle,
+                               const indptr_t *indptr_out, float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->VariableReduce(Tail<float>, indptr_out, out);
+}
+void GroupedArrayFloat64_Tails(GroupedArrayHandle handle,
+                               const indptr_t *indptr_out, double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->VariableReduce(Tail<double>, indptr_out, out);
 }

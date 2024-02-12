@@ -11,12 +11,8 @@ template <typename T> inline bool IsConstant(const T *data, int n) {
   return true;
 }
 
-template <typename T> void Differences(const T *data, int n, T *out, T *d) {
-  Difference(data, n, out, static_cast<int>(d[0]));
-}
-
 template <typename T>
-void InvertDifference(const T *data, int n, T *out, T *tails, int d) {
+void InvertDifference(const T *data, int n, const T *tails, int d, T *out) {
   if (d == 0) {
     std::copy(data, data + n, out);
     return;
@@ -28,13 +24,6 @@ void InvertDifference(const T *data, int n, T *out, T *tails, int d) {
   for (int i = upper; i < n; ++i) {
     out[i] = data[i] + out[i - d];
   }
-}
-
-template <typename T>
-void InvertDifferences(const T *data, int n, T *out, T *d_and_tails) {
-  int d = static_cast<int>(d_and_tails[0]);
-  T *tails = d_and_tails + 1;
-  InvertDifference(data, n, out, tails, d);
 }
 
 template <typename T> void NumDiffs(const T *x, indptr_t n, T *out, int max_d) {
@@ -113,25 +102,6 @@ void NumSeasDiffsPeriods(const T *x, indptr_t n, T *period_and_out, int max_d) {
   int period = static_cast<int>(period_and_out[0]);
   T *out = period_and_out + 1;
   NumSeasDiffs(x, n, out, period, max_d);
-}
-
-template <typename T>
-void ConditionalDifference(const T *data, int n, T *out, T *apply, int period) {
-  if (apply[0] == 0) {
-    std::copy(data, data + n, out);
-    return;
-  }
-  Difference(data, n, out, period);
-}
-
-template <typename T>
-void ConditionalInvertDifference(const T *data, int n, T *out,
-                                 T *apply_and_tails, int period) {
-  if (apply_and_tails[0] == 0) {
-    std::copy(data, data + n, out);
-    return;
-  }
-  InvertDifference(data, n, out, apply_and_tails + 1, period);
 }
 
 void Float32_Difference(const float *x, indptr_t n, int d, float *out) {
@@ -231,69 +201,47 @@ void GroupedArrayFloat64_Difference(GroupedArrayHandle handle, int d,
   ga->Transform(Difference<double>, 0, out, d);
 }
 
-void GroupedArrayFloat32_Differences(GroupedArrayHandle handle, float *ds,
-                                     float *out) {
+void GroupedArrayFloat32_Differences(GroupedArrayHandle handle,
+                                     const indptr_t *ds, float *out) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->TransformAndReduce(Differences<float>, 0, out, 1, ds);
+  ga->VariableTransform(Differences<float>, ds, out);
 }
-void GroupedArrayFloat64_Differences(GroupedArrayHandle handle, double *ds,
-                                     double *out) {
+void GroupedArrayFloat64_Differences(GroupedArrayHandle handle,
+                                     const indptr_t *ds, double *out) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->TransformAndReduce(Differences<double>, 0, out, 1, ds);
+  ga->VariableTransform(Differences<double>, ds, out);
 }
 
-void GroupedArrayFloat32_InvertDifference(GroupedArrayHandle handle, int d,
-                                          float *tails, float *out) {
+void GroupedArrayFloat32_InvertDifference(GroupedArrayHandle handle,
+                                          GroupedArrayHandle tails_handle,
+                                          const indptr_t *out_indptr,
+                                          float *out_data) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->TransformAndReduce(InvertDifference<float>, 0, out, d, tails, d);
+  auto tails_ga = reinterpret_cast<const GroupedArray<float> *>(tails_handle);
+  ga->Zip(InvertDifference<float>, tails_ga, out_indptr, out_data);
 }
-void GroupedArrayFloat64_InvertDifference(GroupedArrayHandle handle, int d,
-                                          double *tails, double *out) {
+void GroupedArrayFloat64_InvertDifference(GroupedArrayHandle handle,
+                                          GroupedArrayHandle tails_handle,
+                                          const indptr_t *out_indptr,
+                                          double *out_data) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->TransformAndReduce(InvertDifference<double>, 0, out, d, tails, d);
+  auto tails_ga = reinterpret_cast<const GroupedArray<double> *>(tails_handle);
+  ga->Zip(InvertDifference<double>, tails_ga, out_indptr, out_data);
 }
 
-void GroupedArrayFloat32_InvertDifferences(GroupedArrayHandle handle, int max_d,
-                                           float *d_and_tails, float *out) {
+void GroupedArrayFloat32_InvertDifferences(GroupedArrayHandle handle,
+                                           GroupedArrayHandle tails_handle,
+                                           const indptr_t *out_indptr,
+                                           float *out_data) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->TransformAndReduce(InvertDifferences<float>, 0, out, max_d + 1,
-                         d_and_tails);
+  auto tails_ga = reinterpret_cast<const GroupedArray<float> *>(tails_handle);
+  ga->Zip(InvertDifference<float>, tails_ga, out_indptr, out_data);
 }
-void GroupedArrayFloat64_InvertDifferences(GroupedArrayHandle handle, int max_d,
-                                           double *d_and_tails, double *out) {
+void GroupedArrayFloat64_InvertDifferences(GroupedArrayHandle handle,
+                                           GroupedArrayHandle tails_handle,
+                                           const indptr_t *out_indptr,
+                                           double *out_data) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->TransformAndReduce(InvertDifferences<double>, 0, out, max_d + 1,
-                         d_and_tails);
-}
-
-void GroupedArrayFloat32_ConditionalDifference(GroupedArrayHandle handle,
-                                               int period, float *apply,
-                                               float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->TransformAndReduce(ConditionalDifference<float>, 0, out, 1, apply,
-                         period);
-}
-void GroupedArrayFloat64_ConditionalDifference(GroupedArrayHandle handle,
-                                               int period, double *apply,
-                                               double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->TransformAndReduce(ConditionalDifference<double>, 0, out, 1, apply,
-                         period);
-}
-
-void GroupedArrayFloat32_ConditionalInvertDifference(GroupedArrayHandle handle,
-                                                     int period,
-                                                     float *apply_and_tails,
-                                                     float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->TransformAndReduce(ConditionalInvertDifference<float>, 0, out, period + 1,
-                         apply_and_tails, period);
-}
-void GroupedArrayFloat64_ConditionalInvertDifference(GroupedArrayHandle handle,
-                                                     int period,
-                                                     double *apply_and_tails,
-                                                     double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->TransformAndReduce(ConditionalInvertDifference<double>, 0, out,
-                         period + 1, apply_and_tails, period);
+  auto tails_ga = reinterpret_cast<const GroupedArray<double> *>(tails_handle);
+  ga->Zip(InvertDifference<double>, tails_ga, out_indptr, out_data);
 }

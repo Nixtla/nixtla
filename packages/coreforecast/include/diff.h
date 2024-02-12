@@ -14,6 +14,10 @@ template <typename T> void Difference(const T *data, int n, T *out, int d) {
   }
 }
 
+template <typename T> void Differences(const T *data, int n, int d, T *out) {
+  Difference(data, n, out, d);
+}
+
 extern "C" {
 DLL_EXPORT void Float32_Difference(const float *x, indptr_t n, int d,
                                    float *out);
@@ -61,36 +65,22 @@ DLL_EXPORT void GroupedArrayFloat64_Difference(GroupedArrayHandle handle, int d,
                                                double *out);
 
 DLL_EXPORT void GroupedArrayFloat32_Differences(GroupedArrayHandle handle,
-                                                float *ds, float *out);
+                                                const indptr_t *ds, float *out);
 DLL_EXPORT void GroupedArrayFloat64_Differences(GroupedArrayHandle handle,
-                                                double *ds, double *out);
+                                                const indptr_t *ds,
+                                                double *out);
 
-DLL_EXPORT void
-GroupedArrayFloat32_ConditionalDifference(GroupedArrayHandle handle, int period,
-                                          float *apply, float *out);
-DLL_EXPORT void
-GroupedArrayFloat64_ConditionalDifference(GroupedArrayHandle handle, int period,
-                                          double *apply, double *out);
+DLL_EXPORT void GroupedArrayFloat32_InvertDifference(
+    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
+    const indptr_t *out_indptr, float *out_data);
+DLL_EXPORT void GroupedArrayFloat64_InvertDifference(
+    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
+    const indptr_t *out_indptr, double *out_data);
 
-DLL_EXPORT void GroupedArrayFloat32_InvertDifference(GroupedArrayHandle handle,
-                                                     int d, float *tails,
-                                                     float *out);
-DLL_EXPORT void GroupedArrayFloat64_InvertDifference(GroupedArrayHandle handle,
-                                                     int d, double *tails,
-                                                     double *out);
-
-DLL_EXPORT void GroupedArrayFloat32_InvertDifferences(GroupedArrayHandle handle,
-                                                      int max_d,
-                                                      float *d_and_tails,
-                                                      float *out);
-DLL_EXPORT void GroupedArrayFloat64_InvertDifferences(GroupedArrayHandle handle,
-                                                      int max_d,
-                                                      double *d_and_tails,
-                                                      double *out);
-
-DLL_EXPORT void GroupedArrayFloat32_ConditionalInvertDifference(
-    GroupedArrayHandle handle, int period, float *apply_and_tails, float *out);
-DLL_EXPORT void GroupedArrayFloat64_ConditionalInvertDifference(
-    GroupedArrayHandle handle, int period, double *apply_and_tails,
-    double *out);
+DLL_EXPORT void GroupedArrayFloat32_InvertDifferences(
+    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
+    const indptr_t *out_indptr, float *out_data);
+DLL_EXPORT void GroupedArrayFloat64_InvertDifferences(
+    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
+    const indptr_t *out_indptr, double *out_data);
 }
