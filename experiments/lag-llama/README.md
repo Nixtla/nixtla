@@ -16,7 +16,7 @@ Our evaluation encompasses 105,289 unique time series from different datasets, i
 
 The results are summarized in the following table, highlighting the performance metrics of MASE, MAPE, CRPS, and TIME (measured in seconds). The best results are indicated in **bold** for easy reference.
 
-<img width="972" alt="image" src="https://github.com/Nixtla/nixtla-backup/assets/10517170/9f58668f-5cd8-4d3b-b5c5-b2870f02dab4">
+<img width="965" alt="image" src="https://github.com/Nixtla/nixtla/assets/10517170/5047bce8-b683-4e07-9af3-8c864121a71b">
 
 
 ## Reproducibility
