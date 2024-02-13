@@ -216,6 +216,10 @@ class TimeSeries:
         self.date_features = [] if date_features is None else list(date_features)
         self.num_threads = num_threads
         self.target_transforms = target_transforms
+        if self.target_transforms is not None:
+            for tfm in self.target_transforms:
+                if isinstance(tfm, BaseGroupedArrayTargetTransform):
+                    tfm.set_num_threads(num_threads)
         for feature in self.date_features:
             if callable(feature) and feature.__name__ == "<lambda>":
                 raise ValueError(

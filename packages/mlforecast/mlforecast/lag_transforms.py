@@ -6,6 +6,7 @@ __all__ = ['RollingMean', 'RollingStd', 'RollingMin', 'RollingMax', 'RollingQuan
            'ExpandingStd', 'ExpandingMin', 'ExpandingMax', 'ExpandingQuantile', 'ExponentiallyWeightedMean']
 
 # %% ../nbs/lag_transforms.ipynb 3
+import inspect
 from typing import Optional
 
 import numpy as np
@@ -23,7 +24,14 @@ from sklearn.base import BaseEstimator
 
 # %% ../nbs/lag_transforms.ipynb 4
 class BaseLagTransform(BaseEstimator):
-    _core_tfm: core_tfms.BaseLagTransform
+    def _set_core_tfm(self, lag: int) -> "BaseLagTransform":
+        init_args = {
+            k: getattr(self, k) for k in inspect.signature(self.__class__).parameters
+        }
+        self._core_tfm = getattr(core_tfms, self.__class__.__name__)(
+            lag=lag, **init_args
+        )
+        return self
 
     def transform(self, ga: CoreGroupedArray) -> np.ndarray:
         return self._core_tfm.transform(ga)
@@ -41,7 +49,7 @@ class Lag(BaseLagTransform):
         return isinstance(other, Lag) and self.lag == other.lag
 
 # %% ../nbs/lag_transforms.ipynb 6
-class RollingBase(BaseLagTransform):
+class _RollingBase(BaseLagTransform):
     "Rolling statistic"
 
     def __init__(self, window_size: int, min_samples: Optional[int] = None):
@@ -57,30 +65,24 @@ class RollingBase(BaseLagTransform):
         self.window_size = window_size
         self.min_samples = min_samples
 
-    def _set_core_tfm(self, lag: int):
-        self._core_tfm = getattr(core_tfms, self.tfm_name)(
-            lag=lag, window_size=self.window_size, min_samples=self.min_samples
-        )
-        return self
-
 # %% ../nbs/lag_transforms.ipynb 7
-class RollingMean(RollingBase):
-    tfm_name = "RollingMean"
+class RollingMean(_RollingBase):
+    ...
 
 
-class RollingStd(RollingBase):
-    tfm_name = "RollingStd"
+class RollingStd(_RollingBase):
+    ...
 
 
-class RollingMin(RollingBase):
-    tfm_name = "RollingMin"
+class RollingMin(_RollingBase):
+    ...
 
 
-class RollingMax(RollingBase):
-    tfm_name = "RollingMax"
+class RollingMax(_RollingBase):
+    ...
 
 
-class RollingQuantile(RollingBase):
+class RollingQuantile(_RollingBase):
     def __init__(self, p: float, window_size: int, min_samples: Optional[int] = None):
         super().__init__(window_size=window_size, min_samples=min_samples)
         self.p = p
@@ -95,7 +97,7 @@ class RollingQuantile(RollingBase):
         return self
 
 # %% ../nbs/lag_transforms.ipynb 9
-class SeasonalRollingBase(BaseLagTransform):
+class _Seasonal_RollingBase(BaseLagTransform):
     """Rolling statistic over seasonal periods"""
 
     def __init__(
@@ -116,33 +118,24 @@ class SeasonalRollingBase(BaseLagTransform):
         self.window_size = window_size
         self.min_samples = min_samples
 
-    def _set_core_tfm(self, lag: int):
-        self._core_tfm = getattr(core_tfms, self.tfm_name)(
-            lag=lag,
-            season_length=self.season_length,
-            window_size=self.window_size,
-            min_samples=self.min_samples,
-        )
-        return self
-
 # %% ../nbs/lag_transforms.ipynb 10
-class SeasonalRollingMean(SeasonalRollingBase):
-    tfm_name = "SeasonalRollingMean"
+class SeasonalRollingMean(_Seasonal_RollingBase):
+    ...
 
 
-class SeasonalRollingStd(SeasonalRollingBase):
-    tfm_name = "SeasonalRollingStd"
+class SeasonalRollingStd(_Seasonal_RollingBase):
+    ...
 
 
-class SeasonalRollingMin(SeasonalRollingBase):
-    tfm_name = "SeasonalRollingMin"
+class SeasonalRollingMin(_Seasonal_RollingBase):
+    ...
 
 
-class SeasonalRollingMax(SeasonalRollingBase):
-    tfm_name = "SeasonalRollingMax"
+class SeasonalRollingMax(_Seasonal_RollingBase):
+    ...
 
 
-class SeasonalRollingQuantile(SeasonalRollingBase):
+class SeasonalRollingQuantile(_Seasonal_RollingBase):
     def __init__(
         self,
         p: float,
@@ -157,65 +150,42 @@ class SeasonalRollingQuantile(SeasonalRollingBase):
         )
         self.p = p
 
-    def _set_core_tfm(self, lag: int):
-        self._core_tfm = core_tfms.SeasonalRollingQuantile(
-            lag=lag,
-            p=self.p,
-            season_length=self.season_length,
-            window_size=self.window_size,
-            min_samples=self.min_samples,
-        )
-        return self
-
 # %% ../nbs/lag_transforms.ipynb 12
-class ExpandingBase(BaseLagTransform):
+class _ExpandingBase(BaseLagTransform):
     """Expanding statistic"""
 
     def __init__(self):
         ...
 
-    def _set_core_tfm(self, lag: int):
-        self._core_tfm = getattr(core_tfms, self.tfm_name)(lag=lag)
-        return self
-
 # %% ../nbs/lag_transforms.ipynb 13
-class ExpandingMean(ExpandingBase):
-    tfm_name = "ExpandingMean"
+class ExpandingMean(_ExpandingBase):
+    ...
 
 
-class ExpandingStd(ExpandingBase):
-    tfm_name = "ExpandingStd"
+class ExpandingStd(_ExpandingBase):
+    ...
 
 
-class ExpandingMin(ExpandingBase):
-    tfm_name = "ExpandingMin"
+class ExpandingMin(_ExpandingBase):
+    ...
 
 
-class ExpandingMax(ExpandingBase):
-    tfm_name = "ExpandingMax"
+class ExpandingMax(_ExpandingBase):
+    ...
 
 
-class ExpandingQuantile(ExpandingBase):
+class ExpandingQuantile(_ExpandingBase):
     def __init__(self, p: float):
         self.p = p
 
-    def _set_core_tfm(self, lag: int):
-        self._core_tfm = core_tfms.ExpandingQuantile(lag=lag, p=self.p)
-        return self
-
 # %% ../nbs/lag_transforms.ipynb 15
 class ExponentiallyWeightedMean(BaseLagTransform):
-    """Exponentially weighted average"""
+    """Exponentially weighted average
+
+    Parameters
+    ----------
+    alpha : float
+        Smoothing factor."""
 
     def __init__(self, alpha: float):
-        """
-        Parameters
-        ----------
-        alpha : float
-            Smoothing factor.
-        """
         self.alpha = alpha
-
-    def _set_core_tfm(self, lag: int):
-        self._core_tfm = core_tfms.ExponentiallyWeightedMean(lag=lag, alpha=self.alpha)
-        return self

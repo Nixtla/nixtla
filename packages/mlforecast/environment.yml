@@ -2,7 +2,7 @@ name: mlforecast
 channels:
   - conda-forge
 dependencies:
-  - coreforecast>=0.0.3
+  - coreforecast>=0.0.4
   - dask<2023.1.1
   - fsspec
   - gitpython

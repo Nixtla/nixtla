@@ -157,3 +157,4 @@ _proc/
 index_files
 _docs
 nbs/docs/**/*.xls*
+nbs/_extensions
