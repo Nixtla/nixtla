@@ -152,3 +152,4 @@ checklink/cookies.txt
 
 *.csv
 *.parquet
+nbs/_extensions
