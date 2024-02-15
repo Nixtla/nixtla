@@ -8,7 +8,6 @@ import warnings
 from functools import wraps
 from typing import Union
 
-import numpy as np
 import pandas as pd
 
 # %% ../nbs/compat.ipynb 2
@@ -47,6 +46,17 @@ try:
     from numba import njit  # noqa: F04
 except ImportError:
 
+    def _doublewrap(f):
+        @wraps(f)
+        def new_dec(*args, **kwargs):
+            if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+                return f(args[0])
+            else:
+                return lambda realf: f(realf, *args, **kwargs)
+
+        return new_dec
+
+    @_doublewrap
     def njit(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -55,9 +65,6 @@ except ImportError:
                 "You can find install instructions at "
                 "https://numba.pydata.org/numba-doc/latest/user/installing.html"
             )
-            # remove object from class methods
-            if not isinstance(args[0], np.ndarray):
-                args = args[1:]
             return f(*args, **kwargs)
 
         return wrapper

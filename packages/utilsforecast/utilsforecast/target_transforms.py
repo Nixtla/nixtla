@@ -65,7 +65,8 @@ def _common_scaler_inverse_transform(
 class BaseTargetTransform:
     """Base class used for target transformations."""
 
-    stats_fn: Callable
+    def __init__(self, stats_fn):
+        self.stats_fn = stats_fn
 
     def fit(self, ga: GroupedArray) -> "BaseTargetTransform":
         self.stats_ = _fit(ga.data, ga.indptr, self.stats_fn)
@@ -91,7 +92,8 @@ def _standard_scaler_stats(data: np.ndarray) -> Tuple[float, float]:
 class LocalStandardScaler(BaseTargetTransform):
     """Standardizes each serie by subtracting its mean and dividing by its standard deviation."""
 
-    stats_fn = _standard_scaler_stats
+    def __init__(self):
+        super().__init__(stats_fn=_standard_scaler_stats)
 
 # %% ../nbs/target_transforms.ipynb 11
 @njit
@@ -104,7 +106,8 @@ def _minmax_scaler_stats(data: np.ndarray) -> Tuple[float, float]:
 class LocalMinMaxScaler(BaseTargetTransform):
     """Scales each serie to be in the [0, 1] interval."""
 
-    stats_fn = _minmax_scaler_stats
+    def __init__(self):
+        super().__init__(stats_fn=_minmax_scaler_stats)
 
 # %% ../nbs/target_transforms.ipynb 14
 @njit
@@ -133,19 +136,17 @@ class LocalRobustScaler(BaseTargetTransform):
         supported_scales = ("iqr", "mad")
         if scale not in supported_scales:
             raise ValueError(f"scale must be one of {supported_scales}")
-        self.scale = scale
-
-    def fit(self, ga: GroupedArray) -> "LocalRobustScaler":
-        if self.scale == "iqr":
-            stats_fn = _robust_scaler_iqr_stats
+        if scale == "iqr":
+            super().__init__(stats_fn=_robust_scaler_iqr_stats)
         else:
-            stats_fn = _robust_scaler_mad_stats
-        self.stats_ = _fit(ga.data, ga.indptr, stats_fn)
-        return self
+            super().__init__(stats_fn=_robust_scaler_mad_stats)
 
 # %% ../nbs/target_transforms.ipynb 17
 class LocalBoxCox(BaseTargetTransform):
     """Finds optimum lambda for each serie and applies Box-Cox transformation."""
+
+    def __init__(self):
+        ...
 
     def fit(self, ga: GroupedArray) -> np.ndarray:
         from scipy.stats import boxcox
