@@ -292,7 +292,7 @@ class _ExpandingBase(_BaseLagTransform):
 
     def take(self, idxs: np.ndarray) -> "_ExpandingBase":
         out = self.__class__(self.lag)
-        out.stats_ = self.stats_[idxs]
+        out.stats_ = self.stats_[idxs].copy()
         return out
 
 
@@ -406,5 +406,5 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
 
     def take(self, idxs: np.ndarray) -> "ExponentiallyWeightedMean":
         out = copy.deepcopy(self)
-        out.ewm_ = out.ewm_[idxs]
+        out.ewm_ = out.ewm_[idxs].copy()
         return out

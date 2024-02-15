@@ -23,7 +23,6 @@ class GroupedArray:
         else:
             self.prefix = "GroupedArrayFloat64"
         self.indptr = indptr.astype(_indptr_dtype, copy=False)
-        self.n_groups = len(self.indptr) - 1
         self.num_threads = num_threads
         self._handle = ctypes.c_void_p()
         _LIB[f"{self.prefix}_Create"](
@@ -127,11 +126,11 @@ class GroupedArray:
         )
         return out
 
-    def _tails(self, ks: np.ndarray) -> np.ndarray:
-        out = np.empty_like(self.data, shape=ks[-1])
+    def _tails(self, indptr_out: np.ndarray) -> np.ndarray:
+        out = np.empty_like(self.data, shape=indptr_out[-1])
         _LIB[f"{self.prefix}_Tails"](
             self._handle,
-            _data_as_void_ptr(ks),
+            _data_as_void_ptr(indptr_out),
             _data_as_void_ptr(out),
         )
         return out
@@ -428,14 +427,8 @@ class GroupedArray:
         return out
 
     def _inv_diff(self, d: int, tails: np.ndarray) -> np.ndarray:
-        out = np.empty_like(self.data)
-        _LIB[f"{self.prefix}_InvertDifference"](
-            self._handle,
-            ctypes.c_int(d),
-            _data_as_void_ptr(tails),
-            _data_as_void_ptr(out),
-        )
-        return out
+        ds = np.full(len(self), d, dtype=_indptr_dtype)
+        return self._inv_diffs(ds, tails)
 
     def _inv_diffs(self, ds: np.ndarray, tails: np.ndarray) -> np.ndarray:
         tails_indptr = _diffs_to_indptr(ds)

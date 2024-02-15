@@ -9,6 +9,7 @@ from coreforecast.scalers import (
     AutoDifferences,
     AutoSeasonalDifferences,
     AutoSeasonalityAndDifferences,
+    Difference,
     LocalBoxCoxScaler,
     LocalMinMaxScaler,
     LocalRobustScaler,
@@ -138,6 +139,28 @@ def test_boxcox_correctness(data, indptr, dtype):
     first_restored = inv_boxcox(first_tfm, lmbda)
     np.testing.assert_allclose(first_tfm, transformed[first_grp])
     np.testing.assert_allclose(first_restored, restored[first_grp])
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_difference_correctness(data, indptr, dtype):
+    data = data.astype(dtype)
+    ga = GroupedArray(data, indptr)
+    d = 2
+    sc = Difference(d=d)
+    transformed = sc.fit_transform(ga)
+    transformed_ga = ga._with_data(transformed)
+    for i in range(len(ga)):
+        np.testing.assert_allclose(transformed_ga[i], diff(ga[i], d))
+    horizon = 4
+    preds_data = np.zeros_like(data, shape=horizon * len(ga))
+    preds_indptr = np.arange(0, (len(ga) + 1) * horizon, horizon)
+    preds_ga = GroupedArray(preds_data, preds_indptr)
+    restored = sc.inverse_transform(preds_ga)
+    restored_ga = preds_ga._with_data(restored)
+    for i in range(len(ga)):
+        np.testing.assert_allclose(
+            restored_ga[i], np.tile(sc.tails_[i * d : (i + 1) * d], horizon // d)
+        )
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])

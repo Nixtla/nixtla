@@ -212,23 +212,6 @@ void GroupedArrayFloat64_Differences(GroupedArrayHandle handle,
   ga->VariableTransform(Differences<double>, ds, out);
 }
 
-void GroupedArrayFloat32_InvertDifference(GroupedArrayHandle handle,
-                                          GroupedArrayHandle tails_handle,
-                                          const indptr_t *out_indptr,
-                                          float *out_data) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  auto tails_ga = reinterpret_cast<const GroupedArray<float> *>(tails_handle);
-  ga->Zip(InvertDifference<float>, tails_ga, out_indptr, out_data);
-}
-void GroupedArrayFloat64_InvertDifference(GroupedArrayHandle handle,
-                                          GroupedArrayHandle tails_handle,
-                                          const indptr_t *out_indptr,
-                                          double *out_data) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  auto tails_ga = reinterpret_cast<const GroupedArray<double> *>(tails_handle);
-  ga->Zip(InvertDifference<double>, tails_ga, out_indptr, out_data);
-}
-
 void GroupedArrayFloat32_InvertDifferences(GroupedArrayHandle handle,
                                            GroupedArrayHandle tails_handle,
                                            const indptr_t *out_indptr,

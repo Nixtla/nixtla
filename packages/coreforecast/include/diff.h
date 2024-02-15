@@ -70,13 +70,6 @@ DLL_EXPORT void GroupedArrayFloat64_Differences(GroupedArrayHandle handle,
                                                 const indptr_t *ds,
                                                 double *out);
 
-DLL_EXPORT void GroupedArrayFloat32_InvertDifference(
-    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
-    const indptr_t *out_indptr, float *out_data);
-DLL_EXPORT void GroupedArrayFloat64_InvertDifference(
-    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
-    const indptr_t *out_indptr, double *out_data);
-
 DLL_EXPORT void GroupedArrayFloat32_InvertDifferences(
     GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
     const indptr_t *out_indptr, float *out_data);

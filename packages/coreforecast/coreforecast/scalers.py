@@ -19,6 +19,7 @@ __all__ = [
     "AutoDifferences",
     "AutoSeasonalDifferences",
     "AutoSeasonalityAndDifferences",
+    "Difference",
     "LocalBoxCoxScaler",
     "LocalMinMaxScaler",
     "LocalRobustScaler",
@@ -113,10 +114,10 @@ def inv_boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
 
 
 def _validate_scaler_size(stats: np.ndarray, ga: GroupedArray) -> None:
-    if stats.shape[0] != ga.n_groups:
+    if stats.shape[0] != len(ga):
         raise ValueError(
             f"Number of groups in the scaler ({stats.shape[0]:,}) "
-            f"doesn't match the ones in data ({ga.n_groups:,})."
+            f"doesn't match the ones in data ({len(ga):,})."
         )
 
 
@@ -256,6 +257,62 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
             np.ndarray: Array with the inverted transformation."""
         _validate_scaler_size(self.stats_, ga)
         return ga._boxcox_inverse_transform(self.stats_)
+
+
+class Difference:
+    """Subtract a lag to each group
+
+    Args:
+        d (int): Lag to subtract."""
+
+    def __init__(self, d: int):
+        self.d = d
+
+    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Apply the transformation
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the transformed data."""
+        self.tails_ = ga._tail(self.d)
+        return ga._diff(self.d)
+
+    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+        """Invert the transformation
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the inverted transformation."""
+        return ga._inv_diff(self.d, self.tails_)
+
+    def update(self, ga: GroupedArray) -> np.ndarray:
+        """Update the last observations from each serie
+
+        Args:
+            ga (GroupedArray): Array with grouped data.
+
+        Returns:
+            np.ndarray: Array with the updated data."""
+        tails_indptr = np.arange(
+            0, ga.indptr.size * self.d, self.d, dtype=_indptr_dtype
+        )
+        if self.tails_.size != tails_indptr[-1]:
+            raise ValueError("Number of tails doesn't match the number of groups")
+        tails_ga = GroupedArray(self.tails_, tails_indptr, num_threads=ga.num_threads)
+        combined = tails_ga._append(ga)
+        self.tails_ = combined._tail(self.d)
+        combined_transformed = combined._diff(self.d)
+        transformed = combined._with_data(combined_transformed)._tails(ga.indptr)
+        return transformed
+
+    def take(self, idxs: np.ndarray) -> "Difference":
+        out = Difference(self.d)
+        out.tails_ = self.tails_[idxs].copy()
+        return out
 
 
 class AutoDifferences:
@@ -501,7 +558,9 @@ class AutoSeasonalityAndDifferences:
         return transformed
 
     def take(self, idxs: np.ndarray) -> "AutoSeasonalityAndDifferences":
-        out = copy.deepcopy(self)
+        out = AutoSeasonalityAndDifferences(
+            self.max_season_length, self.max_diffs, self.n_seasons
+        )
         out.diffs_ = [diffs[idxs].copy() for diffs in self.diffs_]
         out.tails_ = [tail[idxs].copy() for tail in self.tails_]
         return out
