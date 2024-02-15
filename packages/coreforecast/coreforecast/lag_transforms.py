@@ -19,6 +19,7 @@ __all__ = [
 ]
 
 import abc
+import copy
 from typing import Callable, Optional
 
 import numpy as np
@@ -48,6 +49,9 @@ class _BaseLagTransform(abc.ABC):
         Returns:
             np.ndarray: Array with the updates for each group."""
         ...
+
+    def take(self, _idxs: np.ndarray) -> "_BaseLagTransform":
+        return self
 
 
 class Lag(_BaseLagTransform):
@@ -281,21 +285,29 @@ _expanding_docstring = """Expanding {stat_name}
 
 
 class _ExpandingBase(_BaseLagTransform):
+    stats_: np.ndarray
+
     def __init__(self, lag: int):
         self.lag = lag
+
+    def take(self, idxs: np.ndarray) -> "_ExpandingBase":
+        out = self.__class__(self.lag)
+        out.stats_ = self.stats_[idxs]
+        return out
 
 
 class ExpandingMean(_ExpandingBase):
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        self.n = np.empty_like(ga.data, shape=len(ga))
-        out = ga._expanding_transform_with_aggs("Mean", self.lag, self.n)
-        self.cumsum = out[ga.indptr[1:] - 1] * self.n
+        n = np.empty_like(ga.data, shape=len(ga))
+        out = ga._expanding_transform_with_aggs("Mean", self.lag, n)
+        cumsum = n * out[ga.indptr[1:] - 1]
+        self.stats_ = np.hstack([n[:, None], cumsum[:, None]])
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        self.n += 1
-        self.cumsum += ga._index_from_end(self.lag - 1)
-        return self.cumsum / self.n
+        self.stats_[:, 0] += 1.0
+        self.stats_[:, 1] += ga._index_from_end(self.lag - 1)
+        return self.stats_[:, 1] / self.stats_[:, 0]
 
 
 ExpandingMean.__doc__ = _expanding_docstring.format(stat_name="Mean")
@@ -303,19 +315,19 @@ ExpandingMean.__doc__ = _expanding_docstring.format(stat_name="Mean")
 
 class ExpandingStd(_ExpandingBase):
     def transform(self, ga: GroupedArray) -> np.ndarray:
-        self.stats = np.empty_like(ga.data, shape=(len(ga), 3))
-        out = ga._expanding_transform_with_aggs("Std", self.lag, self.stats)
+        self.stats_ = np.empty_like(ga.data, shape=(len(ga), 3))
+        out = ga._expanding_transform_with_aggs("Std", self.lag, self.stats_)
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
         x = ga._index_from_end(self.lag - 1)
-        self.stats[:, 0] += 1.0
-        n = self.stats[:, 0]
-        prev_avg = self.stats[:, 1].copy()
-        self.stats[:, 1] = prev_avg + (x - prev_avg) / n
-        self.stats[:, 2] += (x - prev_avg) * (x - self.stats[:, 1])
-        self.stats[:, 2] = np.maximum(self.stats[:, 2], 0.0)
-        return np.sqrt(self.stats[:, 2] / (n - 1))
+        self.stats_[:, 0] += 1.0
+        n = self.stats_[:, 0]
+        prev_avg = self.stats_[:, 1].copy()
+        self.stats_[:, 1] = prev_avg + (x - prev_avg) / n
+        self.stats_[:, 2] += (x - prev_avg) * (x - self.stats_[:, 1])
+        self.stats_[:, 2] = np.maximum(self.stats_[:, 2], 0.0)
+        return np.sqrt(self.stats_[:, 2] / (n - 1))
 
 
 ExpandingStd.__doc__ = _expanding_docstring.format(stat_name="Standard Deviation")
@@ -327,12 +339,12 @@ class _ExpandingComp(_ExpandingBase):
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
         out = ga._expanding_transform(self.stat, self.lag)
-        self.stats = out[ga.indptr[1:] - 1]
+        self.stats_ = out[ga.indptr[1:] - 1]
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
-        self.stats = self._comp_fn(self.stats, ga._index_from_end(self.lag - 1))
-        return self.stats
+        self.stats_ = self._comp_fn(self.stats_, ga._index_from_end(self.lag - 1))
+        return self.stats_
 
 
 class ExpandingMin(_ExpandingComp):
@@ -384,10 +396,15 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
         out = ga._exponentially_weighted_transform("Mean", self.lag, self.alpha)
-        self.ewm = out[ga.indptr[1:] - 1]
+        self.ewm_ = out[ga.indptr[1:] - 1]
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
         x = ga._index_from_end(self.lag - 1)
-        self.ewm = self.alpha * x + (1 - self.alpha) * self.ewm
-        return self.ewm
+        self.ewm_ = self.alpha * x + (1 - self.alpha) * self.ewm_
+        return self.ewm_
+
+    def take(self, idxs: np.ndarray) -> "ExponentiallyWeightedMean":
+        out = copy.deepcopy(self)
+        out.ewm_ = out.ewm_[idxs]
+        return out

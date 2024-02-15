@@ -132,7 +132,7 @@ def test_boxcox_correctness(data, indptr, dtype):
     atol = 5e-4 if dtype == np.float32 else 1e-8
     np.testing.assert_allclose(ga.data, restored, atol=atol)
     lmbda = boxcox_lambda(ga[0], 10)
-    np.testing.assert_allclose(lmbda, sc.stats[0, 0])
+    np.testing.assert_allclose(lmbda, sc.stats_[0, 0])
     first_grp = slice(indptr[0], indptr[1])
     first_tfm = boxcox(ga[0], lmbda)
     first_restored = inv_boxcox(first_tfm, lmbda)

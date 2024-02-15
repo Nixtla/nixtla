@@ -23,6 +23,7 @@ class GroupedArray:
         else:
             self.prefix = "GroupedArrayFloat64"
         self.indptr = indptr.astype(_indptr_dtype, copy=False)
+        self.n_groups = len(self.indptr) - 1
         self.num_threads = num_threads
         self._handle = ctypes.c_void_p()
         _LIB[f"{self.prefix}_Create"](
@@ -44,6 +45,11 @@ class GroupedArray:
         return self.data[self.indptr[i] : self.indptr[i + 1]]
 
     def _with_data(self, data: np.ndarray) -> "GroupedArray":
+        if data.size != self.data.size:
+            raise ValueError(
+                "New data must have the same size as the original data. "
+                f"Original size: {self.data.size:,}. New size: {data.size:,}"
+            )
         data = data.astype(self.data.dtype, copy=False)
         data = np.ascontiguousarray(data)
         return GroupedArray(data, self.indptr, self.num_threads)

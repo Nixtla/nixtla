@@ -1,3 +1,4 @@
+import copy
 import ctypes
 from typing import List, Optional
 
@@ -111,6 +112,14 @@ def inv_boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
     return out
 
 
+def _validate_scaler_size(stats: np.ndarray, ga: GroupedArray) -> None:
+    if stats.shape[0] != ga.n_groups:
+        raise ValueError(
+            f"Number of groups in the scaler ({stats.shape[0]:,}) "
+            f"doesn't match the ones in data ({ga.n_groups:,})."
+        )
+
+
 class _BaseLocalScaler:
     _scaler_type: str
 
@@ -133,6 +142,7 @@ class _BaseLocalScaler:
 
         Returns:
             np.ndarray: Array with the transformed data."""
+        _validate_scaler_size(self.stats_, ga)
         return ga._scaler_transform(self.stats_)
 
     def fit_transform(self, ga: GroupedArray) -> np.ndarray:
@@ -153,7 +163,13 @@ class _BaseLocalScaler:
 
         Returns:
             np.ndarray: Array with the inverted transformation."""
+        _validate_scaler_size(self.stats_, ga)
         return ga._scaler_inverse_transform(self.stats_)
+
+    def take(self, idxs: np.ndarray) -> "_BaseLocalScaler":
+        out = copy.deepcopy(self)
+        out.stats_ = self.stats_[idxs].copy()
+        return out
 
 
 class LocalMinMaxScaler(_BaseLocalScaler):
@@ -214,7 +230,7 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
 
         Returns:
             self: The fitted scaler object."""
-        self.stats = ga._boxcox_fit(
+        self.stats_ = ga._boxcox_fit(
             self.season_length, self.lower, self.upper, self.method
         )
         return self
@@ -227,7 +243,8 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
 
         Returns:
             np.ndarray: Array with the transformed data."""
-        return ga._boxcox_transform(self.stats)
+        _validate_scaler_size(self.stats_, ga)
+        return ga._boxcox_transform(self.stats_)
 
     def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
         """Use the computed lambdas to invert the transformation.
@@ -237,7 +254,8 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
 
         Returns:
             np.ndarray: Array with the inverted transformation."""
-        return ga._boxcox_inverse_transform(self.stats)
+        _validate_scaler_size(self.stats_, ga)
+        return ga._boxcox_inverse_transform(self.stats_)
 
 
 class AutoDifferences:
@@ -254,7 +272,7 @@ class AutoDifferences:
     def _transform(self, ga: GroupedArray, season_length: int) -> np.ndarray:
         max_d = int(self.diffs_.max())
         transformed = ga.data.copy()
-        self.tails_ = []
+        self.tails_: List[np.ndarray] = []
         for i in range(max_d):
             ga = ga._with_data(transformed)
             mask = self.diffs_ > i
@@ -276,6 +294,7 @@ class AutoDifferences:
         return self._transform(ga, season_length=1)
 
     def _inverse_transform(self, ga: GroupedArray, season_length: int) -> np.ndarray:
+        _validate_scaler_size(self.diffs_, ga)
         transformed = ga.data.copy()
         n_diffs = len(self.tails_)
         for i, tails in enumerate(self.tails_[::-1]):
@@ -296,11 +315,11 @@ class AutoDifferences:
         return self._inverse_transform(ga, 1)
 
     def _update(self, ga: GroupedArray, season_length: int) -> np.ndarray:
+        _validate_scaler_size(self.diffs_, ga)
         tail_indptr = np.arange(
             0, season_length * ga.indptr.size, season_length, dtype=_indptr_dtype
         )
         new_tails = []
-        dtype = ga.data.dtype.type
         transformed = ga.data.copy()
         for i, tail in enumerate(self.tails_):
             ga = ga._with_data(transformed)
@@ -324,6 +343,12 @@ class AutoDifferences:
         Returns:
             np.ndarray: Array with the updated data."""
         return self._update(ga, season_length=1)
+
+    def take(self, idxs: np.ndarray) -> "AutoDifferences":
+        out = copy.deepcopy(self)
+        out.diffs_ = self.diffs_[idxs].copy()
+        out.tails_ = [tail[idxs].copy() for tail in self.tails_]
+        return out
 
 
 class AutoSeasonalDifferences(AutoDifferences):
@@ -405,6 +430,8 @@ class AutoSeasonalityAndDifferences:
         self, max_season_length: int, max_diffs: int, n_seasons: Optional[int] = 10
     ):
         self.max_season_length = max_season_length
+        if not isinstance(max_diffs, int) or max_diffs < 1:
+            raise ValueError("max_diff must be a positive integer")
         self.max_diffs = max_diffs
         if isinstance(n_seasons, int) and n_seasons < 2:
             raise ValueError("n_seasons must be at least 2")
@@ -418,10 +445,10 @@ class AutoSeasonalityAndDifferences:
 
         Returns:
             np.ndarray: Array with the transformed data."""
-        self.diffs_ = []
-        self.tails_ = []
+        self.diffs_: List[np.ndarray] = []
+        self.tails_: List[np.ndarray] = []
         transformed = ga.data.copy()
-        for i in range(self.max_diffs):
+        for _ in range(self.max_diffs):
             ga = ga._with_data(transformed)
             if self.n_seasons is None:
                 tails_ga = ga
@@ -449,6 +476,7 @@ class AutoSeasonalityAndDifferences:
 
         Returns:
             np.ndarray: Array with the inverted transformation."""
+        _validate_scaler_size(self.diffs_[0], ga)
         transformed = ga.data.copy()
         for diffs, tails in zip(self.diffs_[::-1], self.tails_[::-1]):
             ga = ga._with_data(transformed)
@@ -456,6 +484,7 @@ class AutoSeasonalityAndDifferences:
         return transformed
 
     def update(self, ga: GroupedArray) -> np.ndarray:
+        _validate_scaler_size(self.diffs_[0], ga)
         new_tails = []
         transformed = ga.data.copy()
         for i in range(self.max_diffs):
@@ -470,3 +499,9 @@ class AutoSeasonalityAndDifferences:
             transformed = combined._with_data(combined_transformed)._tails(ga.indptr)
         self.tails_ = new_tails
         return transformed
+
+    def take(self, idxs: np.ndarray) -> "AutoSeasonalityAndDifferences":
+        out = copy.deepcopy(self)
+        out.diffs_ = [diffs[idxs].copy() for diffs in self.diffs_]
+        out.tails_ = [tail[idxs].copy() for tail in self.tails_]
+        return out
