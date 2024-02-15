@@ -10,7 +10,7 @@ date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtlats",
-    version="0.1.19",
+    version="0.1.20",
     description="TimeGPT SDK",
     long_description=long_description,
     long_description_content_type="text/markdown",
