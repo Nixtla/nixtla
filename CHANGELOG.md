@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.1.20
+
+### 🚀 Feature Enhancements
+
+#### Enhanced Model Fine-tuning with `finetune_loss` and `finetune_steps` 🛠️
+
+The latest update brings a significant enhancement to the fine-tuning capabilities of our forecasting models. With the introduction of the `finetune_loss`, users now have the ability to not only specify the number of steps for fine-tunning (with `finetune_steps`) but also to define the target loss for fine-tunning, offering more granular control over model optimization.
+
+- **`finetune_loss` Options:**
+  - `default`: Adopts the model's preset loss function, optimized during initial training.
+  - `mae` (Mean Absolute Error): Focuses on the mean of the absolute differences between predicted and actual values.
+  - `mse` (Mean Squared Error): Emphasizes the mean of the squares of the differences between predicted and actual values.
+  - `rmse` (Root Mean Squared Error): Provides the square root of MSE, offering error terms in the same units as the predictions.
+  - `mape` (Mean Absolute Percentage Error): Measures the mean absolute percent difference between predicted and actual values.
+  - `smape` (Symmetric Mean Absolute Percentage Error): Offers a symmetric version of MAPE, ensuring equal treatment of over and underestimations.
+
+- **`finetune_steps`:** Determines the number of steps to execute during the fine-tuning process. It is crucial to set `finetune_steps` to a value greater than 0 to activate the fine-tuning mechanism with the chosen `finetune_loss` function. This allows for a more tailored optimization, aligning the model closely with specific forecasting requirements and improving its predictive performance.
+
+``` python
+# Configure model fine-tuning with custom loss function and steps
+fcst_df = timegpt.forecast(df, model='timegpt-1-long-horizon', finetune_loss='mape', finetune_steps=50)
+
+# Apply fine-tuning to cross-validation for enhanced model validation
+cv_df = timegpt.cross_validation(df, model='timegpt-1', finetune_loss='smape', finetune_steps=50)
+```
+
+This update opens up new possibilities for refining forecasting models, ensuring they are finely tuned to the specific characteristics and challenges of the forecasting task at hand.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.1.20).*
+
+## 0.1.19
+
+### 🚀 Feature Enhancements
+
+#### Advanced Data Partitioning with `num_partitions` 🔄
+
+We're excited to introduce the `num_partitions` argument for our `forecast`, `cross_validation`, and `detect_anomalies` methods, offering more control over data processing and parallelization:
+
+- **Optimized Resource Utilization in Distributed Environments:** For Spark, Ray, or Dask dataframes, `num_partitions` enables the system to either leverage all available parallel resources or to specify the number of parallel processes. This ensures efficient resource allocation and utilization across distributed computing environments.
+
+``` python
+# Utilize num_partitions in distributed environments
+fcst_df = timegpt.forecast(df, model='timegpt-1-long-horizon', num_partitions=10)
+```
+
+- **Efficient Handling of Large Pandas Dataframes:** When working with Pandas dataframes, `num_partitions` groups series into specified partitions, allowing for sequential API calls. This is particularly useful for large dataframes that are impractical to send over the internet in one go, enhancing performance and efficiency.
+
+``` python
+# Efficiently process large Pandas dataframes
+cv_df = timegpt.cross_validation(df, model='timegpt-1', num_partitions=5)
+```
+
+This new feature provides a flexible approach to handling data across different environments, ensuring optimal performance and resource management.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.1.19).*
+
 ## 0.1.18
 
 ### 🚀 Feature Enhancements
