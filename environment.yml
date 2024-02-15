@@ -4,7 +4,7 @@ channels:
 dependencies:
   - dask
   - jupyterlab
-  - pandas
+  - pandas<2.2
   - plotly
   - prophet
   - pyspark>=3.3
