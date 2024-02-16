@@ -17,8 +17,7 @@ except ImportError:
     core_scalers = None
     CoreGroupedArray = None
 
-    class BaseLagTransform:
-        ...
+    class BaseLagTransform: ...
 
     Lag = None
 

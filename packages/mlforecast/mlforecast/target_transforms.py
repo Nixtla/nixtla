@@ -41,12 +41,10 @@ class BaseTargetTransform(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def fit_transform(self, df: DataFrame) -> DataFrame:
-        ...
+    def fit_transform(self, df: DataFrame) -> DataFrame: ...
 
     @abc.abstractmethod
-    def inverse_transform(self, df: DataFrame) -> DataFrame:
-        ...
+    def inverse_transform(self, df: DataFrame) -> DataFrame: ...
 
 # %% ../nbs/target_transforms.ipynb 6
 class BaseGroupedArrayTargetTransform(abc.ABC):
@@ -59,16 +57,13 @@ class BaseGroupedArrayTargetTransform(abc.ABC):
         self.num_threads = num_threads
 
     @abc.abstractmethod
-    def update(self, ga: GroupedArray) -> GroupedArray:
-        ...
+    def update(self, ga: GroupedArray) -> GroupedArray: ...
 
     @abc.abstractmethod
-    def fit_transform(self, ga: GroupedArray) -> GroupedArray:
-        ...
+    def fit_transform(self, ga: GroupedArray) -> GroupedArray: ...
 
     @abc.abstractmethod
-    def inverse_transform(self, ga: GroupedArray) -> GroupedArray:
-        ...
+    def inverse_transform(self, ga: GroupedArray) -> GroupedArray: ...
 
     def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
         return self.inverse_transform(ga)
@@ -137,6 +132,11 @@ class AutoDifferences(BaseGroupedArrayTargetTransform):
         Maximum number of differences to apply."""
 
     def __init__(self, max_diffs: int):
+        if not CORE_INSTALLED:
+            raise ImportError(
+                "coreforecast is required for this transformation. "
+                "Please follow the installation instructions at https://github.com/Nixtla/coreforecast/#installation"
+            )
         self.scaler_ = core_scalers.AutoDifferences(max_diffs)
 
     def fit_transform(self, ga: GroupedArray) -> GroupedArray:
@@ -172,6 +172,11 @@ class AutoSeasonalDifferences(AutoDifferences):
     def __init__(
         self, season_length: int, max_diffs: int, n_seasons: Optional[int] = 10
     ):
+        if not CORE_INSTALLED:
+            raise ImportError(
+                "coreforecast is required for this transformation. "
+                "Please follow the installation instructions at https://github.com/Nixtla/coreforecast/#installation"
+            )
         self.scaler_ = core_scalers.AutoSeasonalDifferences(
             season_length=season_length,
             max_diffs=max_diffs,
@@ -196,6 +201,11 @@ class AutoSeasonalityAndDifferences(AutoDifferences):
     def __init__(
         self, max_season_length: int, max_diffs: int, n_seasons: Optional[int] = 10
     ):
+        if not CORE_INSTALLED:
+            raise ImportError(
+                "coreforecast is required for this transformation. "
+                "Please follow the installation instructions at https://github.com/Nixtla/coreforecast/#installation"
+            )
         self.scaler_ = core_scalers.AutoSeasonalityAndDifferences(
             max_season_length=max_season_length,
             max_diffs=max_diffs,
