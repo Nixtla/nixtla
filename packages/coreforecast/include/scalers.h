@@ -10,6 +10,11 @@ DLL_EXPORT double Float64_BoxCoxLambdaGuerrero(const double *x, int n,
                                                int period, double lower,
                                                double upper);
 
+DLL_EXPORT float Float32_BoxCoxLambdaLogLik(const float *x, int n, float lower,
+                                            float upper);
+DLL_EXPORT double Float64_BoxCoxLambdaLogLik(const double *x, int n,
+                                             double lower, double upper);
+
 DLL_EXPORT void Float32_BoxCoxTransform(const float *x, int n, float lambda,
                                         float *out);
 DLL_EXPORT void Float64_BoxCoxTransform(const double *x, int n, double lambda,
@@ -64,6 +69,13 @@ DLL_EXPORT int
 GroupedArrayFloat64_BoxCoxLambdaGuerrero(GroupedArrayHandle handle, int period,
                                          double lower, double upper,
                                          double *out);
+
+DLL_EXPORT void
+GroupedArrayFloat32_BoxCoxLambdaLogLik(GroupedArrayHandle handle, float lower,
+                                       float upper, float *out);
+DLL_EXPORT void
+GroupedArrayFloat64_BoxCoxLambdaLogLik(GroupedArrayHandle handle, double lower,
+                                       double upper, double *out);
 
 DLL_EXPORT int GroupedArrayFloat32_BoxCoxTransform(GroupedArrayHandle handle,
                                                    const float *lambdas,

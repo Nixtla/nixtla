@@ -1,5 +1,5 @@
 import ctypes
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 
@@ -340,16 +340,25 @@ class GroupedArray:
         return out
 
     def _boxcox_fit(
-        self, season_length: int, lower: float, upper: float, method: str
+        self, method: str, season_length: Optional[int], lower: float, upper: float
     ) -> np.ndarray:
         out = np.empty_like(self.data, shape=(len(self), 2))
-        _LIB[f"{self.prefix}_BoxCoxLambda{method}"](
-            self._handle,
-            ctypes.c_int(season_length),
-            _pyfloat_to_np_c(lower, self.data.dtype),
-            _pyfloat_to_np_c(upper, self.data.dtype),
-            _data_as_void_ptr(out),
-        )
+        if method == "guerrero":
+            assert season_length is not None
+            _LIB[f"{self.prefix}_BoxCoxLambdaGuerrero"](
+                self._handle,
+                ctypes.c_int(season_length),
+                _pyfloat_to_np_c(lower, self.data.dtype),
+                _pyfloat_to_np_c(upper, self.data.dtype),
+                _data_as_void_ptr(out),
+            )
+        else:
+            _LIB[f"{self.prefix}_BoxCoxLambdaLogLik"](
+                self._handle,
+                _pyfloat_to_np_c(lower, self.data.dtype),
+                _pyfloat_to_np_c(upper, self.data.dtype),
+                _data_as_void_ptr(out),
+            )
         return out
 
     def _boxcox_transform(self, stats: np.ndarray) -> np.ndarray:

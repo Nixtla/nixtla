@@ -120,19 +120,22 @@ def test_correctness(data, indptr, scaler_name, dtype):
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_boxcox_correctness(data, indptr, dtype):
+@pytest.mark.parametrize("method", ["guerrero", "loglik"])
+def test_boxcox_correctness(data, indptr, dtype, method):
     data = data.astype(dtype, copy=True)
     # introduce some nans
     for i in [1, 90, 177]:
         data[indptr[i] : indptr[i] + 19] = np.nan
+    if method == "loglik":
+        data = np.abs(data)
     ga = GroupedArray(data, indptr)
-    sc = LocalBoxCoxScaler(season_length=10)
+    sc = LocalBoxCoxScaler(method=method, season_length=10)
     sc.fit(ga)
     transformed = sc.transform(ga)
     restored = sc.inverse_transform(GroupedArray(transformed, ga.indptr))
     atol = 5e-4 if dtype == np.float32 else 1e-8
     np.testing.assert_allclose(ga.data, restored, atol=atol)
-    lmbda = boxcox_lambda(ga[0], 10)
+    lmbda = boxcox_lambda(ga[0], method=method, season_length=10)
     np.testing.assert_allclose(lmbda, sc.stats_[0, 0])
     first_grp = slice(indptr[0], indptr[1])
     first_tfm = boxcox(ga[0], lmbda)

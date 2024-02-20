@@ -65,8 +65,8 @@ inline void RobustScalerMadStats(const T *data, int n, T *stats) {
 }
 
 template <typename T>
-T GuerreroCV(T lambda, const std::vector<T> &x_mean,
-             const std::vector<T> &x_std) {
+T BoxCox_GuerreroCV(T lambda, const std::vector<T> &x_mean,
+                    const std::vector<T> &x_std) {
   auto x_rat = std::vector<T>(x_std.size());
   int start_idx = 0;
   for (size_t i = 0; i < x_rat.size(); ++i) {
@@ -133,7 +133,7 @@ void BoxCoxLambda_Guerrero(const T *x, int n, T *out, int period, T lower,
     x_std[i] = std::sqrt(x_std[i] / (x_n[i] - 1));
   }
   T tol = std::pow(std::numeric_limits<T>::epsilon(), 0.25);
-  *out = Brent(GuerreroCV<T>, lower, upper, tol, x_mean, x_std);
+  *out = Brent(BoxCox_GuerreroCV<T>, lower, upper, tol, x_mean, x_std);
 }
 
 template <typename T> inline T BoxCoxTransform(T x, T lambda, T /*unused*/) {
@@ -163,6 +163,33 @@ inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
   return -std::exp(std::log(-lambda * x - 1) / lambda);
 }
 
+template <typename T> T BoxCox_LogLik(T lambda, const T *data, int n) {
+  T *logdata = new T[n];
+  std::transform(data, data + n, logdata, [](T x) { return std::log(x); });
+  double var;
+  if (lambda == 0.0) {
+    double mean = Mean(logdata, n);
+    var = Variance(logdata, n, mean);
+  } else {
+    T *transformed = new T[n];
+    std::transform(data, data + n, transformed, [lambda](T x) {
+      return std::exp(lambda * std::log(x)) / lambda;
+    });
+    double mean = Mean(transformed, n);
+    var = Variance(transformed, n, mean);
+    delete[] transformed;
+  }
+  double sum_logdata = std::accumulate(logdata, logdata + n, 0.0);
+  delete[] logdata;
+  return -static_cast<T>((lambda - 1) * sum_logdata - n / 2 * std::log(var));
+}
+
+template <typename T>
+void BoxCoxLambda_LogLik(const T *x, int n, T *out, T lower, T upper) {
+  T tol = std::pow(std::numeric_limits<T>::epsilon(), 0.25);
+  *out = Brent(BoxCox_LogLik<T>, lower, upper, tol, x, n);
+}
+
 float Float32_BoxCoxLambdaGuerrero(const float *x, int n, int period,
                                    float lower, float upper) {
   float out;
@@ -173,6 +200,19 @@ double Float64_BoxCoxLambdaGuerrero(const double *x, int n, int period,
                                     double lower, double upper) {
   double out;
   BoxCoxLambda_Guerrero<double>(x, n, &out, period, lower, upper);
+  return out;
+}
+
+float Float32_BoxCoxLambdaLogLik(const float *x, int n, float lower,
+                                 float upper) {
+  float out;
+  BoxCoxLambda_LogLik<float>(x, n, &out, lower, upper);
+  return out;
+}
+double Float64_BoxCoxLambdaLogLik(const double *x, int n, double lower,
+                                  double upper) {
+  double out;
+  BoxCoxLambda_LogLik<double>(x, n, &out, lower, upper);
   return out;
 }
 
@@ -293,6 +333,19 @@ int GroupedArrayFloat64_BoxCoxLambdaGuerrero(GroupedArrayHandle handle,
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
   ga->Reduce(BoxCoxLambda_Guerrero<double>, 2, out, 0, period, lower, upper);
   return 0;
+}
+
+void GroupedArrayFloat32_BoxCoxLambdaLogLik(GroupedArrayHandle handle,
+                                            float lower, float upper,
+                                            float *out) {
+  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
+  ga->Reduce(BoxCoxLambda_LogLik<float>, 2, out, 0, lower, upper);
+}
+void GroupedArrayFloat64_BoxCoxLambdaLogLik(GroupedArrayHandle handle,
+                                            double lower, double upper,
+                                            double *out) {
+  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
+  ga->Reduce(BoxCoxLambda_LogLik<double>, 2, out, 0, lower, upper);
 }
 
 int GroupedArrayFloat32_BoxCoxTransform(GroupedArrayHandle handle,

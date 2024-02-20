@@ -32,41 +32,76 @@ __all__ = [
 
 _LIB.Float32_BoxCoxLambdaGuerrero.restype = ctypes.c_float
 _LIB.Float64_BoxCoxLambdaGuerrero.restype = ctypes.c_double
+_LIB.Float32_BoxCoxLambdaLogLik.restype = ctypes.c_float
+_LIB.Float64_BoxCoxLambdaLogLik.restype = ctypes.c_double
+
+
+def _boxcox_lambda_checks(
+    season_length: Optional[int],
+    lower: float,
+    upper: float,
+    method: str,
+) -> None:
+    available_methods = ("guerrero", "loglik")
+    if method not in available_methods:
+        raise NotImplementedError(
+            f"Method {method} not implemented. Available methods are {available_methods}"
+        )
+    if lower >= upper:
+        raise ValueError("lower must be less than upper")
+    if method == "guerrero" and season_length is None:
+        raise ValueError("season_length is required when method='guerrero'")
 
 
 def boxcox_lambda(
     x: np.ndarray,
-    season_length: int,
+    method: str,
+    season_length: Optional[int] = None,
     lower: float = -0.9,
     upper: float = 2.0,
-    method: str = "guerrero",
 ) -> float:
-    """Find optimum lambda for the Box-Cox transformation (supports negative numbers)
+    """Find optimum lambda for the Box-Cox transformation
 
     Args:
         x (np.ndarray): Array with data to transform.
-        season_length (int): Length of the seasonal period.
+        method (str): Method to use. Valid options are 'guerrero' and 'loglik'.
+            'guerrero' minimizes the coefficient of variation for subseries of `x` and supports negative values.
+            'loglik' maximizes the log-likelihood function.
+        season_length (int, optional): Length of the seasonal period.
+            Only required if method='guerrero'.
         lower (float): Lower bound for the lambda.
         upper (float): Upper bound for the lambda.
-        method (str): Method to use. Valid options are 'guerrero'.
 
     Returns:
         float: Optimum lambda."""
-    if method != "guerrero":
-        raise NotImplementedError(f"Method {method} not implemented")
-    if lower >= upper:
-        raise ValueError("lower must be less than upper")
+    _boxcox_lambda_checks(
+        method=method,
+        season_length=season_length,
+        lower=lower,
+        upper=upper,
+    )
+    if method == "loglik" and any(x <= 0):
+        raise ValueError("All values in x must be positive when method='loglik'")
     x = _ensure_float(x)
     prefix = _float_arr_to_prefix(x)
-    fn = f"{prefix}_BoxCoxLambdaGuerrero"
-    # _LIB[fn] doesn't get the restype assignment (keeps c_int)
-    return getattr(_LIB, fn)(
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        ctypes.c_int(season_length),
-        _pyfloat_to_np_c(lower, x.dtype),
-        _pyfloat_to_np_c(upper, x.dtype),
-    )
+    if method == "guerrero":
+        assert season_length is not None
+        # _LIB[fn] doesn't get the restype assignment (keeps c_int)
+        res = getattr(_LIB, f"{prefix}_BoxCoxLambdaGuerrero")(
+            _data_as_void_ptr(x),
+            ctypes.c_int(x.size),
+            ctypes.c_int(season_length),
+            _pyfloat_to_np_c(lower, x.dtype),
+            _pyfloat_to_np_c(upper, x.dtype),
+        )
+    else:
+        res = getattr(_LIB, f"{prefix}_BoxCoxLambdaLogLik")(
+            _data_as_void_ptr(x),
+            ctypes.c_int(x.size),
+            _pyfloat_to_np_c(lower, x.dtype),
+            _pyfloat_to_np_c(upper, x.dtype),
+        )
+    return res
 
 
 def boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
@@ -80,9 +115,8 @@ def boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
         np.ndarray: Array with the transformed data."""
     x = _ensure_float(x)
     prefix = _float_arr_to_prefix(x)
-    fn = f"{prefix}_BoxCoxTransform"
     out = np.empty_like(x)
-    getattr(_LIB, fn)(
+    getattr(_LIB, f"{prefix}_BoxCoxTransform")(
         _data_as_void_ptr(x),
         ctypes.c_int(x.size),
         _pyfloat_to_np_c(lmbda, x.dtype),
@@ -102,9 +136,8 @@ def inv_boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
         np.ndarray: Array with the inverted transformation."""
     x = _ensure_float(x)
     prefix = _float_arr_to_prefix(x)
-    fn = f"{prefix}_BoxCoxInverseTransform"
     out = np.empty_like(x)
-    getattr(_LIB, fn)(
+    getattr(_LIB, f"{prefix}_BoxCoxInverseTransform")(
         _data_as_void_ptr(x),
         ctypes.c_int(x.size),
         _pyfloat_to_np_c(lmbda, x.dtype),
@@ -204,24 +237,26 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
     """Find the optimum lambda for the Box-Cox transformation by group and apply it
 
     Args:
-        season_length (int): Length of the seasonal period.
+        season_length (int, optional): Length of the seasonal period.
+            Only required if method='guerrero'.
         lower (float): Lower bound for the lambda.
         upper (float): Upper bound for the lambda.
-        method (str): Method to use. Valid options are 'guerrero'."""
+        method (str): Method to use. Valid options are 'guerrero' and 'loglik'.
+            'guerrero' minimizes the coefficient of variation for subseries of `x` and supports negative values.
+            'loglik' maximizes the log-likelihood function."""
 
     def __init__(
         self,
-        season_length: int,
+        method: str,
+        season_length: Optional[int] = None,
         lower: float = -0.9,
         upper: float = 2.0,
-        method="guerrero",
     ):
+        _boxcox_lambda_checks(season_length, lower, upper, method)
+        self.method = method
         self.season_length = season_length
         self.lower = lower
         self.upper = upper
-        if method != "guerrero":
-            raise NotImplementedError(f"Method {method} not implemented")
-        self.method = method.capitalize()
 
     def fit(self, ga: GroupedArray) -> "_BaseLocalScaler":
         """Compute the statistics for each group.
@@ -231,8 +266,13 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
 
         Returns:
             self: The fitted scaler object."""
+        if self.method == "loglik" and any(ga.data < 0):
+            raise ValueError("All values in data must be positive for method='loglik'")
         self.stats_ = ga._boxcox_fit(
-            self.season_length, self.lower, self.upper, self.method
+            method=self.method,
+            season_length=self.season_length,
+            lower=self.lower,
+            upper=self.upper,
         )
         return self
 

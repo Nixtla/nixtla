@@ -5,7 +5,7 @@
 constexpr double GOLDEN_RATIO = 0.3819660;
 
 template <typename Function, typename... Args>
-double Brent(Function f, double a, double b, double tol, Args... args) {
+double Brent(Function f, double a, double b, double tol, Args &&...args) {
   double d, e, p, q, r, u, v, w, x;
   double t2, fu, fv, fw, fx, xm, eps, tol1, tol3;
 
@@ -19,7 +19,7 @@ double Brent(Function f, double a, double b, double tol, Args... args) {
 
   d = 0.0;
   e = 0.0;
-  fx = f(x, args...);
+  fx = f(x, std::forward<Args>(args)...);
   fv = fx;
   fw = fx;
   tol3 = tol / 3.0;
@@ -77,7 +77,7 @@ double Brent(Function f, double a, double b, double tol, Args... args) {
       u = x - tol1;
     }
 
-    fu = f(u, args...);
+    fu = f(u, std::forward<Args>(args)...);
 
     if (fu <= fx) {
       if (u < x) {

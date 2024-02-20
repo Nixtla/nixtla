@@ -115,7 +115,8 @@ public:
   }
 
   template <typename Func>
-  void VariableTransform(Func f, const int *params, T *out) const noexcept {
+  void VariableTransform(Func f, const indptr_t *params,
+                         T *out) const noexcept {
 #pragma omp parallel for schedule(static) num_threads(num_threads_)
     for (int i = 0; i < n_groups_; ++i) {
       indptr_t start = indptr_[i];
