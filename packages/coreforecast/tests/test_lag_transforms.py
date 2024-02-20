@@ -116,6 +116,12 @@ def test_correctness(data, comb, dtype):
     wres = transform(data, indptr, True, lag - 1, wf, *args)
     cres = cobj.update(ga)
     np.testing.assert_allclose(wres, cres, atol=atol, rtol=rtol)
+    # stack
+    combined = cobj.stack([cobj, cobj])
+    if hasattr(cobj, "stats_"):
+        assert combined.stats_.shape[0] == 2 * cobj.stats_.shape[0]
+    else:
+        assert combined is cobj
 
 
 @pytest.mark.parametrize("window_type", ["rolling", "seasonal_rolling", "expanding"])

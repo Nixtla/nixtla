@@ -1,6 +1,6 @@
 import copy
 import ctypes
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -205,6 +205,12 @@ class _BaseLocalScaler:
         out.stats_ = self.stats_[idxs].copy()
         return out
 
+    @staticmethod
+    def stack(scalers: Sequence["_BaseLocalScaler"]) -> "_BaseLocalScaler":
+        out = copy.deepcopy(scalers[0])
+        out.stats_ = np.vstack([sc.stats_ for sc in scalers])
+        return out
+
 
 class LocalMinMaxScaler(_BaseLocalScaler):
     """Scale each group to the [0, 1] interval"""
@@ -354,6 +360,12 @@ class Difference:
         out.tails_ = self.tails_[idxs].copy()
         return out
 
+    @staticmethod
+    def stack(scalers: Sequence["Difference"]) -> "Difference":
+        out = Difference(scalers[0].d)
+        out.tails_ = np.hstack([sc.tails_ for sc in scalers])
+        return out
+
 
 class AutoDifferences:
     """Find and apply the optimal number of differences to each group.
@@ -445,6 +457,16 @@ class AutoDifferences:
         out = copy.deepcopy(self)
         out.diffs_ = self.diffs_[idxs].copy()
         out.tails_ = [tail[idxs].copy() for tail in self.tails_]
+        return out
+
+    @staticmethod
+    def stack(scalers: Sequence["AutoDifferences"]) -> "AutoDifferences":
+        out = copy.deepcopy(scalers[0])
+        out.diffs_ = np.hstack([sc.diffs_ for sc in scalers])
+        out.tails_ = [
+            np.hstack([sc.tails_[i] for sc in scalers])
+            for i in range(len(scalers[0].tails_))
+        ]
         return out
 
 
@@ -603,4 +625,15 @@ class AutoSeasonalityAndDifferences:
         )
         out.diffs_ = [diffs[idxs].copy() for diffs in self.diffs_]
         out.tails_ = [tail[idxs].copy() for tail in self.tails_]
+        return out
+
+    @staticmethod
+    def stack(
+        scalers: Sequence["AutoSeasonalityAndDifferences"],
+    ) -> "AutoSeasonalityAndDifferences":
+        out = AutoSeasonalityAndDifferences(
+            scalers[0].max_season_length, scalers[0].max_diffs, scalers[0].n_seasons
+        )
+        out.diffs_ = [np.hstack([sc.diffs_[i] for sc in scalers]) for i in range(out.max_diffs)]
+        out.tails_ = [np.hstack([sc.tails_[i] for sc in scalers]) for i in range(out.max_diffs)]
         return out

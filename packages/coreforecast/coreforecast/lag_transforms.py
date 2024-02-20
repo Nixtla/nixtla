@@ -20,7 +20,7 @@ __all__ = [
 
 import abc
 import copy
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 import numpy as np
 
@@ -28,6 +28,8 @@ from .grouped_array import GroupedArray
 
 
 class _BaseLagTransform(abc.ABC):
+    stats_: np.ndarray
+
     @abc.abstractmethod
     def transform(self, ga: GroupedArray) -> np.ndarray:
         """Apply the transformation by group.
@@ -52,6 +54,20 @@ class _BaseLagTransform(abc.ABC):
 
     def take(self, _idxs: np.ndarray) -> "_BaseLagTransform":
         return self
+
+    @staticmethod
+    def stack(transforms: Sequence["_BaseLagTransform"]) -> "_BaseLagTransform":
+        first_tfm = transforms[0]
+        if not hasattr(first_tfm, "stats_"):
+            # transform doesn't save state, we can return any of them
+            return first_tfm
+        out = copy.deepcopy(first_tfm)
+        if first_tfm.stats_.ndim == 1:
+            concat_fn = np.hstack
+        else:
+            concat_fn = np.vstack
+        out.stats_ = concat_fn([tfm.stats_ for tfm in transforms])
+        return out
 
 
 class Lag(_BaseLagTransform):
@@ -396,15 +412,15 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
 
     def transform(self, ga: GroupedArray) -> np.ndarray:
         out = ga._exponentially_weighted_transform("Mean", self.lag, self.alpha)
-        self.ewm_ = out[ga.indptr[1:] - 1]
+        self.stats_ = out[ga.indptr[1:] - 1]
         return out
 
     def update(self, ga: GroupedArray) -> np.ndarray:
         x = ga._index_from_end(self.lag - 1)
-        self.ewm_ = self.alpha * x + (1 - self.alpha) * self.ewm_
-        return self.ewm_
+        self.stats_ = self.alpha * x + (1 - self.alpha) * self.stats_
+        return self.stats_
 
     def take(self, idxs: np.ndarray) -> "ExponentiallyWeightedMean":
         out = copy.deepcopy(self)
-        out.ewm_ = out.ewm_[idxs].copy()
+        out.stats_ = out.stats_[idxs].copy()
         return out
