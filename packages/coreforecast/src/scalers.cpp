@@ -151,7 +151,7 @@ template <typename T> inline T BoxCoxTransform(T x, T lambda, T /*unused*/) {
 
 template <typename T>
 inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
-  if (lambda < 0 && lambda * x + 1 > 0) {
+  if (lambda < 0 && lambda * x + 1 < 0) {
     return std::numeric_limits<T>::quiet_NaN();
   }
   if (lambda == 0) {
