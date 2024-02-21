@@ -135,6 +135,9 @@ class GroupedArray:
         )
         return out
 
+    def _take(self, idxs: np.ndarray) -> np.ndarray:
+        return np.hstack([self[i] for i in idxs])
+
     def _lag_transform(self, lag: int) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_LagTransform"](

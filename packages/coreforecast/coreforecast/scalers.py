@@ -357,7 +357,7 @@ class Difference:
 
     def take(self, idxs: np.ndarray) -> "Difference":
         out = Difference(self.d)
-        out.tails_ = self.tails_[idxs].copy()
+        out.tails_ = self.tails_.reshape(-1, self.d)[idxs].ravel()
         return out
 
     @staticmethod
@@ -453,11 +453,20 @@ class AutoDifferences:
             np.ndarray: Array with the updated data."""
         return self._update(ga, season_length=1)
 
-    def take(self, idxs: np.ndarray) -> "AutoDifferences":
+    def _take(self, idxs: np.ndarray, season_length: int) -> "AutoDifferences":
         out = copy.deepcopy(self)
         out.diffs_ = self.diffs_[idxs].copy()
-        out.tails_ = [tail[idxs].copy() for tail in self.tails_]
+        out.tails_ = []
+        for i, tail in enumerate(self.tails_):
+            ds = np.where(
+                self.diffs_ > i, _indptr_dtype(season_length), _indptr_dtype(0)
+            )
+            tails_indptr = _diffs_to_indptr(ds)
+            out.tails_.append(GroupedArray(tail, tails_indptr)._take(idxs))
         return out
+
+    def take(self, idxs: np.ndarray) -> "AutoDifferences":
+        return self._take(idxs, season_length=1)
 
     @staticmethod
     def stack(scalers: Sequence["AutoDifferences"]) -> "AutoDifferences":
@@ -532,6 +541,9 @@ class AutoSeasonalDifferences(AutoDifferences):
         Returns:
             np.ndarray: Array with the updated data."""
         return self._update(ga, self.season_length)
+
+    def take(self, idxs: np.ndarray) -> "AutoDifferences":
+        return self._take(idxs, self.season_length)
 
 
 class AutoSeasonalityAndDifferences:
@@ -624,7 +636,11 @@ class AutoSeasonalityAndDifferences:
             self.max_season_length, self.max_diffs, self.n_seasons
         )
         out.diffs_ = [diffs[idxs].copy() for diffs in self.diffs_]
-        out.tails_ = [tail[idxs].copy() for tail in self.tails_]
+        out.tails_ = []
+        for diffs, tails in zip(self.diffs_, self.tails_):
+            tails_indptr = _diffs_to_indptr(diffs)
+            tails_ga = GroupedArray(tails, tails_indptr)
+            out.tails_.append(tails_ga._take(idxs))
         return out
 
     @staticmethod
@@ -634,6 +650,10 @@ class AutoSeasonalityAndDifferences:
         out = AutoSeasonalityAndDifferences(
             scalers[0].max_season_length, scalers[0].max_diffs, scalers[0].n_seasons
         )
-        out.diffs_ = [np.hstack([sc.diffs_[i] for sc in scalers]) for i in range(out.max_diffs)]
-        out.tails_ = [np.hstack([sc.tails_[i] for sc in scalers]) for i in range(out.max_diffs)]
+        out.diffs_ = [
+            np.hstack([sc.diffs_[i] for sc in scalers]) for i in range(out.max_diffs)
+        ]
+        out.tails_ = [
+            np.hstack([sc.tails_[i] for sc in scalers]) for i in range(out.max_diffs)
+        ]
         return out
