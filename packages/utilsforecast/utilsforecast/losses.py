@@ -10,8 +10,8 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import pandas as pd
 
+import utilsforecast.processing as ufp
 from .compat import DataFrame, pl_DataFrame, pl
-from .processing import group_by
 
 # %% ../nbs/losses.ipynb 11
 def _base_docstring(*args, **kwargs) -> Callable:
@@ -50,7 +50,7 @@ def _pl_agg_expr(
 ) -> pl_DataFrame:
     exprs = [gen_expr(model) for model in models]
     df = df.select([id_col, *exprs])
-    res = group_by(df, id_col).mean()
+    res = ufp.group_by(df, id_col).mean()
     return res
 
 # %% ../nbs/losses.ipynb 13
@@ -467,25 +467,20 @@ def mqloss(
     for model in models:
         error = (df[target_col].to_numpy() - df[model].to_numpy()).reshape(-1, 1)
         loss = np.maximum(error * quantiles, error * (quantiles - 1)).mean(axis=1)
-        result = type(df)({model: loss})
-        if isinstance(result, pd.DataFrame):
-            result = result.groupby(df[id_col], observed=True).mean()
-        else:
-            result = result.with_columns(df[id_col])
-            result = group_by(result, id_col).mean()
+        model_res = type(df)({id_col: df[id_col], model: loss})
+        model_res = ufp.group_by_agg(
+            model_res,
+            by=id_col,
+            aggs={model: "mean"},
+            maintain_order=True,
+        )
         if res is None:
-            res = result
-            if isinstance(res, pd.DataFrame):
-                res.index.name = id_col
-                res = res.reset_index()
+            res = model_res
         else:
-            if isinstance(res, pd.DataFrame):
-                res = pd.concat([res, result], axis=1)
-            else:
-                res = res.join(result, on=id_col)
+            res = ufp.horizontal_concat([res, model_res[[model]]])
     return res
 
-# %% ../nbs/losses.ipynb 63
+# %% ../nbs/losses.ipynb 64
 def coverage(
     df: DataFrame,
     models: List[str],
@@ -542,7 +537,7 @@ def coverage(
         res = _pl_agg_expr(df, models, id_col, gen_expr)
     return res
 
-# %% ../nbs/losses.ipynb 67
+# %% ../nbs/losses.ipynb 68
 def calibration(
     df: DataFrame,
     models: List[str],
@@ -592,7 +587,7 @@ def calibration(
         res = _pl_agg_expr(df, models, id_col, gen_expr)
     return res
 
-# %% ../nbs/losses.ipynb 71
+# %% ../nbs/losses.ipynb 72
 def scaled_crps(
     df: DataFrame,
     models: List[str],
@@ -648,7 +643,7 @@ def scaled_crps(
                 2 * pl.col(model) * pl.col("counts") / (pl.col("norm") + eps)
             ).alias(model)
 
-        grouped_df = group_by(df, id_col)
+        grouped_df = ufp.group_by(df, id_col)
         norm = grouped_df.agg(pl.col(target_col).abs().sum().alias("norm"))
         sizes = df[id_col].value_counts()
         sizes.columns = [id_col, "counts"]
