@@ -285,10 +285,7 @@ def mase(
         lagged = pl.col(target_col).shift(seasonality).over(id_col)
         scale_expr = pl.col(target_col).sub(lagged).abs().alias("scale")
         scale = train_df.select([id_col, scale_expr])
-        try:
-            scale = scale.group_by(id_col).mean()
-        except AttributeError:
-            scale = scale.groupby(id_col).mean()
+        scale = ufp.group_by(scale, id_col).mean()
         scale = scale.with_columns(_zero_to_nan(pl.col("scale")))
 
         def gen_expr(model):
@@ -465,14 +462,11 @@ def mqloss(
     res: Optional[DataFrame] = None
     quantiles = np.asarray(quantiles)
     for model in models:
-        error = (df[target_col].to_numpy() - df[model].to_numpy()).reshape(-1, 1)
+        error = (df[target_col] - df[model]).to_numpy().reshape(-1, 1)
         loss = np.maximum(error * quantiles, error * (quantiles - 1)).mean(axis=1)
         model_res = type(df)({id_col: df[id_col], model: loss})
         model_res = ufp.group_by_agg(
-            model_res,
-            by=id_col,
-            aggs={model: "mean"},
-            maintain_order=True,
+            model_res, by=id_col, aggs={model: "mean"}, maintain_order=True
         )
         if res is None:
             res = model_res
@@ -519,7 +513,9 @@ def coverage(
                 df[f"{model}-lo-{level}"], df[f"{model}-hi-{level}"]
             )
         res = (
-            pd.DataFrame(out, columns=models).groupby(df[id_col], observed=True).mean()
+            pd.DataFrame(out, columns=models, index=df.index)
+            .groupby(df[id_col], observed=True)
+            .mean()
         )
         res.index.name = id_col
         res = res.reset_index()
@@ -575,7 +571,9 @@ def calibration(
         for j, model in enumerate(models):
             out[:, j] = df[target_col].le(df[f"{model}-hi-{level}"])
         res = (
-            pd.DataFrame(out, columns=models).groupby(df[id_col], observed=True).mean()
+            pd.DataFrame(out, columns=models, index=df.index)
+            .groupby(df[id_col], observed=True)
+            .mean()
         )
         res.index.name = id_col
         res = res.reset_index()
