@@ -5,7 +5,7 @@ __all__ = ['mae', 'mse', 'rmse', 'mape', 'smape', 'mase', 'rmae', 'quantile_loss
            'scaled_crps']
 
 # %% ../nbs/losses.ipynb 3
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -44,14 +44,13 @@ def _base_docstring(*args, **kwargs) -> Callable:
 # %% ../nbs/losses.ipynb 12
 def _pl_agg_expr(
     df: pl_DataFrame,
-    models: List[str],
+    models: Union[List[str], List[Tuple[str, str]]],
     id_col: str,
-    gen_expr: Callable[[str], "pl.Expr"],
+    gen_expr: Callable[[Union[str, Tuple[str, str]]], "pl.Expr"],
 ) -> pl_DataFrame:
     exprs = [gen_expr(model) for model in models]
     df = df.select([id_col, *exprs])
-    res = ufp.group_by(df, id_col).mean()
-    return res
+    return ufp.group_by(df, id_col, maintain_order=True).mean()
 
 # %% ../nbs/losses.ipynb 13
 @_base_docstring
@@ -358,7 +357,7 @@ def rmae(
 # %% ../nbs/losses.ipynb 52
 def quantile_loss(
     df: DataFrame,
-    models: List[str],
+    models: Dict[str, str],
     q: float = 0.5,
     id_col: str = "unique_id",
     target_col: str = "y",
@@ -374,8 +373,8 @@ def quantile_loss(
     ----------
     df : pandas or polars DataFrame
         Input dataframe with id, times, actuals and predictions.
-    models : list of str
-        Columns that identify the models predictions.
+    models : dict from str to str
+        Mapping from model name to the model predictions for the specified quantile.
     q : float (default=0.5)
         Quantile for the predictions' comparison.
     id_col : str (default='unique_id')
@@ -390,36 +389,37 @@ def quantile_loss(
     """
     if isinstance(df, pd.DataFrame):
         res: Optional[pd.DataFrame] = None
-        for model in models:
-            delta_y = df[target_col].sub(df[model], axis=0)
+        for model_name, pred_col in models.items():
+            delta_y = df[target_col].sub(df[pred_col], axis=0)
             model_res = (
                 np.maximum(q * delta_y, (q - 1) * delta_y)
                 .groupby(df[id_col], observed=True)
                 .mean()
-                .rename(model)
+                .rename(model_name)
                 .reset_index()
             )
             if res is None:
                 res = model_res
             else:
-                res[model] = model_res[model]
+                res[model_name] = model_res[model_name]
     else:
 
         def gen_expr(model):
-            delta_y = pl.col(target_col).sub(pl.col(model))
+            model_name, pred_col = model
+            delta_y = pl.col(target_col).sub(pl.col(pred_col))
             try:
                 col_max = pl.max_horizontal([q * delta_y, (q - 1) * delta_y])
             except AttributeError:
                 col_max = pl.max([q * delta_y, (q - 1) * delta_y])
-            return col_max.alias(model)
+            return col_max.alias(model_name)
 
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
+        res = _pl_agg_expr(df, list(models.items()), id_col, gen_expr)
     return res
 
 # %% ../nbs/losses.ipynb 58
 def mqloss(
     df: DataFrame,
-    models: List[str],
+    models: Dict[str, List[str]],
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
@@ -441,8 +441,8 @@ def mqloss(
     ----------
     df : pandas or polars DataFrame
         Input dataframe with id, times, actuals and predictions.
-    models : list of str
-        Columns that identify the models predictions.
+    models : dict from str to list of str
+        Mapping from model name to the model predictions for each quantile.
     quantiles : numpy array
         Quantiles to compare against.
     id_col : str (default='unique_id')
@@ -460,9 +460,10 @@ def mqloss(
     [1] https://www.jstor.org/stable/2629907
     """
     res: Optional[DataFrame] = None
-    quantiles = np.asarray(quantiles)
-    for model in models:
-        error = (df[target_col] - df[model]).to_numpy().reshape(-1, 1)
+    error = np.empty((df.shape[0], quantiles.size))
+    for model, predictions in models.items():
+        for j, q_preds in enumerate(predictions):
+            error[:, j] = (df[target_col] - df[q_preds]).to_numpy()
         loss = np.maximum(error * quantiles, error * (quantiles - 1)).mean(axis=1)
         model_res = type(df)({id_col: df[id_col], model: loss})
         model_res = ufp.group_by_agg(
@@ -471,7 +472,7 @@ def mqloss(
         if res is None:
             res = model_res
         else:
-            res = ufp.horizontal_concat([res, model_res[[model]]])
+            res = ufp.assign_columns(res, model, model_res[model])
     return res
 
 # %% ../nbs/losses.ipynb 64
@@ -536,22 +537,19 @@ def coverage(
 # %% ../nbs/losses.ipynb 68
 def calibration(
     df: DataFrame,
-    models: List[str],
-    level: int,
+    models: Dict[str, str],
     id_col: str = "unique_id",
     target_col: str = "y",
 ) -> DataFrame:
     """
-    Fraction of y that is lower than y_hat_hi.
+    Fraction of y that is lower than the model's predictions.
 
     Parameters
     ----------
     df : pandas or polars DataFrame
         Input dataframe with id, times, actuals and predictions.
-    models : list of str
-        Columns that identify the models predictions.
-    level : int
-        Confidence level used for intervals.
+    models : dict from str to str
+        Mapping from model name to the model predictions.
     id_col : str (default='unique_id')
         Column that identifies each serie.
     target_col : str (default='y')
@@ -568,10 +566,10 @@ def calibration(
     """
     if isinstance(df, pd.DataFrame):
         out = np.empty((df.shape[0], len(models)))
-        for j, model in enumerate(models):
-            out[:, j] = df[target_col].le(df[f"{model}-hi-{level}"])
+        for j, q_preds in enumerate(models.values()):
+            out[:, j] = df[target_col].le(df[q_preds])
         res = (
-            pd.DataFrame(out, columns=models, index=df.index)
+            pd.DataFrame(out, columns=models.keys(), index=df.index)
             .groupby(df[id_col], observed=True)
             .mean()
         )
@@ -580,15 +578,16 @@ def calibration(
     else:
 
         def gen_expr(model):
-            return pl.col(target_col).le(pl.col(f"{model}-hi-{level}")).alias(model)
+            model_name, q_preds = model
+            return pl.col(target_col).le(pl.col(q_preds)).alias(model_name)
 
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
+        res = _pl_agg_expr(df, list(models.items()), id_col, gen_expr)
     return res
 
 # %% ../nbs/losses.ipynb 72
 def scaled_crps(
     df: DataFrame,
-    models: List[str],
+    models: Dict[str, List[str]],
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
@@ -604,8 +603,8 @@ def scaled_crps(
     ----------
     df : pandas or polars DataFrame
         Input dataframe with id, times, actuals and predictions.
-    models : list of str
-        Columns that identify the models predictions.
+    models : dict from str to list of str
+        Mapping from model name to the model predictions for each quantile.
     quantiles : numpy array
         Quantiles to compare against.
     id_col : str (default='unique_id')
@@ -625,13 +624,12 @@ def scaled_crps(
     eps = np.finfo(float).eps
     quantiles = np.asarray(quantiles)
     loss = mqloss(df, models, quantiles, id_col, target_col)
+    sizes = ufp.counts_by_id(df, id_col)
     if isinstance(loss, pd.DataFrame):
         loss = loss.set_index(id_col)
         assert isinstance(df, pd.DataFrame)
         norm = df[target_col].abs().groupby(df[id_col], observed=True).sum()
-        sizes = df[id_col].value_counts()
-        scales = sizes * (sizes + 1) / 2
-        res = 2 * loss.mul(scales, axis=0).div(norm + eps, axis=0)
+        res = 2 * loss.mul(sizes["counts"], axis=0).div(norm + eps, axis=0)
         res.index.name = id_col
         res = res.reset_index()
     else:
@@ -643,10 +641,10 @@ def scaled_crps(
 
         grouped_df = ufp.group_by(df, id_col)
         norm = grouped_df.agg(pl.col(target_col).abs().sum().alias("norm"))
-        sizes = df[id_col].value_counts()
-        sizes.columns = [id_col, "counts"]
-        sizes = sizes.with_columns(pl.col("counts") * (pl.col("counts") + 1) / 2)
         res = _pl_agg_expr(
-            loss.join(sizes, on=id_col).join(norm, on=id_col), models, id_col, gen_expr
+            loss.join(sizes, on=id_col).join(norm, on=id_col),
+            list(models.keys()),
+            id_col,
+            gen_expr,
         )
     return res
