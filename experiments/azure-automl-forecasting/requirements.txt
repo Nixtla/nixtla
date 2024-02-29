@@ -1,0 +1,6 @@
+azure-ai-ml
+azure-identity
+azureml-core
+mltable
+pandas
+python-dotenv
