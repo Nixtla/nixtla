@@ -7,4 +7,5 @@ nixtlats
 pandas
 python-dotenv
 rich
+statsforecast
 utilsforecast
