@@ -6,3 +6,5 @@ mltable
 nixtlats
 pandas
 python-dotenv
+rich
+utilsforecast
