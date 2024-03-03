@@ -1,6 +1,8 @@
 azure-ai-ml
 azure-identity
 azureml-core
+fire
 mltable
+nixtlats
 pandas
 python-dotenv
