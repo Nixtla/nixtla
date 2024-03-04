@@ -32,7 +32,7 @@ from .grouped_array import GroupedArray
 
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
-from .target_transforms import BaseGroupedArrayTargetTransform
+from .target_transforms import _BaseGroupedArrayTargetTransform
 from .utils import PredictionIntervals
 
 # %% ../nbs/forecast.ipynb 6
@@ -338,13 +338,13 @@ class MLForecast:
             # compute absolute error for each model
             abs_err = abs(cv_results[model] - cv_results[target_col])
             cv_results = ufp.assign_columns(cv_results, model, abs_err)
-        return cv_results.drop(columns=target_col)
+        return ufp.drop_columns(cv_results, target_col)
 
     def _invert_transforms_fitted(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.ts.target_transforms is None:
             return df
         if any(
-            isinstance(tfm, BaseGroupedArrayTargetTransform)
+            isinstance(tfm, _BaseGroupedArrayTargetTransform)
             for tfm in self.ts.target_transforms
         ):
             model_cols = [
@@ -354,16 +354,16 @@ class MLForecast:
             sizes = id_counts["counts"].to_numpy()
             indptr = np.append(0, sizes.cumsum())
         for tfm in self.ts.target_transforms[::-1]:
-            if isinstance(tfm, BaseGroupedArrayTargetTransform):
+            if isinstance(tfm, _BaseGroupedArrayTargetTransform):
                 if self.ts._dropped_series is not None:
-                    tfm.idxs = np.delete(
+                    idxs = np.delete(
                         np.arange(self.ts.ga.n_groups), self.ts._dropped_series
                     )
+                    tfm = tfm.take(idxs)
                 for col in model_cols:
                     ga = GroupedArray(df[col].to_numpy(), indptr)
                     ga = tfm.inverse_transform_fitted(ga)
                     df = ufp.assign_columns(df, col, ga.data)
-                tfm.idxs = None
             else:
                 df = tfm.inverse_transform(df)
         return df
@@ -684,6 +684,10 @@ class MLForecast:
                 static_features=self.ts.static_features,
                 keep_last_n=self.ts.keep_last_n,
             )
+            core_tfms = new_ts._get_core_lag_tfms()
+            if core_tfms:
+                # populate the stats needed for the updates
+                new_ts._compute_transforms(core_tfms, updates_only=False)
             new_ts.max_horizon = self.ts.max_horizon
             new_ts.as_numpy = self.ts.as_numpy
             ts = new_ts
@@ -899,7 +903,9 @@ class MLForecast:
                 if c not in static + [id_col, time_col, target_col]
             ]
             if dynamic:
-                X_df: Optional[DataFrame] = valid.drop(columns=static + [target_col])
+                X_df: Optional[DataFrame] = ufp.drop_columns(
+                    valid, static + [target_col]
+                )
             else:
                 X_df = None
             y_pred = self.predict(

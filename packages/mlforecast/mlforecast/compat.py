@@ -5,20 +5,8 @@ __all__ = []
 
 # %% ../nbs/compat.ipynb 1
 try:
-    import coreforecast.lag_transforms as core_tfms
-    import coreforecast.scalers as core_scalers
-    from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
-
-    from mlforecast.lag_transforms import BaseLagTransform, Lag
-
-    CORE_INSTALLED = True
+    from window_ops.shift import shift_array
 except ImportError:
-    core_tfms = None
-    core_scalers = None
-    CoreGroupedArray = None
 
-    class BaseLagTransform: ...
-
-    Lag = None
-
-    CORE_INSTALLED = False
+    def shift_array(*_args, **_kwargs):
+        raise Exception

@@ -2,7 +2,7 @@ name: mlforecast
 channels:
   - conda-forge
 dependencies:
-  - coreforecast>=0.0.4
+  - coreforecast>=0.0.7
   - dask<2023.1.1
   - fsspec
   - gitpython
@@ -21,7 +21,7 @@ dependencies:
   - shap
   - statsmodels
   - window-ops
-  - xgboost
+  - py-xgboost-cpu
   - pip:
     - datasetsforecast
     - duckdb<0.8
@@ -31,5 +31,5 @@ dependencies:
     - polars
     - ray<2.8
     - triad==0.9.1
-    - utilsforecast>=0.0.24
+    - utilsforecast>=0.0.27
     - xgboost_ray

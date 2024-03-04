@@ -3,35 +3,51 @@
 # %% auto 0
 __all__ = ['RollingMean', 'RollingStd', 'RollingMin', 'RollingMax', 'RollingQuantile', 'SeasonalRollingMean',
            'SeasonalRollingStd', 'SeasonalRollingMin', 'SeasonalRollingMax', 'SeasonalRollingQuantile', 'ExpandingMean',
-           'ExpandingStd', 'ExpandingMin', 'ExpandingMax', 'ExpandingQuantile', 'ExponentiallyWeightedMean']
+           'ExpandingStd', 'ExpandingMin', 'ExpandingMax', 'ExpandingQuantile', 'ExponentiallyWeightedMean', 'Offset',
+           'Combine']
 
 # %% ../nbs/lag_transforms.ipynb 3
+import copy
 import inspect
-from typing import Optional
+import re
+from typing import Callable, Optional, Sequence
 
 import numpy as np
-
-try:
-    import coreforecast.lag_transforms as core_tfms
-    from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
-except ImportError:
-    raise ImportError(
-        "The lag_transforms module requires the coreforecast package. "
-        "Please install it with `pip install coreforecast`.\n"
-        'You can also install mlforecast with the lag_transforms extra: `pip install "mlforecast[lag_transforms]"`'
-    ) from None
-from sklearn.base import BaseEstimator
+import coreforecast.lag_transforms as core_tfms
+from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
+from sklearn.base import BaseEstimator, clone
 
 # %% ../nbs/lag_transforms.ipynb 4
-class BaseLagTransform(BaseEstimator):
-    def _set_core_tfm(self, lag: int) -> "BaseLagTransform":
-        init_args = {
-            k: getattr(self, k) for k in inspect.signature(self.__class__).parameters
+def _pascal2camel(pascal_str: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_str).lower()
+
+# %% ../nbs/lag_transforms.ipynb 5
+class _BaseLagTransform(BaseEstimator):
+    def _get_init_signature(self):
+        return {
+            k: v
+            for k, v in inspect.signature(self.__class__.__init__).parameters.items()
+            if k != "self"
         }
+
+    def _set_core_tfm(self, lag: int) -> "_BaseLagTransform":
+        init_args = {k: getattr(self, k) for k in self._get_init_signature()}
         self._core_tfm = getattr(core_tfms, self.__class__.__name__)(
             lag=lag, **init_args
         )
         return self
+
+    def _get_name(self, lag: int) -> str:
+        init_params = self._get_init_signature()
+        result = f"{_pascal2camel(self.__class__.__name__)}_lag{lag}"
+        changed_params = [
+            f"{name}{getattr(self, name)}"
+            for name, arg in init_params.items()
+            if arg.default != getattr(self, name)
+        ]
+        if changed_params:
+            result += "_" + "_".join(changed_params)
+        return result
 
     def transform(self, ga: CoreGroupedArray) -> np.ndarray:
         return self._core_tfm.transform(ga)
@@ -39,17 +55,36 @@ class BaseLagTransform(BaseEstimator):
     def update(self, ga: CoreGroupedArray) -> np.ndarray:
         return self._core_tfm.update(ga)
 
-# %% ../nbs/lag_transforms.ipynb 5
-class Lag(BaseLagTransform):
+    def take(self, idxs: np.ndarray) -> "_BaseLagTransform":
+        out = copy.deepcopy(self)
+        out._core_tfm = self._core_tfm.take(idxs)
+        return out
+
+    @staticmethod
+    def stack(transforms: Sequence["_BaseLagTransform"]) -> "_BaseLagTransform":
+        out = copy.deepcopy(transforms[0])
+        out._core_tfm = transforms[0]._core_tfm.stack(
+            [tfm._core_tfm for tfm in transforms]
+        )
+        return out
+
+# %% ../nbs/lag_transforms.ipynb 6
+class Lag(_BaseLagTransform):
     def __init__(self, lag: int):
         self.lag = lag
         self._core_tfm = core_tfms.Lag(lag=lag)
 
+    def _set_core_tfm(self, _lag: int) -> "Lag":
+        return self
+
+    def _get_name(self, lag: int) -> str:
+        return f"lag{lag}"
+
     def __eq__(self, other):
         return isinstance(other, Lag) and self.lag == other.lag
 
-# %% ../nbs/lag_transforms.ipynb 6
-class _RollingBase(BaseLagTransform):
+# %% ../nbs/lag_transforms.ipynb 7
+class _RollingBase(_BaseLagTransform):
     "Rolling statistic"
 
     def __init__(self, window_size: int, min_samples: Optional[int] = None):
@@ -65,7 +100,7 @@ class _RollingBase(BaseLagTransform):
         self.window_size = window_size
         self.min_samples = min_samples
 
-# %% ../nbs/lag_transforms.ipynb 7
+# %% ../nbs/lag_transforms.ipynb 8
 class RollingMean(_RollingBase): ...
 
 
@@ -92,8 +127,8 @@ class RollingQuantile(_RollingBase):
         )
         return self
 
-# %% ../nbs/lag_transforms.ipynb 9
-class _Seasonal_RollingBase(BaseLagTransform):
+# %% ../nbs/lag_transforms.ipynb 10
+class _Seasonal_RollingBase(_BaseLagTransform):
     """Rolling statistic over seasonal periods"""
 
     def __init__(
@@ -114,7 +149,7 @@ class _Seasonal_RollingBase(BaseLagTransform):
         self.window_size = window_size
         self.min_samples = min_samples
 
-# %% ../nbs/lag_transforms.ipynb 10
+# %% ../nbs/lag_transforms.ipynb 11
 class SeasonalRollingMean(_Seasonal_RollingBase): ...
 
 
@@ -142,13 +177,13 @@ class SeasonalRollingQuantile(_Seasonal_RollingBase):
         )
         self.p = p
 
-# %% ../nbs/lag_transforms.ipynb 12
-class _ExpandingBase(BaseLagTransform):
+# %% ../nbs/lag_transforms.ipynb 13
+class _ExpandingBase(_BaseLagTransform):
     """Expanding statistic"""
 
     def __init__(self): ...
 
-# %% ../nbs/lag_transforms.ipynb 13
+# %% ../nbs/lag_transforms.ipynb 14
 class ExpandingMean(_ExpandingBase): ...
 
 
@@ -165,8 +200,8 @@ class ExpandingQuantile(_ExpandingBase):
     def __init__(self, p: float):
         self.p = p
 
-# %% ../nbs/lag_transforms.ipynb 15
-class ExponentiallyWeightedMean(BaseLagTransform):
+# %% ../nbs/lag_transforms.ipynb 16
+class ExponentiallyWeightedMean(_BaseLagTransform):
     """Exponentially weighted average
 
     Parameters
@@ -176,3 +211,61 @@ class ExponentiallyWeightedMean(BaseLagTransform):
 
     def __init__(self, alpha: float):
         self.alpha = alpha
+
+# %% ../nbs/lag_transforms.ipynb 18
+class Offset(_BaseLagTransform):
+    """Shift series before computing transformation
+
+    Parameters
+    ----------
+    tfm : LagTransform
+        Transformation to be applied
+    n : int
+        Number of positions to shift (lag) series before applying the transformation"""
+
+    def __init__(self, tfm: _BaseLagTransform, n: int):
+        self.tfm = tfm
+        self.n = n
+
+    def _get_name(self, lag: int) -> str:
+        return self.tfm._get_name(lag + self.n)
+
+    def _set_core_tfm(self, lag: int) -> "Offset":
+        self._core_tfm = clone(self.tfm)._set_core_tfm(lag + self.n)
+        return self
+
+# %% ../nbs/lag_transforms.ipynb 20
+class Combine(_BaseLagTransform):
+    """Combine two lag transformations using an operator
+
+    Parameters
+    ----------
+    tfm1 : LagTransform
+        First transformation.
+    tfm2 : LagTransform
+        Second transformation.
+    operator : callable
+        Binary operator that defines how to combine the two transformations."""
+
+    def __init__(
+        self, tfm1: _BaseLagTransform, tfm2: _BaseLagTransform, operator: Callable
+    ):
+        self.tfm1 = tfm1
+        self.tfm2 = tfm2
+        self.operator = operator
+
+    def _set_core_tfm(self, lag: int) -> "Combine":
+        self.tfm1 = clone(self.tfm1)._set_core_tfm(lag)
+        self.tfm2 = clone(self.tfm2)._set_core_tfm(lag)
+        return self
+
+    def _get_name(self, lag: int) -> str:
+        lag1 = getattr(self.tfm1, "lag", lag)
+        lag2 = getattr(self.tfm2, "lag", lag)
+        return f"{self.tfm1._get_name(lag1)}_{self.operator.__name__}_{self.tfm2._get_name(lag2)}"
+
+    def transform(self, ga: CoreGroupedArray) -> np.ndarray:
+        return self.operator(self.tfm1.transform(ga), self.tfm2.transform(ga))
+
+    def update(self, ga: CoreGroupedArray) -> np.ndarray:
+        return self.operator(self.tfm1.update(ga), self.tfm2.update(ga))

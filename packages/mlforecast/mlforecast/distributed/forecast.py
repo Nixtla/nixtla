@@ -151,6 +151,10 @@ class DistributedMLForecast:
                 static_features=static_features,
                 keep_last_n=keep_last_n,
             )
+            core_tfms = ts._get_core_lag_tfms()
+            if core_tfms:
+                # populate the stats needed for the updates
+                ts._compute_transforms(core_tfms, updates_only=False)
             ts.as_numpy = False
             return [
                 [
@@ -746,9 +750,34 @@ class DistributedMLForecast:
                 combined = pd.Index(combined)
             return combined
 
+        def combine_target_tfms(by_partition):
+            by_transform = [
+                [part[i] for part in by_partition] for i in range(len(by_partition[0]))
+            ]
+            out = []
+            for tfms in by_transform:
+                out.append(tfms[0].stack(tfms))
+            return out
+
+        def combine_core_lag_tfms(by_partition):
+            by_transform = [
+                (name, [part[name] for part in by_partition])
+                for name in by_partition[0].keys()
+            ]
+            out = {}
+            for name, partition_tfms in by_transform:
+                out[name] = partition_tfms[0].stack(partition_tfms)
+            return out
+
         uids = possibly_concat_indices([ts.uids for ts in all_ts])
         last_dates = possibly_concat_indices([ts.last_dates for ts in all_ts])
         statics = ufp.vertical_concat([ts.static_features_ for ts in all_ts])
+        combined_target_tfms = combine_target_tfms(
+            [ts.target_transforms for ts in all_ts]
+        )
+        combined_core_lag_tfms = combine_core_lag_tfms(
+            [ts._get_core_lag_tfms() for ts in all_ts]
+        )
         sizes = np.hstack([np.diff(ts.ga.indptr) for ts in all_ts])
         data = np.hstack([ts.ga.data for ts in all_ts])
         indptr = np.append(0, sizes).cumsum()
@@ -765,6 +794,9 @@ class DistributedMLForecast:
             last_dates = last_dates[sort_idxs]
             statics = ufp.take_rows(statics, sort_idxs)
             statics = ufp.drop_index_if_pandas(statics)
+            for tfm in combined_core_lag_tfms.values():
+                tfm._core_tfm = tfm._core_tfm.take(sort_idxs)
+            combined_target_tfms = [tfm.take(sort_idxs) for tfm in combined_target_tfms]
             old_data = data.copy()
             old_indptr = indptr.copy()
             indptr = np.append(0, sizes[sort_idxs]).cumsum()
@@ -782,6 +814,8 @@ class DistributedMLForecast:
         ts.last_dates = last_dates
         ts.ga = ga
         ts.static_features_ = statics
+        ts.transforms.update(combined_core_lag_tfms)
+        ts.target_transforms = combined_target_tfms
         fcst = MLForecast(models=self.models_, freq=ts.freq)
         fcst.ts = ts
         fcst.models_ = self.models_
