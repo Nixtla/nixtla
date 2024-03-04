@@ -19,7 +19,7 @@ dependencies:
     - utilsforecast>=0.0.13
     - requests
     - fugue[ray]>=0.8.7
-    - ray[serve-grpc]
+    - ray[serve-grpc]<2.6.3
     - fire
     - tabulate
     - tenacity
