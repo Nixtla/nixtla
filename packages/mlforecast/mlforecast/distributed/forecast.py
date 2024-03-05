@@ -716,6 +716,34 @@ class DistributedMLForecast:
         fcst.num_partitions = len(paths)
         return fcst
 
+    @staticmethod
+    def _update(items: List[List[Any]], new_df) -> Iterable[List[Any]]:
+        for serialized_ts, serialized_transformed, serialized_valid in items:
+            ts = cloudpickle.loads(serialized_ts)
+            partition_mask = ufp.is_in(new_df[ts.id_col], ts.uids)
+            partition_df = ufp.filter_with_mask(new_df, partition_mask)
+            ts.update(partition_df)
+            yield [cloudpickle.dumps(ts), serialized_transformed, serialized_valid]
+
+    def update(self, df: pd.DataFrame) -> None:
+        """Update the values of the stored series.
+
+        Parameters
+        ----------
+        df : pandas DataFrame
+            Dataframe with new observations."""
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("`df` must be a pandas DataFrame.")
+        res = fa.transform(
+            self._partition_results,
+            DistributedMLForecast._update,
+            params={"new_df": df},
+            schema="ts:binary,train:binary,valid:binary",
+            engine=self.engine,
+            as_fugue=True,
+        )
+        self._partition_results = fa.persist(res)
+
     def to_local(self) -> MLForecast:
         """Convert this distributed forecast object into a local one
 

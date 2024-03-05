@@ -974,3 +974,12 @@ class MLForecast:
         fcst.ts = ts
         fcst.models_ = models
         return fcst
+
+    def update(self, df: DataFrame) -> None:
+        """Update the values of the stored series.
+
+        Parameters
+        ----------
+        df : pandas or polars DataFrame
+            Dataframe with new observations."""
+        self.ts.update(df)
