@@ -4,5 +4,5 @@ ignore_missing_imports = true
 module = 'utilsforecast.compat'
 ignore_errors = true
 
-[tool.ruff]
+[tool.ruff.lint]
 select = ["F", "ARG"]
