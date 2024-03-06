@@ -13,6 +13,7 @@ import pandas as pd
 
 from .compat import DataFrame, pl, pl_DataFrame, pl_Series
 from .processing import group_by, repeat
+from .validation import _is_int_dtype
 
 # %% ../nbs/preprocessing.ipynb 4
 def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
@@ -100,7 +101,7 @@ def fill_gaps(
         starts = _determine_bound_pl(start, times_by_id, "min")
         ends = _determine_bound_pl(end, times_by_id, "max")
         grid = pl_DataFrame({id_col: times_by_id[id_col]})
-        if starts.is_integer():
+        if _is_int_dtype(starts):
             grid = grid.with_columns(
                 pl.int_ranges(starts, ends + freq, step=freq, eager=True).alias(
                     time_col
@@ -133,7 +134,9 @@ def fill_gaps(
             freq = "D"
         if offset.n > 1:
             freq = freq.replace(str(offset.n), "")
-        if not hasattr(offset, "delta"):
+        try:
+            pd.Timedelta(offset)
+        except ValueError:
             # irregular freq, try using first letter of abbreviation
             # such as MS = 'Month Start' -> 'M', YS = 'Year Start' -> 'Y'
             freq = freq[0]
