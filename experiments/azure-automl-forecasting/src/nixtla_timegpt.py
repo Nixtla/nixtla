@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 from time import time
 
@@ -13,9 +12,6 @@ load_dotenv()
 
 def timegpt_forecast(dataset_path: str, results_dir: str = "./results"):
     dataset = ExperimentDataset.from_parquet(parquet_path=dataset_path)
-    size_df = sys.getsizeof(dataset.Y_df_train) / (1024 * 1024)
-    max_partition_size_mb = 20
-    num_partitions = int(size_df / max_partition_size_mb) + 1
     timegpt = TimeGPT(max_retries=1)
     start = time()
     forecast_df = timegpt.forecast(
@@ -23,7 +19,6 @@ def timegpt_forecast(dataset_path: str, results_dir: str = "./results"):
         h=dataset.horizon,
         freq=dataset.pandas_frequency,
         model="timegpt-1-long-horizon",
-        num_partitions=num_partitions,
     )
     end = time()
     total_time = end - start
