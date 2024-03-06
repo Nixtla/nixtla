@@ -23,7 +23,7 @@ run_methods:
 		echo "Running methods for $$file"; \
 		$(MAKE) run_timegpt dataset_path=./data/filtered_datasets/$$file; \
 		$(MAKE) run_sn dataset_path=./data/filtered_datasets/$$file; \
-		$(MAKE) run_automl dataset_path=./data/$$file; \
+		$(MAKE) run_automl dataset_path=./data/filtered_datasets/$$file; \
 	done
 
 download_automl_forecasts:
