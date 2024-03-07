@@ -1,6 +1,6 @@
 # Nixtla TimeGPT vs. Azure AutoML: A Comprehensive Performance Analysis
 
-This experiment evaluates the performance of **Nixtla TimeGPT's zero-shot inference** against **Microsoft's Azure AutoML** in the domain of time series forecasting. Our analysis shows that TimeGPT **surpasses Azure AutoML by xx%, xx%, and xx% in MASE, MAE, and RMSE metrics** and has **xxxx improvement in computational efficiency**. This evaluation spanned over 3,000 distinct time series across various data frequencies, with considerations for Azure AutoML's cost constraints.
+This experiment evaluates the performance of **Nixtla TimeGPT's zero-shot inference** against **Microsoft's Azure AutoML** in the domain of time series forecasting. Our analysis shows that TimeGPT **surpasses Azure AutoML by 12%, 12%, and 10% in MAE, RMSE, and MASE metrics** and has **300x improvement in computational efficiency**. This evaluation spanned over 3,000 distinct time series across various data frequencies, with considerations for Azure AutoML's cost constraints.
 
 # Introduction
 
@@ -13,6 +13,8 @@ Our study involved a detailed comparison of both models across various datasets,
 ## Results
 
 The following table shows the main findings of our analysis, presenting a comparison of performance metrics (MASE, MAE, RMSE) and computational time (in seconds) across different datasets. The best results are highlighted in **bold** for clarity.
+
+<img width="632" alt="image" src="https://github.com/Nixtla/nixtla/assets/10517170/0cc4285e-2572-4f08-9846-94c68ad72e8b">
 
 
 ## Reproducibility
