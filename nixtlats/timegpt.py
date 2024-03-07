@@ -244,7 +244,7 @@ class _TimeGPTModel:
                     hi_or_lo = "lo" if lv > 0 else "hi"
                     lv = abs(lv)
                     col = f"TimeGPT-{hi_or_lo}-{lv}"
-                q_col = f"TimeGPT-q-{q}"
+                q_col = f"TimeGPT-q-{int(q * 100)}"
                 fcst_df[q_col] = fcst_df[col].values
                 cols.append(q_col)
             fcst_df = fcst_df[cols]
@@ -1091,6 +1091,10 @@ class TimeGPT(_TimeGPT):
         quantiles : List[float], optional (default=None)
             Quantiles to forecast, list between (0, 1).
             `level` and `quantiles` should not be used simultaneously.
+            The output dataframe will have the quantile columns
+            formatted as TimeGPT-q-{int(100 * q)} for each q.
+            100 * q represents percentiles but we choose this notation
+            to avoid handling __dots__ (.) in names.
         finetune_steps : int (default=0)
             Number of steps used to finetune TimeGPT in the
             new data.
@@ -1330,6 +1334,10 @@ class TimeGPT(_TimeGPT):
         quantiles : List[float], optional (default=None)
             Quantiles to forecast, list between (0, 1).
             `level` and `quantiles` should not be used simultaneously.
+            The output dataframe will have the quantile columns
+            formatted as TimeGPT-q-{int(100 * q)} for each q.
+            100 * q represents percentiles but we choose this notation
+            to avoid handling __dots__ (.) in names.
         validate_token : bool (default=False)
             If True, validates token before
             sending requests.
