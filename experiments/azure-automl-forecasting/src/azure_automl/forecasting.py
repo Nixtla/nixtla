@@ -50,16 +50,8 @@ def start_forecasting_job(
     dataset_path: str,
     begin_create_or_update_aml_compute: bool = False,
 ):
-    # for Daily_D and Weekly_W-MON we restrcit the max_insample_length
-    # to prevent the cluster for breaking
     experiment_name = dataset_path.split("/")[-1].split(".")[0]
-    kwargs = dict()
-    if experiment_name in ["Daily_D", "Weekly_W-MON"]:
-        kwargs["max_insample_length"] = 100
-    dataset = ExperimentDataset.from_parquet(
-        parquet_path=dataset_path,
-        **kwargs,
-    )
+    dataset = ExperimentDataset.from_parquet(parquet_path=dataset_path)
     azure_automl = AzureAutoML.from_environment()
     azure_automl_jobs = AzureAutoMLJobs()
 
