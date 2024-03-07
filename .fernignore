@@ -4,8 +4,10 @@ nbs/
 .github/
 tests/
 action_files/
+experiments/
 docs-scripts/
 LICENSE
+CHANGELOG.md
 CONTRIBUTING.md
 .gitmodules
 .gitignore

@@ -100,6 +100,7 @@ class _TimeGPTModel:
         freq: str = None,
         level: Optional[List[Union[int, float]]] = None,
         finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -116,6 +117,7 @@ class _TimeGPTModel:
         self.base_freq = freq
         self.level = level
         self.finetune_steps = finetune_steps
+        self.finetune_loss = finetune_loss
         self.clean_ex_first = clean_ex_first
         self.date_features = date_features
         self.date_features_to_one_hot = date_features_to_one_hot
@@ -218,7 +220,7 @@ class _TimeGPTModel:
         if self.freq is None or self.freq in special_freqs:
             unique_id = df.iloc[0]["unique_id"]
             df_id = df.query("unique_id == @unique_id")
-            inferred_freq = pd.infer_freq(df_id["ds"])
+            inferred_freq = pd.infer_freq(df_id["ds"].sort_values())
             if inferred_freq is None:
                 raise Exception(
                     "Could not infer frequency of ds column. This could be due to "
@@ -295,7 +297,7 @@ class _TimeGPTModel:
             future_dates = X_df["ds"].unique().tolist()
         else:
             future_dates = []
-        dates = pd.DatetimeIndex(train_dates + future_dates)
+        dates = pd.DatetimeIndex(np.unique(train_dates + future_dates).tolist())
         date_features_df = pd.DataFrame({"ds": dates})
         for feature in self.date_features:
             feat_df = self.compute_date_feature(dates, feature)
@@ -481,6 +483,7 @@ class _TimeGPTModel:
             freq=self.freq,
             level=self.level,
             finetune_steps=self.finetune_steps,
+            finetune_loss=self.finetune_loss,
             clean_ex_first=self.clean_ex_first,
             model=self.model,
         )
@@ -749,6 +752,7 @@ class _TimeGPT:
         X_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
         finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         validate_token: bool = False,
         add_history: bool = False,
@@ -768,6 +772,7 @@ class _TimeGPT:
             freq=freq,
             level=level,
             finetune_steps=finetune_steps,
+            finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
@@ -834,6 +839,7 @@ class _TimeGPT:
         n_windows: int = 1,
         step_size: Optional[int] = None,
         finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -851,6 +857,7 @@ class _TimeGPT:
             freq=freq,
             level=level,
             finetune_steps=finetune_steps,
+            finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
@@ -999,6 +1006,7 @@ class TimeGPT(_TimeGPT):
         X_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
         finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         validate_token: bool = False,
         add_history: bool = False,
@@ -1041,6 +1049,8 @@ class TimeGPT(_TimeGPT):
         finetune_steps : int (default=0)
             Number of steps used to finetune TimeGPT in the
             new data.
+        finetune_loss : str (default='default')
+            Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
             using TimeGPT.
@@ -1085,6 +1095,7 @@ class TimeGPT(_TimeGPT):
                 X_df=X_df,
                 level=level,
                 finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 add_history=add_history,
@@ -1105,6 +1116,7 @@ class TimeGPT(_TimeGPT):
                 X_df=X_df,
                 level=level,
                 finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 add_history=add_history,
@@ -1231,6 +1243,7 @@ class TimeGPT(_TimeGPT):
         n_windows: int = 1,
         step_size: Optional[int] = None,
         finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -1276,6 +1289,8 @@ class TimeGPT(_TimeGPT):
         finetune_steps : int (default=0)
             Number of steps used to finetune TimeGPT in the
             new data.
+        finetune_loss : str (default='default')
+            Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
             using TimeGPT.
@@ -1313,6 +1328,7 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 level=level,
                 finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 date_features=date_features,
@@ -1333,6 +1349,7 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 level=level,
                 finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 date_features=date_features,
