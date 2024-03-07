@@ -77,11 +77,16 @@ def filter_and_clean_dataset(
         # we add n_seasonalities to min_train_size_per_series
         # to keep the series long enough
         min_train_size_per_series += n_seasonalities * ds_params.seasonality
+    uids = df["unique_id"].unique()  # type: ignore
     df = (
         df.groupby("unique_id")
         .filter(lambda x: len(x) >= min_train_size_per_series)
+        .groupby("unique_id")  # type: ignore
         .tail(max_insample_length + ds_params.horizon)
         .reset_index(drop=True)
+    )
+    main_logger.info(
+        f"Filtering out {len(uids) - len(df['unique_id'].unique())} series"
     )
     uids = df["unique_id"].unique()  # type: ignore
     if len(uids) > max_series:
