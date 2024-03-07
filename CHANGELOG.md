@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.21
+
+### 🚀 Feature Enhancements
+
+#### Introduction of Quantile Forecasts in `forecast` and `cross_validation` Methods 📈
+
+We're thrilled to announce the integration of the `quantiles` argument into TimeGP's `forecast` and `cross_validation` methods. This feature allows users to specify a list of quantiles, offering a comprehensive view of potential future values under uncertainty.
+
+- **Quantile Forecasting Capability:**
+  By providing a list of quantiles, users can now obtain forecasts at various percentiles of the forecast distribution. This is crucial for understanding the range of possible outcomes and assessing risks more effectively.
+
+``` python
+# Generate quantile forecasts
+quantiles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+timegpt_quantile_fcst_df = timegpt.forecast(df=df, h=12, quantiles=quantiles, ...)
+```
+
+- **Enhanced Cross-Validation with Quantiles:**
+  The `cross_validation` method has been updated to support quantile forecasting, enabling a more nuanced validation of model performance across different percentiles.
+
+``` python
+# Apply quantile forecasting in cross-validation
+timegpt_cv_quantile_fcst_df = timegpt.cross_validation(df=df, h=12, n_windows=5, quantiles=quantiles, ...)
+```
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.1.21).*
+
 ## 0.1.20
 
 ### 🚀 Feature Enhancements
