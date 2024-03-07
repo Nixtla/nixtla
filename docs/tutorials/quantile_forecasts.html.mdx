@@ -1,0 +1,247 @@
+---
+output-file: quantile_forecasts.html
+title: Quantile Forecasts
+---
+
+
+Quantile forecasts are a critical component of TimeGPT’s approach to
+time series forecasting, offering an understanding of future
+uncertainties. Unlike traditional point forecasts, which provide a
+singular expected value, quantile forecasts present specific percentiles
+of the forecast distribution, allowing for a more detailed exploration
+of potential outcomes.
+
+This method acknowledges the inherent randomness in future time series
+values by treating them as random variables with their own distribution,
+termed the “forecast distribution.” Quantile forecasts then extract key
+points from this distribution, each representing a different level of
+confidence or probability. For instance, the 25th and 75th quantiles
+give insights into the lower and upper quartiles of expected outcomes,
+respectively, while the 50th quantile, or median, offers a central
+estimate.
+
+By focusing on quantile forecasts, TimeGPT enables users to gauge not
+just a single expected outcome but to assess the likelihood of various
+scenarios. This approach is helpful for planning under uncertainty,
+providing a spectrum of possible future values, each attached to a
+specific confidence level. Thus, users can make more informed decisions
+by considering the full range of potential outcomes. TimeGPT uses
+conformal prediction to produce the quantiles.
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/10_quantile_forecasts.ipynb)
+
+```python
+import pandas as pd
+from nixtlats import TimeGPT
+```
+
+
+```python
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
+```
+
+When using TimeGPT for time series forecasting, you can set the
+quantiles you want to predict. Here’s how you could do it:
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+df.head()
+```
+
+|     | timestamp  | value |
+|-----|------------|-------|
+| 0   | 1949-01-01 | 112   |
+| 1   | 1949-02-01 | 118   |
+| 2   | 1949-03-01 | 132   |
+| 3   | 1949-04-01 | 129   |
+| 4   | 1949-05-01 | 121   |
+
+```python
+quantiles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+timegpt_quantile_fcst_df = timegpt.forecast(
+    df=df, h=12, 
+    quantiles=quantiles, 
+    time_col='timestamp', target_col='value',
+)
+timegpt_quantile_fcst_df.head()
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Restricting input...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+```
+
+|     | timestamp  | TimeGPT    | TimeGPT-q-10 | TimeGPT-q-20 | TimeGPT-q-30 | TimeGPT-q-40 | TimeGPT-q-50 | TimeGPT-q-60 | TimeGPT-q-70 | TimeGPT-q-80 | TimeGPT-q-90 |
+|-----|------------|------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|
+| 0   | 1961-01-01 | 437.837921 | 431.987061   | 435.043768   | 435.384332   | 436.402124   | 437.837921   | 439.273718   | 440.291510   | 440.632074   | 443.688782   |
+| 1   | 1961-02-01 | 426.062714 | 412.704926   | 414.832806   | 416.042401   | 421.719165   | 426.062714   | 430.406262   | 436.083026   | 437.292621   | 439.420502   |
+| 2   | 1961-03-01 | 463.116547 | 437.412534   | 444.234955   | 446.420203   | 450.705731   | 463.116547   | 475.527362   | 479.812891   | 481.998138   | 488.820560   |
+| 3   | 1961-04-01 | 478.244507 | 448.726837   | 455.428375   | 465.570038   | 469.879114   | 478.244507   | 486.609900   | 490.918976   | 501.060638   | 507.762177   |
+| 4   | 1961-05-01 | 505.646484 | 478.409872   | 493.154340   | 497.990857   | 499.138727   | 505.646484   | 512.154242   | 513.302112   | 518.138629   | 532.883096   |
+
+TimeGPT will return forecasts in the format `TimeGPT-q-{int(100 * q)}`
+for each quantile `q`.
+
+```python
+timegpt.plot(
+    df, timegpt_quantile_fcst_df, 
+    time_col='timestamp', target_col='value',
+)
+```
+
+![](/nixtla/docs/tutorials/10_quantile_forecasts_files/figure-markdown_strict/cell-7-output-1.png)
+
+It’s essential to note that the choice of the quantile (or quantiles)
+depends on your specific use case. For high-stakes predictions, you
+might lean towards more conservative quantiles, such as the 10th or 20th
+percentile, to ensure you’re prepared for worse-case scenarios. On the
+other hand, if you’re in a situation where the cost of over-preparation
+is high, you might choose a quantile closer to the median, like the 50th
+percentile, to balance being cautious and efficient.
+
+For instance, if you’re managing inventory for a retail business during
+a big sale event, opting for a lower quantile might help you avoid
+running out of stock, even if it means you might overstock a bit. But if
+you’re scheduling staff for a restaurant, you might go with a quantile
+closer to the middle to ensure you have enough staff on hand without
+significantly overstaffing.
+
+Ultimately, the choice comes down to understanding the balance between
+risk and cost in your specific context, and using quantile forecasts
+from TimeGPT allows you to tailor your strategy to fit that balance
+perfectly.
+
+#### Historical Forecast
+
+You can also compute quantile forecasts for historical forecasts adding
+the `add_history=True` parameter as follows:
+
+```python
+timegpt_quantile_fcst_df = timegpt.forecast(
+    df=df, h=12, 
+    quantiles=quantiles, 
+    time_col='timestamp', target_col='value',
+    add_history=True,
+)
+timegpt_quantile_fcst_df.head()
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.timegpt:Calling Historical Forecast Endpoint...
+```
+
+|     | timestamp  | TimeGPT    | TimeGPT-q-10 | TimeGPT-q-20 | TimeGPT-q-30 | TimeGPT-q-40 | TimeGPT-q-50 | TimeGPT-q-60 | TimeGPT-q-70 | TimeGPT-q-80 | TimeGPT-q-90 |
+|-----|------------|------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|
+| 0   | 1951-01-01 | 135.483673 | 111.937768   | 120.020593   | 125.848879   | 130.828935   | 135.483673   | 140.138411   | 145.118467   | 150.946753   | 159.029579   |
+| 1   | 1951-02-01 | 144.442398 | 120.896493   | 128.979318   | 134.807604   | 139.787660   | 144.442398   | 149.097136   | 154.077192   | 159.905478   | 167.988304   |
+| 2   | 1951-03-01 | 157.191910 | 133.646004   | 141.728830   | 147.557116   | 152.537172   | 157.191910   | 161.846648   | 166.826703   | 172.654990   | 180.737815   |
+| 3   | 1951-04-01 | 148.769363 | 125.223458   | 133.306284   | 139.134570   | 144.114625   | 148.769363   | 153.424102   | 158.404157   | 164.232443   | 172.315269   |
+| 4   | 1951-05-01 | 140.472946 | 116.927041   | 125.009866   | 130.838152   | 135.818208   | 140.472946   | 145.127684   | 150.107740   | 155.936026   | 164.018852   |
+
+```python
+timegpt.plot(
+    df, timegpt_quantile_fcst_df, 
+    time_col='timestamp', target_col='value',
+)
+```
+
+![](/nixtla/docs/tutorials/10_quantile_forecasts_files/figure-markdown_strict/cell-9-output-1.png)
+
+#### Cross Validation
+
+The `quantiles` argument can also be included in the `cross_validation`
+method, allowing comparing the performance of TimeGPT across different
+windows and different quantiles.
+
+```python
+timegpt_cv_quantile_fcst_df = timegpt.cross_validation(
+    df=df, 
+    h=12, 
+    n_windows=5,
+    quantiles=quantiles, 
+    time_col='timestamp', 
+    target_col='value',
+)
+timegpt_quantile_fcst_df.head()
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Restricting input...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Restricting input...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Restricting input...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Restricting input...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Restricting input...
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.timegpt:Validating inputs...
+```
+
+|     | timestamp  | TimeGPT    | TimeGPT-q-10 | TimeGPT-q-20 | TimeGPT-q-30 | TimeGPT-q-40 | TimeGPT-q-50 | TimeGPT-q-60 | TimeGPT-q-70 | TimeGPT-q-80 | TimeGPT-q-90 |
+|-----|------------|------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|--------------|
+| 0   | 1951-01-01 | 135.483673 | 111.937768   | 120.020593   | 125.848879   | 130.828935   | 135.483673   | 140.138411   | 145.118467   | 150.946753   | 159.029579   |
+| 1   | 1951-02-01 | 144.442398 | 120.896493   | 128.979318   | 134.807604   | 139.787660   | 144.442398   | 149.097136   | 154.077192   | 159.905478   | 167.988304   |
+| 2   | 1951-03-01 | 157.191910 | 133.646004   | 141.728830   | 147.557116   | 152.537172   | 157.191910   | 161.846648   | 166.826703   | 172.654990   | 180.737815   |
+| 3   | 1951-04-01 | 148.769363 | 125.223458   | 133.306284   | 139.134570   | 144.114625   | 148.769363   | 153.424102   | 158.404157   | 164.232443   | 172.315269   |
+| 4   | 1951-05-01 | 140.472946 | 116.927041   | 125.009866   | 130.838152   | 135.818208   | 140.472946   | 145.127684   | 150.107740   | 155.936026   | 164.018852   |
+
+```python
+from IPython.display import display
+```
+
+
+```python
+cutoffs = timegpt_cv_quantile_fcst_df['cutoff'].unique()
+for cutoff in cutoffs:
+    fig = timegpt.plot(
+        df.tail(100), 
+        timegpt_cv_quantile_fcst_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'value']),
+        time_col='timestamp', 
+        target_col='value'
+    )
+    display(fig)
+```
+
+![](/nixtla/docs/tutorials/10_quantile_forecasts_files/figure-markdown_strict/cell-12-output-1.png)
+
+![](/nixtla/docs/tutorials/10_quantile_forecasts_files/figure-markdown_strict/cell-12-output-2.png)
+
+![](/nixtla/docs/tutorials/10_quantile_forecasts_files/figure-markdown_strict/cell-12-output-3.png)
+
+![](/nixtla/docs/tutorials/10_quantile_forecasts_files/figure-markdown_strict/cell-12-output-4.png)
+
+![](/nixtla/docs/tutorials/10_quantile_forecasts_files/figure-markdown_strict/cell-12-output-5.png)
+
