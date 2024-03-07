@@ -56,6 +56,7 @@ for best practices.**
 - [m5-polars](https://www.kaggle.com/code/lemuz90/m5-mlforecast-eval-polars)
 - [m4](https://www.kaggle.com/code/lemuz90/m4-competition)
 - [m4-cv](https://www.kaggle.com/code/lemuz90/m4-competition-cv)
+- [favorita](https://www.kaggle.com/code/lemuz90/mlforecast-favorita)
 
 ## Why?
 
