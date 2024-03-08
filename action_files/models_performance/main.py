@@ -315,6 +315,7 @@ class ExperimentConfig:
             results_comb = ["metric"] + models
             exp_config = [col for col in eval_df.columns if col not in results_comb]
             eval_df = eval_df.fillna("None")
+            f.write("<details><summary>Experiment Results</summary>\n\n")
             for exp_number, (exp_desc, eval_exp_df) in enumerate(
                 eval_df.groupby(exp_config), start=1
             ):
@@ -344,6 +345,7 @@ class ExperimentConfig:
                 if os.getenv("GITHUB_ACTIONS"):
                     plot_path = f"{os.getenv('PLOTS_REPO_URL')}/{plot_path}?raw=true"
                 f.write(f"![]({plot_path})\n\n")
+            f.write("</details>\n")
 
 
 if __name__ == "__main__":
