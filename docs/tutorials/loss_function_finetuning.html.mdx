@@ -1,0 +1,288 @@
+---
+output-file: loss_function_finetuning.html
+title: Fine-tuning with a specific loss function
+---
+
+
+When fine-tuning, the model trains on your dataset to tailor its
+predictions to your particular scenario. As such, it is possible to
+specify the loss function used during fine-tuning.
+
+Specifically, you can choose from: - `"default"` - a proprietary loss
+function that is robust to outliers - `"mae"` - mean absolute error -
+`"mse"` - mean squared error - `"rmse"` - root mean squared error -
+`"mape"` - mean absolute percentage error - `"smape"` - symmetric mean
+absolute percentage error
+
+```python
+import pandas as pd
+from nixtlats import TimeGPT
+```
+
+
+```python
+timegpt = TimeGPT(
+    # defaults to os.environ.get("TIMEGPT_TOKEN")
+    token = 'my_token_provided_by_nixtla'
+)
+```
+
+Let’s fine-tune the model on a dataset using the mean absolute error
+(MAE).
+
+For that, we simply pass the appropriate string representing the loss
+function to the `finetune_loss` parameter of the `forecast` method.
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+df.insert(loc=0, column='unique_id', value=1)
+
+df.head()
+```
+
+|     | unique_id | timestamp  | value |
+|-----|-----------|------------|-------|
+| 0   | 1         | 1949-01-01 | 112   |
+| 1   | 1         | 1949-02-01 | 118   |
+| 2   | 1         | 1949-03-01 | 132   |
+| 3   | 1         | 1949-04-01 | 129   |
+| 4   | 1         | 1949-05-01 | 121   |
+
+```python
+timegpt_fcst_finetune_mae_df = timegpt.forecast(
+    df=df, 
+    h=12, 
+    finetune_steps=10,
+    finetune_loss='mae',   # Set your desired loss function
+    time_col='timestamp', 
+    target_col='value',
+)
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+```
+
+```python
+timegpt.plot(
+    df, timegpt_fcst_finetune_mae_df, 
+    time_col='timestamp', target_col='value',
+)
+```
+
+![](/nixtla/docs/tutorials/11_loss_function_finetuning_files/figure-markdown_strict/cell-6-output-1.png)
+
+Now, depending on your data, you will use a specific error metric to
+accurately evaluate your forecasting model’s performance.
+
+Below is a non-exhaustive guide on which metric to use depdending on
+your use case.
+
+**Mean absolute error (MAE)**
+
+$\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|$
+
+-   Robust to outliers
+-   Easy to understand
+-   You care equally about all error sizes
+-   Same units as your data
+
+**Mean squared error (MSE)**
+
+$\mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}$
+
+-   You want to penalize large errors more than small ones
+-   Sensitive to outliers
+-   Used when large errors must be avoided
+-   *Not* the same units as your data
+
+**Root mean squared error (RMSE)**
+
+$\mathrm{RMSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sqrt{\frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}}$
+
+-   Brings the MSE back to original units of data
+-   Penalizes large errors more than small ones
+
+**Mean absolute percentage error (MAPE)**
+
+$\mathrm{MAPE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|}$
+
+-   Easy to understand for non-technical stakeholders
+-   Expressed as a percentage
+-   Heavier penalty on positive errors over negative errors
+-   To be avoided if your data has values close to 0 or equal to 0
+
+**Symmmetric mean absolute percentage error (sMAPE)**
+
+$\mathrm{SMAPE}_{2}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|+|\hat{y}_{\tau}|}$
+
+-   Fixes bias of MAPE
+-   Equally senstitive to over and under forecasting
+-   To be avoided if your data has values close to 0 or equal to 0
+
+With TimeGPT, you can choose your loss function during fine-tuning as to
+maximize the model’s performance metric for your particular use case.
+
+Let’s run a small experiment to see how each loss function improves
+their associated metric when compared to the default setting.
+
+```python
+train = df[:-36]
+test = df[-36:]
+```
+
+
+```python
+losses = ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']
+
+for loss in losses:
+    preds_df = timegpt.forecast(
+    df=train, 
+    h=36, 
+    finetune_steps=10,
+    finetune_loss=loss,
+    time_col='timestamp', 
+    target_col='value')
+
+    preds = preds_df['TimeGPT'].values
+
+    test.loc[:,f'TimeGPT_{loss}'] = preds
+```
+
+``` text
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  test.loc[:,f'TimeGPT_{loss}'] = preds
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  test.loc[:,f'TimeGPT_{loss}'] = preds
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  test.loc[:,f'TimeGPT_{loss}'] = preds
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  test.loc[:,f'TimeGPT_{loss}'] = preds
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  test.loc[:,f'TimeGPT_{loss}'] = preds
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
+WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  test.loc[:,f'TimeGPT_{loss}'] = preds
+```
+
+Great! We have predictions from TimeGPT using all the different loss
+functions. We can evaluate the performance using their associated metric
+and measure the improvement.
+
+```python
+from utilsforecast.losses import mae, mse, rmse, mape, smape
+
+loss_fct_dict = {
+    "mae": mae,
+    "mse": mse,
+    "rmse": rmse,
+    "mape": mape,
+    "smape": smape
+}
+
+pct_improv = []
+
+for loss in losses[1:]:
+    evaluation = loss_fct_dict[f'{loss}'](test, models=['timegpt_default', f'timegpt_{loss}'], id_col='unique_id', target_col='value')
+    pct_diff = (evaluation['TimeGPT_default'] - evaluation[f'TimeGPT_{loss}']) / evaluation['TimeGPT_default'] * 100
+    pct_improv.append(round(pct_diff, 2))
+```
+
+``` text
+[0    9.69
+ dtype: float64,
+ 0    0.09
+ dtype: float64,
+ 0    0.53
+ dtype: float64,
+ 0    30.98
+ dtype: float64,
+ 0    7.32
+ dtype: float64]
+```
+
+```python
+data = {
+    'mae': pct_improv[0].values,
+    'mse': pct_improv[1].values,
+    'rmse': pct_improv[2].values,
+    'mape': pct_improv[3].values,
+    'smape': pct_improv[4].values
+}
+
+metrics_df = pd.DataFrame(data)
+metrics_df.index = ['Metric improvement (%)']
+
+metrics_df
+```
+
+|                        | mae  | mse  | rmse | mape  | smape |
+|------------------------|------|------|------|-------|-------|
+| Metric improvement (%) | 9.69 | 0.09 | 0.53 | 30.98 | 7.32  |
+
+From the table above, we can see that using a specific loss function
+during fine-tuning will improve its associated error metric when
+compared to the default loss function.
+
+In this example, using the MAE as the loss function improves the metric
+by 9.7% when compared to using the default loss function.
+
+That way, depending on your use case and performance metric, you can use
+the appropriate loss function to maximize the accuracy of the forecasts.
+
