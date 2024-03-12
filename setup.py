@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
 dev = ["black", "nbdev", "plotly", "python-dotenv", "statsforecast", "datasetsforecast"]
-distributed = ["dask", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
+distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
 plotting = ["utilsforecast[plotting]>=0.0.5"]
 date_extras = ["holidays"]
 
