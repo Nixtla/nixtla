@@ -90,6 +90,7 @@ date_features_by_freq = {
 
 # %% ../nbs/timegpt.ipynb 6
 class _TimeGPTModel:
+
     def __init__(
         self,
         client: Nixtla,
@@ -202,8 +203,10 @@ class _TimeGPTModel:
                         df.index = pd.to_datetime(df.index)
                         main_logger.info("Using datetime index as time column")
                     except:
-                        raise ValueError(f"Dataframe index {self.time_col} is not of date type")
-                    df=df.reset_index()
+                        raise ValueError(
+                            f"Dataframe index {self.time_col} is not of date type"
+                        )
+                    df = df.reset_index()
             self.freq = self.base_freq
         renamer = {
             self.id_col: "unique_id",
@@ -583,9 +586,11 @@ class _TimeGPTModel:
                 y=y,
                 x=x,
                 freq=self.freq,
-                level=[self.level]
-                if (isinstance(self.level, int) or isinstance(self.level, float))
-                else [self.level[0]],
+                level=(
+                    [self.level]
+                    if (isinstance(self.level, int) or isinstance(self.level, float))
+                    else [self.level[0]]
+                ),
                 clean_ex_first=self.clean_ex_first,
                 model=self.model,
             ),
@@ -1032,6 +1037,7 @@ class _TimeGPT:
 
 # %% ../nbs/timegpt.ipynb 11
 class TimeGPT(_TimeGPT):
+
     def _instantiate_distributed_timegpt(self):
         from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
