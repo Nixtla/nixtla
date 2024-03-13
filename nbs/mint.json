@@ -26,7 +26,9 @@
     },
     {
       "group": "Getting Started",
-      "pages": ["docs/getting-started/getting_started_short.html"]
+      "pages": [
+        "docs/getting-started/getting_started_short.html",
+        "docs/getting-started/setting_up_your_authentication_tutorial.html"]
     },
     {
       "group": "Tutorials",
