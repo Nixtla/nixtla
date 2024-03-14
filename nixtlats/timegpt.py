@@ -90,7 +90,6 @@ date_features_by_freq = {
 
 # %% ../nbs/timegpt.ipynb 6
 class _TimeGPTModel:
-
     def __init__(
         self,
         client: Nixtla,
@@ -576,11 +575,9 @@ class _TimeGPTModel:
                 y=y,
                 x=x,
                 freq=self.freq,
-                level=(
-                    [self.level]
-                    if (isinstance(self.level, int) or isinstance(self.level, float))
-                    else [self.level[0]]
-                ),
+                level=[self.level]
+                if (isinstance(self.level, int) or isinstance(self.level, float))
+                else [self.level[0]],
                 clean_ex_first=self.clean_ex_first,
                 model=self.model,
             ),
@@ -684,15 +681,12 @@ def partition_by_uid(func):
     def wrapper(self, num_partitions, **kwargs):
         if num_partitions is None or num_partitions == 1:
             return func(self, **kwargs, num_partitions=1)
-        main_logger.info(f"Number of partitions: {num_partitions}")
         df = kwargs.pop("df")
         X_df = kwargs.pop("X_df", None)
         id_col = kwargs["id_col"]
         uids = df["unique_id"].unique()
         results_df = []
-        split_index = 1
         for uids_split in np.array_split(uids, num_partitions):
-            main_logger.info(f"Partition {split_index} of {num_partitions}")
             df_uids = df.query("unique_id in @uids_split")
             if X_df is not None:
                 X_df_uids = X_df.query("unique_id in @uids_split")
@@ -705,7 +699,6 @@ def partition_by_uid(func):
                 kwargs_uids["X_df"] = X_df_uids
             results_uids = func(self, **kwargs_uids, num_partitions=1)
             results_df.append(results_uids)
-            split_index += 1
         results_df = pd.concat(results_df).reset_index(drop=True)
         return results_df
 
@@ -1031,7 +1024,6 @@ class _TimeGPT:
 
 # %% ../nbs/timegpt.ipynb 11
 class TimeGPT(_TimeGPT):
-
     def _instantiate_distributed_timegpt(self):
         from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
