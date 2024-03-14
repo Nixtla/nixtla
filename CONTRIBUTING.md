@@ -59,6 +59,7 @@ Please write to `ops@nixtla.io` if you're insterested in contributing to this pr
 Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
 ```
 nbdev_install_hooks
+pre-commit install
 ```
 
 ### Preview Changes
