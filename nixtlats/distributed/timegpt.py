@@ -47,6 +47,7 @@ def _cotransform(
 
 # %% ../../nbs/distributed.timegpt.ipynb 4
 class _DistributedTimeGPT:
+
     def __init__(
         self,
         token: Optional[str] = None,
@@ -124,6 +125,7 @@ class _DistributedTimeGPT:
         target_col: str = "y",
         X_df: Optional[fugue.AnyDataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
@@ -141,6 +143,7 @@ class _DistributedTimeGPT:
             time_col=time_col,
             target_col=target_col,
             level=level,
+            quantiles=quantiles,
             finetune_steps=finetune_steps,
             finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
@@ -151,7 +154,10 @@ class _DistributedTimeGPT:
             model=model,
         )
         schema = self._get_forecast_schema(
-            id_col=id_col, time_col=time_col, level=level
+            id_col=id_col,
+            time_col=time_col,
+            level=level,
+            quantiles=quantiles,
         )
         fcst_df = self._distribute_method(
             method=self._forecast if X_df is None else self._forecast_x,
@@ -212,6 +218,7 @@ class _DistributedTimeGPT:
         time_col: str = "ds",
         target_col: str = "y",
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
@@ -230,6 +237,7 @@ class _DistributedTimeGPT:
             time_col=time_col,
             target_col=target_col,
             level=level,
+            quantiles=quantiles,
             finetune_steps=finetune_steps,
             finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
@@ -241,7 +249,11 @@ class _DistributedTimeGPT:
             step_size=step_size,
         )
         schema = self._get_forecast_schema(
-            id_col=id_col, time_col=time_col, level=level, cv=True
+            id_col=id_col,
+            time_col=time_col,
+            level=level,
+            quantiles=quantiles,
+            cv=True,
         )
         fcst_df = self._distribute_method(
             method=self._cross_validation,
@@ -299,15 +311,21 @@ class _DistributedTimeGPT:
         return timegpt._cross_validation(df=df, **kwargs)
 
     @staticmethod
-    def _get_forecast_schema(id_col, time_col, level, cv=False):
+    def _get_forecast_schema(id_col, time_col, level, quantiles, cv=False):
         schema = f"{id_col}:string,{time_col}:datetime"
         if cv:
             schema = f"{schema},cutoff:datetime"
         schema = f"{schema},TimeGPT:double"
+        if (level is not None) and (quantiles is not None):
+            raise Exception("you should include `level` or `quantiles` but not both.")
         if level is not None:
             level = sorted(level)
             schema = f'{schema},{",".join([f"TimeGPT-lo-{lv}:double" for lv in reversed(level)])}'
             schema = f'{schema},{",".join([f"TimeGPT-hi-{lv}:double" for lv in level])}'
+        if quantiles is not None:
+            quantiles = sorted(quantiles)
+            q_cols = [f"TimeGPT-q-{int(q * 100)}:double" for q in quantiles]
+            schema = f'{schema},{",".join(q_cols)}'
         return Schema(schema)
 
     @staticmethod

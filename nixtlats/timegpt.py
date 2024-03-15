@@ -90,6 +90,7 @@ date_features_by_freq = {
 
 # %% ../nbs/timegpt.ipynb 6
 class _TimeGPTModel:
+
     def __init__(
         self,
         client: Nixtla,
@@ -99,6 +100,7 @@ class _TimeGPTModel:
         target_col: str = "y",
         freq: str = None,
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
@@ -115,7 +117,7 @@ class _TimeGPTModel:
         self.time_col = time_col
         self.target_col = target_col
         self.base_freq = freq
-        self.level = level
+        self.level, self.quantiles = self._prepare_level_and_quantiles(level, quantiles)
         self.finetune_steps = finetune_steps
         self.finetune_loss = finetune_loss
         self.clean_ex_first = clean_ex_first
@@ -132,6 +134,21 @@ class _TimeGPTModel:
         self.x_cols: List[str]
         self.input_size: int
         self.model_horizon: int
+
+    @staticmethod
+    def _prepare_level_and_quantiles(
+        level: Optional[List[Union[int, float]]],
+        quantiles: Optional[List[float]],
+    ):
+        if (level is not None) and (quantiles is not None):
+            raise Exception("you should include `level` or `quantiles` but not both.")
+        if quantiles is None:
+            return level, quantiles
+        # we recover level from quantiles
+        if not all(0 < q < 1 for q in quantiles):
+            raise Exception("`quantiles` should lie between 0 and 1")
+        level = [abs(int(100 - 200 * q)) for q in quantiles]
+        return level, quantiles
 
     def _retry_strategy(self):
         def after_retry(retry_state: RetryCallState):
@@ -202,7 +219,9 @@ class _TimeGPTModel:
                 X_df["ds"] = X_df["ds"].astype(str)
         return df, X_df
 
-    def transform_outputs(self, fcst_df: pd.DataFrame):
+    def transform_outputs(
+        self, fcst_df: pd.DataFrame, level_to_quantiles: bool = False
+    ):
         renamer = {
             "unique_id": self.id_col,
             "ds": self.time_col,
@@ -211,6 +230,25 @@ class _TimeGPTModel:
         if self.drop_uid:
             fcst_df = fcst_df.drop(columns="unique_id")
         fcst_df = fcst_df.rename(columns=renamer)
+        # transfom levels to quantiles if needed
+        if level_to_quantiles and self.quantiles is not None:
+            cols = [
+                col
+                for col in fcst_df.columns
+                if ("-lo-" not in col) and ("-hi-" not in col)
+            ]
+            for q in sorted(self.quantiles):
+                if q == 0.5:
+                    col = "TimeGPT"
+                else:
+                    lv = int(100 - 200 * q)
+                    hi_or_lo = "lo" if lv > 0 else "hi"
+                    lv = abs(lv)
+                    col = f"TimeGPT-{hi_or_lo}-{lv}"
+                q_col = f"TimeGPT-q-{int(q * 100)}"
+                fcst_df[q_col] = fcst_df[col].values
+                cols.append(q_col)
+            fcst_df = fcst_df[cols]
         return fcst_df
 
     def infer_freq(self, df: pd.DataFrame):
@@ -516,7 +554,7 @@ class _TimeGPTModel:
             fitted_df = pd.DataFrame(**response_timegpt["forecast"])
             fitted_df = fitted_df.drop(columns="y")
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
-        fcst_df = self.transform_outputs(fcst_df)
+        fcst_df = self.transform_outputs(fcst_df, level_to_quantiles=True)
         return fcst_df
 
     def detect_anomalies(self, df: pd.DataFrame):
@@ -538,9 +576,11 @@ class _TimeGPTModel:
                 y=y,
                 x=x,
                 freq=self.freq,
-                level=[self.level]
-                if (isinstance(self.level, int) or isinstance(self.level, float))
-                else [self.level[0]],
+                level=(
+                    [self.level]
+                    if (isinstance(self.level, int) or isinstance(self.level, float))
+                    else [self.level[0]]
+                ),
                 clean_ex_first=self.clean_ex_first,
                 model=self.model,
             ),
@@ -751,6 +791,7 @@ class _TimeGPT:
         target_col: str = "y",
         X_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
@@ -771,6 +812,7 @@ class _TimeGPT:
             target_col=target_col,
             freq=freq,
             level=level,
+            quantiles=quantiles,
             finetune_steps=finetune_steps,
             finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
@@ -835,6 +877,7 @@ class _TimeGPT:
         time_col: str = "ds",
         target_col: str = "y",
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         validate_token: bool = False,
         n_windows: int = 1,
         step_size: Optional[int] = None,
@@ -856,6 +899,7 @@ class _TimeGPT:
             target_col=target_col,
             freq=freq,
             level=level,
+            quantiles=quantiles,
             finetune_steps=finetune_steps,
             finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
@@ -983,6 +1027,7 @@ class _TimeGPT:
 
 # %% ../nbs/timegpt.ipynb 11
 class TimeGPT(_TimeGPT):
+
     def _instantiate_distributed_timegpt(self):
         from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
@@ -1005,6 +1050,7 @@ class TimeGPT(_TimeGPT):
         target_col: str = "y",
         X_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
@@ -1046,6 +1092,13 @@ class TimeGPT(_TimeGPT):
             DataFrame with [`unique_id`, `ds`] columns and `df`'s future exogenous.
         level : List[float], optional (default=None)
             Confidence levels between 0 and 100 for prediction intervals.
+        quantiles : List[float], optional (default=None)
+            Quantiles to forecast, list between (0, 1).
+            `level` and `quantiles` should not be used simultaneously.
+            The output dataframe will have the quantile columns
+            formatted as TimeGPT-q-{int(100 * q)} for each q.
+            100 * q represents percentiles but we choose this notation
+            to avoid handling __dots__ (.) in names.
         finetune_steps : int (default=0)
             Number of steps used to finetune TimeGPT in the
             new data.
@@ -1094,6 +1147,7 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 X_df=X_df,
                 level=level,
+                quantiles=quantiles,
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
@@ -1115,6 +1169,7 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 X_df=X_df,
                 level=level,
+                quantiles=quantiles,
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
@@ -1239,6 +1294,7 @@ class TimeGPT(_TimeGPT):
         time_col: str = "ds",
         target_col: str = "y",
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         validate_token: bool = False,
         n_windows: int = 1,
         step_size: Optional[int] = None,
@@ -1278,7 +1334,14 @@ class TimeGPT(_TimeGPT):
         target_col : str (default='y')
             Column that contains the target.
         level : float (default=99)
-            Confidence level between 0 and 100 for detecting the anomalies.
+            Confidence level between 0 and 100 for prediction intervals.
+        quantiles : List[float], optional (default=None)
+            Quantiles to forecast, list between (0, 1).
+            `level` and `quantiles` should not be used simultaneously.
+            The output dataframe will have the quantile columns
+            formatted as TimeGPT-q-{int(100 * q)} for each q.
+            100 * q represents percentiles but we choose this notation
+            to avoid handling __dots__ (.) in names.
         validate_token : bool (default=False)
             If True, validates token before
             sending requests.
@@ -1327,6 +1390,7 @@ class TimeGPT(_TimeGPT):
                 time_col=time_col,
                 target_col=target_col,
                 level=level,
+                quantiles=quantiles,
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
@@ -1348,6 +1412,7 @@ class TimeGPT(_TimeGPT):
                 time_col=time_col,
                 target_col=target_col,
                 level=level,
+                quantiles=quantiles,
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
