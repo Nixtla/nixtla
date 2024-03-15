@@ -28,7 +28,7 @@
       "group": "Getting Started",
       "pages": [
         "docs/getting-started/getting_started_short.html",
-        "docs/getting-started/setting_up_your_authentication_tutorial.html"]
+        "docs/getting-started/setting_up_your_authentication_token.html"]
     },
     {
       "group": "Tutorials",
@@ -36,11 +36,13 @@
         "docs/tutorials/anomaly_detection.html",
         "docs/tutorials/exogenous_variables.html",
         "docs/tutorials/finetuning.html",
+        "docs/tutorials/loss_function_finetuning.html",
         "docs/tutorials/historical_forecast.html",
         "docs/tutorials/holidays.html",
         "docs/tutorials/irregular_timestamps.html",
         "docs/tutorials/multiple_series.html",
-        "docs/tutorials/prediction_intervals.html"
+        "docs/tutorials/prediction_intervals.html",
+        "docs/tutorials/longhorizon.html"
       ]
     },
     {
