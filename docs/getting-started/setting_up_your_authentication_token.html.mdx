@@ -1,0 +1,120 @@
+---
+output-file: setting_up_your_authentication_token.html
+title: Setting Up Your Authentication Token
+---
+
+
+A **token**, also known as an **API Key**, is a unique string of
+characters that serves as a key to authenticate your requests to
+`TimeGTP`. This tutorial will explain how to set up your token when
+using the Nixtla SDK.
+
+Upon [registration](https://dashboard.nixtla.io/), you will recibe an
+email asking you to confirm your signup. After confirming, you will
+receive access to your dashboard. There, under `API Keys`, you will find
+your token. To integrate your token into your development workflow with
+the Nixtla SDK, you have two methods.
+
+## 1. Direct copy and paste
+
+-   **Step 1**: Copy the token found in the `API Keys` of your
+    [dashboard]((https://dashboard.nixtla.io/)).
+-   **Step 2**: Instantiate the `TimeGPT` class by directly pasting your
+    token into the code, as shown below:
+
+```python
+from nixtlats import TimeGPT 
+timegpt = TimeGPT(token = 'your token here')
+```
+
+This approach is straightforward and best for quick tests or scripts
+that won’t be shared.
+
+## 2. Using an environment variable
+
+-   **Step 1:** Store your token in an environment variable named
+    `TIMEGPT_TOKEN`. This can be done for a session or permanently,
+    depending on your preference.
+-   **Step 2:** When you instantiate the `TimeGPT` class, the SDK will
+    automatically look for the `TIMEGPT_TOKEN` environment variable and
+    use it to authenticate your requests.
+
+```python
+from nixtlats import TimeGPT
+timegpt = TimeGPT()
+```
+
+> **Important**
+>
+> The environment variable must be named exactly `TIMEGPT_TOKEN`, with
+> all capital letters and no deviations in spelling, for the SDK to
+> recognize it.
+
+There are several ways to set an environment variable.
+
+### a. From the Terminal
+
+Use the `export` command to set `TIMEGPT_TOKEN`.
+
+```bash
+export TIMEGPT_TOKEN=your_token
+```
+
+### b. Using a `.env` file
+
+For a more persistent solution that can be version-controlled if
+private, or for ease of use across different projects, place your token
+in a `.env` file.
+
+```bash
+# Inside a file named .env
+TIMEGPT_TOKEN=your_token
+```
+
+**Within Python:** If using a `.env` file, you can load the environment
+variable within your Python script. Use the `dotenv` package to load the
+`.env` file and then instantiate the `TimeGPT` class.
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+
+from nixtlats import TimeGPT
+timegpt = TimeGPT()
+```
+
+This approach is more secure and suitable for applications that will be
+deployed or shared, as it keeps tokens out of the source code.
+
+> **Important**
+>
+> Remember, your token is like a password - keep it secret, keep it
+> safe!
+
+## Validate your token
+
+You can always find your token in the `API Keys` section of your
+dashboard. To check the status of your token, use the [`validate_token`
+method](https://nixtlaverse.nixtla.io/nixtla/timegpt.html#timegpt-validate-token)
+of the `TimeGPT` class. This method will return `True` if the token is
+valid and `False` otherwise.
+
+```python
+timegpt.validate_token()
+```
+
+``` text
+INFO:nixtlats.timegpt:Happy Forecasting! :), If you have questions or need support, please email ops@nixtla.io
+```
+
+``` text
+True
+```
+
+You don’t need to validate your token every time you use `TimeGPT`. This
+function is provided for your convenience to ensure its validity. For
+full access to `TimeGPT`’s functionalities, in addition to a valid
+token, you also need sufficient credits in your account. You can check
+your credits in the `Usage` section of your
+[dashboard]((https://dashboard.nixtla.io/)).
+
