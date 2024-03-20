@@ -14,6 +14,9 @@ This study considers over 50,000 unique time series from the M1, M3, M4, and Tou
 
 Our findings are shown in the following table, showcasing the performance across different metrics: CRPS, MASE, SMAPE, and computational time (in seconds). The best results are highlighted in **bold** for ease of reference.
 
+<img width="1099" alt="image" src="https://github.com/Nixtla/nixtla/assets/10517170/4d4fe9f3-4251-4b95-bd9b-248fc283e97b">
+
+
 ## Reproducibility
 
 To ensure the reproducibility of our findings, the Statistical Ensemble experiments were conducted on an AWS c5a.24xlarge instance, equipped with 96 vCPUs and 192 GiB of RAM. In contrast, the experiments for Amazon Chronos were carried out on an AWS g5.4xlarge GPU instance, which includes 16 vCPUs, 64 GiB of RAM, and an NVIDIA A10G Tensor Core GPU with 24 GiB. All necessary code and detailed instructions for reproducing the experiments are available in this directory.
