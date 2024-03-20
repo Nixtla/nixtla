@@ -27,9 +27,9 @@ datasets = [
 amazon_chronos_models = [
     "amazon/chronos-t5-large",
     "amazon/chronos-t5-tiny",
-    # "amazon/chronos-t5-mini",
-    # "amazon/chronos-t5-small",
-    # "amazon/chronos-t5-base",
+    "amazon/chronos-t5-mini",
+    "amazon/chronos-t5-small",
+    "amazon/chronos-t5-base",
 ]
 
 
@@ -45,9 +45,6 @@ def main(mode: str):
             def process(middle_process):
                 return prefix_process + middle_process + suffix_process
 
-            # running statsforecast and chronos in separated
-            # processes because gluonts sets multiprocessing context
-            # see: https://github.com/awslabs/gluonts/blob/dev/src/gluonts/torch/__init__.py
             if mode == "fcst_statsforecast":
                 logger.info("Running StatisticalEnsemble")
                 subprocess.run(process(["src.statsforecast_pipeline"]))
