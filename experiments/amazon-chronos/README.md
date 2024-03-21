@@ -4,7 +4,7 @@ We present a fully reproducible comprehensive evaluation showcasing that a Stati
 
 # Introduction
 
-The rise of foundational models in time series forecasting, such as Amazon Chronos, represents a significant leap forward, leveraging deep learning and massive datasets for model pre-training to enhance predictive accuracy. Amazon Chronos, in particular, is noteworthy for its extensive parameterization and ambitious scope. However, our study shows that a comparatively simpler approach, employing a Statistical Ensemble of traditional forecasting methods, yields better accuracy and computational efficiency. We used the same benchmark one year ago to showcase how statistical models outperformed deep learning models. 
+The rise of foundational models in time series forecasting, such as Amazon Chronos, represents a significant leap forward, leveraging deep learning and massive datasets for model pre-training to enhance predictive accuracy. Amazon Chronos, in particular, is noteworthy for its extensive parameterization and ambitious scope. However, our study shows that a comparatively simpler approach, employing a Statistical Ensemble of traditional forecasting methods, yields better accuracy and computational efficiency. One year ago, we used the same [benchmark](https://github.com/Nixtla/statsforecast/tree/main/experiments/m3) to showcase how statistical models outperformed deep learning models. 
 
 ## Empirical Evaluation
 
