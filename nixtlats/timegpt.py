@@ -191,10 +191,9 @@ class _TimeGPTModel:
                 inferred_freq = inferred_freq.rule_code
                 main_logger.info(f"Inferred freq: {inferred_freq}")
             self.freq = inferred_freq
-            time_col = df.index.name
-            if time_col is None:
-                time_col = "ds"
-                df.index.name = time_col
+            time_col = df.index.name if df.index.name else "ds"
+            self.time_col = time_col
+            df.index.name = time_col
             df = df.reset_index()
         else:
             if hasattr(df.index, "name"):
