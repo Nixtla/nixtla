@@ -196,16 +196,6 @@ class _TimeGPTModel:
             df.index.name = time_col
             df = df.reset_index()
         else:
-            if hasattr(df.index, "name"):
-                if df.index.name == self.time_col:
-                    try:
-                        df.index = pd.to_datetime(df.index)
-                        main_logger.info("Using datetime index as time column")
-                    except:
-                        raise ValueError(
-                            f"Dataframe index {self.time_col} is not of date type"
-                        )
-                    df = df.reset_index()
             self.freq = self.base_freq
         renamer = {
             self.id_col: "unique_id",
