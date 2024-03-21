@@ -1,10 +1,10 @@
-# A Statistical Ensemble of traditional methods is 10% more accurate and 5x faster than Amazon Chronos
+# Amazon Chronos is 10% less accurate and 500% slower than training classical statistical models.
 
-We present a comprehensive evaluation showcasing that a Statistical Ensemble, consisting of AutoARIMA, AutoETS, AutoCES, and DynamicOptimizedTheta, outperforms Amazon Chronos—a foundational model for time series forecasting with over 710 million parameters. Specifically, the **Statistical Ensemble demonstrates 10%, 10%, and 11% superior performance in CRPS, MASE, and SMAPE metrics, respectively**, and it is **5x faster**. This analysis spans over 50,000 unique time series across M1, M3, M4, and Tourism datasets, robustly comparing these models.
+We present a fully reproducible comprehensive evaluation showcasing that a Statistical Ensemble, consisting of AutoARIMA, AutoETS, AutoCES, and DynamicOptimizedTheta, outperforms Amazon Chronos—a foundational model for time series forecasting with over 710 million parameters. Specifically, the **Statistical Ensemble demonstrates 10%, 10%, and 11% superior performance in CRPS, MASE, and SMAPE metrics, respectively**, and it is **5x faster**. This analysis spans over **50,000 unique time series** across M1, M3, M4, and Tourism datasets, robustly comparing these models.
 
 # Introduction
 
-The rise of foundational models in time series forecasting, such as Amazon Chronos, represents a significant leap forward, leveraging deep learning and massive datasets for model pre-training to enhance predictive accuracy. Amazon Chronos, in particular, is noteworthy for its extensive parameterization and ambitious scope. However, our study shows that a comparatively simpler approach, employing a Statistical Ensemble of traditional forecasting methods, yields better accuracy and computational efficiency. 
+The rise of foundational models in time series forecasting, such as Amazon Chronos, represents a significant leap forward, leveraging deep learning and massive datasets for model pre-training to enhance predictive accuracy. Amazon Chronos, in particular, is noteworthy for its extensive parameterization and ambitious scope. However, our study shows that a comparatively simpler approach, employing a Statistical Ensemble of traditional forecasting methods, yields better accuracy and computational efficiency. One year ago, we used the same [benchmark](https://github.com/Nixtla/statsforecast/tree/main/experiments/m3) to showcase how statistical models outperformed deep learning models. 
 
 ## Empirical Evaluation
 
