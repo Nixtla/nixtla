@@ -47,7 +47,6 @@ def _cotransform(
 
 # %% ../../nbs/distributed.timegpt.ipynb 4
 class _DistributedTimeGPT:
-
     def __init__(
         self,
         token: Optional[str] = None,
