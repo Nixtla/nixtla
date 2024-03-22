@@ -6,9 +6,9 @@ import typing
 T_Result = typing.TypeVar("T_Result")
 
 
-class MultiSeriesCrossValidationFinetuneLoss(str, enum.Enum):
+class SingleSeriesForecastFewshotLoss(str, enum.Enum):
     """
-    Deprecated. Please use fewshot_loss instead.
+    The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
     """
 
     DEFAULT = "default"
@@ -27,15 +27,15 @@ class MultiSeriesCrossValidationFinetuneLoss(str, enum.Enum):
         mape: typing.Callable[[], T_Result],
         smape: typing.Callable[[], T_Result],
     ) -> T_Result:
-        if self is MultiSeriesCrossValidationFinetuneLoss.DEFAULT:
+        if self is SingleSeriesForecastFewshotLoss.DEFAULT:
             return default()
-        if self is MultiSeriesCrossValidationFinetuneLoss.MAE:
+        if self is SingleSeriesForecastFewshotLoss.MAE:
             return mae()
-        if self is MultiSeriesCrossValidationFinetuneLoss.MSE:
+        if self is SingleSeriesForecastFewshotLoss.MSE:
             return mse()
-        if self is MultiSeriesCrossValidationFinetuneLoss.RMSE:
+        if self is SingleSeriesForecastFewshotLoss.RMSE:
             return rmse()
-        if self is MultiSeriesCrossValidationFinetuneLoss.MAPE:
+        if self is SingleSeriesForecastFewshotLoss.MAPE:
             return mape()
-        if self is MultiSeriesCrossValidationFinetuneLoss.SMAPE:
+        if self is SingleSeriesForecastFewshotLoss.SMAPE:
             return smape()

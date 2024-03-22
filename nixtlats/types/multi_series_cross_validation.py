@@ -6,13 +6,14 @@ import typing
 import pydantic
 
 from ..core.datetime_utils import serialize_datetime
-from .single_series_forecast_fewshot_loss import SingleSeriesForecastFewshotLoss
-from .single_series_forecast_finetune_loss import SingleSeriesForecastFinetuneLoss
-from .single_series_forecast_model import SingleSeriesForecastModel
+from .multi_series_cross_validation_fewshot_loss import MultiSeriesCrossValidationFewshotLoss
+from .multi_series_cross_validation_finetune_loss import MultiSeriesCrossValidationFinetuneLoss
+from .multi_series_cross_validation_model import MultiSeriesCrossValidationModel
+from .multi_series_input import MultiSeriesInput
 
 
-class SingleSeriesForecast(pydantic.BaseModel):
-    model: typing.Optional[SingleSeriesForecastModel] = pydantic.Field(
+class MultiSeriesCrossValidation(pydantic.BaseModel):
+    model: typing.Optional[MultiSeriesCrossValidationModel] = pydantic.Field(
         description="Model to use as a string. Options are: `short-horizon`, and `long-horizon.` We recommend using `long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data."
     )
     freq: typing.Optional[str] = pydantic.Field(
@@ -25,8 +26,12 @@ class SingleSeriesForecast(pydantic.BaseModel):
         description="The forecasting horizon. This represents the number of time steps into the future that the forecast should predict."
     )
     y: typing.Optional[typing.Any]
-    x: typing.Optional[typing.Dict[str, typing.List[float]]] = pydantic.Field(
-        description='The exogenous variables provided as a dictionary. Each key is a timestamp (string format: YYYY-MM-DD) and the corresponding value is a list of exogenous variable values at that time point. For example: {"2021-01-01": [0.1], "2021-01-02": [0.4]}. This should also include forecasting horizon (fh) additional timestamps to calculate the future values.'
+    x: typing.Optional[MultiSeriesInput] = pydantic.Field(
+        description='The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {"columns": ["unique_id", "ds", "ex_1", "ex_2"], "data": [["ts_0", "2021-01-01", 0.2, 0.67], ["ts_0", "2021-01-02", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values.'
+    )
+    n_windows: typing.Optional[int] = pydantic.Field(description="Number of windows to evaluate.")
+    step_size: typing.Optional[int] = pydantic.Field(
+        description="Step size between each cross validation window. If None it will be equal to the forecasting horizon."
     )
     clean_ex_first: typing.Optional[bool] = pydantic.Field(
         description="A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model."
@@ -34,11 +39,11 @@ class SingleSeriesForecast(pydantic.BaseModel):
     fewshot_steps: typing.Optional[int] = pydantic.Field(
         description="The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning."
     )
-    fewshot_loss: typing.Optional[SingleSeriesForecastFewshotLoss] = pydantic.Field(
+    fewshot_loss: typing.Optional[MultiSeriesCrossValidationFewshotLoss] = pydantic.Field(
         description="The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers."
     )
     finetune_steps: typing.Optional[int] = pydantic.Field(description="Deprecated. Please use fewshot_steps instead.")
-    finetune_loss: typing.Optional[SingleSeriesForecastFinetuneLoss] = pydantic.Field(
+    finetune_loss: typing.Optional[MultiSeriesCrossValidationFinetuneLoss] = pydantic.Field(
         description="Deprecated. Please use fewshot_loss instead."
     )
 
