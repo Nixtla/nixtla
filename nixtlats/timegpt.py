@@ -55,7 +55,7 @@ def deprecated_argument(old_name, new_name):
             if old_name in kwargs:
                 warnings.warn(
                     f"'{old_name}' is deprecated; use '{new_name}' instead.",
-                    DeprecationWarning,
+                    FutureWarning,
                 )
                 if new_name in kwargs:
                     raise TypeError(f"{new_name} argument duplicated")
@@ -121,6 +121,7 @@ date_features_by_freq = {
 
 # %% ../nbs/timegpt.ipynb 8
 class _TimeGPTModel:
+
     def __init__(
         self,
         client: Nixtla,
@@ -549,8 +550,8 @@ class _TimeGPTModel:
             fh=self.h,
             freq=self.freq,
             level=self.level,
-            finetune_steps=self.fewshot_steps,
-            finetune_loss=self.fewshot_loss,
+            fewshot_steps=self.fewshot_steps,
+            fewshot_loss=self.fewshot_loss,
             clean_ex_first=self.clean_ex_first,
             model=self.model,
         )
@@ -605,9 +606,11 @@ class _TimeGPTModel:
                 y=y,
                 x=x,
                 freq=self.freq,
-                level=[self.level]
-                if (isinstance(self.level, int) or isinstance(self.level, float))
-                else [self.level[0]],
+                level=(
+                    [self.level]
+                    if (isinstance(self.level, int) or isinstance(self.level, float))
+                    else [self.level[0]]
+                ),
                 clean_ex_first=self.clean_ex_first,
                 model=self.model,
             ),
@@ -1054,6 +1057,7 @@ class _TimeGPT:
 
 # %% ../nbs/timegpt.ipynb 13
 class TimeGPT(_TimeGPT):
+
     def _instantiate_distributed_timegpt(self):
         from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
