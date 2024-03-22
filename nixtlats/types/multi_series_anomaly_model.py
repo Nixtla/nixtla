@@ -8,16 +8,16 @@ T_Result = typing.TypeVar("T_Result")
 
 class MultiSeriesAnomalyModel(str, enum.Enum):
     """
-    Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+    Model to use as a string. Options are: `short-horizon`, and `long-horizon.` We recommend using `long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
     """
 
-    TIMEGPT_1 = "timegpt-1"
-    TIMEGPT_1_LONG_HORIZON = "timegpt-1-long-horizon"
+    SHORT_HORIZON = "short-horizon"
+    LONG_HORIZON = "long-horizon"
 
     def visit(
-        self, timegpt_1: typing.Callable[[], T_Result], timegpt_1_long_horizon: typing.Callable[[], T_Result]
+        self, short_horizon: typing.Callable[[], T_Result], long_horizon: typing.Callable[[], T_Result]
     ) -> T_Result:
-        if self is MultiSeriesAnomalyModel.TIMEGPT_1:
-            return timegpt_1()
-        if self is MultiSeriesAnomalyModel.TIMEGPT_1_LONG_HORIZON:
-            return timegpt_1_long_horizon()
+        if self is MultiSeriesAnomalyModel.SHORT_HORIZON:
+            return short_horizon()
+        if self is MultiSeriesAnomalyModel.LONG_HORIZON:
+            return long_horizon()
