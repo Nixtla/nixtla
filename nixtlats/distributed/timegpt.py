@@ -133,7 +133,7 @@ class _DistributedTimeGPT:
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "timegpt-1",
+        model: str = "short-horizon",
         num_partitions: Optional[int] = None,
     ) -> fugue.AnyDataFrame:
         kwargs = dict(
@@ -182,7 +182,7 @@ class _DistributedTimeGPT:
         validate_token: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "timegpt-1",
+        model: str = "short-horizon",
         num_partitions: Optional[int] = None,
     ) -> fugue.AnyDataFrame:
         kwargs = dict(
@@ -225,7 +225,7 @@ class _DistributedTimeGPT:
         validate_token: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "timegpt-1",
+        model: str = "short-horizon",
         n_windows: int = 1,
         step_size: Optional[int] = None,
         num_partitions: Optional[int] = None,

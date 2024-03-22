@@ -485,7 +485,7 @@ class _TimeGPTModel:
 
     def set_model_params(self):
         model_params = self._call_api(
-            self.client.timegpt_model_params,
+            self.client.model_params,
             SingleSeriesForecast(freq=self.freq, model=self.model),
         )
         model_params = model_params["detail"]
@@ -556,7 +556,7 @@ class _TimeGPTModel:
             model=self.model,
         )
         response_timegpt = self._call_api(
-            self.client.timegpt_multi_series,
+            self.client.forecast_multi_series,
             payload,
         )
         if "weights_x" in response_timegpt:
@@ -571,7 +571,7 @@ class _TimeGPTModel:
             main_logger.info("Calling Historical Forecast Endpoint...")
             self.validate_input_size(Y_df=Y_df)
             response_timegpt = self._call_api(
-                self.client.timegpt_multi_series_historic,
+                self.client.historic_forecast_multi_series,
                 MultiSeriesInsampleForecast(
                     y=y,
                     x=x,
@@ -601,7 +601,7 @@ class _TimeGPTModel:
         main_logger.info("Calling Anomaly Detector Endpoint...")
         y, x = self.dataframes_to_dict(Y_df, X_df)
         response_timegpt = self._call_api(
-            self.client.timegpt_multi_series_anomalies,
+            self.client.anomaly_detection_multi_series,
             MultiSeriesAnomaly(
                 y=y,
                 x=x,
