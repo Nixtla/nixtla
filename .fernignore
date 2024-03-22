@@ -11,6 +11,7 @@ CHANGELOG.md
 CONTRIBUTING.md
 .gitmodules
 .gitignore
+.pre-commit-config.yaml
 MANIFEST.ini
 README.md
 environment.yml
