@@ -3,14 +3,22 @@ import setuptools
 with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
-dev = ["black", "datasetsforecast", "nbdev", "plotly", "pre-commit", "python-dotenv", "statsforecast"]
+dev = [
+    "black",
+    "datasetsforecast",
+    "nbdev",
+    "plotly",
+    "pre-commit",
+    "python-dotenv",
+    "statsforecast",
+]
 distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
 plotting = ["utilsforecast[plotting]>=0.0.5"]
 date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtlats",
-    version="0.1.21",
+    version="0.2.0",
     description="TimeGPT SDK",
     long_description=long_description,
     long_description_content_type="text/markdown",
