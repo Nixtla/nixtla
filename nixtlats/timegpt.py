@@ -97,6 +97,7 @@ date_features_by_freq = {
 
 # %% ../nbs/timegpt.ipynb 6
 class _TimeGPTModel:
+
     def __init__(
         self,
         client: Nixtla,
@@ -581,9 +582,11 @@ class _TimeGPTModel:
                 y=y,
                 x=x,
                 freq=self.freq,
-                level=[self.level]
-                if (isinstance(self.level, int) or isinstance(self.level, float))
-                else [self.level[0]],
+                level=(
+                    [self.level]
+                    if (isinstance(self.level, int) or isinstance(self.level, float))
+                    else [self.level[0]]
+                ),
                 clean_ex_first=self.clean_ex_first,
                 model=self.model,
             ),
@@ -1030,6 +1033,7 @@ class _TimeGPT:
 
 # %% ../nbs/timegpt.ipynb 11
 class TimeGPT(_TimeGPT):
+
     def _instantiate_distributed_timegpt(self):
         from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
