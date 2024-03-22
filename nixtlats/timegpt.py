@@ -32,7 +32,14 @@ from utilsforecast.processing import (
     vertical_concat,
 )
 
-from .client import ApiError, Nixtla, SingleSeriesForecast
+from nixtlats.client import (
+    ApiError,
+    Nixtla,
+    SingleSeriesForecast,
+    MultiSeriesForecast,
+    MultiSeriesAnomaly,
+    MultiSeriesInsampleForecast,
+)
 
 logging.basicConfig(level=logging.INFO)
 main_logger = logging.getLogger(__name__)
@@ -176,8 +183,8 @@ class _TimeGPTModel:
             | retry_if_not_exception_type(ApiError),
         )
 
-    def _call_api(self, method, kwargs):
-        response = self._retry_strategy()(method)(**kwargs)
+    def _call_api(self, method, request):
+        response = self._retry_strategy()(method)(request=request)
         if "data" in response:
             response = response["data"]
         return response
@@ -455,7 +462,7 @@ class _TimeGPTModel:
     def set_model_params(self):
         model_params = self._call_api(
             self.client.timegpt_model_params,
-            {"request": SingleSeriesForecast(freq=self.freq, model=self.model)},
+            SingleSeriesForecast(freq=self.freq, model=self.model),
         )
         model_params = model_params["detail"]
         self.input_size, self.model_horizon = (
@@ -513,7 +520,7 @@ class _TimeGPTModel:
             self.validate_input_size(Y_df=Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
         main_logger.info("Calling Forecast Endpoint...")
-        payload = dict(
+        payload = MultiSeriesForecast(
             y=y,
             x=x,
             fh=self.h,
@@ -541,7 +548,7 @@ class _TimeGPTModel:
             self.validate_input_size(Y_df=Y_df)
             response_timegpt = self._call_api(
                 self.client.timegpt_multi_series_historic,
-                dict(
+                MultiSeriesInsampleForecast(
                     y=y,
                     x=x,
                     freq=self.freq,
@@ -571,7 +578,7 @@ class _TimeGPTModel:
         y, x = self.dataframes_to_dict(Y_df, X_df)
         response_timegpt = self._call_api(
             self.client.timegpt_multi_series_anomalies,
-            dict(
+            MultiSeriesAnomaly(
                 y=y,
                 x=x,
                 freq=self.freq,
