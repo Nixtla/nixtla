@@ -24,6 +24,7 @@ from tenacity import (
     retry_if_exception,
     retry_if_not_exception_type,
 )
+from utilsforecast.preprocessing import fill_gaps
 from utilsforecast.processing import (
     backtest_splits,
     drop_index_if_pandas,
@@ -308,12 +309,17 @@ class _TimeGPTModel:
             self.freq = inferred_freq
 
     def resample_dataframe(self, df: pd.DataFrame):
-        df = df.copy()
-        df["ds"] = pd.to_datetime(df["ds"])
-        resampled_df = (
-            df.set_index("ds").groupby("unique_id").resample(self.freq).bfill()
+        resampled_df = fill_gaps(
+            df,
+            freq=self.freq,
+            start="per_serie",
+            end="per_serie",
+            id_col="unique_id",
+            time_col="ds",
         )
-        resampled_df = resampled_df.drop(columns="unique_id").reset_index()
+        resampled_df["y"] = resampled_df.groupby("unique_id")["y"].transform(
+            pd.Series.bfill
+        )
         resampled_df["ds"] = resampled_df["ds"].astype(str)
         return resampled_df
 
@@ -442,7 +448,7 @@ class _TimeGPTModel:
         Y_df = self.resample_dataframe(Y_df)
         x_cols = []
         if X_df is not None:
-            x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
+            x_cols = X_df.columns.drop(["unique_id", "ds"]).to_list()
             if not all(col in df.columns for col in x_cols):
                 raise Exception(
                     "You must include the exogenous variables in the `df` object, "
