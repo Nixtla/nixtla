@@ -527,7 +527,7 @@ class _TimeGPTModel:
         restrict_input = (
             self.fewshot_steps == 0
             and X_df is None
-            and self.level is not None
+            and self.level is None
             and not add_history
         )
         if restrict_input:
