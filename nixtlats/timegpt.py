@@ -309,6 +309,8 @@ class _TimeGPTModel:
             self.freq = inferred_freq
 
     def resample_dataframe(self, df: pd.DataFrame):
+        if not pd.api.types.is_datetime64_any_dtype(df["ds"].dtype):
+            df["ds"] = pd.to_datetime(df["ds"])
         resampled_df = fill_gaps(
             df,
             freq=self.freq,
