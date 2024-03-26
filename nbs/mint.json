@@ -34,15 +34,17 @@
       "group": "Tutorials",
       "pages": [
         "docs/tutorials/anomaly_detection.html",
+        "docs/tutorials/cross_validation.html", 
         "docs/tutorials/exogenous_variables.html",
         "docs/tutorials/finetuning.html",
         "docs/tutorials/loss_function_finetuning.html",
         "docs/tutorials/historical_forecast.html",
         "docs/tutorials/holidays.html",
         "docs/tutorials/irregular_timestamps.html",
+        "docs/tutorials/longhorizon.html", 
         "docs/tutorials/multiple_series.html",
         "docs/tutorials/prediction_intervals.html",
-        "docs/tutorials/longhorizon.html"
+        "docs/tutorials/quantile_forecasts.html"
       ]
     },
     {
