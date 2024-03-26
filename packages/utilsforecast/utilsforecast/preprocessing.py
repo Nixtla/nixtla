@@ -124,14 +124,16 @@ def fill_gaps(
         return grid.join(df, on=[id_col, time_col], how="left")
     if isinstance(freq, str):
         offset = pd.tseries.frequencies.to_offset(freq)
-        if "min" in freq:
+        if isinstance(offset.base, pd.offsets.Minute):
             # minutes are represented as 'm' in numpy
-            freq = freq.replace("min", "m")
-        elif "B" in freq:
-            # business day
-            if freq != "B":
+            freq = "m"
+        elif isinstance(offset.base, pd.offsets.BusinessDay):
+            if offset.n != 1:
                 raise NotImplementedError("Multiple of a business day")
             freq = "D"
+        elif isinstance(offset.base, pd.offsets.Hour):
+            # hours are represented as 'h' in numpy
+            freq = "h"
         if offset.n > 1:
             freq = freq.replace(str(offset.n), "")
         try:
@@ -152,7 +154,7 @@ def fill_gaps(
     )
     uids = np.repeat(times_by_id.index, sizes)
     if isinstance(freq, str):
-        if offset.base.name == "B":
+        if isinstance(offset.base, pd.offsets.BusinessDay):
             # data was generated daily, we need to keep only business days
             bdays = np.is_busday(times)
             uids = uids[bdays]
