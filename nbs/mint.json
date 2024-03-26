@@ -41,9 +41,9 @@
         "docs/tutorials/historical_forecast.html",
         "docs/tutorials/holidays.html",
         "docs/tutorials/irregular_timestamps.html",
+        "docs/tutorials/longhorizon.html", 
         "docs/tutorials/multiple_series.html",
         "docs/tutorials/prediction_intervals.html",
-        "docs/tutorials/longhorizon.html", 
         "docs/tutorials/quantile_forecasts.html"
       ]
     },
