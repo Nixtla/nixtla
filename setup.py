@@ -36,7 +36,7 @@ setuptools.setup(
         "pydantic<2",
         "requests",
         "tenacity",
-        "utilsforecast>=0.0.13",
+        "utilsforecast>=0.1.2",
     ],
     extras_require={
         "dev": dev + distributed + plotting + date_extras,
