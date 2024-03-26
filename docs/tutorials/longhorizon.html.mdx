@@ -4,6 +4,28 @@ title: Forecasting on a long horizon
 ---
 
 
+Long-horizon forecasting refers to predictions far into the future,
+typically exceeding two seasonal periods. However, the exact definition
+of a ‘long horizon’ can vary based on the frequency of the data. For
+example, when dealing with hourly data, a forecast for three days into
+the future is considered long-horizon, as it covers 72 timestamps
+(calculated as 3 days × 24 hours/day). In the context of monthly data, a
+period exceeding two years would typically be classified as long-horizon
+forecasting. Similarly, for daily data, a forecast spanning more than
+two weeks falls into the long-horizon category.
+
+Of course, forecasting over a long horizon comes with its challenges.
+The longer the forecast horizon, the greater the uncertainty in the
+predictions. It is also possible to have unknown factors come into play
+in the long-term that were not expected at the time of forecasting.
+
+To tackle those challenges, use TimeGPT’s specialized model for
+long-horizon forecasting by specifying `model='long-horizon'` in your
+setup.
+
+For a detailed step-by-step guide, follow this tutorial on long-horizon
+forecasting.
+
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/12_longhorizon.ipynb)
 
 ```python
@@ -55,17 +77,17 @@ input_seq = Y_df[-1104:-96]   # Gets a sequence of 1008 observations (1008 = 42 
 ```
 
 Now, we are ready to use TimeGPT for long-horizon forecasting. Here, we
-need to set the `model` parameter to `"timegpt-1-long-horizon"`. This is
-the specialized model in TimeGPT that can handle such tasks.
+need to set the `model` parameter to `"long-horizon"`. This is the
+specialized model in TimeGPT that can handle such tasks.
 
 ```python
 fcst_df = timegpt.forecast(
     df=input_seq,
     h=96,
     level=[90],
-    finetune_steps=10,
-    finetune_loss='mae',
-    model='timegpt-1-long-horizon',
+    fewshot_steps=10,
+    fewshot_loss='mae',
+    model='long-horizon',
     time_col='ds',
     target_col='y'
 )
@@ -104,7 +126,7 @@ print(evaluation)
 
 ``` text
   unique_id   TimeGPT
-0        OT  0.146111
+0        OT  0.145393
 ```
 
 Here, TimeGPT achieves a MAE of 0.14.

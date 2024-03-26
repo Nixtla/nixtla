@@ -31,7 +31,7 @@ Let’s fine-tune the model on a dataset using the mean absolute error
 (MAE).
 
 For that, we simply pass the appropriate string representing the loss
-function to the `finetune_loss` parameter of the `forecast` method.
+function to the `fewshot_loss` parameter of the `forecast` method.
 
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
@@ -49,11 +49,11 @@ df.head()
 | 4   | 1         | 1949-05-01 | 121   |
 
 ```python
-timegpt_fcst_finetune_mae_df = timegpt.forecast(
+timegpt_fcst_fewshot_mae_df = timegpt.forecast(
     df=df, 
     h=12, 
-    finetune_steps=10,
-    finetune_loss='mae',   # Set your desired loss function
+    fewshot_steps=10,
+    fewshot_loss='mae',   # Set your desired loss function
     time_col='timestamp', 
     target_col='value',
 )
@@ -68,7 +68,7 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 
 ```python
 timegpt.plot(
-    df, timegpt_fcst_finetune_mae_df, 
+    df, timegpt_fcst_fewshot_mae_df, 
     time_col='timestamp', target_col='value',
 )
 ```
@@ -138,12 +138,14 @@ test = df[-36:]
 ```python
 losses = ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']
 
+test = test.copy()
+
 for loss in losses:
     preds_df = timegpt.forecast(
     df=train, 
     h=36, 
-    finetune_steps=10,
-    finetune_loss=loss,
+    fewshot_steps=10,
+    fewshot_loss=loss,
     time_col='timestamp', 
     target_col='value')
 
@@ -158,67 +160,31 @@ INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: MS
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
-A value is trying to be set on a copy of a slice from a DataFrame.
-Try using .loc[row_indexer,col_indexer] = value instead
-
-See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
-  test.loc[:,f'TimeGPT_{loss}'] = preds
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: MS
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
-A value is trying to be set on a copy of a slice from a DataFrame.
-Try using .loc[row_indexer,col_indexer] = value instead
-
-See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
-  test.loc[:,f'TimeGPT_{loss}'] = preds
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: MS
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
-A value is trying to be set on a copy of a slice from a DataFrame.
-Try using .loc[row_indexer,col_indexer] = value instead
-
-See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
-  test.loc[:,f'TimeGPT_{loss}'] = preds
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: MS
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
-A value is trying to be set on a copy of a slice from a DataFrame.
-Try using .loc[row_indexer,col_indexer] = value instead
-
-See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
-  test.loc[:,f'TimeGPT_{loss}'] = preds
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: MS
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
-A value is trying to be set on a copy of a slice from a DataFrame.
-Try using .loc[row_indexer,col_indexer] = value instead
-
-See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
-  test.loc[:,f'TimeGPT_{loss}'] = preds
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: MS
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_1877/3582952315.py:14: SettingWithCopyWarning: 
-A value is trying to be set on a copy of a slice from a DataFrame.
-Try using .loc[row_indexer,col_indexer] = value instead
-
-See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
-  test.loc[:,f'TimeGPT_{loss}'] = preds
 ```
 
 Great! We have predictions from TimeGPT using all the different loss
@@ -244,18 +210,6 @@ for loss in losses[1:]:
     pct_improv.append(round(pct_diff, 2))
 ```
 
-``` text
-[0    9.69
- dtype: float64,
- 0    0.09
- dtype: float64,
- 0    0.53
- dtype: float64,
- 0    30.98
- dtype: float64,
- 0    7.32
- dtype: float64]
-```
 
 ```python
 data = {

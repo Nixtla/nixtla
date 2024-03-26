@@ -16,7 +16,7 @@ broad capabilities to your tasks specificities.
 Concretely, the process of fine-tuning consists of performing a certain
 number of training iterations on your input data minimizing the
 forecasting error. The forecasts will then be produced with the updated
-model. To control the number of iterations, use the `finetune_steps`
+model. To control the number of iterations, use the `fewshot_steps`
 argument of the `forecast` method.
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/5_finetuning.ipynb)
@@ -26,10 +26,6 @@ import pandas as pd
 from nixtlats import TimeGPT
 ```
 
-``` text
-/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-  from tqdm.autonotebook import tqdm
-```
 
 ```python
 timegpt = TimeGPT(
@@ -55,7 +51,7 @@ df.head()
 
 ```python
 timegpt_fcst_finetune_df = timegpt.forecast(
-    df=df, h=12, finetune_steps=10,
+    df=df, h=12, fewshot_steps=10,
     time_col='timestamp', target_col='value',
 )
 ```
@@ -63,6 +59,7 @@ timegpt_fcst_finetune_df = timegpt.forecast(
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
+INFO:nixtlats.timegpt:Inferred freq: MS
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
@@ -75,14 +72,14 @@ timegpt.plot(
 
 ![](/nixtla/docs/tutorials/5_finetuning_files/figure-markdown_strict/cell-7-output-1.png)
 
-In this code, `finetune_steps=10` means the model will go through 10
+In this code, `fewshot_steps=10` means the model will go through 10
 iterations of training on your time series data.
 
 Keep in mind that fine-tuning can be a bit of trial and error. You might
-need to adjust the number of `finetune_steps` based on your specific
+need to adjust the number of `fewshot_steps` based on your specific
 needs and the complexity of your data. It’s recommended to monitor the
 model’s performance during fine-tuning and adjust as needed. Be aware
-that more `finetune_steps` may lead to longer training times and could
+that more `fewshot_steps` may lead to longer training times and could
 potentially lead to overfitting if not managed properly.
 
 Remember, fine-tuning is a powerful feature, but it should be used

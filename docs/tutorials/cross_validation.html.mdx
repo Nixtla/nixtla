@@ -53,7 +53,7 @@ of separate time windows on which the model is assessed, and
 `step_size`, determining the gap between these windows. If `step_size`
 is unspecified, it defaults to the forecast horizon `h`.
 
-The process also allows for model refinement via `finetune_steps`,
+The process also allows for model refinement via `fewshot_steps`,
 specifying the number of iterations for model fine-tuning on new data.
 Data pre-processing is manageable through `clean_ex_first`, deciding
 whether to cleanse the exogenous signal prior to forecasting.
@@ -363,7 +363,7 @@ timegpt_cv_df_x_long_horizon = timegpt.cross_validation(
     h=48, 
     n_windows=2,
     level=[80, 90],
-    model='timegpt-1-long-horizon',
+    model='long-horizon',
 )
 timegpt_cv_df_x_long_horizon.columns = timegpt_cv_df_x_long_horizon.columns.str.replace('TimeGPT', 'TimeGPT-LongHorizon')
 timegpt_cv_df_x_models = timegpt_cv_df_x_long_horizon.merge(timegpt_cv_df_x)
