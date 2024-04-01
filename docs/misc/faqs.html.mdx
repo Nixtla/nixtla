@@ -206,7 +206,7 @@ process, the `TimeGPT` model undergoes additional training using your
 specific dataset, starting from the pre-trained paramaters. The updated
 model then produces the forecasts. You can control the number of
 training iterations and the loss function for fine-tuning with the
-`fewshot_steps` and the `fewshot_loss` parameters in the `forecast`
+`finetune_steps` and the `finetune_loss` parameters in the `forecast`
 method from the `TimeGPT` class, respectively.
 
 For a comprehensive guide on how to apply fine-tuning, please refer to
@@ -218,7 +218,7 @@ tutorials.
 ### Do I have to fine-tune every series?
 
 No, you do not need to fine-tune every series individually. When using
-the `fewshot_steps` parameter, the model undergoes fine-tuning across
+the `finetune_steps` parameter, the model undergoes fine-tuning across
 all series in your dataset simultaneously. This method uses a
 cross-learning approach, allowing the model to learn from multiple
 series at once, which can improve individual forecasts.

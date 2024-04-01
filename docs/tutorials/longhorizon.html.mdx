@@ -20,8 +20,8 @@ predictions. It is also possible to have unknown factors come into play
 in the long-term that were not expected at the time of forecasting.
 
 To tackle those challenges, use TimeGPT’s specialized model for
-long-horizon forecasting by specifying `model='long-horizon'` in your
-setup.
+long-horizon forecasting by specifying `model='timegpt-1-long-horizon'`
+in your setup.
 
 For a detailed step-by-step guide, follow this tutorial on long-horizon
 forecasting.
@@ -77,17 +77,17 @@ input_seq = Y_df[-1104:-96]   # Gets a sequence of 1008 observations (1008 = 42 
 ```
 
 Now, we are ready to use TimeGPT for long-horizon forecasting. Here, we
-need to set the `model` parameter to `"long-horizon"`. This is the
-specialized model in TimeGPT that can handle such tasks.
+need to set the `model` parameter to `"timegpt-1-long-horizon"`. This is
+the specialized model in TimeGPT that can handle such tasks.
 
 ```python
 fcst_df = timegpt.forecast(
     df=input_seq,
     h=96,
     level=[90],
-    fewshot_steps=10,
-    fewshot_loss='mae',
-    model='long-horizon',
+    finetune_steps=10,
+    finetune_loss='mae',
+    model='timegpt-1-long-horizon',
     time_col='ds',
     target_col='y'
 )

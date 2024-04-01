@@ -23,10 +23,6 @@ import pandas as pd
 from nixtlats import TimeGPT
 ```
 
-``` text
-/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-  from tqdm.autonotebook import tqdm
-```
 
 ```python
 timegpt = TimeGPT(
@@ -58,16 +54,17 @@ fcst_pltr_calendar_df.head()
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Using the following exogenous variables: month_8, month_9, month_10, weekday_0, weekday_1, weekday_2, weekday_3, weekday_4
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 |     | date       | TimeGPT   |
 |-----|------------|-----------|
-| 0   | 2023-09-25 | 14.677374 |
-| 1   | 2023-09-26 | 14.825757 |
-| 2   | 2023-09-27 | 15.126798 |
-| 3   | 2023-09-28 | 14.398899 |
-| 4   | 2023-09-29 | 14.387407 |
+| 0   | 2023-09-25 | 14.688427 |
+| 1   | 2023-09-26 | 14.742798 |
+| 2   | 2023-09-27 | 14.781240 |
+| 3   | 2023-09-28 | 14.824156 |
+| 4   | 2023-09-29 | 14.795214 |
 
 ```python
 timegpt.plot(
@@ -110,6 +107,7 @@ timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Using the following exogenous variables: US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day, US_New Year's Day, US_Memorial Day, US_Independence Day, US_Independence Day (Observed), US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_New Year's Day (Observed), US_Juneteenth National Independence Day, US_Juneteenth National Independence Day (Observed), US_Christmas Day (Observed), US_Veterans Day (Observed)
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 

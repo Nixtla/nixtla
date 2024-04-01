@@ -24,10 +24,6 @@ import pandas as pd
 from nixtlats import TimeGPT
 ```
 
-``` text
-/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-  from tqdm.autonotebook import tqdm
-```
 
 ```python
 timegpt = TimeGPT(
@@ -84,16 +80,17 @@ timegpt_fcst_ex_vars_df.head()
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: H
+INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 
 |     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
 |-----|-----------|---------------------|-----------|---------------|---------------|---------------|---------------|
-| 0   | BE        | 2016-12-31 00:00:00 | 38.861762 | 33.821073     | 34.368669     | 43.354854     | 43.902450     |
-| 1   | BE        | 2016-12-31 01:00:00 | 35.382102 | 30.014594     | 31.493322     | 39.270882     | 40.749610     |
-| 2   | BE        | 2016-12-31 02:00:00 | 33.811425 | 26.658821     | 28.543087     | 39.079764     | 40.964029     |
-| 3   | BE        | 2016-12-31 03:00:00 | 31.707475 | 24.896205     | 26.818795     | 36.596155     | 38.518745     |
-| 4   | BE        | 2016-12-31 04:00:00 | 30.316475 | 21.125143     | 24.432148     | 36.200801     | 39.507807     |
+| 0   | BE        | 2016-12-31 00:00:00 | 48.292038 | 43.251347     | 43.798945     | 52.785130     | 53.332728     |
+| 1   | BE        | 2016-12-31 01:00:00 | 46.550168 | 41.182660     | 42.661385     | 50.438952     | 51.917677     |
+| 2   | BE        | 2016-12-31 02:00:00 | 50.782187 | 43.629583     | 45.513855     | 56.050519     | 57.934791     |
+| 3   | BE        | 2016-12-31 03:00:00 | 41.693449 | 34.882179     | 36.804767     | 46.582131     | 48.504719     |
+| 4   | BE        | 2016-12-31 04:00:00 | 40.178956 | 30.987621     | 34.294626     | 46.063286     | 49.370290     |
 
 ```python
 timegpt.plot(
@@ -133,6 +130,7 @@ timegpt.weights_x.plot.barh(x='features', y='weights')
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: H
+INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6, US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day, US_New Year's Day, US_Memorial Day, US_Independence Day, US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_Christmas Day (Observed), US_New Year's Day (Observed), US_Veterans Day (Observed)
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 

@@ -11,10 +11,6 @@ import pandas as pd
 from nixtlats import TimeGPT
 ```
 
-``` text
-/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-  from tqdm.autonotebook import tqdm
-```
 
 ```python
 timegpt = TimeGPT(
@@ -317,7 +313,7 @@ fcst_pltr_revenue.head()
 
 |     | fiscalDateEnding | TimeGPT   |
 |-----|------------------|-----------|
-| 0   | 2023-09-30       | 540005888 |
+| 0   | 2023-09-30       | 547264448 |
 
 Continuing from where we left off, the next crucial step in our
 forecasting pipeline is to adjust the frequency of our data to match the
@@ -390,11 +386,11 @@ future_df.head()
 
 |     | date       | totalRevenue |
 |-----|------------|--------------|
-| 0   | 2023-07-03 | 540005888    |
-| 1   | 2023-07-04 | 540005888    |
-| 2   | 2023-07-05 | 540005888    |
-| 3   | 2023-07-06 | 540005888    |
-| 4   | 2023-07-07 | 540005888    |
+| 0   | 2023-07-03 | 547264448    |
+| 1   | 2023-07-04 | 547264448    |
+| 2   | 2023-07-05 | 547264448    |
+| 3   | 2023-07-06 | 547264448    |
+| 4   | 2023-07-07 | 547264448    |
 
 And then we can pass the future revenue in the `forecast` method using
 the `X_df` argument. Since the revenue is in the historic dataframe,
@@ -414,6 +410,7 @@ fcst_pltr_df = timegpt.forecast(
 INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.timegpt:Using the following exogenous variables: totalRevenue
 INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 ```
 

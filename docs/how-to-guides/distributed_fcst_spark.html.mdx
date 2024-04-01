@@ -24,10 +24,6 @@ Instantiate `TimeGPT` class.
 from nixtlats import TimeGPT
 ```
 
-``` text
-/home/ubuntu/miniconda/envs/nixtlats/lib/python3.11/site-packages/statsforecast/core.py:25: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
-  from tqdm.autonotebook import tqdm
-```
 
 ```python
 timegpt = TimeGPT(
@@ -47,8 +43,7 @@ spark = SparkSession.builder.getOrCreate()
 ``` text
 Setting default log level to "WARN".
 To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
-23/11/09 17:49:01 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
-23/11/09 17:49:02 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+24/04/01 03:34:43 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
 ```
 
 ### Forecast
@@ -82,10 +77,10 @@ fcst_df.show(5)
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...                        (4 + 16) / 20]
+INFO:nixtlats.timegpt:Validating inputs...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...=============>  (19 + 1) / 20]
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
                                                                                 
 ```
 
@@ -170,22 +165,28 @@ timegpt_fcst_ex_vars_df.show(5)
 
 ``` text
 INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Validating inputs...
+INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Preprocessing dataframes...
 INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...=============>  (19 + 1) / 20]
-                                                                                
+INFO:nixtlats.timegpt:Inferred freq: H
+INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+[Stage 33:=====================================================>  (19 + 1) / 20]                                                                                
 ```
 
 ``` text
-+---------+-------------------+------------------+------------------+-----------------+-----------------+------------------+
-|unique_id|                 ds|           TimeGPT|     TimeGPT-lo-90|    TimeGPT-lo-80|    TimeGPT-hi-80|     TimeGPT-hi-90|
-+---------+-------------------+------------------+------------------+-----------------+-----------------+------------------+
-|       FR|2016-12-31 00:00:00| 64.97691027939692|60.056473801735784|61.71575274765864|68.23806781113521| 69.89734675705805|
-|       FR|2016-12-31 01:00:00| 60.14365519077404| 56.12626745731457|56.73784790927991|63.54946247226818| 64.16104292423351|
-|       FR|2016-12-31 02:00:00| 59.42375860682185| 54.84932824030574|56.52975776758845|62.31775944605525| 63.99818897333796|
-|       FR|2016-12-31 03:00:00| 55.11264928302748| 47.59671153125746|51.95117842731459|58.27412013874037|  62.6285870347975|
-|       FR|2016-12-31 04:00:00|54.400922806813526|44.925772896840385|49.65213255412798|59.14971305949907|63.876072716786666|
-+---------+-------------------+------------------+------------------+-----------------+-----------------+------------------+
++---------+-------------------+------------------+------------------+------------------+-----------------+-----------------+
+|unique_id|                 ds|           TimeGPT|     TimeGPT-lo-90|     TimeGPT-lo-80|    TimeGPT-hi-80|    TimeGPT-hi-90|
++---------+-------------------+------------------+------------------+------------------+-----------------+-----------------+
+|       FR|2016-12-31 00:00:00| 59.39155162090687| 54.47111514324573| 56.13039408916859|62.65270915264515|  64.311988098568|
+|       FR|2016-12-31 01:00:00|  60.1843929541434|56.167005220683926|56.778585672649264|63.59020023563754|64.20178068760288|
+|       FR|2016-12-31 02:00:00| 58.12912691907976| 53.55469655256365| 55.23512607984636|61.02312775831316|62.70355728559587|
+|       FR|2016-12-31 03:00:00|53.825965179940155| 46.31002742817014| 50.66449432422726|56.98743603565305|61.34190293171017|
+|       FR|2016-12-31 04:00:00|  47.6941769331486| 38.21902702317546| 42.94538668046305|52.44296718583414|57.16932684312174|
++---------+-------------------+------------------+------------------+------------------+-----------------+-----------------+
 only showing top 5 rows
 ```
 
