@@ -67,8 +67,8 @@ def deprecated_argument(old_name, new_name):
     return decorator
 
 # %% ../nbs/timegpt.ipynb 6
-deprecated_finetune_steps = deprecated_argument("finetune_steps", "fewshot_steps")
-deprecated_finetune_loss = deprecated_argument("finetune_loss", "fewshot_loss")
+deprecated_fewshot_steps = deprecated_argument("fewshot_steps", "finetune_steps")
+deprecated_fewshot_loss = deprecated_argument("fewshot_loss", "finetune_loss")
 
 # %% ../nbs/timegpt.ipynb 7
 date_features_by_freq = {
@@ -132,8 +132,8 @@ class _TimeGPTModel:
         freq: str = None,
         level: Optional[List[Union[int, float]]] = None,
         quantiles: Optional[List[float]] = None,
-        fewshot_steps: int = 0,
-        fewshot_loss: str = "default",
+        finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -149,8 +149,8 @@ class _TimeGPTModel:
         self.target_col = target_col
         self.base_freq = freq
         self.level, self.quantiles = self._prepare_level_and_quantiles(level, quantiles)
-        self.fewshot_steps = fewshot_steps
-        self.fewshot_loss = fewshot_loss
+        self.finetune_steps = finetune_steps
+        self.finetune_loss = finetune_loss
         self.clean_ex_first = clean_ex_first
         self.date_features = date_features
         self.date_features_to_one_hot = date_features_to_one_hot
@@ -520,12 +520,12 @@ class _TimeGPTModel:
                 "Please consider using a smaller horizon."
             )
         # restrict input if
-        # - we dont want to fewshot
+        # - we dont want to finetune
         # - we dont have exogenous regegressors
         # - and we dont want to produce pred intervals
         # - no add history
         restrict_input = (
-            self.fewshot_steps == 0
+            self.finetune_steps == 0
             and X_df is None
             and self.level is not None
             and not add_history
@@ -540,7 +540,7 @@ class _TimeGPTModel:
                 X_df = X_df.groupby("unique_id").tail(
                     new_input_size + self.h
                 )  # history plus exogenous
-        if self.fewshot_steps > 0 or self.level is not None:
+        if self.finetune_steps > 0 or self.level is not None:
             self.validate_input_size(Y_df=Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
         main_logger.info("Calling Forecast Endpoint...")
@@ -550,8 +550,8 @@ class _TimeGPTModel:
             fh=self.h,
             freq=self.freq,
             level=self.level,
-            fewshot_steps=self.fewshot_steps,
-            fewshot_loss=self.fewshot_loss,
+            finetune_steps=self.finetune_steps,
+            finetune_loss=self.finetune_loss,
             clean_ex_first=self.clean_ex_first,
             model=self.model,
         )
@@ -835,8 +835,8 @@ class _TimeGPT:
         X_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
         quantiles: Optional[List[float]] = None,
-        fewshot_steps: int = 0,
-        fewshot_loss: str = "default",
+        finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         validate_token: bool = False,
         add_history: bool = False,
@@ -856,8 +856,8 @@ class _TimeGPT:
             freq=freq,
             level=level,
             quantiles=quantiles,
-            fewshot_steps=fewshot_steps,
-            fewshot_loss=fewshot_loss,
+            finetune_steps=finetune_steps,
+            finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
@@ -924,8 +924,8 @@ class _TimeGPT:
         validate_token: bool = False,
         n_windows: int = 1,
         step_size: Optional[int] = None,
-        fewshot_steps: int = 0,
-        fewshot_loss: str = "default",
+        finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -943,8 +943,8 @@ class _TimeGPT:
             freq=freq,
             level=level,
             quantiles=quantiles,
-            fewshot_steps=fewshot_steps,
-            fewshot_loss=fewshot_loss,
+            finetune_steps=finetune_steps,
+            finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
@@ -1083,8 +1083,8 @@ class TimeGPT(_TimeGPT):
         )
         return dist_timegpt
 
-    @deprecated_finetune_steps
-    @deprecated_finetune_loss
+    @deprecated_fewshot_loss
+    @deprecated_fewshot_steps
     def forecast(
         self,
         df: pd.DataFrame,
@@ -1096,8 +1096,8 @@ class TimeGPT(_TimeGPT):
         X_df: Optional[pd.DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
         quantiles: Optional[List[float]] = None,
-        fewshot_steps: int = 0,
-        fewshot_loss: str = "default",
+        finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         validate_token: bool = False,
         add_history: bool = False,
@@ -1144,10 +1144,10 @@ class TimeGPT(_TimeGPT):
             formatted as TimeGPT-q-{int(100 * q)} for each q.
             100 * q represents percentiles but we choose this notation
             to avoid handling __dots__ (.) in names.
-        fewshot_steps : int (default=0)
-            Number of steps used to fewshot learning TimeGPT in the
+        finetune_steps : int (default=0)
+            Number of steps used to finetune learning TimeGPT in the
             new data.
-        fewshot_loss : str (default='default')
+        finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
@@ -1193,8 +1193,8 @@ class TimeGPT(_TimeGPT):
                 X_df=X_df,
                 level=level,
                 quantiles=quantiles,
-                fewshot_steps=fewshot_steps,
-                fewshot_loss=fewshot_loss,
+                finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 add_history=add_history,
@@ -1215,8 +1215,8 @@ class TimeGPT(_TimeGPT):
                 X_df=X_df,
                 level=level,
                 quantiles=quantiles,
-                fewshot_steps=fewshot_steps,
-                fewshot_loss=fewshot_loss,
+                finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 add_history=add_history,
@@ -1330,8 +1330,8 @@ class TimeGPT(_TimeGPT):
                 num_partitions=num_partitions,
             )
 
-    @deprecated_finetune_steps
-    @deprecated_finetune_loss
+    @deprecated_fewshot_loss
+    @deprecated_fewshot_steps
     def cross_validation(
         self,
         df: pd.DataFrame,
@@ -1345,8 +1345,8 @@ class TimeGPT(_TimeGPT):
         validate_token: bool = False,
         n_windows: int = 1,
         step_size: Optional[int] = None,
-        fewshot_steps: int = 0,
-        fewshot_loss: str = "default",
+        finetune_steps: int = 0,
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -1396,10 +1396,10 @@ class TimeGPT(_TimeGPT):
             Number of windows to evaluate.
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `h`.
-        fewshot_steps : int (default=0)
-            Number of steps used to fewshot TimeGPT in the
+        finetune_steps : int (default=0)
+            Number of steps used to finetune TimeGPT in the
             new data.
-        fewshot_loss : str (default='default')
+        finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
@@ -1438,8 +1438,8 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 level=level,
                 quantiles=quantiles,
-                fewshot_steps=fewshot_steps,
-                fewshot_loss=fewshot_loss,
+                finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 date_features=date_features,
@@ -1460,8 +1460,8 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 level=level,
                 quantiles=quantiles,
-                fewshot_steps=fewshot_steps,
-                fewshot_loss=fewshot_loss,
+                finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_token=validate_token,
                 date_features=date_features,
