@@ -137,7 +137,7 @@ class _TimeGPTModel:
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "short-horizon",
+        model: str = "timegpt-1",
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 6 * 60,
@@ -693,8 +693,8 @@ def validate_model_parameter(func):
         if "model" in kwargs:
             model = kwargs["model"]
             rename_models_dict = {
-                "timegpt-1": "short-horizon",
-                "timegpt-1-long-horizon": "long-horizon",
+                "short-horizon": "timegpt-1",
+                "long-horizon": "timegpt-1-long-horizon",
             }
             if model in rename_models_dict.keys():
                 new_model = rename_models_dict[model]
@@ -804,7 +804,7 @@ class _TimeGPT:
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.max_wait_time = max_wait_time
-        self.supported_models = ["short-horizon", "long-horizon"]
+        self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
         # custom attr
         self.weights_x: pd.DataFrame = None
 
@@ -842,7 +842,7 @@ class _TimeGPT:
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "short-horizon",
+        model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
         if validate_token and not self.validate_token(log=False):
@@ -884,7 +884,7 @@ class _TimeGPT:
         validate_token: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "short-horizon",
+        model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
         if validate_token and not self.validate_token(log=False):
@@ -929,7 +929,7 @@ class _TimeGPT:
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "short-horizon",
+        model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
         if validate_token and not self.validate_token(log=False):
@@ -1103,7 +1103,7 @@ class TimeGPT(_TimeGPT):
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "short-horizon",
+        model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ):
         """Forecast your time series using TimeGPT.
@@ -1166,9 +1166,9 @@ class TimeGPT(_TimeGPT):
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
-        model : str (default='short-horizon')
-            Model to use as a string. Options are: `short-horizon`, and `long-horizon`.
-            We recommend using `long-horizon` for forecasting
+        model : str (default='timegpt-1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
             if you want to predict more than one seasonal
             period given the frequency of your data.
         num_partitions : int (default=None)
@@ -1238,7 +1238,7 @@ class TimeGPT(_TimeGPT):
         validate_token: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "short-horizon",
+        model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ):
         """Detect anomalies in your time series using TimeGPT.
@@ -1283,9 +1283,9 @@ class TimeGPT(_TimeGPT):
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
-        model : str (default='short-horizon')
-            Model to use as a string. Options are: `short-horizon`, and `long-horizon`.
-            We recommend using `long-horizon` for forecasting
+        model : str (default='timegpt-1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
             if you want to predict more than one seasonal
             period given the frequency of your data.
         num_partitions : int (default=None)
@@ -1350,7 +1350,7 @@ class TimeGPT(_TimeGPT):
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
-        model: str = "short-horizon",
+        model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ):
         """Perform cross validation in your time series using TimeGPT.
@@ -1413,9 +1413,9 @@ class TimeGPT(_TimeGPT):
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
-        model : str (default='short-horizon')
-            Model to use as a string. Options are: `short-horizon`, and `long-horizon`.
-            We recommend using `long-horizon` for forecasting
+        model : str (default='timegpt-1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
             if you want to predict more than one seasonal
             period given the frequency of your data.
         num_partitions : int (default=None)
