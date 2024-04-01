@@ -804,7 +804,7 @@ class _TimeGPT:
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.max_wait_time = max_wait_time
-        self.supported_models = ["timegpt-1", "tiemgpt-1-long-horizon"]
+        self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
         # custom attr
         self.weights_x: pd.DataFrame = None
 
