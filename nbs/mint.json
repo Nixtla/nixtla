@@ -57,7 +57,7 @@
     },
     {
       "group": "API Reference",
-      "pages": ["timegpt.html", "date_features.html"]
+      "pages": ["nixtla_client.html", "date_features.html"]
     }
   ]
 }
