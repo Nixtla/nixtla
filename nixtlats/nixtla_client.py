@@ -142,7 +142,7 @@ date_features_by_freq = {
 }
 
 # %% ../nbs/nixtla_client.ipynb 10
-class _TimeGPTModel:
+class _NixtlaClientModel:
 
     def __init__(
         self,
@@ -773,9 +773,9 @@ def partition_by_uid(func):
     return wrapper
 
 # %% ../nbs/nixtla_client.ipynb 14
-class _TimeGPT:
+class _NixtlaClient:
     """
-    A class used to interact with the TimeGPT API.
+    A class used to interact with Nixtla API.
     """
 
     @deprecated_token
@@ -789,12 +789,12 @@ class _TimeGPT:
         max_wait_time: int = 6 * 60,
     ):
         """
-        Constructs all the necessary attributes for the TimeGPT object.
+        Constructs all the necessary attributes for the NixtlaClient object.
 
         Parameters
         ----------
         api_key : str, (default=None)
-            The authorization api_key interacts with the TimeGPT API.
+            The authorization api_key interacts with the Nixtla API.
             If not provided, it will be inferred by the NIXTLA_API_KEY environment variable.
         base_url : str, (default=None)
             Custom base_url. Pass only if provided.
@@ -849,8 +849,11 @@ class _TimeGPT:
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Returns True if your api_key is valid."""
-        validation = self.client.validate_token()
         valid = False
+        try:
+            validation = self.client.validate_token()
+        except:
+            validation = dict()
         if "message" in validation:
             if validation["message"] == "success":
                 valid = True
@@ -886,7 +889,7 @@ class _TimeGPT:
     ):
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
-        timegpt_model = _TimeGPTModel(
+        nixtla_client_model = _NixtlaClientModel(
             client=self.client,
             h=h,
             id_col=id_col,
@@ -905,8 +908,10 @@ class _TimeGPT:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        fcst_df = timegpt_model.forecast(df=df, X_df=X_df, add_history=add_history)
-        self.weights_x = timegpt_model.weights_x
+        fcst_df = nixtla_client_model.forecast(
+            df=df, X_df=X_df, add_history=add_history
+        )
+        self.weights_x = nixtla_client_model.weights_x
         return fcst_df
 
     @validate_model_parameter
@@ -928,7 +933,7 @@ class _TimeGPT:
     ):
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
-        timegpt_model = _TimeGPTModel(
+        nixtla_client_model = _NixtlaClientModel(
             client=self.client,
             h=None,
             id_col=id_col,
@@ -944,8 +949,8 @@ class _TimeGPT:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        anomalies_df = timegpt_model.detect_anomalies(df=df)
-        self.weights_x = timegpt_model.weights_x
+        anomalies_df = nixtla_client_model.detect_anomalies(df=df)
+        self.weights_x = nixtla_client_model.weights_x
         return anomalies_df
 
     @validate_model_parameter
@@ -973,7 +978,7 @@ class _TimeGPT:
     ):
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
-        timegpt_model = _TimeGPTModel(
+        nixtla_client_model = _NixtlaClientModel(
             client=self.client,
             h=h,
             id_col=id_col,
@@ -992,10 +997,10 @@ class _TimeGPT:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        cv_df = timegpt_model.cross_validation(
+        cv_df = nixtla_client_model.cross_validation(
             df=df, n_windows=n_windows, step_size=step_size
         )
-        self.weights_x = timegpt_model.weights_x
+        self.weights_x = nixtla_client_model.weights_x
         return cv_df
 
     def plot(
@@ -1108,19 +1113,19 @@ class _TimeGPT:
         )
 
 # %% ../nbs/nixtla_client.ipynb 15
-class TimeGPT(_TimeGPT):
+class NixtlaClient(_NixtlaClient):
 
-    def _instantiate_distributed_timegpt(self):
-        from nixtlats.distributed.timegpt import _DistributedTimeGPT
+    def _instantiate_distributed_nixtla_client(self):
+        from nixtlats.distributed.nixtla_client import _DistributedNixtlaClient
 
-        dist_timegpt = _DistributedTimeGPT(
+        dist_nixtla_client = _DistributedNixtlaClient(
             api_key=self.client._client_wrapper._token,
             base_url=self.client._client_wrapper._base_url,
             max_retries=self.max_retries,
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        return dist_timegpt
+        return dist_nixtla_client
 
     @deprecated_fewshot_loss
     @deprecated_fewshot_steps
@@ -1243,8 +1248,8 @@ class TimeGPT(_TimeGPT):
                 num_partitions=num_partitions,
             )
         else:
-            dist_timegpt = self._instantiate_distributed_timegpt()
-            return dist_timegpt.forecast(
+            dist_nixtla_client = self._instantiate_distributed_nixtla_client()
+            return dist_nixtla_client.forecast(
                 df=df,
                 h=h,
                 freq=freq,
@@ -1353,8 +1358,8 @@ class TimeGPT(_TimeGPT):
                 num_partitions=num_partitions,
             )
         else:
-            dist_timegpt = self._instantiate_distributed_timegpt()
-            return dist_timegpt.detect_anomalies(
+            dist_nixtla_client = self._instantiate_distributed_nixtla_client()
+            return dist_nixtla_client.detect_anomalies(
                 df=df,
                 freq=freq,
                 id_col=id_col,
@@ -1489,8 +1494,8 @@ class TimeGPT(_TimeGPT):
                 num_partitions=num_partitions,
             )
         else:
-            dist_timegpt = self._instantiate_distributed_timegpt()
-            return dist_timegpt.cross_validation(
+            dist_nixtla_client = self._instantiate_distributed_nixtla_client()
+            return dist_nixtla_client.cross_validation(
                 df=df,
                 h=h,
                 freq=freq,
@@ -1510,3 +1515,20 @@ class TimeGPT(_TimeGPT):
                 n_windows=n_windows,
                 step_size=step_size,
             )
+
+# %% ../nbs/nixtla_client.ipynb 16
+class TimeGPT(_NixtlaClient):
+    """
+    Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
+
+    This class is deprecated and may be removed in future releases.
+    Please use `NixtlaClient` instead.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        warnings.warn(
+            "Class `TimeGPT` is deprecated; use `NixtlaClient` instead.",
+            FutureWarning,
+        )

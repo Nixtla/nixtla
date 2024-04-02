@@ -46,7 +46,7 @@ def _cotransform(
     return result.as_pandas() if result.is_local else result.native  # type:ignore
 
 # %% ../../nbs/distributed.nixtla_client.ipynb 4
-class _DistributedTimeGPT:
+class _DistributedNixtlaClient:
 
     def __init__(
         self,
@@ -265,25 +265,25 @@ class _DistributedTimeGPT:
         )
         return fcst_df
 
-    def _instantiate_timegpt(self):
-        from nixtlats.timegpt import _TimeGPT
+    def _instantiate_nixtla_client(self):
+        from nixtlats.nixtla_client import _NixtlaClient
 
-        timegpt = _TimeGPT(
+        nixtla_client = _NixtlaClient(
             api_key=self.api_key,
             base_url=self.base_url,
             max_retries=self.max_retries,
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        return timegpt
+        return nixtla_client
 
     def _forecast(
         self,
         df: pd.DataFrame,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt()
-        return timegpt._forecast(df=df, **kwargs)
+        nixtla_client = self._instantiate_nixtla_client()
+        return nixtla_client._forecast(df=df, **kwargs)
 
     def _forecast_x(
         self,
@@ -291,24 +291,24 @@ class _DistributedTimeGPT:
         X_df: pd.DataFrame,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt()
-        return timegpt._forecast(df=df, X_df=X_df, **kwargs)
+        nixtla_client = self._instantiate_nixtla_client()
+        return nixtla_client._forecast(df=df, X_df=X_df, **kwargs)
 
     def _detect_anomalies(
         self,
         df: pd.DataFrame,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt()
-        return timegpt._detect_anomalies(df=df, **kwargs)
+        nixtla_client = self._instantiate_nixtla_client()
+        return nixtla_client._detect_anomalies(df=df, **kwargs)
 
     def _cross_validation(
         self,
         df: pd.DataFrame,
         kwargs,
     ) -> pd.DataFrame:
-        timegpt = self._instantiate_timegpt()
-        return timegpt._cross_validation(df=df, **kwargs)
+        nixtla_client = self._instantiate_nixtla_client()
+        return nixtla_client._cross_validation(df=df, **kwargs)
 
     @staticmethod
     def _get_forecast_schema(id_col, time_col, level, quantiles, cv=False):
