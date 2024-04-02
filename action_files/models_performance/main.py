@@ -141,7 +141,7 @@ class Experiment:
         init_time = time()
         # A: this sould be replaced with
         # cross validation
-        timegpt = TimeGPT(token=os.environ["TIMEGPT_TOKEN"])
+        timegpt = TimeGPT()
         fcst_df = timegpt.forecast(
             df=self.df_train,
             X_df=self.df_test.drop(columns=self.target_col)
@@ -200,7 +200,7 @@ class Experiment:
 
     def plot_and_save_forecasts(self, cv_df: pd.DataFrame, plot_dir: str) -> str:
         """Plot ans saves forecasts, returns the path of the plot"""
-        timegpt = TimeGPT(token=os.environ["TIMEGPT_TOKEN"])
+        timegpt = TimeGPT()
         df = self.df.copy()
         df[self.time_col] = pd.to_datetime(df[self.time_col])
         if not self.has_id_col:
