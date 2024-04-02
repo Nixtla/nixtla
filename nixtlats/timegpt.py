@@ -54,7 +54,7 @@ def deprecated_argument(old_name, new_name):
         def wrapper(*args, **kwargs):
             if old_name in kwargs:
                 warnings.warn(
-                    f"'{old_name}' is deprecated; use '{new_name}' instead.",
+                    f"`'{old_name}'` is deprecated; use `'{new_name}'` instead.",
                     FutureWarning,
                 )
                 if new_name in kwargs:
@@ -67,10 +67,32 @@ def deprecated_argument(old_name, new_name):
     return decorator
 
 # %% ../nbs/timegpt.ipynb 6
-deprecated_fewshot_steps = deprecated_argument("fewshot_steps", "finetune_steps")
-deprecated_fewshot_loss = deprecated_argument("fewshot_loss", "finetune_loss")
+def deprecated_method(new_method):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            warnings.warn(
+                f"Method `{func.__name__}` is deprecated; "
+                f"use `{new_method}` instead.",
+                FutureWarning,
+            )
+            return getattr(self, new_method)(*args, **kwargs)
+
+        wrapper.__doc__ = func.__doc__
+        return wrapper
+
+    return decorator
 
 # %% ../nbs/timegpt.ipynb 7
+deprecated_fewshot_steps = deprecated_argument("fewshot_steps", "finetune_steps")
+deprecated_fewshot_loss = deprecated_argument("fewshot_loss", "finetune_loss")
+deprecated_token = deprecated_argument("token", "api_key")
+deprecated_environment = deprecated_argument("environment", "base_url")
+
+# %% ../nbs/timegpt.ipynb 8
+use_validate_api_key = deprecated_method(new_method="validate_api_key")
+
+# %% ../nbs/timegpt.ipynb 9
 date_features_by_freq = {
     # Daily frequencies
     "B": ["year", "month", "day", "weekday"],
@@ -119,7 +141,7 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/timegpt.ipynb 8
+# %% ../nbs/timegpt.ipynb 10
 class _TimeGPTModel:
 
     def __init__(
@@ -687,7 +709,7 @@ class _TimeGPTModel:
         fcst_cv_df = self.transform_outputs(fcst_cv_df)
         return fcst_cv_df
 
-# %% ../nbs/timegpt.ipynb 9
+# %% ../nbs/timegpt.ipynb 11
 def validate_model_parameter(func):
     def wrapper(self, *args, **kwargs):
         if "model" in kwargs:
@@ -712,7 +734,7 @@ def validate_model_parameter(func):
 
     return wrapper
 
-# %% ../nbs/timegpt.ipynb 10
+# %% ../nbs/timegpt.ipynb 12
 def remove_unused_categories(df: pd.DataFrame, col: str):
     """Check if col exists in df and if it is a category column.
     In that case, it removes the unused levels."""
@@ -722,7 +744,7 @@ def remove_unused_categories(df: pd.DataFrame, col: str):
             df[col] = df[col].cat.remove_unused_categories()
     return df
 
-# %% ../nbs/timegpt.ipynb 11
+# %% ../nbs/timegpt.ipynb 13
 def partition_by_uid(func):
     def wrapper(self, num_partitions, **kwargs):
         if num_partitions is None or num_partitions == 1:
@@ -750,16 +772,18 @@ def partition_by_uid(func):
 
     return wrapper
 
-# %% ../nbs/timegpt.ipynb 12
+# %% ../nbs/timegpt.ipynb 14
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
     """
 
+    @deprecated_token
+    @deprecated_environment
     def __init__(
         self,
-        token: Optional[str] = None,
-        environment: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 6 * 60,
@@ -769,11 +793,11 @@ class _TimeGPT:
 
         Parameters
         ----------
-        token : str, (default=None)
-            The authorization token interacts with the TimeGPT API.
-            If not provided, it will be inferred by the TIMEGPT_TOKEN environment variable.
-        environment : str, (default=None)
-            Custom environment. Pass only if provided.
+        api_key : str, (default=None)
+            The authorization api_key interacts with the TimeGPT API.
+            If not provided, it will be inferred by the NIXTLA_API_KEY environment variable.
+        base_url : str, (default=None)
+            Custom base_url. Pass only if provided.
         max_retries : int, (default=6)
             The maximum number of attempts to make when calling the API before giving up.
             It defines how many times the client will retry the API call if it fails.
@@ -791,16 +815,26 @@ class _TimeGPT:
             The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to
             catch these errors, use max_wait_time >> 60.
         """
-        if token is None:
-            token = os.environ.get("TIMEGPT_TOKEN")
-        if token is None:
+        if api_key is None:
+            timegpt_token = os.environ.get("TIMEGPT_TOKEN")
+            if timegpt_token is not None:
+                warnings.warn(
+                    f"`TIMEGPT_TOKEN` environment variable is deprecated; "
+                    "use `NIXTLA_API_KEY` instead.",
+                    FutureWarning,
+                )
+            api_key = os.environ.get("NIXTLA_API_KEY", timegpt_token)
+        if api_key is None:
             raise Exception(
-                "The token must be set either by passing `token` "
-                "or by setting the TIMEGPT_TOKEN environment variable."
+                "The api_key must be set either by passing `api_key` "
+                "or by setting the `NIXTLA_API_KEY` environment variable."
             )
-        if environment is None:
-            environment = "https://dashboard.nixtla.io/api"
-        self.client = Nixtla(base_url=environment, token=token)
+        if base_url is None:
+            base_url = os.environ.get(
+                "NIXTLA_BASE_URL",
+                "https://dashboard.nixtla.io/api",
+            )
+        self.client = Nixtla(base_url=base_url, token=api_key)
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.max_wait_time = max_wait_time
@@ -808,8 +842,13 @@ class _TimeGPT:
         # custom attr
         self.weights_x: pd.DataFrame = None
 
-    def validate_token(self, log: bool = True) -> bool:
-        """Returns True if your token is valid."""
+    @use_validate_api_key
+    def validate_token(self):
+        """this is deprecated in favor of validate_api_key"""
+        pass
+
+    def validate_api_key(self, log: bool = True) -> bool:
+        """Returns True if your api_key is valid."""
         validation = self.client.validate_token()
         valid = False
         if "message" in validation:
@@ -838,15 +877,15 @@ class _TimeGPT:
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
-        if validate_token and not self.validate_token(log=False):
-            raise Exception("Token not valid, please email ops@nixtla.io")
+        if validate_api_key and not self.validate_api_key(log=False):
+            raise Exception("API Key not valid, please email ops@nixtla.io")
         timegpt_model = _TimeGPTModel(
             client=self.client,
             h=h,
@@ -881,14 +920,14 @@ class _TimeGPT:
         target_col: str = "y",
         level: Union[int, float] = 99,
         clean_ex_first: bool = True,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
-        if validate_token and not self.validate_token(log=False):
-            raise Exception("Token not valid, please email ops@nixtla.io")
+        if validate_api_key and not self.validate_api_key(log=False):
+            raise Exception("API Key not valid, please email ops@nixtla.io")
         timegpt_model = _TimeGPTModel(
             client=self.client,
             h=None,
@@ -921,7 +960,7 @@ class _TimeGPT:
         target_col: str = "y",
         level: Optional[List[Union[int, float]]] = None,
         quantiles: Optional[List[float]] = None,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         n_windows: int = 1,
         step_size: Optional[int] = None,
         finetune_steps: int = 0,
@@ -932,8 +971,8 @@ class _TimeGPT:
         model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
-        if validate_token and not self.validate_token(log=False):
-            raise Exception("Token not valid, please email ops@nixtla.io")
+        if validate_api_key and not self.validate_api_key(log=False):
+            raise Exception("API Key not valid, please email ops@nixtla.io")
         timegpt_model = _TimeGPTModel(
             client=self.client,
             h=h,
@@ -1068,15 +1107,15 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 13
+# %% ../nbs/timegpt.ipynb 15
 class TimeGPT(_TimeGPT):
 
     def _instantiate_distributed_timegpt(self):
         from nixtlats.distributed.timegpt import _DistributedTimeGPT
 
         dist_timegpt = _DistributedTimeGPT(
-            token=self.client._client_wrapper._token,
-            environment=self.client._client_wrapper._base_url,
+            api_key=self.client._client_wrapper._token,
+            base_url=self.client._client_wrapper._base_url,
             max_retries=self.max_retries,
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
@@ -1099,7 +1138,7 @@ class TimeGPT(_TimeGPT):
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -1152,8 +1191,8 @@ class TimeGPT(_TimeGPT):
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
             using TimeGPT.
-        validate_token : bool (default=False)
-            If True, validates token before
+        validate_api_key : bool (default=False)
+            If True, validates api_key before
             sending requests.
         add_history : bool (default=False)
             Return fitted values of the model.
@@ -1196,7 +1235,7 @@ class TimeGPT(_TimeGPT):
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
-                validate_token=validate_token,
+                validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
@@ -1218,7 +1257,7 @@ class TimeGPT(_TimeGPT):
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
-                validate_token=validate_token,
+                validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
@@ -1235,7 +1274,7 @@ class TimeGPT(_TimeGPT):
         target_col: str = "y",
         level: Union[int, float] = 99,
         clean_ex_first: bool = True,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
@@ -1271,8 +1310,8 @@ class TimeGPT(_TimeGPT):
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
             using TimeGPT.
-        validate_token : bool (default=False)
-            If True, validates token before
+        validate_api_key : bool (default=False)
+            If True, validates api_key before
             sending requests.
         date_features : bool or list of str or callable, optional (default=False)
             Features computed from the dates.
@@ -1307,7 +1346,7 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 level=level,
                 clean_ex_first=clean_ex_first,
-                validate_token=validate_token,
+                validate_api_key=validate_api_key,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1323,7 +1362,7 @@ class TimeGPT(_TimeGPT):
                 target_col=target_col,
                 level=level,
                 clean_ex_first=clean_ex_first,
-                validate_token=validate_token,
+                validate_api_key=validate_api_key,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1342,7 +1381,7 @@ class TimeGPT(_TimeGPT):
         target_col: str = "y",
         level: Optional[List[Union[int, float]]] = None,
         quantiles: Optional[List[float]] = None,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         n_windows: int = 1,
         step_size: Optional[int] = None,
         finetune_steps: int = 0,
@@ -1389,8 +1428,8 @@ class TimeGPT(_TimeGPT):
             formatted as TimeGPT-q-{int(100 * q)} for each q.
             100 * q represents percentiles but we choose this notation
             to avoid handling __dots__ (.) in names.
-        validate_token : bool (default=False)
-            If True, validates token before
+        validate_api_key : bool (default=False)
+            If True, validates api_key before
             sending requests.
         n_windows : int (defaul=1)
             Number of windows to evaluate.
@@ -1441,7 +1480,7 @@ class TimeGPT(_TimeGPT):
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
-                validate_token=validate_token,
+                validate_api_key=validate_api_key,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1463,7 +1502,7 @@ class TimeGPT(_TimeGPT):
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
-                validate_token=validate_token,
+                validate_api_key=validate_api_key,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,

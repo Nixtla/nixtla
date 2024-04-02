@@ -50,14 +50,14 @@ class _DistributedTimeGPT:
 
     def __init__(
         self,
-        token: Optional[str] = None,
-        environment: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 60,
     ):
-        self.token = token
-        self.environment = environment
+        self.api_key = api_key
+        self.base_url = base_url
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.max_wait_time = max_wait_time
@@ -129,7 +129,7 @@ class _DistributedTimeGPT:
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
@@ -147,7 +147,7 @@ class _DistributedTimeGPT:
             finetune_steps=finetune_steps,
             finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
-            validate_token=validate_token,
+            validate_api_key=validate_api_key,
             add_history=add_history,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
@@ -179,7 +179,7 @@ class _DistributedTimeGPT:
         target_col: str = "y",
         level: Union[int, float] = 99,
         clean_ex_first: bool = True,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
@@ -192,7 +192,7 @@ class _DistributedTimeGPT:
             target_col=target_col,
             level=level,
             clean_ex_first=clean_ex_first,
-            validate_token=validate_token,
+            validate_api_key=validate_api_key,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             model=model,
@@ -222,7 +222,7 @@ class _DistributedTimeGPT:
         finetune_steps: int = 0,
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
-        validate_token: bool = False,
+        validate_api_key: bool = False,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = True,
         model: str = "timegpt-1",
@@ -241,7 +241,7 @@ class _DistributedTimeGPT:
             finetune_steps=finetune_steps,
             finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
-            validate_token=validate_token,
+            validate_api_key=validate_api_key,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             model=model,
@@ -269,8 +269,8 @@ class _DistributedTimeGPT:
         from nixtlats.timegpt import _TimeGPT
 
         timegpt = _TimeGPT(
-            token=self.token,
-            environment=self.environment,
+            api_key=self.api_key,
+            base_url=self.base_url,
             max_retries=self.max_retries,
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
