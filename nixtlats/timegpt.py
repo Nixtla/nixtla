@@ -54,7 +54,7 @@ def deprecated_argument(old_name, new_name):
         def wrapper(*args, **kwargs):
             if old_name in kwargs:
                 warnings.warn(
-                    f"'{old_name}' is deprecated; use '{new_name}' instead.",
+                    f"`'{old_name}'` is deprecated; use `'{new_name}'` instead.",
                     FutureWarning,
                 )
                 if new_name in kwargs:
@@ -67,12 +67,32 @@ def deprecated_argument(old_name, new_name):
     return decorator
 
 # %% ../nbs/timegpt.ipynb 6
+def deprecated_method(new_method):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            warnings.warn(
+                f"Method `{func.__name__}` is deprecated; "
+                f"use `{new_method}` instead.",
+                FutureWarning,
+            )
+            return getattr(self, new_method)(*args, **kwargs)
+
+        wrapper.__doc__ = func.__doc__
+        return wrapper
+
+    return decorator
+
+# %% ../nbs/timegpt.ipynb 7
 deprecated_fewshot_steps = deprecated_argument("fewshot_steps", "finetune_steps")
 deprecated_fewshot_loss = deprecated_argument("fewshot_loss", "finetune_loss")
 deprecated_token = deprecated_argument("token", "api_key")
 deprecated_environment = deprecated_argument("environment", "base_url")
 
-# %% ../nbs/timegpt.ipynb 7
+# %% ../nbs/timegpt.ipynb 8
+use_validate_api_key = deprecated_method(new_method="validate_api_key")
+
+# %% ../nbs/timegpt.ipynb 9
 date_features_by_freq = {
     # Daily frequencies
     "B": ["year", "month", "day", "weekday"],
@@ -121,7 +141,7 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/timegpt.ipynb 8
+# %% ../nbs/timegpt.ipynb 10
 class _TimeGPTModel:
 
     def __init__(
@@ -689,7 +709,7 @@ class _TimeGPTModel:
         fcst_cv_df = self.transform_outputs(fcst_cv_df)
         return fcst_cv_df
 
-# %% ../nbs/timegpt.ipynb 9
+# %% ../nbs/timegpt.ipynb 11
 def validate_model_parameter(func):
     def wrapper(self, *args, **kwargs):
         if "model" in kwargs:
@@ -714,7 +734,7 @@ def validate_model_parameter(func):
 
     return wrapper
 
-# %% ../nbs/timegpt.ipynb 10
+# %% ../nbs/timegpt.ipynb 12
 def remove_unused_categories(df: pd.DataFrame, col: str):
     """Check if col exists in df and if it is a category column.
     In that case, it removes the unused levels."""
@@ -724,7 +744,7 @@ def remove_unused_categories(df: pd.DataFrame, col: str):
             df[col] = df[col].cat.remove_unused_categories()
     return df
 
-# %% ../nbs/timegpt.ipynb 11
+# %% ../nbs/timegpt.ipynb 13
 def partition_by_uid(func):
     def wrapper(self, num_partitions, **kwargs):
         if num_partitions is None or num_partitions == 1:
@@ -752,7 +772,7 @@ def partition_by_uid(func):
 
     return wrapper
 
-# %% ../nbs/timegpt.ipynb 12
+# %% ../nbs/timegpt.ipynb 14
 class _TimeGPT:
     """
     A class used to interact with the TimeGPT API.
@@ -799,14 +819,15 @@ class _TimeGPT:
             timegpt_token = os.environ.get("TIMEGPT_TOKEN")
             if timegpt_token is not None:
                 warnings.warn(
-                    f"TIMEGPT_TOKEN is deprecated; use NIXTLA_API_KEY instead.",
+                    f"`TIMEGPT_TOKEN` environment variable is deprecated; "
+                    "use `NIXTLA_API_KEY` instead.",
                     FutureWarning,
                 )
             api_key = os.environ.get("NIXTLA_API_KEY", timegpt_token)
         if api_key is None:
             raise Exception(
                 "The api_key must be set either by passing `api_key` "
-                "or by setting the NIXTLA_API_KEY environment variable."
+                "or by setting the `NIXTLA_API_KEY` environment variable."
             )
         if base_url is None:
             base_url = os.environ.get(
@@ -820,6 +841,11 @@ class _TimeGPT:
         self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
         # custom attr
         self.weights_x: pd.DataFrame = None
+
+    @use_validate_api_key
+    def validate_token(self):
+        """this is deprecated in favor of validate_api_key"""
+        pass
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Returns True if your api_key is valid."""
@@ -1081,7 +1107,7 @@ class _TimeGPT:
             target_col=target_col,
         )
 
-# %% ../nbs/timegpt.ipynb 13
+# %% ../nbs/timegpt.ipynb 15
 class TimeGPT(_TimeGPT):
 
     def _instantiate_distributed_timegpt(self):
