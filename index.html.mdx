@@ -28,12 +28,12 @@ df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-tim
 
 
 ```python
-from nixtlats import TimeGPT
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
+nixtla_client = NixtlaClient(
     # defaults to os.environ.get("NIXTLA_API_KEY")
     api_key = 'my_api_key_provided_by_nixtla'
 )
@@ -41,19 +41,19 @@ timegpt = TimeGPT(
 
 
 ```python
-fcst_df = timegpt.forecast(df, h=24, level=[80, 90])
+fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Restricting input...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: H
+INFO:nixtlats.nixtla_client:Restricting input...
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
-timegpt.plot(df, fcst_df, level=[80, 90], max_insample_length=24 * 5)
+nixtla_client.plot(df, fcst_df, level=[80, 90], max_insample_length=24 * 5)
 ```
 
 ![](/nixtla/index_files/figure-markdown_strict/cell-6-output-1.png)

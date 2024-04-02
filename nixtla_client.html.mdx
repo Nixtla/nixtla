@@ -1,6 +1,6 @@
 ---
-output-file: timegpt.html
-title: TimeGPT
+output-file: nixtla_client.html
+title: Nixtla Client
 ---
 
 
@@ -11,18 +11,19 @@ title: TimeGPT
 
 ------------------------------------------------------------------------
 
-### TimeGPT
+## NixtlaClient
 
 > ``` text
->  TimeGPT (api_key:Optional[str]=None, base_url:Optional[str]=None,
->           max_retries:int=6, retry_interval:int=10, max_wait_time:int=360)
+>  NixtlaClient (api_key:Optional[str]=None, base_url:Optional[str]=None,
+>                max_retries:int=6, retry_interval:int=10,
+>                max_wait_time:int=360)
 > ```
 
-Constructs all the necessary attributes for the TimeGPT object.
+Constructs all the necessary attributes for the NixtlaClient object.
 
 |                | **Type** | **Default** | **Details**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 |------|------------------|-------------------------|-------------------------|
-| api_key        | Optional | None        | The authorization api_key interacts with the TimeGPT API.<br/>If not provided, it will be inferred by the NIXTLA_API_KEY environment variable.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| api_key        | Optional | None        | The authorization api_key interacts with the Nixtla API.<br/>If not provided, it will be inferred by the NIXTLA_API_KEY environment variable.                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | base_url       | Optional | None        | Custom base_url. Pass only if provided.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | max_retries    | int      | 6           | The maximum number of attempts to make when calling the API before giving up. <br/>It defines how many times the client will retry the API call if it fails. <br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total                                                                                                                                                                                                                                                                                                    |
 | retry_interval | int      | 10          | The interval in seconds between consecutive retry attempts. <br/>This is the waiting period before the client tries to call the API again after a failed attempt. <br/>Default value is 10 seconds, meaning the client waits for 10 seconds between retries.                                                                                                                                                                                                                                                                                                    |
@@ -30,31 +31,54 @@ Constructs all the necessary attributes for the TimeGPT object.
 
 ------------------------------------------------------------------------
 
-## TimeGPT.validate_api_key
+#### TimeGPT
 
 > ``` text
->  TimeGPT.validate_api_key (log:bool=True)
+>  TimeGPT (*args, **kwargs)
+> ```
+
+Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
+
+This class is deprecated and may be removed in future releases. Please
+use `NixtlaClient` instead.
+
+------------------------------------------------------------------------
+
+## NixtlaClient.validate_api_key
+
+> ``` text
+>  NixtlaClient.validate_api_key (log:bool=True)
 > ```
 
 Returns True if your api_key is valid.
+
+------------------------------------------------------------------------
+
+#### NixtlaClient.validate_token
+
+> ``` text
+>  NixtlaClient.validate_token ()
+> ```
+
+this is deprecated in favor of validate_api_key
 
 Now you can start to make forecasts! Let’s import an example:
 
 ------------------------------------------------------------------------
 
-## TimeGPT.plot
+## NixtlaClient.plot
 
 > ``` text
->  TimeGPT.plot (df:pandas.core.frame.DataFrame,
->                forecasts_df:Optional[pandas.core.frame.DataFrame]=None,
->                id_col:str='unique_id', time_col:str='ds',
->                target_col:str='y',
->                unique_ids:Union[List[str],NoneType,numpy.ndarray]=None,
->                plot_random:bool=True, models:Optional[List[str]]=None,
->                level:Optional[List[float]]=None,
->                max_insample_length:Optional[int]=None,
->                plot_anomalies:bool=False, engine:str='matplotlib',
->                resampler_kwargs:Optional[Dict]=None)
+>  NixtlaClient.plot (df:pandas.core.frame.DataFrame,
+>                     forecasts_df:Optional[pandas.core.frame.DataFrame]=Non
+>                     e, id_col:str='unique_id', time_col:str='ds',
+>                     target_col:str='y', unique_ids:Union[List[str],NoneTyp
+>                     e,numpy.ndarray]=None, plot_random:bool=True,
+>                     models:Optional[List[str]]=None,
+>                     level:Optional[List[float]]=None,
+>                     max_insample_length:Optional[int]=None,
+>                     plot_anomalies:bool=False, engine:str='matplotlib',
+>                     resampler_kwargs:Optional[Dict]=None)
 > ```
 
 Plot forecasts and insample values.
@@ -77,22 +101,23 @@ Plot forecasts and insample values.
 
 ------------------------------------------------------------------------
 
-## TimeGPT.forecast
+## NixtlaClient.forecast
 
 > ``` text
->  TimeGPT.forecast (df:pandas.core.frame.DataFrame, h:int,
->                    freq:Optional[str]=None, id_col:str='unique_id',
->                    time_col:str='ds', target_col:str='y',
->                    X_df:Optional[pandas.core.frame.DataFrame]=None,
->                    level:Optional[List[Union[int,float]]]=None,
->                    quantiles:Optional[List[float]]=None,
->                    finetune_steps:int=0, finetune_loss:str='default',
->                    clean_ex_first:bool=True, validate_api_key:bool=False,
->                    add_history:bool=False,
->                    date_features:Union[bool,List[str]]=False,
->                    date_features_to_one_hot:Union[bool,List[str]]=True,
->                    model:str='timegpt-1',
->                    num_partitions:Optional[int]=None)
+>  NixtlaClient.forecast (df:pandas.core.frame.DataFrame, h:int,
+>                         freq:Optional[str]=None, id_col:str='unique_id',
+>                         time_col:str='ds', target_col:str='y',
+>                         X_df:Optional[pandas.core.frame.DataFrame]=None,
+>                         level:Optional[List[Union[int,float]]]=None,
+>                         quantiles:Optional[List[float]]=None,
+>                         finetune_steps:int=0, finetune_loss:str='default',
+>                         clean_ex_first:bool=True,
+>                         validate_api_key:bool=False,
+>                         add_history:bool=False,
+>                         date_features:Union[bool,List[str]]=False, date_fe
+>                         atures_to_one_hot:Union[bool,List[str]]=True,
+>                         model:str='timegpt-1',
+>                         num_partitions:Optional[int]=None)
 > ```
 
 Forecast your time series using TimeGPT.
@@ -121,24 +146,25 @@ Forecast your time series using TimeGPT.
 
 ------------------------------------------------------------------------
 
-## TimeGPT.cross_validation
+## NixtlaClient.cross_validation
 
 > ``` text
->  TimeGPT.cross_validation (df:pandas.core.frame.DataFrame, h:int,
->                            freq:Optional[str]=None,
->                            id_col:str='unique_id', time_col:str='ds',
->                            target_col:str='y',
->                            level:Optional[List[Union[int,float]]]=None,
->                            quantiles:Optional[List[float]]=None,
->                            validate_api_key:bool=False, n_windows:int=1,
->                            step_size:Optional[int]=None,
->                            finetune_steps:int=0,
->                            finetune_loss:str='default',
->                            clean_ex_first:bool=True,
->                            date_features:Union[bool,List[str]]=False, date
->                            _features_to_one_hot:Union[bool,List[str]]=True
->                            , model:str='timegpt-1',
->                            num_partitions:Optional[int]=None)
+>  NixtlaClient.cross_validation (df:pandas.core.frame.DataFrame, h:int,
+>                                 freq:Optional[str]=None,
+>                                 id_col:str='unique_id', time_col:str='ds',
+>                                 target_col:str='y', level:Optional[List[Un
+>                                 ion[int,float]]]=None,
+>                                 quantiles:Optional[List[float]]=None,
+>                                 validate_api_key:bool=False,
+>                                 n_windows:int=1,
+>                                 step_size:Optional[int]=None,
+>                                 finetune_steps:int=0,
+>                                 finetune_loss:str='default',
+>                                 clean_ex_first:bool=True,
+>                                 date_features:Union[bool,List[str]]=False,
+>                                 date_features_to_one_hot:Union[bool,List[s
+>                                 tr]]=True, model:str='timegpt-1',
+>                                 num_partitions:Optional[int]=None)
 > ```
 
 Perform cross validation in your time series using TimeGPT.
@@ -169,10 +195,10 @@ Perform cross validation in your time series using TimeGPT.
 # test pass dataframe with index
 df_ds_index = df_.set_index('ds')[['unique_id', 'y']]
 df_ds_index.index = pd.DatetimeIndex(df_ds_index.index)
-fcst_inferred_df_index = timegpt.forecast(df_ds_index, h=10)
-anom_inferred_df_index = timegpt.detect_anomalies(df_ds_index)
-fcst_inferred_df = timegpt.forecast(df_[['ds', 'unique_id', 'y']], h=10)
-anom_inferred_df = timegpt.detect_anomalies(df_[['ds', 'unique_id', 'y']])
+fcst_inferred_df_index = nixtla_client.forecast(df_ds_index, h=10)
+anom_inferred_df_index = nixtla_client.detect_anomalies(df_ds_index)
+fcst_inferred_df = nixtla_client.forecast(df_[['ds', 'unique_id', 'y']], h=10)
+anom_inferred_df = nixtla_client.detect_anomalies(df_[['ds', 'unique_id', 'y']])
 pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-3)
 pd.testing.assert_frame_equal(anom_inferred_df_index, anom_inferred_df, atol=1e-3)
 df_ds_index = df_ds_index.groupby('unique_id').tail(80)
@@ -181,27 +207,28 @@ for freq in ['Y', 'W-MON', 'Q-DEC', 'H']:
         df_ds_index['unique_id'].nunique() * [pd.date_range(end='2023-01-01', periods=80, freq=freq)]
     )
     df_ds_index.index.name = 'ds'
-    fcst_inferred_df_index = timegpt.forecast(df_ds_index, h=10)
+    fcst_inferred_df_index = nixtla_client.forecast(df_ds_index, h=10)
     df_test = df_ds_index.reset_index()
-    fcst_inferred_df = timegpt.forecast(df_test, h=10)
+    fcst_inferred_df = nixtla_client.forecast(df_test, h=10)
     pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-3)
 ```
 
 ------------------------------------------------------------------------
 
-## TimeGPT.detect_anomalies
+## NixtlaClient.detect_anomalies
 
 > ``` text
->  TimeGPT.detect_anomalies (df:pandas.core.frame.DataFrame,
->                            freq:Optional[str]=None,
->                            id_col:str='unique_id', time_col:str='ds',
->                            target_col:str='y', level:Union[int,float]=99,
->                            clean_ex_first:bool=True,
->                            validate_api_key:bool=False,
->                            date_features:Union[bool,List[str]]=False, date
->                            _features_to_one_hot:Union[bool,List[str]]=True
->                            , model:str='timegpt-1',
->                            num_partitions:Optional[int]=None)
+>  NixtlaClient.detect_anomalies (df:pandas.core.frame.DataFrame,
+>                                 freq:Optional[str]=None,
+>                                 id_col:str='unique_id', time_col:str='ds',
+>                                 target_col:str='y',
+>                                 level:Union[int,float]=99,
+>                                 clean_ex_first:bool=True,
+>                                 validate_api_key:bool=False,
+>                                 date_features:Union[bool,List[str]]=False,
+>                                 date_features_to_one_hot:Union[bool,List[s
+>                                 tr]]=True, model:str='timegpt-1',
+>                                 num_partitions:Optional[int]=None)
 > ```
 
 Detect anomalies in your time series using TimeGPT.
