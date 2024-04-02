@@ -56,7 +56,9 @@ jobs:
         run: pip install ./
 
       - name: Check import
-        run: python -c "from nixtlats import TimeGPT;"
+        run: |
+          python -c "from nixtlats import TimeGPT;"
+          python -c "from nixtlats import NixtlaClient;"
 
   run-tests:
     runs-on: ${{ matrix.os }}
