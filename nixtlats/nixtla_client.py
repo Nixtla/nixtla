@@ -1517,7 +1517,7 @@ class NixtlaClient(_NixtlaClient):
             )
 
 # %% ../nbs/nixtla_client.ipynb 16
-class TimeGPT(_NixtlaClient):
+class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
 
