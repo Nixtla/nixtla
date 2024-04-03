@@ -1185,9 +1185,9 @@ class NixtlaClient(_NixtlaClient):
             Quantiles to forecast, list between (0, 1).
             `level` and `quantiles` should not be used simultaneously.
             The output dataframe will have the quantile columns
-            formatted as TimeGPT-q-{int(100 * q)} for each q.
+            formatted as TimeGPT-q-(100 * q) for each q.
             100 * q represents percentiles but we choose this notation
-            to avoid handling __dots__ (.) in names.
+            to avoid having dots in column names.
         finetune_steps : int (default=0)
             Number of steps used to finetune learning TimeGPT in the
             new data.
@@ -1430,9 +1430,9 @@ class NixtlaClient(_NixtlaClient):
             Quantiles to forecast, list between (0, 1).
             `level` and `quantiles` should not be used simultaneously.
             The output dataframe will have the quantile columns
-            formatted as TimeGPT-q-{int(100 * q)} for each q.
+            formatted as TimeGPT-q-(100 * q) for each q.
             100 * q represents percentiles but we choose this notation
-            to avoid handling __dots__ (.) in names.
+            to avoid having dots in column names..
         validate_api_key : bool (default=False)
             If True, validates api_key before
             sending requests.
