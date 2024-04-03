@@ -3,15 +3,23 @@ import setuptools
 with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
-dev = ["black", "nbdev", "plotly", "python-dotenv", "statsforecast", "datasetsforecast"]
+dev = [
+    "black",
+    "datasetsforecast",
+    "nbdev",
+    "plotly",
+    "pre-commit",
+    "python-dotenv",
+    "statsforecast",
+]
 distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
 plotting = ["utilsforecast[plotting]>=0.0.5"]
 date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtlats",
-    version="0.1.21",
-    description="TimeGPT SDK",
+    version="0.3.0",
+    description="Python SDK for Nixtla API (TimeGPT)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Nixtla/nixtla",

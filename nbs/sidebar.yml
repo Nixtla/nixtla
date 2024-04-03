@@ -15,5 +15,5 @@ website:
         contents: docs/misc/*
       - section: "API Reference"
         contents: 
-        - timegpt.ipynb
+        - nixtla_client.ipynb
         - date_features.ipynb
