@@ -805,7 +805,7 @@ def partition_by_uid(func):
 
     return wrapper
 
-# %% ../nbs/nixtla_client.ipynb 18
+# %% ../nbs/nixtla_client.ipynb 16
 class _NixtlaClient:
     """
     A class used to interact with Nixtla API.
@@ -1289,7 +1289,7 @@ class _NixtlaClient:
             target_col=target_col,
         )
 
-# %% ../nbs/nixtla_client.ipynb 20
+# %% ../nbs/nixtla_client.ipynb 18
 class NixtlaClient(_NixtlaClient):
 
     def _instantiate_distributed_nixtla_client(self):
@@ -1699,7 +1699,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 21
+# %% ../nbs/nixtla_client.ipynb 19
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
