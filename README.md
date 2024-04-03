@@ -45,11 +45,11 @@ Get started with TimeGPT now:
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
 
 from nixtlats import NixtlaClient
-nixtla_client = NixtlaClient(
+nixtla = NixtlaClient(
     # defaults to os.environ.get("NIXTLA_API_KEY")
     api_key = 'my_api_key_provided_by_nixtla'
 )
-fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
+fcst_df = nixtla.forecast(df, h=24, level=[80, 90])
 ```
 
 ![](./nbs/img/forecast_readme.png)
