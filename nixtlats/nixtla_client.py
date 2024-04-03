@@ -4,6 +4,7 @@
 __all__ = ['main_logger', 'httpx_logger']
 
 # %% ../nbs/nixtla_client.ipynb 3
+import time
 import functools
 import inspect
 import json
@@ -232,8 +233,12 @@ class _NixtlaClientModel:
     def _call_api(self, method, request):
         response = self._retry_strategy()(method)(request=request)
         if "data" in response:
-            response = response["data"]
-        return response
+            res = response["data"]
+            res["requestID"] = response["requestID"]
+            local_time = time.localtime(time.time())
+            created_at = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
+            res["created_at"] = created_at
+        return res
 
     def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
         df = df.copy()
@@ -525,6 +530,21 @@ class _NixtlaClientModel:
                 f"at least {self.input_size + self.model_horizon} observations"
             )
 
+    def request_df(self):
+        responses = {}
+        if hasattr(self, "response_timegpt_forecast"):
+            responses["forecast"] = self.response_timegpt_forecast
+        if hasattr(self, "response_timegpt_historical"):
+            responses["historical"] = self.response_timegpt_historical
+        if hasattr(self, "response_timegpt_anomalies"):
+            responses["anomalies"] = self.response_timegpt_anomalies
+        if hasattr(self, "response_timegpt_cv"):
+            responses["response_timegpt_cv"] = self.response_timegpt_cv
+        if responses:
+            return responses
+        else:
+            raise Exception("You must call a method from the NixtlaClient class first")
+
     def forecast(
         self,
         df: pd.DataFrame,
@@ -581,6 +601,8 @@ class _NixtlaClientModel:
             self.client.forecast_multi_series,
             payload,
         )
+        self.response_timegpt_forecast = response_timegpt
+        self.response_timegpt_forecast["endpoint"] = "MultiSeriesForecast"
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
@@ -603,6 +625,8 @@ class _NixtlaClientModel:
                     model=self.model,
                 ),
             )
+            self.response_timegpt_historical = response_timegpt
+            self.response_timegpt_historical["endpoint"] = "MultiSeriesInsampleForecast"
             fitted_df = pd.DataFrame(**response_timegpt["forecast"])
             fitted_df = fitted_df.drop(columns="y")
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
@@ -637,6 +661,8 @@ class _NixtlaClientModel:
                 model=self.model,
             ),
         )
+        self.response_timegpt_anomalies = response_timegpt
+        self.response_timegpt_anomalies["endpoint"] = "MultiSeriesAnomaly"
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
@@ -675,6 +701,7 @@ class _NixtlaClientModel:
             freq=pd.tseries.frequencies.to_offset(self.freq),
             step_size=self.h if step_size is None else step_size,
         )
+        self.response_timegpt_cv = {}  # store API response
         for i_window, (cutoffs, train, valid) in enumerate(splits):
             if len(valid.columns) > 3:
                 # if we have uid, ds, y + exogenous vars
@@ -685,6 +712,12 @@ class _NixtlaClientModel:
                 df=train,
                 X_df=train_future,
             )
+            self.response_timegpt_cv[f"response_timegpt_cv_{i_window}"] = (
+                self.response_timegpt_forecast
+            )
+            self.response_timegpt_cv[f"response_timegpt_cv_{i_window}"][
+                "endpoint"
+            ] = "MultiSeriesForecast"
             y_pred, _ = self.transform_inputs(df=y_pred, X_df=None)
             y_pred = join(y_pred, cutoffs, on="unique_id", how="left")
             y_pred["ds"] = pd.to_datetime(y_pred["ds"])
@@ -864,6 +897,79 @@ class _NixtlaClient:
             main_logger.info(f'Happy Forecasting! :), {validation["support"]}')
         return valid
 
+    def _extract_request(
+        self,
+        response: dict,
+        method: str,
+    ):
+        """ "Extracts information from the API response and converts it to a DataFrame.
+
+        Parameters
+        ----------
+        response : dict
+            The response from the API.
+        method : str
+            The name of the method that generated the response.
+
+        Returns
+        -------
+        res : pd.DataFrame
+            A DataFrame containing the information from the response.
+        """
+        res = pd.DataFrame(
+            {
+                "input_tokens": [response["input_tokens"]],
+                "output_tokens": [response["output_tokens"]],
+                "finetune_tokens": [response["finetune_tokens"]],
+            }
+        )
+        res["id"] = response["requestID"]
+        res["created_at"] = response["created_at"]
+        res["endpoint"] = response["endpoint"]
+        res["method"] = method
+        return res
+
+    def _request_df(self):
+        """Returns a DataFrame with the information of the requests made to the TimeGPT API."""
+        if hasattr(self, "nixtla_client_model"):
+            responses = []
+            methods = ["forecast", "historical", "anomalies", "cv"]
+            for method in methods:
+                if hasattr(self.nixtla_client_model, f"response_timegpt_{method}"):
+                    response = getattr(
+                        self.nixtla_client_model, f"response_timegpt_{method}"
+                    )
+                    if method == "cv":
+                        for value in response.values():
+                            res = self._extract_request(value, method)
+                            responses.append(res)
+                    else:
+                        res = self._extract_request(response, method)
+                        responses.append(res)
+            if responses:
+                res = pd.concat(responses, ignore_index=True)
+                res = res[
+                    [
+                        "id",
+                        "method",
+                        "created_at",
+                        "endpoint",
+                        "input_tokens",
+                        "output_tokens",
+                        "finetune_tokens",
+                    ]
+                ]
+                res["method"] = res["method"].replace("cv", "cross_validation")
+                res["method"] = res["method"].replace("anomalies", "detect_anomalies")
+                res = res.drop_duplicates(subset="created_at", keep="last")
+                return res
+            else:
+                raise Exception(
+                    "You must call a method from the NixtlaClient class first"
+                )
+        else:
+            raise Exception("You must call a method from the NixtlaClient class first")
+
     @validate_model_parameter
     @partition_by_uid
     def _forecast(
@@ -889,7 +995,7 @@ class _NixtlaClient:
     ):
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
-        nixtla_client_model = _NixtlaClientModel(
+        self.nixtla_client_model = _NixtlaClientModel(
             client=self.client,
             h=h,
             id_col=id_col,
@@ -908,10 +1014,10 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        fcst_df = nixtla_client_model.forecast(
+        fcst_df = self.nixtla_client_model.forecast(
             df=df, X_df=X_df, add_history=add_history
         )
-        self.weights_x = nixtla_client_model.weights_x
+        self.weights_x = self.nixtla_client_model.weights_x
         return fcst_df
 
     @validate_model_parameter
@@ -933,7 +1039,7 @@ class _NixtlaClient:
     ):
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
-        nixtla_client_model = _NixtlaClientModel(
+        self.nixtla_client_model = _NixtlaClientModel(
             client=self.client,
             h=None,
             id_col=id_col,
@@ -949,8 +1055,8 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        anomalies_df = nixtla_client_model.detect_anomalies(df=df)
-        self.weights_x = nixtla_client_model.weights_x
+        anomalies_df = self.nixtla_client_model.detect_anomalies(df=df)
+        self.weights_x = self.nixtla_client_model.weights_x
         return anomalies_df
 
     @validate_model_parameter
@@ -978,7 +1084,7 @@ class _NixtlaClient:
     ):
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
-        nixtla_client_model = _NixtlaClientModel(
+        self.nixtla_client_model = _NixtlaClientModel(
             client=self.client,
             h=h,
             id_col=id_col,
@@ -997,10 +1103,10 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-        cv_df = nixtla_client_model.cross_validation(
+        cv_df = self.nixtla_client_model.cross_validation(
             df=df, n_windows=n_windows, step_size=step_size
         )
-        self.weights_x = nixtla_client_model.weights_x
+        self.weights_x = self.nixtla_client_model.weights_x
         return cv_df
 
     def plot(
@@ -1126,6 +1232,9 @@ class NixtlaClient(_NixtlaClient):
             max_wait_time=self.max_wait_time,
         )
         return dist_nixtla_client
+
+    def request_df(self):
+        return super()._request_df()
 
     @deprecated_fewshot_loss
     @deprecated_fewshot_steps
