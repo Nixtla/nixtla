@@ -4,24 +4,40 @@ import subprocess
 import fire
 import pandas as pd
 
-from src.utils import ExperimentHandler
+from eval_utils.utils import ExperimentHandler
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 datasets = [
-    "m1_yearly",
-    "m1_quarterly",
+    "australian_electricity_demand",
+    "car_parts_without_missing",
+    "cif_2016",
+    "covid_deaths",
+    "dominick",
+    "ercot",
+    "ett_small_15min",
+    "ett_small_1h",
+    "exchange_rate",
+    "fred_md",
+    "hospital",
     "m1_monthly",
-    "m3_yearly",
-    "m3_quarterly",
+    "m1_quarterly",
+    "m1_yearly",
     "m3_monthly",
     "m3_other",
-    "tourism_yearly",
-    "tourism_quarterly",
-    "tourism_monthly",
-    "m4_yearly",
+    "m3_quarterly",
+    "m3_yearly",
     "m4_quarterly",
+    "m4_yearly",
+    "m5",
+    "nn5_daily_without_missing",
+    "nn5_weekly",
+    "tourism_monthly",
+    "tourism_quarterly",
+    "tourism_yearly",
+    "traffic",
+    "weather",
 ]
 
 amazon_chronos_models = [
@@ -47,11 +63,11 @@ def main(mode: str):
 
             if mode == "fcst_statsforecast":
                 logger.info("Running StatisticalEnsemble")
-                subprocess.run(process(["src.statsforecast_pipeline"]))
+                subprocess.run(process(["eval_utils.statsforecast_pipeline"]))
             elif mode == "fcst_chronos":
                 for model in amazon_chronos_models:
                     logger.info(f"Running Amazon Chronos {model}")
-                    chronos_process = process(["src.amazon_chronos.pipeline"])
+                    chronos_process = process(["eval_utils.amazon_chronos.pipeline"])
                     chronos_process.extend(["--model_name", model])
                     subprocess.run(chronos_process)
         elif mode == "evaluation":

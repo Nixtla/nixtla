@@ -1,48 +1,79 @@
-# Amazon Chronos is 10% less accurate and 500% slower than training classical statistical models.
+# Extended comparison of Chronos against the statistical ensemble
 
-We present a fully reproducible comprehensive evaluation showcasing that a Statistical Ensemble, consisting of AutoARIMA, AutoETS, AutoCES, and DynamicOptimizedTheta, outperforms Amazon Chronos—a foundational model for time series forecasting with over 710 million parameters. Specifically, the **Statistical Ensemble demonstrates 10%, 10%, and 11% superior performance in CRPS, MASE, and SMAPE metrics, respectively**, and it is **5x faster**. This analysis spans over **50,000 unique time series** across M1, M3, M4, and Tourism datasets, robustly comparing these models.
-
-# Introduction
-
-The rise of foundational models in time series forecasting, such as Amazon Chronos, represents a significant leap forward, leveraging deep learning and massive datasets for model pre-training to enhance predictive accuracy. Amazon Chronos, in particular, is noteworthy for its extensive parameterization and ambitious scope. However, our study shows that a comparatively simpler approach, employing a Statistical Ensemble of traditional forecasting methods, yields better accuracy and computational efficiency. One year ago, we used the same [benchmark](https://github.com/Nixtla/statsforecast/tree/main/experiments/m3) to showcase how statistical models outperformed deep learning models. 
+We present an extension to the [original comparison by Nixtla](https://github.com/Nixtla/nixtla/tree/main/experiments/amazon-chronos) of Chronos [1] against the SCUM ensemble [2]. In this analysis on over 200K unique time series across 28 datasets from Benchmark II in the Chronos paper [1], we show that **zero-shot** Chronos models perform comparably to this strong ensemble of 4 statistical models while being significantly faster on average. We follow the original study as closely as possible, including loading task definitions from GluonTS and computing metrics using utilsforecast.
 
 ## Empirical Evaluation
 
-This study considers over 50,000 unique time series from the M1, M3, M4, and Tourism datasets, spanning various time series frequencies. Chronos did not use these datasets in the training phase. We have also included comparisons to the Seasonal Naive model to provide a benchmark for traditional forecasting methods.
+This study considers over 200K unique time series from Benchmark II in the Chronos paper, spanning various time series domains, frequencies, history lengths, and prediction horizons. Chronos did not use these datasets in the training phase, so this is a **zero-shot** evaluation of Chronos against the statistical ensemble fitted on these datasets. We report results for two sizes of Chronos, Large and Mini, to highlight the trade-off between forecast quality and inference speed. As in the [original benchmark](https://github.com/Nixtla/nixtla/tree/main/experiments/amazon-chronos), we have included comparisons to the seasonal naive baseline. For each model, we also report the aggregated relative score which is the geometric mean of the relative improvement over seasonal naive across datasets (see Sec. 5.4 of [1] for details). 
 
 ## Results
 
-Our findings are shown in the following table, showcasing the performance across different metrics: CRPS, MASE, SMAPE, and computational time (in seconds). The best results are highlighted in **bold** for ease of reference.
+The CRPS, MASE, sMAPE, and inference time (in seconds) for each model across 28 datasets have been tabulated below. The best and second best results have been highlighted in **bold** and <u>underlined</u>. Note that the use of sMAPE is [discouraged by forecasting experts](https://otexts.com/fpp3/accuracy.html#percentage-errors) and we only report it here for completeness and parity with the previous benchmark.
 
-<img width="1099" alt="image" src="https://github.com/Nixtla/nixtla/assets/10517170/4d4fe9f3-4251-4b95-bd9b-248fc283e97b">
+<center>
+<img width="1099" alt="image" src="./full_benchmark_results.png">
+</center>
 
+### Notes
+- The original study by Nixtla used `batch_size=8` for all Chronos models. However, on the `g5.2xlarge` instance used in the benchmark, we can safely use batch size of 16 for Chronos (large) and batch size of 64 for Chronos (mini).
+- The original Nixtla benchmark re-used compiled Numba code across experiments, while this is not feasible in the current setup because of the distributed compute environment. Therefore, the reported runtime for `StatisticalEnsemble` is on average ~45 seconds higher than in the original benchmark. This does not affect the overall conclusions and the runtime ranking of `StatisticalEnsemble` and Chronos models.
+- Due to differences in task definitions and metric implementations, the numbers in the above table are not directly comparable with the results reported in the Chronos paper.
 
 ## Reproducibility
 
-To ensure the reproducibility of our findings, the Statistical Ensemble experiments were conducted on an AWS c5a.24xlarge instance, equipped with 96 vCPUs and 192 GiB of RAM. In contrast, the experiments for Amazon Chronos were carried out on an AWS g5.4xlarge GPU instance, which includes 16 vCPUs, 64 GiB of RAM, and an NVIDIA A10G Tensor Core GPU with 24 GiB. All necessary code and detailed instructions for reproducing the experiments are available in this directory.
-
-### Instructions
-
-1. Set up a Python environment:
-   
-```bash
-mamba env create -f environment.yml
-conda activate amazon-chronos
-```
-
-2. Run the experiments as reported in the table:
-   
-```bash
-python -m src.main --mode fcst_statsforecast
-python -m src.main --mode fcst_chronos
-```
-
-3. Evaluate the results using:
+### Installation
+Create a virtual environment and install the dependencies
 
 ```bash
-python -m src.main --mode evaluation
+conda create -n chronos python=3.10
+conda activate chronos
+pip install -e .
 ```
+
+### (Option 1) Running experiments locally
+To evaluate a model sequentially on all 28 datasets considered in the benchmark, run the following command
+```bash
+python src/run_metaflow.py run --model=$MODEL_NAME --max-workers=1
+```
+where `$MODEL_NAME` can be one of `SeasonalNaive`, `StatisticalEnsemble`, `chronos_mini`, `chronos_small`, `chronos_base`, `chronos_large`.
+
+We set `--max-workers=1` to ensure that each dataset is evaluated sequentially and the runtime is measured correctly.
+
+Note that `StatisticalEnsemble` can take multiple hours to forecast for datasets with long time series and large `season_length` (e.g., ETT or ERCOT). Similarly, `chronos_large` takes a while to forecast for datasets with many individual time series (e.g., Dominick or M5). Therefore the full loop over all datasets would take more than a day.
+
+### (Option 2) Running experiments in parallel using Metaflow
+**Note that running experiments in the cloud will incur costs**
+
+1. Configure Metaflow for parallel execution of jobs in the cloud. For example, this can be done by deploying the [Metaflow CloudFormation stack](https://github.com/Netflix/metaflow-tools/tree/master/aws/cloudformation) and [providing configuration details in `~/.metaflowconfig/config.json`](https://outerbounds.com/engineering/operations/configure-metaflow/). 
+
+2. Uncomment lines 83-88 in `src/run_metaflow.py` to enable parallel execution on AWS Batch.
+
+3. Build Docker image used for experiments
+
+    ```bash
+    bash build_docker.sh
+    ```
+
+4. Run the experiments using Metaflow. We use the same hardware configuration as recommended by Nixtla.
+
+    For Chronos models, we use `g5.2xlarge` instances with a single A10G GPU
+    ```bash
+    python src/run_metaflow.py run --model="chronos_mini" --max-workers=28
+    ```
+
+    For StatisticalEnsemble, we use `c5a.24xlarge` instances with 96 vCPU cores
+    ```bash
+    BATCH_NUM_GPUS=0 BATCH_NUM_CPUS=96 BATCH_MEMORY_MB=190000 python src/run_metaflow.py run --model=StatisticalEnsemble --max-workers=28
+    ```
+
+    Make sure that the compute environment associated with your AWS Batch job queue includes the respective instance types.
+
+    You can adjust `--max-workers` to change the number of instances running the experiments in parallel.
+
+### Collecting the results
+Run the notebook `collect_results.ipynb` to collect the results from Metaflow and compile the final results table.
 
 ### References
-- **Statistical Ensemble Paper**: [A Simple Combination of Univariate Models](https://www.sciencedirect.com/science/article/abs/pii/S0169207019300585?via%3Dihub)
-- **Amazon Chronos Paper**: [Chronos: Learning the Language of Time Series](https://arxiv.org/abs/2403.07815)
+
+[1] [Chronos: Learning the Language of Time Series](https://arxiv.org/abs/2403.07815)      
+[2] [A Simple Combination of Univariate Models](https://www.sciencedirect.com/science/article/abs/pii/S0169207019300585?via%3Dihub)

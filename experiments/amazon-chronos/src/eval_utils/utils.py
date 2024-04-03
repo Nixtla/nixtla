@@ -51,7 +51,7 @@ class ExperimentHandler:
         self.results_dir = results_dir
         self.models_dir = models_dir
         # defining datasets
-        self._maybe_download_m3_file(self.dataset)
+        self._maybe_download_m3_or_m5_file(self.dataset)
         gluonts_dataset = get_dataset(self.dataset)
         self.horizon = gluonts_dataset.metadata.prediction_length
         if self.horizon is None:
@@ -60,13 +60,19 @@ class ExperimentHandler:
                 "experiment cannot be run"
             )
         self.freq = gluonts_dataset.metadata.freq
-        self.seasonality = get_seasonality(self.freq)
+        # get_seasonality() returns 1 for freq='D', override this to 7. This significantly improves the accuracy of
+        # statistical models on datasets like m5/nn5_daily. The models like AutoARIMA/AutoETS can still set
+        # seasonality=1 internally on datasets like weather by choosing non-seasonal models during model selection.
+        if self.freq == "D":
+            self.seasonality = 7
+        else:
+            self.seasonality = get_seasonality(self.freq)
         self.gluonts_train_dataset = gluonts_dataset.train
         self.gluonts_test_dataset = gluonts_dataset.test
         self._create_dir_if_not_exists(self.results_dir)
 
     @staticmethod
-    def _maybe_download_m3_file(dataset: str):
+    def _maybe_download_m3_or_m5_file(dataset: str):
         if dataset[:2] == "m3":
             m3_file = Path.home() / ".gluonts" / "datasets" / "M3C.xls"
             if not m3_file.exists():
@@ -74,6 +80,16 @@ class ExperimentHandler:
                 from datasetsforecast.utils import download_file
 
                 download_file(m3_file.parent, M3.source_url)
+        elif dataset == "m5":
+            m5_raw_dir = Path.home() / ".gluonts" / "m5"
+            if not m5_raw_dir.exists():
+                import zipfile
+                from datasetsforecast.m5 import M5
+                from datasetsforecast.utils import download_file
+
+                download_file(m5_raw_dir, M5.source_url)
+                with zipfile.ZipFile(m5_raw_dir / "m5.zip", "r") as zip_ref:
+                    zip_ref.extractall(m5_raw_dir)
 
     @staticmethod
     def _transform_quantiles_to_levels(quantiles: List[float]) -> List[int]:
@@ -127,7 +143,8 @@ class ExperimentHandler:
             self.gluonts_test_dataset,
             last_n=self.horizon,
         )
-        return test_df
+        # Make sure that only the first backtest window is used for evaluation on `traffic` / `exchange_rate` datasets
+        return test_df.groupby("unique_id", sort=False).head(self.horizon)
 
     def save_dataframe(self, df: pd.DataFrame, file_name: str):
         df.to_csv(f"{self.results_dir}/{file_name}", index=False)
@@ -164,8 +181,6 @@ class ExperimentHandler:
         return fcst_df[cols]
 
     def evaluate_models(self, models: List[str]) -> pd.DataFrame:
-        test_df = self.test_df
-        train_df = self.train_df
         fcsts_df = []
         times_df = []
         for model in models:
@@ -180,6 +195,15 @@ class ExperimentHandler:
         fcsts_df = pd.concat(fcsts_df, axis=1).reset_index()
         fcsts_df["ds"] = pd.to_datetime(fcsts_df["ds"])
         times_df = pd.concat(times_df)
+        return evaluate_from_predictions(
+            models=model, fcsts_df=fcsts_df, times_df=times_df
+        )
+
+    def evaluate_from_predictions(
+        self, models: List[str], fcsts_df: pd.DataFrame, times_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        test_df = self.test_df
+        train_df = self.train_df
         test_df = test_df.merge(fcsts_df, how="left")
         assert test_df.isna().sum().sum() == 0, "merge contains nas"
         # point evaluation

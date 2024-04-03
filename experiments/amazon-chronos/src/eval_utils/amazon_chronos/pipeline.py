@@ -5,8 +5,8 @@ from typing import List, Tuple
 import fire
 import pandas as pd
 
+from eval_utils.utils import ExperimentHandler
 
-from ..utils import ExperimentHandler
 from .forecaster import AmazonChronos
 
 
@@ -16,6 +16,7 @@ def run_amazon_chronos(
     horizon: int,
     freq: str,
     quantiles: List[float],
+    batch_size: int = 16,
 ) -> Tuple[pd.DataFrame, float, str]:
     ac = AmazonChronos(model_name)
     init_time = time()
@@ -23,7 +24,7 @@ def run_amazon_chronos(
         df=train_df,
         h=horizon,
         freq=freq,
-        batch_size=8,
+        batch_size=batch_size,
         quantiles=quantiles,
         # parameters as in https://github.com/amazon-science/chronos-forecasting/blob/73be25042f5f587823d46106d372ba133152fb00/README.md?plain=1#L62-L65
         num_samples=20,

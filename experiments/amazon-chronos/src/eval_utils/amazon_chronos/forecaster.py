@@ -94,7 +94,10 @@ class AmazonChronos:
         main_logger.info("transforming dataframe to tensor")
         dataset = TimeSeriesDataset.from_df(df, batch_size=batch_size)
         main_logger.info("forecasting")
-        fcsts = [self.model.predict(batch, prediction_length=h, **predict_kwargs) for batch in dataset]
+        fcsts = [
+            self.model.predict(batch, prediction_length=h, **predict_kwargs)
+            for batch in dataset
+        ]
         fcst = torch.cat(fcsts)
         main_logger.info("transforming forecast to dataframe")
         fcst = fcst.numpy()

@@ -12,13 +12,13 @@ from scipy.stats import norm
 from statsforecast import StatsForecast
 from statsforecast.models import (
     AutoARIMA,
-    AutoETS,
     AutoCES,
+    AutoETS,
     DynamicOptimizedTheta,
     SeasonalNaive,
 )
 
-from src.utils import ExperimentHandler
+from eval_utils.utils import ExperimentHandler
 
 
 def run_seasonal_naive(
@@ -72,6 +72,7 @@ def run_statistical_ensemble(
     freq: str,
     seasonality: int,
     quantiles: List[float],
+    max_context_length: int = 5_000,
 ) -> Tuple[pd.DataFrame, float, str]:
     os.environ["NIXTLA_ID_AS_COL"] = "true"
     models = [
@@ -83,11 +84,16 @@ def run_statistical_ensemble(
     init_time = time()
     series_per_core = 15
     n_series = train_df["unique_id"].nunique()
-    n_jobs = min(n_series // series_per_core, os.cpu_count())
+    n_jobs = max(1, min(n_series // series_per_core, os.cpu_count()))
     sf = StatsForecast(
         models=models,
+        fallback_model=SeasonalNaive(season_length=seasonality),
         freq=freq,
         n_jobs=n_jobs,
+    )
+    # Shorten all time series to at most max_context_length to avoid extremely long runtime
+    train_df = train_df.groupby("unique_id", sort=False, as_index=False).tail(
+        max_context_length
     )
     fcsts_df = sf.forecast(df=train_df, h=horizon, level=[68.27])
     name_models = [repr(model) for model in models]

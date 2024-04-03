@@ -1,0 +1,30 @@
+.metaflow
+.git
+
+.ipynb_checkpoints
+logs
+results
+**/logs
+
+# editors/IDEs
+.idea
+*.iml
+**/*.swp
+**/*.ipynb
+
+# tmp files
+**/*.log
+**/*.csv
+**/*.arff
+
+# binary files
+**/*.whl
+**/*.jar
+**/*.zip
+**/*.tar
+**/*.tgz
+**/*.bz2
+**/*.png
+**/*.sif
+**/__pycache__
+**/*.egg-info

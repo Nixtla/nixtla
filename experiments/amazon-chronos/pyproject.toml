@@ -1,0 +1,19 @@
+[project]
+name = "eval_utils"
+version = "0.0.1"
+
+requires-python = ">=3.10"
+dependencies = [
+    "pandas~=2.1.0",
+    "metaflow~=2.11.0",
+    "fire",
+    "datasetsforecast",
+    "gluonts @ git+https://github.com/awslabs/gluonts.git@dbbd6e79f04880b57018c4aab771d109d3fb0e52",
+    "huggingface_hub[cli]",
+    "jupyter",
+    "neuralforecast",
+    "orjson",
+    "statsforecast~=1.7.0",
+    "utilsforecast~=0.1.2",
+    "chronos @ git+https://github.com/amazon-science/chronos-forecasting.git@96cedec3fa9795c9bd58650080643e2b68bd3a6e",
+]
