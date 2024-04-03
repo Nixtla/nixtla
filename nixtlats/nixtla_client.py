@@ -3,11 +3,7 @@
 # %% auto 0
 __all__ = ['main_logger', 'httpx_logger']
 
-<<<<<<< HEAD:nixtlats/timegpt.py
-# %% ../nbs/timegpt.ipynb 3
-=======
 # %% ../nbs/nixtla_client.ipynb 3
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
 import time
 import functools
 import inspect
@@ -146,13 +142,8 @@ date_features_by_freq = {
     "N": [],
 }
 
-<<<<<<< HEAD:nixtlats/timegpt.py
-# %% ../nbs/timegpt.ipynb 9
-class _TimeGPTModel:
-=======
-# %% ../nbs/nixtla_client.ipynb 10
+# %% ../nbs/nixtla_client.ipynb 11
 class _NixtlaClientModel:
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
 
     def __init__(
         self,
@@ -552,11 +543,7 @@ class _NixtlaClientModel:
         if responses:
             return responses
         else:
-<<<<<<< HEAD:nixtlats/timegpt.py
             raise Exception("You must call a method from the TimeGPT class first")
-=======
-            raise Exception("You must call a method from the NixtlaClient class first")
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
 
     def forecast(
         self,
@@ -755,11 +742,7 @@ class _NixtlaClientModel:
         fcst_cv_df = self.transform_outputs(fcst_cv_df)
         return fcst_cv_df
 
-<<<<<<< HEAD:nixtlats/timegpt.py
-# %% ../nbs/timegpt.ipynb 10
-=======
-# %% ../nbs/nixtla_client.ipynb 11
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
+# %% ../nbs/nixtla_client.ipynb 12
 def validate_model_parameter(func):
     def wrapper(self, *args, **kwargs):
         if "model" in kwargs:
@@ -784,11 +767,7 @@ def validate_model_parameter(func):
 
     return wrapper
 
-<<<<<<< HEAD:nixtlats/timegpt.py
-# %% ../nbs/timegpt.ipynb 11
-=======
-# %% ../nbs/nixtla_client.ipynb 12
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
+# %% ../nbs/nixtla_client.ipynb 13
 def remove_unused_categories(df: pd.DataFrame, col: str):
     """Check if col exists in df and if it is a category column.
     In that case, it removes the unused levels."""
@@ -798,11 +777,7 @@ def remove_unused_categories(df: pd.DataFrame, col: str):
             df[col] = df[col].cat.remove_unused_categories()
     return df
 
-<<<<<<< HEAD:nixtlats/timegpt.py
-# %% ../nbs/timegpt.ipynb 12
-=======
-# %% ../nbs/nixtla_client.ipynb 13
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
+# %% ../nbs/nixtla_client.ipynb 14
 def partition_by_uid(func):
     def wrapper(self, num_partitions, **kwargs):
         if num_partitions is None or num_partitions == 1:
@@ -830,13 +805,8 @@ def partition_by_uid(func):
 
     return wrapper
 
-<<<<<<< HEAD:nixtlats/timegpt.py
-# %% ../nbs/timegpt.ipynb 14
-class _TimeGPT:
-=======
-# %% ../nbs/nixtla_client.ipynb 14
+# %% ../nbs/nixtla_client.ipynb 18
 class _NixtlaClient:
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
     """
     A class used to interact with Nixtla API.
     """
@@ -961,14 +931,6 @@ class _NixtlaClient:
 
     def _request_df(self):
         """Returns a DataFrame with the information of the requests made to the TimeGPT API."""
-<<<<<<< HEAD:nixtlats/timegpt.py
-        if hasattr(self, "timegpt_model"):
-            responses = []
-            methods = ["forecast", "historical", "anomalies", "cv"]
-            for method in methods:
-                if hasattr(self.timegpt_model, f"response_timegpt_{method}"):
-                    response = getattr(self.timegpt_model, f"response_timegpt_{method}")
-=======
         if hasattr(self, "nixtla_client_model"):
             responses = []
             methods = ["forecast", "historical", "anomalies", "cv"]
@@ -977,7 +939,6 @@ class _NixtlaClient:
                     response = getattr(
                         self.nixtla_client_model, f"response_timegpt_{method}"
                     )
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
                     if method == "cv":
                         for value in response.values():
                             res = self._extract_request(value, method)
@@ -1003,17 +964,82 @@ class _NixtlaClient:
                 res = res.drop_duplicates(subset="created_at", keep="last")
                 return res
             else:
-<<<<<<< HEAD:nixtlats/timegpt.py
-                raise Exception("You must call a method from the TimeGPT class first")
-        else:
-            raise Exception("You must call a method from the TimeGPT class first")
-=======
                 raise Exception(
                     "You must call a method from the NixtlaClient class first"
                 )
         else:
             raise Exception("You must call a method from the NixtlaClient class first")
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
+
+    def _extract_request(
+        self,
+        response: dict,
+        method: str,
+    ):
+        """ "Extracts information from the API response and converts it to a DataFrame.
+
+        Parameters
+        ----------
+        response : dict
+            The response from the API.
+        method : str
+            The name of the method that generated the response.
+
+        Returns
+        -------
+        res : pd.DataFrame
+            A DataFrame containing the information from the response.
+        """
+        res = pd.DataFrame(
+            {
+                "input_tokens": [response["input_tokens"]],
+                "output_tokens": [response["output_tokens"]],
+                "finetune_tokens": [response["finetune_tokens"]],
+            }
+        )
+        res["id"] = response["requestID"]
+        res["created_at"] = response["created_at"]
+        res["endpoint"] = response["endpoint"]
+        res["method"] = method
+        return res
+
+    def _request_df(self):
+        """Returns a DataFrame with the information of the requests made to the TimeGPT API."""
+        if hasattr(self, "nixtla_client_model"):
+            responses = []
+            methods = ["forecast", "historical", "anomalies", "cv"]
+            for method in methods:
+                if hasattr(self.nixtla_client_model, f"response_timegpt_{method}"):
+                    response = getattr(
+                        self.nixtla_client_model, f"response_timegpt_{method}"
+                    )
+                    if method == "cv":
+                        for value in response.values():
+                            res = self._extract_request(value, method)
+                            responses.append(res)
+                    else:
+                        res = self._extract_request(response, method)
+                        responses.append(res)
+            if responses:
+                res = pd.concat(responses, ignore_index=True)
+                res = res[
+                    [
+                        "id",
+                        "method",
+                        "created_at",
+                        "endpoint",
+                        "input_tokens",
+                        "output_tokens",
+                        "finetune_tokens",
+                    ]
+                ]
+                res["method"] = res["method"].replace("cv", "cross_validation")
+                res["method"] = res["method"].replace("anomalies", "detect_anomalies")
+                res = res.drop_duplicates(subset="created_at", keep="last")
+                return res
+            else:
+                raise Exception("You must call a method from the TimeGPT class first")
+        else:
+            raise Exception("You must call a method from the TimeGPT class first")
 
     @validate_model_parameter
     @partition_by_uid
@@ -1038,15 +1064,9 @@ class _NixtlaClient:
         model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
-<<<<<<< HEAD:nixtlats/timegpt.py
-        if validate_token and not self.validate_token(log=False):
-            raise Exception("Token not valid, please email ops@nixtla.io")
-        self.timegpt_model = _TimeGPTModel(
-=======
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
         self.nixtla_client_model = _NixtlaClientModel(
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
             client=self.client,
             h=h,
             id_col=id_col,
@@ -1065,15 +1085,10 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-<<<<<<< HEAD:nixtlats/timegpt.py
-        fcst_df = self.timegpt_model.forecast(df=df, X_df=X_df, add_history=add_history)
-        self.weights_x = self.timegpt_model.weights_x
-=======
         fcst_df = self.nixtla_client_model.forecast(
             df=df, X_df=X_df, add_history=add_history
         )
         self.weights_x = self.nixtla_client_model.weights_x
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
         return fcst_df
 
     @validate_model_parameter
@@ -1093,15 +1108,9 @@ class _NixtlaClient:
         model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
-<<<<<<< HEAD:nixtlats/timegpt.py
-        if validate_token and not self.validate_token(log=False):
-            raise Exception("Token not valid, please email ops@nixtla.io")
-        self.timegpt_model = _TimeGPTModel(
-=======
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
         self.nixtla_client_model = _NixtlaClientModel(
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
             client=self.client,
             h=None,
             id_col=id_col,
@@ -1117,13 +1126,8 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-<<<<<<< HEAD:nixtlats/timegpt.py
-        anomalies_df = self.timegpt_model.detect_anomalies(df=df)
-        self.weights_x = self.timegpt_model.weights_x
-=======
         anomalies_df = self.nixtla_client_model.detect_anomalies(df=df)
         self.weights_x = self.nixtla_client_model.weights_x
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
         return anomalies_df
 
     @validate_model_parameter
@@ -1149,15 +1153,9 @@ class _NixtlaClient:
         model: str = "timegpt-1",
         num_partitions: int = 1,
     ):
-<<<<<<< HEAD:nixtlats/timegpt.py
-        if validate_token and not self.validate_token(log=False):
-            raise Exception("Token not valid, please email ops@nixtla.io")
-        self.timegpt_model = _TimeGPTModel(
-=======
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
         self.nixtla_client_model = _NixtlaClientModel(
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
             client=self.client,
             h=h,
             id_col=id_col,
@@ -1176,17 +1174,10 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
-<<<<<<< HEAD:nixtlats/timegpt.py
-        cv_df = self.timegpt_model.cross_validation(
-            df=df, n_windows=n_windows, step_size=step_size
-        )
-        self.weights_x = self.timegpt_model.weights_x
-=======
         cv_df = self.nixtla_client_model.cross_validation(
             df=df, n_windows=n_windows, step_size=step_size
         )
         self.weights_x = self.nixtla_client_model.weights_x
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
         return cv_df
 
     def plot(
@@ -1298,13 +1289,8 @@ class _NixtlaClient:
             target_col=target_col,
         )
 
-<<<<<<< HEAD:nixtlats/timegpt.py
-# %% ../nbs/timegpt.ipynb 16
-class TimeGPT(_TimeGPT):
-=======
-# %% ../nbs/nixtla_client.ipynb 15
+# %% ../nbs/nixtla_client.ipynb 20
 class NixtlaClient(_NixtlaClient):
->>>>>>> feat/token_method:nixtlats/nixtla_client.py
 
     def _instantiate_distributed_nixtla_client(self):
         from nixtlats.distributed.nixtla_client import _DistributedNixtlaClient
@@ -1713,7 +1699,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 16
+# %% ../nbs/nixtla_client.ipynb 21
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
