@@ -18,7 +18,7 @@ environment.yml
 settings.ini
 setup.py
 pyproject.toml
-nixtlats/nixtla_cliente.py
+nixtlats/nixtla_client.py
 nixtlats/utils.py
 nixtlats/_modidx.py
 nixtlats/__init__.py
