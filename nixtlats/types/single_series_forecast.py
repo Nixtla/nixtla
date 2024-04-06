@@ -12,8 +12,12 @@ from .single_series_forecast_model import SingleSeriesForecastModel
 
 
 class SingleSeriesForecast(pydantic.BaseModel):
+    fewshot_steps: typing.Optional[int] = pydantic.Field(description="Deprecated. Please use finetune_steps instead.")
+    fewshot_loss: typing.Optional[SingleSeriesForecastFewshotLoss] = pydantic.Field(
+        description="Deprecated. Please use finetune_loss instead."
+    )
     model: typing.Optional[SingleSeriesForecastModel] = pydantic.Field(
-        description="Model to use as a string. Options are: `short-horizon`, and `long-horizon.` We recommend using `long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data."
+        description="Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data."
     )
     freq: typing.Optional[str] = pydantic.Field(
         description="The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
@@ -31,15 +35,11 @@ class SingleSeriesForecast(pydantic.BaseModel):
     clean_ex_first: typing.Optional[bool] = pydantic.Field(
         description="A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model."
     )
-    fewshot_steps: typing.Optional[int] = pydantic.Field(
+    finetune_steps: typing.Optional[int] = pydantic.Field(
         description="The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning."
     )
-    fewshot_loss: typing.Optional[SingleSeriesForecastFewshotLoss] = pydantic.Field(
-        description="The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers."
-    )
-    finetune_steps: typing.Optional[int] = pydantic.Field(description="Deprecated. Please use fewshot_steps instead.")
     finetune_loss: typing.Optional[SingleSeriesForecastFinetuneLoss] = pydantic.Field(
-        description="Deprecated. Please use fewshot_loss instead."
+        description="The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers."
     )
 
     def json(self, **kwargs: typing.Any) -> str:
