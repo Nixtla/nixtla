@@ -19,6 +19,7 @@ dependencies:
   - s3fs
   - scikit-learn
   - shap
+  - snappy<1.2.0
   - statsmodels
   - window-ops
   - py-xgboost-cpu

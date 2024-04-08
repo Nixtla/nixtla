@@ -42,6 +42,7 @@
       "pages": [
         "docs/how-to-guides/exogenous_features.html",
         "docs/how-to-guides/lag_transforms_guide.html",
+        "docs/how-to-guides/hyperparameter_optimization.html",
         "docs/how-to-guides/transforming_exog.html",
         "docs/how-to-guides/cross_validation.html",
         "docs/how-to-guides/prediction_intervals.html",
@@ -72,7 +73,9 @@
           "group": "Local",
           "pages": [
             "forecast.html",
+            "auto.html",
             "lgb_cv.html",
+            "optimization.html",
             "utils.html",
             "core.html",
             "target_transforms.html",

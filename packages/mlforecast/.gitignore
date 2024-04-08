@@ -158,3 +158,5 @@ index_files
 _docs
 nbs/docs/**/*.xls*
 nbs/_extensions
+catboost_info
+*.pkl

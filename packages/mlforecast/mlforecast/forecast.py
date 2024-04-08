@@ -27,6 +27,7 @@ from mlforecast.core import (
     TargetTransform,
     TimeSeries,
     _name_models,
+    _get_model_name,
 )
 from .grouped_array import GroupedArray
 
@@ -159,7 +160,7 @@ class MLForecast:
         if not isinstance(models, dict) and not isinstance(models, list):
             models = [models]
         if isinstance(models, list):
-            model_names = _name_models([m.__class__.__name__ for m in models])
+            model_names = _name_models([_get_model_name(m) for m in models])
             models_with_names = dict(zip(model_names, models))
         else:
             models_with_names = models

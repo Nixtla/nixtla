@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
 from sklearn.base import BaseEstimator, clone
+from sklearn.pipeline import Pipeline
 from utilsforecast.compat import (
     DataFrame,
     pl,
@@ -101,6 +102,12 @@ def _build_transform_name(
     return name
 
 # %% ../nbs/core.ipynb 16
+def _get_model_name(model) -> str:
+    if isinstance(model, Pipeline):
+        return _get_model_name(model.steps[-1][1])
+    return model.__class__.__name__
+
+
 def _name_models(current_names):
     ctr = Counter(current_names)
     if not ctr:
@@ -126,7 +133,7 @@ def _as_tuple(x):
     return (x,)
 
 # %% ../nbs/core.ipynb 19
-Freq = Union[int, str, pd.offsets.BaseOffset]
+Freq = Union[int, str]
 Lags = Iterable[int]
 LagTransform = Union[Callable, Tuple[Callable, Any]]
 LagTransforms = Dict[int, List[LagTransform]]

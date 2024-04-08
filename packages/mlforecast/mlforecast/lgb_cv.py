@@ -73,7 +73,7 @@ CVResult = Tuple[int, float]
 class LightGBMCV:
     def __init__(
         self,
-        freq: Optional[Freq] = None,
+        freq: Freq,
         lags: Optional[Lags] = None,
         lag_transforms: Optional[LagTransforms] = None,
         date_features: Optional[Iterable[DateFeature]] = None,
@@ -84,7 +84,7 @@ class LightGBMCV:
 
         Parameters
         ----------
-        freq : str or int, optional (default=None)
+        freq : str or int
             Pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series.
         lags : list of int, optional (default=None)
             Lags of the target to use as features.
