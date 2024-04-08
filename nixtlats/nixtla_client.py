@@ -14,7 +14,7 @@ import warnings
 import asyncio
 
 from typing import Dict, List, Optional, Union
-from functools import partial
+from functools import partial, wraps
 from multiprocessing import Pool, cpu_count, Lock
 from concurrent.futures import ThreadPoolExecutor
 
@@ -752,60 +752,85 @@ def remove_unused_categories(df: pd.DataFrame, col: str):
 
 # %% ../nbs/nixtla_client.ipynb 13
 # Version: ThreadPoolExecutor
-def partition_by_uid(func):
-    def wrapper(self, num_partitions, **kwargs):
-        if num_partitions is None or num_partitions == 1:
-            return func(self, **kwargs, num_partitions=1)
-        df = kwargs.pop("df")
-        X_df = kwargs.pop("X_df", None)
-        id_col = kwargs.pop("id_col")
-        uids = df["unique_id"].unique()
+# def partition_by_uid(func):
+#     def wrapper(self, num_partitions, **kwargs):
+#         if num_partitions is None or num_partitions == 1:
+#             return func(self, **kwargs, num_partitions=1)
+#         df = kwargs.pop('df')
+#         X_df = kwargs.pop('X_df', None)
+#         id_col = kwargs.pop('id_col')
+#         uids = df['unique_id'].unique()
 
-        def partition_by_uid_single(uids_split, func, df, X_df, id_col, **kwargs):
-            df_uids = df.query("unique_id in @uids_split")
-            if X_df is not None:
-                X_df_uids = X_df.query("unique_id in @uids_split")
-            else:
-                X_df_uids = None
-            df_uids = remove_unused_categories(df_uids, col=id_col)
-            X_df_uids = remove_unused_categories(X_df_uids, col=id_col)
-            kwargs_uids = {"df": df_uids, **kwargs}
-            if X_df_uids is not None:
-                kwargs_uids["X_df"] = X_df_uids
+#         def partition_by_uid_single(uids_split, func, df, X_df, id_col, **kwargs):
+#             df_uids = df.query('unique_id in @uids_split')
+#             if X_df is not None:
+#                 X_df_uids = X_df.query('unique_id in @uids_split')
+#             else:
+#                 X_df_uids = None
+#             df_uids = remove_unused_categories(df_uids, col=id_col)
+#             X_df_uids = remove_unused_categories(X_df_uids, col=id_col)
+#             kwargs_uids = {'df': df_uids, **kwargs}
+#             if X_df_uids is not None:
+#                 kwargs_uids['X_df'] = X_df_uids
 
-            kwargs_uids["id_col"] = id_col
-            results_uids = func(**kwargs_uids, num_partitions=1)
+#             kwargs_uids['id_col'] = id_col
+#             results_uids = func(**kwargs_uids, num_partitions=1)
 
-            return results_uids
+#             return results_uids
 
-        fpartition_by_uid_single = partial(
-            partition_by_uid_single,
-            self=self,
-            func=func,
-            df=df,
-            X_df=X_df,
-            id_col=id_col,
-            **kwargs
-        )
+#         fpartition_by_uid_single = partial(partition_by_uid_single, self=self, func=func, df=df, X_df=X_df, id_col=id_col, **kwargs)
 
-        num_processes = min(num_partitions, cpu_count())
-        uids_splits = np.array_split(uids, num_processes)
+#         num_processes = min(num_partitions, cpu_count())
+#         uids_splits = np.array_split(uids, num_processes)
 
-        with ThreadPoolExecutor() as executor:
-            results_uids = [
-                executor.submit(fpartition_by_uid_single, uids_split)
-                for uids_split in uids_splits
-            ]
-            results_df = pd.concat(
-                [result_df.result() for result_df in results_uids]
-            ).reset_index(drop=True)
+#         with ThreadPoolExecutor() as executor:
+#             results_uids = [
+#                 executor.submit(fpartition_by_uid_single, uids_split)
+#                 for uids_split in uids_splits
+#             ]
+#             results_df = pd.concat([result_df.result() for result_df in results_uids]).reset_index(drop=True)
 
-        return results_df
+#         return results_df
 
-    return wrapper
+#     return wrapper
 
+# Version: Async [DOES NOT WORK, requires nested asyncio I think]
+# def partition_by_uid(func):
+#     async def wrapper(self, num_partitions, **kwargs):
+#         if num_partitions is None or num_partitions == 1:
+#             return func(self, **kwargs, num_partitions=1)
+#         df = kwargs.pop('df')
+#         X_df = kwargs.pop('X_df', None)
+#         id_col = kwargs.pop('id_col')
+#         uids = df['unique_id'].unique()
 
-# Version: mp.Pool
+#         async def partition_by_uid_single(uids_split, func, df, X_df, id_col, **kwargs):
+#             df_uids = df.query('unique_id in @uids_split')
+#             if X_df is not None:
+#                 X_df_uids = X_df.query('unique_id in @uids_split')
+#             else:
+#                 X_df_uids = None
+#             df_uids = remove_unused_categories(df_uids, col=id_col)
+#             X_df_uids = remove_unused_categories(X_df_uids, col=id_col)
+#             kwargs_uids = {'df': df_uids, **kwargs}
+#             if X_df_uids is not None:
+#                 kwargs_uids['X_df'] = X_df_uids
+
+#             kwargs_uids['id_col'] = id_col
+#             results_uids = func(self, **kwargs_uids, num_partitions=1)
+
+#             return await results_uids
+
+#         num_processes = min(num_partitions, cpu_count())
+#         uids_splits = np.array_split(uids, num_processes)
+#         results_df = [partition_by_uid_single(uids_split, func, df, X_df, id_col, **kwargs) for uids_split in uids_splits]
+#         results_df = await asyncio.gather(*results_df)
+#         results_df = pd.concat(results_df).reset_index(drop=True)
+
+#         return results_df
+#     return wrapper
+
+# Version: mp.Pool [DOES NOT WORK]
 # def partition_by_uid_single(uids_split, func, df, X_df, id_col, **kwargs):
 #     df_uids = df.query('unique_id in @uids_split')
 #     if X_df is not None:
@@ -825,20 +850,21 @@ def partition_by_uid(func):
 
 # def partition_by_uid(func):
 #     def wrapper(self, num_partitions, **kwargs):
-#         globals()['fakeSelf'] = self
+
 #         if num_partitions is None or num_partitions == 1:
 #             return func(self, **kwargs, num_partitions=1)
+
 #         df = kwargs.pop('df')
 #         X_df = kwargs.pop('X_df', None)
 #         id_col = kwargs.pop('id_col')
 #         uids = df['unique_id'].unique()
 
-#         fpartition_by_uid_single = partial(partition_by_uid_single, self=self, func=func, df=df, X_df=X_df, id_col=id_col, **kwargs)
+#         partial_partition_by_uid_single = partial(partition_by_uid_single, self=self, func=func, df=df, X_df=X_df, id_col=id_col, **kwargs)
 
 #         num_processes = min(num_partitions, cpu_count())
 #         uids_splits = np.array_split(uids, num_processes)
 #         pool = Pool(num_processes)
-#         results = pool.map(fpartition_by_uid_single, uids_splits)
+#         results = pool.map(partial_partition_by_uid_single, uids_splits)
 #         pool.close()
 #         pool.join()
 
@@ -848,32 +874,34 @@ def partition_by_uid(func):
 
 #     return wrapper
 
-# Version: old
-# def partition_by_uid(func):
-#     def wrapper(self, num_partitions, **kwargs):
-#         if num_partitions is None or num_partitions == 1:
-#             return func(self, **kwargs, num_partitions=1)
-#         df = kwargs.pop('df')
-#         X_df = kwargs.pop('X_df', None)
-#         id_col = kwargs['id_col']
-#         uids = df['unique_id'].unique()
-#         results_df = []
-#         for uids_split in np.array_split(uids, num_partitions):
-#             df_uids = df.query('unique_id in @uids_split')
-#             if X_df is not None:
-#                 X_df_uids = X_df.query('unique_id in @uids_split')
-#             else:
-#                 X_df_uids = None
-#             df_uids = remove_unused_categories(df_uids, col=id_col)
-#             X_df_uids = remove_unused_categories(X_df_uids, col=id_col)
-#             kwargs_uids = {'df': df_uids, **kwargs}
-#             if X_df_uids is not None:
-#                 kwargs_uids['X_df'] = X_df_uids
-#             results_uids = func(self, **kwargs_uids, num_partitions=1)
-#             results_df.append(results_uids)
-#         results_df = pd.concat(results_df).reset_index(drop=True)
-#         return results_df
-#     return wrapper
+
+# Version: existing
+def partition_by_uid(func):
+    def wrapper(self, num_partitions, **kwargs):
+        if num_partitions is None or num_partitions == 1:
+            return func(self, **kwargs, num_partitions=1)
+        df = kwargs.pop("df")
+        X_df = kwargs.pop("X_df", None)
+        id_col = kwargs["id_col"]
+        uids = df["unique_id"].unique()
+        results_df = []
+        for uids_split in np.array_split(uids, num_partitions):
+            df_uids = df.query("unique_id in @uids_split")
+            if X_df is not None:
+                X_df_uids = X_df.query("unique_id in @uids_split")
+            else:
+                X_df_uids = None
+            df_uids = remove_unused_categories(df_uids, col=id_col)
+            X_df_uids = remove_unused_categories(X_df_uids, col=id_col)
+            kwargs_uids = {"df": df_uids, **kwargs}
+            if X_df_uids is not None:
+                kwargs_uids["X_df"] = X_df_uids
+            results_uids = func(self, **kwargs_uids, num_partitions=1)
+            results_df.append(results_uids)
+        results_df = pd.concat(results_df).reset_index(drop=True)
+        return results_df
+
+    return wrapper
 
 # %% ../nbs/nixtla_client.ipynb 14
 class _NixtlaClient:
