@@ -627,6 +627,7 @@ def scaled_crps(
     sizes = ufp.counts_by_id(df, id_col)
     if isinstance(loss, pd.DataFrame):
         loss = loss.set_index(id_col)
+        sizes = sizes.set_index(id_col)
         assert isinstance(df, pd.DataFrame)
         norm = df[target_col].abs().groupby(df[id_col], observed=True).sum()
         res = 2 * loss.mul(sizes["counts"], axis=0).div(norm + eps, axis=0)
