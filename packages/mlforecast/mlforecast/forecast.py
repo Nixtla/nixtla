@@ -375,7 +375,7 @@ class MLForecast:
         target_col: str,
     ) -> Tuple[Union[DataFrame, np.ndarray], np.ndarray]:
         X = prep[self.ts.features_order_]
-        targets = [c for c in prep.columns if re.match(rf"^{target_col}\d?$", c)]
+        targets = [c for c in prep.columns if re.match(rf"^{target_col}\d*$", c)]
         if len(targets) == 1:
             targets = targets[0]
         y = prep[targets].to_numpy()
