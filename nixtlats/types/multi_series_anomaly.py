@@ -12,7 +12,7 @@ from .multi_series_input import MultiSeriesInput
 
 class MultiSeriesAnomaly(pydantic.BaseModel):
     model: typing.Optional[MultiSeriesAnomalyModel] = pydantic.Field(
-        description="Model to use as a string. Options are: `short-horizon`, and `long-horizon.` We recommend using `long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data."
+        description="Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data."
     )
     freq: typing.Optional[str] = pydantic.Field(
         description="The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
