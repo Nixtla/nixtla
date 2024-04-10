@@ -83,6 +83,7 @@ class GroupedArray:
 
     def _scaler_transform(self, stats: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data)
+        stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_ScalerTransform"](
             self._handle,
             _data_as_void_ptr(stats),
@@ -92,6 +93,7 @@ class GroupedArray:
 
     def _scaler_inverse_transform(self, stats: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data)
+        stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_ScalerInverseTransform"](
             self._handle,
             _data_as_void_ptr(stats),
@@ -366,6 +368,7 @@ class GroupedArray:
 
     def _boxcox_transform(self, stats: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data)
+        stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_BoxCoxTransform"](
             self._handle,
             _data_as_void_ptr(stats),
@@ -375,6 +378,7 @@ class GroupedArray:
 
     def _boxcox_inverse_transform(self, stats: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data)
+        stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_BoxCoxInverseTransform"](
             self._handle,
             _data_as_void_ptr(stats),
@@ -440,10 +444,12 @@ class GroupedArray:
 
     def _inv_diff(self, d: int, tails: np.ndarray) -> np.ndarray:
         ds = np.full(len(self), d, dtype=_indptr_dtype)
+        tails = tails.astype(self.data.dtype, copy=False)
         return self._inv_diffs(ds, tails)
 
     def _inv_diffs(self, ds: np.ndarray, tails: np.ndarray) -> np.ndarray:
         tails_indptr = _diffs_to_indptr(ds)
+        tails = tails.astype(self.data.dtype, copy=False)
         tails_ga = GroupedArray(tails, tails_indptr)
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_InvertDifferences"](
