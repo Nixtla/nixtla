@@ -149,7 +149,7 @@ def validate_freq(
     # try to catch pandas frequency in polars dataframe
     if isinstance(times, pl_Series) and isinstance(freq, str):
         missing_n = re.search(r"\d+", freq) is None
-        uppercase = re.sub("\d+", "", freq).isupper()
+        uppercase = re.sub(r"\d+", "", freq).isupper()
         if missing_n or uppercase:
             raise ValueError(
                 "You must specify a valid polars offset when using polars dataframes. "
