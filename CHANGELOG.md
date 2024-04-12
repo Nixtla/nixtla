@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.3.0
+
+### 🔄 Changes & Deprecations
+
+- **Deprecation of `TimeGPT` Class:**
+  In an effort to streamline our API and align with industry best practices, we're deprecating the `TimeGPT` class in favor of the new `NixtlaClient` class. This change is designed to provide a more intuitive and powerful interface for interacting with our services.
+
+  **Before:**
+  ```python
+  from nixtlats import TimeGPT
+
+  # Initialize the TimeGPT model
+  timegpt = TimeGPT()
+  ```
+
+  **After:**
+  ```python
+  from nixtlats import NixtlaClient
+
+  # Initialize the NixtlaClient
+  nixtla = NixtlaClient()
+  ```
+
+- **Renaming of Configuration Parameters:**
+  To enhance clarity and consistency with other SDKs, we've renamed the `token` parameter to `api_key` and `environment` to `base_url`.
+
+  **Before:**
+  ```python
+  timegpt = TimeGPT(token='YOUR_TOKEN', environment='YOUR_ENVIRONMENT_URL')
+  ```
+
+  **After:**
+  ```python
+  nixtla = NixtlaClient(api_key='YOUR_API_KEY', base_url='YOUR_BASE_URL')
+  ```
+
+- **Introduction of `NixtlaClient.validate_api_key`:**
+  Replacing the previous `NixtlaClient.validate_token` method, this update aligns with the new authentication parameter naming and offers a straightforward way to validate API keys.
+
+  **Before:**
+  ```python
+  timegpt.validate_token()
+  ```
+
+  **After:**
+  ```python
+  nixtla.validate_api_key()
+  ```
+
+- **Environment Variable Changes:**
+  In line with the renaming of parameters, we've updated the environment variables to set up the API key and base URL. The `TIMEGPT_TOKEN` is now replaced with `NIXTLA_API_KEY`, and we've introduced `NIXTLA_BASE_URL` for custom API URLs.
+
+#### **Backward Compatibility & Future Warnings:**
+
+These changes are designed to be backward compatible. However, users can expect to see future warnings when utilizing deprecated features, such as the `TimeGPT` class.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.3.0).*
+
+## 0.2.0 (Previously Released)
+
+### 🔄 Changes & Deprecations
+
+- **Renaming of Fine-Tuning Parameters:**
+  The `finetune_steps` and `finetune_loss` parameters were renamed to `fewshot_steps` and `fewshot_loss`. Additionally, the model parameter values changed from `short-horizon` and `long-horizon` to `timegpt-1` and `timegpt-1-long-horizon`, with an emphasis on preserving backward compatibility. In version 0.3.0, these changes are deprecated in favor of reverting to the original parameter names and values, ensuring a seamless transition for existing users.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.2.0).*
+
 ## 0.1.21
 
 ### 🚀 Feature Enhancements

@@ -8,7 +8,7 @@ T_Result = typing.TypeVar("T_Result")
 
 class SingleSeriesForecastFinetuneLoss(str, enum.Enum):
     """
-    Deprecated. Please use fewshot_loss instead.
+    The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
     """
 
     DEFAULT = "default"
