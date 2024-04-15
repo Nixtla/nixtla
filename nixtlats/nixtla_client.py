@@ -755,8 +755,8 @@ def partition_by_uid(func):
         id_col = kwargs["id_col"]
         uids = df["unique_id"].unique()
         results_df = []
-        split_index = 1
-        for uids_split in np.array_split(uids, num_partitions):
+        splits = np.array_split(uids, num_partitions)
+        for split_index, uids_split in enumerate(splits, start=1):
             main_logger.info(f"Partition {split_index} of {num_partitions}")
             df_uids = df.query("unique_id in @uids_split")
             if X_df is not None:
