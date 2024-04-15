@@ -774,13 +774,12 @@ def partition_by_uid(func):
                 kwargs_uids["X_df"] = X_df_uids
 
             kwargs_uids["id_col"] = id_col
-            results_uids = func(**kwargs_uids, num_partitions=1)
+            results_uids = func(self, **kwargs_uids, num_partitions=1)
 
             return results_uids
 
         fpartition_by_uid_single = partial(
             partition_by_uid_single,
-            self=self,
             func=func,
             df=df,
             X_df=X_df,
@@ -804,34 +803,6 @@ def partition_by_uid(func):
         return results_df
 
     return wrapper
-
-
-# Version: existing
-# def partition_by_uid(func):
-#     def wrapper(self, num_partitions, **kwargs):
-#         if num_partitions is None or num_partitions == 1:
-#             return func(self, **kwargs, num_partitions=1)
-#         df = kwargs.pop('df')
-#         X_df = kwargs.pop('X_df', None)
-#         id_col = kwargs['id_col']
-#         uids = df['unique_id'].unique()
-#         results_df = []
-#         for uids_split in np.array_split(uids, num_partitions):
-#             df_uids = df.query('unique_id in @uids_split')
-#             if X_df is not None:
-#                 X_df_uids = X_df.query('unique_id in @uids_split')
-#             else:
-#                 X_df_uids = None
-#             df_uids = remove_unused_categories(df_uids, col=id_col)
-#             X_df_uids = remove_unused_categories(X_df_uids, col=id_col)
-#             kwargs_uids = {'df': df_uids, **kwargs}
-#             if X_df_uids is not None:
-#                 kwargs_uids['X_df'] = X_df_uids
-#             results_uids = func(self, **kwargs_uids, num_partitions=1)
-#             results_df.append(results_uids)
-#         results_df = pd.concat(results_df).reset_index(drop=True)
-#         return results_df
-#     return wrapper
 
 # %% ../nbs/nixtla_client.ipynb 14
 class _NixtlaClient:
