@@ -551,10 +551,14 @@ def cast(s: Series, dtype: type) -> Series:
 
 # %% ../nbs/processing.ipynb 67
 def value_cols_to_numpy(
-    df: DataFrame, id_col: str, time_col: str, target_col: str
+    df: DataFrame, id_col: str, time_col: str, target_col: Optional[str]
 ) -> np.ndarray:
-    exclude_cols = [id_col, time_col, target_col]
-    value_cols = [target_col] + [col for col in df.columns if col not in exclude_cols]
+    exclude_cols = [id_col, time_col]
+    if target_col is not None:
+        exclude_cols.append(target_col)
+    value_cols = [col for col in df.columns if col not in exclude_cols]
+    if target_col is not None:
+        value_cols = [target_col, *value_cols]
     data = to_numpy(df[value_cols])
     if data.dtype not in (np.float32, np.float64):
         data = data.astype(np.float32)
@@ -598,7 +602,10 @@ def anti_join(df1: DataFrame, df2: DataFrame, on: Union[str, List[str]]) -> Data
 
 # %% ../nbs/processing.ipynb 74
 def process_df(
-    df: DataFrame, id_col: str, time_col: str, target_col: str
+    df: DataFrame,
+    id_col: str,
+    time_col: str,
+    target_col: Optional[str],
 ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
     """Extract components from dataframe
 
@@ -661,7 +668,7 @@ class DataFrameProcessor:
     ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
         return process_df(df, self.id_col, self.time_col, self.target_col)
 
-# %% ../nbs/processing.ipynb 80
+# %% ../nbs/processing.ipynb 81
 def _single_split(
     df: DataFrame,
     i_window: int,
@@ -726,7 +733,7 @@ def _single_split(
         )
     return cutoffs, train_mask, valid_mask
 
-# %% ../nbs/processing.ipynb 81
+# %% ../nbs/processing.ipynb 82
 def backtest_splits(
     df: DataFrame,
     n_windows: int,
@@ -758,7 +765,7 @@ def backtest_splits(
         valid = filter_with_mask(df, valid_mask)
         yield cutoffs, train, valid
 
-# %% ../nbs/processing.ipynb 85
+# %% ../nbs/processing.ipynb 86
 def add_insample_levels(
     df: DataFrame,
     models: List[str],
