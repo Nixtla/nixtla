@@ -21,14 +21,14 @@ automatically.
 
 ```python
 import pandas as pd
-from nixtlats import TimeGPT
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
 
@@ -44,14 +44,14 @@ anomalies. The resultant dataframe will feature an added label,
 
 ```python
 pm_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
-timegpt_anomalies_df = timegpt.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D')
+timegpt_anomalies_df = nixtla_client.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D')
 timegpt_anomalies_df.head()
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
 |     | timestamp  | anomaly | TimeGPT-lo-99 | TimeGPT  | TimeGPT-hi-99 |
@@ -63,7 +63,7 @@ INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 | 4   | 2008-01-14 | 0       | 7.714111      | 9.002295 | 10.290480     |
 
 ```python
-timegpt.plot(pm_df, 
+nixtla_client.plot(pm_df, 
              timegpt_anomalies_df,
              time_col='timestamp', 
              target_col='value')
@@ -79,17 +79,17 @@ argument will result in a narrower prediction interval, subsequently
 identifying more observations as anomalies. See the next example.
 
 ```python
-timegpt_anomalies_df = timegpt.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=90)
-timegpt.plot(pm_df, 
+timegpt_anomalies_df = nixtla_client.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=90)
+nixtla_client.plot(pm_df, 
              timegpt_anomalies_df,
              time_col='timestamp', 
              target_col='value')
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-7-output-2.png)
@@ -101,17 +101,17 @@ ensuring the most relevant and actionable insights are derived from the
 data.
 
 ```python
-timegpt_anomalies_df = timegpt.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=99.99)
-timegpt.plot(pm_df, 
+timegpt_anomalies_df = nixtla_client.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=99.99)
+nixtla_client.plot(pm_df, 
              timegpt_anomalies_df,
              time_col='timestamp', 
              target_col='value')
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-8-output-2.png)
@@ -119,14 +119,14 @@ INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
 You can also include `date_features` to better detect anomalies:
 
 ```python
-timegpt_anomalies_df_x = timegpt.detect_anomalies(
+timegpt_anomalies_df_x = nixtla_client.detect_anomalies(
     pm_df, time_col='timestamp', 
     target_col='value', 
     freq='D', 
     date_features=True,
     level=99.99,
 )
-timegpt.plot(
+nixtla_client.plot(
     pm_df, 
     timegpt_anomalies_df_x,
     time_col='timestamp', 
@@ -135,10 +135,10 @@ timegpt.plot(
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
-INFO:nixtlats.timegpt:Using the following exogenous variables: year_2007, year_2008, year_2009, year_2010, year_2011, year_2012, year_2013, year_2014, year_2015, year_2016, month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12, day_1, day_2, day_3, day_4, day_5, day_6, day_7, day_8, day_9, day_10, day_11, day_12, day_13, day_14, day_15, day_16, day_17, day_18, day_19, day_20, day_21, day_22, day_23, day_24, day_25, day_26, day_27, day_28, day_29, day_30, day_31, weekday_0, weekday_1, weekday_2, weekday_3, weekday_4, weekday_5, weekday_6
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
+INFO:nixtlats.nixtla_client:Using the following exogenous variables: year_2007, year_2008, year_2009, year_2010, year_2011, year_2012, year_2013, year_2014, year_2015, year_2016, month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12, day_1, day_2, day_3, day_4, day_5, day_6, day_7, day_8, day_9, day_10, day_11, day_12, day_13, day_14, day_15, day_16, day_17, day_18, day_19, day_20, day_21, day_22, day_23, day_24, day_25, day_26, day_27, day_28, day_29, day_30, day_31, weekday_0, weekday_1, weekday_2, weekday_3, weekday_4, weekday_5, weekday_6
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-9-output-2.png)
@@ -165,19 +165,19 @@ df.head()
 Now let’s compute anomalies considering this information
 
 ```python
-timegpt_anomalies_df_x = timegpt.detect_anomalies(df=df)
-timegpt.plot(
+timegpt_anomalies_df_x = nixtla_client.detect_anomalies(df=df)
+nixtla_client.plot(
     df, 
     timegpt_anomalies_df_x,
 )
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: H
+INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
+INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-11-output-2.png)
@@ -185,7 +185,7 @@ INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exoge
 We can also explore the relative importance of each of the features.
 
 ```python
-timegpt.weights_x.plot.barh(x='features', y='weights')
+nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-12-output-1.png)
@@ -198,28 +198,28 @@ from nixtlats.date_features import CountryHolidays
 
 
 ```python
-timegpt_anomalies_df_x = timegpt.detect_anomalies(
+timegpt_anomalies_df_x = nixtla_client.detect_anomalies(
     df=df,
     date_features=[CountryHolidays(countries=['FR'])]
 )
-timegpt.plot(
+nixtla_client.plot(
     df, 
     timegpt_anomalies_df_x,
 )
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Calling Anomaly Detector Endpoint...
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6, FR_New Year's Day, FR_Labor Day, FR_Victory Day, FR_National Day, FR_Armistice Day, FR_Easter Monday, FR_Whit Monday, FR_Ascension Day, FR_Assumption Day, FR_All Saints' Day, FR_Christmas Day
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: H
+INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
+INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6, FR_Jour de l'an, FR_Fête du Travail, FR_Fête de la Victoire, FR_Fête nationale, FR_Armistice, FR_Lundi de Pâques, FR_Lundi de Pentecôte, FR_Ascension, FR_Assomption, FR_Toussaint, FR_Noël
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-14-output-2.png)
 
 ```python
-timegpt.weights_x.plot.barh(x='features', y='weights')
+nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-15-output-1.png)

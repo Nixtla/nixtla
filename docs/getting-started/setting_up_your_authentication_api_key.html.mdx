@@ -1,35 +1,29 @@
 ---
-output-file: setting_up_your_authentication_token.html
-title: Setting Up Your Authentication Token
+output-file: setting_up_your_authentication_api_key.html
+title: Setting Up Your Authentication API Key
 ---
 
 
-A **token**, also known as an **API Key**, is a unique string of
-characters that serves as a key to authenticate your requests to
-`TimeGTP`. This tutorial will explain how to set up your token when
-using the Nixtla SDK.
+An **API key** is a unique string of characters that serves as a key to
+authenticate your requests to `TimeGTP`. This tutorial will explain how
+to set up your API key when using the Nixtla SDK.
 
 Upon [registration](https://dashboard.nixtla.io/), you will recibe an
 email asking you to confirm your signup. After confirming, you will
 receive access to your dashboard. There, under `API Keys`, you will find
-your token. To integrate your token into your development workflow with
-the Nixtla SDK, you have two methods.
+your API key. To integrate your API key into your development workflow
+with the Nixtla SDK, you have two methods.
 
 ## 1. Direct copy and paste
 
--   **Step 1**: Copy the token found in the `API Keys` of your
+-   **Step 1**: Copy the API key found in the `API Keys` of your
     [dashboard]((https://dashboard.nixtla.io/)).
 -   **Step 2**: Instantiate the `NixtlaClient` class by directly pasting
-    your token into the code, as shown below:
+    your API key into the code, as shown below:
 
 ```python
 from nixtlats import NixtlaClient 
-nixtla_client = NixtlaClient(token = 'your token here')
-```
-
-``` text
-/home/ubuntu/projects/nixtla/nixtlats/nixtla_client.py:56: FutureWarning: `'token'` is deprecated; use `'api_key'` instead.
-  warnings.warn(
+nixtla_client = NixtlaClient(api_key ='your API key here')
 ```
 
 This approach is straightforward and best for quick tests or scripts
@@ -37,7 +31,7 @@ that won’t be shared.
 
 ## 2. Using an environment variable
 
--   **Step 1:** Store your token in an environment variable named
+-   **Step 1:** Store your API key in an environment variable named
     `NIXTLA_API_KEY`. This can be done for a session or permanently,
     depending on your preference.
 -   **Step 2:** When you instantiate the `NixtlaClient` class, the SDK
@@ -62,18 +56,18 @@ There are several ways to set an environment variable.
 Use the `export` command to set `NIXTLA_API_KEY`.
 
 ```bash
-export NIXTLA_API_KEY=your_token
+export NIXTLA_API_KEY=your_api_key
 ```
 
 ### b. Using a `.env` file
 
 For a more persistent solution that can be version-controlled if
-private, or for ease of use across different projects, place your token
-in a `.env` file.
+private, or for ease of use across different projects, place your API
+key in a `.env` file.
 
 ```bash
 # Inside a file named .env
-NIXTLA_API_KEY=your_token
+NIXTLA_API_KEY=your_api_key
 ```
 
 **Within Python:** If using a `.env` file, you can load the environment
@@ -89,36 +83,28 @@ nixtla_client = NixtlaClient()
 ```
 
 This approach is more secure and suitable for applications that will be
-deployed or shared, as it keeps tokens out of the source code.
+deployed or shared, as it keeps API keys out of the source code.
 
 > **Important**
 >
-> Remember, your token is like a password - keep it secret, keep it
+> Remember, your API key is like a password - keep it secret, keep it
 > safe!
 
-## Validate your token
+## Validate your API key
 
-You can always find your token in the `API Keys` section of your
-dashboard. To check the status of your token, use the `validate_api_key`
-method of the `Nixtla` class. This method will return `True` if the
-token is valid and `False` otherwise.
+You can always find your API key in the `API Keys` section of your
+dashboard. To check the status of your API key, use the
+`validate_api_key` method of the `NixtlaClient` class. This method will
+return `True` if the API key is valid and `False` otherwise.
 
 ```python
 nixtla_client.validate_api_key()
 ```
 
-``` text
-INFO:nixtlats.nixtla_client:Happy Forecasting! :), If you have questions or need support, please email ops@nixtla.io
-```
-
-``` text
-True
-```
-
-You don’t need to validate your token every time you use `TimeGPT`. This
-function is provided for your convenience to ensure its validity. For
-full access to `TimeGPT`’s functionalities, in addition to a valid
-token, you also need sufficient credits in your account. You can check
+You don’t need to validate your API key every time you use `TimeGPT`.
+This function is provided for your convenience to ensure its validity.
+For full access to `TimeGPT`’s functionalities, in addition to a valid
+API key, you also need sufficient credits in your account. You can check
 your credits in the `Usage` section of your
 [dashboard]((https://dashboard.nixtla.io/)).
 

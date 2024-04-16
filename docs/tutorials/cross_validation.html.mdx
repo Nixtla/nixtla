@@ -18,22 +18,20 @@ validation process for time series models. This functionality enables
 practitioners to rigorously test their forecasting models against
 historical data, assessing their effectiveness while tuning them for
 optimal performance. This tutorial will guide you through the nuanced
-process of conducting cross-validation within the TimeGPT class,
+process of conducting cross-validation within the `NixtlaClient` class,
 ensuring your time series forecasting models are not just
 well-constructed, but also validated for trustworthiness and precision.
 
-[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/9_cross_validation.ipynb)
-
 ```python
 import pandas as pd
-from nixtlats import TimeGPT
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
 
@@ -72,7 +70,7 @@ accurate but also consistent across diverse temporal contexts.
 
 ```python
 pm_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
-timegpt_cv_df = timegpt.cross_validation(
+timegpt_cv_df = nixtla_client.cross_validation(
     pm_df, 
     h=7, 
     n_windows=5, 
@@ -83,37 +81,6 @@ timegpt_cv_df = timegpt.cross_validation(
 timegpt_cv_df.head()
 ```
 
-``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-```
-
-|     | timestamp  | cutoff     | value    | TimeGPT  |
-|-----|------------|------------|----------|----------|
-| 0   | 2015-12-17 | 2015-12-16 | 7.591862 | 7.939553 |
-| 1   | 2015-12-18 | 2015-12-16 | 7.528869 | 7.887512 |
-| 2   | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 |
-| 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 |
-| 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 |
 
 ```python
 from IPython.display import display
@@ -123,7 +90,7 @@ from IPython.display import display
 ```python
 cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
-    fig = timegpt.plot(
+    fig = nixtla_client.plot(
         pm_df.tail(100), 
         timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'value']),
         time_col='timestamp', 
@@ -132,21 +99,11 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-7-output-1.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-7-output-2.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-7-output-3.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-7-output-4.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-7-output-5.png)
-
 To asses the performance of `TimeGPT` with distributional forecasts, you
 can produce prediction intervals using the `level` argument.
 
 ```python
-timegpt_cv_df = timegpt.cross_validation(
+timegpt_cv_df = nixtla_client.cross_validation(
     pm_df, 
     h=7, 
     n_windows=5, 
@@ -158,47 +115,11 @@ timegpt_cv_df = timegpt.cross_validation(
 timegpt_cv_df.head()
 ```
 
-``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Restricting input...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Restricting input...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Restricting input...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Restricting input...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Restricting input...
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-```
-
-|     | timestamp  | cutoff     | value    | TimeGPT  | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
-|-----|------------|------------|----------|----------|---------------|---------------|---------------|---------------|
-| 0   | 2015-12-17 | 2015-12-16 | 7.591862 | 7.939553 | 7.564151      | 7.675945      | 8.203161      | 8.314956      |
-| 1   | 2015-12-18 | 2015-12-16 | 7.528869 | 7.887512 | 7.567342      | 7.598298      | 8.176726      | 8.207681      |
-| 2   | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 | 7.146560      | 7.266830      | 8.266404      | 8.386674      |
-| 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 | 7.493021      | 7.657075      | 8.205930      | 8.369984      |
-| 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 | 7.017335      | 7.446677      | 9.178586      | 9.607928      |
 
 ```python
 cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
-    fig = timegpt.plot(
+    fig = nixtla_client.plot(
         pm_df.tail(100), 
         timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'value']),
         time_col='timestamp', 
@@ -209,21 +130,11 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-9-output-1.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-9-output-2.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-9-output-3.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-9-output-4.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-9-output-5.png)
-
 You can also include `date_features` to see their impact in forecasting
 accuracy:
 
 ```python
-timegpt_cv_df = timegpt.cross_validation(
+timegpt_cv_df = nixtla_client.cross_validation(
     pm_df, 
     h=7, 
     n_windows=5, 
@@ -236,47 +147,11 @@ timegpt_cv_df = timegpt.cross_validation(
 timegpt_cv_df.head()
 ```
 
-``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-```
-
-|     | timestamp  | cutoff     | value    | TimeGPT  | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
-|-----|------------|------------|----------|----------|---------------|---------------|---------------|---------------|
-| 0   | 2015-12-17 | 2015-12-16 | 7.591862 | 7.931697 | 7.528752      | 7.634238      | 8.229156      | 8.334641      |
-| 1   | 2015-12-18 | 2015-12-16 | 7.528869 | 7.879933 | 7.258649      | 7.468433      | 8.291433      | 8.501217      |
-| 2   | 2015-12-19 | 2015-12-16 | 7.171657 | 7.759708 | 7.101670      | 7.269838      | 8.249578      | 8.417745      |
-| 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.921784 | 6.970479      | 7.327653      | 8.515915      | 8.873088      |
-| 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.302374 | 7.122366      | 7.640518      | 8.964230      | 9.482381      |
 
 ```python
 cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
-    fig = timegpt.plot(
+    fig = nixtla_client.plot(
         pm_df.tail(100), 
         timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'value']),
         time_col='timestamp', 
@@ -286,16 +161,6 @@ for cutoff in cutoffs:
     )
     display(fig)
 ```
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-11-output-1.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-11-output-2.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-11-output-3.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-11-output-4.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-11-output-5.png)
 
 #### Exogenous variables
 
@@ -312,7 +177,7 @@ df = Y_df.merge(X_df)
 Now let’s cross validate `TimeGPT` considering this information
 
 ```python
-timegpt_cv_df_x = timegpt.cross_validation(
+timegpt_cv_df_x = nixtla_client.cross_validation(
     df.groupby('unique_id').tail(100 * 48), 
     h=48, 
     n_windows=2,
@@ -320,7 +185,7 @@ timegpt_cv_df_x = timegpt.cross_validation(
 )
 cutoffs = timegpt_cv_df_x.query('unique_id == "BE"')['cutoff'].unique()
 for cutoff in cutoffs:
-    fig = timegpt.plot(
+    fig = nixtla_client.plot(
         df.query('unique_id == "BE"').tail(24 * 7), 
         timegpt_cv_df_x.query('cutoff == @cutoff & unique_id == "BE"').drop(columns=['cutoff', 'y']),
         models=['TimeGPT'],
@@ -329,36 +194,13 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-```
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-13-output-2.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-13-output-3.png)
-
 #### Compare different models
 
 Also, you can generate cross validation for different instances of
 `TimeGPT` using the `model` argument.
 
 ```python
-timegpt_cv_df_x_long_horizon = timegpt.cross_validation(
+timegpt_cv_df_x_long_horizon = nixtla_client.cross_validation(
     df.groupby('unique_id').tail(100 * 48), 
     h=48, 
     n_windows=2,
@@ -369,7 +211,7 @@ timegpt_cv_df_x_long_horizon.columns = timegpt_cv_df_x_long_horizon.columns.str.
 timegpt_cv_df_x_models = timegpt_cv_df_x_long_horizon.merge(timegpt_cv_df_x)
 cutoffs = timegpt_cv_df_x_models.query('unique_id == "BE"')['cutoff'].unique()
 for cutoff in cutoffs:
-    fig = timegpt.plot(
+    fig = nixtla_client.plot(
         df.query('unique_id == "BE"').tail(24 * 7), 
         timegpt_cv_df_x_models.query('cutoff == @cutoff & unique_id == "BE"').drop(columns=['cutoff', 'y']),
         models=['TimeGPT', 'TimeGPT-LongHorizon'],
@@ -377,25 +219,4 @@ for cutoff in cutoffs:
     )
     display(fig)
 ```
-
-``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-```
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-14-output-2.png)
-
-![](/nixtla/docs/tutorials/9_cross_validation_files/figure-markdown_strict/cell-14-output-3.png)
 

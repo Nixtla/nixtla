@@ -20,98 +20,144 @@ automatically to a dataset using the `date_features` function.
 
 ```python
 import pandas as pd
-from nixtlats import TimeGPT
+import numpy as np
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
 
 Given the predominance usage of calendar variables, we included an
 automatic creation of common calendar variables to the forecast method
-as a pre-processing step. To automatically add calendar variables, use
-the `date_features` argument.
+as a pre-processing step.
 
 ```python
-pltr_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/pltr.csv')
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/google_trend_chocolate.csv')
+df['month'] = pd.to_datetime(df['month']).dt.to_period('M').dt.to_timestamp('M')
 ```
 
 
 ```python
-fcst_pltr_calendar_df = timegpt.forecast(
-    df=pltr_df.tail(2 * 14), h=14, freq='B',
-    time_col='date', target_col='Close',
-    date_features=['month','weekday']
-)
-fcst_pltr_calendar_df.head()
+df.head()
 ```
 
-``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Using the following exogenous variables: month_8, month_9, month_10, weekday_0, weekday_1, weekday_2, weekday_3, weekday_4
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-```
-
-|     | date       | TimeGPT   |
+|     | month      | chocolate |
 |-----|------------|-----------|
-| 0   | 2023-09-25 | 14.688427 |
-| 1   | 2023-09-26 | 14.742798 |
-| 2   | 2023-09-27 | 14.781240 |
-| 3   | 2023-09-28 | 14.824156 |
-| 4   | 2023-09-29 | 14.795214 |
+| 0   | 2004-01-31 | 35        |
+| 1   | 2004-02-29 | 45        |
+| 2   | 2004-03-31 | 28        |
+| 3   | 2004-04-30 | 30        |
+| 4   | 2004-05-31 | 29        |
+
+Now, let’s create a future dataframe that contains the upcoming holidays
+in the United States.
 
 ```python
-timegpt.plot(
-    pltr_df, 
-    fcst_pltr_calendar_df, 
-    id_col='series_id',
-    time_col='date',
-    target_col='Close',
-    max_insample_length=90,
-)
+# Create future dataframe with exogenous features
+
+start_date = '2024-05'
+dates = pd.date_range(start=start_date, periods=14, freq='M')
+
+dates = dates.to_period('M').to_timestamp('M')
+
+future_df = pd.DataFrame(dates, columns=['month'])
 ```
 
-![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-7-output-1.png)
-
-We can also plot the importance of each of the date features:
-
-```python
-timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
-```
-
-![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-8-output-1.png)
-
-You can also add country holidays using the `CountryHolidays` class.
 
 ```python
 from nixtlats.date_features import CountryHolidays
+
+us_holidays = CountryHolidays(countries=['US'])
+dates = pd.date_range(start=future_df.iloc[0]['month'], end=future_df.iloc[-1]['month'], freq='D')
+holidays_df = us_holidays(dates)
+monthly_holidays = holidays_df.resample('M').max()
+
+monthly_holidays = monthly_holidays.reset_index(names='month')
+
+future_df = future_df.merge(monthly_holidays)
+
+future_df.head()
 ```
 
+|     | month      | US_New Year's Day | US_Memorial Day | US_Juneteenth National Independence Day | US_Independence Day | US_Labor Day | US_Veterans Day | US_Thanksgiving | US_Christmas Day | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Columbus Day |
+|-----|------------|-------------------|-----------------|-----------------------------------------|---------------------|--------------|-----------------|-----------------|------------------|-------------------------------|--------------------------|-----------------|
+| 0   | 2024-05-31 | 0                 | 0               | 0                                       | 0                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
+| 1   | 2024-06-30 | 0                 | 0               | 1                                       | 0                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
+| 2   | 2024-07-31 | 0                 | 0               | 0                                       | 1                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
+| 3   | 2024-08-31 | 0                 | 0               | 0                                       | 0                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
+| 4   | 2024-09-30 | 0                 | 0               | 0                                       | 0                   | 1            | 0               | 0               | 0                | 0                             | 0                        | 0               |
+
+We do the same steps for the input dataframe.
 
 ```python
-fcst_pltr_calendar_df = timegpt.forecast(
-    df=pltr_df, h=14, freq='B',
-    time_col='date', target_col='Close',
-    date_features=[CountryHolidays(['US'])]
+# Add exogenous features to input dataframe
+
+dates = pd.date_range(start=df.iloc[0]['month'], end=df.iloc[-1]['month'], freq='D')
+holidays_df = us_holidays(dates)
+monthly_holidays = holidays_df.resample('M').max()
+
+monthly_holidays = monthly_holidays.reset_index(names='month')
+
+df = df.merge(monthly_holidays)
+
+df.tail()
+```
+
+|     | month      | chocolate | US_New Year's Day | US_New Year's Day (observed) | US_Memorial Day | US_Independence Day | US_Independence Day (observed) | US_Labor Day | US_Veterans Day | US_Thanksgiving | US_Christmas Day | US_Christmas Day (observed) | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Columbus Day | US_Veterans Day (observed) | US_Juneteenth National Independence Day | US_Juneteenth National Independence Day (observed) |
+|-----|------------|-----------|-------------------|------------------------------|-----------------|---------------------|--------------------------------|--------------|-----------------|-----------------|------------------|-----------------------------|-------------------------------|--------------------------|-----------------|----------------------------|-----------------------------------------|----------------------------------------------------|
+| 239 | 2023-12-31 | 90        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 1                | 0                           | 0                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
+| 240 | 2024-01-31 | 64        | 1                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 1                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
+| 241 | 2024-02-29 | 66        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 0                             | 1                        | 0               | 0                          | 0                                       | 0                                                  |
+| 242 | 2024-03-31 | 59        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 0                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
+| 243 | 2024-04-30 | 51        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 0                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
+
+Great! Now, TimeGPT will consider the holidays as exogenous variables
+and the upcoming holidays will help it make predictions.
+
+```python
+fcst_df = nixtla_client.forecast(
+    df=df,
+    h=14,
+    freq='M',
+    time_col='month',
+    target_col='chocolate',
+    X_df=future_df
 )
-timegpt.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Using the following exogenous variables: US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day, US_New Year's Day, US_Memorial Day, US_Independence Day, US_Independence Day (Observed), US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_New Year's Day (Observed), US_Juneteenth National Independence Day, US_Juneteenth National Independence Day (Observed), US_Christmas Day (Observed), US_Veterans Day (Observed)
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: M
+WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.nixtla_client:Using the following exogenous variables: US_New Year's Day, US_Memorial Day, US_Juneteenth National Independence Day, US_Independence Day, US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 ```
 
-![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-10-output-2.png)
+```python
+nixtla_client.plot(
+    df, 
+    fcst_df, 
+    time_col='month',
+    target_col='chocolate',
+)
+```
+
+![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-11-output-1.png)
+
+We can then plot the weights of each holiday to see which are more
+important in forecasing the interest in chocolate.
+
+```python
+nixtla_client.weights_x.plot.barh(x='features', y='weights', figsize=(10, 10))
+```
+
+![](/nixtla/docs/tutorials/2_holidays_files/figure-markdown_strict/cell-12-output-1.png)
 
 Here’s a breakdown of how the `date_features` parameter works:
 

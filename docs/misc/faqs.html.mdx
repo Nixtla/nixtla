@@ -7,7 +7,7 @@ title: FAQS
 ## Table of contents
 
 -   [TimeGPT](#timegpt)
--   [TimeGPT Token](#timegpt-token)
+-   [TimeGPT API Key](#timegpt-api-key)
 -   [Features and Capabilities](#features-and-capabilities)
 -   [Fine-tuning](#finetuning)
 -   [Pricing and Billing](#pricing-and-billing)
@@ -62,36 +62,36 @@ Billing](#pricing-and-billing) section
     different languages, please refer to the [API
     documentation](https://docs.nixtla.io/reference/timegpt_timegpt_post)
 
-Both methods require you to have a [token](#timegpt-token), which is
+Both methods require you to have a [API key](#timegpt-api-key), which is
 obtained upon registration and can be found in your dashboard under
 `API Keys`.
 
-## TimeGPT Token
+## TimeGPT API Key
 
-### What is a token?
+### What is an API key?
 
-A token, also known as an API Key, is a unique string of characters that
-serves as a key to authenticate your requests when using the Nixtla SDK.
-It ensures that the person making the requests is authorized to do so.
+An API key is a unique string of characters that serves as a key to
+authenticate your requests when using the Nixtla SDK. It ensures that
+the person making the requests is authorized to do so.
 
-### Where can I get a token?
+### Where can I get an API key?
 
-Upon registration, you will receive a token that can be found in your
+Upon registration, you will receive an API key that can be found in your
 [dashboard](https://dashboard.nixtla.io/) under `API Keys`. Remember
-that your token is personal and should not be shared with anyone.
+that your API key is personal and should not be shared with anyone.
 
-### How do I use my token?
+### How do I use my API key?
 
-To integrate your token into your development workflow, please refer to
-the tutorial on [Setting Up Your Authentication
-Token](https://docs.nixtla.io/docs/setting_up_your_authentication_token).
+To integrate your API key into your development workflow, please refer
+to the tutorial on [Setting Up Your Authentication API
+Key](https://docs.nixtla.io/docs/setting_up_your_authentication_api_key).
 
-### How can I check the status of my token?
+### How can I check the status of my API key?
 
-If you want to check the status of your token, you can use the
-[`validate_token`
-method](https://nixtlaverse.nixtla.io/nixtla/timegpt.html#timegpt-validate-token)
-of the `TimeGPT` class.
+If you want to check the status of your API key, you can use the
+[`validate_api_key`
+method](https://nixtlaverse.nixtla.io/nixtla/timegpt.html#timegpt-validate-api-key)
+of the `NixtlaClient` class.
 
 ## Features and Capabilities
 
@@ -282,13 +282,6 @@ partnered with Stripe to handle all payment processing. You can view
 your invoices and payment history in your
 [dashboard](https://dashboard.nixtla.io/) under `Billing`.
 
-> **Warning**
->
-> Don’t confuse the input, output, and finetune tokens with the TimeGPT
-> token or API Key. The input, output, and finetune tokens are used to
-> calculate your usage costs, while the TimeGPT token is used to
-> authenticate your requests.
-
 ## Privacy and Security
 
 ### How do you ensure the privacy and security of my data?
@@ -318,9 +311,9 @@ The following section contains some common errors and warnings
 ApiError: status_code: 401, body: {'data': None, 'message': 'Invalid API key', 'details': 'Key not found', 'code': 'A12', 'requestID': 'E7F2BBTB2P', 'support': 'If you have questions or need support, please email ops@nixtla.io'}
 ```
 
-**Solution:** This error occurs when your `TimeGPT` token is either
+**Solution:** This error occurs when your `TimeGPT` API key is either
 invalid or has not been set up correctly. Please use the
-`validate_token` method to verify it or make sure it was copied
+`validate_api_key` method to verify it or make sure it was copied
 correctly from the `API Keys` section of your
 [dashboard](https://dashboard.nixtla.io/).
 

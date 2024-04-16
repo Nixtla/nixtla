@@ -14,16 +14,18 @@ function that is robust to outliers - `"mae"` - mean absolute error -
 `"mape"` - mean absolute percentage error - `"smape"` - symmetric mean
 absolute percentage error
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/11_loss_function_finetuning.ipynb)
+
 ```python
 import pandas as pd
-from nixtlats import TimeGPT
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
 
@@ -49,7 +51,7 @@ df.head()
 | 4   | 1         | 1949-05-01 | 121   |
 
 ```python
-timegpt_fcst_finetune_mae_df = timegpt.forecast(
+timegpt_fcst_finetune_mae_df = nixtla_client.forecast(
     df=df, 
     h=12, 
     finetune_steps=10,
@@ -60,20 +62,20 @@ timegpt_fcst_finetune_mae_df = timegpt.forecast(
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
-timegpt.plot(
+nixtla_client.plot(
     df, timegpt_fcst_finetune_mae_df, 
     time_col='timestamp', target_col='value',
 )
 ```
 
-![](/nixtla/docs/tutorials/11_loss_function_finetuning_files/figure-markdown_strict/cell-6-output-1.png)
+![](/nixtla/docs/tutorials/11_loss_function_finetuning_files/figure-markdown_strict/cell-7-output-1.png)
 
 Now, depending on your data, you will use a specific error metric to
 accurately evaluate your forecasting model’s performance.
@@ -141,7 +143,7 @@ losses = ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']
 test = test.copy()
 
 for loss in losses:
-    preds_df = timegpt.forecast(
+    preds_df = nixtla_client.forecast(
     df=train, 
     h=36, 
     finetune_steps=10,
@@ -155,36 +157,36 @@ for loss in losses:
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-WARNING:nixtlats.timegpt:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 ```
 
 Great! We have predictions from TimeGPT using all the different loss
@@ -226,16 +228,16 @@ metrics_df.index = ['Metric improvement (%)']
 metrics_df
 ```
 
-|                        | mae  | mse  | rmse | mape  | smape |
-|------------------------|------|------|------|-------|-------|
-| Metric improvement (%) | 9.69 | 0.09 | 0.53 | 30.98 | 7.32  |
+|                        | mae  | mse  | rmse | mape | smape |
+|------------------------|------|------|------|------|-------|
+| Metric improvement (%) | 9.27 | 0.17 | 0.51 | 31.0 | 8.55  |
 
 From the table above, we can see that using a specific loss function
 during fine-tuning will improve its associated error metric when
 compared to the default loss function.
 
 In this example, using the MAE as the loss function improves the metric
-by 9.7% when compared to using the default loss function.
+by 9.27% when compared to using the default loss function.
 
 That way, depending on your use case and performance metric, you can use
 the appropriate loss function to maximize the accuracy of the forecasts.

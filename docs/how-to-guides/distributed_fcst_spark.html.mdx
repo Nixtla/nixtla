@@ -18,17 +18,17 @@ use it. If executing on a distributed Spark cluster, make use the
 To run the forecasts distributed on Spark, just pass in a Spark
 DataFrame instead.
 
-Instantiate `TimeGPT` class.
+Instantiate `NixtlaClient` class.
 
 ```python
-from nixtlats import TimeGPT
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
 
@@ -72,7 +72,7 @@ only showing top 5 rows
 ```
 
 ```python
-fcst_df = timegpt.forecast(spark_df, h=12)
+fcst_df = nixtla_client.forecast(spark_df, h=12)
 fcst_df.show(5)
 ```
 
@@ -159,7 +159,7 @@ only showing top 5 rows
 Let’s call the `forecast` method, adding this information:
 
 ```python
-timegpt_fcst_ex_vars_df = timegpt.forecast(df=spark_df, X_df=spark_future_ex_vars_df, h=24, level=[80, 90])
+timegpt_fcst_ex_vars_df = nixtla_client.forecast(df=spark_df, X_df=spark_future_ex_vars_df, h=24, level=[80, 90])
 timegpt_fcst_ex_vars_df.show(5)
 ```
 

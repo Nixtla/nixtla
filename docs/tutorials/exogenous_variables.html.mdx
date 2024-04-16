@@ -21,14 +21,14 @@ point in your time series data with the corresponding external data.
 
 ```python
 import pandas as pd
-from nixtlats import TimeGPT
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
 
@@ -72,16 +72,16 @@ future_ex_vars_df.head()
 Let’s call the `forecast` method, adding this information:
 
 ```python
-timegpt_fcst_ex_vars_df = timegpt.forecast(df=df, X_df=future_ex_vars_df, h=24, level=[80, 90])
+timegpt_fcst_ex_vars_df = nixtla_client.forecast(df=df, X_df=future_ex_vars_df, h=24, level=[80, 90])
 timegpt_fcst_ex_vars_df.head()
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: H
+INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 ```
 
 |     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
@@ -93,7 +93,7 @@ INFO:nixtlats.timegpt:Calling Forecast Endpoint...
 | 4   | BE        | 2016-12-31 04:00:00 | 40.178956 | 30.987621     | 34.294626     | 46.063286     | 49.370290     |
 
 ```python
-timegpt.plot(
+nixtla_client.plot(
     df[['unique_id', 'ds', 'y']], 
     timegpt_fcst_ex_vars_df, 
     max_insample_length=365, 
@@ -106,7 +106,7 @@ timegpt.plot(
 We also can get the importance of the features.
 
 ```python
-timegpt.weights_x.plot.barh(x='features', y='weights')
+nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
 ![](/nixtla/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-9-output-1.png)
@@ -119,19 +119,19 @@ from nixtlats.date_features import CountryHolidays
 
 
 ```python
-timegpt_fcst_ex_vars_df = timegpt.forecast(
+timegpt_fcst_ex_vars_df = nixtla_client.forecast(
     df=df, X_df=future_ex_vars_df, h=24, level=[80, 90], 
     date_features=[CountryHolidays(['US'])]
 )
-timegpt.weights_x.plot.barh(x='features', y='weights')
+nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: H
-INFO:nixtlats.timegpt:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6, US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day, US_New Year's Day, US_Memorial Day, US_Independence Day, US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_Christmas Day (Observed), US_New Year's Day (Observed), US_Veterans Day (Observed)
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: H
+INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6, US_New Year's Day, US_Memorial Day, US_Independence Day, US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_Christmas Day (observed), US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day, US_New Year's Day (observed), US_Veterans Day (observed)
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ![](/nixtla/docs/tutorials/1_exogenous_variables_files/figure-markdown_strict/cell-11-output-2.png)

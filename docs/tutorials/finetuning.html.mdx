@@ -23,14 +23,14 @@ argument of the `forecast` method.
 
 ```python
 import pandas as pd
-from nixtlats import TimeGPT
+from nixtlats import NixtlaClient
 ```
 
 
 ```python
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
 
@@ -50,21 +50,21 @@ df.head()
 | 4   | 1949-05-01 | 121   |
 
 ```python
-timegpt_fcst_finetune_df = timegpt.forecast(
+timegpt_fcst_finetune_df = nixtla_client.forecast(
     df=df, h=12, finetune_steps=10,
     time_col='timestamp', target_col='value',
 )
 ```
 
 ``` text
-INFO:nixtlats.timegpt:Validating inputs...
-INFO:nixtlats.timegpt:Preprocessing dataframes...
-INFO:nixtlats.timegpt:Inferred freq: MS
-INFO:nixtlats.timegpt:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: MS
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
-timegpt.plot(
+nixtla_client.plot(
     df, timegpt_fcst_finetune_df, 
     time_col='timestamp', target_col='value',
 )

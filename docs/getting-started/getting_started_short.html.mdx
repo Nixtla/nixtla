@@ -7,8 +7,6 @@ title: TimeGPT Quickstart
 ---
 
 
-[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/getting-started/1_getting_started_short.ipynb)
-
 ## Introduction
 
 Nixtla’s TimeGPT is a generative pre-trained forecasting model for time
@@ -54,14 +52,6 @@ Check your token status with the `validate_api_key` method.
 nixtla_client.validate_api_key()
 ```
 
-``` text
-INFO:nixtlats.nixtla_client:Happy Forecasting! :), If you have questions or need support, please email ops@nixtla.io
-```
-
-``` text
-True
-```
-
 To learn more about how to set up your token, please refer to the
 [Setting Up your Authentication
 Token](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/setting_up_your_authentication_token.html)
@@ -82,19 +72,10 @@ df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-tim
 df.head()
 ```
 
-|     | timestamp  | value |
-|-----|------------|-------|
-| 0   | 1949-01-01 | 112   |
-| 1   | 1949-02-01 | 118   |
-| 2   | 1949-03-01 | 132   |
-| 3   | 1949-04-01 | 129   |
-| 4   | 1949-05-01 | 121   |
 
 ```python
 nixtla_client.plot(df, time_col='timestamp', target_col='value')
 ```
-
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-8-output-1.png)
 
 > **Important requirements of the data**
 >
@@ -124,25 +105,10 @@ timegpt_fcst_df = nixtla_client.forecast(df=df, h=12, freq='MS', time_col='times
 timegpt_fcst_df.head()
 ```
 
-``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-```
-
-|     | timestamp  | TimeGPT    |
-|-----|------------|------------|
-| 0   | 1961-01-01 | 437.837952 |
-| 1   | 1961-02-01 | 426.062744 |
-| 2   | 1961-03-01 | 463.116577 |
-| 3   | 1961-04-01 | 478.244507 |
-| 4   | 1961-05-01 | 505.646484 |
 
 ```python
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
-
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-10-output-1.png)
 
 You can also produce a longer forecasts increasing the horizon
 parameter. For example, let’s forecast the next 36 months:
@@ -152,26 +118,10 @@ timegpt_fcst_df = nixtla_client.forecast(df=df, h=36, time_col='timestamp', targ
 timegpt_fcst_df.head()
 ```
 
-``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-```
-
-|     | timestamp  | TimeGPT    |
-|-----|------------|------------|
-| 0   | 1961-01-01 | 437.837952 |
-| 1   | 1961-02-01 | 426.062744 |
-| 2   | 1961-03-01 | 463.116577 |
-| 3   | 1961-04-01 | 478.244507 |
-| 4   | 1961-05-01 | 505.646484 |
 
 ```python
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
-
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-12-output-1.png)
 
 Or a shorter one:
 
@@ -179,14 +129,6 @@ Or a shorter one:
 timegpt_fcst_df = nixtla_client.forecast(df=df, h=6, time_col='timestamp', target_col='value', freq='MS')
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
-
-``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-```
-
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-13-output-2.png)
 
 > **Warning**
 >
@@ -211,20 +153,4 @@ df_time_index = df.set_index('timestamp')
 df_time_index.index = pd.DatetimeIndex(df_time_index.index, freq='MS')
 nixtla_client.forecast(df=df, h=36, time_col='timestamp', target_col='value').head()
 ```
-
-``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-```
-
-|     | timestamp  | TimeGPT    |
-|-----|------------|------------|
-| 0   | 1961-01-01 | 437.837952 |
-| 1   | 1961-02-01 | 426.062744 |
-| 2   | 1961-03-01 | 463.116577 |
-| 3   | 1961-04-01 | 478.244507 |
-| 4   | 1961-05-01 | 505.646484 |
 
