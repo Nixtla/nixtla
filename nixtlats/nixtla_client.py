@@ -611,15 +611,16 @@ class _NixtlaClientModel:
 
         self.req_forecast = pd.DataFrame(
             {
-                "input_tokens": [response_timegpt["input_tokens"]],
-                "output_tokens": [response_timegpt["output_tokens"]],
-                "finetune_tokens": [response_timegpt["finetune_tokens"]],
-                "requestID": [response_timegpt["requestID"]],
-                "created_at": [response_timegpt["created_at"]],
+                "input_tokens": [response_timegpt.get("input_tokens", None)],
+                "output_tokens": [response_timegpt.get("output_tokens", None)],
+                "finetune_tokens": [response_timegpt.get("finetune_tokens", None)],
+                "requestID": [response_timegpt.get("requestID", None)],
+                "created_at": [response_timegpt.get("created_at", None)],
                 "endpoint": ["MultiSeriesForecast"],
                 "method": ["forecast"],
             }
         )
+
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
@@ -642,17 +643,19 @@ class _NixtlaClientModel:
                     model=self.model,
                 ),
             )
+
             self.req_historical = pd.DataFrame(
                 {
-                    "input_tokens": [response_timegpt["input_tokens"]],
-                    "output_tokens": [response_timegpt["output_tokens"]],
-                    "finetune_tokens": [response_timegpt["finetune_tokens"]],
-                    "requestID": [response_timegpt["requestID"]],
-                    "created_at": [response_timegpt["created_at"]],
+                    "input_tokens": [response_timegpt.get("input_tokens", None)],
+                    "output_tokens": [response_timegpt.get("output_tokens", None)],
+                    "finetune_tokens": [response_timegpt.get("finetune_tokens", None)],
+                    "requestID": [response_timegpt.get("requestID", None)],
+                    "created_at": [response_timegpt.get("created_at", None)],
                     "endpoint": ["MultiSeriesInsampleForecast"],
                     "method": ["historical"],
                 }
             )
+
             fitted_df = pd.DataFrame(**response_timegpt["forecast"])
             fitted_df = fitted_df.drop(columns="y")
             fcst_df = pd.concat([fitted_df, fcst_df]).sort_values(["unique_id", "ds"])
@@ -687,17 +690,19 @@ class _NixtlaClientModel:
                 model=self.model,
             ),
         )
+
         self.req_anomalies = pd.DataFrame(
             {
-                "input_tokens": [response_timegpt["input_tokens"]],
-                "output_tokens": [response_timegpt["output_tokens"]],
-                "finetune_tokens": [response_timegpt["finetune_tokens"]],
-                "requestID": [response_timegpt["requestID"]],
-                "created_at": [response_timegpt["created_at"]],
+                "input_tokens": [response_timegpt.get("input_tokens", None)],
+                "output_tokens": [response_timegpt.get("output_tokens", None)],
+                "finetune_tokens": [response_timegpt.get("finetune_tokens", None)],
+                "requestID": [response_timegpt.get("requestID", None)],
+                "created_at": [response_timegpt.get("created_at", None)],
                 "endpoint": ["MultiSeriesAnomaly"],
                 "method": ["detect_anomalies"],
             }
         )
+
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
