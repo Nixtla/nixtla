@@ -271,7 +271,7 @@ class _NixtlaClientModel:
                 X_df["ds"] = X_df["ds"].astype(str)
         elif set(["unique_id", "ds", "y"]) < set(df.columns):
             main_logger.warning(
-                "Exogenous features in df are ignored if X_df is not provided."
+                "You did not provide X_df. Exogenous features in df are ignored."
             )
 
         return df, X_df
