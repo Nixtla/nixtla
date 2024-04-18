@@ -236,12 +236,13 @@ class _NixtlaClientModel:
 
     def _call_api(self, method, request):
         response = self._retry_strategy()(method)(request=request)
-        res = {}
+        requestID = response["requestID"]
+        created_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
         if "data" in response:
-            res = response["data"]
-            res["requestID"] = response["requestID"]
-            res["created_at"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-        return res
+            response = response["data"]
+            response["requestID"] = requestID
+            response["created_at"] = created_at
+        return response
 
     def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
         df = df.copy()
@@ -958,6 +959,7 @@ class _NixtlaClient:
                     "finetune_tokens",
                 ]
             ]
+            res = res.drop_duplicates(keep="last")
             return res
         else:
             raise Exception("You must call a method from the NixtlaClient class first")
