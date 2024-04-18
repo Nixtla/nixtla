@@ -237,8 +237,11 @@ class _NixtlaClientModel:
     def _call_api(self, method, request):
         response = self._retry_strategy()(method)(request=request)
         created_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-        if "data" in response:
+        if "requestID" in response:
             requestID = response["requestID"]
+        else:
+            requestID = None
+        if "data" in response:
             response = response["data"]
             response["requestID"] = requestID
             response["created_at"] = created_at
@@ -605,8 +608,6 @@ class _NixtlaClientModel:
             self.client.forecast_multi_series,
             payload,
         )
-
-        print("API response:", response_timegpt)
 
         self.req_forecast = pd.DataFrame(
             {
@@ -1630,7 +1631,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 23
+# %% ../nbs/nixtla_client.ipynb 19
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
