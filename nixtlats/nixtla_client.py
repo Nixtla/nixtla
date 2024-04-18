@@ -236,7 +236,7 @@ class _NixtlaClientModel:
 
     def _call_api(self, method, request):
         response = self._retry_strategy()(method)(request=request)
-        res = None
+        res = {}
         if "data" in response:
             res = response["data"]
             res["requestID"] = response["requestID"]
