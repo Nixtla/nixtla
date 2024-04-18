@@ -770,7 +770,6 @@ def partition_by_uid(func):
                 kwargs_uids["X_df"] = X_df_uids
             results_uids = func(self, **kwargs_uids, num_partitions=1)
             results_df.append(results_uids)
-            split_index += 1
         results_df = pd.concat(results_df).reset_index(drop=True)
         return results_df
 
