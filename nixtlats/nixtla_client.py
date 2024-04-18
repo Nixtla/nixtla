@@ -236,9 +236,9 @@ class _NixtlaClientModel:
 
     def _call_api(self, method, request):
         response = self._retry_strategy()(method)(request=request)
-        requestID = response["requestID"]
         created_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
         if "data" in response:
+            requestID = response["requestID"]
             response = response["data"]
             response["requestID"] = requestID
             response["created_at"] = created_at
