@@ -269,6 +269,11 @@ class _NixtlaClientModel:
                 X_df = X_df.assign(unique_id="ts_0")
             if X_df.dtypes.ds != "object":
                 X_df["ds"] = X_df["ds"].astype(str)
+        elif set(["unique_id", "ds", "y"]) < set(df.columns):
+            main_logger.warning(
+                "Exogenous features in df are ignored if X_df is not provided."
+            )
+
         return df, X_df
 
     def transform_outputs(
