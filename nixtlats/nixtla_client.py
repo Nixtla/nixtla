@@ -605,6 +605,9 @@ class _NixtlaClientModel:
             self.client.forecast_multi_series,
             payload,
         )
+
+        print("API response:", response_timegpt)
+
         self.req_forecast = pd.DataFrame(
             {
                 "input_tokens": [response_timegpt["input_tokens"]],
@@ -1627,7 +1630,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 19
+# %% ../nbs/nixtla_client.ipynb 23
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
