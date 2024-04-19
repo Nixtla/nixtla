@@ -57,10 +57,11 @@ def to_numpy(df: DataFrame) -> np.ndarray:
 # %% ../nbs/processing.ipynb 7
 def counts_by_id(df: DataFrame, id_col: str) -> DataFrame:
     if isinstance(df, pd.DataFrame):
-        id_counts = df.groupby(id_col, observed=True).size()
-        if not id_counts.index.is_monotonic_increasing:
-            id_counts = id_counts.sort_index()
-        id_counts = id_counts.reset_index()
+        id_counts = df.groupby(id_col, observed=True).size().reset_index()
+        # sort using numpy to prevent pandas from sorting categoricals by their codes
+        # and ensuring a consistent sorting
+        sort_idxs = id_counts[id_col].to_numpy().argsort()
+        id_counts = id_counts.iloc[sort_idxs].reset_index(drop=True)
     else:
         id_counts = df[id_col].value_counts().sort(id_col)
     id_counts.columns = [id_col, "counts"]
@@ -96,7 +97,7 @@ def maybe_compute_sort_indices(
     if ids_are_sorted and times_are_sorted:
         return None
     if isinstance(df, pd.DataFrame):
-        sort_idxs = pd.MultiIndex.from_arrays([ids, times]).argsort()
+        sort_idxs = np.lexsort((times, ids))
     else:
         sort_idxs = (
             df.select(pl.arg_sort_by([id_col, time_col])).to_series(0).to_numpy()
