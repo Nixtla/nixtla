@@ -70,7 +70,7 @@ def counts_by_id(df: DataFrame, id_col: str) -> DataFrame:
 def maybe_compute_sort_indices(
     df: DataFrame, id_col: str, time_col: str
 ) -> Optional[np.ndarray]:
-    """Compute indices that would sort dataframe
+    """Compute indices that would sort the dataframe
 
     Parameters
     ----------
@@ -82,16 +82,25 @@ def maybe_compute_sort_indices(
     numpy array or None
         Array with indices to sort the dataframe or None if it's already sorted.
     """
+    ids = df[id_col]
+    times = df[time_col]
     if isinstance(df, pd.DataFrame):
-        idx = pd.MultiIndex.from_frame(df[[id_col, time_col]])
-    else:
-        # this was faster than trying to build the multi index from polars
-        sort_idxs = df.select(pl.arg_sort_by([id_col, time_col]).alias("idx"))["idx"]
-        idx = pd.Index(sort_idxs.to_numpy())
-    if idx.is_monotonic_increasing:
+        # pandas series alignment makes this slow, cast to numpy
+        ids = ids.to_numpy()
+        times = times.to_numpy()
+    ids_are_sorted = (ids[:-1] <= ids[1:]).all()
+    times_are_sorted = (
+        (times[:-1] < times[1:])  # times are ascending
+        | (ids[:-1] != ids[1:])  # except when the id changes
+    ).all()
+    if ids_are_sorted and times_are_sorted:
         return None
     if isinstance(df, pd.DataFrame):
-        sort_idxs = idx.argsort()
+        sort_idxs = pd.MultiIndex.from_arrays([ids, times]).argsort()
+    else:
+        sort_idxs = (
+            df.select(pl.arg_sort_by([id_col, time_col])).to_series(0).to_numpy()
+        )
     return sort_idxs
 
 # %% ../nbs/processing.ipynb 9
