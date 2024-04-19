@@ -13,6 +13,11 @@ import requests
 import warnings
 from typing import Dict, List, Optional, Union
 
+from functools import partial, wraps
+from multiprocessing import cpu_count
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+
 import numpy as np
 import pandas as pd
 from tenacity import (
@@ -752,15 +757,17 @@ def partition_by_uid(func):
         main_logger.info(f"Number of partitions: {num_partitions}")
         df = kwargs.pop("df")
         X_df = kwargs.pop("X_df", None)
-        id_col = kwargs["id_col"]
+        id_col = kwargs.pop("id_col")
         uids = df["unique_id"].unique()
-        results_df = []
-        splits = np.array_split(uids, num_partitions)
-        for split_index, uids_split in enumerate(splits, start=1):
-            main_logger.info(f"Partition {split_index} of {num_partitions}")
-            df_uids = df.query("unique_id in @uids_split")
+        df_lock = Lock()
+        X_df_lock = Lock()
+
+        def partition_by_uid_single(uids_split, func, df, X_df, id_col, **kwargs):
+            with df_lock:
+                df_uids = df.query("unique_id in @uids_split")
             if X_df is not None:
-                X_df_uids = X_df.query("unique_id in @uids_split")
+                with X_df_lock:
+                    X_df_uids = X_df.query("unique_id in @uids_split")
             else:
                 X_df_uids = None
             df_uids = remove_unused_categories(df_uids, col=id_col)
@@ -768,9 +775,34 @@ def partition_by_uid(func):
             kwargs_uids = {"df": df_uids, **kwargs}
             if X_df_uids is not None:
                 kwargs_uids["X_df"] = X_df_uids
+
+            kwargs_uids["id_col"] = id_col
             results_uids = func(self, **kwargs_uids, num_partitions=1)
-            results_df.append(results_uids)
-        results_df = pd.concat(results_df).reset_index(drop=True)
+
+            return results_uids
+
+        fpartition_by_uid_single = partial(
+            partition_by_uid_single,
+            func=func,
+            df=df,
+            X_df=X_df,
+            id_col=id_col,
+            **kwargs,
+        )
+
+        num_processes = min(num_partitions, cpu_count())
+        uids_splits = np.array_split(uids, num_processes)
+
+        with ThreadPoolExecutor(max_workers=num_processes) as executor:
+            results_uids = [
+                executor.submit(fpartition_by_uid_single, uids_split)
+                for uids_split in uids_splits
+            ]
+
+        results_df = pd.concat(
+            [result_df.result() for result_df in results_uids]
+        ).reset_index(drop=True)
+
         return results_df
 
     return wrapper
