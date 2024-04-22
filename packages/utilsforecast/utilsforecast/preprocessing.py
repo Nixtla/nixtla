@@ -129,15 +129,17 @@ def fill_gaps(
             # minutes are represented as 'm' in numpy
             freq = "m"
         elif isinstance(offset.base, pd.offsets.BusinessDay):
-            if offset.n != 1:
+            if n != 1:
                 raise NotImplementedError("Multiple of a business day")
             freq = "D"
         elif isinstance(offset.base, pd.offsets.Hour):
             # hours are represented as 'h' in numpy
             freq = "h"
         elif isinstance(offset.base, (pd.offsets.QuarterBegin, pd.offsets.QuarterEnd)):
-            n *= 3
+            n = 3
             freq = "M"
+        elif isinstance(offset.base, (pd.offsets.YearBegin, pd.offsets.YearEnd)):
+            freq = "Y"
         if n > 1:
             freq = freq.replace(str(n), "")
         try:
