@@ -346,9 +346,10 @@ class _NixtlaClientModel:
             id_col="unique_id",
             time_col="ds",
         )
-        resampled_df["y"] = resampled_df.groupby("unique_id")["y"].transform(
-            pd.Series.bfill
-        )
+        numeric_cols = resampled_df.columns.drop(["unique_id", "ds"])
+        resampled_df[numeric_cols] = resampled_df.groupby("unique_id")[
+            numeric_cols
+        ].transform(pd.Series.bfill)
         resampled_df["ds"] = resampled_df["ds"].astype(str)
         return resampled_df
 
