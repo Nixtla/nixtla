@@ -28,21 +28,23 @@
       "group": "Getting Started",
       "pages": [
         "docs/getting-started/getting_started_short.html",
-        "docs/getting-started/setting_up_your_authentication_token.html"]
+        "docs/getting-started/setting_up_your_authentication_api_key.html"]
     },
     {
       "group": "Tutorials",
       "pages": [
         "docs/tutorials/anomaly_detection.html",
+        "docs/tutorials/cross_validation.html", 
         "docs/tutorials/exogenous_variables.html",
         "docs/tutorials/finetuning.html",
         "docs/tutorials/loss_function_finetuning.html",
         "docs/tutorials/historical_forecast.html",
         "docs/tutorials/holidays.html",
         "docs/tutorials/irregular_timestamps.html",
+        "docs/tutorials/longhorizon.html", 
         "docs/tutorials/multiple_series.html",
         "docs/tutorials/prediction_intervals.html",
-        "docs/tutorials/longhorizon.html"
+        "docs/tutorials/quantile_forecasts.html"
       ]
     },
     {
@@ -55,7 +57,7 @@
     },
     {
       "group": "API Reference",
-      "pages": ["timegpt.html", "date_features.html"]
+      "pages": ["nixtla_client.html", "date_features.html"]
     }
   ]
 }
