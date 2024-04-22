@@ -124,6 +124,7 @@ def fill_gaps(
         return grid.join(df, on=[id_col, time_col], how="left")
     if isinstance(freq, str):
         offset = pd.tseries.frequencies.to_offset(freq)
+        n = offset.n
         if isinstance(offset.base, pd.offsets.Minute):
             # minutes are represented as 'm' in numpy
             freq = "m"
@@ -134,15 +135,18 @@ def fill_gaps(
         elif isinstance(offset.base, pd.offsets.Hour):
             # hours are represented as 'h' in numpy
             freq = "h"
-        if offset.n > 1:
-            freq = freq.replace(str(offset.n), "")
+        elif isinstance(offset.base, (pd.offsets.QuarterBegin, pd.offsets.QuarterEnd)):
+            n *= 3
+            freq = "M"
+        if n > 1:
+            freq = freq.replace(str(n), "")
         try:
             pd.Timedelta(offset)
         except ValueError:
             # irregular freq, try using first letter of abbreviation
             # such as MS = 'Month Start' -> 'M', YS = 'Year Start' -> 'Y'
             freq = freq[0]
-        delta: Union[np.timedelta64, int] = np.timedelta64(offset.n, freq)
+        delta: Union[np.timedelta64, int] = np.timedelta64(n, freq)
     else:
         delta = freq
     times_by_id = df.groupby(id_col, observed=True)[time_col].agg(["min", "max"])
