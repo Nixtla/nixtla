@@ -337,6 +337,7 @@ class _NixtlaClientModel:
 
     def resample_dataframe(self, df: pd.DataFrame):
         if not pd.api.types.is_datetime64_any_dtype(df["ds"].dtype):
+            df = df.copy(deep=False)
             df["ds"] = pd.to_datetime(df["ds"])
         resampled_df = fill_gaps(
             df,
@@ -347,9 +348,9 @@ class _NixtlaClientModel:
             time_col="ds",
         )
         numeric_cols = resampled_df.columns.drop(["unique_id", "ds"])
-        resampled_df[numeric_cols] = resampled_df.groupby("unique_id")[
+        resampled_df[numeric_cols] = resampled_df.groupby("unique_id", observed=True)[
             numeric_cols
-        ].transform(pd.Series.bfill)
+        ].bfill()
         resampled_df["ds"] = resampled_df["ds"].astype(str)
         return resampled_df
 

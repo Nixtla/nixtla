@@ -13,7 +13,7 @@ dev = [
     "statsforecast",
 ]
 distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
-plotting = ["utilsforecast[plotting]>=0.1.6"]
+plotting = ["utilsforecast[plotting]>=0.1.7"]
 date_extras = ["holidays"]
 
 setuptools.setup(
@@ -36,7 +36,7 @@ setuptools.setup(
         "pydantic<2",
         "requests",
         "tenacity",
-        "utilsforecast>=0.1.6",
+        "utilsforecast>=0.1.7",
     ],
     extras_require={
         "dev": dev + distributed + plotting + date_extras,
