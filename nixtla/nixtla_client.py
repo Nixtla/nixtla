@@ -39,14 +39,12 @@ from utilsforecast.processing import (
     vertical_concat,
 )
 
-from nixtla.client import (
-    ApiError,
-    Nixtla,
-    SingleSeriesForecast,
-    MultiSeriesForecast,
-    MultiSeriesAnomaly,
-    MultiSeriesInsampleForecast,
-)
+from .client import Nixtla
+from .core import ApiError
+from .types.multi_series_anomaly import MultiSeriesAnomaly
+from .types.multi_series_forecast import MultiSeriesForecast
+from .types.multi_series_insample_forecast import MultiSeriesInsampleForecast
+from .types.single_series_forecast import SingleSeriesForecast
 
 logging.basicConfig(level=logging.INFO)
 main_logger = logging.getLogger(__name__)
