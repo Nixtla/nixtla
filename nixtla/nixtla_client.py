@@ -39,7 +39,7 @@ from utilsforecast.processing import (
     vertical_concat,
 )
 
-from nixtlats.client import (
+from nixtla.client import (
     ApiError,
     Nixtla,
     SingleSeriesForecast,
@@ -1113,7 +1113,7 @@ class _NixtlaClient:
         except ModuleNotFoundError:
             raise Exception(
                 "You have to install additional dependencies to use this method, "
-                'please install them using `pip install "nixtlats[plotting]"`'
+                'please install them using `pip install "nixtla[plotting]"`'
             )
         df = df.copy()
         if id_col not in df:
@@ -1160,7 +1160,7 @@ class _NixtlaClient:
 class NixtlaClient(_NixtlaClient):
 
     def _instantiate_distributed_nixtla_client(self):
-        from nixtlats.distributed.nixtla_client import _DistributedNixtlaClient
+        from nixtla.distributed.nixtla_client import _DistributedNixtlaClient
 
         dist_nixtla_client = _DistributedNixtlaClient(
             api_key=self.client._client_wrapper._token,

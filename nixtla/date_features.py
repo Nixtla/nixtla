@@ -43,7 +43,7 @@ class CountryHolidays:
         except ModuleNotFoundError:
             raise Exception(
                 "You have to install additional libraries to use holidays, "
-                'please install them using `pip install "nixtlats[date_extras]"`'
+                'please install them using `pip install "nixtla[date_extras]"`'
             )
         return _get_holidays_df(
             dates, self.countries, country_holidays, list_supported_countries()

@@ -1,4 +1,4 @@
-name: nixtlats
+name: nixtla
 channels:
   - conda-forge
 dependencies:

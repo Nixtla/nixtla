@@ -17,7 +17,7 @@ plotting = ["utilsforecast[plotting]>=0.1.7"]
 date_extras = ["holidays"]
 
 setuptools.setup(
-    name="nixtlats",
+    name="nixtla",
     version="0.3.0",
     description="Python SDK for Nixtla API (TimeGPT)",
     long_description=long_description,
@@ -29,7 +29,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     install_requires=[
         "httpx",
         "pandas",
