@@ -6,7 +6,6 @@ dependencies:
   - jupyterlab
   - pandas<2.2
   - plotly
-  - prophet
   - pyspark>=3.3
   - pip:
     - black
