@@ -16,9 +16,14 @@ def to_snake_case(s):
 
 
 def merge_lines(md_text):
+    latex_block_pattern = re.compile(r"\$(\$?[^$]+\$?)\$", re.MULTILINE)
+    latex_blocks = latex_block_pattern.findall(md_text)
+    md_text_no_latex = latex_block_pattern.sub("LATEX", md_text)
+
     code_block_pattern = re.compile(r"``` (?:python|bash)([\s\S]*?)```", re.MULTILINE)
-    code_blocks = code_block_pattern.findall(md_text)
-    md_text_no_code = code_block_pattern.sub("CODEBLOCK", md_text)
+    code_blocks = code_block_pattern.findall(md_text_no_latex)
+    md_text_no_code = code_block_pattern.sub("CODEBLOCK", md_text_no_latex)
+
     lines = md_text_no_code.split("\n")
     merged_lines = []
     buffer_line = ""
@@ -28,8 +33,9 @@ def merge_lines(md_text):
             in_div_block = True
         elif line.strip().lower().endswith("</div>"):
             in_div_block = False
+
         if in_div_block or line.startswith(
-            ("    ", "> ", "#", "-", "*", "1.", "2.", "3.", "CODEBLOCK", "!", "[")
+            ("    ", "> ", "#", "-", "*", "1.", "2.", "3.", "CODEBLOCK", "LATEX", "!", "[")
         ):
             if buffer_line:
                 merged_lines.append(buffer_line.strip())
@@ -40,6 +46,19 @@ def merge_lines(md_text):
     if buffer_line:
         merged_lines.append(buffer_line.strip())
     md_text_merged = "\n".join(merged_lines)
+
+    for latex_eqn in latex_blocks:
+        raw_eqn = repr(latex_eqn)
+        raw_eqn = raw_eqn.replace('\\\\', '\\')
+        raw_eqn = raw_eqn.replace('\\x0c', '\\f')
+
+        if raw_eqn.startswith("'") and raw_eqn.endswith("'"):
+            raw_eqn = raw_eqn[1:-1]
+        print(raw_eqn)
+        md_text_merged = md_text_merged.replace(
+            "LATEX", f"${raw_eqn}$"
+        )
+
     for code_block in code_blocks:
         md_text_merged = md_text_merged.replace(
             "CODEBLOCK", f"\n``` python\n{code_block}\n```\n", 1
