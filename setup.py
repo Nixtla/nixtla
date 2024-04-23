@@ -18,12 +18,12 @@ date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtla",
-    version="0.3.1",
+    version="0.3.0",
     description="Python SDK for Nixtla API (TimeGPT)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Nixtla/nixtla",
-    packages=setuptools.find_packages(),
+    packages=setuptools.find_packages(exclude=["action_files"]),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
