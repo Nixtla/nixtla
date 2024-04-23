@@ -47,6 +47,7 @@ from nixtlats.client import (
     MultiSeriesAnomaly,
     MultiSeriesInsampleForecast,
 )
+from .types.multi_series_cross_validation import MultiSeriesCrossValidation
 
 logging.basicConfig(level=logging.INFO)
 main_logger = logging.getLogger(__name__)
@@ -670,59 +671,27 @@ class _NixtlaClientModel:
         n_windows: int = 1,
         step_size: Optional[int] = None,
     ):
-        # A: see `transform_inputs`
-        # the code always will return X_df=None
-        # if X_df=None
-        df, _ = self.transform_inputs(df=df, X_df=None)
-        self.infer_freq(df)
-        df["ds"] = pd.to_datetime(df["ds"])
-        # mlforecast cv code
-        results = []
-        sort_idxs = maybe_compute_sort_indices(df, "unique_id", "ds")
-        if sort_idxs is not None:
-            df = take_rows(df, sort_idxs)
-        splits = backtest_splits(
-            df,
+        Y_df = df[[self.id_col, self.time_col, self.target_col]]
+        x_cols = df.columns.drop(Y_df.columns).tolist()
+        if x_cols:
+            X_df = df[[self.id_col, self.time_col, *x_cols]]
+        else:
+            X_df = None
+        Y_df, X_df = self.transform_inputs(df=Y_df, X_df=X_df)
+        self.infer_freq(Y_df)
+        y, x = self.dataframes_to_dict(Y_df, X_df)
+        payload = MultiSeriesCrossValidation(
+            freq=self.freq,
+            fh=self.h,
+            y=y,
+            x=x,
             n_windows=n_windows,
-            h=self.h,
-            id_col="unique_id",
-            time_col="ds",
-            freq=pd.tseries.frequencies.to_offset(self.freq),
-            step_size=self.h if step_size is None else step_size,
+            step_size=step_size,
         )
-        for i_window, (cutoffs, train, valid) in enumerate(splits):
-            if len(valid.columns) > 3:
-                # if we have uid, ds, y + exogenous vars
-                train_future = valid.drop(columns="y")
-            else:
-                train_future = None
-            y_pred = self.forecast(
-                df=train,
-                X_df=train_future,
-            )
-            y_pred, _ = self.transform_inputs(df=y_pred, X_df=None)
-            y_pred = join(y_pred, cutoffs, on="unique_id", how="left")
-            y_pred["ds"] = pd.to_datetime(y_pred["ds"])
-            result = join(
-                valid[["unique_id", "ds", "y"]],
-                y_pred,
-                on=["unique_id", "ds"],
-            )
-            if result.shape[0] < valid.shape[0]:
-                raise ValueError(
-                    "Cross validation result produced less results than expected. "
-                    "Please verify that the frequency parameter (freq) matches your series' "
-                    "and that there aren't any missing periods."
-                )
-            results.append(result)
-        out = vertical_concat(results)
-        out = drop_index_if_pandas(out)
-        first_out_cols = ["unique_id", "ds", "cutoff", "y"]
-        remaining_cols = [c for c in out.columns if c not in first_out_cols]
-        fcst_cv_df = out[first_out_cols + remaining_cols]
-        fcst_cv_df["ds"] = fcst_cv_df["ds"].astype(str)
-        fcst_cv_df = self.transform_outputs(fcst_cv_df)
-        return fcst_cv_df
+        response = self._call_api(self.client.cross_validation_multi_series, payload)
+        cv_df = pd.DataFrame(**response["forecast"])
+        cv_df["cutoff"] = pd.to_datetime(cv_df["cutoff"])
+        return cv_df
 
 # %% ../nbs/nixtla_client.ipynb 11
 def validate_model_parameter(func):
