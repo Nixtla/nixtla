@@ -56,7 +56,7 @@ def merge_lines(md_text):
             raw_eqn = raw_eqn[1:-1]
         print(raw_eqn)
         md_text_merged = md_text_merged.replace(
-            "LATEX", f"${raw_eqn}$"
+            "LATEX", f"${raw_eqn}$", 1
         )
 
     for code_block in code_blocks:
