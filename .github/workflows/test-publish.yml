@@ -36,7 +36,7 @@ jobs:
         mv nixtla nixtlats &&
         sed -i 's/name="nixtla"/name="nixtlats"/g' setup.py &&
         find nixtlats -type f -name '*.py' -exec sed -i 's/from nixtla/from nixtlats/g' {} + &&
-        echo 'import warnings\nwarnings.warn("This package is deprecated, please install nixtla instead.", category=FutureWarning)' >> nixtlats/__init__.py &&
+        echo -e 'import warnings\nwarnings.warn("This package is deprecated, please install nixtla instead.", category=FutureWarning)' >> nixtlats/__init__.py &&
         python -m build
 
     - name: Publish nixtlats package
