@@ -1,8 +1,7 @@
 name: Upload Python Packages to TestPyPI
 
 on:
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -26,8 +25,6 @@ jobs:
     - name: Publish nixtla package
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        user: __token__
-        password: ${{ secrets.TEST_PYPI_TOKEN }}
         repository-url: https://test.pypi.org/legacy/
 
     - name: Build nixtlats package
@@ -42,6 +39,4 @@ jobs:
     - name: Publish nixtlats package
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        user: __token__
-        password: ${{ secrets.TEST_PYPI_TOKEN }}
         repository-url: https://test.pypi.org/legacy/
