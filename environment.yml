@@ -2,8 +2,7 @@ name: nixtla
 channels:
   - conda-forge
 dependencies:
-  - dask
-  - dask-expr<1.0.12
+  - dask<=2024.2.1
   - jupyterlab
   - pandas<2.2
   - plotly
