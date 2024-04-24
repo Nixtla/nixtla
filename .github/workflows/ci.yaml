@@ -80,7 +80,6 @@ jobs:
       - name: Set up environment
         uses: mamba-org/setup-micromamba@v1 
         with:
-          generate-run-shell: false
           environment-file: environment.yml
           create-args: python=${{ matrix.python-version }}
           cache-environment: true
