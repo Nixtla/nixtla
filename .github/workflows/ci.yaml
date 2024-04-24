@@ -57,8 +57,8 @@ jobs:
 
       - name: Check import
         run: |
-          python -c "from nixtlats import TimeGPT;"
-          python -c "from nixtlats import NixtlaClient;"
+          python -c "from nixtla import TimeGPT;"
+          python -c "from nixtla import NixtlaClient;"
 
   run-tests:
     runs-on: ${{ matrix.os }}

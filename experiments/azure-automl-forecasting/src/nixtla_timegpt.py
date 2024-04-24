@@ -4,7 +4,7 @@ from time import time
 
 import fire
 from dotenv import load_dotenv
-from nixtlats import TimeGPT
+from nixtla import TimeGPT
 
 from src.utils.data_handler import ExperimentDataset, ForecastDataset
 

@@ -2,8 +2,8 @@ project:
   output-dir: _docs
 
 website:
-  title: "nixtlats"
-  site-url: "https://Nixtla.github.io/nixtlats/"
+  title: "nixtla"
+  site-url: "https://Nixtla.github.io/nixtla/"
   description: "Time series forecasting suite using TimeGPT"
   repo-branch: main
   repo-url: "https://github.com/Nixtla/nixtla/"
