@@ -39,14 +39,12 @@ from utilsforecast.processing import (
     vertical_concat,
 )
 
-from nixtlats.client import (
-    ApiError,
-    Nixtla,
-    SingleSeriesForecast,
-    MultiSeriesForecast,
-    MultiSeriesAnomaly,
-    MultiSeriesInsampleForecast,
-)
+from .client import Nixtla
+from .core import ApiError
+from .types.multi_series_anomaly import MultiSeriesAnomaly
+from .types.multi_series_forecast import MultiSeriesForecast
+from .types.multi_series_insample_forecast import MultiSeriesInsampleForecast
+from .types.single_series_forecast import SingleSeriesForecast
 
 logging.basicConfig(level=logging.INFO)
 main_logger = logging.getLogger(__name__)
@@ -1113,7 +1111,7 @@ class _NixtlaClient:
         except ModuleNotFoundError:
             raise Exception(
                 "You have to install additional dependencies to use this method, "
-                'please install them using `pip install "nixtlats[plotting]"`'
+                'please install them using `pip install "nixtla[plotting]"`'
             )
         df = df.copy()
         if id_col not in df:
@@ -1160,7 +1158,7 @@ class _NixtlaClient:
 class NixtlaClient(_NixtlaClient):
 
     def _instantiate_distributed_nixtla_client(self):
-        from nixtlats.distributed.nixtla_client import _DistributedNixtlaClient
+        from nixtla.distributed.nixtla_client import _DistributedNixtlaClient
 
         dist_nixtla_client = _DistributedNixtlaClient(
             api_key=self.client._client_wrapper._token,
