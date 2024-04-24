@@ -40,7 +40,7 @@ class Nixtla:
 
         - httpx_client: typing.Optional[httpx.Client]. The httpx client to use for making requests, a preconfigured client is used by default, however this is useful should you want to pass in any custom httpx configuration.
     ---
-    from nixtlats.client import Nixtla
+    from nixtla.client import Nixtla
 
     client = Nixtla(
         token="YOUR_TOKEN",
@@ -74,7 +74,7 @@ class Nixtla:
         Parameters:
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats.client import Nixtla
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -118,7 +118,7 @@ class Nixtla:
         Parameters:
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats.client import Nixtla
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -164,7 +164,7 @@ class Nixtla:
         Parameters:
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats.client import Nixtla
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -211,8 +211,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import Model, SingleSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -375,8 +375,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesInsampleForecast
-        from nixtlats.client import Nixtla
+        from nixtla import Model, SingleSeriesInsampleForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -485,8 +485,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import MultiSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -545,8 +545,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, MultiSeriesInsampleForecast
-        from nixtlats.client import Nixtla
+        from nixtla import Model, MultiSeriesInsampleForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -1044,8 +1044,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesAnomaly
-        from nixtlats.client import Nixtla
+        from nixtla import MultiSeriesAnomaly
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -1104,8 +1104,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, MultiSeriesCrossValidation, MultiSeriesInput
-        from nixtlats.client import Nixtla
+        from nixtla import Model, MultiSeriesCrossValidation, MultiSeriesInput
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -2211,8 +2211,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -2269,8 +2269,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -2329,8 +2329,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import Model, SingleSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -2493,8 +2493,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesInsampleForecast
-        from nixtlats.client import Nixtla
+        from nixtla import Model, SingleSeriesInsampleForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -2603,8 +2603,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import MultiSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -2663,8 +2663,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, MultiSeriesInsampleForecast
-        from nixtlats.client import Nixtla
+        from nixtla import Model, MultiSeriesInsampleForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -3162,8 +3162,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesAnomaly
-        from nixtlats.client import Nixtla
+        from nixtla import MultiSeriesAnomaly
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -3222,8 +3222,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesCrossValidation
-        from nixtlats.client import Nixtla
+        from nixtla import MultiSeriesCrossValidation
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -3280,8 +3280,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -3338,8 +3338,8 @@ class Nixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import Nixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import Nixtla
 
         client = Nixtla(
             token="YOUR_TOKEN",
@@ -3403,7 +3403,7 @@ class AsyncNixtla:
 
         - httpx_client: typing.Optional[httpx.AsyncClient]. The httpx client to use for making requests, a preconfigured client is used by default, however this is useful should you want to pass in any custom httpx configuration.
     ---
-    from nixtlats.client import AsyncNixtla
+    from nixtla.client import AsyncNixtla
 
     client = AsyncNixtla(
         token="YOUR_TOKEN",
@@ -3437,7 +3437,7 @@ class AsyncNixtla:
         Parameters:
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats.client import AsyncNixtla
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -3481,7 +3481,7 @@ class AsyncNixtla:
         Parameters:
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats.client import AsyncNixtla
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -3527,7 +3527,7 @@ class AsyncNixtla:
         Parameters:
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats.client import AsyncNixtla
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -3574,8 +3574,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import Model, SingleSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -3738,8 +3738,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesInsampleForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import Model, SingleSeriesInsampleForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -3848,8 +3848,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import MultiSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -3908,8 +3908,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, MultiSeriesInsampleForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import Model, MultiSeriesInsampleForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -4407,8 +4407,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesAnomaly
-        from nixtlats.client import AsyncNixtla
+        from nixtla import MultiSeriesAnomaly
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -4467,8 +4467,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, MultiSeriesCrossValidation, MultiSeriesInput
-        from nixtlats.client import AsyncNixtla
+        from nixtla import Model, MultiSeriesCrossValidation, MultiSeriesInput
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -5574,8 +5574,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -5632,8 +5632,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -5692,8 +5692,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import Model, SingleSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -5856,8 +5856,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, SingleSeriesInsampleForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import Model, SingleSeriesInsampleForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -5966,8 +5966,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import MultiSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -6026,8 +6026,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import Model, MultiSeriesInsampleForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import Model, MultiSeriesInsampleForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -6525,8 +6525,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesAnomaly
-        from nixtlats.client import AsyncNixtla
+        from nixtla import MultiSeriesAnomaly
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -6585,8 +6585,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import MultiSeriesCrossValidation
-        from nixtlats.client import AsyncNixtla
+        from nixtla import MultiSeriesCrossValidation
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -6643,8 +6643,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
@@ -6701,8 +6701,8 @@ class AsyncNixtla:
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
-        from nixtlats import SingleSeriesForecast
-        from nixtlats.client import AsyncNixtla
+        from nixtla import SingleSeriesForecast
+        from nixtla.client import AsyncNixtla
 
         client = AsyncNixtla(
             token="YOUR_TOKEN",
