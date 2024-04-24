@@ -670,6 +670,7 @@ class _NixtlaClientModel:
         step_size: Optional[int] = None,
     ):
         df, _ = self.transform_inputs(df=df, X_df=None)
+        df = self.resample_dataframe(df)
         Y_df = df[["unique_id", "ds", "y"]]
         x_cols = df.columns.drop(Y_df.columns).tolist()
         if x_cols:
