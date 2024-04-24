@@ -34,7 +34,7 @@ jobs:
           cache-environment: true
 
       - name: Install pip requirements
-        run: pip install ./ 
+        run: pip install '.[plotting]'
 
       - name: Run evaluation 
         run: python -m action_files.models_performance.main
