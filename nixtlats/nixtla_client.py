@@ -671,26 +671,32 @@ class _NixtlaClientModel:
         n_windows: int = 1,
         step_size: Optional[int] = None,
     ):
-        Y_df = df[[self.id_col, self.time_col, self.target_col]]
+        df, _ = self.transform_inputs(df=df, X_df=None)
+        Y_df = df[["unique_id", "ds", "y"]]
         x_cols = df.columns.drop(Y_df.columns).tolist()
         if x_cols:
-            X_df = df[[self.id_col, self.time_col, *x_cols]]
+            X_df = df[["unique_id", "ds", *x_cols]]
         else:
             X_df = None
         Y_df, X_df = self.transform_inputs(df=Y_df, X_df=X_df)
         self.infer_freq(Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
         payload = MultiSeriesCrossValidation(
+            finetune_steps=self.finetune_steps,
+            finetune_loss=self.finetune_loss,
             freq=self.freq,
+            level=self.level,
             fh=self.h,
             y=y,
             x=x,
             n_windows=n_windows,
             step_size=step_size,
+            clean_ex_first=self.clean_ex_first,
         )
         response = self._call_api(self.client.cross_validation_multi_series, payload)
         cv_df = pd.DataFrame(**response["forecast"])
         cv_df["cutoff"] = pd.to_datetime(cv_df["cutoff"])
+        cv_df = self.transform_outputs(cv_df, level_to_quantiles=True)
         return cv_df
 
 # %% ../nbs/nixtla_client.ipynb 11
