@@ -3,14 +3,13 @@
 import datetime as dt
 import typing
 
-import pydantic
-
 from ..core.datetime_utils import serialize_datetime
+from ..core.pydantic_utilities import pydantic_v1
 from .validation_error import ValidationError
 
 
-class HttpValidationError(pydantic.BaseModel):
-    detail: typing.Optional[typing.List[ValidationError]]
+class HttpValidationError(pydantic_v1.BaseModel):
+    detail: typing.Optional[typing.List[ValidationError]] = None
 
     def json(self, **kwargs: typing.Any) -> str:
         kwargs_with_defaults: typing.Any = {"by_alias": True, "exclude_unset": True, **kwargs}
@@ -22,4 +21,6 @@ class HttpValidationError(pydantic.BaseModel):
 
     class Config:
         frozen = True
+        smart_union = True
+        extra = pydantic_v1.Extra.allow
         json_encoders = {dt.datetime: serialize_datetime}
