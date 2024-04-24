@@ -46,7 +46,7 @@ website:
             href: https://join.slack.com/t/nixtlaworkspace/shared_invite/zt-135dssye9-fWTzMpv2WBthq8NK0Yvu6A
     right:
       - icon: github
-        href: "https://github.com/nixtla/nixtlats"
+        href: "https://github.com/nixtla/nixtla"
       - icon: twitter
         href: https://twitter.com/nixtlainc
         aria-label: Nixtla Twitter
@@ -54,6 +54,6 @@ website:
   sidebar:
     style: floating
   body-footer: |
-    Give us a ⭐ on [Github](https://github.com/nixtla/nixtlats)
+    Give us a ⭐ on [Github](https://github.com/nixtla/nixtla)
 
 metadata-files: [nbdev.yml, sidebar.yml]

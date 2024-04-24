@@ -1,8 +1,7 @@
-name: Upload Python Packages
+name: Upload Python Packages to TestPyPI
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -25,6 +24,8 @@ jobs:
 
     - name: Publish nixtla package
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
 
     - name: Build nixtlats package
       run: >
@@ -37,3 +38,5 @@ jobs:
 
     - name: Publish nixtlats package
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
