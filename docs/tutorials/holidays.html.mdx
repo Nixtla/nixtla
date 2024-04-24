@@ -21,7 +21,7 @@ automatically to a dataset using the `date_features` function.
 ```python
 import pandas as pd
 import numpy as np
-from nixtlats import NixtlaClient
+from nixtla import NixtlaClient
 ```
 
 
@@ -70,7 +70,7 @@ future_df = pd.DataFrame(dates, columns=['month'])
 
 
 ```python
-from nixtlats.date_features import CountryHolidays
+from nixtla.date_features import CountryHolidays
 
 us_holidays = CountryHolidays(countries=['US'])
 dates = pd.date_range(start=future_df.iloc[0]['month'], end=future_df.iloc[-1]['month'], freq='D')
