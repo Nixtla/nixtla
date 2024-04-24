@@ -266,7 +266,7 @@ class _DistributedNixtlaClient:
         return fcst_df
 
     def _instantiate_nixtla_client(self):
-        from nixtlats.nixtla_client import _NixtlaClient
+        from nixtla.nixtla_client import _NixtlaClient
 
         nixtla_client = _NixtlaClient(
             api_key=self.api_key,

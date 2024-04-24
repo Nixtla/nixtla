@@ -1,12 +1,11 @@
-name: nixtlats
+name: nixtla
 channels:
   - conda-forge
 dependencies:
-  - dask
+  - dask<=2024.2.1
   - jupyterlab
   - pandas<2.2
   - plotly
-  - prophet
   - pyspark>=3.3
   - pip:
     - black

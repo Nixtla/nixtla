@@ -38,13 +38,13 @@ The repo comes with an `environment.yml` file which contains the libraries neede
 Once you have `conda` go to the top level directory of the repository and run the following lines (we recommend to use `python=3.10` for development):
 
 ```
-conda create -n nixtlats python=3.10
-conda activate nixtlats
+conda create -n nixtla python=3.10
+conda activate nixtla
 conda env update -f environment.yml
 ```
 
 #### Install the library
-Once you have your environment setup, activate it using `conda activate nixtlats` and then install the library in editable mode using `pip install -e ".[dev]"`
+Once you have your environment setup, activate it using `conda activate nixtla` and then install the library in editable mode using `pip install -e ".[dev]"`
 
 #### Set Up TimeGPT token
 This library uses `python-dotenv` for development. To set up your TimeGPT token, add the following lines to your `.env` file:
