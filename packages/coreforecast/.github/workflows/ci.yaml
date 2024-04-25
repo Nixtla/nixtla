@@ -25,6 +25,8 @@ jobs:
         include:
           - os: ubuntu-20.04
             platform-id: manylinux_x86_64
+          - os: ubuntu-20.04
+            platform-id: manylinux_aarch64
           - os: windows-2019
             platform-id: win_amd64
           - os: macos-11
@@ -34,6 +36,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.platform-id == 'manylinux_aarch64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.16.5
