@@ -33,7 +33,7 @@ setuptools.setup(
     install_requires=[
         "httpx",
         "pandas",
-        "pydantic<2",
+        "pydantic",
         "requests",
         "tenacity",
         "utilsforecast>=0.1.7",
