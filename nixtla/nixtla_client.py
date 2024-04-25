@@ -911,25 +911,29 @@ class _NixtlaClient:
         df: pd.DataFrame,
         X_df: Optional[pd.DataFrame],
         id_col: str,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.CategoricalDtype]:
-        df = df.copy(deep=False)
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.CategoricalDtype]]:
         if id_col not in df:
-            df[id_col] = "ts_0"
-        dtype = pd.CategoricalDtype(categories=df[id_col].unique())
+            return df, X_df, None
+        df = df.copy(deep=False)
+        if isinstance(df[id_col].dtype, pd.CategoricalDtype):
+            dtype = df[id_col].dtype
+        else:
+            dtype = pd.CategoricalDtype(categories=df[id_col].unique())
         df[id_col] = df[id_col].astype(dtype).cat.codes
         if X_df is not None:
             X_df = X_df.copy(deep=False)
-            if id_col not in df:
-                X_df[id_col] = "ts_0"
             X_df[id_col] = X_df[id_col].astype(dtype).cat.codes
         return df, X_df, dtype
 
     def _restore_uids(
         self,
         df: pd.DataFrame,
-        dtype: pd.CategoricalDtype,
+        dtype: Optional[pd.CategoricalDtype],
         id_col: str,
     ) -> pd.DataFrame:
+        if id_col not in df:
+            return df
+        assert dtype is not None
         df = df.copy(deep=False)
         code2cat = dict(enumerate(dtype.categories))
         df[id_col] = df[id_col].map(code2cat)
