@@ -555,16 +555,15 @@ class _NixtlaClientModel:
                 "Please consider using a smaller horizon."
             )
         # restrict input if
-        # - we dont want to finetune
-        # - we dont have exogenous regegressors
-        # - and we dont want to produce pred intervals
-        # - no add history
+        #  we dont want to fine-tune
+        #  we dont have exogenous regressors
+        #  no add history
         restrict_input = self.finetune_steps == 0 and X_df is None and not add_history
         if restrict_input:
-            # add sufficient info to compute
-            # conformal interval
             main_logger.info("Restricting input...")
             if self.level is not None:
+                # add sufficient info to compute
+                # conformal interval
                 # @AzulGarza
                 #  this is an old opinionated decision
                 #  about reducing the data sent to the api
