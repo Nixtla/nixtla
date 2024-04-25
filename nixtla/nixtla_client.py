@@ -911,7 +911,7 @@ class _NixtlaClient:
         df: pd.DataFrame,
         X_df: Optional[pd.DataFrame],
         id_col: str,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.CategoricalDtype]]:
+    ) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.CategoricalDtype]]:
         if id_col not in df:
             return df, X_df, None
         df = df.copy(deep=False)
