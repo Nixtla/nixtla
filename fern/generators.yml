@@ -1,0 +1,14 @@
+groups:
+  publish:
+    generators:
+      - name: fernapi/fern-python-sdk
+        version: 1.1.0-rc4
+        output:
+          location: local-file-system
+          path: ../generated
+        config:
+          client_class_name: Nixtla
+          package_name: nixtla
+          flat_layout: true
+          pydantic_config:
+            version: both
