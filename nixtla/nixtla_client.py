@@ -11,7 +11,7 @@ import logging
 import os
 import requests
 import warnings
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from functools import partial, wraps
 from multiprocessing import cpu_count
@@ -906,6 +906,34 @@ class _NixtlaClient:
             main_logger.info(f'Happy Forecasting! :), {validation["support"]}')
         return valid
 
+    def _uids_to_categorical(
+        self,
+        df: pd.DataFrame,
+        X_df: Optional[pd.DataFrame],
+        id_col: str,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.CategoricalDtype]:
+        df = df.copy(deep=False)
+        if id_col not in df:
+            df[id_col] = "ts_0"
+        dtype = pd.CategoricalDtype(categories=df[id_col].unique())
+        df[id_col] = df[id_col].astype(dtype).cat.codes
+        if X_df is not None:
+            if id_col not in df:
+                X_df[id_col] = "ts_0"
+            X_df[id_col] = X_df[id_col].astype(dtype).cat.codes
+        return df, X_df, dtype
+
+    def _restore_uids(
+        self,
+        df: pd.DataFrame,
+        dtype: pd.CategoricalDtype,
+        id_col: str,
+    ) -> pd.DataFrame:
+        df = df.copy(deep=False)
+        code2cat = dict(enumerate(dtype.categories))
+        df[id_col] = df[id_col].map(code2cat)
+        return df
+
     @validate_model_parameter
     @partition_by_uid
     def _forecast(
@@ -950,9 +978,13 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
+        df, X_df, uids_dtype = self._uids_to_categorical(
+            df=df, X_df=X_df, id_col=id_col
+        )
         fcst_df = nixtla_client_model.forecast(
             df=df, X_df=X_df, add_history=add_history
         )
+        fcst_df = self._restore_uids(fcst_df, dtype=uids_dtype, id_col=id_col)
         self.weights_x = nixtla_client_model.weights_x
         return fcst_df
 
@@ -991,7 +1023,11 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
+        df, X_df, uids_dtype = self._uids_to_categorical(
+            df=df, X_df=None, id_col=id_col
+        )
         anomalies_df = nixtla_client_model.detect_anomalies(df=df)
+        anomalies_df = self._restore_uids(anomalies_df, dtype=uids_dtype, id_col=id_col)
         self.weights_x = nixtla_client_model.weights_x
         return anomalies_df
 
@@ -1039,9 +1075,13 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
+        df, X_df, uids_dtype = self._uids_to_categorical(
+            df=df, X_df=None, id_col=id_col
+        )
         cv_df = nixtla_client_model.cross_validation(
             df=df, n_windows=n_windows, step_size=step_size
         )
+        cv_df = self._restore_uids(cv_df, dtype=uids_dtype, id_col=id_col)
         self.weights_x = nixtla_client_model.weights_x
         return cv_df
 
