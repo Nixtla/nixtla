@@ -3,11 +3,12 @@
 import datetime as dt
 import typing
 
+import pydantic
+
 from ..core.datetime_utils import serialize_datetime
-from ..core.pydantic_utilities import pydantic_v1
 
 
-class MultiSeriesInput(pydantic_v1.BaseModel):
+class MultiSeriesInput(pydantic.BaseModel):
     columns: typing.List[str]
     data: typing.List[typing.Any]
 
@@ -21,6 +22,4 @@ class MultiSeriesInput(pydantic_v1.BaseModel):
 
     class Config:
         frozen = True
-        smart_union = True
-        extra = pydantic_v1.Extra.forbid
         json_encoders = {dt.datetime: serialize_datetime}
