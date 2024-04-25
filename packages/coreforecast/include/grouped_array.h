@@ -4,8 +4,6 @@
 #include <cmath>
 #include <cstdint>
 
-#include "export.h"
-
 using GroupedArrayHandle = void *;
 using indptr_t = int32_t;
 

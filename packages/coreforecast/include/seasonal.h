@@ -1,11 +1,20 @@
 #pragma once
 
-#include "diff.h"
-#include "export.h"
 #include "stats.h"
 #include "stl.hpp"
 
 #include <cmath>
+
+template <typename T> void Difference(const T *data, int n, T *out, int d) {
+  if (d == 0) {
+    std::copy(data, data + n, out);
+    return;
+  }
+  std::fill(out, out + d, std::numeric_limits<T>::quiet_NaN());
+  for (int i = d; i < n; ++i) {
+    out[i] = data[i] - data[i - d];
+  }
+}
 
 template <typename T> T SeasHeuristic(const T *x, size_t n, size_t period) {
   constexpr size_t seasonal = 11;

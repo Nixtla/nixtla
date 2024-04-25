@@ -1,11 +1,10 @@
 #pragma once
 
-#include "export.h"
-#include "grouped_array.h"
-
-extern "C" {
-DLL_EXPORT int GroupedArrayFloat32_ExponentiallyWeightedMeanTransform(
-    GroupedArrayHandle handle, int lag, float alpha, float *out);
-DLL_EXPORT int GroupedArrayFloat64_ExponentiallyWeightedMeanTransform(
-    GroupedArrayHandle handle, int lag, double alpha, double *out);
+template <typename T>
+inline void ExponentiallyWeightedMeanTransform(const T *data, int n, T *out,
+                                               T alpha) {
+  out[0] = data[0];
+  for (int i = 1; i < n; ++i) {
+    out[i] = alpha * data[i] + (1 - alpha) * out[i - 1];
+  }
 }
