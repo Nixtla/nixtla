@@ -918,6 +918,7 @@ class _NixtlaClient:
         dtype = pd.CategoricalDtype(categories=df[id_col].unique())
         df[id_col] = df[id_col].astype(dtype).cat.codes
         if X_df is not None:
+            X_df = X_df.copy(deep=False)
             if id_col not in df:
                 X_df[id_col] = "ts_0"
             X_df[id_col] = X_df[id_col].astype(dtype).cat.codes
