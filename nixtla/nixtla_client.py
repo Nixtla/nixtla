@@ -530,7 +530,7 @@ class _NixtlaClientModel:
         )
 
     def validate_input_size(self, Y_df: pd.DataFrame):
-        min_history = Y_df.groupby("unique_id").size().min()
+        min_history = Y_df.groupby("unique_id", observed=True).size().min()
         if min_history < self.input_size + self.model_horizon:
             raise Exception(
                 "Your time series data is too short "
@@ -570,7 +570,7 @@ class _NixtlaClientModel:
             # conformal interval
             main_logger.info("Restricting input...")
             new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
-            Y_df = Y_df.groupby("unique_id").tail(new_input_size)
+            Y_df = Y_df.groupby("unique_id", observed=True).tail(new_input_size)
             if X_df is not None:
                 X_df = X_df.groupby("unique_id").tail(
                     new_input_size + self.h
