@@ -919,10 +919,13 @@ class _NixtlaClient:
             dtype = df[id_col].dtype
         else:
             dtype = pd.CategoricalDtype(categories=df[id_col].unique())
-        df[id_col] = df[id_col].astype(dtype).cat.codes
+            df[id_col] = df[id_col].astype(dtype)
+        df[id_col] = df[id_col].cat.codes
         if X_df is not None:
             X_df = X_df.copy(deep=False)
-            X_df[id_col] = X_df[id_col].astype(dtype).cat.codes
+            if X_df[id_col].dtype != dtype:
+                X_df[id_col] = X_df[id_col].astype(dtype)
+            X_df[id_col] = X_df[id_col].cat.codes
         return df, X_df, dtype
 
     def _restore_uids(
