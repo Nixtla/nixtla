@@ -1,0 +1,65 @@
+name: Models Performance
+
+permissions: write-all
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-models-performance:
+    runs-on: ubuntu-latest 
+    strategy:
+      fail-fast: false
+    env:
+      NIXTLA_API_KEY: ${{ secrets.NIXTLA_API_KEY }}
+      PLOTS_REPO_URL: https://github.com/Nixtla/nixtla/blob/docs-figs-model-performance
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v2
+
+      - name: Set up environment
+        uses: mamba-org/setup-micromamba@v1 
+        with:
+          environment-file: environment.yml
+          create-args: python=3.9
+          cache-environment: true
+
+      - name: Install pip requirements
+        run: pip install '.[plotting]'
+
+      - name: Run evaluation 
+        run: python -m action_files.models_performance.main
+
+      - name: Upload images to new branch main
+        run: |
+          git config --global user.email azul@nixtla.io
+          git config --global user.name AzulGarza
+          git push https://$GITHUB_TOKEN@github.com/nixtla/nixtla.git --delete docs-figs-model-performance || true
+          git checkout -b docs-figs-model-performance 
+          git add -f "*.png"
+          git commit -m "[cd] update png images" || echo "No changes to commit"
+          git push https://$GITHUB_TOKEN@github.com/nixtla/nixtla.git HEAD:docs-figs-model-performance
+
+      - name: Upload results to the PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const markdown = fs.readFileSync('./action_files/models_performance/summary.md', 'utf8');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: markdown
+            });                    
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
