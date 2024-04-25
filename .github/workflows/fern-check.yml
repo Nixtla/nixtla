@@ -23,7 +23,7 @@ jobs:
           run: fern generate --group publish --local --log-level=debug
 
         - name: Copy files
-          run: cp -r generated/client.py generated/types generated/errors generated/core nixtla
+          run: rm generated/__init__.py && cp -r generated/* nixtla
 
         - name: Verify no changes were made
           run: if git diff --exit-code; then echo "No changes"; else echo "Changes were made"; exit 1; fi
