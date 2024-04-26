@@ -555,21 +555,26 @@ class _NixtlaClientModel:
                 "Please consider using a smaller horizon."
             )
         # restrict input if
-        # - we dont want to finetune
-        # - we dont have exogenous regegressors
-        # - and we dont want to produce pred intervals
-        # - no add history
-        restrict_input = (
-            self.finetune_steps == 0
-            and X_df is None
-            and self.level is not None
-            and not add_history
-        )
+        #  we dont want to fine-tune
+        #  we dont have exogenous regressors
+        #  no add history
+        restrict_input = self.finetune_steps == 0 and X_df is None and not add_history
         if restrict_input:
-            # add sufficient info to compute
-            # conformal interval
             main_logger.info("Restricting input...")
-            new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
+            if self.level is not None:
+                # add sufficient info to compute
+                # conformal interval
+                # @AzulGarza
+                #  this is an old opinionated decision
+                #  about reducing the data sent to the api
+                #  to reduce latency when
+                #  a user passes level. since currently the model
+                #  uses conformal prediction, we can change a minimum
+                #  amount of data if the series are too large
+                new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
+            else:
+                # we only want to forecast
+                new_input_size = self.input_size
             Y_df = Y_df.groupby("unique_id").tail(new_input_size)
             if X_df is not None:
                 X_df = X_df.groupby("unique_id").tail(
