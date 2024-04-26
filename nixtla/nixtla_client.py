@@ -678,8 +678,6 @@ class _NixtlaClientModel:
             X_df = df[["unique_id", "ds", *x_cols]]
         else:
             X_df = None
-        Y_df, X_df = self.transform_inputs(df=Y_df, X_df=X_df)
-        self.infer_freq(df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
         payload = MultiSeriesCrossValidation(
             finetune_steps=self.finetune_steps,
