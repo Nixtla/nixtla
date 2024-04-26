@@ -11,7 +11,7 @@ import logging
 import os
 import requests
 import warnings
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from functools import partial, wraps
 from multiprocessing import cpu_count
@@ -555,22 +555,27 @@ class _NixtlaClientModel:
                 "Please consider using a smaller horizon."
             )
         # restrict input if
-        # - we dont want to finetune
-        # - we dont have exogenous regegressors
-        # - and we dont want to produce pred intervals
-        # - no add history
-        restrict_input = (
-            self.finetune_steps == 0
-            and X_df is None
-            and self.level is not None
-            and not add_history
-        )
+        #  we dont want to fine-tune
+        #  we dont have exogenous regressors
+        #  no add history
+        restrict_input = self.finetune_steps == 0 and X_df is None and not add_history
         if restrict_input:
-            # add sufficient info to compute
-            # conformal interval
             main_logger.info("Restricting input...")
-            new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
-            Y_df = Y_df.groupby("unique_id", observed=True).tail(new_input_size)
+            if self.level is not None:
+                # add sufficient info to compute
+                # conformal interval
+                # @AzulGarza
+                #  this is an old opinionated decision
+                #  about reducing the data sent to the api
+                #  to reduce latency when
+                #  a user passes level. since currently the model
+                #  uses conformal prediction, we can change a minimum
+                #  amount of data if the series are too large
+                new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
+            else:
+                # we only want to forecast
+                new_input_size = self.input_size
+            Y_df = Y_df.groupby("unique_id").tail(new_input_size)
             if X_df is not None:
                 X_df = X_df.groupby("unique_id").tail(
                     new_input_size + self.h
@@ -906,6 +911,42 @@ class _NixtlaClient:
             main_logger.info(f'Happy Forecasting! :), {validation["support"]}')
         return valid
 
+    def _uids_to_categorical(
+        self,
+        df: pd.DataFrame,
+        X_df: Optional[pd.DataFrame],
+        id_col: str,
+    ) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], Optional[pd.CategoricalDtype]]:
+        if id_col not in df:
+            return df, X_df, None
+        df = df.copy(deep=False)
+        if isinstance(df[id_col].dtype, pd.CategoricalDtype):
+            dtype = df[id_col].dtype
+        else:
+            dtype = pd.CategoricalDtype(categories=df[id_col].unique())
+            df[id_col] = df[id_col].astype(dtype)
+        df[id_col] = df[id_col].cat.codes
+        if X_df is not None:
+            X_df = X_df.copy(deep=False)
+            if X_df[id_col].dtype != dtype:
+                X_df[id_col] = X_df[id_col].astype(dtype)
+            X_df[id_col] = X_df[id_col].cat.codes
+        return df, X_df, dtype
+
+    def _restore_uids(
+        self,
+        df: pd.DataFrame,
+        dtype: Optional[pd.CategoricalDtype],
+        id_col: str,
+    ) -> pd.DataFrame:
+        if id_col not in df:
+            return df
+        assert dtype is not None
+        df = df.copy(deep=False)
+        code2cat = dict(enumerate(dtype.categories))
+        df[id_col] = df[id_col].map(code2cat)
+        return df
+
     @validate_model_parameter
     @partition_by_uid
     def _forecast(
@@ -950,9 +991,13 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
+        df, X_df, uids_dtype = self._uids_to_categorical(
+            df=df, X_df=X_df, id_col=id_col
+        )
         fcst_df = nixtla_client_model.forecast(
             df=df, X_df=X_df, add_history=add_history
         )
+        fcst_df = self._restore_uids(fcst_df, dtype=uids_dtype, id_col=id_col)
         self.weights_x = nixtla_client_model.weights_x
         return fcst_df
 
@@ -991,7 +1036,11 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
+        df, X_df, uids_dtype = self._uids_to_categorical(
+            df=df, X_df=None, id_col=id_col
+        )
         anomalies_df = nixtla_client_model.detect_anomalies(df=df)
+        anomalies_df = self._restore_uids(anomalies_df, dtype=uids_dtype, id_col=id_col)
         self.weights_x = nixtla_client_model.weights_x
         return anomalies_df
 
@@ -1039,9 +1088,13 @@ class _NixtlaClient:
             retry_interval=self.retry_interval,
             max_wait_time=self.max_wait_time,
         )
+        df, X_df, uids_dtype = self._uids_to_categorical(
+            df=df, X_df=None, id_col=id_col
+        )
         cv_df = nixtla_client_model.cross_validation(
             df=df, n_windows=n_windows, step_size=step_size
         )
+        cv_df = self._restore_uids(cv_df, dtype=uids_dtype, id_col=id_col)
         self.weights_x = nixtla_client_model.weights_x
         return cv_df
 
