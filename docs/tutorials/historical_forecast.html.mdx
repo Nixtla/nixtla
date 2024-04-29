@@ -7,7 +7,7 @@ title: Historical forecast
 Our time series model offers a powerful feature that allows users to
 retrieve historical forecasts alongside the prospective predictions.
 This functionality is accessible through the forecast method by setting
-the add_history=True argument.
+the `add_history=True` argument.
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/7_historical_forecast.ipynb)
 
@@ -50,7 +50,9 @@ DataFrame will include not only the future forecasts determined by the h
 argument, but also the historical predictions. Currently, the historical
 forecasts are not affected by `h`, and have a fix horizon depending on
 the frequency of the data. The historical forecasts are produced in a
-rolling window fashion, and concatenated.
+rolling window fashion, and concatenated. This means that the model is
+applied sequentially at each time step using only the most recent
+information available up to that point.
 
 ```python
 timegpt_fcst_with_history_df = nixtla_client.forecast(
@@ -60,11 +62,11 @@ timegpt_fcst_with_history_df = nixtla_client.forecast(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Calling Historical Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Calling Historical Forecast Endpoint...
 ```
 
 ```python
@@ -74,9 +76,9 @@ timegpt_fcst_with_history_df.head()
 |     | timestamp  | TimeGPT    |
 |-----|------------|------------|
 | 0   | 1951-01-01 | 135.483673 |
-| 1   | 1951-02-01 | 144.442413 |
+| 1   | 1951-02-01 | 144.442398 |
 | 2   | 1951-03-01 | 157.191910 |
-| 3   | 1951-04-01 | 148.769379 |
+| 3   | 1951-04-01 | 148.769363 |
 | 4   | 1951-05-01 | 140.472946 |
 
 Let’s plot the results. This consolidated view of past and future
@@ -90,9 +92,9 @@ nixtla_client.plot(df, timegpt_fcst_with_history_df, time_col='timestamp', targe
 ![](/nixtla/docs/tutorials/7_historical_forecast_files/figure-markdown_strict/cell-9-output-1.png)
 
 Please note, however, that the initial values of the series are not
-included in these historical forecasts. This is because our model,
-`TimeGPT`, requires a certain number of initial observations to generate
-reliable forecasts. Therefore, while interpreting the output, it’s
-important to be aware that the first few observations serve as the basis
-for the model’s predictions and are not themselves predicted values.
+included in these historical forecasts. This is because `TimeGPT`
+requires a certain number of initial observations to generate reliable
+forecasts. Therefore, while interpreting the output, it’s important to
+be aware that the first few observations serve as the basis for the
+model’s predictions and are not themselves predicted values.
 

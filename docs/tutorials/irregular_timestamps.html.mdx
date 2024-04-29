@@ -22,7 +22,8 @@ nixtla_client = NixtlaClient(
 The first step is to fetch your time series data. The data must include
 timestamps and the associated values. For instance, you might be working
 with stock prices, and your data could look something like the
-following. In this example we use [OpenBB](https://docs.openbb.co/sdk).
+following. In this example we use
+[`OpenBB`](https://docs.openbb.co/sdk).
 
 ```python
 pltr_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/pltr.csv')
@@ -42,9 +43,9 @@ pltr_df.head()
 | 3   | 2020-10-05 | 9.43  | 9.49  | 8.92 | 9.03  | 9.03      | 36316900  | 0.0       | 0.0          |
 | 4   | 2020-10-06 | 9.04  | 10.18 | 8.90 | 9.90  | 9.90      | 90864000  | 0.0       | 0.0          |
 
-Let’s see that this dataset has irregular timestamps. The dayofweek
+Let’s see that this dataset has irregular timestamps. The `dayofweek`
 attribute from pandas’ DatetimeIndex returns the day of the week with
-Monday=0, Sunday=6. So, checking if dayofweek \> 4 is essentially
+Monday=0,…,Sunday=6. So, checking if `dayofweek > 4` is essentially
 checking if the date falls on a Saturday (5) or Sunday (6), which are
 typically non-business days (weekends).
 
@@ -80,10 +81,10 @@ fcst_pltr_df = nixtla_client.forecast(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -128,16 +129,16 @@ fcst_pltr_levels_df = nixtla_client.forecast(
     df=pltr_df, h=42, freq='B',
     time_col='date', target_col='Close',
     add_history=True,
-    level=[40.66, 90],
+    level=[80, 90],
 )
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Calling Historical Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Calling Historical Forecast Endpoint...
 ```
 
 ```python
@@ -146,14 +147,14 @@ nixtla_client.plot(
     fcst_pltr_levels_df, 
     time_col='date',
     target_col='Close',
-    level=[40.66, 90],
+    level=[80, 90],
 )
 ```
 
 ![](/nixtla/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-13-output-1.png)
 
-If you want to forecast another just change the `target_col` parameter.
-Let’s forecast `Volume` now:
+If you want to forecast another variable just change the `target_col`
+parameter. Let’s forecast `Volume` now:
 
 ```python
 fcst_pltr_df = nixtla_client.forecast(
@@ -170,10 +171,10 @@ nixtla_client.plot(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ![](/nixtla/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-14-output-2.png)
@@ -215,10 +216,10 @@ fcst_pltr_long_df = nixtla_client.forecast(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -259,7 +260,7 @@ accuracy of our forecasts. One such factor, and the focus of this
 tutorial, is the company’s revenue. Revenue figures can provide a key
 indicator of a company’s financial health and growth potential, both of
 which can heavily influence its stock price. That we can obtain from
-openbb.
+`OpenBB`.
 
 ```python
 revenue_pltr = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/revenue-pltr.csv')
@@ -301,10 +302,10 @@ fcst_pltr_revenue = nixtla_client.forecast(revenue_pltr, h=1, time_col='fiscalDa
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: Q-DEC
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: Q-DEC
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -407,11 +408,11 @@ fcst_pltr_df = nixtla_client.forecast(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Using the following exogenous variables: totalRevenue
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Using the following exogenous variables: totalRevenue
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -434,4 +435,8 @@ nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
 ![](/nixtla/docs/tutorials/8_irregular_timestamps_files/figure-markdown_strict/cell-33-output-1.png)
+
+From the feature importance plot, we can conclude that the revenue is an
+important factor in the model’s predictions, meaning changes in revenue
+will impact the forecast outcome.
 

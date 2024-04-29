@@ -17,7 +17,7 @@ title: FAQS
 
 ## TimeGPT
 
-### What is TimeGPT?
+What is TimeGPT?
 
 `TimeGPT` is the first foundation model for time series forecasting. It
 can produce accurate forecasts for new time series across a diverse
@@ -30,21 +30,21 @@ extrapolates into the future. Beyond forecasting, `TimeGPT` supports
 other time series related tasks, such as what-if-scenarios, anomaly
 detection, and more.
 
-### Is TimeGPT based on a Large Language Model (LLM)?
+Is TimeGPT based on a Large Language Model (LLM)?
 
 No, `TimeGPT` is not based on any large language model. While it follows
 the same principle of training a large transformer model on a vast
 dataset, its architecture is specifically designed to handle time series
 data and it has been trained to minimize forecasting errors.
 
-### How do I get started with TimeGPT?
+How do I get started with TimeGPT?
 
 To get started with `TimeGPT`, you need to register for an account
 [here](https://dashboard.nixtla.io/). You will receive an email asking
 you to confirm your signup. After confirming, you will be able to access
 your dashboard, which contains the details of your account.
 
-### How accessible is TimeGPT and what are the usage costs?
+How accessible is TimeGPT and what are the usage costs?
 
 For a more in-depth understanding of `TimeGPT`, please refer to the
 [research paper](https://arxiv.org/pdf/2310.03589.pdf). While certain
@@ -54,7 +54,7 @@ credits and subsequent usage fees are based on token consumption. For
 more details, please refer to the [Pricing and
 Billing](#pricing-and-billing) section
 
-### How can I use TimeGPT?
+How can I use TimeGPT?
 
 -   Through the [Python SDK](https://github.com/Nixtla/nixtla)
 
@@ -68,25 +68,25 @@ obtained upon registration and can be found in your dashboard under
 
 ## TimeGPT API Key
 
-### What is an API key?
+What is an API key?
 
 An API key is a unique string of characters that serves as a key to
 authenticate your requests when using the Nixtla SDK. It ensures that
 the person making the requests is authorized to do so.
 
-### Where can I get an API key?
+Where can I get an API key?
 
 Upon registration, you will receive an API key that can be found in your
 [dashboard](https://dashboard.nixtla.io/) under `API Keys`. Remember
 that your API key is personal and should not be shared with anyone.
 
-### How do I use my API key?
+How do I use my API key?
 
 To integrate your API key into your development workflow, please refer
 to the tutorial on [Setting Up Your Authentication API
 Key](https://docs.nixtla.io/docs/setting_up_your_authentication_api_key).
 
-### How can I check the status of my API key?
+How can I check the status of my API key?
 
 If you want to check the status of your API key, you can use the
 [`validate_api_key`
@@ -95,14 +95,14 @@ of the `NixtlaClient` class.
 
 ## Features and Capabilities
 
-### Can TimeGPT handle multiple time series?
+Can TimeGPT handle multiple time series?
 
 Yes. For guidance on forecasting multiple time series at once, consult
 the [Multiple
 Series](https://nixtlaverse.nixtla.io/nixtla/docs/tutorials/multiple_series.html)
 tutorial.
 
-### Does TimeGPT support forecasting with exogenous variables?
+Does TimeGPT support forecasting with exogenous variables?
 
 Yes. For instructions on how to incorporate exogenous variables to
 `TimeGPT`, see the [Exogenous
@@ -112,34 +112,34 @@ the [Holidays and Special
 Dates](https://docs.nixtla.io/docs/holidays_and_special_dates) tutorial
 useful.
 
-### Can TimeGPT be used for anomaly detection?
+Can TimeGPT be used for anomaly detection?
 
 Yes. To learn how to use `TimeGPT` for anomaly detection, refer to the
 [Anomaly
 Detection](https://nixtlaverse.nixtla.io/nixtla/docs/tutorials/anomaly_detection.html)
 tutorial.
 
-### Does TimeGPT support cross-validation?
+Does TimeGPT support cross-validation?
 
 Yes. To learn how to use `TimeGPT` for cross-validation, refer to the
 [Cross-Validation](https://nixtlaverse.nixtla.io/nixtla/docs/tutorials/cross_validation.html)
 tutorial.
 
-### Can TimeGPT be used to forecast historical data?
+Can TimeGPT be used to forecast historical data?
 
 Yes. To find out how to forecast historical data using `TimeGPT`, see
 the [Historical
 Forecast](https://nixtlaverse.nixtla.io/nixtla/docs/tutorials/historical_forecast.html)
 tutorial.
 
-### Can TimeGPT be used for uncertainty quantification?
+Can TimeGPT be used for uncertainty quantification?
 
 Yes. For more information, explore the [Prediction
 Intervals](https://docs.nixtla.io/docs/prediction_intervals) and
 [Quantile Forecasts](https://docs.nixtla.io/docs/quantile_forecasts)
 tutorials.
 
-### Can TimeGPT handle large datasets?
+Can TimeGPT handle large datasets?
 
 Yes. When dealing with large datasets that contain hundreds of thousands
 or millions of time series, we recommend using a distributed backend.
@@ -149,21 +149,25 @@ including
 and Fugue. Both the `TimeGPT` SDK and API don’t have a limit on the size
 of the dataset as long as a distributed backend is used.
 
-### Can TimeGPT be used with limited/short data?
+Can TimeGPT be used with limited/short data?
 
 `TimeGPT` requires at least two seasonal periods of the given frequency
 to produce accurate forecasts. More may be needed for confidence
 intervals and for fine-tuning. While `TimeGPT` can work with just one
 observation, its accuracy will be limited.
 
-### What is the maximum forecast horizon allowed by TimeGPT?
+What is the maximum forecast horizon allowed by TimeGPT?
 
 While `TimeGPT` does not have a maximum forecast horizon, its
-performance will decrease as the horizon increases. For details, refer
-to the tutorial on [Long Horizon in Time
+performance will decrease as the horizon increases. When the forecast
+horizon exceeds the season length of the data (for example, more than 12
+months for monthly data), you will get this message:
+`WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon`.
+
+For details, refer to the tutorial on [Long Horizon in Time
 Series](https://docs.nixtla.io/docs/long_horizon_in_time_series).
 
-### Can TimeGPT handle missing values?
+Can TimeGPT handle missing values?
 
 `TimeGPT` cannot handle missing values or series with irregular
 timestamps. For more information, see the [Forecasting Time Series with
@@ -171,7 +175,7 @@ Irregular
 Timestamps](https://nixtlaverse.nixtla.io/nixtla/docs/tutorials/irregular_timestamps.html)
 tutorial.
 
-### How can I plot the TimeGPT forecast?
+How can I plot the TimeGPT forecast?
 
 The `TimeGPT` class has a [`plot`
 method](https://nixtlaverse.nixtla.io/nixtla/timegpt.html#timegpt-plot)
@@ -179,12 +183,12 @@ that can be used to visualize the forecast. This method only works in
 interactive environments such as Jupyter notebooks and it doesn’t work
 on Python scripts.
 
-### Does TimeGPT support polars?
+Does TimeGPT support polars?
 
 As of now, `TimeGPT` supports only pandas DataFrames and does not offer
 support for polars.
 
-### Does TimeGPT produce stable predictions?
+Does TimeGPT produce stable predictions?
 
 `TimeGPT` is engineered for stability, ensuring consistent results for
 identical input data. This means that given the same dataset, the model
@@ -192,7 +196,7 @@ will produce the same forecasts.
 
 ## Fine-tuning
 
-### What is fine-tuning?
+What is fine-tuning?
 
 `TimeGPT` was trained on the largest publicly available time series
 dataset, covering a wide range of domains such as finance, retail,
@@ -215,7 +219,7 @@ the [fine-tuning](https://docs.nixtla.io/docs/finetuning) and the
 function](https://docs.nixtla.io/docs/fine_tuning_with_a_specific_loss_function)
 tutorials.
 
-### Do I have to fine-tune every series?
+Do I have to fine-tune every series?
 
 No, you do not need to fine-tune every series individually. When using
 the `finetune_steps` parameter, the model undergoes fine-tuning across
@@ -228,7 +232,7 @@ require some trial and error. As the number of fine-tuning steps
 increases, the model becomes more specialized to your dataset, but will
 take longer to train and may be more prone to overfitting.
 
-### Can I save fine-tuned parameters?
+Can I save fine-tuned parameters?
 
 Currently, it is not possible to save the fine-tuned parameters for
 later use. This means you will need to perform fine-tuning each time you
@@ -236,7 +240,7 @@ submit your data, whether using the Python SDK or the API.
 
 ## Pricing and Billing
 
-### How does pricing work?
+How does pricing work?
 
 `TimeGPT`’s cost is based on usage. Every call you make has a certain
 number of input, output, and finetune tokens associated with it. Price
@@ -245,7 +249,7 @@ tiers are based on the number of tokens used, which you can find in your
 token decreases as you move up tiers, and you will pay the corresponding
 price for each segment of tokens used.
 
-### Are there free credits or discounts?
+Are there free credits or discounts?
 
 Upon signing up, all users receive \$1000 USD in free credits. Once
 these credits are exhausted, you will be asked to add a payment method
@@ -260,7 +264,7 @@ eligibility for additional free credits or discounts.
 
 Free credits do not expire and can be used at any time.
 
-### How are tokens counted?
+How are tokens counted?
 
 One token corresponds to one row of your dataset. Please refer to
 [TimeGPT
@@ -275,7 +279,7 @@ In the `Usage` section of your
 record of your token consumption history, helping you track and manage
 your usage effectively.
 
-### How does billing work?
+How does billing work?
 
 Billing is done within the first five days of each month. We have
 partnered with Stripe to handle all payment processing. You can view
@@ -284,7 +288,7 @@ your invoices and payment history in your
 
 ## Privacy and Security
 
-### How do you ensure the privacy and security of my data?
+How do you ensure the privacy and security of my data?
 
 At Nixtla, we take your privacy and security very seriously. To ensure
 you are fully informed about our policies regarding your data, please
@@ -301,11 +305,13 @@ In addtion, we are currently developing a self-hosted version of
 data. This version is currently in beta. If you are interested in
 exploring this option, please contact us at ops@nixtla.io.
 
+</detaila>
+
 ## Troubleshooting
 
 The following section contains some common errors and warnings
 
-**Error message: Invalid API key**
+<strong>Error message: Invalid API key</strong>
 
 ```python
 ApiError: status_code: 401, body: {'data': None, 'message': 'Invalid API key', 'details': 'Key not found', 'code': 'A12', 'requestID': 'E7F2BBTB2P', 'support': 'If you have questions or need support, please email ops@nixtla.io'}
@@ -317,7 +323,7 @@ invalid or has not been set up correctly. Please use the
 correctly from the `API Keys` section of your
 [dashboard](https://dashboard.nixtla.io/).
 
-**Error message: Too many requests**
+<strong>Error message: Too many requests</strong>
 
 ```python
 ApiError: status_code: 429, body: {'data': None, 'message': 'Too many requests', 'details': 'You need to add a payment method to continue using the API, do so from https://dashboard.nixtla.io', 'code': 'A21', 'requestID': 'NCJDK7KSJ6', 'support': 'If you have questions or need support, please email ops@nixtla.io’}
@@ -328,7 +334,7 @@ credits and need to add a payment method to continue using `TimeGPT`.
 You can add a payment method in the `Billing` section of your
 [dashboard](https://dashboard.nixtla.io/).
 
-**Error message: WriteTimeout**
+<strong>Error message: WriteTimeout</strong>
 
 **Solution:** If you encounter a `WriteTimeout` error, it means that the
 request has exceeded the allowable processing time. This is a common
@@ -347,5 +353,5 @@ If you have any more questions or need support, please reach out by:
 -   Sending an email to ops@nixtla.io for general inquiries or support.
 -   Joining our
     [Slack](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-2ebtgjbip-qmsnvm6ed1nf5vi4xj_13q)
-    community to connect with other users and our team.
+    community to connect with our team and the forecasting community.
 
