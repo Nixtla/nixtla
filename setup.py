@@ -18,7 +18,7 @@ date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtla",
-    version="0.3.0",
+    version="0.4.0",
     description="Python SDK for Nixtla API (TimeGPT)",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -33,7 +33,7 @@ setuptools.setup(
     install_requires=[
         "httpx",
         "pandas",
-        "pydantic<2",
+        "pydantic",
         "requests",
         "tenacity",
         "utilsforecast>=0.1.7",
