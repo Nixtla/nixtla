@@ -673,8 +673,7 @@ class _NixtlaClientModel:
         step_size: Optional[int] = None,
     ):
         df, _ = self.transform_inputs(df=df, X_df=None)
-        self.infer_freq(df)
-        df = self.resample_dataframe(df)
+        df, _, _ = self.preprocess_dataframes(df=df, X_df=None)
         Y_df = df[["unique_id", "ds", "y"]]
         x_cols = df.columns.drop(Y_df.columns).tolist()
         if x_cols:
