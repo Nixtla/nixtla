@@ -34,7 +34,7 @@ With `Nixtla`, you can easily interact with TimeGPT through simple API calls, ma
 Get `Nixtla` up and running with a simple pip command:
 
 ```python
-pip install nixtla>=0.1.0
+pip install nixtla>=0.4.0
 ```
 
 ## 🎈 Quick Start
@@ -45,11 +45,11 @@ Get started with TimeGPT now:
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
 
 from nixtla import NixtlaClient
-nixtla = NixtlaClient(
+nixtla_client = NixtlaClient(
     # defaults to os.environ.get("NIXTLA_API_KEY")
     api_key = 'my_api_key_provided_by_nixtla'
 )
-fcst_df = nixtla.forecast(df, h=24, level=[80, 90])
+fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
 ```
 
 ![](./nbs/img/forecast_readme.png)
