@@ -10,7 +10,18 @@ single one. The tool can be fine-tuned using a broad collection of
 series, enabling you to tailor the model to suit your specific needs or
 tasks.
 
+Note that the forecasts are still univariate. This means that although
+TimeGPT is a global model, it won’t consider the inter-feature
+relationships within the target series. However, TimeGPT does support
+the use of exogenous variables such as categorical variables (e.g.,
+category, brand), numerical variables (e.g., temperature, prices), or
+even special holidays.
+
+Let’s see this in action.
+
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/6_multiple_series.ipynb)
+
+As always, we start off by intializing an instance of `NixtlaClient`.
 
 ```python
 import pandas as pd
@@ -25,12 +36,18 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-The following dataset contains prices of different electricity markets.
-Let see how can we forecast them. The main argument of the forecast
-method is the input data frame with the historical values of the time
-series you want to forecast. This data frame can contain information
-from many time series. Use the `unique_id` column to identify the
-different time series of your dataset.
+## Load the data
+
+The following dataset contains prices of different electricity markets
+in Europe.
+
+Mutliple series are automatically detected in TimeGPT using the
+`unique_id` column. This column contains labels for each series. If
+there are multiple unique values in that column, then it knows it is
+handling a multi-series scneario.
+
+In this particular case, the `unique_id` column contains the value BE,
+DE, FR, JPM, and NP.
 
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
@@ -54,8 +71,10 @@ nixtla_client.plot(df)
 
 ![](/nixtla/docs/tutorials/6_multiple_series_files/figure-markdown_strict/cell-6-output-1.png)
 
-We just have to pass the dataframe to create forecasts for all the time
-series at once.
+## Forecasting
+
+To forecast all series at once, we simply pass the dataframe to the `df`
+argument. TimeGPt will automatically forecast all series.
 
 ```python
 timegpt_fcst_multiseries_df = nixtla_client.forecast(df=df, h=24, level=[80, 90])
@@ -84,10 +103,17 @@ nixtla_client.plot(df, timegpt_fcst_multiseries_df, max_insample_length=365, lev
 
 ![](/nixtla/docs/tutorials/6_multiple_series_files/figure-markdown_strict/cell-8-output-1.png)
 
-#### Historical forecast
+From the figure above, we can see that the model effectively generated
+predictions for each unique series in the dataset.
+
+## Historical forecast
 
 You can also compute prediction intervals for historical forecasts
-adding the `add_history=True` parameter as follows:
+adding the `add_history=True`.
+
+To specify the confidence interval, we use the `level` argument. Here,
+we pass the list `[80, 90]`. This will compute a 80% and 90% confidence
+interval.
 
 ```python
 timegpt_fcst_multiseries_with_history_df = nixtla_client.forecast(df=df, h=24, level=[80, 90], add_history=True)
@@ -120,4 +146,8 @@ nixtla_client.plot(
 ```
 
 ![](/nixtla/docs/tutorials/6_multiple_series_files/figure-markdown_strict/cell-10-output-1.png)
+
+In the figure above, we now see the historical predictions made by
+TimeGPT for each series, along with the 80% and 90% confidence
+intervals.
 

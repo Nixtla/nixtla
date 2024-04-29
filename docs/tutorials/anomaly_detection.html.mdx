@@ -5,19 +5,29 @@ title: Anomaly Detection
 
 
 Anomaly detection in time series data plays a pivotal role in numerous
-sectors including finance, healthcare, security, and infrastructure. In
-essence, time series data represents a sequence of data points indexed
-(or listed or graphed) in time order, often with equal intervals. As
-systems and processes become increasingly digitized and interconnected,
-the need to monitor and ensure their normal behavior grows
-proportionally. Detecting anomalies can indicate potential problems,
-malfunctions, or even malicious activities. By promptly identifying
-these deviations from the expected pattern, organizations can take
-preemptive measures, optimize processes, or protect resources. `TimeGPT`
-includes the `detect_anomalies` method to detect anomalies
+sectors including finance, healthcare, security, and infrastructure.
+
+In essence, time series data represents a sequence of data points
+indexed (or listed or graphed) in time order, often with equal
+intervals.
+
+As systems and processes become increasingly digitized and
+interconnected, the need to monitor and ensure their normal behavior
+grows proportionally.
+
+Detecting anomalies can indicate potential problems, malfunctions, or
+even malicious activities. By promptly identifying these deviations from
+the expected pattern, organizations can take preemptive measures,
+optimize processes, or protect resources.
+
+`TimeGPT` includes the `detect_anomalies` method to detect anomalies
 automatically.
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/0_anomaly_detection.ipynb)
+
+## Simple usage
+
+Let’s start by initializing an instance of `NixtlaClient`.
 
 ```python
 import pandas as pd
@@ -36,11 +46,16 @@ The `detect_anomalies` method is designed to process a dataframe
 containing series and subsequently label each observation based on its
 anomalous nature. The method evaluates each observation of the input
 dataframe against its context within the series, using statistical
-measures to determine its likelihood of being an anomaly. By default,
-the method identifies anomalies based on a 99 percent prediction
-interval. Observations that fall outside this interval are considered
-anomalies. The resultant dataframe will feature an added label,
-`anomaly`, that is set to 1 for anomalous observations and 0 otherwise.
+measures to determine its likelihood of being an anomaly.
+
+By default, the method identifies anomalies based on a 99 percent
+prediction interval. Observations that fall outside this interval are
+considered anomalies. The resultant dataframe will feature an added
+label, `anomaly`, that is set to 1 for anomalous observations and 0
+otherwise.
+
+Here, we apply the automatic anomaly detection process of TimeGPT on the
+Peyton Manning dataset.
 
 ```python
 pm_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
@@ -62,6 +77,23 @@ INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 | 3   | 2008-01-13 | 0       | 7.629072      | 8.917256 | 10.205441     |
 | 4   | 2008-01-14 | 0       | 7.714111      | 9.002295 | 10.290480     |
 
+In the table above, we can see the logic behind anomaly detection. Here,
+the column `TimeGPT-lo-99` represents the lower bound of the confidence
+interval, the column `TimeGPT` represents the predictions made by the
+model, and the column `TimeGPT-hi-99` is for the upper bound of the 99%
+confidence interval.
+
+Then, we notice that the if the predicted value falls between the lower
+and upper bound of the confidence interval, it is assigned a label of 0,
+meaning that it is **not** an anomaly.
+
+If the predicted value falls outisde of the bounds, then the label is 1,
+and the point is considered anomalous.
+
+Below, we plot the series along with the predictions, the confidence
+interval, and the anomalous points. Anomalies appear as red dots on the
+plot.
+
 ```python
 nixtla_client.plot(pm_df, 
              timegpt_anomalies_df,
@@ -71,12 +103,18 @@ nixtla_client.plot(pm_df,
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-6-output-1.png)
 
-While the default behavior of the detect_anomalies method is to operate
-using a 99 percent prediction interval, users have the flexibility to
-adjust this threshold to their requirements. This is achieved by
-modifying the `level` argument. Decreasing the value of the level
-argument will result in a narrower prediction interval, subsequently
-identifying more observations as anomalies. See the next example.
+## Tuning the sensitivity
+
+While the default behavior of the `detect_anomalies` method is to
+operate using a 99% prediction interval, users have the flexibility to
+adjust this threshold to their requirements.
+
+This is achieved by modifying the `level` argument. Decreasing the value
+of the level argument will result in a narrower prediction interval,
+subsequently identifying more observations as anomalies.
+
+In this next example, we use a 90% confidence interval by setting
+`level=90`.
 
 ```python
 timegpt_anomalies_df = nixtla_client.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=90)
@@ -94,17 +132,26 @@ INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-7-output-2.png)
 
-Conversely, increasing the value will make prediction intervals larger,
-detecting fewer anomalies. This customization allows users to calibrate
-the sensitivity of the method to align with their specific use case,
-ensuring the most relevant and actionable insights are derived from the
-data.
+As expected, we see more red dots than in the previous example.
+
+Thus, increasing the value in `level` makes prediction intervals larger,
+so fewer anomalies are identified. Conversely, reducing the value
+results in narrower prediction intervals, so more anomalies are
+detected.
+
+This allows the calibration of the model’s sensitivity to align with a
+specific use case, ensuring the most relevant and actionable insights
+are derived from the data.
+
+Note that you can pass any value between 0 and 100 to `level`, even
+decimal numbers. Here, we use a 99.99% confidence interval. Of course,
+this leads to even fewer anomalies being detected.
 
 ```python
 timegpt_anomalies_df = nixtla_client.detect_anomalies(pm_df, time_col='timestamp', target_col='value', freq='D', level=99.99)
 nixtla_client.plot(pm_df, 
              timegpt_anomalies_df,
-             time_col='timestamp', 
+             time_col='timestamp',
              target_col='value')
 ```
 
@@ -116,7 +163,16 @@ INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-8-output-2.png)
 
-You can also include `date_features` to better detect anomalies:
+## Anomaly detection with exogenous features
+
+With TimeGPT, it is possible to include exgeonous features for anomaly
+detection. This is a powerful features as the anomaly can be caused by
+another process, or it can be due to special events, like a certain
+holiday or a particular day of the week.
+
+In this example, we use the `date_features` parameter to automatically
+include temporal features in our dataset. These will be considered as
+exogenous variables for anomaly detection.
 
 ```python
 timegpt_anomalies_df_x = nixtla_client.detect_anomalies(
@@ -143,11 +199,18 @@ INFO:nixtlats.nixtla_client:Using the following exogenous variables: year_2007, 
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-9-output-2.png)
 
-#### Exogenous variables
+Looking carefully at the logs above, we can see that many features were
+automatically created for us, namely a year label, month label, day of
+the week label, and a weekday label. These temporal features were again
+all considered for detecting anomalies.
 
-Additionally you can pass exogenous variables to better inform `TimeGPT`
-about the data. You just simply have to add the exogenous regressors
+Additionally you can pass other exogenous series to better inform
+`TimeGPT` about the data. We simply have to add the exogenous regressors
 after the target column.
+
+In the example below, we use a dataset on electricity demand in various
+European countries. The dataset contains temporal features, as well as
+exogenous regressors.
 
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
@@ -162,7 +225,12 @@ df.head()
 | 3   | BE        | 2016-12-01 03:00:00 | 50.69 | 57676.0    | 64529.0    | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   | 0.0   | 0.0   |
 | 4   | BE        | 2016-12-01 04:00:00 | 52.58 | 56804.0    | 62773.0    | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   | 0.0   | 0.0   |
 
-Now let’s compute anomalies considering this information
+Then, we can detect anomalies using the same `detect_anomalies` method.
+TimeGPT wil consider both exgogenous regressors and temporal features in
+the process.
+
+Note that we do not specify the `level` parameter, meaning that we use
+the default 99% confidence interval.
 
 ```python
 timegpt_anomalies_df_x = nixtla_client.detect_anomalies(df=df)
@@ -182,7 +250,16 @@ INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1,
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-11-output-2.png)
 
-We can also explore the relative importance of each of the features.
+### Feature importance in anomaly detection
+
+With the ability to consider exogenous features for anomaly detection,
+we can also visualize their importance.
+
+A high weight means that the feature greatly influences the predictions,
+and in turn it impacts the detection of anomalies.
+
+Using the `weights_x` attribute, we can then plot the importance of each
+feature.
 
 ```python
 nixtla_client.weights_x.plot.barh(x='features', y='weights')
@@ -190,7 +267,13 @@ nixtla_client.weights_x.plot.barh(x='features', y='weights')
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-12-output-1.png)
 
-You can also add special days for different countries:
+To further explore this experiment, let’s now add the effect of country
+holidays.
+
+To do that, we simply import `CountryHolidays` and specify the list of
+countries to include their specific holiday dates.
+
+Here, we include the holidays of France.
 
 ```python
 from nixtla.date_features import CountryHolidays
@@ -214,13 +297,21 @@ INFO:nixtlats.nixtla_client:Preprocessing dataframes...
 INFO:nixtlats.nixtla_client:Inferred freq: H
 INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6, FR_Jour de l'an, FR_Fête du Travail, FR_Fête de la Victoire, FR_Fête nationale, FR_Armistice, FR_Lundi de Pâques, FR_Lundi de Pentecôte, FR_Ascension, FR_Assomption, FR_Toussaint, FR_Noël
+INFO:nixtlats.nixtla_client:Attempt 1 failed...
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-14-output-2.png)
+
+Now, plotting feature importance will also show the impact of holidays.
 
 ```python
 nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
 ![](/nixtla/docs/tutorials/0_anomaly_detection_files/figure-markdown_strict/cell-15-output-1.png)
+
+In the figure above, we can see that most holidays have a negligible
+impact, except for Christmas. The exogenous regressors remain the most
+important features in predicting electricity demand and dectecting
+anomalous points.
 

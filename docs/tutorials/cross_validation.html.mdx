@@ -1,6 +1,6 @@
 ---
 output-file: cross_validation.html
-title: Cross Validation
+title: Cross-validation
 ---
 
 
@@ -22,6 +22,8 @@ process of conducting cross-validation within the `NixtlaClient` class,
 ensuring your time series forecasting models are not just
 well-constructed, but also validated for trustworthiness and precision.
 
+We start off by initializing an instance of `NixtlaClient`.
+
 ```python
 import pandas as pd
 from nixtla import NixtlaClient
@@ -35,12 +37,17 @@ nixtla_client = NixtlaClient(
 )
 ```
 
+## Launching cross-validation
+
 The `cross_validation` method within the `TimeGPT` class is an advanced
 functionality crafted to perform systematic validation on time series
 forecasting models. This method necessitates a dataframe comprising
 time-ordered data and employs a rolling-window scheme to meticulously
 evaluate the model’s performance across different time periods, thereby
-ensuring the model’s reliability and stability over time.
+ensuring the model’s reliability and stability over time. The animation
+below shows how TimeGPT performs cross-validation.
+
+![](https://raw.githubusercontent.com/Nixtla/statsforecast/main/nbs/imgs/ChainedWindows.gif)
 
 Key parameters include `freq`, which denotes the data’s frequency and is
 automatically inferred if not specified. The `id_col`, `time_col`, and
@@ -70,6 +77,7 @@ accurate but also consistent across diverse temporal contexts.
 
 ```python
 pm_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+
 timegpt_cv_df = nixtla_client.cross_validation(
     pm_df, 
     h=7, 
@@ -99,8 +107,10 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-To asses the performance of `TimeGPT` with distributional forecasts, you
-can produce prediction intervals using the `level` argument.
+## Cross-validation with prediction intervals
+
+It is also possible to generate prediction intervals during
+cross-validation. To do so, we simply use the `level` argument.
 
 ```python
 timegpt_cv_df = nixtla_client.cross_validation(
@@ -130,8 +140,14 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-You can also include `date_features` to see their impact in forecasting
-accuracy:
+## Cross-validation with exogenous variables
+
+### Time features
+
+It is possible to include exogenous variables when performing
+cross-validation. Here we use the `date_features` parameter to create
+labels for each month. These features are then used by the model to make
+predictions during cross-validation.
 
 ```python
 timegpt_cv_df = nixtla_client.cross_validation(
@@ -162,11 +178,11 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-#### Exogenous variables
+### Dynamic features
 
-Additionally you can pass exogenous variables to better inform `TimeGPT`
-about the data. You just simply have to add the exogenous regressors
-after the target column.
+Additionally you can pass dynamic exogenous variables to better inform
+`TimeGPT` about the data. You just simply have to add the exogenous
+regressors after the target column.
 
 ```python
 Y_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity.csv')
@@ -194,10 +210,11 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-#### Compare different models
+## Cross-validation with different TimeGPT instances
 
 Also, you can generate cross validation for different instances of
-`TimeGPT` using the `model` argument.
+`TimeGPT` using the `model` argument. Here we use the base model and the
+model for long-horizon forecasting.
 
 ```python
 timegpt_cv_df_x_long_horizon = nixtla_client.cross_validation(

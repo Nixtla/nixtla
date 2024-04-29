@@ -40,6 +40,8 @@ nixtla_client = NixtlaClient(
 )
 ```
 
+## Load the data
+
 Let’s load the ETTh1 dataset. This is a widely used dataset to evaluate
 models on their long-horizon forecasting capabalities.
 
@@ -76,6 +78,8 @@ test = Y_df[-96:]             # 96 = 4 days x 24h/day
 input_seq = Y_df[-1104:-96]   # Gets a sequence of 1008 observations (1008 = 42 days * 24h/day)
 ```
 
+## Forecasting
+
 Now, we are ready to use TimeGPT for long-horizon forecasting. Here, we
 need to set the `model` parameter to `"timegpt-1-long-horizon"`. This is
 the specialized model in TimeGPT that can handle such tasks.
@@ -105,6 +109,8 @@ nixtla_client.plot(Y_df[-168:], fcst_df, models=['TimeGPT'], level=[90], time_co
 ```
 
 ![](/nixtla/docs/tutorials/12_longhorizon_files/figure-markdown_strict/cell-8-output-1.png)
+
+## Evaluation
 
 Let’s now evaluate the performance of TimeGPT using the mean absolute
 error (MAE).
