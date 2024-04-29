@@ -188,7 +188,6 @@ class _NixtlaClientModel:
         self.weights_x: pd.DataFrame = None
         self.freq: str = self.base_freq
         self.drop_uid: bool = False
-        self.x_cols: List[str]
         self.input_size: int
         self.model_horizon: int
 
@@ -499,8 +498,7 @@ class _NixtlaClientModel:
             X_df = df.drop(columns="y")
             x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
             X_df = self.preprocess_X_df(X_df)
-        self.x_cols = x_cols
-        return Y_df, X_df
+        return Y_df, X_df, x_cols
 
     def dataframes_to_dict(self, Y_df: pd.DataFrame, X_df: pd.DataFrame):
         to_dict_args = {"orient": "split"}
@@ -546,7 +544,7 @@ class _NixtlaClientModel:
     ):
         df, X_df = self.transform_inputs(df=df, X_df=X_df)
         main_logger.info("Preprocessing dataframes...")
-        Y_df, X_df = self.preprocess_dataframes(df=df, X_df=X_df)
+        Y_df, X_df, x_cols = self.preprocess_dataframes(df=df, X_df=X_df)
         self.set_model_params()
         if self.h > self.model_horizon:
             main_logger.warning(
@@ -602,7 +600,7 @@ class _NixtlaClientModel:
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
-                    "features": self.x_cols,
+                    "features": x_cols,
                     "weights": response_timegpt["weights_x"],
                 }
             )
@@ -637,7 +635,7 @@ class _NixtlaClientModel:
         # exogenous variables are passed after df
         df, _ = self.transform_inputs(df=df, X_df=None)
         main_logger.info("Preprocessing dataframes...")
-        Y_df, X_df = self.preprocess_dataframes(df=df, X_df=None)
+        Y_df, X_df, x_cols = self.preprocess_dataframes(df=df, X_df=None)
         main_logger.info("Calling Anomaly Detector Endpoint...")
         y, x = self.dataframes_to_dict(Y_df, X_df)
         response_timegpt = self._call_api(
@@ -658,7 +656,7 @@ class _NixtlaClientModel:
         if "weights_x" in response_timegpt:
             self.weights_x = pd.DataFrame(
                 {
-                    "features": self.x_cols,
+                    "features": x_cols,
                     "weights": response_timegpt["weights_x"],
                 }
             )
