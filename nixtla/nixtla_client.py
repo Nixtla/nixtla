@@ -528,7 +528,7 @@ class _NixtlaClientModel:
         )
 
     def validate_input_size(self, Y_df: pd.DataFrame):
-        min_history = Y_df.groupby("unique_id").size().min()
+        min_history = Y_df.groupby("unique_id", observed=True).size().min()
         if min_history < self.input_size + self.model_horizon:
             raise Exception(
                 "Your time series data is too short "
