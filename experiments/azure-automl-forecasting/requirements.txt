@@ -3,7 +3,7 @@ azure-identity
 azureml-core
 fire
 mltable
-nixtlats
+nixtla
 pandas
 python-dotenv
 rich

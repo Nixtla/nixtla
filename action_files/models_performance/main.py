@@ -11,7 +11,7 @@ from statsforecast.models import Naive, SeasonalNaive
 from utilsforecast.evaluation import evaluate
 from utilsforecast.losses import mae, mape, mse
 
-from nixtlats import NixtlaClient
+from nixtla import NixtlaClient
 
 
 logger = logging.getLogger(__name__)
@@ -144,9 +144,11 @@ class Experiment:
         timegpt = NixtlaClient()
         fcst_df = timegpt.forecast(
             df=self.df_train,
-            X_df=self.df_test.drop(columns=self.target_col)
-            if self.df.shape[1] > 3
-            else None,
+            X_df=(
+                self.df_test.drop(columns=self.target_col)
+                if self.df.shape[1] > 3
+                else None
+            ),
             h=self.h,
             freq=self.freq,
             level=self.level,
