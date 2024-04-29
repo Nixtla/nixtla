@@ -1,20 +1,26 @@
 ---
 output-file: setting_up_your_authentication_api_key.html
-title: Setting Up Your Authentication API Key
+title: Setting up your API key
 ---
 
 
-An **API key** is a unique string of characters that serves as a key to
-authenticate your requests to `TimeGTP`. This tutorial will explain how
-to set up your API key when using the Nixtla SDK.
+Do you give everyone the keys to your house? Likely not. An **API key**
+is like a key to a house, and should be kept private. It is a unique
+string of characters that serves as a key to authenticate your requests
+to `TimeGTP`. This tutorial will explain how to set up your API key when
+using the Nixtla SDK.
 
-Upon [registration](https://dashboard.nixtla.io/), you will recibe an
+Upon [registration](https://dashboard.nixtla.io/), you will receive an
 email asking you to confirm your signup. After confirming, you will
 receive access to your dashboard. There, under `API Keys`, you will find
-your API key. To integrate your API key into your development workflow
-with the Nixtla SDK, you have two methods.
+your API key.
 
-## 1. Direct copy and paste
+You can follow the API Key Configuration Process detailed in this
+tutorial. A scematic is given below.
+
+<img src="../../assets/2_api_key_process.png?" alt="Figure 1. API key set up process" width="600"/>
+
+## 1. Unsecure: direct copy and paste
 
 -   **Step 1**: Copy the API key found in the `API Keys` of your
     [dashboard]((https://dashboard.nixtla.io/)).
@@ -29,19 +35,19 @@ nixtla_client = NixtlaClient(api_key ='your API key here')
 This approach is straightforward and best for quick tests or scripts
 that won’t be shared.
 
-## 2. Using an environment variable
+> **Important**
+>
+> This approach is considered unsecure, as your API key will be part of
+> your source code.
 
--   **Step 1:** Store your API key in an environment variable named
-    `NIXTLA_API_KEY`. This can be done for a session or permanently,
-    depending on your preference.
--   **Step 2:** When you instantiate the `NixtlaClient` class, the SDK
+## 2. Secure: using an environment variable
+
+-   **Step 1**: Store your API key in an environment variable named
+    `NIXTLA_API_KEY`. This can be done (a) temporarily for a session
+    or (b) permanently, depending on your preference.
+-   **Step 2**: When you instantiate the `NixtlaClient` class, the SDK
     will automatically look for the `NIXTLA_API_KEY` environment
     variable and use it to authenticate your requests.
-
-```python
-from nixtla import NixtlaClient
-nixtla_client = NixtlaClient()
-```
 
 > **Important**
 >
@@ -49,21 +55,32 @@ nixtla_client = NixtlaClient()
 > all capital letters and no deviations in spelling, for the SDK to
 > recognize it.
 
-There are several ways to set an environment variable.
+### a. Temporary: From the Terminal
 
-### a. From the Terminal
+This approach is useful if you are working from a terminal, and need a
+temporary solution.
 
-Use the `export` command to set `NIXTLA_API_KEY`.
+#### Linux / Mac
+
+Open a terminal and use the `export` command to set `NIXTLA_API_KEY`.
 
 ```bash
 export NIXTLA_API_KEY=your_api_key
 ```
 
-### b. Using a `.env` file
+#### Windows
 
-For a more persistent solution that can be version-controlled if
-private, or for ease of use across different projects, place your API
-key in a `.env` file.
+For Windows users, open a Powershell window and use the `Set` command to
+set `NIXTLA_API_KEY`.
+
+```powershell
+Set NIXTLA_API_KEY=your_api_key
+```
+
+### b. Permanent: Using a `.env` file
+
+For a more persistent solution place your API key in a `.env` file
+located in the folder of your Python script.
 
 ```bash
 # Inside a file named .env
@@ -90,7 +107,7 @@ deployed or shared, as it keeps API keys out of the source code.
 > Remember, your API key is like a password - keep it secret, keep it
 > safe!
 
-## Validate your API key
+## 3. Validate your API key
 
 You can always find your API key in the `API Keys` section of your
 dashboard. To check the status of your API key, use the

@@ -1,23 +1,28 @@
 ---
 output-file: finetuning.html
-title: Finetuning
+title: Fine-tuning
 ---
 
 
 Fine-tuning is a powerful process for utilizing TimeGPT more
-effectively. Foundation models are pre-trained on vast amounts of data,
-capturing wide-ranging features and patterns. These models can then be
-specialized for specific contexts or domains. With fine-tuning, the
-model’s parameters are refined to forecast a new task, allowing it to
-tailor its vast pre-existing knowledge toward the requirements of the
-new data. Fine-tuning thus serves as a crucial bridge, linking TimeGPT’s
-broad capabilities to your tasks specificities.
+effectively. Foundation models such as TimeGPT are pre-trained on vast
+amounts of data, capturing wide-ranging features and patterns. These
+models can then be specialized for specific contexts or domains. With
+fine-tuning, the model’s parameters are refined to forecast a new task,
+allowing it to tailor its vast pre-existing knowledge towards the
+requirements of the new data. Fine-tuning thus serves as a crucial
+bridge, linking TimeGPT’s broad capabilities to your tasks
+specificities.
 
 Concretely, the process of fine-tuning consists of performing a certain
 number of training iterations on your input data minimizing the
 forecasting error. The forecasts will then be produced with the updated
 model. To control the number of iterations, use the `finetune_steps`
 argument of the `forecast` method.
+
+## 1. Import packages
+
+First, we import the required packages and initialize the Nixtla client
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/5_finetuning.ipynb)
 
@@ -34,7 +39,7 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-Here’s an example of how to fine-tune TimeGPT:
+## 2. Load data
 
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
@@ -48,6 +53,8 @@ df.head()
 | 2   | 1949-03-01 | 132   |
 | 3   | 1949-04-01 | 129   |
 | 4   | 1949-05-01 | 121   |
+
+## 3. Fine-tuning with TimeGPT
 
 ```python
 timegpt_fcst_finetune_df = nixtla_client.forecast(

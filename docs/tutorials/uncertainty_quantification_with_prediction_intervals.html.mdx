@@ -1,26 +1,34 @@
 ---
-output-file: prediction_intervals.html
-title: Prediction Intervals
+output-file: uncertainty_quantification_with_prediction_intervals.html
+title: Uncertainty quantification with prediction intervals
 ---
 
 
-Prediction intervals provide a measure of the uncertainty in the
-forecasted values. In time series forecasting, a prediction interval
-gives an estimated range within which a future observation will fall,
-based on the level of confidence or uncertainty you set. This level of
-uncertainty is crucial for making informed decisions, risk assessments,
-and planning.
+In forecasting, we are often interested in a distribution of predictions
+rather than only a point prediction, because we want to have a notion of
+the uncertainty around the forecast.
 
-For instance, a 95% prediction interval means that 95 out of 100 times,
-the actual future value will fall within the estimated range. Therefore,
-a wider interval indicates greater uncertainty about the forecast, while
-a narrower interval suggests higher confidence.
+To this end, we can create *prediction intervals*.
 
-When using TimeGPT for time series forecasting, you have the option to
-set the level of prediction intervals according to your requirements.
-TimeGPT uses conformal prediction to calibrate the intervals.
+Prediction intervals have an intuitive interpretation, as they present a
+specific range of the forecast distribution. For instance, a 95%
+prediction interval means that 95 out of 100 times, we expect the future
+value to fall within the estimated range. Therefore, a wider interval
+indicates greater uncertainty about the forecast, while a narrower
+interval suggests higher confidence.
 
-[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/4_prediction_intervals.ipynb)
+With TimeGPT, we can create a distribution of forecasts, and extract the
+prediction intervals for a required level.
+
+TimeGPT uses [conformal
+prediction](https://en.wikipedia.org/wiki/conformal_prediction) to
+produce the prediction intervals.
+
+## 1. Import packages
+
+First, we import the required packages and initialize the Nixtla client
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/4_uncertainty_quantification_with_prediction_intervals.ipynb)
 
 ```python
 import pandas as pd
@@ -35,9 +43,7 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-When using TimeGPT for time series forecasting, you can set the level
-(or levels) of prediction intervals according to your requirements.
-Here’s how you could do it:
+## 2. Load data
 
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
@@ -52,6 +58,12 @@ df.head()
 | 3   | 1949-04-01 | 129   |
 | 4   | 1949-05-01 | 121   |
 
+## 3. Forecast with prediction intervals
+
+When using TimeGPT for time series forecasting, you can set the level
+(or levels) of prediction intervals according to your requirements.
+Here’s how you could do it:
+
 ```python
 timegpt_fcst_pred_int_df = nixtla_client.forecast(
     df=df, h=12, level=[80, 90, 99.7], 
@@ -61,11 +73,11 @@ timegpt_fcst_pred_int_df.head()
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-INFO:nixtlats.nixtla_client:Restricting input...
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 |     | timestamp  | TimeGPT    | TimeGPT-lo-99.7 | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-hi-99.7 |
@@ -84,7 +96,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/4_prediction_intervals_files/figure-markdown_strict/cell-7-output-1.png)
+![](/nixtla/docs/tutorials/4_uncertainty_quantification_with_prediction_intervals_files/figure-markdown_strict/cell-7-output-1.png)
 
 It’s essential to note that the choice of prediction interval level
 depends on your specific use case. For high-stakes predictions, you
@@ -106,20 +118,20 @@ timegpt_fcst_pred_int_historical_df.head()
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Calling Historical Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Calling Historical Forecast Endpoint...
 ```
 
 |     | timestamp  | TimeGPT    | TimeGPT-lo-80 | TimeGPT-lo-90 | TimeGPT-hi-80 | TimeGPT-hi-90 |
 |-----|------------|------------|---------------|---------------|---------------|---------------|
-| 0   | 1951-01-01 | 135.483673 | 111.937767    | 105.262830    | 159.029579    | 165.704516    |
-| 1   | 1951-02-01 | 144.442413 | 120.896507    | 114.221570    | 167.988319    | 174.663257    |
-| 2   | 1951-03-01 | 157.191910 | 133.646004    | 126.971066    | 180.737816    | 187.412753    |
-| 3   | 1951-04-01 | 148.769379 | 125.223473    | 118.548535    | 172.315285    | 178.990222    |
-| 4   | 1951-05-01 | 140.472946 | 116.927040    | 110.252103    | 164.018852    | 170.693790    |
+| 0   | 1951-01-01 | 135.483673 | 111.937768    | 105.262831    | 159.029579    | 165.704516    |
+| 1   | 1951-02-01 | 144.442398 | 120.896493    | 114.221556    | 167.988304    | 174.663241    |
+| 2   | 1951-03-01 | 157.191910 | 133.646004    | 126.971067    | 180.737815    | 187.412752    |
+| 3   | 1951-04-01 | 148.769363 | 125.223458    | 118.548521    | 172.315269    | 178.990206    |
+| 4   | 1951-05-01 | 140.472946 | 116.927041    | 110.252104    | 164.018852    | 170.693789    |
 
 ```python
 nixtla_client.plot(
@@ -129,5 +141,5 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/4_prediction_intervals_files/figure-markdown_strict/cell-9-output-1.png)
+![](/nixtla/docs/tutorials/4_uncertainty_quantification_with_prediction_intervals_files/figure-markdown_strict/cell-9-output-1.png)
 

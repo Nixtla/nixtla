@@ -14,6 +14,10 @@ function that is robust to outliers - `"mae"` - mean absolute error -
 `"mape"` - mean absolute percentage error - `"smape"` - symmetric mean
 absolute percentage error
 
+## 1. Import packages
+
+First, we import the required packages and initialize the Nixtla client.
+
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/11_loss_function_finetuning.ipynb)
 
 ```python
@@ -28,6 +32,8 @@ nixtla_client = NixtlaClient(
     api_key = 'my_api_key_provided_by_nixtla'
 )
 ```
+
+## 2. Load data
 
 Let’s fine-tune the model on a dataset using the mean absolute error
 (MAE).
@@ -50,6 +56,14 @@ df.head()
 | 3   | 1         | 1949-04-01 | 129   |
 | 4   | 1         | 1949-05-01 | 121   |
 
+## 3. Fine-tuning with Mean Absolute Error
+
+Let’s fine-tune the model on a dataset using the Mean Absolute Error
+(MAE).
+
+For that, we simply pass the appropriate string representing the loss
+function to the `finetune_loss` parameter of the `forecast` method.
+
 ```python
 timegpt_fcst_finetune_mae_df = nixtla_client.forecast(
     df=df, 
@@ -62,10 +76,10 @@ timegpt_fcst_finetune_mae_df = nixtla_client.forecast(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -80,12 +94,12 @@ nixtla_client.plot(
 Now, depending on your data, you will use a specific error metric to
 accurately evaluate your forecasting model’s performance.
 
-Below is a non-exhaustive guide on which metric to use depdending on
-your use case.
+Below is a non-exhaustive guide on which metric to use depending on your
+use case.
 
 **Mean absolute error (MAE)**
 
-$\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|$
+<img src="https://latex.codecogs.com/svg.image?\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|">
 
 -   Robust to outliers
 -   Easy to understand
@@ -94,7 +108,7 @@ $\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+
 
 **Mean squared error (MSE)**
 
-$\mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}$
+<img src="https://latex.codecogs.com/svg.image?\mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}">
 
 -   You want to penalize large errors more than small ones
 -   Sensitive to outliers
@@ -103,14 +117,14 @@ $\mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+
 
 **Root mean squared error (RMSE)**
 
-$\mathrm{RMSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sqrt{\frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}}$
+<img src="https://latex.codecogs.com/svg.image?\mathrm{RMSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sqrt{\frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}}">
 
 -   Brings the MSE back to original units of data
 -   Penalizes large errors more than small ones
 
 **Mean absolute percentage error (MAPE)**
 
-$\mathrm{MAPE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|}$
+<img src="https://latex.codecogs.com/svg.image?\mathrm{MAPE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|}">
 
 -   Easy to understand for non-technical stakeholders
 -   Expressed as a percentage
@@ -119,7 +133,7 @@ $\mathrm{MAPE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t
 
 **Symmmetric mean absolute percentage error (sMAPE)**
 
-$\mathrm{SMAPE}_{2}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|+|\hat{y}_{\tau}|}$
+<img src="https://latex.codecogs.com/svg.image?\mathrm{SMAPE}_{2}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|+|\hat{y}_{\tau}|}">
 
 -   Fixes bias of MAPE
 -   Equally senstitive to over and under forecasting
@@ -157,36 +171,36 @@ for loss in losses:
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: MS
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 Great! We have predictions from TimeGPT using all the different loss
@@ -228,16 +242,16 @@ metrics_df.index = ['Metric improvement (%)']
 metrics_df
 ```
 
-|                        | mae  | mse  | rmse | mape | smape |
-|------------------------|------|------|------|------|-------|
-| Metric improvement (%) | 9.27 | 0.17 | 0.51 | 31.0 | 8.55  |
+|                        | mae  | mse  | rmse | mape  | smape |
+|------------------------|------|------|------|-------|-------|
+| Metric improvement (%) | 8.54 | 0.31 | 0.64 | 31.02 | 7.36  |
 
 From the table above, we can see that using a specific loss function
 during fine-tuning will improve its associated error metric when
 compared to the default loss function.
 
 In this example, using the MAE as the loss function improves the metric
-by 9.27% when compared to using the default loss function.
+by 8.54% when compared to using the default loss function.
 
 That way, depending on your use case and performance metric, you can use
 the appropriate loss function to maximize the accuracy of the forecasts.

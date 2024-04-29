@@ -5,7 +5,7 @@ title: Holidays and Special Dates
 
 
 Calendar variables and special dates are one of the most common types of
-exogenous variables used in forecasting applications. They provide
+additional variables used in forecasting applications. They provide
 additional context on the current state of the time series, especially
 for window-based models such as TimeGPT-1. These variables often include
 adding information on each observation’s month, week, day, or hour. For
@@ -15,6 +15,10 @@ input window to improve the forecasts.
 
 In this tutorial we will show how to add calendar variables
 automatically to a dataset using the `date_features` function.
+
+## 1. Import packages
+
+First, we import the required packages and initialize the Nixtla client.
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/2_holidays.ipynb)
 
@@ -32,9 +36,9 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-Given the predominance usage of calendar variables, we included an
-automatic creation of common calendar variables to the forecast method
-as a pre-processing step.
+## 2. Load data
+
+We will use a Google trends dataset on chocolate, with monthly data.
 
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/google_trend_chocolate.csv')
@@ -54,8 +58,12 @@ df.head()
 | 3   | 2004-04-30 | 30        |
 | 4   | 2004-05-31 | 29        |
 
-Now, let’s create a future dataframe that contains the upcoming holidays
-in the United States.
+## 3. Forecasting with holidays and special dates
+
+Given the predominance usage of calendar variables, we included an
+automatic creation of common calendar variables to the forecast method
+as a pre-processing step. Let’s create a future dataframe that contains
+the upcoming holidays in the United States.
 
 ```python
 # Create future dataframe with exogenous features
@@ -92,7 +100,7 @@ future_df.head()
 | 3   | 2024-08-31 | 0                 | 0               | 0                                       | 0                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
 | 4   | 2024-09-30 | 0                 | 0               | 0                                       | 0                   | 1            | 0               | 0               | 0                | 0                             | 0                        | 0               |
 
-We do the same steps for the input dataframe.
+We perform the same steps for the input dataframe.
 
 ```python
 # Add exogenous features to input dataframe
@@ -131,12 +139,12 @@ fcst_df = nixtla_client.forecast(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: M
-WARNING:nixtlats.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtlats.nixtla_client:Using the following exogenous variables: US_New Year's Day, US_Memorial Day, US_Juneteenth National Independence Day, US_Independence Day, US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: M
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Using the following exogenous variables: US_New Year's Day, US_Memorial Day, US_Juneteenth National Independence Day, US_Independence Day, US_Labor Day, US_Veterans Day, US_Thanksgiving, US_Christmas Day, US_Martin Luther King Jr. Day, US_Washington's Birthday, US_Columbus Day
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
