@@ -58,7 +58,6 @@
     {
       "group": "Tutorials",
       "pages": [
-        "docs/4_tutorials/overview.html",
         {
           "group":"Exogenous variables",
           "pages":[
