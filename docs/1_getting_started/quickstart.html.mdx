@@ -2,7 +2,7 @@
 description: >-
   Unlock the power of accurate predictions and confidently navigate uncertainty.
   Reduce uncertainty and resource limitations.
-output-file: getting_started_short.html
+output-file: quickstart.html
 title: TimeGPT Quickstart
 ---
 
@@ -95,7 +95,7 @@ df.head()
 nixtla_client.plot(df, time_col='timestamp', target_col='value')
 ```
 
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-8-output-1.png)
 
 > **Important requirements of the data**
 >
@@ -143,7 +143,7 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-10-output-1.png)
+![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-10-output-1.png)
 
 You can also produce longer forecasts increasing the horizon parameter
 and selecting the `timegpt-1-long-horizon` model. We recomend using this
@@ -175,7 +175,7 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-12-output-1.png)
 
 You can also produce a shorter forecast. For this, we recommend using
 the default model, `timegpt-1`.
@@ -191,7 +191,7 @@ INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
-![](/nixtla/docs/getting-started/1_getting_started_short_files/figure-markdown_strict/cell-13-output-2.png)
+![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-13-output-2.png)
 
 > **Warning**
 >

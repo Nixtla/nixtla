@@ -6,13 +6,13 @@ title: Categorical variables
 
 Categorical variables are external factors that can influence a
 forecast. These variables take on one of a limited, fixed number of
-possible values, and induce a grouping of your observations.[^1]
-
+possible values, and induce a grouping of your observations.  
+  
 For example, if you’re forecasting daily product demand for a retailer,
 you could benefit from an event variable that may tell you what kind of
 event takes place on a given day, for example ‘None’, ‘Sporting’, or
-‘Cultural’.
-
+‘Cultural’.  
+  
 To incorporate categorical variables in TimeGPT, you’ll need to pair
 each point in your time series data with the corresponding external
 data.
@@ -45,13 +45,14 @@ nixtla_client = NixtlaClient(
 Let’s see an example on predicting sales of products of the [M5
 dataset](https://nixtlaverse.nixtla.io/datasetsforecast/m5.html). The M5
 dataset contains daily product demand (sales) for 10 retail stores in
-the US.
+the US.  
+  
+First, we load the data using `datasetsforecast`. This returns:
 
-First, we load the data using `datasetsforecast`. This returns: -
-`Y_df`, containing the sales (`y` column), for each unique product
-(`unique_id` column) at every timestamp (`ds` column). - `X_df`,
-containing additional relevant information for each unique product
-(`unique_id` column) at every timestamp (`ds` column).
+-   `Y_df`, containing the sales (`y` column), for each unique product
+    (`unique_id` column) at every timestamp (`ds` column).
+-   `X_df`, containing additional relevant information for each unique
+    product (`unique_id` column) at every timestamp (`ds` column).
 
 ```python
 Y_df, X_df, _ = M5.load(directory=os.getcwd())
@@ -258,7 +259,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/13_categorical_variables_files/figure-markdown_strict/cell-13-output-1.png)
+![](/nixtla/docs/4_tutorials/categorical_variables_files/figure-markdown_strict/cell-13-output-1.png)
 
 TimeGPT already provides a reasonable forecast, but it seems to somewhat
 underforecast the peak on the 6th of February 2016 - the day before the
@@ -298,7 +299,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/13_categorical_variables_files/figure-markdown_strict/cell-15-output-1.png)
+![](/nixtla/docs/4_tutorials/categorical_variables_files/figure-markdown_strict/cell-15-output-1.png)
 
 We can visually verify that the forecast is closer to the actual
 observed value, which is the result of including the categorical
@@ -343,6 +344,4 @@ Indeed, we find that the error when using TimeGPT with the categorical
 variable is approx. 20% lower than when using TimeGPT without the
 categorical variables, indicating better performance when we include the
 categorical variable.
-
-[^1]: https://en.wikipedia.org/wiki/Categorical_variable
 

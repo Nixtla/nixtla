@@ -6,13 +6,16 @@ title: Fine-tuning with a specific loss function
 
 When fine-tuning, the model trains on your dataset to tailor its
 predictions to your particular scenario. As such, it is possible to
-specify the loss function used during fine-tuning.
+specify the loss function used during fine-tuning.  
+  
+Specifically, you can choose from:
 
-Specifically, you can choose from: - `"default"` - a proprietary loss
-function that is robust to outliers - `"mae"` - mean absolute error -
-`"mse"` - mean squared error - `"rmse"` - root mean squared error -
-`"mape"` - mean absolute percentage error - `"smape"` - symmetric mean
-absolute percentage error
+-   `"default"` - a proprietary loss function that is robust to outliers
+-   `"mae"` - mean absolute error
+-   `"mse"` - mean squared error
+-   `"rmse"` - root mean squared error
+-   `"mape"` - mean absolute percentage error
+-   `"smape"` - symmetric mean absolute percentage error
 
 ## 1. Import packages
 
@@ -36,8 +39,8 @@ nixtla_client = NixtlaClient(
 ## 2. Load data
 
 Let’s fine-tune the model on a dataset using the mean absolute error
-(MAE).
-
+(MAE).  
+  
 For that, we simply pass the appropriate string representing the loss
 function to the `finetune_loss` parameter of the `forecast` method.
 
@@ -59,8 +62,8 @@ df.head()
 ## 3. Fine-tuning with Mean Absolute Error
 
 Let’s fine-tune the model on a dataset using the Mean Absolute Error
-(MAE).
-
+(MAE).  
+  
 For that, we simply pass the appropriate string representing the loss
 function to the `finetune_loss` parameter of the `forecast` method.
 
@@ -89,16 +92,16 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/11_loss_function_finetuning_files/figure-markdown_strict/cell-7-output-1.png)
+![](/nixtla/docs/4_tutorials/loss_function_finetuning_files/figure-markdown_strict/cell-7-output-1.png)
 
 Now, depending on your data, you will use a specific error metric to
-accurately evaluate your forecasting model’s performance.
-
+accurately evaluate your forecasting model’s performance.  
+  
 Below is a non-exhaustive guide on which metric to use depending on your
-use case.
-
-**Mean absolute error (MAE)**
-
+use case.  
+  
+**Mean absolute error (MAE)**  
+  
 <img src="https://latex.codecogs.com/svg.image?\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|">
 
 -   Robust to outliers
@@ -106,8 +109,8 @@ use case.
 -   You care equally about all error sizes
 -   Same units as your data
 
-**Mean squared error (MSE)**
-
+**Mean squared error (MSE)**  
+  
 <img src="https://latex.codecogs.com/svg.image?\mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}">
 
 -   You want to penalize large errors more than small ones
@@ -115,15 +118,15 @@ use case.
 -   Used when large errors must be avoided
 -   *Not* the same units as your data
 
-**Root mean squared error (RMSE)**
-
+**Root mean squared error (RMSE)**  
+  
 <img src="https://latex.codecogs.com/svg.image?\mathrm{RMSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sqrt{\frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}}">
 
 -   Brings the MSE back to original units of data
 -   Penalizes large errors more than small ones
 
-**Mean absolute percentage error (MAPE)**
-
+**Mean absolute percentage error (MAPE)**  
+  
 <img src="https://latex.codecogs.com/svg.image?\mathrm{MAPE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|}">
 
 -   Easy to understand for non-technical stakeholders
@@ -131,8 +134,8 @@ use case.
 -   Heavier penalty on positive errors over negative errors
 -   To be avoided if your data has values close to 0 or equal to 0
 
-**Symmmetric mean absolute percentage error (sMAPE)**
-
+**Symmmetric mean absolute percentage error (sMAPE)**  
+  
 <img src="https://latex.codecogs.com/svg.image?\mathrm{SMAPE}_{2}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|+|\hat{y}_{\tau}|}">
 
 -   Fixes bias of MAPE
@@ -140,8 +143,8 @@ use case.
 -   To be avoided if your data has values close to 0 or equal to 0
 
 With TimeGPT, you can choose your loss function during fine-tuning as to
-maximize the model’s performance metric for your particular use case.
-
+maximize the model’s performance metric for your particular use case.  
+  
 Let’s run a small experiment to see how each loss function improves
 their associated metric when compared to the default setting.
 
@@ -248,11 +251,11 @@ metrics_df
 
 From the table above, we can see that using a specific loss function
 during fine-tuning will improve its associated error metric when
-compared to the default loss function.
-
+compared to the default loss function.  
+  
 In this example, using the MAE as the loss function improves the metric
-by 8.54% when compared to using the default loss function.
-
+by 8.54% when compared to using the default loss function.  
+  
 That way, depending on your use case and performance metric, you can use
 the appropriate loss function to maximize the accuracy of the forecasts.
 

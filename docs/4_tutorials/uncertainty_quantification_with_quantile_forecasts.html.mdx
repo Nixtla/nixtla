@@ -6,24 +6,24 @@ title: Uncertainty quantification with quantile forecasts
 
 In forecasting, we are often interested in a distribution of predictions
 rather than only a point prediction, because we want to have a notion of
-the uncertainty around the forecast.
-
-To this end, we can create *quantile forecasts*.
-
+the uncertainty around the forecast.  
+  
+To this end, we can create *quantile forecasts*.  
+  
 Quantile forecasts have an intuitive interpretation, as they present a
 specific percentile of the forecast distribution. This allows us to make
 statements such as ‘we expect 90% of our observations of air passengers
 to be above 100’. This approach is helpful for planning under
 uncertainty, providing a spectrum of possible future values and helping
 users make more informed decisions by considering the full range of
-potential outcomes.
-
+potential outcomes.  
+  
 With TimeGPT, we can create a distribution of forecasts, and extract the
 quantile forecasts for a specified percentile. For instance, the 25th
 and 75th quantiles give insights into the lower and upper quartiles of
 expected outcomes, respectively, while the 50th quantile, or median,
-offers a central estimate.
-
+offers a central estimate.  
+  
 TimeGPT uses [conformal
 prediction](https://en.wikipedia.org/wiki/conformal_prediction) to
 produce the quantiles.
@@ -103,7 +103,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-7-output-1.png)
+![](/nixtla/docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-7-output-1.png)
 
 It’s essential to note that the choice of the quantile (or quantiles)
 depends on your specific use case. For high-stakes predictions, you
@@ -163,7 +163,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-9-output-1.png)
+![](/nixtla/docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-9-output-1.png)
 
 #### Cross Validation
 
@@ -243,13 +243,13 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-1.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-2.png)
+![](/nixtla/docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-2.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-3.png)
+![](/nixtla/docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-3.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-4.png)
+![](/nixtla/docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-4.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-5.png)
+![](/nixtla/docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-5.png)
 

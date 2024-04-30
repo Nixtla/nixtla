@@ -69,7 +69,7 @@ Let’s plot this series using
 nixtla_client.plot(df)
 ```
 
-![](/nixtla/docs/tutorials/6_multiple_series_files/figure-markdown_strict/cell-6-output-1.png)
+![](/nixtla/docs/4_tutorials/multiple_series_files/figure-markdown_strict/cell-6-output-1.png)
 
 ## Forecasting
 
@@ -101,7 +101,7 @@ INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 nixtla_client.plot(df, timegpt_fcst_multiseries_df, max_insample_length=365, level=[80, 90])
 ```
 
-![](/nixtla/docs/tutorials/6_multiple_series_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/4_tutorials/multiple_series_files/figure-markdown_strict/cell-8-output-1.png)
 
 From the figure above, we can see that the model effectively generated
 predictions for each unique series in the dataset.
@@ -145,7 +145,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/6_multiple_series_files/figure-markdown_strict/cell-10-output-1.png)
+![](/nixtla/docs/4_tutorials/multiple_series_files/figure-markdown_strict/cell-10-output-1.png)
 
 In the figure above, we now see the historical predictions made by
 TimeGPT for each series, along with the 80% and 90% confidence
