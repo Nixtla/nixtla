@@ -69,7 +69,7 @@
         {
           "group":"Training",
           "pages":[
-            "docs/4_tutorials/long_horizon.html",
+            "docs/4_tutorials/longhorizon.html",
             "docs/4_tutorials/multiple_series.html"
           ]
         },
