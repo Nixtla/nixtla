@@ -35,7 +35,6 @@
     {
       "group": "Capabilities",
       "pages": [
-        "docs/2_capabilities/overview.html",
         {
           "group": "Forecast",
           "pages": [
