@@ -27,37 +27,105 @@
     {
       "group": "Getting Started",
       "pages": [
-        "docs/getting-started/getting_started_short.html",
-        "docs/getting-started/setting_up_your_authentication_api_key.html"]
+        "docs/1_getting_started/quickstart.html",
+        "docs/1_getting_started/setting_up_your_api_key.html",
+        "docs/1_getting_started/faqs.html"      
+      ]
+    },
+    {
+      "group": "Capabilities",
+      "pages": [
+        "docs/2_capabilities/overview.html",
+        {
+          "group": "Forecast",
+          "pages": [
+            "docs/1_getting_started/quickstart.html"
+          ]
+        },
+        {
+          "group": "Anomaly Detection",
+          "pages": [
+            "docs/2_capabilities/anomaly_detection/quickstart.html"
+          ]
+        }
+      ]
+    },    
+    {
+      "group": "Deployment",
+      "pages": [
+        "docs/3_deployment/azure_ai.html"
+      ]
     },
     {
       "group": "Tutorials",
       "pages": [
-        "docs/tutorials/anomaly_detection.html",
-        "docs/tutorials/cross_validation.html", 
-        "docs/tutorials/exogenous_variables.html",
-        "docs/tutorials/finetuning.html",
-        "docs/tutorials/loss_function_finetuning.html",
-        "docs/tutorials/historical_forecast.html",
-        "docs/tutorials/holidays.html",
-        "docs/tutorials/irregular_timestamps.html",
-        "docs/tutorials/longhorizon.html", 
-        "docs/tutorials/multiple_series.html",
-        "docs/tutorials/prediction_intervals.html",
-        "docs/tutorials/quantile_forecasts.html"
+        "docs/4_tutorials/overview.html",
+        {
+          "group":"Exogenous variables",
+          "pages":[
+            "docs/4_tutorials/holidays.html",
+            "docs/4_tutorials/exogenous_variables.html", 
+            "docs/4_tutorials/categorical_variables.html"
+          ]
+        },
+        {
+          "group":"Training",
+          "pages":[
+            "docs/4_tutorials/long_horizon.html",
+            "docs/4_tutorials/multiple_series.html"
+          ]
+        },
+        {
+          "group":"Fine-tuning",
+          "pages":[
+            "docs/4_tutorials/finetuning.html",
+            "docs/4_tutorials/loss_function_finetuning.html"
+          ]
+        },
+        {
+          "group":"Validation",
+          "pages":[
+            "docs/4_tutorials/cross_validation.html",
+            "docs/4_tutorials/historical_forecast.html"
+          ]
+        },
+        {
+          "group":"Uncertainty quantification",
+          "pages":[
+            "docs/4_tutorials/uncertainty_quantification_with_quantile_forecasts.html",
+            "docs/4_tutorials/uncertainty_quantification_with_prediction_intervals.html"
+          ]
+        },
+        {
+          "group":"Forecasting - Special Topics",
+          "pages":[
+            "docs/4_tutorials/irregular_timestamps.html",
+            "docs/4_tutorials/bounded_forecasts.html",
+            "docs/4_tutorials/hierarchical_forecasting.html"
+          ]
+        },
+        {
+          "group":"Computing at scale",
+          "pages":[
+            "docs/4_tutorials/computing_at_scale.html",
+            "docs/4_tutorials/computing_at_scale_spark_distributed.html",
+            "docs/4_tutorials/computing_at_scale_dask_distributed.html",
+            "docs/4_tutorials/computing_at_scale_ray_distributed.html"            
+          ]
+        }        
       ]
     },
     {
-      "group": "How-To Guides",
-      "pages": ["docs/how-to-guides/distributed.spark.html"]
-    },
-    {
-      "group": "FAQS & Misc",
-      "pages": ["docs/misc/faqs.html"]
+      "group": "Use cases",
+      "pages": [
+        "docs/5_use_cases/forecasting_web_traffic_with_timegpt.html",
+        "docs/5_use_cases/bitcoin_price_prediction.html"
+    ]
     },
     {
       "group": "API Reference",
-      "pages": ["nixtla_client.html", "date_features.html"]
+      "pages": ["nixtla_client.html", 
+                "date_features.html"]
     }
   ]
 }
