@@ -38,13 +38,13 @@
         {
           "group": "Forecast",
           "pages": [
-            "docs/2_capabilities/forecast/1_quickstart.html"
+            "docs/2_capabilities/1_1_quickstart_forecast.html"
           ]
         },
         {
           "group": "Anomaly Detection",
           "pages": [
-            "docs/2_capabilities/anomaly_detection/1_quickstart.html"
+            "docs/2_capabilities/2_1_quickstart_anomaly_detection.html"
           ]
         }
       ]
