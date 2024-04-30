@@ -95,7 +95,7 @@
           ]
         },
         {
-          "group":"Forecasting - Special Topics",
+          "group":"Special Topics",
           "pages":[
             "docs/4_tutorials/irregular_timestamps.html",
             "docs/4_tutorials/bounded_forecasts.html",
