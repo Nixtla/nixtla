@@ -54,4 +54,4 @@ jobs:
       - name: Deploy to readme com
         uses: readmeio/rdme@v8
         with:
-          rdme: docs ./nbs/_docs/docs/ --key=${{ secrets.README_API_KEY }} --version=0.0.4
+          rdme: docs ./nbs/_docs/docs/ --key=${{ secrets.README_API_KEY }} --version=0.0.2
