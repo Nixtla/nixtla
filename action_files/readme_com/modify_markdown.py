@@ -86,15 +86,15 @@ hidden: false
     content = pattern_delimited.sub("", content)
 
     # Modify image paths
-    # content = content.replace("![figure](../../", f"![figure]({host_url}/nbs/")
-    # pattern_image = re.compile(r"!\[\]\(((?!.*\.svg).*?)\)")
-    # modified_content = pattern_image.sub(
-    #     r"![](" + host_url + dir_path + r"\1)", content
-    # )
+    content = content.replace("![figure](../../", f"![figure]({host_url}/nbs/")
+    pattern_image = re.compile(r"!\[\]\(((?!.*\.svg).*?)\)")
+    modified_content = pattern_image.sub(
+        r"![](" + host_url + dir_path + r"\1)", content
+    )
 
     # Concatenate new header and modified content
     # final_content = header + merge_lines(modified_content)
-    final_content = header + content
+    final_content = header + modified_content
 
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(final_content)
