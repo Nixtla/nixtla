@@ -26,7 +26,7 @@ python -m action_files.readme_com.create_sdk_reference --slug_number "$counter" 
 ((counter++))
 
 # process changelog
-echo $counter
-file_changelog="./nbs/_docs/docs/CHANGELOG.md"
-cp ./CHANGELOG.md ${file_changelog} 
-python -m action_files.readme_com.modify_markdown --file_path "$file_changelog" --slug_number "$counter"
+# echo $counter
+# file_changelog="./nbs/_docs/docs/CHANGELOG.md"
+# cp ./CHANGELOG.md ${file_changelog} 
+# python -m action_files.readme_com.modify_markdown --file_path "$file_changelog" --slug_number "$counter"
