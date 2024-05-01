@@ -88,8 +88,8 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests 
-        run: nbdev_test --n_workers 0 --skip_file_glob "*distributed*"
+        run: nbdev_test --skip_file_glob "*distributed*"
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --n_workers 0 --file_glob "*distributed*"
+        run: nbdev_test --file_glob "*distributed*"
