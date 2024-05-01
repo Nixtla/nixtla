@@ -16,7 +16,7 @@ def to_snake_case(s):
 
 
 def merge_lines(md_text):
-    code_block_pattern = re.compile(r"``` (?:python|bash)([\s\S]*?)```", re.MULTILINE)
+    code_block_pattern = re.compile(r"``` (?:python|bash|powershell)([\s\S]*?)```", re.MULTILINE)
     code_blocks = code_block_pattern.findall(md_text)
     md_text_no_code = code_block_pattern.sub("CODEBLOCK", md_text)
     lines = md_text_no_code.split("\n")
