@@ -27,9 +27,10 @@
     {
       "group": "Getting Started",
       "pages": [
-        "docs/1_getting_started/2_quickstart.html",
-        "docs/1_getting_started/3_setting_up_your_api_key.html",
-        "docs/1_getting_started/7_faqs.html"      
+        "docs/getting_started/1_introduction.html",
+        "docs/getting_started/2_quickstart.html",
+        "docs/getting_started/3_setting_up_your_api_key.html",
+        "docs/getting_started/7_faqs.html"      
       ]
     },
     {
@@ -38,13 +39,13 @@
         {
           "group": "Forecast",
           "pages": [
-            "docs/2_capabilities/1_1_quickstart_forecast.html"
+            "docs/capabilities/1_1_quickstart_forecast.html"
           ]
         },
         {
           "group": "Anomaly Detection",
           "pages": [
-            "docs/2_capabilities/2_1_quickstart_anomaly_detection.html"
+            "docs/capabilities/2_1_quickstart_anomaly_detection.html"
           ]
         }
       ]
@@ -52,7 +53,7 @@
     {
       "group": "Deployment",
       "pages": [
-        "docs/3_deployment/2_azure_ai.html"
+        "docs/deployment/2_azure_ai.html"
       ]
     },
     {
@@ -61,54 +62,54 @@
         {
           "group":"Exogenous variables",
           "pages":[
-            "docs/4_tutorials/01_exogenous_variables.html", 
-            "docs/4_tutorials/02_holidays.html",
-            "docs/4_tutorials/03_categorical_variables.html"
+            "docs/tutorials/01_exogenous_variables.html", 
+            "docs/tutorials/02_holidays.html",
+            "docs/tutorials/03_categorical_variables.html"
           ]
         },
         {
           "group":"Training",
           "pages":[
-            "docs/4_tutorials/04_longhorizon.html",
-            "docs/4_tutorials/05_multiple_series.html"
+            "docs/tutorials/04_longhorizon.html",
+            "docs/tutorials/05_multiple_series.html"
           ]
         },
         {
           "group":"Fine-tuning",
           "pages":[
-            "docs/4_tutorials/06_finetuning.html",
-            "docs/4_tutorials/07_loss_function_finetuning.html"
+            "docs/tutorials/06_finetuning.html",
+            "docs/tutorials/07_loss_function_finetuning.html"
           ]
         },
         {
           "group":"Validation",
           "pages":[
-            "docs/4_tutorials/08_cross_validation.html",
-            "docs/4_tutorials/09_historical_forecast.html"
+            "docs/tutorials/08_cross_validation.html",
+            "docs/tutorials/09_historical_forecast.html"
           ]
         },
         {
           "group":"Uncertainty quantification",
           "pages":[
-            "docs/4_tutorials/10_uncertainty_quantification_with_quantile_forecasts.html",
-            "docs/4_tutorials/11_uncertainty_quantification_with_prediction_intervals.html"
+            "docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts.html",
+            "docs/tutorials/11_uncertainty_quantification_with_prediction_intervals.html"
           ]
         },
         {
           "group":"Special Topics",
           "pages":[
-            "docs/4_tutorials/12_irregular_timestamps.html",
-            "docs/4_tutorials/13_bounded_forecasts.html",
-            "docs/4_tutorials/14_hierarchical_forecasting.html"
+            "docs/tutorials/12_irregular_timestamps.html",
+            "docs/tutorials/13_bounded_forecasts.html",
+            "docs/tutorials/14_hierarchical_forecasting.html"
           ]
         },
         {
           "group":"Computing at scale",
           "pages":[
-            "docs/4_tutorials/15_computing_at_scale.html",
-            "docs/4_tutorials/16_computing_at_scale_spark_distributed.html",
-            "docs/4_tutorials/17_computing_at_scale_dask_distributed.html",
-            "docs/4_tutorials/18_computing_at_scale_ray_distributed.html"            
+            "docs/tutorials/15_computing_at_scale.html",
+            "docs/tutorials/16_computing_at_scale_spark_distributed.html",
+            "docs/tutorials/17_computing_at_scale_dask_distributed.html",
+            "docs/tutorials/18_computing_at_scale_ray_distributed.html"            
           ]
         }        
       ]
@@ -116,8 +117,8 @@
     {
       "group": "Use cases",
       "pages": [
-        "docs/5_use_cases/1_forecasting_web_traffic.html",
-        "docs/5_use_cases/2_bitcoin_price_prediction.html"
+        "docs/use_cases/1_forecasting_web_traffic.html",
+        "docs/use_cases/2_bitcoin_price_prediction.html"
     ]
     },
     {

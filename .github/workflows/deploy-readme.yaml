@@ -16,6 +16,8 @@ concurrency:
 jobs:
   deploy-readme:
     runs-on: ubuntu-latest 
+    env:
+      readme_version: '0.0.2'
     steps:
       - name: Clone repo
         uses: actions/checkout@v2
@@ -39,6 +41,8 @@ jobs:
         env:
           README_HOST_URL: ${{ secrets.README_HOST_URL }}
           README_CATEGORY: ${{ secrets.README_CATEGORY }}
+          README_API_KEY: ${{ secrets.README_API_KEY }}
+          README_VERSION: ${{ env.readme_version }}
         run: ./action_files/readme_com/create_readme_docs.sh
 
       - name: Push PNGs to readme_docs branch
@@ -54,4 +58,4 @@ jobs:
       - name: Deploy to readme com
         uses: readmeio/rdme@v8
         with:
-          rdme: docs ./nbs/_docs/docs/ --key=${{ secrets.README_API_KEY }} --version=0.0.2
+          rdme: docs ./nbs/_docs/docs/ --key=${{ secrets.README_API_KEY }} --version=${{ env.readme_version }}
