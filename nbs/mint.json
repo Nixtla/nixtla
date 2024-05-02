@@ -27,10 +27,10 @@
     {
       "group": "Getting Started",
       "pages": [
-        "docs/getting_started/1_introduction.html",
-        "docs/getting_started/2_quickstart.html",
-        "docs/getting_started/3_setting_up_your_api_key.html",
-        "docs/getting_started/7_faqs.html"      
+        "docs/getting-started/1_introduction.html",
+        "docs/getting-started/2_quickstart.html",
+        "docs/getting-started/3_setting_up_your_api_key.html",
+        "docs/getting-started/7_faqs.html"      
       ]
     },
     {
@@ -117,8 +117,8 @@
     {
       "group": "Use cases",
       "pages": [
-        "docs/use_cases/1_forecasting_web_traffic.html",
-        "docs/use_cases/2_bitcoin_price_prediction.html"
+        "docs/use-cases/1_forecasting_web_traffic.html",
+        "docs/use-cases/2_bitcoin_price_prediction.html"
     ]
     },
     {
