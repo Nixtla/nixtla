@@ -1,0 +1,55 @@
+---
+output-file: custom_loss_function.html
+title: Finetuning with a custom loss function
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Load your dataset
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+```
+
+## Step 3: Fine-tune using a custom loss function.
+
+This is done with the `finetune_loss` argument. It can accept one of the
+following:<br/> - `"mae"`<br/> - `"mse"`<br/> - `"rmse"`<br/> -
+`"mape"`<br/> - `"smape"`
+
+```python
+forecast_df = nixtla_client.forecast(
+    df=df,
+    h=12,
+    finetune_steps=5,
+    finetune_loss="mae",
+    time_col='timestamp',
+    target_col="value"
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+

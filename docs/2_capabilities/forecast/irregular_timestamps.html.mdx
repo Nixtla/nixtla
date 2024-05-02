@@ -1,0 +1,48 @@
+---
+output-file: irregular_timestamps.html
+title: Irregular timestamps
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Load data with irregular timestamps
+
+In this case, the dataset is missing weekend dates
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/pltr.csv')
+```
+
+## Step 3: Forecast
+
+When dealing with irregular timestamps, it is **required** to provide a
+frequency to the model. Use the `freq` parameter.
+
+```python
+forecast_df = nixtla_client.forecast(
+    df=df, 
+    h=14, 
+    freq='B',
+    time_col='date', 
+    target_col='Close',
+)
+```
+

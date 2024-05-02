@@ -1,0 +1,58 @@
+---
+output-file: exogenous_variables.html
+title: Add exogenous variables
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Load data with exogenous variables
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+```
+
+## Step 3: Load dataset with future values of exogenous variables
+
+```python
+future_ex_vars_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv')
+```
+
+## Step 4: Forecast
+
+```python
+forecast_df = nixtla_client.forecast(
+    df=df, 
+    X_df=future_ex_vars_df, 
+    h=24,
+    id_col='unique_id',
+    target_col='y',
+    time_col='ds'
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+

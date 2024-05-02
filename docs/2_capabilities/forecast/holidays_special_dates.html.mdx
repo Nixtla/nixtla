@@ -1,0 +1,55 @@
+---
+output-file: holidays_special_dates.html
+title: Add holidays and special dates
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Get country holidays
+
+```python
+import pandas as pd
+from nixtla.date_features import CountryHolidays
+```
+
+
+```python
+c_holidays = CountryHolidays(countries=['US'])
+periods = 365 * 1
+dates = pd.date_range(end='2023-09-01', periods=periods)
+holidays_df = c_holidays(dates)
+```
+
+## Step 3: Specify special dates
+
+```python
+import pandas as pd
+from nixtla.date_features import SpecialDates
+```
+
+
+```python
+special_dates = SpecialDates(
+    special_dates={
+        'Important Dates': ['2021-02-26', '2020-02-26'],
+        'Very Important Dates': ['2021-01-26', '2020-01-26', '2019-01-26']
+    }
+)
+periods = 365 * 1
+dates = pd.date_range(end='2023-09-01', periods=periods)
+special_dates_df = special_dates(dates)
+```
+
