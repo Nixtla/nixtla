@@ -18,22 +18,22 @@ your API key.
 You can follow the API Key Configuration Process detailed in this
 tutorial. A scematic is given below.
 
-<img src="../../img/api_key_process.png?" alt="Figure 1. API key set up process" width="600"/>
+<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/api_key_process.png?raw=true" alt="Figure 1. API key set up process">
 
 ## 1. Unsecure: direct copy and paste
 
--   **Step 1**: Copy the API key found in the `API Keys` of your
-    [dashboard]((https://dashboard.nixtla.io/)).
--   **Step 2**: Instantiate the `NixtlaClient` class by directly pasting
-    your API key into the code, as shown below:
+This approach is straightforward and best for quick tests or scripts
+that won’t be shared.
+
+-   **Step 1**: Copy the API key found in the `API Keys` of your [Nixtla
+    dashboard]((https://dashboard.nixtla.io/)).
+-   **Step 2**: Paste the key directly into your Python code, by
+    instantiating the `NixtlaClient` with your API key:
 
 ```python
 from nixtla import NixtlaClient 
 nixtla_client = NixtlaClient(api_key ='your API key here')
 ```
-
-This approach is straightforward and best for quick tests or scripts
-that won’t be shared.
 
 > **Important**
 >
@@ -80,16 +80,16 @@ Set NIXTLA_API_KEY=your_api_key
 ### b. Permanent: Using a `.env` file
 
 For a more persistent solution place your API key in a `.env` file
-located in the folder of your Python script.
+located in the folder of your Python script. In this file, include the
+following:
 
-```bash
-# Inside a file named .env
+```python
 NIXTLA_API_KEY=your_api_key
 ```
 
-**Within Python:** If using a `.env` file, you can load the environment
-variable within your Python script. Use the `dotenv` package to load the
-`.env` file and then instantiate the `NIXTLA_API_KEY` class.
+You can now load the environment variable within your Python script. Use
+the `dotenv` package to load the `.env` file and then instantiate the
+`NIXTLA_API_KEY` class. For example:
 
 ```python
 from dotenv import load_dotenv

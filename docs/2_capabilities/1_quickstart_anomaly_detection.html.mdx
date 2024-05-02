@@ -1,6 +1,6 @@
 ---
-output-file: quickstart.html
-title: Anomaly Detection
+output-file: 1_quickstart_anomaly_detection.html
+title: Quickstart Anomaly Detection
 ---
 
 
@@ -101,7 +101,7 @@ nixtla_client.plot(pm_df,
              target_col='value')
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-6-output-1.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-6-output-1.png)
 
 ## Tuning the sensitivity
 
@@ -130,7 +130,7 @@ INFO:nixtlats.nixtla_client:Preprocessing dataframes...
 INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-7-output-2.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-7-output-2.png)
 
 As expected, we see more red dots than in the previous example.
 
@@ -161,7 +161,7 @@ INFO:nixtlats.nixtla_client:Preprocessing dataframes...
 INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-8-output-2.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-8-output-2.png)
 
 ## Anomaly detection with exogenous features
 
@@ -197,7 +197,7 @@ INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 INFO:nixtlats.nixtla_client:Using the following exogenous variables: year_2007, year_2008, year_2009, year_2010, year_2011, year_2012, year_2013, year_2014, year_2015, year_2016, month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12, day_1, day_2, day_3, day_4, day_5, day_6, day_7, day_8, day_9, day_10, day_11, day_12, day_13, day_14, day_15, day_16, day_17, day_18, day_19, day_20, day_21, day_22, day_23, day_24, day_25, day_26, day_27, day_28, day_29, day_30, day_31, weekday_0, weekday_1, weekday_2, weekday_3, weekday_4, weekday_5, weekday_6
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-9-output-2.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-9-output-2.png)
 
 Looking carefully at the logs above, we can see that many features were
 automatically created for us, namely a year label, month label, day of
@@ -248,7 +248,7 @@ INFO:nixtlats.nixtla_client:Calling Anomaly Detector Endpoint...
 INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-11-output-2.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-11-output-2.png)
 
 ### Feature importance in anomaly detection
 
@@ -265,7 +265,7 @@ feature.
 nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-12-output-1.png)
 
 To further explore this experiment, let’s now add the effect of country
 holidays.
@@ -300,7 +300,7 @@ INFO:nixtlats.nixtla_client:Using the following exogenous variables: Exogenous1,
 INFO:nixtlats.nixtla_client:Attempt 1 failed...
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-14-output-2.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-14-output-2.png)
 
 Now, plotting feature importance will also show the impact of holidays.
 
@@ -308,7 +308,7 @@ Now, plotting feature importance will also show the impact of holidays.
 nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
-![](/nixtla/docs/2_capabilities/anomaly_detection/quickstart_files/figure-markdown_strict/cell-15-output-1.png)
+![](/nixtla/docs/2_capabilities/2_1_quickstart_anomaly_detection_files/figure-markdown_strict/cell-15-output-1.png)
 
 In the figure above, we can see that most holidays have a negligible
 impact, except for Christmas. The exogenous regressors remain the most

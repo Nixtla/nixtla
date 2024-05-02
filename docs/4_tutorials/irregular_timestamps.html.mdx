@@ -1,6 +1,6 @@
 ---
 output-file: irregular_timestamps.html
-title: Forecasting Time Series with Irregular Timestamps
+title: Irregular Timestamps
 ---
 
 
@@ -64,7 +64,7 @@ series.
 nixtla_client.plot(pltr_df, time_col='date', target_col='Close')
 ```
 
-![](/nixtla/docs/4_tutorials/irregular_timestamps_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/4_tutorials/12_irregular_timestamps_files/figure-markdown_strict/cell-8-output-1.png)
 
 To forecast this data, you can use our `forecast` method. Importantly,
 remember to specify the frequency of the data using the `freq` argument.
@@ -119,7 +119,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/4_tutorials/irregular_timestamps_files/figure-markdown_strict/cell-11-output-1.png)
+![](/nixtla/docs/4_tutorials/12_irregular_timestamps_files/figure-markdown_strict/cell-11-output-1.png)
 
 You can also add uncertainty quantification to your forecasts using the
 `level` argument:
@@ -151,7 +151,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/4_tutorials/irregular_timestamps_files/figure-markdown_strict/cell-13-output-1.png)
+![](/nixtla/docs/4_tutorials/12_irregular_timestamps_files/figure-markdown_strict/cell-13-output-1.png)
 
 If you want to forecast another variable just change the `target_col`
 parameter. Let’s forecast `Volume` now:
@@ -177,7 +177,7 @@ WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
-![](/nixtla/docs/4_tutorials/irregular_timestamps_files/figure-markdown_strict/cell-14-output-2.png)
+![](/nixtla/docs/4_tutorials/12_irregular_timestamps_files/figure-markdown_strict/cell-14-output-2.png)
 
 But what if we want to predict all the time series at once? We can do
 that reshaping our dataframe. Currently, the dataframe is in wide format
@@ -248,7 +248,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/4_tutorials/irregular_timestamps_files/figure-markdown_strict/cell-19-output-1.png)
+![](/nixtla/docs/4_tutorials/12_irregular_timestamps_files/figure-markdown_strict/cell-19-output-1.png)
 
 #### Adding extra information
 
@@ -426,7 +426,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/4_tutorials/irregular_timestamps_files/figure-markdown_strict/cell-32-output-1.png)
+![](/nixtla/docs/4_tutorials/12_irregular_timestamps_files/figure-markdown_strict/cell-32-output-1.png)
 
 We can also see the importance of the revenue:
 
@@ -434,7 +434,7 @@ We can also see the importance of the revenue:
 nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
-![](/nixtla/docs/4_tutorials/irregular_timestamps_files/figure-markdown_strict/cell-33-output-1.png)
+![](/nixtla/docs/4_tutorials/12_irregular_timestamps_files/figure-markdown_strict/cell-33-output-1.png)
 
 From the feature importance plot, we can conclude that the revenue is an
 important factor in the model’s predictions, meaning changes in revenue

@@ -28,10 +28,7 @@ forecasting capabilities to predict future events. TimeGPT can also be
 used for other time series-related tasks, such as what-if scenarios,
 anomaly detection, and more.
 
-<figure>
-<img src="../../img/timegpt-arch.png" alt="figure" />
-<figcaption aria-hidden="true">figure</figcaption>
-</figure>
+<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/timegpt-arch.png?raw=true" alt="Figure 1. TimeGPT architecture">
 
 ## Usage
 
@@ -95,7 +92,7 @@ df.head()
 nixtla_client.plot(df, time_col='timestamp', target_col='value')
 ```
 
-![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/1_getting_started/2_quickstart_files/figure-markdown_strict/cell-8-output-1.png)
 
 > **Important requirements of the data**
 >
@@ -143,7 +140,7 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-10-output-1.png)
+![](/nixtla/docs/1_getting_started/2_quickstart_files/figure-markdown_strict/cell-10-output-1.png)
 
 You can also produce longer forecasts increasing the horizon parameter
 and selecting the `timegpt-1-long-horizon` model. We recomend using this
@@ -175,7 +172,7 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/1_getting_started/2_quickstart_files/figure-markdown_strict/cell-12-output-1.png)
 
 You can also produce a shorter forecast. For this, we recommend using
 the default model, `timegpt-1`.
@@ -191,7 +188,7 @@ INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
-![](/nixtla/docs/1_getting_started/quickstart_files/figure-markdown_strict/cell-13-output-2.png)
+![](/nixtla/docs/1_getting_started/2_quickstart_files/figure-markdown_strict/cell-13-output-2.png)
 
 > **Warning**
 >

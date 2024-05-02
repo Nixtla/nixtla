@@ -1,6 +1,6 @@
 ---
-output-file: forecasting_web_traffic_with_timegpt.html
-title: Forecasting web traffic with TimeGPT
+output-file: forecasting_web_traffic.html
+title: Forecasting Web Traffic
 ---
 
 
@@ -136,7 +136,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/5_use_cases/forecasting_web_traffic_with_timegpt_files/figure-markdown_strict/cell-7-output-1.png)
+![](/nixtla/docs/5_use_cases/1_forecasting_web_traffic_files/figure-markdown_strict/cell-7-output-1.png)
 
 This looks reasonable, and very comparable to the results obtained
 [here](https://cienciadedatos.net/documentos/py37-forecasting-web-traffic-machine-learning.html).
@@ -275,7 +275,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/5_use_cases/forecasting_web_traffic_with_timegpt_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/5_use_cases/1_forecasting_web_traffic_files/figure-markdown_strict/cell-12-output-1.png)
 
 ```python
 mae_timegpt_with_exogenous = mae(df = timegpt_cv_df_with_ex.drop(columns=['cutoff']),
