@@ -48,11 +48,13 @@ def modify_markdown(
     try:
         response = requests.get(url, headers=headers)
         categories = {category["slug"]:category["id"] for category in response.json()}
-        category_slug = Path(file_path).parent.name
+        if Path(file_path).name == 'CHANGELOG.md':  
+            category_slug = 'getting-started'
+        else:
+            category_slug = Path(file_path).parent.name
         category = categories[category_slug]
     except:
         pass
-
 
     # Prepare the new header
     header = f"""---
