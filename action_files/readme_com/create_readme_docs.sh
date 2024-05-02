@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BASE_DIR="nbs/docs/"
-SUB_DIRS=("1_getting_started" "2_capabilities" "2_capabilities/anomaly_detection" "2_capabilities/forecast" "3_deployment" "4_tutorials" "5_use_cases" "7_other_resources")
+SUB_DIRS=("1_getting_started" "2_capabilities" "3_deployment" "4_tutorials" "5_use_cases" "7_other_resources")
 
 counter=0
 for sub_dir in "${SUB_DIRS[@]}"; do
@@ -11,7 +11,7 @@ for sub_dir in "${SUB_DIRS[@]}"; do
 	    echo $counter
             md_file="${ipynb_file%.ipynb}.md"
             md_file="${md_file/docs/_docs/docs}"
-            quarto render "$ipynb_file" --to md
+            quarto render "$ipynb_file" --to md  --wrap=none
             python -m action_files.readme_com.modify_markdown --file_path "$md_file" --slug_number "$counter"
 	    ((counter++))
 	done < <(find "$DIR" -type f -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" | sort)
