@@ -11,7 +11,7 @@ dev = [
     "pre-commit",
     "python-dotenv",
     "statsforecast",
-    "neuralforecast"
+    "neuralforecast",
     "hierarchicalforecast",
 ]
 distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
