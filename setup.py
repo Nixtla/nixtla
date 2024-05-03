@@ -12,7 +12,7 @@ dev = [
     "python-dotenv",
     "statsforecast",
     "neuralforecast",
-    "hierarchicalforecast"
+    "hierarchicalforecast",
 ]
 distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
 plotting = ["utilsforecast[plotting]>=0.1.7"]
