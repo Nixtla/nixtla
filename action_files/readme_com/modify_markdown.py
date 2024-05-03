@@ -50,11 +50,17 @@ def modify_markdown(
         categories = {category["slug"]:category["id"] for category in response.json()}
         if Path(file_path).name == 'CHANGELOG.md':  
             category_slug = 'getting-started'
+            slug = category_slug + '-' + slug
         else:
-            if Path(file_path).parents[1].name == "docs":
-                category_slug = Path(file_path).parents[0].name
+            parent = Path(file_path).parents[0].name
+            grandparent = Path(file_path).parents[1].name
+            if grandparent == "docs":
+                category_slug = parent
+                slug = category_slug + '-' + slug
             else:
-                category_slug = Path(file_path).parents[1].name
+                category_slug = grandparent
+                subcategory = parent
+                slug = category_slug + '-' + subcategory + '-' + slug
         category = categories[category_slug]
     except:
         pass
