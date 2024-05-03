@@ -47,8 +47,8 @@ the lower levels (e.g. the regions Sidney, Blue Mountains and Hunter)
 should be coherent with the forecasts of the higher levels (e.g. New
 South Wales).
 
-<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/australia_tourism.png?raw=true" alt="Figure 1. Overview of Australia" width="700">
-<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/australia_hierarchy.png?raw=true" alt="Figure 2. Overview of hierarchy of Australia" width="700">
+<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/australia_tourism.png?raw=true" alt="Figure 1. Overview of Australia" width="700" />
+<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/australia_hierarchy.png?raw=true" alt="Figure 2. Overview of hierarchy of Australia" width="700" />
 
 The dataset only contains the time series at the lowest level, so we
 need to create the time series for all hierarchies.
@@ -97,6 +97,14 @@ spec = [
 
 Using the `aggregate` function from `HierarchicalForecast` we can get
 the full set of time series.
+
+> **Note**
+>
+> You can install `hierarchicalforecast` with `pip`:
+>
+> ```shell
+> pip install hierarchicalforecast
+> ```
 
 ```python
 from hierarchicalforecast.utils import aggregate

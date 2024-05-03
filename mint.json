@@ -21,10 +21,6 @@
   },
   "navigation": [
     {
-      "group": "",
-      "pages": ["index.html"]
-    },
-    {
       "group": "Getting Started",
       "pages": [
         "docs/getting-started/introduction.html",
@@ -46,7 +42,7 @@
             "docs/capabilities/forecast/longhorizon.html",
             "docs/capabilities/forecast/multiple_series.html",
             "docs/capabilities/forecast/finetuning.html",
-            "docs/capabilities/forecast/custom_loss_functions.html",
+            "docs/capabilities/forecast/custom_loss_function.html",
             "docs/capabilities/forecast/cross_validation.html",
             "docs/capabilities/forecast/prediction_intervals.html",
             "docs/capabilities/forecast/irregular_timestamps.html"
