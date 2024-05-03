@@ -1,0 +1,20 @@
+name: amazon-chronos
+channels:
+  - conda-forge
+  - defaults
+  - anaconda
+dependencies:
+  - jupyterlab
+  - pip
+  - python=3.10
+  - pip:
+    - datasetsforecast
+    - fire
+    - gluonts
+    - huggingface_hub[cli]
+    - neuralforecast
+    - orjson
+    - statsforecast
+    - utilsforecast
+    - git+https://github.com/amazon-science/chronos-forecasting.git
+

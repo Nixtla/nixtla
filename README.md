@@ -2,18 +2,18 @@
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_mid.png">
-<h1 align="center">NixtlaTS</h1>
+<h1 align="center">Nixtla</h1>
 <h3 align="center">Forecast using TimeGPT</h3>
     
 [![CI](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml)
-[![Python](https://img.shields.io/pypi/pyversions/nixtlats)](https://pypi.org/project/nixtlats/)
-[![PyPi](https://img.shields.io/pypi/v/nixtlats?color=blue)](https://pypi.org/project/nixtlats/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtlats/blob/main/LICENSE)
+[![Python](https://img.shields.io/pypi/pyversions/nixtla)](https://pypi.org/project/nixtla/)
+[![PyPi](https://img.shields.io/pypi/v/nixtla?color=blue)](https://pypi.org/project/nixtla/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtla/blob/main/LICENSE)
 [![docs](https://img.shields.io/website-up-down-green-red/http/nixtla.github.io/nixtla.svg?label=docs)](https://nixtla.github.io/nixtla/)
 [![Downloads](https://pepy.tech/badge/nixtlats)](https://pepy.tech/project/nixtlats)
 [![fern shield](https://img.shields.io/badge/%F0%9F%8C%BF-SDK%20generated%20by%20Fern-brightgreen)](https://buildwithfern.com/?utm_source=nixtla/nixtla/readme)
     
-**NixtlaTS** offers a collection of classes and methods to interact with the API of TimeGPT.
+**Nixtla** offers a collection of classes and methods to interact with the API of TimeGPT.
 </div>
 
 # 🕰️ TimeGPT: Revolutionizing Time-Series Analysis
@@ -26,16 +26,16 @@ In seconds, TimeGPT can discern complex patterns and predict future data points,
 
 In addition to its core capabilities, TimeGPT supports fine-tuning, enhancing its specialization for specific prediction tasks. 🎯 This feature is like training a machine learning model on a targeted data subset to improve its task-specific performance, making TimeGPT an even more versatile tool for your predictive needs.
 
-## 🔄 `NixtlaTS`: Your Gateway to TimeGPT
+## 🔄 `Nixtla`: Your Gateway to TimeGPT
 
-With `NixtlaTS`, you can easily interact with TimeGPT through simple API calls, making the power of TimeGPT readily accessible in your projects.
+With `Nixtla`, you can easily interact with TimeGPT through simple API calls, making the power of TimeGPT readily accessible in your projects.
 
 ## 💻 Installation
 
-Get `NixtlaTS` up and running with a simple pip command:
+Get `Nixtla` up and running with a simple pip command:
 
 ```python
-pip install nixtlats>=0.1.0
+pip install nixtla>=0.4.0
 ```
 
 ## 🎈 Quick Start
@@ -45,12 +45,12 @@ Get started with TimeGPT now:
 ```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
 
-from nixtlats import TimeGPT
-timegpt = TimeGPT(
-    # defaults to os.environ.get("TIMEGPT_TOKEN")
-    token = 'my_token_provided_by_nixtla'
+from nixtla import NixtlaClient
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
 )
-fcst_df = timegpt.forecast(df, h=24, level=[80, 90])
+fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
 ```
 
 ![](./nbs/img/forecast_readme.png)

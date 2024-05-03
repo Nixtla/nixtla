@@ -1,0 +1,16 @@
+name: timegpt-benchmark
+channels:
+  - conda-forge
+dependencies:
+  - jupyterlab
+  - prophet
+  - pyspark>=3.3
+  - python=3.10
+  - pip:
+    - fire
+    - nixtla
+    - python-dotenv
+    - statsforecast
+    - utilsforecast
+    - tabulate
+

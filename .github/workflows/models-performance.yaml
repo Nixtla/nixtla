@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
     env:
-      TIMEGPT_TOKEN: ${{ secrets.TIMEGPT_TOKEN }}
+      NIXTLA_API_KEY: ${{ secrets.NIXTLA_API_KEY }}
       PLOTS_REPO_URL: https://github.com/Nixtla/nixtla/blob/docs-figs-model-performance
     steps:
       - name: Clone repo
@@ -34,7 +34,7 @@ jobs:
           cache-environment: true
 
       - name: Install pip requirements
-        run: pip install ./ 
+        run: pip install '.[plotting]'
 
       - name: Run evaluation 
         run: python -m action_files.models_performance.main

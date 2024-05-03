@@ -12,6 +12,7 @@ dist
 *.csv
 */data/*
 *.parquet
+*.tar.gz
 tmp
 _docs/
 _proc/
@@ -24,3 +25,4 @@ nbs/.last_checked
 .env
 */summary.md
 */*.png
+longhorizon

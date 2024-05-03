@@ -1,0 +1,11 @@
+azure-ai-ml
+azure-identity
+azureml-core
+fire
+mltable
+nixtla
+pandas
+python-dotenv
+rich
+statsforecast
+utilsforecast

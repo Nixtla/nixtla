@@ -11,7 +11,7 @@ from statsforecast.models import Naive, SeasonalNaive
 from utilsforecast.evaluation import evaluate
 from utilsforecast.losses import mae, mape, mse
 
-from nixtlats import TimeGPT
+from nixtla import NixtlaClient
 
 
 logger = logging.getLogger(__name__)
@@ -141,12 +141,14 @@ class Experiment:
         init_time = time()
         # A: this sould be replaced with
         # cross validation
-        timegpt = TimeGPT(token=os.environ["TIMEGPT_TOKEN"])
+        timegpt = NixtlaClient()
         fcst_df = timegpt.forecast(
             df=self.df_train,
-            X_df=self.df_test.drop(columns=self.target_col)
-            if self.df.shape[1] > 3
-            else None,
+            X_df=(
+                self.df_test.drop(columns=self.target_col)
+                if self.df.shape[1] > 3
+                else None
+            ),
             h=self.h,
             freq=self.freq,
             level=self.level,
@@ -200,7 +202,7 @@ class Experiment:
 
     def plot_and_save_forecasts(self, cv_df: pd.DataFrame, plot_dir: str) -> str:
         """Plot ans saves forecasts, returns the path of the plot"""
-        timegpt = TimeGPT(token=os.environ["TIMEGPT_TOKEN"])
+        timegpt = NixtlaClient()
         df = self.df.copy()
         df[self.time_col] = pd.to_datetime(df[self.time_col])
         if not self.has_id_col:
@@ -315,6 +317,7 @@ class ExperimentConfig:
             results_comb = ["metric"] + models
             exp_config = [col for col in eval_df.columns if col not in results_comb]
             eval_df = eval_df.fillna("None")
+            f.write("<details><summary>Experiment Results</summary>\n\n")
             for exp_number, (exp_desc, eval_exp_df) in enumerate(
                 eval_df.groupby(exp_config), start=1
             ):
@@ -344,6 +347,7 @@ class ExperimentConfig:
                 if os.getenv("GITHUB_ACTIONS"):
                     plot_path = f"{os.getenv('PLOTS_REPO_URL')}/{plot_path}?raw=true"
                 f.write(f"![]({plot_path})\n\n")
+            f.write("</details>\n")
 
 
 if __name__ == "__main__":
