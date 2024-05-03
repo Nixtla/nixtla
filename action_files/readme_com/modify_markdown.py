@@ -51,7 +51,7 @@ def modify_markdown(
         if Path(file_path).name == 'CHANGELOG.md':  
             category_slug = 'getting-started'
         else:
-            if Path(file_path).parents[1] == 'docs':
+            if Path(file_path).parents[1].name == "docs":
                 category_slug = Path(file_path).parents[0].name
             else:
                 category_slug = Path(file_path).parents[1].name
