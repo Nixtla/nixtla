@@ -39,26 +39,26 @@
         {
           "group": "Forecast",
           "pages": [
-            "docs/capabilities/01_quickstart.html",
-            "docs/capabilities/02_exogenous_variables.html",
-            "docs/capabilities/03_holidays_special_dates.html",
-            "docs/capabilities/04_categorical_variables.html",
-            "docs/capabilities/05_longhorizon.html",
-            "docs/capabilities/06_multiple_series.html",
-            "docs/capabilities/07_finetuning.html",
-            "docs/capabilities/08_custom_loss_functions.html",
-            "docs/capabilities/09_cross_validation.html",
-            "docs/capabilities/10_prediction_intervals.html",
-            "docs/capabilities/11_irregular_timestamps.html"
+            "docs/capabilities/forecast/01_quickstart.html",
+            "docs/capabilities/forecast/02_exogenous_variables.html",
+            "docs/capabilities/forecast/03_holidays_special_dates.html",
+            "docs/capabilities/forecast/04_categorical_variables.html",
+            "docs/capabilities/forecast/05_longhorizon.html",
+            "docs/capabilities/forecast/06_multiple_series.html",
+            "docs/capabilities/forecast/07_finetuning.html",
+            "docs/capabilities/forecast/08_custom_loss_functions.html",
+            "docs/capabilities/forecast/09_cross_validation.html",
+            "docs/capabilities/forecast/10_prediction_intervals.html",
+            "docs/capabilities/forecast/11_irregular_timestamps.html"
           ]
         },
         {
           "group": "Anomaly Detection",
           "pages": [
-            "docs/capabilities/01_quickstart.html",
-            "docs/capabilities/02_anomaly_exogenous.html",
-            "docs/capabilities/03_anomaly_detection_date_features.html",
-            "docs/capabilities/04_confidence_levels.html"
+            "docs/capabilities/anomaly-detection/01_quickstart.html",
+            "docs/capabilities/anomaly-detection/02_anomaly_exogenous.html",
+            "docs/capabilities/anomaly-detection/03_anomaly_detection_date_features.html",
+            "docs/capabilities/anomaly-detection/04_confidence_levels.html"
           ]
         }
       ]
