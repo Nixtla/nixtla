@@ -1,5 +1,7 @@
 import os
 import re
+from pathlib import Path
+import requests
 
 import fire
 from dotenv import load_dotenv
@@ -14,44 +16,13 @@ def to_snake_case(s):
     s = re.sub(r"_+", "_", s)
     return s
 
-
-def merge_lines(md_text):
-    code_block_pattern = re.compile(r"``` (?:python|bash|powershell)([\s\S]*?)```", re.MULTILINE)
-    code_blocks = code_block_pattern.findall(md_text)
-    md_text_no_code = code_block_pattern.sub("CODEBLOCK", md_text)
-    lines = md_text_no_code.split("\n")
-    merged_lines = []
-    buffer_line = ""
-    in_div_block = False
-    for line in lines:
-        if line.strip().lower().startswith("<div>"):
-            in_div_block = True
-        elif line.strip().lower().endswith("</div>"):
-            in_div_block = False
-        if in_div_block or line.startswith(
-            ("    ", "> ", "#", "-", "*", "1.", "2.", "3.", "CODEBLOCK", "!", "[")
-        ):
-            if buffer_line:
-                merged_lines.append(buffer_line.strip())
-                buffer_line = ""
-            merged_lines.append(line)
-        else:
-            buffer_line += line.strip() + " "
-    if buffer_line:
-        merged_lines.append(buffer_line.strip())
-    md_text_merged = "\n".join(merged_lines)
-    for code_block in code_blocks:
-        md_text_merged = md_text_merged.replace(
-            "CODEBLOCK", f"\n``` python\n{code_block}\n```\n", 1
-        )
-    return md_text_merged
-
-
 def modify_markdown(
     file_path,
     slug_number=0,
     host_url=os.environ["README_HOST_URL"],
     category=os.environ["README_CATEGORY"],
+    api_key=os.environ["README_API_KEY"],
+    readme_version=os.environ["README_VERSION"],
 ):
     with open(file_path, "r", encoding="utf-8") as file:
         content = file.read()
@@ -69,6 +40,30 @@ def modify_markdown(
     else:
         title = "Something Amazing"
     slug = to_snake_case(title)
+
+    # Get category id for this doc based on the parent folder name
+    url = "https://dash.readme.com/api/v1/categories"
+    headers = {"authorization": f"{api_key}",
+               "x-readme-version": f"{readme_version}"}    
+    try:
+        response = requests.get(url, headers=headers)
+        categories = {category["slug"]:category["id"] for category in response.json()}
+        if Path(file_path).name == 'CHANGELOG.md':  
+            category_slug = 'getting-started'
+            slug = category_slug + '-' + slug
+        else:
+            parent = Path(file_path).parents[0].name
+            grandparent = Path(file_path).parents[1].name
+            if grandparent == "docs":
+                category_slug = parent
+                slug = category_slug + '-' + slug
+            else:
+                category_slug = grandparent
+                subcategory = parent
+                slug = category_slug + '-' + subcategory + '-' + slug
+        category = categories[category_slug]
+    except:
+        pass
 
     # Prepare the new header
     header = f"""---
@@ -93,7 +88,6 @@ hidden: false
     )
 
     # Concatenate new header and modified content
-    # final_content = header + merge_lines(modified_content)
     final_content = header + modified_content
 
     with open(file_path, "w", encoding="utf-8") as file:
