@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SkipList.h"
+
 #include "grouped_array.h"
 #include "stats.h"
 
@@ -111,56 +113,20 @@ template <typename T>
 inline void RollingQuantileTransform(const T *data, int n, T *out,
                                      int window_size, int min_samples, T p) {
   int upper_limit = std::min(window_size, n);
-  T *buffer = new T[upper_limit];
-  int *positions = new int[upper_limit];
-  min_samples = std::min(min_samples, upper_limit);
-  for (int i = 0; i < min_samples - 1; ++i) {
-    buffer[i] = data[i];
-    positions[i] = i;
-    out[i] = std::numeric_limits<T>::quiet_NaN();
-  }
-  if (min_samples > 2) {
-    std::sort(buffer, buffer + min_samples - 2);
-  }
-  for (int i = min_samples - 1; i < upper_limit; ++i) {
-    int idx = std::lower_bound(buffer, buffer + i, data[i]) - buffer;
-    for (int j = 0; j < i - idx; ++j) {
-      buffer[i - j] = buffer[i - j - 1];
-      positions[i - j] = positions[i - j - 1];
+  OrderedStructs::SkipList::HeadNode<T> sl;
+  for (int i = 0; i < upper_limit; ++i) {
+    sl.insert(data[i]);
+    if (i + 1 < min_samples) {
+      out[i] = std::numeric_limits<T>::quiet_NaN();
+    } else {
+      out[i] = SortedQuantile(sl, p, i + 1);
     }
-    buffer[idx] = data[i];
-    positions[idx] = i;
-    out[i] = SortedQuantile(buffer, p, i + 1);
   }
   for (int i = window_size; i < n; ++i) {
-    int remove_idx =
-        std::min_element(positions, positions + window_size) - positions;
-    int idx;
-    if (data[i] <= buffer[remove_idx]) {
-      idx = std::lower_bound(buffer, buffer + remove_idx, data[i]) - buffer;
-      for (int j = 0; j < remove_idx - idx; ++j) {
-        buffer[remove_idx - j] = buffer[remove_idx - j - 1];
-        positions[remove_idx - j] = positions[remove_idx - j - 1];
-      }
-    } else {
-      idx = (std::lower_bound(buffer + remove_idx - 1, buffer + window_size,
-                              data[i]) -
-             buffer) -
-            1;
-      if (idx == window_size) {
-        --idx;
-      }
-      for (int j = 0; j < idx - remove_idx; ++j) {
-        buffer[remove_idx + j] = buffer[remove_idx + j + 1];
-        positions[remove_idx + j] = positions[remove_idx + j + 1];
-      }
-    }
-    buffer[idx] = data[i];
-    positions[idx] = i;
-    out[i] = SortedQuantile(buffer, p, window_size);
+    sl.remove(data[i - window_size]);
+    sl.insert(data[i]);
+    out[i] = SortedQuantile(sl, p, window_size);
   }
-  delete[] buffer;
-  delete[] positions;
 }
 
 template <typename Func, typename T, typename... Args>

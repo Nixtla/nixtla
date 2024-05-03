@@ -15,7 +15,6 @@ window_size = 4
 min_samples = 2
 lengths = np.random.randint(low=100, high=200, size=100)
 indptr = np.append(0, lengths.cumsum()).astype(np.int32)
-data = 10 * np.random.rand(indptr[-1])
 
 
 def transform(data, indptr, updates_only, lag, func, *args) -> np.ndarray:

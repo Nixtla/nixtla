@@ -4,7 +4,8 @@
             "name": "CMake deps",
             "includePath": [
                 "${workspaceFolder}/include",
-                "${workspaceFolder}/build/_deps/**/include"
+                "${workspaceFolder}/build/_deps/**/include",
+                "${workspaceFolder}/build/_deps/**/cpp",
             ]
         }
     ],

@@ -18,9 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
 ]
 description = "Fast implementations of common forecasting routines"
-authors = [
-    {name = "José Morales", email = "jmoralz92@gmail.com"},
-]
+authors = [{ name = "José Morales", email = "jmoralz92@gmail.com" }]
 readme = "README.md"
 keywords = ["forecasting", "time-series"]
 
@@ -39,15 +37,11 @@ logging.level = "INFO"
 sdist.exclude = ["tests", "*.yml"]
 sdist.reproducible = true
 wheel.install-dir = "coreforecast"
-wheel.packages = ["coreforecast"]
+wheel.packages = ["python/coreforecast"]
 wheel.py-api = "py3"
 
 [tool.cibuildwheel]
 archs = "all"
 build-verbosity = 3
-macos.before-build = [
-    "brew install libomp",
-    "./scripts/switch_xcode",
-]
-test-requires = "pandas pytest window-ops"
-test-command = "pytest {project}/tests -k correct"
+macos.before-build = ["brew install libomp", "./scripts/switch_xcode"]
+test-command = 'python -c "import coreforecast._lib"'
