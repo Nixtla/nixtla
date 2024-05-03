@@ -30,7 +30,7 @@
         "docs/getting-started/1_introduction.html",
         "docs/getting-started/2_quickstart.html",
         "docs/getting-started/3_setting_up_your_api_key.html",
-        "docs/getting-started/7_faqs.html"      
+        "docs/getting-started/7_faq.html"      
       ]
     },
     {
@@ -39,13 +39,26 @@
         {
           "group": "Forecast",
           "pages": [
-            "docs/capabilities/1_1_quickstart_forecast.html"
+            "docs/capabilities/01_quickstart.html",
+            "docs/capabilities/02_exogenous_variables.html",
+            "docs/capabilities/03_holidays_special_dates.html",
+            "docs/capabilities/04_categorical_variables.html",
+            "docs/capabilities/05_longhorizon.html",
+            "docs/capabilities/06_multiple_series.html",
+            "docs/capabilities/07_finetuning.html",
+            "docs/capabilities/08_custom_loss_functions.html",
+            "docs/capabilities/09_cross_validation.html",
+            "docs/capabilities/10_prediction_intervals.html",
+            "docs/capabilities/11_irregular_timestamps.html"
           ]
         },
         {
           "group": "Anomaly Detection",
           "pages": [
-            "docs/capabilities/2_1_quickstart_anomaly_detection.html"
+            "docs/capabilities/01_quickstart.html",
+            "docs/capabilities/02_anomaly_exogenous.html",
+            "docs/capabilities/03_anomaly_detection_date_features.html",
+            "docs/capabilities/04_confidence_levels.html"
           ]
         }
       ]
