@@ -6,18 +6,16 @@ website:
       - index.ipynb
       - text: "--"
       - section: "Getting Started"
-        contents: docs/1_getting_started/*
+        contents: docs/getting-started/*
       - section: "Capabilities"
-        contents: docs/2_capabilities/*
+        contents: docs/capabilities/*
       - section: "Deployment"
-        contents: docs/3_deployment/*
+        contents: docs/deployment/*
       - section: "Tutorials"
-        contents: docs/4_tutorials/*
+        contents: docs/tutorials/*
       - section: "Use cases"
-        contents: docs/5_use_cases/*
+        contents: docs/use-cases/*
       - section: "API Reference"
         contents: 
         - nixtla_client.ipynb
         - date_features.ipynb
-      - section: "Other resources"
-        contents: docs/7_other_resources/*

@@ -27,9 +27,10 @@
     {
       "group": "Getting Started",
       "pages": [
-        "docs/1_getting_started/2_quickstart.html",
-        "docs/1_getting_started/3_setting_up_your_api_key.html",
-        "docs/1_getting_started/7_faqs.html"      
+        "docs/getting-started/introduction.html",
+        "docs/getting-started/quickstart.html",
+        "docs/getting-started/setting_up_your_api_key.html",
+        "docs/getting-started/faq.html"      
       ]
     },
     {
@@ -38,13 +39,26 @@
         {
           "group": "Forecast",
           "pages": [
-            "docs/2_capabilities/1_1_quickstart_forecast.html"
+            "docs/capabilities/forecast/quickstart.html",
+            "docs/capabilities/forecast/exogenous_variables.html",
+            "docs/capabilities/forecast/holidays_special_dates.html",
+            "docs/capabilities/forecast/categorical_variables.html",
+            "docs/capabilities/forecast/longhorizon.html",
+            "docs/capabilities/forecast/multiple_series.html",
+            "docs/capabilities/forecast/finetuning.html",
+            "docs/capabilities/forecast/custom_loss_functions.html",
+            "docs/capabilities/forecast/cross_validation.html",
+            "docs/capabilities/forecast/prediction_intervals.html",
+            "docs/capabilities/forecast/irregular_timestamps.html"
           ]
         },
         {
           "group": "Anomaly Detection",
           "pages": [
-            "docs/2_capabilities/2_1_quickstart_anomaly_detection.html"
+            "docs/capabilities/anomaly-detection/quickstart.html",
+            "docs/capabilities/anomaly-detection/anomaly_exogenous.html",
+            "docs/capabilities/anomaly-detection/anomaly_detection_date_features.html",
+            "docs/capabilities/anomaly-detection/confidence_levels.html"
           ]
         }
       ]
@@ -52,7 +66,7 @@
     {
       "group": "Deployment",
       "pages": [
-        "docs/3_deployment/2_azure_ai.html"
+        "docs/deployment/azure_ai.html"
       ]
     },
     {
@@ -61,54 +75,54 @@
         {
           "group":"Exogenous variables",
           "pages":[
-            "docs/4_tutorials/01_exogenous_variables.html", 
-            "docs/4_tutorials/02_holidays.html",
-            "docs/4_tutorials/03_categorical_variables.html"
+            "docs/tutorials/exogenous_variables.html", 
+            "docs/tutorials/holidays.html",
+            "docs/tutorials/categorical_variables.html"
           ]
         },
         {
           "group":"Training",
           "pages":[
-            "docs/4_tutorials/04_longhorizon.html",
-            "docs/4_tutorials/05_multiple_series.html"
+            "docs/tutorials/longhorizon.html",
+            "docs/tutorials/multiple_series.html"
           ]
         },
         {
           "group":"Fine-tuning",
           "pages":[
-            "docs/4_tutorials/06_finetuning.html",
-            "docs/4_tutorials/07_loss_function_finetuning.html"
+            "docs/tutorials/finetuning.html",
+            "docs/tutorials/loss_function_finetuning.html"
           ]
         },
         {
           "group":"Validation",
           "pages":[
-            "docs/4_tutorials/08_cross_validation.html",
-            "docs/4_tutorials/09_historical_forecast.html"
+            "docs/tutorials/cross_validation.html",
+            "docs/tutorials/historical_forecast.html"
           ]
         },
         {
           "group":"Uncertainty quantification",
           "pages":[
-            "docs/4_tutorials/10_uncertainty_quantification_with_quantile_forecasts.html",
-            "docs/4_tutorials/11_uncertainty_quantification_with_prediction_intervals.html"
+            "docs/tutorials/uncertainty_quantification_with_quantile_forecasts.html",
+            "docs/tutorials/uncertainty_quantification_with_prediction_intervals.html"
           ]
         },
         {
           "group":"Special Topics",
           "pages":[
-            "docs/4_tutorials/12_irregular_timestamps.html",
-            "docs/4_tutorials/13_bounded_forecasts.html",
-            "docs/4_tutorials/14_hierarchical_forecasting.html"
+            "docs/tutorials/irregular_timestamps.html",
+            "docs/tutorials/bounded_forecasts.html",
+            "docs/tutorials/hierarchical_forecasting.html"
           ]
         },
         {
           "group":"Computing at scale",
           "pages":[
-            "docs/4_tutorials/15_computing_at_scale.html",
-            "docs/4_tutorials/16_computing_at_scale_spark_distributed.html",
-            "docs/4_tutorials/17_computing_at_scale_dask_distributed.html",
-            "docs/4_tutorials/18_computing_at_scale_ray_distributed.html"            
+            "docs/tutorials/computing_at_scale.html",
+            "docs/tutorials/computing_at_scale_spark_distributed.html",
+            "docs/tutorials/computing_at_scale_dask_distributed.html",
+            "docs/tutorials/computing_at_scale_ray_distributed.html"            
           ]
         }        
       ]
@@ -116,8 +130,8 @@
     {
       "group": "Use cases",
       "pages": [
-        "docs/5_use_cases/1_forecasting_web_traffic.html",
-        "docs/5_use_cases/2_bitcoin_price_prediction.html"
+        "docs/use-cases/forecasting_web_traffic.html",
+        "docs/use-cases/bitcoin_price_prediction.html"
     ]
     },
     {
