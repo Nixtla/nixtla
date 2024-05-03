@@ -65,13 +65,19 @@ def modify_markdown(
     except:
         pass
 
+    # Hide the unnecessary capabilities notebook for readme.com
+    if slug == 'capabilities-capabilities':
+        hidden = True
+    else:
+        hidden = False
+
     # Prepare the new header
     header = f"""---
 title: "{title}"
 slug: "{slug}"
 order: {slug_number}
 category: {category}
-hidden: false
+hidden: {hidden}
 ---
 
     """
