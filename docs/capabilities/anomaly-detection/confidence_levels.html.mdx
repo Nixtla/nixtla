@@ -1,0 +1,72 @@
+---
+output-file: confidence_levels.html
+title: Add confidence levels
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Load your dataset
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+```
+
+## Step 3: Adjust confidence levels
+
+By default, TimeGPT uses a confidence level of 99%. Any value that falls
+outside of this interval is considered an anomaly.
+
+This is tweaked using the `level` argument. A lower value narrows the
+interval and more anomalies are detected. Larger values widen the
+interval and less anomalies are detected.
+
+The `level` argument takes any values between 0 and 100, including
+decimal numbers.
+
+```python
+anomalies_df = nixtla_client.detect_anomalies(
+    df, 
+    time_col='timestamp', 
+    target_col='value', 
+    freq='D',
+    level=70
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
+```
+
+## Step 4: Plot anomalies
+
+```python
+nixtla_client.plot(
+    df, 
+    anomalies_df,
+    time_col='timestamp', 
+    target_col='value'
+)
+```
+
+![](/nixtla/docs/capabilities/anomaly-detection/04_confidence_levels_files/figure-markdown_strict/cell-7-output-1.png)
+

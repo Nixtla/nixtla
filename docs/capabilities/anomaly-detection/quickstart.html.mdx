@@ -1,0 +1,60 @@
+---
+output-file: quickstart.html
+title: Quickstart
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Load your dataset
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+```
+
+
+```python
+anomalies_df = nixtla_client.detect_anomalies(
+    df, 
+    time_col='timestamp', 
+    target_col='value', 
+    freq='D'
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
+```
+
+## Step 3: Plot anomalies
+
+```python
+nixtla_client.plot(
+    df, 
+    anomalies_df,
+    time_col='timestamp', 
+    target_col='value'
+)
+```
+
+![](/nixtla/docs/capabilities/anomaly-detection/01_quickstart_files/figure-markdown_strict/cell-7-output-1.png)
+

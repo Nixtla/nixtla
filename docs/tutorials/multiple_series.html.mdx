@@ -1,0 +1,158 @@
+---
+output-file: multiple_series.html
+title: Multiple series forecasting
+---
+
+
+TimeGPT provides a robust solution for multi-series forecasting, which
+involves analyzing multiple data series concurrently, rather than a
+single one. The tool can be fine-tuned using a broad collection of
+series, enabling you to tailor the model to suit your specific needs or
+tasks.
+
+Note that the forecasts are still univariate. This means that although
+TimeGPT is a global model, it won’t consider the inter-feature
+relationships within the target series. However, TimeGPT does support
+the use of exogenous variables such as categorical variables (e.g.,
+category, brand), numerical variables (e.g., temperature, prices), or
+even special holidays.
+
+Let’s see this in action.
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/05_multiple_series.ipynb)
+
+## 1. Import packages
+
+First, we install and import the required packages and initialize the
+Nixtla client.
+
+As always, we start off by intializing an instance of `NixtlaClient`.
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## 2. Load the data
+
+The following dataset contains prices of different electricity markets
+in Europe.
+
+Mutliple series are automatically detected in TimeGPT using the
+`unique_id` column. This column contains labels for each series. If
+there are multiple unique values in that column, then it knows it is
+handling a multi-series scneario.
+
+In this particular case, the `unique_id` column contains the value BE,
+DE, FR, JPM, and NP.
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
+df.head()
+```
+
+|     | unique_id | ds                  | y     |
+|-----|-----------|---------------------|-------|
+| 0   | BE        | 2016-12-01 00:00:00 | 72.00 |
+| 1   | BE        | 2016-12-01 01:00:00 | 65.80 |
+| 2   | BE        | 2016-12-01 02:00:00 | 59.99 |
+| 3   | BE        | 2016-12-01 03:00:00 | 50.69 |
+| 4   | BE        | 2016-12-01 04:00:00 | 52.58 |
+
+Let’s plot this series using
+[`NixtlaClient`](https://nixtlaverse.nixtla.io/nixtla/index.html):
+
+```python
+nixtla_client.plot(df)
+```
+
+![](/nixtla/docs/tutorials/05_multiple_series_files/figure-markdown_strict/cell-6-output-1.png)
+
+## 3. Forecasting Multiple Series
+
+To forecast all series at once, we simply pass the dataframe to the `df`
+argument. TimeGPt will automatically forecast all series.
+
+```python
+timegpt_fcst_multiseries_df = nixtla_client.forecast(df=df, h=24, level=[80, 90])
+timegpt_fcst_multiseries_df.head()
+```
+
+``` text
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: H
+INFO:nixtlats.nixtla_client:Restricting input...
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
+|-----|-----------|---------------------|-----------|---------------|---------------|---------------|---------------|
+| 0   | BE        | 2016-12-31 00:00:00 | 46.151176 | 36.660478     | 38.337019     | 53.965334     | 55.641875     |
+| 1   | BE        | 2016-12-31 01:00:00 | 42.426598 | 31.602231     | 33.976724     | 50.876471     | 53.250964     |
+| 2   | BE        | 2016-12-31 02:00:00 | 40.242889 | 30.439970     | 33.634985     | 46.850794     | 50.045809     |
+| 3   | BE        | 2016-12-31 03:00:00 | 38.265339 | 26.841481     | 31.022093     | 45.508585     | 49.689197     |
+| 4   | BE        | 2016-12-31 04:00:00 | 36.618801 | 18.541384     | 27.981346     | 45.256256     | 54.696218     |
+
+```python
+nixtla_client.plot(df, timegpt_fcst_multiseries_df, max_insample_length=365, level=[80, 90])
+```
+
+![](/nixtla/docs/tutorials/05_multiple_series_files/figure-markdown_strict/cell-8-output-1.png)
+
+From the figure above, we can see that the model effectively generated
+predictions for each unique series in the dataset.
+
+## Historical forecast
+
+You can also compute prediction intervals for historical forecasts
+adding the `add_history=True`.
+
+To specify the confidence interval, we use the `level` argument. Here,
+we pass the list `[80, 90]`. This will compute a 80% and 90% confidence
+interval.
+
+```python
+timegpt_fcst_multiseries_with_history_df = nixtla_client.forecast(df=df, h=24, level=[80, 90], add_history=True)
+timegpt_fcst_multiseries_with_history_df.head()
+```
+
+``` text
+INFO:nixtlats.nixtla_client:Validating inputs...
+INFO:nixtlats.nixtla_client:Preprocessing dataframes...
+INFO:nixtlats.nixtla_client:Inferred freq: H
+INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtlats.nixtla_client:Calling Historical Forecast Endpoint...
+```
+
+|     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-80 | TimeGPT-lo-90 | TimeGPT-hi-80 | TimeGPT-hi-90 |
+|-----|-----------|---------------------|-----------|---------------|---------------|---------------|---------------|
+| 0   | BE        | 2016-12-06 00:00:00 | 55.756332 | 42.066476     | 38.185593     | 69.446188     | 73.327072     |
+| 1   | BE        | 2016-12-06 01:00:00 | 52.820206 | 39.130350     | 35.249466     | 66.510062     | 70.390946     |
+| 2   | BE        | 2016-12-06 02:00:00 | 46.851070 | 33.161214     | 29.280331     | 60.540926     | 64.421810     |
+| 3   | BE        | 2016-12-06 03:00:00 | 50.640892 | 36.951036     | 33.070152     | 64.330748     | 68.211632     |
+| 4   | BE        | 2016-12-06 04:00:00 | 52.420410 | 38.730554     | 34.849670     | 66.110266     | 69.991150     |
+
+```python
+nixtla_client.plot(
+    df, 
+    timegpt_fcst_multiseries_with_history_df.groupby('unique_id').tail(365 + 24), 
+    max_insample_length=365, 
+    level=[80, 90],
+)
+```
+
+![](/nixtla/docs/tutorials/05_multiple_series_files/figure-markdown_strict/cell-10-output-1.png)
+
+In the figure above, we now see the historical predictions made by
+TimeGPT for each series, along with the 80% and 90% confidence
+intervals.
+

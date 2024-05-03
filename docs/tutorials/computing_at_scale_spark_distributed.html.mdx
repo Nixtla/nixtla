@@ -1,0 +1,214 @@
+---
+description: Run TimeGPT distributedly on top of Spark
+output-file: computing_at_scale_spark_distributed.html
+title: Spark
+---
+
+
+Spark is an open-source distributed computing framework designed for
+large-scale data processing. In this guide, we will explain how to use
+`TimeGPT` on top of Spark.
+
+**Outline:**
+
+1.  [Installation](#installation)
+
+2.  [Load Your Data](#load-your-data)
+
+3.  [Initialize Spark](#initialize-spark)
+
+4.  [Use TimeGPT on Spark](#use-timegpt-on-spark)
+
+5.  [Stop Spark](#stop-spark)
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/16_computing_at_scale_spark_distributed.ipynb)
+
+## 1. Installation
+
+Install Spark through [Fugue](https://fugue-tutorials.readthedocs.io/).
+Fugue provides an easy-to-use interface for distributed computing that
+lets users execute Python code on top of several distributed computing
+frameworks, including Spark.
+
+If executing on a distributed `Spark` cluster, ensure that the `nixtla`
+library is installed across all the workers.
+
+## 2. Load Data
+
+You can load your data as a `pandas` DataFrame. In this tutorial, we
+will use a dataset that contains hourly electricity prices from
+different markets.
+
+```python
+import pandas as pd 
+
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv') 
+df.head()
+```
+
+|     | unique_id | ds                  | y     |
+|-----|-----------|---------------------|-------|
+| 0   | BE        | 2016-12-01 00:00:00 | 72.00 |
+| 1   | BE        | 2016-12-01 01:00:00 | 65.80 |
+| 2   | BE        | 2016-12-01 02:00:00 | 59.99 |
+| 3   | BE        | 2016-12-01 03:00:00 | 50.69 |
+| 4   | BE        | 2016-12-01 04:00:00 | 52.58 |
+
+## 3. Initialize Spark
+
+Initialize `Spark` and convert the pandas DataFrame to a `Spark`
+DataFrame.
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.getOrCreate()
+```
+
+``` text
+24/04/24 23:55:22 WARN Utils: Your hostname, Marianas-MacBook-Pro.local resolves to a loopback address: 127.0.0.1; using 192.168.68.101 instead (on interface en0)
+24/04/24 23:55:22 WARN Utils: Set SPARK_LOCAL_IP if you need to bind to another address
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+24/04/24 23:55:22 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+```
+
+```python
+spark_df = spark.createDataFrame(df)
+spark_df.show(5)
+```
+
+``` text
+                                                                                
+```
+
+``` text
++---------+-------------------+-----+
+|unique_id|                 ds|    y|
++---------+-------------------+-----+
+|       BE|2016-12-01 00:00:00| 72.0|
+|       BE|2016-12-01 01:00:00| 65.8|
+|       BE|2016-12-01 02:00:00|59.99|
+|       BE|2016-12-01 03:00:00|50.69|
+|       BE|2016-12-01 04:00:00|52.58|
++---------+-------------------+-----+
+only showing top 5 rows
+```
+
+## 4. Use TimeGPT on Spark
+
+Using `TimeGPT` on top of `Spark` is almost identical to the
+non-distributed case. The only difference is that you need to use a
+`Spark` DataFrame.
+
+First, instantiate the `NixtlaClient` class.
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+Then use any method from the `NixtlaClient` class such as
+[`forecast`](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-forecast)
+or
+[`cross_validation`](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-cross-validation).
+
+```python
+fcst_df = nixtla_client.forecast(spark_df, h=12)
+fcst_df.show(5)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...                      (0 + 1) / 1]
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+                                                                                
+```
+
+``` text
++---------+-------------------+------------------+
+|unique_id|                 ds|           TimeGPT|
++---------+-------------------+------------------+
+|       FR|2016-12-31 00:00:00|62.130218505859375|
+|       FR|2016-12-31 01:00:00|56.890830993652344|
+|       FR|2016-12-31 02:00:00| 52.23155212402344|
+|       FR|2016-12-31 03:00:00| 48.88866424560547|
+|       FR|2016-12-31 04:00:00| 46.49836730957031|
++---------+-------------------+------------------+
+only showing top 5 rows
+```
+
+```python
+cv_df = nixtla_client.cross_validation(spark_df, h=12, n_windows=5, step_size=2)
+cv_df.show(5)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...                      (0 + 1) / 1]
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+24/04/24 23:55:35 WARN GarbageCollectionMetrics: To enable non-built-in garbage collector(s) List(G1 Concurrent GC), users should configure it(them) to spark.eventLog.gcMetrics.youngGenerationGarbageCollectors or spark.eventLog.gcMetrics.oldGenerationGarbageCollectors
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+                                                                                
+```
+
+``` text
++---------+-------------------+-------------------+------------------+
+|unique_id|                 ds|             cutoff|           TimeGPT|
++---------+-------------------+-------------------+------------------+
+|       FR|2016-12-30 04:00:00|2016-12-30 03:00:00| 44.89373779296875|
+|       FR|2016-12-30 05:00:00|2016-12-30 03:00:00| 46.05792999267578|
+|       FR|2016-12-30 06:00:00|2016-12-30 03:00:00|48.790077209472656|
+|       FR|2016-12-30 07:00:00|2016-12-30 03:00:00| 54.39702606201172|
+|       FR|2016-12-30 08:00:00|2016-12-30 03:00:00|57.592994689941406|
++---------+-------------------+-------------------+------------------+
+only showing top 5 rows
+```
+
+You can also use exogenous variables with `TimeGPT` on top of `Spark`.
+To do this, please refer to the [Exogenous
+Variables](https://nixtlaverse.nixtla.io/nixtla/docs/tutorials/exogenous_variables.html)
+tutorial. Just keep in mind that instead of using a pandas DataFrame,
+you need to use a `Spark` DataFrame instead.
+
+## 5. Stop Spark
+
+When you are done, stop the `Spark` session.
+
+```python
+spark.stop()
+```
+

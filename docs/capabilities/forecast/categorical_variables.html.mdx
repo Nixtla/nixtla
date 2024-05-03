@@ -1,0 +1,64 @@
+---
+output-file: categorical_variables.html
+title: Add categorical variables
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Create categorical variables
+
+```python
+import pandas as pd
+import datetime
+from nixtla.date_features import SpecialDates
+```
+
+
+```python
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+```
+
+
+```python
+categories_dates = SpecialDates(
+    special_dates={
+        'christmas_vacations': [datetime.date(year, 12, 1) for year in range(1949, 1960 + 1)],
+        'summer_vacations': [datetime.date(year, month, 1) for year in range(1949, 1960 + 1) for month in (6, 7)]
+    }
+)
+
+dates = pd.date_range('1949-01-01', '1960-12-01', freq='MS')
+
+categories_df = categories_dates(dates).reset_index(drop=True)
+```
+
+## Step 3: Merge categorical features with the dataset
+
+```python
+cat_df = pd.concat([df, categories_df], axis=1)
+```
+
+## Step 4: Forecast
+
+```python
+forecast_df = nixtla_client.forecast(
+    df=cat_df, 
+    h=24,
+    target_col='value',
+    time_col='timestamp'
+)
+```
+

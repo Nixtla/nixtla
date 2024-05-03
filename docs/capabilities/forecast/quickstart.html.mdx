@@ -1,0 +1,62 @@
+---
+output-file: quickstart.html
+title: Quickstart
+---
+
+
+## Step 1: Create an instance of `NixtlaClient`
+
+```python
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Step 2: Load your dataset
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+```
+
+## Step 3: Forecast
+
+```python
+forecast_df = nixtla_client.forecast(
+    df=df,
+    h=12,
+    time_col='timestamp',
+    target_col="value"
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+## Step 4: Plot predictions
+
+```python
+nixtla_client.plot(
+    df=df, 
+    forecasts_df=forecast_df, 
+    time_col='timestamp', 
+    target_col='value'
+)
+```
+
+![](/nixtla/docs/capabilities/forecast/01_quickstart_files/figure-markdown_strict/cell-7-output-1.png)
+

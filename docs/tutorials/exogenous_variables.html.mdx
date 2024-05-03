@@ -1,0 +1,286 @@
+---
+output-file: exogenous_variables.html
+title: Exogenous variables
+---
+
+
+Exogenous variables or external factors are crucial in time series
+forecasting as they provide additional information that might influence
+the prediction. These variables could include holiday markers, marketing
+spending, weather data, or any other external data that correlate with
+the time series data you are forecasting.
+
+For example, if you’re forecasting ice cream sales, temperature data
+could serve as a useful exogenous variable. On hotter days, ice cream
+sales may increase.
+
+To incorporate exogenous variables in TimeGPT, you’ll need to pair each
+point in your time series data with the corresponding external data.
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/01_exogenous_variables.ipynb)
+
+## 1. Import packages
+
+First, we import the required packages and initialize the Nixtla client.
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## 2. Load data
+
+Let’s see an example on predicting day-ahead electricity prices. The
+following dataset contains the hourly electricity price (`y` column) for
+five markets in Europe and US, identified by the `unique_id` column. The
+columns from `Exogenous1` to `day_6` are exogenous variables that
+TimeGPT will use to predict the prices.
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+df.head()
+```
+
+|     | unique_id | ds                  | y     | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----|-----------|---------------------|-------|------------|------------|-------|-------|-------|-------|-------|-------|-------|
+| 0   | BE        | 2016-10-22 00:00:00 | 70.00 | 49593.0    | 57253.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 1   | BE        | 2016-10-22 01:00:00 | 37.10 | 46073.0    | 51887.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 2   | BE        | 2016-10-22 02:00:00 | 37.10 | 44927.0    | 51896.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 3   | BE        | 2016-10-22 03:00:00 | 44.75 | 44483.0    | 48428.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 4   | BE        | 2016-10-22 04:00:00 | 37.10 | 44338.0    | 46721.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+
+## 3. Forecasting electricity prices using exogenous variables
+
+To produce forecasts we also have to add the future values of the
+exogenous variables. Let’s read this dataset. In this case, we want to
+predict 24 steps ahead, therefore each `unique_id` will have 24
+observations.
+
+> **Important**
+>
+> If you want to use exogenous variables when forecasting with TimeGPT,
+> you need to have the future values of those exogenous variables too.
+
+```python
+future_ex_vars_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv')
+future_ex_vars_df.head()
+```
+
+|     | unique_id | ds                  | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----|-----------|---------------------|------------|------------|-------|-------|-------|-------|-------|-------|-------|
+| 0   | BE        | 2016-12-31 00:00:00 | 64108.0    | 70318.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 1   | BE        | 2016-12-31 01:00:00 | 62492.0    | 67898.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 2   | BE        | 2016-12-31 02:00:00 | 61571.0    | 68379.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 3   | BE        | 2016-12-31 03:00:00 | 60381.0    | 64972.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 4   | BE        | 2016-12-31 04:00:00 | 60298.0    | 62900.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+
+Let’s call the `forecast` method, adding this information:
+
+```python
+timegpt_fcst_ex_vars_df = nixtla_client.forecast(df=df, X_df=future_ex_vars_df, h=24, level=[80, 90])
+timegpt_fcst_ex_vars_df.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
+|-----|-----------|---------------------|-----------|---------------|---------------|---------------|---------------|
+| 0   | BE        | 2016-12-31 00:00:00 | 76.952901 | 67.400451     | 71.953299     | 81.952503     | 86.505352     |
+| 1   | BE        | 2016-12-31 01:00:00 | 42.963758 | 31.939011     | 36.314015     | 49.613501     | 53.988505     |
+| 2   | BE        | 2016-12-31 02:00:00 | 42.526316 | 30.159361     | 34.813855     | 50.238777     | 54.893270     |
+| 3   | BE        | 2016-12-31 03:00:00 | 36.960867 | 24.800588     | 30.266979     | 43.654756     | 49.121146     |
+| 4   | BE        | 2016-12-31 04:00:00 | 37.104275 | 23.461805     | 28.796441     | 45.412109     | 50.746745     |
+
+```python
+nixtla_client.plot(
+    df[['unique_id', 'ds', 'y']], 
+    timegpt_fcst_ex_vars_df, 
+    max_insample_length=365, 
+    level=[80, 90], 
+)
+```
+
+![](/nixtla/docs/tutorials/01_exogenous_variables_files/figure-markdown_strict/cell-8-output-1.png)
+
+We can also show the importance of the features.
+
+```python
+nixtla_client.weights_x.plot.barh(x='features', y='weights')
+```
+
+![](/nixtla/docs/tutorials/01_exogenous_variables_files/figure-markdown_strict/cell-9-output-1.png)
+
+This plot shows that `Exogenous1` and `Exogenous2` are the most
+important for this forecasting task, as they have the largest weight.
+
+## 4. How to generate future exogenous variables?
+
+In the example above, we just loaded the future exogenous variables.
+Often, these are not available because these variables are unknown.
+Hence, we need to forecast these too.
+
+> **Important**
+>
+> If you would only include historic exogenous variables in your model,
+> you would be *implicitly* making assumptions about the future of these
+> exogenous variables in your forecast. That’s why TimeGPT requires you
+> to explicitly incorporate the future of these exogenous variables too,
+> so that you make your assumptions about these variables *explicit*.
+
+Below, we’ll show you how we can also forecast `Exogenous1` and
+`Exogenous2` separately, so that you can generate the future exogenous
+variables in case they are not available.
+
+```python
+# We read the data and create separate dataframes for the historic exogenous that we want to forecast separately.
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+df_exog1 = df[['unique_id', 'ds', 'Exogenous1']]
+df_exog2 = df[['unique_id', 'ds', 'Exogenous2']]
+```
+
+Next, we can use TimeGPT to forecast `Exogenous1` and `Exogenous2`. In
+this case, we assume these quantities can be separately forecast.
+
+```python
+timegpt_fcst_ex1 = nixtla_client.forecast(df=df_exog1, h=24, target_col='Exogenous1')
+timegpt_fcst_ex2 = nixtla_client.forecast(df=df_exog2, h=24, target_col='Exogenous2')
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+We can now start creating `X_df`, which contains the future exogenous
+variables.
+
+```python
+timegpt_fcst_ex1 = timegpt_fcst_ex1.rename(columns={'TimeGPT':'Exogenous1'})
+timegpt_fcst_ex2 = timegpt_fcst_ex2.rename(columns={'TimeGPT':'Exogenous2'})
+```
+
+
+```python
+X_df = timegpt_fcst_ex1.merge(timegpt_fcst_ex2)
+```
+
+Next, we also need to add the `day_0` to `day_6` future exogenous
+variables. These are easy: this is just the weekday, which we can
+extract from the `ds` column.
+
+```python
+# We have 7 days, for each day a separate column denoting 1/0
+for i in range(7):
+    X_df[f'day_{i}'] = 1 * (pd.to_datetime(X_df['ds']).dt.weekday == i)
+```
+
+We have now created `X_df`, let’s investigate it:
+
+```python
+X_df.head(10)
+```
+
+|     | unique_id | ds                  | Exogenous1   | Exogenous2   | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----|-----------|---------------------|--------------|--------------|-------|-------|-------|-------|-------|-------|-------|
+| 0   | BE        | 2016-12-31 00:00:00 | 66059.906250 | 71178.539062 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 1   | BE        | 2016-12-31 01:00:00 | 63927.195312 | 68056.289062 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 2   | BE        | 2016-12-31 02:00:00 | 62346.261719 | 66209.750000 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 3   | BE        | 2016-12-31 03:00:00 | 61194.632812 | 63871.683594 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 4   | BE        | 2016-12-31 04:00:00 | 60135.031250 | 62013.042969 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 5   | BE        | 2016-12-31 05:00:00 | 60664.359375 | 62363.738281 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 6   | BE        | 2016-12-31 06:00:00 | 61965.671875 | 64697.605469 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 7   | BE        | 2016-12-31 07:00:00 | 63863.851562 | 67495.203125 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 8   | BE        | 2016-12-31 08:00:00 | 65584.687500 | 70831.921875 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+| 9   | BE        | 2016-12-31 09:00:00 | 66338.750000 | 71927.875000 | 0     | 0     | 0     | 0     | 0     | 1     | 0     |
+
+Let’s compare it to our pre-loaded version:
+
+```python
+future_ex_vars_df.head(10)
+```
+
+|     | unique_id | ds                  | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----|-----------|---------------------|------------|------------|-------|-------|-------|-------|-------|-------|-------|
+| 0   | BE        | 2016-12-31 00:00:00 | 64108.0    | 70318.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 1   | BE        | 2016-12-31 01:00:00 | 62492.0    | 67898.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 2   | BE        | 2016-12-31 02:00:00 | 61571.0    | 68379.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 3   | BE        | 2016-12-31 03:00:00 | 60381.0    | 64972.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 4   | BE        | 2016-12-31 04:00:00 | 60298.0    | 62900.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 5   | BE        | 2016-12-31 05:00:00 | 60339.0    | 62364.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 6   | BE        | 2016-12-31 06:00:00 | 62576.0    | 64242.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 7   | BE        | 2016-12-31 07:00:00 | 63732.0    | 65884.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 8   | BE        | 2016-12-31 08:00:00 | 66235.0    | 68217.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 9   | BE        | 2016-12-31 09:00:00 | 66801.0    | 69921.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+
+As you can see, the values for `Exogenous1` and `Exogenous2` are
+slightly different, which makes sense because we’ve made a forecast of
+these values with TimeGPT.
+
+Let’s create a new forecast of our electricity prices with TimeGPT using
+our new `X_df`:
+
+```python
+timegpt_fcst_ex_vars_df_new = nixtla_client.forecast(df=df, X_df=X_df, h=24, level=[80, 90])
+timegpt_fcst_ex_vars_df_new.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | unique_id | ds                  | TimeGPT   | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
+|-----|-----------|---------------------|-----------|---------------|---------------|---------------|---------------|
+| 0   | BE        | 2016-12-31 00:00:00 | 49.935646 | 40.383196     | 44.936044     | 54.935248     | 59.488097     |
+| 1   | BE        | 2016-12-31 01:00:00 | 35.463446 | 24.438699     | 28.813703     | 42.113188     | 46.488192     |
+| 2   | BE        | 2016-12-31 02:00:00 | 40.037362 | 27.670407     | 32.324901     | 47.749823     | 52.404316     |
+| 3   | BE        | 2016-12-31 03:00:00 | 37.693355 | 25.533076     | 30.999467     | 44.387244     | 49.853634     |
+| 4   | BE        | 2016-12-31 04:00:00 | 37.972484 | 24.330014     | 29.664650     | 46.280318     | 51.614954     |
+
+Let’s create a combined dataframe with the two forecasts and plot the
+values to compare the forecasts.
+
+```python
+timegpt_fcst_ex_vars_df = timegpt_fcst_ex_vars_df.rename(columns={'TimeGPT':'TimeGPT-provided_exogenous'})
+timegpt_fcst_ex_vars_df_new = timegpt_fcst_ex_vars_df_new.rename(columns={'TimeGPT':'TimeGPT-forecasted_exogenous'})
+
+forecasts = timegpt_fcst_ex_vars_df[['unique_id', 'ds', 'TimeGPT-provided_exogenous']].merge(timegpt_fcst_ex_vars_df_new[['unique_id', 'ds', 'TimeGPT-forecasted_exogenous']])
+```
+
+
+```python
+nixtla_client.plot(
+    df[['unique_id', 'ds', 'y']], 
+    forecasts, 
+    max_insample_length=365, 
+)
+```
+
+![](/nixtla/docs/tutorials/01_exogenous_variables_files/figure-markdown_strict/cell-19-output-1.png)
+
+As you can see, we obtain a slightly different forecast if we use our
+forecasted exogenous variables.
+
