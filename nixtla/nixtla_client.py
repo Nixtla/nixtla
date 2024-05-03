@@ -30,18 +30,11 @@ from tenacity import (
     retry_if_not_exception_type,
 )
 from utilsforecast.preprocessing import fill_gaps
-from utilsforecast.processing import (
-    backtest_splits,
-    drop_index_if_pandas,
-    join,
-    maybe_compute_sort_indices,
-    take_rows,
-    vertical_concat,
-)
 
 from .client import Nixtla
 from .core import ApiError
 from .types.multi_series_anomaly import MultiSeriesAnomaly
+from .types.multi_series_cross_validation import MultiSeriesCrossValidation
 from .types.multi_series_forecast import MultiSeriesForecast
 from .types.multi_series_insample_forecast import MultiSeriesInsampleForecast
 from .types.single_series_forecast import SingleSeriesForecast
@@ -387,6 +380,31 @@ class _NixtlaClientModel:
         df: pd.DataFrame,
         X_df: Optional[pd.DataFrame],
     ):
+        # add date features logic
+        if isinstance(self.date_features, list):
+            # user provided list of features
+            date_features = self.date_features
+        elif self.date_features:
+            # try to get default features based on freq
+            date_features = date_features_by_freq.get(self.freq, [])
+            if not date_features:
+                warnings.warn(
+                    f"Non default date features for {self.freq} "
+                    "please pass a list of date features"
+                )
+        else:
+            date_features = []
+        if not date_features:
+            return df, X_df
+
+        if isinstance(self.date_features_to_one_hot, list):
+            date_features_to_one_hot = self.date_features_to_one_hot
+        elif self.date_features_to_one_hot:
+            date_features_to_one_hot = [
+                feat for feat in date_features if not callable(feat)
+            ]
+        else:
+            date_features_to_one_hot = []
         # df contains exogenous variables
         # X_df are the future values of the exogenous variables
         # construct dates
@@ -402,15 +420,15 @@ class _NixtlaClientModel:
             future_dates = []
         dates = pd.DatetimeIndex(np.unique(train_dates + future_dates).tolist())
         date_features_df = pd.DataFrame({"ds": dates})
-        for feature in self.date_features:
+        for feature in date_features:
             feat_df = self.compute_date_feature(dates, feature)
             date_features_df = date_features_df.merge(feat_df, on=["ds"], how="left")
         if df.dtypes["ds"] == "object":
             date_features_df["ds"] = date_features_df["ds"].astype(str)
-        if self.date_features_to_one_hot is not None:
+        if date_features_to_one_hot:
             date_features_df = pd.get_dummies(
                 date_features_df,
-                columns=self.date_features_to_one_hot,
+                columns=date_features_to_one_hot,
                 dtype=int,
             )
         # remove duplicated columns if any
@@ -440,34 +458,9 @@ class _NixtlaClientModel:
         df: pd.DataFrame,
         X_df: Optional[pd.DataFrame],
     ):
-        self.infer_freq(df=df)
         """Returns Y_df and X_df dataframes in the structure expected by the endpoints."""
-        # add date features logic
-        if isinstance(self.date_features, bool):
-            if self.date_features:
-                self.date_features = date_features_by_freq.get(self.freq)
-                if self.date_features is None:
-                    warnings.warn(
-                        f"Non default date features for {self.freq} "
-                        "please pass a list of date features"
-                    )
-            else:
-                self.date_features = None
-
-        if self.date_features is not None:
-            if isinstance(self.date_features_to_one_hot, bool):
-                if self.date_features_to_one_hot:
-                    self.date_features_to_one_hot = [
-                        feat for feat in self.date_features if not callable(feat)
-                    ]
-                    self.date_features_to_one_hot = (
-                        None
-                        if not self.date_features_to_one_hot
-                        else self.date_features_to_one_hot
-                    )
-                else:
-                    self.date_features_to_one_hot = None
-            df, X_df = self.add_date_features(df=df, X_df=X_df)
+        self.infer_freq(df=df)
+        df, X_df = self.add_date_features(df=df, X_df=X_df)
         y_cols = ["unique_id", "ds", "y"]
         Y_df = df[y_cols]
         if Y_df["y"].isna().any():
@@ -548,6 +541,24 @@ class _NixtlaClientModel:
                 f"at least {self.input_size + self.model_horizon} observations"
             )
 
+    def _restrict_input_samples(self) -> int:
+        main_logger.info("Restricting input...")
+        if self.level is not None:
+            # add sufficient info to compute
+            # conformal interval
+            # @AzulGarza
+            #  this is an old opinionated decision
+            #  about reducing the data sent to the api
+            #  to reduce latency when
+            #  a user passes level. since currently the model
+            #  uses conformal prediction, we can change a minimum
+            #  amount of data if the series are too large
+            new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
+        else:
+            # we only want to forecast
+            new_input_size = self.input_size
+        return new_input_size
+
     def forecast(
         self,
         df: pd.DataFrame,
@@ -570,26 +581,8 @@ class _NixtlaClientModel:
         #  no add history
         restrict_input = self.finetune_steps == 0 and X_df is None and not add_history
         if restrict_input:
-            main_logger.info("Restricting input...")
-            if self.level is not None:
-                # add sufficient info to compute
-                # conformal interval
-                # @AzulGarza
-                #  this is an old opinionated decision
-                #  about reducing the data sent to the api
-                #  to reduce latency when
-                #  a user passes level. since currently the model
-                #  uses conformal prediction, we can change a minimum
-                #  amount of data if the series are too large
-                new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
-            else:
-                # we only want to forecast
-                new_input_size = self.input_size
+            new_input_size = self._restrict_input_samples()
             Y_df = Y_df.groupby("unique_id").tail(new_input_size)
-            if X_df is not None:
-                X_df = X_df.groupby("unique_id").tail(
-                    new_input_size + self.h
-                )  # history plus exogenous
         if self.finetune_steps > 0 or self.level is not None:
             self.validate_input_size(Y_df=Y_df)
         y, x = self.dataframes_to_dict(Y_df, X_df)
@@ -683,59 +676,46 @@ class _NixtlaClientModel:
         n_windows: int = 1,
         step_size: Optional[int] = None,
     ):
-        # A: see `transform_inputs`
-        # the code always will return X_df=None
-        # if X_df=None
         df, _ = self.transform_inputs(df=df, X_df=None)
         self.infer_freq(df)
-        df["ds"] = pd.to_datetime(df["ds"])
-        # mlforecast cv code
-        results = []
-        sort_idxs = maybe_compute_sort_indices(df, "unique_id", "ds")
-        if sort_idxs is not None:
-            df = take_rows(df, sort_idxs)
-        splits = backtest_splits(
-            df,
+        df = self.resample_dataframe(df)
+        df, _ = self.add_date_features(df=df, X_df=None)
+        Y_df = df[["unique_id", "ds", "y"]]
+        if Y_df["y"].isna().any():
+            raise Exception("Your target variable contains NA, please check")
+        x_cols = df.columns.drop(Y_df.columns).tolist()
+        self.set_model_params()
+        if x_cols:
+            X_df = df[["unique_id", "ds", *x_cols]]
+            restrict_input = False
+        else:
+            X_df = None
+            restrict_input = True
+        if restrict_input:
+            if step_size is None:
+                step_size = self.h
+            test_size = self.h + step_size * (n_windows - 1)
+            new_input_size = self._restrict_input_samples() + test_size
+            Y_df = Y_df.groupby("unique_id").tail(new_input_size)
+        y, x = self.dataframes_to_dict(Y_df, X_df)
+        main_logger.info("Calling Cross Validation Endpoint...")
+        payload = MultiSeriesCrossValidation(
+            finetune_steps=self.finetune_steps,
+            finetune_loss=self.finetune_loss,
+            freq=self.freq,
+            level=self.level,
+            fh=self.h,
+            y=y,
+            x=x,
             n_windows=n_windows,
-            h=self.h,
-            id_col="unique_id",
-            time_col="ds",
-            freq=pd.tseries.frequencies.to_offset(self.freq),
-            step_size=self.h if step_size is None else step_size,
+            step_size=step_size,
+            clean_ex_first=self.clean_ex_first,
         )
-        for i_window, (cutoffs, train, valid) in enumerate(splits):
-            if len(valid.columns) > 3:
-                # if we have uid, ds, y + exogenous vars
-                train_future = valid.drop(columns="y")
-            else:
-                train_future = None
-            y_pred = self.forecast(
-                df=train,
-                X_df=train_future,
-            )
-            y_pred, _ = self.transform_inputs(df=y_pred, X_df=None)
-            y_pred = join(y_pred, cutoffs, on="unique_id", how="left")
-            y_pred["ds"] = pd.to_datetime(y_pred["ds"])
-            result = join(
-                valid[["unique_id", "ds", "y"]],
-                y_pred,
-                on=["unique_id", "ds"],
-            )
-            if result.shape[0] < valid.shape[0]:
-                raise ValueError(
-                    "Cross validation result produced less results than expected. "
-                    "Please verify that the frequency parameter (freq) matches your series' "
-                    "and that there aren't any missing periods."
-                )
-            results.append(result)
-        out = vertical_concat(results)
-        out = drop_index_if_pandas(out)
-        first_out_cols = ["unique_id", "ds", "cutoff", "y"]
-        remaining_cols = [c for c in out.columns if c not in first_out_cols]
-        fcst_cv_df = out[first_out_cols + remaining_cols]
-        fcst_cv_df["ds"] = fcst_cv_df["ds"].astype(str)
-        fcst_cv_df = self.transform_outputs(fcst_cv_df)
-        return fcst_cv_df
+        response = self._call_api(self.client.cross_validation_multi_series, payload)
+        cv_df = pd.DataFrame(**response["forecast"])
+        cv_df["cutoff"] = pd.to_datetime(cv_df["cutoff"])
+        cv_df = self.transform_outputs(cv_df, level_to_quantiles=True)
+        return cv_df
 
 # %% ../nbs/nixtla_client.ipynb 11
 def validate_model_parameter(func):
