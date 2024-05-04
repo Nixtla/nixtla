@@ -87,7 +87,7 @@ def generate_prices_for_series(
     if unique_last_dates > 1:
         raise ValueError("series must have equal ends.")
     day_offset = pd.tseries.frequencies.Day()
-    starts_ends = series.groupby("unique_id", observed=True)["ds"].agg([min, max])
+    starts_ends = series.groupby("unique_id", observed=True)["ds"].agg(["min", "max"])
     dfs = []
     for idx, (start, end) in starts_ends.iterrows():
         product_df = pd.DataFrame(

@@ -343,7 +343,7 @@ class TimeSeries:
                 feat_vals = getattr(dates, feature)
             else:
                 feat_vals = getattr(dates.dt, feature)()
-        if not isinstance(feat_vals, pl_Series):
+        if isinstance(feat_vals, (pd.Index, pd.Series)):
             feat_vals = np.asarray(feat_vals)
             feat_dtype = date_features_dtypes.get(feature)
             if feat_dtype is not None:
@@ -421,18 +421,29 @@ class TimeSeries:
             df = ufp.assign_columns(df, feat, features[feat])
 
         # date features
-        if self.date_features:
-            dates = df[self.time_col]
-            if isinstance(dates, pd.Series) and not np.issubdtype(
-                dates.dtype.type, np.integer
-            ):
-                dates = pd.DatetimeIndex(dates)
-            for feature in self.date_features:
-                feat_name = feature.__name__ if callable(feature) else feature
-                if feat_name in df:
-                    continue
-                _, feat_vals = self._compute_date_feature(dates, feature)
-                df = ufp.assign_columns(df, feat_name, feat_vals)
+        names = [f.__name__ if callable(f) else f for f in self.date_features]
+        date_features = [
+            f for f, name in zip(self.date_features, names) if name not in df
+        ]
+        if date_features:
+            unique_dates = df[self.time_col].unique()
+            if isinstance(df, pd.DataFrame):
+                # all kinds of trickery to make this fast
+                unique_dates = pd.Index(unique_dates)
+                date2pos = {date: i for i, date in enumerate(unique_dates)}
+                restore_idxs = df[self.time_col].map(date2pos)
+                for feature in date_features:
+                    feat_name, feat_vals = self._compute_date_feature(
+                        unique_dates, feature
+                    )
+                    df[feat_name] = feat_vals[restore_idxs]
+            elif isinstance(df, pl_DataFrame):
+                exprs = []
+                for feat in date_features:  # type: ignore
+                    name, vals = self._compute_date_feature(pl.col(self.time_col), feat)
+                    exprs.append(vals.alias(name))
+                feats = unique_dates.to_frame().with_columns(*exprs)
+                df = df.join(feats, on=self.time_col, how="left")
 
         # assemble return
         if return_X_y:

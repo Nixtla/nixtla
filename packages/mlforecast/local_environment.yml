@@ -5,6 +5,7 @@ dependencies:
   - coreforecast>=0.0.7
   - fsspec
   - holidays<0.21
+  - jinja2
   - lightgbm
   - matplotlib
   - nbformat
