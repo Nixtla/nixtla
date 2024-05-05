@@ -88,8 +88,8 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests 
-        run: nbdev_test --skip_file_glob "*computing_at_scale*" --skip_file_glob "*distributed*"
+        run: nbdev_test --skip_file_re "computing_at_scale|distributed" --timing
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --file_glob "*computing_at_scale*" --file_glob "*distributed*"
+        run: nbdev_test --file_re "computing_at_scale|distributed" --timing
