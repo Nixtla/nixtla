@@ -10,6 +10,7 @@ dev = [
     "plotly",
     "pre-commit",
     "python-dotenv",
+    "pyreadr",
     "statsforecast",
     "neuralforecast",
     "hierarchicalforecast",
