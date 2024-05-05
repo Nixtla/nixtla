@@ -698,6 +698,7 @@ class _NixtlaClientModel:
             n_windows=n_windows,
             step_size=step_size,
             clean_ex_first=self.clean_ex_first,
+            model=self.model,
         )
         response = self._call_api(self.client.cross_validation_multi_series, payload)
         cv_df = pd.DataFrame(**response["forecast"])
