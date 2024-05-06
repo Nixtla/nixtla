@@ -3,7 +3,6 @@ website:
   sidebar:
     collapse-level: 1
     contents:
-      - index.ipynb
       - text: "--"
       - section: "Getting Started"
         contents: docs/getting-started/*
