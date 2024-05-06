@@ -494,7 +494,7 @@ class _NixtlaClientModel:
             X_df = self.preprocess_X_df(X_df)
 
         if (X_df is None) and (set(y_cols) < set(df.columns)):
-            missing_exogenous = df.drop(columns=y_cols).columns
+            missing_exogenous = df.columns.drop(columns=y_cols)
             missing_exogenous_str = ", ".join(missing_exogenous)
             main_logger.warning(
                 "You did not provide X_df. "
