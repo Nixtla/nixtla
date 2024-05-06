@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BASE_DIR="nbs/docs/"
-SUB_DIRS=("1_getting_started" "2_capabilities" "3_deployment" "4_tutorials" "5_use_cases" "7_other_resources")
+SUB_DIRS=("getting-started" "capabilities" "deployment" "tutorials" "use-cases")
 
 counter=0
 for sub_dir in "${SUB_DIRS[@]}"; do
@@ -22,11 +22,11 @@ done
 
 # Process SDK API Reference link
 echo $counter
-python -m action_files.readme_com.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/
+python -m action_files.readme_com.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/ --category "64dd4f0e73869100242d1bed"
 ((counter++))
 
 # process changelog
 echo $counter
 file_changelog="./nbs/_docs/docs/CHANGELOG.md"
 cp ./CHANGELOG.md ${file_changelog} 
-python -m action_files.readme_com.modify_markdown --file_path "$file_changelog" --slug_number "$counter"
+python -m action_files.readme_com.modify_markdown --file_path "$file_changelog" --slug_number "$counter" 
