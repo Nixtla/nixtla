@@ -34,7 +34,7 @@ With `Nixtla`, you can easily interact with TimeGPT through simple API calls, ma
 Get `Nixtla` up and running with a simple pip command:
 
 ```python
-pip install nixtla>=0.4.0
+pip install nixtla>=0.5.1
 ```
 
 ## 🎈 Quick Start
