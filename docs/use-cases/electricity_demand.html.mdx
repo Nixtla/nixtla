@@ -1,0 +1,400 @@
+---
+output-file: electricity_demand.html
+title: Forecasting Energy Demand
+---
+
+
+This tutorial is based on the scenario used in
+[Skforecast](https://cienciadedatos.net/documentos/py29-forecasting-electricity-power-demand-python.html).
+
+Here, we use the [Australian Electricity Demand
+dataset](https://zenodo.org/records/4659727). This dataset compiles the
+energy demand for five Australian cities at a half-hourly frequency.
+
+In this experiment, we show that using TimeGPT delivers significant
+improvements over using a state-of-the-art deep learning model like
+N-HiTS in a just a few lines of code:
+
+-   MAE of TimeGPT is **7.8% better** than N-HiTS
+-   sMAPE of TimeGPT is **11.5% better** than N-HiTS
+-   TimeGPT generated predictions in **7.7 seconds**, which is **88%
+    faster** than training and predicting with N-HiTS.
+
+The following tutorial explore all the steps in detail to reproduce
+these results so that you can apply TimeGPT in your own project.
+
+## Initial setup
+
+First, we load the required packages for this experiment.
+
+```python
+import time
+import requests
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+from nixtla import NixtlaClient
+
+from utilsforecast.losses import mae, smape
+from utilsforecast.evaluation import evaluate
+```
+
+Of course, we need an instance of `NixtlaClient` to use TimeGPT.
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+## Read the data
+
+Here, we define a helper function to help us read the `.tsf` file that
+contains our data. The dataset is available on
+[GitHub](https://github.com/Nixtla/transfer-learning-time-series/blob/main/datasets/australian_electricity_demand_dataset.tsf).
+
+```python
+def read_tsf_from_url(url):
+    data = []
+    start_date = pd.to_datetime('2002-01-01 00:00:00')
+    
+    # Fetch the content from the URL
+    response = requests.get(url)
+    response.raise_for_status()
+
+    # Process each line of the file
+    for line in response.text.splitlines():
+        if line.startswith('T'):
+            parts = line.strip().split(':')
+            unique_id = parts[0] + '-' + parts[1]
+            values = list(map(float, parts[3].split(',')[:-1]))
+            
+            # Generate datetime index at half-hour intervals
+            periods = len(values)
+            date_range = pd.date_range(start=start_date, periods=periods, freq='30min')
+            
+            # Append to data list
+            for dt, value in zip(date_range, values):
+                data.append([unique_id, dt, value])
+
+    return pd.DataFrame(data, columns=['unique_id', 'ds', 'y'])
+
+url = 'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/australian_electricity_demand_dataset.tsf'
+df = read_tsf_from_url(url)
+```
+
+
+```python
+df.groupby('unique_id').head(2)
+```
+
+|        | unique_id | ds                  | y           |
+|--------|-----------|---------------------|-------------|
+| 0      | T1-NSW    | 2002-01-01 00:00:00 | 5714.045004 |
+| 1      | T1-NSW    | 2002-01-01 00:30:00 | 5360.189078 |
+| 230735 | T2-VIC    | 2002-01-01 00:00:00 | 3535.867064 |
+| 230736 | T2-VIC    | 2002-01-01 00:30:00 | 3383.499028 |
+| 461470 | T3-QUN    | 2002-01-01 00:00:00 | 3382.041342 |
+| 461471 | T3-QUN    | 2002-01-01 00:30:00 | 3288.315794 |
+| 693741 | T4-SA     | 2002-01-01 00:00:00 | 1191.078014 |
+| 693742 | T4-SA     | 2002-01-01 00:30:00 | 1219.589472 |
+| 924524 | T5-TAS    | 2002-01-01 00:00:00 | 315.915504  |
+| 924525 | T5-TAS    | 2002-01-01 00:30:00 | 306.245864  |
+
+Let’s plot our series to see what it looks like.
+
+```python
+nixtla_client.plot(
+    df, 
+    max_insample_length=365, 
+)
+```
+
+![](/nixtla/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-6-output-1.png)
+
+We can see clear sesaonal pattern in all of our series. It will be
+interesting to see how TimeGPT handles this type of data.
+
+## Forecasting with TimeGPT
+
+### Splitting the data
+
+The first step is to split our data. Here, we define an input DataFrame
+to feed to the model. We also reserve the last 96 time steps for the
+test set, so that we can evaluate the performance of TimeGPT against
+actual values.
+
+For this situation, we use a forecast horizon of 96, which represents
+two days, and we use an input sequence of 21 days, which is 1008 time
+steps.
+
+```python
+test_df = df.groupby('unique_id').tail(96)                                                             # 96 = 2 days (96 * 0.5h *  1 day/24h )
+
+input_df = df.groupby('unique_id').apply(lambda group: group.iloc[-1104:-96]).reset_index(drop=True)   # 1008 = 21 days (1008 *0.5h * 1 day/24h)
+```
+
+``` text
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_2691/3286945152.py:3: DeprecationWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  input_df = df.groupby('unique_id').apply(lambda group: group.iloc[-1104:-96]).reset_index(drop=True)   # 1008 = 21 days (1008 *0.5h * 1 day/24h)
+```
+
+### Forecasting
+
+Then, we simply call the `forecast` method. Here, we use fine-tuning and
+specify the mean absolute error (MAE) as the fine-tuning loss. Also, we
+use the `timegpt-1-long-horizon` since we are forecasting the next two
+days, and the seasoanl period is one day.
+
+```python
+start = time.time()
+
+fcst_df = nixtla_client.forecast(
+    df=input_df,
+    h=96,                            
+    level=[90],                        # Generate a 90% confidence interval
+    finetune_steps=10,                 # Specify the number of steps for fine-tuning
+    finetune_loss='mae',               # Use the MAE as the loss function for fine-tuning
+    model='timegpt-1-long-horizon',    # Use the model for long-horizon forecasting
+    time_col='ds',
+    target_col='y',
+    id_col='unique_id'
+)
+
+end = time.time()
+
+timegpt_duration = end - start
+
+print(f"Time (TimeGPT): {timegpt_duration}")
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: 30min
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+``` text
+Time (TimeGPT): 7.698163032531738
+```
+
+TimeGPT was done in 7.7 seconds! We can now plot the predictions against
+the actual values of the test set.
+
+```python
+nixtla_client.plot(test_df, fcst_df, models=['TimeGPT'], level=[90], time_col='ds', target_col='y')
+```
+
+![](/nixtla/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-9-output-1.png)
+
+### Evaluation
+
+Now that we have predictions, let’s evaluate the model’s performance.
+
+```python
+fcst_df['ds'] = pd.to_datetime(fcst_df['ds'])
+
+test_df = pd.merge(test_df, fcst_df, 'left', ['unique_id', 'ds'])
+```
+
+
+```python
+evaluation = evaluate(
+    test_df,
+    metrics=[mae, smape],
+    models=["TimeGPT"],
+    target_col="y",
+    id_col='unique_id'
+)
+
+average_metrics = evaluation.groupby('metric')['TimeGPT'].mean()
+average_metrics
+```
+
+``` text
+metric
+mae      198.823441
+smape      0.041998
+Name: TimeGPT, dtype: float64
+```
+
+We can see that TimeGPT achieves a MAE of 198.82 and a sMAPE of 4.2%.
+
+Great! Now, let’s see if a data-specific model can do better.
+
+## Forecasting with N-HiTS
+
+Here, we use the N-HiTS model, as it is very fast to train and performs
+well on long-horizon forecasting tasks. To reproduce these results, make
+sure to install the library `neuralforecast`.
+
+```python
+from neuralforecast.core import NeuralForecast
+from neuralforecast.models import NHITS
+```
+
+### Define the training set
+
+The training set is different from the input DataFrame for TimeGPT, as
+we need more data to train a data-specific model.
+
+Note that the dataset is very large, so we use the last 400 days of the
+training set to fit our model.
+
+```python
+train_df = df.groupby('unique_id').apply(lambda group: group.iloc[-9696:-96]).reset_index(drop=True)
+```
+
+``` text
+/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_2691/2489876888.py:1: DeprecationWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  train_df = df.groupby('unique_id').apply(lambda group: group.iloc[-9696:-96]).reset_index(drop=True)
+```
+
+### Forecasting with N-HiTS
+
+We can now fit the model on training set and make predictions.
+
+```python
+horizon = 96
+
+models = [NHITS(h=horizon, input_size = 5*horizon, scaler_type='robust', batch_size=16, valid_batch_size=8)]
+
+nf = NeuralForecast(models=models, freq='30min')
+
+start = time.time()
+
+nf.fit(df=train_df)
+nhits_preds = nf.predict()
+
+end = time.time()
+
+nhits_duration = end - start
+
+print(f"Time (N-HiTS): {nhits_duration}")
+```
+
+``` text
+INFO:lightning_fabric.utilities.seed:Seed set to 1
+INFO:pytorch_lightning.utilities.rank_zero:GPU available: True (mps), used: True
+INFO:pytorch_lightning.utilities.rank_zero:TPU available: False, using: 0 TPU cores
+INFO:pytorch_lightning.utilities.rank_zero:IPU available: False, using: 0 IPUs
+INFO:pytorch_lightning.utilities.rank_zero:HPU available: False, using: 0 HPUs
+INFO:pytorch_lightning.callbacks.model_summary:
+  | Name         | Type          | Params
+-----------------------------------------------
+0 | loss         | MAE           | 0     
+1 | padder_train | ConstantPad1d | 0     
+2 | scaler       | TemporalNorm  | 0     
+3 | blocks       | ModuleList    | 3.7 M 
+-----------------------------------------------
+3.7 M     Trainable params
+0         Non-trainable params
+3.7 M     Total params
+14.727    Total estimated model params size (MB)
+INFO:pytorch_lightning.utilities.rank_zero:`Trainer.fit` stopped: `max_steps=1000` reached.
+INFO:pytorch_lightning.utilities.rank_zero:GPU available: True (mps), used: True
+INFO:pytorch_lightning.utilities.rank_zero:TPU available: False, using: 0 TPU cores
+INFO:pytorch_lightning.utilities.rank_zero:IPU available: False, using: 0 IPUs
+INFO:pytorch_lightning.utilities.rank_zero:HPU available: False, using: 0 HPUs
+/Users/marcopeix/dev/neuralforecast/neuralforecast/core.py:190: FutureWarning: In a future version the predictions will have the id as a column. You can set the `NIXTLA_ID_AS_COL` environment variable to adopt the new behavior and to suppress this warning.
+  warnings.warn(
+```
+
+``` text
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Training: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Validation: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Predicting: |          | 0/? [00:00<?, ?it/s]
+```
+
+``` text
+Time (N-HiTS): 67.36857795715332
+```
+
+Great! Note that N-HiTS took 67 seconds to carry out the training and
+forecasting procedures. Now, let’s evaluate the performance of this
+model.
+
+### Evaluation
+
+```python
+preds_df = pd.merge(test_df, nhits_preds, 'left', ['unique_id', 'ds'])
+
+evaluation = evaluate(
+    preds_df,
+    metrics=[mae, smape],
+    models=["NHITS"],
+    target_col="y",
+    id_col='unique_id'
+)
+
+
+average_metrics = evaluation.groupby('metric')['NHITS'].mean()
+print(average_metrics)
+```
+
+``` text
+metric
+mae      215.552667
+smape      0.047458
+Name: NHITS, dtype: float64
+```
+
+## Conclusion
+
+TimeGPT achieves a MAE of 198.82 while N-HiTS achieves a MAE of 215.55,
+meaning there is a **7.8% improvement** in using TimeGPT versus our
+data-specific N-HiTS model. TimeGPT also improved the sMAPE by 11.5%.
+
+Plus, TimeGPT took 7.7 seconds to generate forecasts, while N-HiTS took
+67 seconds to fit and predict. TimeGPT is thus **88% faster** than using
+N-HiTS in this scenario.
+
