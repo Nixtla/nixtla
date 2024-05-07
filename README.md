@@ -16,7 +16,8 @@ TimeGPT is a production ready, generative pretrained transformer for time series
 ## 🚀 Quick Start
 >Forecast 24 months of air passenger data using the public API
 
-![Quick Start](QuickstartTGPT.mp4)
+https://github.com/Nixtla/nixtla/assets/4086186/163ad9e6-7a16-44e1-b2e9-dab8a0b7b6b6
+
 
 
 ### 🤖 Install nixtla's SDK
