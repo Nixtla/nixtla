@@ -16,7 +16,7 @@ TimeGPT is a production ready, generative pretrained transformer for time series
 ## 🚀 Quick Start
 >Forecast 24 months of air passenger data using the public API
 
-![Quick Start](QuickStart.gif)
+![Quick Start](QuickstartTGPT.mp4)
 
 
 ### 🤖 Install nixtla's SDK
@@ -89,7 +89,6 @@ Go to  our [API Reference](https://docs.nixtla.io) to see how to use TimeGPT wit
 
 Visit our comprehensive documentation to explore a wide range of examples and practical use cases for TimeGPT. Whether you're getting started with our Quickstart Guide, setting up your API key, or looking for advanced forecasting techniques, our resources are designed to guide you through every step of the process. Learn how to handle anomaly detection, fine-tune models with specific loss functions, and scale your computing using frameworks like Spark, Dask, and Ray. Additionally, our documentation covers specialized topics such as handling exogenous variables, validating models through cross-validation, and forecasting under uncertainty with quantile forecasts and prediction intervals. For those interested in real-world applications, discover how TimeGPT can be used for forecasting web traffic or predicting Bitcoin prices.
 
-Sure! Here's a draft of the section you're working on for your GitHub README. This should provide a clear and concise explanation of TimeGPT's features and capabilities, and give users an idea of how to get started with various functionalities:
 
 ## 🔥 Features and Capabilities
 
