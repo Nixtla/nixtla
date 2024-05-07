@@ -15,12 +15,12 @@ int Float32_RollingStdTransform(float *data, int length, int window_size,
 }
 int Float32_RollingMinTransform(float *data, int length, int window_size,
                                 int min_samples, float *out) {
-  RollingMinTransform<float>()(data, length, out, window_size, min_samples);
+  RollingMinTransform<float>(data, length, out, window_size, min_samples);
   return 0;
 }
 int Float32_RollingMaxTransform(float *data, int length, int window_size,
                                 int min_samples, float *out) {
-  RollingMaxTransform<float>()(data, length, out, window_size, min_samples);
+  RollingMaxTransform<float>(data, length, out, window_size, min_samples);
   return 0;
 }
 int Float32_RollingQuantileTransform(float *data, int length, float p,
@@ -215,16 +215,14 @@ int GroupedArrayFloat32_RollingMinTransform(GroupedArrayHandle handle, int lag,
                                             int window_size, int min_samples,
                                             float *out) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(RollingMinTransform<float>(), lag, out, window_size,
-                min_samples);
+  ga->Transform(RollingMinTransform<float>, lag, out, window_size, min_samples);
   return 0;
 }
 int GroupedArrayFloat32_RollingMaxTransform(GroupedArrayHandle handle, int lag,
                                             int window_size, int min_samples,
                                             float *out) {
   auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(RollingMaxTransform<float>(), lag, out, window_size,
-                min_samples);
+  ga->Transform(RollingMaxTransform<float>, lag, out, window_size, min_samples);
   return 0;
 }
 int GroupedArrayFloat32_RollingQuantileTransform(GroupedArrayHandle handle,
@@ -542,12 +540,12 @@ int Float64_RollingStdTransform(double *data, int length, int window_size,
 }
 int Float64_RollingMinTransform(double *data, int length, int window_size,
                                 int min_samples, double *out) {
-  RollingMinTransform<double>()(data, length, out, window_size, min_samples);
+  RollingMinTransform<double>(data, length, out, window_size, min_samples);
   return 0;
 }
 int Float64_RollingMaxTransform(double *data, int length, int window_size,
                                 int min_samples, double *out) {
-  RollingMaxTransform<double>()(data, length, out, window_size, min_samples);
+  RollingMaxTransform<double>(data, length, out, window_size, min_samples);
   return 0;
 }
 int Float64_RollingQuantileTransform(double *data, int length, double p,
@@ -744,7 +742,7 @@ int GroupedArrayFloat64_RollingMinTransform(GroupedArrayHandle handle, int lag,
                                             int window_size, int min_samples,
                                             double *out) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(RollingMinTransform<double>(), lag, out, window_size,
+  ga->Transform(RollingMinTransform<double>, lag, out, window_size,
                 min_samples);
   return 0;
 }
@@ -752,7 +750,7 @@ int GroupedArrayFloat64_RollingMaxTransform(GroupedArrayHandle handle, int lag,
                                             int window_size, int min_samples,
                                             double *out) {
   auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(RollingMaxTransform<double>(), lag, out, window_size,
+  ga->Transform(RollingMaxTransform<double>, lag, out, window_size,
                 min_samples);
   return 0;
 }

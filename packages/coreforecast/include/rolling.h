@@ -67,47 +67,103 @@ inline void RollingStdTransform(const T *data, int n, T *out, int window_size,
                                min_samples);
 }
 
-template <typename Func, typename T>
-inline void RollingCompTransform(Func Comp, const T *data, int n, T *out,
-                                 int window_size, int min_samples) {
-  int upper_limit = std::min(window_size, n);
-  T pivot = data[0];
-  for (int i = 0; i < upper_limit; ++i) {
-    if (Comp(data[i], pivot)) {
-      pivot = data[i];
+template <typename T, typename Comp> class SortedDeque {
+public:
+  SortedDeque(int window_size, Comp comp = Comp())
+      : window_size_(window_size), comp_(comp) {
+    buffer_.reserve(window_size);
+  }
+  inline bool empty() const noexcept { return tail_ == -1; }
+  inline void push_back(int i, T x) noexcept {
+    if (tail_ == -1) {
+      head_ = 0;
+      tail_ = 0;
+    } else if (tail_ == window_size_ - 1) {
+      tail_ = 0;
+    } else {
+      ++tail_;
     }
+    buffer_[tail_] = {i, x};
+  }
+  inline void pop_back() noexcept {
+    if (head_ == tail_) {
+      head_ = 0;
+      tail_ = -1;
+    } else if (tail_ == 0) {
+      tail_ = window_size_ - 1;
+    } else {
+      --tail_;
+    }
+  }
+  inline void pop_front() noexcept {
+    if (head_ == tail_) {
+      head_ = 0;
+      tail_ = -1;
+    } else if (head_ == window_size_ - 1) {
+      head_ = 0;
+    } else {
+      ++head_;
+    }
+  }
+  inline const std::pair<int, T> &front() const noexcept {
+    return buffer_[head_];
+  }
+  inline const std::pair<int, T> &back() const noexcept {
+    return buffer_[tail_];
+  }
+  void update(T x) noexcept {
+    while (!empty() && comp_(back().second, x)) {
+      pop_back();
+    }
+    if (!empty() && front().first <= i_) {
+      pop_front();
+    }
+    push_back(window_size_ + i_, x);
+    ++i_;
+  }
+  T get() const noexcept { return front().second; }
+
+private:
+  std::vector<std::pair<int, T>> buffer_;
+  int window_size_;
+  int head_ = 0;
+  int tail_ = -1;
+  int i_ = 0;
+  Comp comp_;
+};
+
+template <typename T, typename Comp>
+inline void RollingCompTransform(const T *data, int n, T *out, int window_size,
+                                 int min_samples) {
+  int upper_limit = std::min(window_size, n);
+  SortedDeque<T, Comp> sdeque(window_size);
+  for (int i = 0; i < upper_limit; ++i) {
+    sdeque.update(data[i]);
     if (i + 1 < min_samples) {
       out[i] = std::numeric_limits<T>::quiet_NaN();
     } else {
-      out[i] = pivot;
+      out[i] = sdeque.get();
     }
   }
-  for (int i = window_size; i < n; ++i) {
-    pivot = data[i];
-    for (int j = 0; j < window_size; ++j) {
-      if (Comp(data[i - j], pivot)) {
-        pivot = data[i - j];
-      }
-    }
-    out[i] = pivot;
+  for (int i = upper_limit; i < n; ++i) {
+    sdeque.update(data[i]);
+    out[i] = sdeque.get();
   }
 }
 
-template <typename T> struct RollingMinTransform {
-  void operator()(const T *data, int n, T *out, int window_size,
-                  int min_samples) {
-    RollingCompTransform(std::less<T>(), data, n, out, window_size,
-                         min_samples);
-  }
-};
+template <typename T>
+void RollingMinTransform(const T *data, int n, T *out, int window_size,
+                         int min_samples) {
+  RollingCompTransform<T, std::greater_equal<T>>(data, n, out, window_size,
+                                                 min_samples);
+}
 
-template <typename T> struct RollingMaxTransform {
-  void operator()(const T *data, int n, T *out, int window_size,
-                  int min_samples) const {
-    RollingCompTransform(std::greater<T>(), data, n, out, window_size,
-                         min_samples);
-  }
-};
+template <typename T>
+void RollingMaxTransform(const T *data, int n, T *out, int window_size,
+                         int min_samples) {
+  RollingCompTransform<T, std::less_equal<T>>(data, n, out, window_size,
+                                              min_samples);
+}
 
 template <typename T>
 inline void RollingQuantileTransform(const T *data, int n, T *out,
@@ -171,7 +227,7 @@ template <typename T> struct SeasonalRollingStdTransform {
 template <typename T> struct SeasonalRollingMinTransform {
   void operator()(const T *data, int n, T *out, int season_length,
                   int window_size, int min_samples) {
-    SeasonalRollingTransform(RollingMinTransform<T>(), data, n, out,
+    SeasonalRollingTransform(RollingMinTransform<T>, data, n, out,
                              season_length, window_size, min_samples);
   }
 };
@@ -179,7 +235,7 @@ template <typename T> struct SeasonalRollingMinTransform {
 template <typename T> struct SeasonalRollingMaxTransform {
   void operator()(const T *data, int n, T *out, int season_length,
                   int window_size, int min_samples) {
-    SeasonalRollingTransform(RollingMaxTransform<T>(), data, n, out,
+    SeasonalRollingTransform(RollingMaxTransform<T>, data, n, out,
                              season_length, window_size, min_samples);
   }
 };
@@ -226,7 +282,7 @@ template <typename T> struct RollingStdUpdate {
 template <typename T> struct RollingMinUpdate {
   void operator()(const T *data, int n, T *out, int window_size,
                   int min_samples) {
-    RollingUpdate(RollingMinTransform<T>(), data, n, out, window_size,
+    RollingUpdate(RollingMinTransform<T>, data, n, out, window_size,
                   min_samples);
   }
 };
@@ -234,7 +290,7 @@ template <typename T> struct RollingMinUpdate {
 template <typename T> struct RollingMaxUpdate {
   void operator()(const T *data, int n, T *out, int window_size,
                   int min_samples) {
-    RollingUpdate(RollingMaxTransform<T>(), data, n, out, window_size,
+    RollingUpdate(RollingMaxTransform<T>, data, n, out, window_size,
                   min_samples);
   }
 };

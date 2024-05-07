@@ -21,13 +21,13 @@ inline void ExpandingStdTransform(const T *data, int n, T *out, T *agg) {
 
 template <typename T> struct ExpandingMinTransform {
   void operator()(const T *data, int n, T *out) {
-    RollingCompTransform(std::less<T>(), data, n, out, n, 1);
+    RollingMinTransform<T>(data, n, out, n, 1);
   }
 };
 
 template <typename T> struct ExpandingMaxTransform {
   void operator()(const T *data, int n, T *out) {
-    RollingCompTransform(std::greater<T>(), data, n, out, n, 1);
+    RollingMaxTransform<T>(data, n, out, n, 1);
   }
 };
 
