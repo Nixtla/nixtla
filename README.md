@@ -35,32 +35,22 @@ from nixtla import NixtlaClient
 ```
 ###  Forecast using TimeGPT in 3 easy steps
 ```python
-# 1. Instantiate the NixtlaClient
 # Get your API Key at dashboard.nixtla.io
 
-nixtla_client = NixtlaClient(
-    api_key = 'YOUR API KEY HERE'
-)
+# 1. Instantiate the NixtlaClient
+nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
 
-# 2. Read Data # Historic Air Passenger Data (
-df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+# 2. Read historic electricity demand data 
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
 
-
-
-
-# 3. Forecast the next 24 months
-timegpt_fcst_df = nixtla_client.forecast(df=df, # data (can be dataframe with multiple ids)
-                                         h=24, # Forecast horizon
-                                         time_col='timestamp',
-                                         target_col='value',
-                                         level=[80, 90], # Prediction intervals
-                                         model='timegpt-1-long-horizon')
-
+# 3. Forecast the next 24 hours
+fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
 
 # 4. Plot your results (optional)
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value', level=[80, 90])
 
 ```
+![Forecast Results](./nbs/img/forecast_readme.png)
 
 ###  Anomaly detection using TimeGPT in 3 easy steps
 ```python
@@ -83,12 +73,10 @@ anomalies_df = nixtla_client.detect_anomalies(df, time_col='timestamp', target_c
 nixtla_client.plot(df, anomalies_df,time_col='timestamp', target_col='value'
 )
 ```
+![AnomalyDetection](nbs/img/anomaly.png)
 
 ## 🤓 API support for other languages
-Go to  our [API Reference](https://docs.nixtla.io) to see how to use TimeGPT with other languages like JavaScript, Go and more.
-
-![API Reference](nbs/img/ApiRefScreen.png)
-
+Explore our [API Reference](https://docs.nixtla.io) to discover how to leverage TimeGPT across various programming languages including JavaScript, Go, and more.
 
 ## 🔥 Features and Capabilities
 
@@ -126,17 +114,11 @@ Dive into our [comprehensive documentation](https://docs.nixtla.io/docs/getting-
 
 ## 🗞️ TimeGPT-1: Revolutionizing Forecasting and Anomaly Detection
 
-Time series data is an essential component in various sectors, including finance, healthcare, meteorology, and social sciences. Whether it’s tracking ocean tides or monitoring the daily closing value of the Dow Jones, time series data plays an indispensable role in forecasting future values and informing decision-making processes.
+Time series data is pivotal across various sectors, including finance, healthcare, meteorology, and social sciences. Whether it's monitoring ocean tides or tracking the Dow Jones's daily closing values, time series data is crucial for forecasting and decision-making.
 
-Traditionally, analysts have relied on methods like ARIMA, ETS, MSTL, Theta, and CES, as well as machine learning models like XGBoost and LightGBM or deep learning models to analyze time series data. 
+Traditional analysis methods such as ARIMA, ETS, MSTL, Theta, CES, machine learning models like XGBoost and LightGBM, and deep learning approaches have been standard tools for analysts. However, TimeGPT introduces a paradigm shift with its standout performance, efficiency, and simplicity. Thanks to its zero-shot inference capability, TimeGPT streamlines the analytical process, making it accessible even to users with minimal coding experience.
 
-However, in comparison to established statistical, machine learning, and deep learning methods, TimeGPT stands out in terms of performance, efficiency, and simplicity through its zero-shot inference capability.
-
-TimeGPT is user-friendly and low-code. Users can simply upload their time series data and generate forecasts or detect anonal ies for desired time steps with just a single line of code.
-
-TimeGPT is the only out of the box foundational model for time series and be used through our public APIs, throgu Azure Studio (comming soon) or on your own infrastructure. 
-
-Want to chat: send us an email to ops [at] nixtla.io. 
+TimeGPT is user-friendly and low-code, enabling users to upload their time series data and either generate forecasts or detect anomalies with just a single line of code. As the only foundational model for time series analysis out of the box, TimeGPT can be integrated via our public APIs, through Azure Studio (coming soon), or deployed on your own infrastructure.
 
 ## ⚙️ Architecture
 Self-attention, the revolutionary concept introduced by the paper “Attention is all you need“, is the basis of the this foundational model. The TimeGPT model is not based on any existing large language model(LLMs). It is independently trained on vast timeseries dataset as a large transformer model and is designed so as to minimize the forecasting error.
@@ -154,18 +136,16 @@ from a broad array of domains, including finance, economics, demographics, healt
 IoT sensor data, energy, web traffic, sales, transport, and banking. Due to this diverse set of domains,
 the training dataset contains time series with a wide range of characteristics
 
+For the Zero-shot Results section of your README, you can enhance the clarity and effectiveness by focusing on emphasizing the key findings and their implications, while also making the text more concise and digestible. Here's a refined version:
+
+---
+
 ## ⚡️ Zero-shot Results
 ### Accuracy:
-We first test TimeGPT capabilities on zero-shot inference, meaning that no additional fine-tuning is
-performed on the test set. Table 1 presents the zero-shot results. Remarkably, TimeGPT outperforms
-a comprehensive collection of battle-tested statistical models and SoTA deep learning approaches,
-ranking among the top-3 performers across frequencies.
-It must be noted that the validity of a forecasting model can only be assessed relative to its performance
-against competing alternatives. Although accuracy is commonly seen as the only relevant metric,
-computational cost and implementation complexity are key factors for practical applications. In this
-regard, it is noteworthy that the reported results of TimeGPT are the result of a simple and extremely
-fast invocation of the prediction method of a pre-trained model. In comparison, other models require
-a complete pipeline for training and then predicting.
+TimeGPT has been tested for its zero-shot inference capabilities on more than 300K unique series, which involve using the model without additional fine-tuning on the test dataset. TimeGPT outperforms a comprehensive range of well-established statistical and cutting-edge deep learning models, consistently ranking among the top three performers across various frequencies.
+
+### Ease of use:
+TimeGPT also excels by offering simple and rapid predictions using a pre-trained model. This stands in stark contrast to other models that typically require an extensive training and prediction pipeline. 
 
 ![Results](nbs/img/results.jpg)
 
