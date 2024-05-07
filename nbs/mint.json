@@ -136,8 +136,8 @@
     },
     {
       "group": "API Reference",
-      "pages": ["nixtla_client.html", 
-                "date_features.html"]
+      "pages": ["docs/api-reference/nixtla_client.html", 
+                "docs/api-reference/date_features.html"]
     }
   ]
 }
