@@ -12,3 +12,23 @@ def colab_badge(path: str):
     nb_url = f"{base_url}/Nixtla/nixtla/blob/main/nbs/{path}.ipynb"
     badge_md = f"[![]({badge_svg})]({nb_url})"
     display(Markdown(badge_md))
+
+# %% ../nbs/utils.ipynb 4
+import sys
+from contextlib import contextmanager
+
+
+@contextmanager
+def not_run_in_colab():
+    if "google.colab" in sys.modules:
+
+        class NoOpContext:
+            def __enter__(self):
+                pass
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                return True
+
+        yield NoOpContext()
+    else:
+        yield
