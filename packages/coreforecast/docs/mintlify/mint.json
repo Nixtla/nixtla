@@ -31,7 +31,10 @@
         "lag_transforms",
         "scalers",
         "differences",
-        "seasonal"
+        "seasonal",
+        "rolling",
+        "expanding",
+        "exponentially_weighted"
       ]
     }
   ]

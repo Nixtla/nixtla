@@ -49,3 +49,6 @@ We've also implemented some functions that work on single arrays, you can refer 
 * [differences](https://nixtlaverse.nixtla.io/coreforecast/differences)
 * [scalers](https://nixtlaverse.nixtla.io/coreforecast/scalers)
 * [seasonal](https://nixtlaverse.nixtla.io/coreforecast/seasonal)
+* [rolling](https://nixtlaverse.nixtla.io/coreforecast/rolling)
+* [expanding](https://nixtlaverse.nixtla.io/coreforecast/expanding)
+* [exponentially weighted](https://nixtlaverse.nixtla.io/coreforecast/exponentially_weighted)
