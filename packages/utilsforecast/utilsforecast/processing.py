@@ -57,12 +57,15 @@ def to_numpy(df: DataFrame) -> np.ndarray:
 # %% ../nbs/processing.ipynb 7
 def counts_by_id(df: DataFrame, id_col: str) -> DataFrame:
     if isinstance(df, pd.DataFrame):
-        id_counts = df.groupby(id_col, observed=True).size().reset_index()
-        ids = id_counts[id_col]
+        id_counts = df[id_col].value_counts(sort=False, dropna=False)
+        ids = id_counts.index
         if isinstance(ids.dtype, pd.CategoricalDtype):
-            ids = ids.cat.codes
-        sort_idxs = ids.to_numpy().argsort()
-        id_counts = id_counts.iloc[sort_idxs].reset_index(drop=True)
+            # there's no observed argument in value_counts
+            # so this can return unseen categories
+            id_counts = id_counts[id_counts > 0]
+            ids = id_counts.index.codes
+        sort_idxs = ids.argsort()
+        id_counts = id_counts.iloc[sort_idxs].reset_index()
     else:
         id_counts = df[id_col].value_counts().sort(id_col)
     id_counts.columns = [id_col, "counts"]
