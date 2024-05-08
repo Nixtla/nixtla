@@ -163,9 +163,4 @@ d = { 'settings': { 'branch': 'main',
             'nixtla.types.single_series_insample_forecast': {},
             'nixtla.types.validation_error': {},
             'nixtla.types.validation_error_loc_item': {},
-            'nixtla.utils': { 'nixtla.utils.NoOpContext': ('utils.html#noopcontext', 'nixtla/utils.py'),
-                              'nixtla.utils.NoOpContext.__enter__': ('utils.html#noopcontext.__enter__', 'nixtla/utils.py'),
-                              'nixtla.utils.NoOpContext.__exit__': ('utils.html#noopcontext.__exit__', 'nixtla/utils.py'),
-                              'nixtla.utils.colab_badge': ('utils.html#colab_badge', 'nixtla/utils.py'),
-                              'nixtla.utils.not_run_in_colab': ('utils.html#not_run_in_colab', 'nixtla/utils.py'),
-                              'nixtla.utils.only_run_in_colab': ('utils.html#only_run_in_colab', 'nixtla/utils.py')}}}
+            'nixtla.utils': {'nixtla.utils.colab_badge': ('utils.html#colab_badge', 'nixtla/utils.py')}}}
