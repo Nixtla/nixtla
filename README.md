@@ -13,8 +13,7 @@
 [![Downloads](https://pepy.tech/badge/nixtla/month)](https://pepy.tech/project/nixtla)
 [![Downloads](https://pepy.tech/badge/nixtla/week)](https://pepy.tech/project/nixtla)
 
-**TimeGPT** is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code 🚀. 
-</div>
+**TimeGPT** is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code 🚀. </div>
 
 
 ## 🚀 Quick Start
