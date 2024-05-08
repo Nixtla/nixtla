@@ -58,9 +58,10 @@ def to_numpy(df: DataFrame) -> np.ndarray:
 def counts_by_id(df: DataFrame, id_col: str) -> DataFrame:
     if isinstance(df, pd.DataFrame):
         id_counts = df.groupby(id_col, observed=True).size().reset_index()
-        # sort using numpy to prevent pandas from sorting categoricals by their codes
-        # and ensuring a consistent sorting
-        sort_idxs = id_counts[id_col].to_numpy().argsort()
+        ids = id_counts[id_col]
+        if isinstance(ids.dtype, pd.CategoricalDtype):
+            ids = ids.cat.codes
+        sort_idxs = ids.to_numpy().argsort()
         id_counts = id_counts.iloc[sort_idxs].reset_index(drop=True)
     else:
         id_counts = df[id_col].value_counts().sort(id_col)
@@ -86,18 +87,26 @@ def maybe_compute_sort_indices(
     ids = df[id_col]
     times = df[time_col]
     if isinstance(df, pd.DataFrame):
+        if isinstance(ids.dtype, pd.CategoricalDtype):
+            # we sort categoricals by their codes, this is also done in counts_by_id
+            ids = ids.cat.codes
         # pandas series alignment makes this slow, cast to numpy
         ids = ids.to_numpy()
         times = times.to_numpy()
     ids_are_sorted = (ids[:-1] <= ids[1:]).all()
-    times_are_sorted = (
-        (times[:-1] < times[1:])  # times are ascending
-        | (ids[:-1] != ids[1:])  # except when the id changes
-    ).all()
-    if ids_are_sorted and times_are_sorted:
-        return None
+    if ids_are_sorted:
+        times_are_sorted = (
+            (times[:-1] < times[1:])  # times are ascending
+            | (ids[:-1] != ids[1:])  # except when the id changes
+        ).all()
+        if times_are_sorted:
+            return None
     if isinstance(df, pd.DataFrame):
-        sort_idxs = np.lexsort((times, ids))
+        if pd.api.types.is_object_dtype(df.dtypes[id_col]):
+            # MultiIndex.argsort is faster than lexsort for strings
+            sort_idxs = pd.MultiIndex.from_frame(df[[id_col, time_col]]).argsort()
+        else:
+            sort_idxs = np.lexsort((times, ids))
     else:
         sort_idxs = (
             df.select(pl.arg_sort_by([id_col, time_col])).to_series(0).to_numpy()
