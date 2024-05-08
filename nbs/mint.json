@@ -136,9 +136,9 @@
     },
     {
       "group": "API Reference",
-      "pages": ["docs/api-reference/nixtla_client.html", 
-                "docs/api-reference/date_features.html",
-                "docs/api-reference/excel_addin.html"
+      "pages": ["docs/reference/nixtla_client.html", 
+                "docs/reference/date_features.html",
+                "docs/reference/excel_addin.html"
               ]
     }
   ]
