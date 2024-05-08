@@ -13,8 +13,6 @@
 [![Downloads](https://pepy.tech/badge/nixtla/month)](https://pepy.tech/project/nixtla)
 [![Downloads](https://pepy.tech/badge/nixtla/week)](https://pepy.tech/project/nixtla)
 [![fern shield](https://img.shields.io/badge/%F0%9F%8C%BF-SDK%20generated%20by%20Fern-brightgreen)](https://buildwithfern.com/?utm_source=nixtla/nixtla/readme)
-    
-**Nixtla** offers a collection of classes and methods to interact with the API of TimeGPT.
 </div>
 
 # 🕰️ TimeGPT: Revolutionizing Time-Series Analysis
