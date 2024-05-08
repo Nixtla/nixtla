@@ -1,0 +1,82 @@
+---
+output-file: singlets.html
+title: 'Quick Start: Frorecast a single time series'
+---
+
+
+In this guide you will learn how to forecast a simple series.
+
+```python
+#!pip install nixtlats
+import pandas as pd
+import os
+from nixtlats import TimeGPT
+
+# Instantiate the `TimeGPT` class providing your credentials.
+timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+
+# Check you token is valid and has credits to make requests.
+if timegpt.validate_token():
+    print("Token validation successful!")
+else:
+    raise Exception("Token validation failed! Please check go to https://dashboard.nixtla.io/ to get your token.")
+
+# We will use the air passengers dataset as an example dataset.
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+
+# You can also use your own dataset, just make sure it has a column with dates or datestamples (time_col) and a column with the target variable (target_col). 
+# (TimeGPT can also forecast mayne different time series at once, follow the Multi Forecast example for more details)
+
+# Make a forecast for the next 12 steps (months in this case). (Output is a pandas dataframe with the next 12 observations, h stands for horizon) 
+timegpt_fcst_df = timegpt.forecast(df=df, h=12, time_col='timestamp', target_col='value')
+```
+
+``` text
+Token validation successful!
+```
+
+```python
+pd.concat([df, timegpt_fcst_df]).set_index('timestamp').plot()
+```
+
+![](/nixtla/SingleTS_files/figure-markdown_strict/cell-3-output-1.png)
+
+```python
+# Necessary package installations (though typically this isn't done within scripts but rather externally).
+#!pip install nixtlats
+
+# Importing necessary modules.
+import pandas as pd  # A popular data manipulation library.
+import os  # Library to interact with the operating system.
+from nixtlats import TimeGPT  # Importing the TimeGPT class from nixtlats library.
+
+# Initializing the `TimeGPT` class with a token from the environment variable.
+timegpt = TimeGPT(token=os.environ['TIMEGPT_TOKEN'])
+
+# Checking if the token provided is valid.
+if timegpt.validate_token():
+    print("Token validation successful!")  # Token is valid.
+else:
+    # Raise an exception if token validation fails.
+    raise Exception("Token validation failed! Please check go to https://dashboard.nixtla.io/ to get your token.")
+
+# Loading the air passengers dataset from a remote URL.
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+
+# (The comment mentions we can use our own dataset, but it should have certain columns like 'timestamp' and 'value')
+
+# Forecasting the next 12 data points (e.g., months) using TimeGPT.
+# The resulting dataframe will have predictions for the next 12 time steps.
+timegpt_fcst_df = timegpt.forecast(df=df, h=12, time_col='timestamp', target_col='value')
+
+# Plotting the original data combined with the forecasted data.
+# Note: there is a redundant plot call. Removed the duplicate.
+pd.concat([df, timegpt_fcst_df]).set_index('timestamp').plot()
+```
+
+``` text
+Token validation successful!
+```
+
+![](/nixtla/SingleTS_files/figure-markdown_strict/cell-4-output-2.png)
+
