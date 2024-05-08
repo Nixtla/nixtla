@@ -15,7 +15,7 @@
 
 **TimeGPT** is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code 🚀. </div>
 
-## Table of Contents
+## 📖 Table of Contents
 - [Quick Start](#-quick-start)
 - [Installation](#install-nixtlas-sdk)
 - [Forecasting with TimeGPT](#forecast-using-timegpt-in-3-easy-steps)
