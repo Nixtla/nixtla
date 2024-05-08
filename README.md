@@ -8,7 +8,7 @@
 [![CI](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml)
 [![PyPi](https://img.shields.io/pypi/v/nixtla?color=blue)](https://pypi.org/project/nixtla/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtla/blob/main/LICENSE)
-[![docs](https://img.shields.io/website-up-down-green-red/http/nixtla.github.io/nixtla.svg?label=docs)](https://nixtlaverse.nixtla.io/nixtla/)
+[![docs](https://img.shields.io/website-up-down-green-red/http/docs.nixtla.io/.svg?label=docs)](docs.nixtla.io)
 [![Downloads](https://pepy.tech/badge/nixtla)](https://pepy.tech/project/nixtla)
 [![Downloads](https://pepy.tech/badge/nixtla/month)](https://pepy.tech/project/nixtla)
 [![Downloads](https://pepy.tech/badge/nixtla/week)](https://pepy.tech/project/nixtla)
