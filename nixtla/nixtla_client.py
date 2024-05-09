@@ -265,6 +265,7 @@ class _NixtlaClientModel:
                 X_df = X_df.assign(unique_id="ts_0")
             if X_df.dtypes.ds != "object":
                 X_df["ds"] = X_df["ds"].astype(str)
+
         return df, X_df
 
     def transform_outputs(
@@ -491,6 +492,17 @@ class _NixtlaClientModel:
             X_df = df.drop(columns="y")
             x_cols = X_df.drop(columns=["unique_id", "ds"]).columns.to_list()
             X_df = self.preprocess_X_df(X_df)
+
+        if (X_df is None) and (set(y_cols) < set(df.columns)):
+            missing_exogenous = df.columns.drop(y_cols)
+            missing_exogenous_str = ", ".join(missing_exogenous)
+            main_logger.warning(
+                "You did not provide X_df. "
+                "Exogenous variables in df are ignored. "
+                "To surpress this warning, please add X_df "
+                f"with exogenous variables: {missing_exogenous_str}"
+            )
+
         return Y_df, X_df, x_cols
 
     def dataframes_to_dict(self, Y_df: pd.DataFrame, X_df: pd.DataFrame):
