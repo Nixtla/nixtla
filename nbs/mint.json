@@ -137,8 +137,10 @@
     },
     {
       "group": "API Reference",
-      "pages": ["nixtla_client.html", 
-                "date_features.html"]
+      "pages": ["docs/reference/nixtla_client.html", 
+                "docs/reference/date_features.html",
+                "docs/reference/excel_addin.html"
+              ]
     }
   ]
 }
