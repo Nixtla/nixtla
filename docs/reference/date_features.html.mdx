@@ -1,0 +1,67 @@
+---
+output-file: date_features.html
+title: Date Features
+---
+
+
+------------------------------------------------------------------------
+
+#### CountryHolidays
+
+> ``` text
+>  CountryHolidays (countries:List[str])
+> ```
+
+*Given a list of countries, returns a dataframe with holidays for each
+country.*
+
+```python
+import pandas as pd
+
+c_holidays = CountryHolidays(countries=['US', 'MX'])
+periods = 365 * 5
+dates = pd.date_range(end='2023-09-01', periods=periods)
+holidays_df = c_holidays(dates)
+holidays_df.head()
+```
+
+|            | US_New Year's Day | US_Memorial Day | US_Independence Day | US_Labor Day | US_Veterans Day | US_Veterans Day (observed) | US_Thanksgiving | US_Christmas Day | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Columbus Day | US_Independence Day (observed) | US_New Year's Day (observed) | US_Juneteenth National Independence Day | US_Juneteenth National Independence Day (observed) | US_Christmas Day (observed) | MX_New Year's Day | MX_Constitution Day | MX_Benito Juárez's birthday | MX_Labor Day | MX_Independence Day | MX_Revolution Day | MX_Change of Federal Government | MX_Christmas Day |
+|------------|-------------------|-----------------|---------------------|--------------|-----------------|----------------------------|-----------------|------------------|-------------------------------|--------------------------|-----------------|--------------------------------|------------------------------|-----------------------------------------|----------------------------------------------------|-----------------------------|-------------------|---------------------|-----------------------------|--------------|---------------------|-------------------|---------------------------------|------------------|
+| 2018-09-03 | 0                 | 0               | 0                   | 1            | 0               | 0                          | 0               | 0                | 0                             | 0                        | 0               | 0                              | 0                            | 0                                       | 0                                                  | 0                           | 0                 | 0                   | 0                           | 0            | 0                   | 0                 | 0                               | 0                |
+| 2018-09-04 | 0                 | 0               | 0                   | 0            | 0               | 0                          | 0               | 0                | 0                             | 0                        | 0               | 0                              | 0                            | 0                                       | 0                                                  | 0                           | 0                 | 0                   | 0                           | 0            | 0                   | 0                 | 0                               | 0                |
+| 2018-09-05 | 0                 | 0               | 0                   | 0            | 0               | 0                          | 0               | 0                | 0                             | 0                        | 0               | 0                              | 0                            | 0                                       | 0                                                  | 0                           | 0                 | 0                   | 0                           | 0            | 0                   | 0                 | 0                               | 0                |
+| 2018-09-06 | 0                 | 0               | 0                   | 0            | 0               | 0                          | 0               | 0                | 0                             | 0                        | 0               | 0                              | 0                            | 0                                       | 0                                                  | 0                           | 0                 | 0                   | 0                           | 0            | 0                   | 0                 | 0                               | 0                |
+| 2018-09-07 | 0                 | 0               | 0                   | 0            | 0               | 0                          | 0               | 0                | 0                             | 0                        | 0               | 0                              | 0                            | 0                                       | 0                                                  | 0                           | 0                 | 0                   | 0                           | 0            | 0                   | 0                 | 0                               | 0                |
+
+------------------------------------------------------------------------
+
+#### SpecialDates
+
+> ``` text
+>  SpecialDates (special_dates:Dict[str,List[str]])
+> ```
+
+*Given a dictionary of categories and dates, returns a dataframe with
+the special dates.*
+
+```python
+special_dates = SpecialDates(
+    special_dates={
+        'Important Dates': ['2021-02-26', '2020-02-26'],
+        'Very Important Dates': ['2021-01-26', '2020-01-26', '2019-01-26']
+    }
+)
+periods = 365 * 5
+dates = pd.date_range(end='2023-09-01', periods=periods)
+holidays_df = special_dates(dates)
+holidays_df.head()
+```
+
+|            | Important Dates | Very Important Dates |
+|------------|-----------------|----------------------|
+| 2018-09-03 | 0               | 0                    |
+| 2018-09-04 | 0               | 0                    |
+| 2018-09-05 | 0               | 0                    |
+| 2018-09-06 | 0               | 0                    |
+| 2018-09-07 | 0               | 0                    |
+
