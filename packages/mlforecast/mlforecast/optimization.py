@@ -5,7 +5,7 @@ __all__ = ['mlforecast_objective']
 
 # %% ../nbs/optimization.ipynb 3
 import copy
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
 import optuna
@@ -29,6 +29,7 @@ def mlforecast_objective(
     freq: Freq,
     n_windows: int,
     h: int,
+    refit: Union[bool, int] = False,
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
@@ -52,6 +53,10 @@ def mlforecast_objective(
         Number of windows to evaluate.
     h : int
         Forecast horizon.
+    refit : bool or int (default=False)
+        Retrain model for each cross validation window.
+        If False, the models are trained at the beginning and then used to predict each window.
+        If positive int, the models are retrained every `refit` windows.
     id_col : str (default='unique_id')
         Column that identifies each serie.
     time_col : str (default='ds')
@@ -88,19 +93,21 @@ def mlforecast_objective(
             model_params["cat_features"] = config["mlf_fit_params"]["static_features"]
         model_copy.set_params(**config["model_params"])
         metrics = []
+        mlf = MLForecast(
+            models={"model": model_copy},
+            freq=freq,
+            **config["mlf_init_params"],
+        )
         for i, (_, train, valid) in enumerate(splits):
-            mlf = MLForecast(
-                models={"model": model_copy},
-                freq=freq,
-                **config["mlf_init_params"],
-            )
-            mlf.fit(
-                train,
-                id_col=id_col,
-                time_col=time_col,
-                target_col=target_col,
-                **config["mlf_fit_params"],
-            )
+            should_fit = i == 0 or (refit > 0 and i % refit == 0)
+            if should_fit:
+                mlf.fit(
+                    train,
+                    id_col=id_col,
+                    time_col=time_col,
+                    target_col=target_col,
+                    **config["mlf_fit_params"],
+                )
             static = [c for c in mlf.ts.static_features_.columns if c != id_col]
             dynamic = [
                 c
@@ -113,7 +120,11 @@ def mlforecast_objective(
                 )
             else:
                 X_df = None
-            preds = mlf.predict(h=h, X_df=X_df)
+            preds = mlf.predict(
+                h=h,
+                X_df=X_df,
+                new_df=None if should_fit else train,
+            )
             result = ufp.join(
                 valid[[id_col, time_col, target_col]],
                 preds,

@@ -104,7 +104,7 @@ def random_forest_space(trial: optuna.Trial):
         "min_samples_split": trial.suggest_int("min_child_samples", 1, 100),
         "max_features": trial.suggest_float("max_features", 0.5, 1.0),
         "criterion": trial.suggest_categorical(
-            "criterion", ["squared_error", "poisson"]
+            "criterion", ["squared_error", "absolute_error"]
         ),
     }
 
@@ -434,6 +434,7 @@ class AutoMLForecast:
         n_windows: int,
         h: int,
         num_samples: int,
+        refit: Union[bool, int] = False,
         loss: Optional[Callable[[DataFrame, DataFrame], float]] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
@@ -454,6 +455,10 @@ class AutoMLForecast:
             Forecast horizon.
         num_samples : int
             Number of trials to run
+        refit : bool or int (default=False)
+            Retrain model for each cross validation window.
+            If False, the models are trained at the beginning and then used to predict each window.
+            If positive int, the models are retrained every `refit` windows.
         loss : callable, optional (default=None)
             Function that takes the validation and train dataframes and produces a float.
             If `None` will use the average SMAPE across series.
@@ -466,7 +471,7 @@ class AutoMLForecast:
         study_kwargs : dict, optional (default=None)
             Keyword arguments to be passed to the optuna.Study constructor.
         optimize_kwargs : dict, optional (default=None)
-            Keyword arguments to be passed to the Study.optimize method.
+            Keyword arguments to be passed to the optuna.Study.optimize method.
 
         Returns
         -------
@@ -498,7 +503,7 @@ class AutoMLForecast:
         if optimize_kwargs is None:
             optimize_kwargs = {}
 
-        self.results_ = []
+        self.results_ = {}
         self.models_ = {}
         for name, auto_model in self.models.items():
 
@@ -520,13 +525,14 @@ class AutoMLForecast:
                 freq=self.freq,
                 n_windows=n_windows,
                 h=h,
+                refit=refit,
                 id_col=id_col,
                 time_col=time_col,
                 target_col=target_col,
             )
             study = optuna.create_study(direction="minimize", **study_kwargs)
             study.optimize(objective, n_trials=num_samples, **optimize_kwargs)
-            self.results_.append(study)
+            self.results_[name] = study
             best_config = study.best_trial.user_attrs["config"]
             best_model = clone(auto_model.model)
             best_model.set_params(**best_config["model_params"])

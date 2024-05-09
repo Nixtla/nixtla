@@ -65,13 +65,12 @@ jobs:
       - name: Run all tests
         run: nbdev_test --n_workers 0 --do_print --timing --flags 'polars core'
 
-  run-local-tests:
-    runs-on: ${{ matrix.os }}
+  run-macos-tests:
+    runs-on: macos-13
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-13, windows-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
@@ -86,6 +85,28 @@ jobs:
 
       - name: Install the library
         run: pip install ./
+
+      - name: Run local tests
+        run: nbdev_test --n_workers 0 --do_print --timing --skip_file_glob "*distributed*" --flags 'polars core'
+
+  run-windows-tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
+
+      - name: Set up environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the library
+        run: pip install uv && uv pip install ".[dev]" --system
 
       - name: Run local tests
         run: nbdev_test --n_workers 0 --do_print --timing --skip_file_glob "*distributed*" --flags 'polars core'
