@@ -1,0 +1,88 @@
+activation: ReLU
+alias: null
+batch_size: 16
+drop_last_loader: false
+dropout_prob_theta: 0.0
+early_stop_patience_steps: -1
+exclude_insample_y: false
+futr_exog_list: null
+h: 96
+hist_exog_list: null
+inference_windows_batch_size: -1
+input_size: 480
+interpolation_mode: linear
+learning_rate: 0.001
+loss: !!python/object:neuralforecast.losses.pytorch.MAE
+  _backward_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _backward_pre_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _buffers: !!python/object/apply:collections.OrderedDict
+  - []
+  _forward_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _forward_hooks_always_called: !!python/object/apply:collections.OrderedDict
+  - []
+  _forward_hooks_with_kwargs: !!python/object/apply:collections.OrderedDict
+  - []
+  _forward_pre_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _forward_pre_hooks_with_kwargs: !!python/object/apply:collections.OrderedDict
+  - []
+  _is_full_backward_hook: null
+  _load_state_dict_post_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _load_state_dict_pre_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _modules: !!python/object/apply:collections.OrderedDict
+  - []
+  _non_persistent_buffers_set: !!set {}
+  _parameters: !!python/object/apply:collections.OrderedDict
+  - []
+  _state_dict_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _state_dict_pre_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  horizon_weight: null
+  is_distribution_output: false
+  output_names:
+  - ''
+  outputsize_multiplier: 1
+  training: true
+max_steps: 1000
+mlp_units:
+- &id001
+  - 512
+  - 512
+- *id001
+- *id001
+n_blocks:
+- 1
+- 1
+- 1
+n_freq_downsample:
+- 4
+- 2
+- 1
+n_pool_kernel_size:
+- 2
+- 2
+- 1
+num_lr_decays: 3
+num_workers_loader: 0
+optimizer: null
+optimizer_kwargs: null
+pooling_mode: MaxPool1d
+random_seed: 1
+scaler_type: robust
+stack_types:
+- identity
+- identity
+- identity
+start_padding_enabled: false
+stat_exog_list: null
+step_size: 1
+val_check_steps: 100
+valid_batch_size: 8
+valid_loss: null
+windows_batch_size: 1024
