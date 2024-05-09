@@ -20,11 +20,6 @@ for sub_dir in "${SUB_DIRS[@]}"; do
     fi
 done
 
-# Process SDK API Reference link
-echo $counter
-python -m action_files.readme_com.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/ --category "64dd4f0e73869100242d1bed"
-((counter++))
-
 # process changelog
 echo $counter
 file_changelog="./nbs/_docs/docs/CHANGELOG.md"
