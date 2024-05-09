@@ -9,35 +9,63 @@ guide](../../docs/getting-started-timegpt_quickstart), walk through
 tutorials on the different capabilities, and learn from real-world use
 cases in our documentation.**
 
-## Overview
+## Architecture
 
-Nixtla’s TimeGPT is a generative pre-trained forecasting model for time
-series data. TimeGPT can produce accurate forecasts for new time series
-without training, using only historical values as inputs. TimeGPT can be
-used across a plethora of tasks including demand forecasting, anomaly
-detection, financial forecasting, and more.
+Self-attention, the revolutionary concept introduced by the paper
+[Attention is all you need](https://arxiv.org/abs/1706.03762), is the
+basis of this foundation model. TimeGPT model is not based on any
+existing large language model(LLM). Instead, it is independently trained
+on a vast amount of time series data, and the large transformer model is
+designed to minimize the forecasting error.
 
-The TimeGPT model “reads” time series data much like the way humans read
-a sentence – from left to right. It looks at windows of past data, which
-we can think of as “tokens”, and predicts what comes next. This
-prediction is based on patterns the model identifies in past data and
-extrapolates into the future.
+<img src="../../img/timegpt_archi.png">
 
-The API provides an interface to TimeGPT, allowing users to leverage its
-forecasting capabilities to predict future events. TimeGPT can also be
-used for other time series-related tasks, such as what-if scenarios,
-anomaly detection, and more.
+The architecture consists of an encoder-decoder structure with multiple
+layers, each with residual connections and layer normalization. Finally,
+a linear layer maps the decoder’s output to the forecasting window
+dimension. The general intuition is that attention-based mechanisms are
+able to capture the diversity of past events and correctly extrapolate
+potential future distributions.
 
-<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/timegpt-arch.png?raw=true" alt="Figure 1. TimeGPT architecture" />
+To make prediction, TimeGPT “reads” the input series much like the way
+humans read a sentence – from left to right. It looks at windows of past
+data, which we can think of as “tokens”, and predicts what comes next.
+This prediction is based on patterns the model identifies in past data
+and extrapolates into the future.
 
-## Explore TimeGPT API
+## Explore examples and use cases
 
-The capabilties section highlight all of the model’s functionalities
-with short code snippets for easy and quick experimentation.
+Visit our comprehensive documentation to explore a wide range of
+examples and practical use cases for TimeGPT. Whether you’re getting
+started with our [Quickstart
+Guide](https://docs.nixtla.io/docs/getting-started-timegpt_quickstart),
+[setting up your API
+key](https://docs.nixtla.io/docs/getting-started-setting_up_your_api_key),
+or looking for advanced forecasting techniques, our resources are
+designed to guide you through every step of the process.
 
-For more detailed tutorials, check our in-depth guides covering all the
-steps required to use TimeGPT to its full potential.
+Learn how to handle [anomaly
+detection](https://docs.nixtla.io/docs/capabilities-anomaly-detection-quickstart),
+[fine-tune
+models](https://docs.nixtla.io/docs/tutorials-fine_tuning_with_a_specific_loss_function)
+with specific loss functions, and scale your computing using frameworks
+like [Spark](https://docs.nixtla.io/docs/tutorials-spark),
+[Dask](https://docs.nixtla.io/docs/tutorials-dask), and
+[Ray](https://docs.nixtla.io/docs/tutorials-ray).
 
-Make sure to also check our uses cases to see TimeGPT applied to
-real-life scenarios.
+Additionally, our documentation covers specialized topics such as
+handling [exogenous
+variables](https://docs.nixtla.io/docs/tutorials-exogenous_variables),
+validating models through
+[cross-validation](https://docs.nixtla.io/docs/tutorials-cross_validation),
+and forecasting under uncertainty with [quantile
+forecasts](https://docs.nixtla.io/docs/tutorials-quantile_forecasts) and
+[prediction
+intervals](https://docs.nixtla.io/docs/tutorials-prediction_intervals).
+
+For those interested in real-world applications, discover how TimeGPT
+can be used for [forecasting web
+traffic](https://docs.nixtla.io/docs/use-cases-forecasting_web_traffic)
+or [predicting Bitcoin
+prices](https://docs.nixtla.io/docs/use-cases-bitcoin_price_prediction).
 
