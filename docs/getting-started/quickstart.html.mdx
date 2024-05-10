@@ -16,19 +16,22 @@ title: TimeGPT Quickstart
 -   Sign in with Google, GitHub or your email
 -   Create your API key by going to ‘API Keys’ in the menu and clicking
     on ‘Create New API Key’
--   Refresh the page and your API key will be there
+-   Your new key will appear. Copy the API key using the button on the
+    right.
+
+<img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true" alt="Dashboard for TimeGPT API keys. Keys is in the middle, with trash and copy buttons on the right." width="700" />
 
 ## Step 2: Install Nixtla
 
-You can install `nixtla` with `pip`:
+In your favorite Python development environment:
+
+Install `nixtla` with `pip`:
 
 ```shell
 pip install nixtla
 ```
 
 ## Step 3: Import the Nixtla TimeGPT client
-
-In your favorite Python development environment:
 
 ```python
 from nixtla import NixtlaClient
@@ -103,6 +106,8 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
 >     link](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html)
 >     for more details).
 
+### Produce a longer forecast
+
 Next, forecast the next 12 months using the SDK `forecast` method. Set
 the following parameters:
 
@@ -173,6 +178,8 @@ nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value'
 
 ![](/nixtla/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-12-output-1.png)
 
+### Produce a shorter forecast
+
 You can also produce a shorter forecast. For this, we recommend using
 the default model, `timegpt-1`.
 
@@ -197,7 +204,7 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 > accuracy of the forecasts might degrade. We are currently working to
 > improve the accuracy on longer forecasts.
 
-## Using DateTime index to infer frequency
+### Use DateTime index to infer frequency
 
 The freq parameter, which indicates the time unit between consecutive
 data points, is particularly critical. Fortunately, you can pass a
