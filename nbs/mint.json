@@ -69,6 +69,7 @@
     {
       "group": "Tutorials",
       "pages": [
+        "docs/tutorials/anomaly_detection.html",
         {
           "group":"Exogenous variables",
           "pages":[
