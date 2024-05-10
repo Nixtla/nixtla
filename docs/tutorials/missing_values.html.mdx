@@ -1,6 +1,6 @@
 ---
 output-file: missing_values.html
-title: Dealing with Missing Values in TimeGPT
+title: Missing Values
 ---
 
 
@@ -12,15 +12,25 @@ uninterrupted data for its given time frame.
 In this tutorial, we will show you how to deal with missing values in
 `TimeGPT`.
 
-**Outline** 1. [Load Data](#load-data) 2. [Get Started with
-TimeGPT](#get-started-with-timegpt) 3. [Visualize Data](#visualize-data)
-4. [Fill Missing Values](#fill-missing-values) 5. [Forecast with
-TimeGPT](#forecast-with-timegpt) 6. [Important
-Considerations](#important-considerations) 7. [References](#references)
+**Outline** 1. [Load Data](#load-data)
+
+1.  [Get Started with TimeGPT](#get-started-with-timegpt)
+
+2.  [Visualize Data](#visualize-data)
+
+3.  [Fill Missing Values](#fill-missing-values)
+
+4.  [Forecast with TimeGPT](#forecast-with-timegpt)
+
+5.  [Important Considerations](#important-considerations)
+
+6.  [References](#references)
 
 This work is based on skforecast’s [Forecasting Time Series with Missing
 Values](https://cienciadedatos.net/documentos/py46-forecasting-time-series-missing-values)
 tutorial.
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/19_missing_values.ipynb)
 
 ## Load Data
 
@@ -107,7 +117,7 @@ you to choose between different plotting libraries. Default is
 nixtla_client.plot(train_df_gaps)
 ```
 
-![](/nixtla/docs/tutorials/19_missing_values_files/figure-markdown_strict/cell-7-output-1.png)
+![](/nixtla/docs/tutorials/19_missing_values_files/figure-markdown_strict/cell-8-output-1.png)
 
 Note that there are two gaps in the data: from September 1, 2020, to
 October 10, 2020, and from November 8, 2020, to December 15, 2020. To
@@ -118,7 +128,7 @@ argument of the `plot` method or you can simply zoom in on the plot.
 nixtla_client.plot(train_df_gaps, max_insample_length=800)
 ```
 
-![](/nixtla/docs/tutorials/19_missing_values_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/tutorials/19_missing_values_files/figure-markdown_strict/cell-9-output-1.png)
 
 Additionally, notice a period from March 16, 2020, to April 21, 2020,
 where the data shows zero rentals. These are not missing values, but
@@ -217,7 +227,7 @@ test set.
 nixtla_client.plot(test_df, fcst)
 ```
 
-![](/nixtla/docs/tutorials/19_missing_values_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/tutorials/19_missing_values_files/figure-markdown_strict/cell-13-output-1.png)
 
 Next, we will use the `evaluate` function from `utilsforecast` to
 compute the Mean Average Error (MAE) of the TimeGPT forecast. Before
