@@ -4,9 +4,8 @@ title: Cross validation
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
-
 ```python
+import pandas as pd
 from nixtla import NixtlaClient
 ```
 
@@ -18,24 +17,12 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Load your dataset
 
 ```python
-import pandas as pd
-```
-
-
-```python
+# Read the data
 df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
-```
 
-## Step 3: Cross-validation
-
-This is done with the `cross_validation` method of `NixtlaClient`.
-Simply specify the number of windows for cross-validation using
-`n_windows`.
-
-```python
+# Cross-validation using two windows
 forecast_cv_df = nixtla_client.cross_validation(
     df=df,
     h=12,
@@ -48,15 +35,10 @@ forecast_cv_df = nixtla_client.cross_validation(
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Inferred freq: MS
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
+
+For more details, check out our [cross-validation
+tutorial](https://docs.nixtla.io/docs/tutorials-cross_validation).
 

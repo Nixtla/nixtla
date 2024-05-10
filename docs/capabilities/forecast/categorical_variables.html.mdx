@@ -4,10 +4,11 @@ title: Add categorical variables
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
-
 ```python
+import pandas as pd
+import datetime
 from nixtla import NixtlaClient
+from nixtla.date_features import SpecialDates
 ```
 
 
@@ -18,21 +19,12 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Create categorical variables
 
 ```python
-import pandas as pd
-import datetime
-from nixtla.date_features import SpecialDates
-```
-
-
-```python
+# Read the data
 df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
-```
 
-
-```python
+# Create categorical variables to label Christmas and summer vacations
 categories_dates = SpecialDates(
     special_dates={
         'christmas_vacations': [datetime.date(year, 12, 1) for year in range(1949, 1960 + 1)],
@@ -43,17 +35,11 @@ categories_dates = SpecialDates(
 dates = pd.date_range('1949-01-01', '1960-12-01', freq='MS')
 
 categories_df = categories_dates(dates).reset_index(drop=True)
-```
 
-## Step 3: Merge categorical features with the dataset
-
-```python
+# Merge with the dataset
 cat_df = pd.concat([df, categories_df], axis=1)
-```
 
-## Step 4: Forecast
-
-```python
+# Forecast
 forecast_df = nixtla_client.forecast(
     df=cat_df, 
     h=24,
@@ -61,4 +47,17 @@ forecast_df = nixtla_client.forecast(
     time_col='timestamp'
 )
 ```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+For a detailed guide on using categorical variables for forecasting,
+read our in-depth tutorial on [Categorical
+variables](https://docs.nixtla.io/docs/tutorials-categorical_variables).
 

@@ -4,9 +4,8 @@ title: Add date features
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
-
 ```python
+import pandas as pd
 from nixtla import NixtlaClient
 ```
 
@@ -18,29 +17,13 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Load your dataset
 
 ```python
-import pandas as pd
-```
-
-
-```python
+# Read the data
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
-```
 
-## Step 3: Anomaly detection with date features.
-
-You can automatically add date features for anomaly detection using the
-`date_features` parameter.
-
-Setting `date_features` to `True` extract all the possible date features
-from the dataset.
-
-You can also pass a list of date features you want to create, like
-`['days', 'month']`.
-
-```python
+# Add date features for anomaly detection
+# Here, we use date features at the month and year levels
 anomalies_df_x = nixtla_client.detect_anomalies(
     df, time_col='timestamp', 
     target_col='value', 
@@ -48,6 +31,9 @@ anomalies_df_x = nixtla_client.detect_anomalies(
     date_features=['month', 'year'],
     level=99.99,
 )
+
+# Plot weights of date features
+nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ```
 
 ``` text
@@ -57,13 +43,8 @@ INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 INFO:nixtla.nixtla_client:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12, year_2007, year_2008, year_2009, year_2010, year_2011, year_2012, year_2013, year_2014, year_2015, year_2016
 ```
 
-## Step 4: Plot weights of features
+![](/nixtla/docs/capabilities/anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-4-output-2.png)
 
-It is then possible to plot the importance of each feature.
-
-```python
-nixtla_client.weights_x.plot.barh(x='features', y='weights')
-```
-
-![](/nixtla/docs/capabilities/anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-7-output-1.png)
+For more details, check out our in-depth tutorial on [anomaly
+detection](https://docs.nixtla.io/docs/tutorials/anomaly_detection).
 

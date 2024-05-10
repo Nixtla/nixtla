@@ -4,9 +4,14 @@ title: Finetuning with a custom loss function
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
+When fine-tuning, we can specify a loss function to be used usin the
+`finetune_loss` argument.
+
+The possible values are: \* `"mae"` \* `"mse"` \* `"rmse"` \* `"mape"`
+\* `"smape"`
 
 ```python
+import pandas as pd
 from nixtla import NixtlaClient
 ```
 
@@ -18,24 +23,12 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Load your dataset
 
 ```python
-import pandas as pd
-```
-
-
-```python
+# Read data
 df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
-```
 
-## Step 3: Fine-tune using a custom loss function.
-
-This is done with the `finetune_loss` argument. It can accept one of the
-following:<br/> - `"mae"`<br/> - `"mse"`<br/> - `"rmse"`<br/> -
-`"mape"`<br/> - `"smape"`
-
-```python
+# Fine-tune with a specified loss function and make predictions
 forecast_df = nixtla_client.forecast(
     df=df,
     h=12,
@@ -52,4 +45,9 @@ INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: MS
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
+
+For more details on specifying a loss function and how it impacts the
+performance of the model, read our in-depth tutorial on [Fine-tuning
+with a specific loss
+function](https://docs.nixtla.io/docs/tutorials-fine_tuning_with_a_specific_loss_function).
 

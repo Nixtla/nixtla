@@ -4,9 +4,8 @@ title: Multiple series forecasting
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
-
 ```python
+import pandas as pd
 from nixtla import NixtlaClient
 ```
 
@@ -18,22 +17,12 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Load data with multiple series
-
-Each series is identified by a different value in the `unique_id` column
 
 ```python
-import pandas as pd
-```
-
-
-```python
+# Read the data
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
-```
 
-## Step 3: Forecast
-
-```python
+# Forecast
 forecast_df = nixtla_client.forecast(
     df=df, 
     h=24
@@ -44,6 +33,11 @@ forecast_df = nixtla_client.forecast(
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
+
+For more details on forecasting multiple series, read our in-depth
+tutorial on [Multiple series
+forecasting](https://docs.nixtla.io/docs/tutorials-multiple_series_forecasting).
 

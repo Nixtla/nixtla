@@ -4,9 +4,9 @@ title: Quickstart
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
-
 ```python
+import pandas as pd
+
 from nixtla import NixtlaClient
 ```
 
@@ -18,24 +18,25 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Load your dataset
 
 ```python
-import pandas as pd
-```
-
-
-```python
+# Read the dataset
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
-```
 
-
-```python
+# Detect anomalies
 anomalies_df = nixtla_client.detect_anomalies(
     df, 
     time_col='timestamp', 
     target_col='value', 
     freq='D'
+)
+
+# Plot anomalies
+nixtla_client.plot(
+    df, 
+    anomalies_df,
+    time_col='timestamp', 
+    target_col='value'
 )
 ```
 
@@ -45,16 +46,8 @@ INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
-## Step 3: Plot anomalies
+![](/nixtla/docs/capabilities/anomaly-detection/01_quickstart_files/figure-markdown_strict/cell-4-output-2.png)
 
-```python
-nixtla_client.plot(
-    df, 
-    anomalies_df,
-    time_col='timestamp', 
-    target_col='value'
-)
-```
-
-![](/nixtla/docs/capabilities/anomaly-detection/01_quickstart_files/figure-markdown_strict/cell-7-output-1.png)
+For an in-depth guide on anomaly detection with TimeGPT, check out our
+[tutorial](https://docs.nixtla.io/docs/tutorials/anomaly_detection).
 

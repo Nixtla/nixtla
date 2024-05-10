@@ -4,9 +4,8 @@ title: Long-horizon forecasting
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
-
 ```python
+import pandas as pd
 from nixtla import NixtlaClient
 ```
 
@@ -18,23 +17,12 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Load your dataset
 
 ```python
-import pandas as pd
-```
-
-
-```python
+# Read the data
 df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
-```
 
-## Step 3: Long-horizon forecasting
-
-If your horizon is longer than one seasonal period, then you should use
-the model `timegpt-1-long-horizon`.
-
-```python
+# Forecast
 forecast_df = nixtla_client.forecast(
     df=df,
     h=36,
@@ -49,6 +37,11 @@ INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: MS
 WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
+
+For a detailed guide on long-horizon forecasting, read our in-depth
+tutorial on [Long-horizon
+forecasting](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting).
 

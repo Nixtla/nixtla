@@ -4,9 +4,8 @@ title: Irregular timestamps
 ---
 
 
-## Step 1: Create an instance of `NixtlaClient`
-
 ```python
+import pandas as pd
 from nixtla import NixtlaClient
 ```
 
@@ -18,25 +17,14 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-## Step 2: Load data with irregular timestamps
-
-In this case, the dataset is missing weekend dates
 
 ```python
-import pandas as pd
-```
-
-
-```python
+# Read data
+# Dates for the weekends are missing
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/pltr.csv')
-```
 
-## Step 3: Forecast
-
-When dealing with irregular timestamps, it is **required** to provide a
-frequency to the model. Use the `freq` parameter.
-
-```python
+# Forecast
+# We use B for the freq, as only business days are represented in the dataset
 forecast_df = nixtla_client.forecast(
     df=df, 
     h=14, 
@@ -45,4 +33,16 @@ forecast_df = nixtla_client.forecast(
     target_col='Close',
 )
 ```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+For more details on handling datasets with irregular timesteps, check
+out our
+[tutorial](https://docs.nixtla.io/docs/tutorials-irregular_timestamps).
 
