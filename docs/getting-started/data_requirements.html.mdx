@@ -1,0 +1,206 @@
+---
+description: This section explains the data requirements for `TimeGPT`.
+output-file: data_requirements.html
+title: Data Requirements
+---
+
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/getting-started/5_data_requirements.ipynb)
+
+Currently, `TimeGPT` only accepts `pandas` dataframes in [long
+format](https://www.theanalysisfactor.com/wide-and-long-data/#comments)
+with the following columns:
+
+-   `ds` (int or timestamp): An integer indexing time or a timestamp in
+    format `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`.
+-   `y` (numeric): The target variable to forecast.
+
+Below is an example of a valid input dataframe for `TimeGPT`
+
+```python
+import pandas as pd 
+
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+df.head()
+```
+
+|     | timestamp  | value |
+|-----|------------|-------|
+| 0   | 1949-01-01 | 112   |
+| 1   | 1949-02-01 | 118   |
+| 2   | 1949-03-01 | 132   |
+| 3   | 1949-04-01 | 129   |
+| 4   | 1949-05-01 | 121   |
+
+Note that in this example, the `ds` column is named `timestamp` and the
+`y` column is named `value`. You can either:
+
+1.  Rename the columns to `ds` and `y`, respectively, or
+
+2.  Keep the current column names and specify them when using any method
+    from the `NixtlaClient` class with the `time_col` and `target_col`
+    arguments.
+
+For example, when using the `forecast` method from the `NixtlaClient`
+class, you must instantiate the class and then specify the columns names
+as follows.
+
+```python
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+
+```python
+fcst = nixtla_client.forecast(df=df, h=12, time_col='timestamp', target_col='value')
+fcst.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | timestamp  | TimeGPT    |
+|-----|------------|------------|
+| 0   | 1961-01-01 | 437.837921 |
+| 1   | 1961-02-01 | 426.062714 |
+| 2   | 1961-03-01 | 463.116547 |
+| 3   | 1961-04-01 | 478.244507 |
+| 4   | 1961-05-01 | 505.646484 |
+
+To learn more about how to instantiate the `NixtlaClient` class, refer
+to the [TimeGPT
+Quickstart](https://docs.nixtla.io/docs/getting-started-timegpt_quickstart)
+
+## Multiple Series
+
+If you’re working with multiple time series, make sure that each series
+has a unique identifier. You can name this column `unique_id` or specify
+its name using the `id_col` argument when calling any method from the
+`NixtlaClient` class. This column should be a string, integer, or
+category.
+
+In this example, we have five series representing hourly electricity
+prices in five different markets. The columns already have the default
+names, so it’s unnecessary to specify the `id_col`, `time_col`, or
+`target_col` arguments. If your columns have different names, specify
+these arguments as required.
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
+df.head()
+```
+
+|     | unique_id | ds                  | y     |
+|-----|-----------|---------------------|-------|
+| 0   | BE        | 2016-10-22 00:00:00 | 70.00 |
+| 1   | BE        | 2016-10-22 01:00:00 | 37.10 |
+| 2   | BE        | 2016-10-22 02:00:00 | 37.10 |
+| 3   | BE        | 2016-10-22 03:00:00 | 44.75 |
+| 4   | BE        | 2016-10-22 04:00:00 | 37.10 |
+
+```python
+fcst = nixtla_client.forecast(df=df, h=24) # use id_col, time_col and target_col here if needed. 
+fcst.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | unique_id | ds                  | TimeGPT   |
+|-----|-----------|---------------------|-----------|
+| 0   | BE        | 2016-12-31 00:00:00 | 45.190453 |
+| 1   | BE        | 2016-12-31 01:00:00 | 43.244446 |
+| 2   | BE        | 2016-12-31 02:00:00 | 41.958389 |
+| 3   | BE        | 2016-12-31 03:00:00 | 39.796486 |
+| 4   | BE        | 2016-12-31 04:00:00 | 39.204536 |
+
+When working with a large number of time series, consider using a
+[distributed computing
+framework](https://docs.nixtla.io/docs/tutorials-computing_at_scale) to
+handle the data efficiently. `TimeGPT` supports frameworks such as
+[Spark](https://docs.nixtla.io/docs/tutorials-spark),
+[Dask](https://docs.nixtla.io/docs/tutorials-dask), and
+[Ray](https://docs.nixtla.io/docs/tutorials-ray).
+
+## Important Considerations
+
+When using `TimeGPT`, the data cannot contain missing values. This means
+that for every series, there should be no gaps in the timestamps and no
+missing values in the target variable.
+
+For more, please refer to the tutorial on [Dealing with Missing Values
+in
+TimeGPT](https://docs.nixtla.io/docs/tutorials-dealing_with_missing_values_in_timegpt).
+
+## Exogenous Variables
+
+`TimeGPT` also accepts exogenous variables. You can add exogenous
+variables to your dataframe by including additional columns after the
+`y` column.
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+df.head()
+```
+
+|     | unique_id | ds                  | y     | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----|-----------|---------------------|-------|------------|------------|-------|-------|-------|-------|-------|-------|-------|
+| 0   | BE        | 2016-10-22 00:00:00 | 70.00 | 49593.0    | 57253.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 1   | BE        | 2016-10-22 01:00:00 | 37.10 | 46073.0    | 51887.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 2   | BE        | 2016-10-22 02:00:00 | 37.10 | 44927.0    | 51896.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 3   | BE        | 2016-10-22 03:00:00 | 44.75 | 44483.0    | 48428.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 4   | BE        | 2016-10-22 04:00:00 | 37.10 | 44338.0    | 46721.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+
+When using exogenous variables, you also need to provide its future
+values.
+
+```python
+future_ex_vars_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv')
+future_ex_vars_df.head()
+```
+
+|     | unique_id | ds                  | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----|-----------|---------------------|------------|------------|-------|-------|-------|-------|-------|-------|-------|
+| 0   | BE        | 2016-12-31 00:00:00 | 64108.0    | 70318.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 1   | BE        | 2016-12-31 01:00:00 | 62492.0    | 67898.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 2   | BE        | 2016-12-31 02:00:00 | 61571.0    | 68379.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 3   | BE        | 2016-12-31 03:00:00 | 60381.0    | 64972.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+| 4   | BE        | 2016-12-31 04:00:00 | 60298.0    | 62900.0    | 0.0   | 0.0   | 0.0   | 0.0   | 0.0   | 1.0   | 0.0   |
+
+```python
+fcst = nixtla_client.forecast(df=df, X_df=future_ex_vars_df, h=24)
+fcst.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | unique_id | ds                  | TimeGPT   |
+|-----|-----------|---------------------|-----------|
+| 0   | BE        | 2016-12-31 00:00:00 | 74.540773 |
+| 1   | BE        | 2016-12-31 01:00:00 | 43.344289 |
+| 2   | BE        | 2016-12-31 02:00:00 | 44.429220 |
+| 3   | BE        | 2016-12-31 03:00:00 | 38.094395 |
+| 4   | BE        | 2016-12-31 04:00:00 | 37.389141 |
+
+To learn more about how to use exogenous variables with `TimeGPT`,
+consult the [Exogenous
+Variables](https://docs.nixtla.io/docs/tutorials-exogenous_variables)
+tutorial.
+

@@ -26,6 +26,7 @@
         "docs/getting-started/introduction.html",
         "docs/getting-started/quickstart.html",
         "docs/getting-started/setting_up_your_api_key.html",
+        "docs/getting-started/data_requirements.html",
         "docs/getting-started/faq.html", 
         "docs/getting-started/glossary.html"     
       ]
@@ -132,7 +133,8 @@
         "docs/use-cases/forecasting_web_traffic.html",
         "docs/use-cases/bitcoin_price_prediction.html",
         "docs/use-cases/electricity_demand.html",
-        "docs/uses-cases/intermittent_demand.html"
+        "docs/uses-cases/intermittent_demand.html",
+        "docs/use-cases/what_if_pricing_scenarios_in_retail.html"
     ]
     },
     {
