@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BASE_DIR="nbs/docs/"
-SUB_DIRS=("getting-started" "capabilities" "deployment" "tutorials" "use-cases")
+SUB_DIRS=("getting-started" "capabilities" "deployment" "tutorials" "use-cases" "reference")
 
 counter=0
 for sub_dir in "${SUB_DIRS[@]}"; do
@@ -19,11 +19,6 @@ for sub_dir in "${SUB_DIRS[@]}"; do
         echo "Directory $DIR does not exist."
     fi
 done
-
-# Process SDK API Reference link
-echo $counter
-python -m action_files.readme_com.create_sdk_reference --slug_number "$counter" --save_dir ./nbs/_docs/docs/ --category "64dd4f0e73869100242d1bed"
-((counter++))
 
 # process changelog
 echo $counter

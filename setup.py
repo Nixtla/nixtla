@@ -7,6 +7,7 @@ dev = [
     "black",
     "datasetsforecast",
     "hierarchicalforecast",
+    "jupyterlab",
     "nbdev",
     "neuralforecast",
     "plotly",
