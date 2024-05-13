@@ -3,7 +3,6 @@ channels:
   - conda-forge
 dependencies:
   - dask<=2024.2.1
-  - datasetsforecast
   - hierarchicalforecast
   - httpx
   - jupyterlab
@@ -20,6 +19,7 @@ dependencies:
   - pip:
     - black
     - cryptocmd
+    - datasetsforecast
     - fire
     - flake8
     - fugue[ray]>=0.8.7
