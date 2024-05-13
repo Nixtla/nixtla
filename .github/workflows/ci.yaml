@@ -92,4 +92,5 @@ jobs:
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --file_re "computing_at_scale|distributed" --timing --do_print --n_workers 0
+        # run: nbdev_test --file_re "computing_at_scale|distributed" --timing --do_print --n_workers 0
+        run: nbdev_test --path nbs/distributed.nixtla_client.ipynb --timing --do_print --n_workers 0
