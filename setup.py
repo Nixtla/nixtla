@@ -6,14 +6,14 @@ with open("README.md", "r", encoding="utf8") as fh:
 dev = [
     "black",
     "datasetsforecast",
+    "hierarchicalforecast",
     "nbdev",
+    "neuralforecast",
     "plotly",
     "pre-commit",
     "python-dotenv",
     "pyreadr",
     "statsforecast",
-    "neuralforecast",
-    "hierarchicalforecast",
 ]
 distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
 plotting = ["utilsforecast[plotting]>=0.1.7"]
