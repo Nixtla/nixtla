@@ -23,6 +23,8 @@ N-HiTS in a just a few lines of code:
 The following tutorial explore all the steps in detail to reproduce
 these results so that you can apply TimeGPT in your own project.
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/3_electricity_demand.ipynb)
+
 ## Initial setup
 
 First, we load the required packages for this experiment.
@@ -31,8 +33,6 @@ First, we load the required packages for this experiment.
 import time
 import requests
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
 from nixtla import NixtlaClient
 
@@ -112,7 +112,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-6-output-1.png)
+![](/nixtla/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-7-output-1.png)
 
 We can see clear sesaonal pattern in all of our series. It will be
 interesting to see how TimeGPT handles this type of data.
@@ -134,11 +134,6 @@ steps.
 test_df = df.groupby('unique_id').tail(96)                                                             # 96 = 2 days (96 * 0.5h *  1 day/24h )
 
 input_df = df.groupby('unique_id').apply(lambda group: group.iloc[-1104:-96]).reset_index(drop=True)   # 1008 = 21 days (1008 *0.5h * 1 day/24h)
-```
-
-``` text
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_2691/3286945152.py:3: DeprecationWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
-  input_df = df.groupby('unique_id').apply(lambda group: group.iloc[-1104:-96]).reset_index(drop=True)   # 1008 = 21 days (1008 *0.5h * 1 day/24h)
 ```
 
 ### Forecasting
@@ -170,17 +165,6 @@ timegpt_duration = end - start
 print(f"Time (TimeGPT): {timegpt_duration}")
 ```
 
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: 30min
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-```
-
-``` text
-Time (TimeGPT): 7.698163032531738
-```
-
 TimeGPT was done in 7.7 seconds! We can now plot the predictions against
 the actual values of the test set.
 
@@ -188,7 +172,7 @@ the actual values of the test set.
 nixtla_client.plot(test_df, fcst_df, models=['TimeGPT'], level=[90], time_col='ds', target_col='y')
 ```
 
-![](/nixtla/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-9-output-1.png)
+![](/nixtla/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-10-output-1.png)
 
 ### Evaluation
 
@@ -216,7 +200,7 @@ average_metrics
 
 ``` text
 metric
-mae      198.823441
+mae      198.822477
 smape      0.041998
 Name: TimeGPT, dtype: float64
 ```
@@ -248,11 +232,6 @@ training set to fit our model.
 train_df = df.groupby('unique_id').apply(lambda group: group.iloc[-9696:-96]).reset_index(drop=True)
 ```
 
-``` text
-/var/folders/g1/xrd363zx571_wq54f3htnbxr0000gn/T/ipykernel_2691/2489876888.py:1: DeprecationWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
-  train_df = df.groupby('unique_id').apply(lambda group: group.iloc[-9696:-96]).reset_index(drop=True)
-```
-
 ### Forecasting with N-HiTS
 
 We can now fit the model on training set and make predictions.
@@ -276,89 +255,6 @@ nhits_duration = end - start
 print(f"Time (N-HiTS): {nhits_duration}")
 ```
 
-``` text
-INFO:lightning_fabric.utilities.seed:Seed set to 1
-INFO:pytorch_lightning.utilities.rank_zero:GPU available: True (mps), used: True
-INFO:pytorch_lightning.utilities.rank_zero:TPU available: False, using: 0 TPU cores
-INFO:pytorch_lightning.utilities.rank_zero:IPU available: False, using: 0 IPUs
-INFO:pytorch_lightning.utilities.rank_zero:HPU available: False, using: 0 HPUs
-INFO:pytorch_lightning.callbacks.model_summary:
-  | Name         | Type          | Params
------------------------------------------------
-0 | loss         | MAE           | 0     
-1 | padder_train | ConstantPad1d | 0     
-2 | scaler       | TemporalNorm  | 0     
-3 | blocks       | ModuleList    | 3.7 M 
------------------------------------------------
-3.7 M     Trainable params
-0         Non-trainable params
-3.7 M     Total params
-14.727    Total estimated model params size (MB)
-INFO:pytorch_lightning.utilities.rank_zero:`Trainer.fit` stopped: `max_steps=1000` reached.
-INFO:pytorch_lightning.utilities.rank_zero:GPU available: True (mps), used: True
-INFO:pytorch_lightning.utilities.rank_zero:TPU available: False, using: 0 TPU cores
-INFO:pytorch_lightning.utilities.rank_zero:IPU available: False, using: 0 IPUs
-INFO:pytorch_lightning.utilities.rank_zero:HPU available: False, using: 0 HPUs
-/Users/marcopeix/dev/neuralforecast/neuralforecast/core.py:190: FutureWarning: In a future version the predictions will have the id as a column. You can set the `NIXTLA_ID_AS_COL` environment variable to adopt the new behavior and to suppress this warning.
-  warnings.warn(
-```
-
-``` text
-Sanity Checking: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Training: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Validation: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Predicting: |          | 0/? [00:00<?, ?it/s]
-```
-
-``` text
-Time (N-HiTS): 67.36857795715332
-```
-
 Great! Note that N-HiTS took 67 seconds to carry out the training and
 forecasting procedures. Now, let’s evaluate the performance of this
 model.
@@ -379,13 +275,6 @@ evaluation = evaluate(
 
 average_metrics = evaluation.groupby('metric')['NHITS'].mean()
 print(average_metrics)
-```
-
-``` text
-metric
-mae      215.552667
-smape      0.047458
-Name: NHITS, dtype: float64
 ```
 
 ## Conclusion

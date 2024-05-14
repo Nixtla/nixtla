@@ -12,19 +12,21 @@ uninterrupted data for its given time frame.
 In this tutorial, we will show you how to deal with missing values in
 `TimeGPT`.
 
-**Outline** 1. [Load Data](#load-data)
+**Outline**
 
-1.  [Get Started with TimeGPT](#get-started-with-timegpt)
+1.  [Load Data](#load-data)
 
-2.  [Visualize Data](#visualize-data)
+2.  [Get Started with TimeGPT](#get-started-with-timegpt)
 
-3.  [Fill Missing Values](#fill-missing-values)
+3.  [Visualize Data](#visualize-data)
 
-4.  [Forecast with TimeGPT](#forecast-with-timegpt)
+4.  [Fill Missing Values](#fill-missing-values)
 
-5.  [Important Considerations](#important-considerations)
+5.  [Forecast with TimeGPT](#forecast-with-timegpt)
 
-6.  [References](#references)
+6.  [Important Considerations](#important-considerations)
+
+7.  [References](#references)
 
 This work is based on skforecast’s [Forecasting Time Series with Missing
 Values](https://cienciadedatos.net/documentos/py46-forecasting-time-series-missing-values)
@@ -41,7 +43,10 @@ bike rentals.
 
 ```python
 import pandas as pd
+```
 
+
+```python
 df = pd.read_csv('https://raw.githubusercontent.com/JoaquinAmatRodrigo/Estadistica-machine-learning-python/master/data/usuarios_diarios_bicimad.csv')
 df = df[['fecha', 'Usos bicis total día']] # select date and target variable 
 df.rename(columns={'fecha': 'ds', 'Usos bicis total día': 'y'}, inplace=True) 
@@ -94,7 +99,10 @@ need a Nixtla API key.
 
 ```python
 from nixtla import NixtlaClient
+```
 
+
+```python
 nixtla_client = NixtlaClient(
     # defaults to os.environ.get("NIXTLA_API_KEY")
     api_key = 'my_api_key_provided_by_nixtla'
@@ -117,7 +125,7 @@ you to choose between different plotting libraries. Default is
 nixtla_client.plot(train_df_gaps)
 ```
 
-![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-10-output-1.png)
 
 Note that there are two gaps in the data: from September 1, 2020, to
 October 10, 2020, and from November 8, 2020, to December 15, 2020. To
@@ -128,7 +136,7 @@ argument of the `plot` method or you can simply zoom in on the plot.
 nixtla_client.plot(train_df_gaps, max_insample_length=800)
 ```
 
-![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-9-output-1.png)
+![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-11-output-1.png)
 
 Additionally, notice a period from March 16, 2020, to April 21, 2020,
 where the data shows zero rentals. These are not missing values, but
@@ -158,7 +166,10 @@ do this, it requires the following arguments:
 
 ```python
 from utilsforecast.preprocessing import fill_gaps
+```
 
+
+```python
 print('Number of rows before filling gaps:', len(train_df_gaps))
 train_df_complete = fill_gaps(train_df_gaps, freq='D')
 print('Number of rows after filling gaps:', len(train_df_complete))
@@ -217,6 +228,7 @@ INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: D
 WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
@@ -227,7 +239,7 @@ test set.
 nixtla_client.plot(test_df, fcst)
 ```
 
-![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-13-output-1.png)
+![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-16-output-1.png)
 
 Next, we will use the `evaluate` function from `utilsforecast` to
 compute the Mean Average Error (MAE) of the TimeGPT forecast. Before
@@ -289,9 +301,9 @@ best reflects reality.
 Finally, we also demonstrated that `utilsforecast` provides a function
 to evaluate the `TimeGPT` forecast using common accuracy metrics.
 
-## References
+**References**
 
-Exclude covid impact in time series forecasting by Joaquín Amat Rodrigo
-and Javier Escobar Ortiz, available under a CC BY-NC-SA 4.0 at
-https://www.cienciadedatos.net/documentos/py45-weighted-time-series-forecasting.html
+-   [Joaquín Amat Rodrigo and Javier Escobar Ortiz (2022). “Exclude
+    covid impact in time series
+    forecasting”](https://www.cienciadedatos.net/documentos/py45-weighted-time-series-forecasting.html)
 

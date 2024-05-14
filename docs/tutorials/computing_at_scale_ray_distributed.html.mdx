@@ -30,6 +30,14 @@ Fugue provides an easy-to-use interface for distributed computing that
 lets users execute Python code on top of several distributed computing
 frameworks, including Ray.
 
+> **Note**
+>
+> You can install `fugue` with `pip`:
+>
+> ```shell
+> pip install fugue[ray]
+> ```
+
 If executing on a distributed `Ray` cluster, ensure that the `nixtla`
 library is installed across all the workers.
 
@@ -40,8 +48,11 @@ will use a dataset that contains hourly electricity prices from
 different markets.
 
 ```python
-import pandas as pd 
+import pandas as pd
+```
 
+
+```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv') 
 df.head()
 ```
@@ -61,7 +72,10 @@ Initialize `Ray` and convert the pandas DataFrame to a `Ray` DataFrame.
 ```python
 import ray
 from ray.cluster_utils import Cluster
+```
 
+
+```python
 ray_cluster = Cluster(
     initialize_head=True,
     head_node_args={"num_cpus": 2}
@@ -70,16 +84,17 @@ ray.init(address=ray_cluster.address, ignore_reinit_error=True)
 ```
 
 ``` text
-2024-04-26 14:47:26,225 WARNING cluster_utils.py:121 -- Ray cluster mode is currently experimental and untested on Windows. If you are using it and running into issues please file a report at https://github.com/ray-project/ray/issues.
-2024-04-26 14:47:28,636 INFO utils.py:108 -- Overwriting previous Ray address (127.0.0.1:64941). Running ray.init() on this node will now connect to the new instance at 127.0.0.1:60031. To override this behavior, pass address=127.0.0.1:64941 to ray.init().
-2024-04-26 14:47:28,636 INFO worker.py:1431 -- Connecting to existing Ray cluster at address: 127.0.0.1:60031...
-2024-04-26 14:47:28,647 INFO worker.py:1621 -- Connected to Ray cluster.
+2024-05-10 11:09:17,240 WARNING cluster_utils.py:157 -- Ray cluster mode is currently experimental and untested on Windows. If you are using it and running into issues please file a report at https://github.com/ray-project/ray/issues.
+2024-05-10 11:09:19,076 INFO worker.py:1564 -- Connecting to existing Ray cluster at address: 127.0.0.1:63694...
+2024-05-10 11:09:19,092 INFO worker.py:1740 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265 
 ```
 
-|                     |             |
-|:--------------------|:------------|
-| **Python version:** | **3.10.14** |
-| **Ray version:**    | **2.6.2**   |
+|                     |                                             |
+|:--------------------|:--------------------------------------------|
+| **Python version:** | **3.10.14**                                 |
+| **Ray version:**    | **2.20.0**                                  |
+| **Dashboard:**      | **<a href="http://127.0.0.1:8265"           
+                       target="_blank">http://127.0.0.1:8265</a>**  |
 
 ```python
 ray_df = ray.data.from_pandas(df)
@@ -123,18 +138,6 @@ or
 fcst_df = nixtla_client.forecast(ray_df, h=12)
 ```
 
-``` text
-2024-04-26 14:47:31,617 INFO streaming_executor.py:92 -- Executing DAG InputDataBuffer[Input] -> AllToAllOperator[Repartition]
-2024-04-26 14:47:31,618 INFO streaming_executor.py:93 -- Execution config: ExecutionOptions(resource_limits=ExecutionResources(cpu=None, gpu=None, object_store_memory=None), locality_with_output=False, preserve_order=False, actor_locality_enabled=True, verbose_progress=False)
-2024-04-26 14:47:31,619 INFO streaming_executor.py:95 -- Tip: For detailed progress reporting, run `ray.data.DataContext.get_current().execution_options.verbose_progress = True`
-2024-04-26 14:47:32,114 INFO streaming_executor.py:92 -- Executing DAG InputDataBuffer[Input] -> TaskPoolMapOperator[MapBatches(add_coarse_key)] -> LimitOperator[limit=1]
-2024-04-26 14:47:32,114 INFO streaming_executor.py:93 -- Execution config: ExecutionOptions(resource_limits=ExecutionResources(cpu=None, gpu=None, object_store_memory=None), locality_with_output=False, preserve_order=False, actor_locality_enabled=True, verbose_progress=False)
-2024-04-26 14:47:32,115 INFO streaming_executor.py:95 -- Tip: For detailed progress reporting, run `ray.data.DataContext.get_current().execution_options.verbose_progress = True`
-2024-04-26 14:47:32,166 INFO streaming_executor.py:92 -- Executing DAG InputDataBuffer[Input] -> TaskPoolMapOperator[MapBatches(add_coarse_key)] -> AllToAllOperator[Sort] -> TaskPoolMapOperator[MapBatches(group_fn)]
-2024-04-26 14:47:32,167 INFO streaming_executor.py:93 -- Execution config: ExecutionOptions(resource_limits=ExecutionResources(cpu=None, gpu=None, object_store_memory=None), locality_with_output=False, preserve_order=True, actor_locality_enabled=True, verbose_progress=False)
-2024-04-26 14:47:32,167 INFO streaming_executor.py:95 -- Tip: For detailed progress reporting, run `ray.data.DataContext.get_current().execution_options.verbose_progress = True`
-```
-
 To visualize the result, use the `to_pandas` method to convert the
 output of `Ray` to a `pandas` DataFrame.
 
@@ -144,43 +147,28 @@ fcst_df.to_pandas().tail()
 
 |     | unique_id | ds                  | TimeGPT   |
 |-----|-----------|---------------------|-----------|
-| 55  | NP        | 2018-12-24 07:00:00 | 53.784847 |
-| 56  | NP        | 2018-12-24 08:00:00 | 54.437321 |
-| 57  | NP        | 2018-12-24 09:00:00 | 54.66077  |
-| 58  | NP        | 2018-12-24 10:00:00 | 54.744473 |
-| 59  | NP        | 2018-12-24 11:00:00 | 54.737762 |
+| 55  | NP        | 2018-12-24 07:00:00 | 55.387066 |
+| 56  | NP        | 2018-12-24 08:00:00 | 56.115517 |
+| 57  | NP        | 2018-12-24 09:00:00 | 56.090714 |
+| 58  | NP        | 2018-12-24 10:00:00 | 55.813717 |
+| 59  | NP        | 2018-12-24 11:00:00 | 55.528519 |
 
 ```python
 cv_df = nixtla_client.cross_validation(ray_df, h=12, freq='H', n_windows=5, step_size=2)
 ```
 
-``` text
-2024-04-26 14:47:40,202 INFO streaming_executor.py:92 -- Executing DAG InputDataBuffer[Input] -> AllToAllOperator[Repartition]
-2024-04-26 14:47:40,202 INFO streaming_executor.py:93 -- Execution config: ExecutionOptions(resource_limits=ExecutionResources(cpu=None, gpu=None, object_store_memory=None), locality_with_output=False, preserve_order=False, actor_locality_enabled=True, verbose_progress=False)
-2024-04-26 14:47:40,202 INFO streaming_executor.py:95 -- Tip: For detailed progress reporting, run `ray.data.DataContext.get_current().execution_options.verbose_progress = True`
-2024-04-26 14:47:40,261 INFO streaming_executor.py:92 -- Executing DAG InputDataBuffer[Input] -> TaskPoolMapOperator[MapBatches(add_coarse_key)] -> LimitOperator[limit=1]
-2024-04-26 14:47:40,261 INFO streaming_executor.py:93 -- Execution config: ExecutionOptions(resource_limits=ExecutionResources(cpu=None, gpu=None, object_store_memory=None), locality_with_output=False, preserve_order=False, actor_locality_enabled=True, verbose_progress=False)
-2024-04-26 14:47:40,262 INFO streaming_executor.py:95 -- Tip: For detailed progress reporting, run `ray.data.DataContext.get_current().execution_options.verbose_progress = True`
-2024-04-26 14:47:40,305 INFO streaming_executor.py:92 -- Executing DAG InputDataBuffer[Input] -> TaskPoolMapOperator[MapBatches(add_coarse_key)] -> AllToAllOperator[Sort] -> TaskPoolMapOperator[MapBatches(group_fn)]
-2024-04-26 14:47:40,306 INFO streaming_executor.py:93 -- Execution config: ExecutionOptions(resource_limits=ExecutionResources(cpu=None, gpu=None, object_store_memory=None), locality_with_output=False, preserve_order=True, actor_locality_enabled=True, verbose_progress=False)
-2024-04-26 14:47:40,306 INFO streaming_executor.py:95 -- Tip: For detailed progress reporting, run `ray.data.DataContext.get_current().execution_options.verbose_progress = True`
-```
 
 ```python
 cv_df.to_pandas().tail()
 ```
 
-``` text
-(MapBatches(group_fn) pid=12096) INFO:nixtla.nixtla_client:Validating inputs...
-```
-
 |     | unique_id | ds                  | cutoff              | TimeGPT   |
 |-----|-----------|---------------------|---------------------|-----------|
-| 295 | NP        | 2018-12-23 19:00:00 | 2018-12-23 11:00:00 | 53.441555 |
-| 296 | NP        | 2018-12-23 20:00:00 | 2018-12-23 11:00:00 | 52.649628 |
-| 297 | NP        | 2018-12-23 21:00:00 | 2018-12-23 11:00:00 | 51.753975 |
-| 298 | NP        | 2018-12-23 22:00:00 | 2018-12-23 11:00:00 | 50.681946 |
-| 299 | NP        | 2018-12-23 23:00:00 | 2018-12-23 11:00:00 | 49.716431 |
+| 295 | NP        | 2018-12-23 19:00:00 | 2018-12-23 11:00:00 | 53.632019 |
+| 296 | NP        | 2018-12-23 20:00:00 | 2018-12-23 11:00:00 | 52.512775 |
+| 297 | NP        | 2018-12-23 21:00:00 | 2018-12-23 11:00:00 | 51.894035 |
+| 298 | NP        | 2018-12-23 22:00:00 | 2018-12-23 11:00:00 | 51.06572  |
+| 299 | NP        | 2018-12-23 23:00:00 | 2018-12-23 11:00:00 | 50.32592  |
 
 You can also use exogenous variables with `TimeGPT` on top of `Ray`. To
 do this, please refer to the [Exogenous

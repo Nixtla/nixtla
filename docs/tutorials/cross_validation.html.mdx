@@ -34,6 +34,8 @@ We start off by initializing an instance of `NixtlaClient`.
 ```python
 import pandas as pd
 from nixtla import NixtlaClient
+
+from IPython.display import display
 ```
 
 
@@ -117,11 +119,6 @@ INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 | 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 |
 
 ```python
-from IPython.display import display
-```
-
-
-```python
 cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
     fig = nixtla_client.plot(
@@ -133,15 +130,15 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-7-output-1.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-8-output-2.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-7-output-2.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-8-output-3.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-7-output-3.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-8-output-4.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-7-output-4.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-8-output-5.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-7-output-5.png)
 
 ## 4. Cross-validation with prediction intervals
 
@@ -171,8 +168,8 @@ INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 |-----|------------|------------|----------|----------|---------------|---------------|---------------|---------------|
 | 0   | 2015-12-17 | 2015-12-16 | 7.591862 | 7.939553 | 7.564151      | 7.675945      | 8.203161      | 8.314956      |
 | 1   | 2015-12-18 | 2015-12-16 | 7.528869 | 7.887512 | 7.567342      | 7.598298      | 8.176726      | 8.207681      |
-| 2   | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 | 7.146560      | 7.266830      | 8.266404      | 8.386674      |
-| 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 | 7.493021      | 7.657075      | 8.205930      | 8.369984      |
+| 2   | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 | 7.146560      | 7.266829      | 8.266404      | 8.386674      |
+| 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 | 7.493021      | 7.657075      | 8.205929      | 8.369982      |
 | 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 | 7.017335      | 7.446677      | 9.178586      | 9.607928      |
 
 ```python
@@ -189,15 +186,15 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-10-output-1.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-9-output-1.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-10-output-2.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-9-output-2.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-10-output-3.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-9-output-3.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-10-output-4.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-9-output-4.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-10-output-5.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-9-output-5.png)
 
 ## 5. Cross-validation with exogenous variables
 
@@ -250,15 +247,15 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-11-output-1.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-12-output-2.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-11-output-2.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-12-output-3.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-11-output-3.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-12-output-4.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-11-output-4.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-12-output-5.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-11-output-5.png)
 
 ### Dynamic features
 
@@ -299,9 +296,9 @@ INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, E
 INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-14-output-2.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-13-output-2.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-14-output-3.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-13-output-3.png)
 
 ## 6. Cross-validation with different TimeGPT instances
 
@@ -337,7 +334,7 @@ INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, E
 INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-15-output-2.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-14-output-2.png)
 
-![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-15-output-3.png)
+![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-14-output-3.png)
 

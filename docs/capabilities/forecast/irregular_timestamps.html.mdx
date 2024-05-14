@@ -4,6 +4,8 @@ title: Irregular timestamps
 ---
 
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/11_irregular_timestamps.ipynb)
+
 ```python
 import pandas as pd
 from nixtla import NixtlaClient
@@ -37,6 +39,7 @@ forecast_df = nixtla_client.forecast(
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:You did not provide X_df. Exogenous variables in df are ignored. To surpress this warning, please add X_df with exogenous variables: Open, High, Low, Adj Close, Volume, Dividends, Stock Splits
 WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...

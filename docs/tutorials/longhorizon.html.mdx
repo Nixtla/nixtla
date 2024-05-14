@@ -35,6 +35,8 @@ Nixtla client.
 
 ```python
 from nixtla import NixtlaClient
+from datasetsforecast.long_horizon import LongHorizon
+from utilsforecast.losses import mae
 ```
 
 
@@ -59,11 +61,16 @@ For this tutorial, let’s only consider the oil temperature variation
 over time.
 
 ```python
-from datasetsforecast.long_horizon import LongHorizon
-
 Y_df, *_ = LongHorizon.load(directory='./', group='ETTh1')
 
 Y_df.head()
+```
+
+``` text
+100%|██████████| 314M/314M [00:52<00:00, 5.99MiB/s] 
+INFO:datasetsforecast.utils:Successfully downloaded datasets.zip, 314116557, bytes.
+INFO:datasetsforecast.utils:Decompressing zip file...
+INFO:datasetsforecast.utils:Successfully decompressed longhorizon\datasets\datasets.zip
 ```
 
 |     | unique_id | ds                  | y        |
@@ -103,10 +110,10 @@ fcst_df = nixtla_client.forecast(
 ```
 
 ``` text
-INFO:nixtlats.nixtla_client:Validating inputs...
-INFO:nixtlats.nixtla_client:Preprocessing dataframes...
-INFO:nixtlats.nixtla_client:Inferred freq: H
-INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ```python
@@ -128,8 +135,6 @@ test.loc[:, 'TimeGPT'] = fcst_df['TimeGPT'].values
 
 
 ```python
-from utilsforecast.losses import mae
-
 evaluation = mae(test, models=['TimeGPT'], id_col='unique_id', target_col='y')
 
 print(evaluation)
@@ -137,7 +142,7 @@ print(evaluation)
 
 ``` text
   unique_id   TimeGPT
-0        OT  0.146111
+0        OT  0.145393
 ```
 
 Here, TimeGPT achieves a MAE of 0.146.

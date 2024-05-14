@@ -37,6 +37,8 @@ First, we import the required packages and initialize the Nixtla client
 ```python
 import pandas as pd
 from nixtla import NixtlaClient
+
+from IPython.display import display
 ```
 
 
@@ -227,11 +229,6 @@ INFO:nixtla.nixtla_client:Validating inputs...
 | 4   | 1951-05-01 | 140.472946 | 116.927041   | 125.009866   | 130.838152   | 135.818208   | 140.472946   | 145.127684   | 150.107740   | 155.936026   | 164.018852   |
 
 ```python
-from IPython.display import display
-```
-
-
-```python
 cutoffs = timegpt_cv_quantile_fcst_df['cutoff'].unique()
 for cutoff in cutoffs:
     fig = nixtla_client.plot(
@@ -243,13 +240,13 @@ for cutoff in cutoffs:
     display(fig)
 ```
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-11-output-1.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-2.png)
+![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-11-output-2.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-3.png)
+![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-11-output-3.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-4.png)
+![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-11-output-4.png)
 
-![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-5.png)
+![](/nixtla/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-11-output-5.png)
 

@@ -28,6 +28,14 @@ Fugue provides an easy-to-use interface for distributed computing that
 lets users execute Python code on top of several distributed computing
 frameworks, including Dask.
 
+> **Note**
+>
+> You can install `fugue` with `pip`:
+>
+> ```shell
+> pip install fugue[dask]
+> ```
+
 If executing on a distributed `Dask` cluster, ensure that the `nixtla`
 library is installed across all the workers.
 
@@ -38,19 +46,22 @@ will use a dataset that contains hourly electricity prices from
 different markets.
 
 ```python
-import pandas as pd 
+import pandas as pd
+```
 
+
+```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv') 
 df.head()
 ```
 
 |     | unique_id | ds                  | y     |
 |-----|-----------|---------------------|-------|
-| 0   | BE        | 2016-12-01 00:00:00 | 72.00 |
-| 1   | BE        | 2016-12-01 01:00:00 | 65.80 |
-| 2   | BE        | 2016-12-01 02:00:00 | 59.99 |
-| 3   | BE        | 2016-12-01 03:00:00 | 50.69 |
-| 4   | BE        | 2016-12-01 04:00:00 | 52.58 |
+| 0   | BE        | 2016-10-22 00:00:00 | 70.00 |
+| 1   | BE        | 2016-10-22 01:00:00 | 37.10 |
+| 2   | BE        | 2016-10-22 02:00:00 | 37.10 |
+| 3   | BE        | 2016-10-22 03:00:00 | 44.75 |
+| 4   | BE        | 2016-10-22 04:00:00 | 37.10 |
 
 ## 3. Import Dask
 
@@ -58,7 +69,10 @@ Import Dask and convert the pandas DataFrame to a Dask DataFrame.
 
 ```python
 import dask.dataframe as dd
+```
 
+
+```python
 dask_df = dd.from_pandas(df, npartitions=2)
 dask_df
 ```
@@ -67,8 +81,8 @@ dask_df
 |---------------|-----------|--------|---------|
 | npartitions=2 |           |        |         |
 | 0             | string    | string | float64 |
-| 1800          | ...       | ...    | ...     |
-| 3599          | ...       | ...    | ...     |
+| 4200          | ...       | ...    | ...     |
+| 8399          | ...       | ...    | ...     |
 
 ## 4. Use TimeGPT on Dask
 
@@ -97,66 +111,29 @@ or
 
 ```python
 fcst_df = nixtla_client.forecast(dask_df, h=12)
-fcst_df.head()
-```
-
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+fcst_df.compute().head()
 ```
 
 |     | unique_id | ds                  | TimeGPT   |
 |-----|-----------|---------------------|-----------|
-| 0   | FR        | 2016-12-31 00:00:00 | 62.130219 |
-| 1   | FR        | 2016-12-31 01:00:00 | 56.890831 |
-| 2   | FR        | 2016-12-31 02:00:00 | 52.231552 |
-| 3   | FR        | 2016-12-31 03:00:00 | 48.888664 |
-| 4   | FR        | 2016-12-31 04:00:00 | 46.498367 |
+| 0   | BE        | 2016-12-31 00:00:00 | 45.190453 |
+| 1   | BE        | 2016-12-31 01:00:00 | 43.244446 |
+| 2   | BE        | 2016-12-31 02:00:00 | 41.958389 |
+| 3   | BE        | 2016-12-31 03:00:00 | 39.796486 |
+| 4   | BE        | 2016-12-31 04:00:00 | 39.204533 |
 
 ```python
 cv_df = nixtla_client.cross_validation(dask_df, h=12, n_windows=5, step_size=2)
-cv_df.head()
-```
-
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
+cv_df.compute().head()
 ```
 
 |     | unique_id | ds                  | cutoff              | TimeGPT   |
 |-----|-----------|---------------------|---------------------|-----------|
-| 0   | FR        | 2016-12-30 04:00:00 | 2016-12-30 03:00:00 | 44.893738 |
-| 1   | FR        | 2016-12-30 05:00:00 | 2016-12-30 03:00:00 | 46.05793  |
-| 2   | FR        | 2016-12-30 06:00:00 | 2016-12-30 03:00:00 | 48.790077 |
-| 3   | FR        | 2016-12-30 07:00:00 | 2016-12-30 03:00:00 | 54.397026 |
-| 4   | FR        | 2016-12-30 08:00:00 | 2016-12-30 03:00:00 | 57.592995 |
+| 0   | BE        | 2016-12-30 04:00:00 | 2016-12-30 03:00:00 | 39.375439 |
+| 1   | BE        | 2016-12-30 05:00:00 | 2016-12-30 03:00:00 | 40.039215 |
+| 2   | BE        | 2016-12-30 06:00:00 | 2016-12-30 03:00:00 | 43.455849 |
+| 3   | BE        | 2016-12-30 07:00:00 | 2016-12-30 03:00:00 | 47.716408 |
+| 4   | BE        | 2016-12-30 08:00:00 | 2016-12-30 03:00:00 | 50.31665  |
 
 You can also use exogenous variables with `TimeGPT` on top of `Dask`. To
 do this, please refer to the [Exogenous

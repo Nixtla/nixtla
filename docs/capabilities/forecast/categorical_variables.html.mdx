@@ -4,6 +4,8 @@ title: Add categorical variables
 ---
 
 
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/04_categorical_variables.ipynb)
+
 ```python
 import pandas as pd
 import datetime
@@ -52,6 +54,7 @@ forecast_df = nixtla_client.forecast(
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:You did not provide X_df. Exogenous variables in df are ignored. To surpress this warning, please add X_df with exogenous variables: christmas_vacations, summer_vacations
 WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...

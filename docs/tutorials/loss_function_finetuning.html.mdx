@@ -26,6 +26,7 @@ First, we import the required packages and initialize the Nixtla client.
 ```python
 import pandas as pd
 from nixtla import NixtlaClient
+from utilsforecast.losses import mae, mse, rmse, mape, smape
 ```
 
 
@@ -211,8 +212,6 @@ functions. We can evaluate the performance using their associated metric
 and measure the improvement.
 
 ```python
-from utilsforecast.losses import mae, mse, rmse, mape, smape
-
 loss_fct_dict = {
     "mae": mae,
     "mse": mse,

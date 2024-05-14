@@ -70,7 +70,10 @@ end dates in format dd-mm-yyyy.
 ```python
 import pandas as pd 
 from cryptocmd import CmcScraper
+```
 
+
+```python
 scraper = CmcScraper('BTC', '01-01-2020', '31-12-2023')
 ```
 
@@ -125,7 +128,10 @@ To get started with `TimeGPT`, you need to instantiate the
 
 ```python
 from nixtla import NixtlaClient
+```
 
+
+```python
 nixtla_client = NixtlaClient(
     # defaults to os.environ.get("NIXTLA_API_KEY")
     api_key = 'my_api_key_provided_by_nixtla'
@@ -151,7 +157,7 @@ can also use `plotly` for interactive plots.
 nixtla_client.plot(df)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-8-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-10-output-1.png)
 
 If you haven’t renamed the column names of your DataFrame to `ds` and
 `y`, you will need to specify the `time_col` and `target_col` arguments
@@ -210,7 +216,7 @@ visualize the predictions with the historical data.
 nixtla_client.plot(df, fcst, level=level)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-10-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-12-output-1.png)
 
 To get a closer look at the predictions, we can zoom in on the plot or
 specify the maximum number of in-sample observations to be plotted using
@@ -222,7 +228,7 @@ historical values along with the complete forecast.
 nixtla_client.plot(df, fcst, level=level, max_insample_length=60)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-11-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-13-output-1.png)
 
 Additionally, if you set the `add_history` argument of the `forecast`
 method to `True`, `TimeGPT` will generate predictions for the historical
@@ -254,7 +260,7 @@ INFO:nixtla.nixtla_client:Calling Historical Forecast Endpoint...
 nixtla_client.plot(df, forecast, level=level)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-13-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-15-output-1.png)
 
 ## 5. Extend Bitcoin Price Analysis with TimeGPT
 
@@ -284,7 +290,7 @@ INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 nixtla_client.plot(df, anomalies_df, plot_anomalies=True)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-15-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-17-output-1.png)
 
 To learn more about how to detect anomalies with `TimeGPT`, take a look
 at our [Anomaly
