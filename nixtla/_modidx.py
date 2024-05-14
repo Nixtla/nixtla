@@ -163,4 +163,5 @@ d = { 'settings': { 'branch': 'main',
             'nixtla.types.single_series_insample_forecast': {},
             'nixtla.types.validation_error': {},
             'nixtla.types.validation_error_loc_item': {},
-            'nixtla.utils': {'nixtla.utils.colab_badge': ('utils.html#colab_badge', 'nixtla/utils.py')}}}
+            'nixtla.utils': { 'nixtla.utils.colab_badge': ('utils.html#colab_badge', 'nixtla/utils.py'),
+                              'nixtla.utils.in_colab': ('utils.html#in_colab', 'nixtla/utils.py')}}}
