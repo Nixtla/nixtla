@@ -522,10 +522,12 @@ class _NixtlaClientModel:
         return y, x
 
     def set_model_params(self):
+        main_logger.info("Calling model params endpoint...")
         model_params = self._call_api(
             self.client.model_params,
             SingleSeriesForecast(freq=self.freq, model=self.model),
         )
+        main_logger.info("Got resposne from model_params endpoint")
         model_params = model_params["detail"]
         self.input_size, self.model_horizon = (
             model_params["input_size"],
