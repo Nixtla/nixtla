@@ -413,26 +413,29 @@ def time_ranges(
     if isinstance(starts, pd.Series):
         starts = pd.Index(starts)
     if isinstance(starts, pd.Index):
-        starts_dtype = starts.dtype.type
-        if issubclass(starts_dtype, np.integer):
+        if _is_int_dtype(starts):
+            starts_np = starts.to_numpy(copy=False)  # may be pyarrow
             out = np.hstack(
                 [
-                    np.arange(start, start + freq * periods, freq, dtype=starts_dtype)
-                    for start in starts
+                    np.arange(
+                        start, start + freq * periods, freq, dtype=starts_np.dtype
+                    )
+                    for start in starts_np
                 ]
             )
-        elif pd.api.types.is_datetime64_dtype(starts_dtype):
+        elif _is_dt_dtype(starts):
             if isinstance(freq, str):
                 freq = pd.tseries.frequencies.to_offset(freq)
             out = []
             for i in range(periods):
                 out.append([starts + i * freq])
+            # pyarrow timestamps don't seem to work with offsets yet, keeping np.vstack
             out = np.vstack(out).ravel(order="F")
         else:
             raise ValueError(
-                f"`starts` must be integers or timestamps, got '{starts_dtype}'."
+                f"`starts` must be integers or timestamps, got '{starts.dtype}'."
             )
-        out = pd.Series(out)
+        out = pd.Series(out, dtype=starts.dtype)
     else:
         try:
             is_int = starts.dtype.is_integer()
