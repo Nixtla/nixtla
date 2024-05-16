@@ -156,10 +156,14 @@ distributed backend is used.
 
 Can TimeGPT be used with limited/short data?
 
-`TimeGPT` requires at least two seasonal periods of the given frequency
-to produce accurate forecasts. Using less data may require fine-tuning
-and could lead to wider prediction intervals. While `TimeGPT` can work
-with just one observation, its accuracy will be limited.
+`TimeGPT` supports any amount of data for generating point forecasts and
+is capable of producing results with just one observation per series.
+When using arguments such as `level`, `finetune_steps`, `X_df`
+(exogenous variables), or `add_history`, additional data points are
+necessary depending on the data frequency. For more details, please
+refer to the [Data
+Requirements](https://docs.nixtla.io/docs/getting-started-data_requirements)
+tutorial.
 
 What is the maximum forecast horizon allowed by TimeGPT?
 

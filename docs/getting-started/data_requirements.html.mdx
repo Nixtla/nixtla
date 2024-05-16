@@ -133,16 +133,6 @@ handle the data efficiently. `TimeGPT` supports frameworks such as
 [Dask](https://docs.nixtla.io/docs/tutorials-dask), and
 [Ray](https://docs.nixtla.io/docs/tutorials-ray).
 
-## Important Considerations
-
-When using `TimeGPT`, the data cannot contain missing values. This means
-that for every series, there should be no gaps in the timestamps and no
-missing values in the target variable.
-
-For more, please refer to the tutorial on [Dealing with Missing Values
-in
-TimeGPT](https://docs.nixtla.io/docs/tutorials-dealing_with_missing_values_in_timegpt).
-
 ## Exogenous Variables
 
 `TimeGPT` also accepts exogenous variables. You can add exogenous
@@ -203,4 +193,41 @@ To learn more about how to use exogenous variables with `TimeGPT`,
 consult the [Exogenous
 Variables](https://docs.nixtla.io/docs/tutorials-exogenous_variables)
 tutorial.
+
+## Important Considerations
+
+When using `TimeGPT`, the data cannot contain missing values. This means
+that for every series, there should be no gaps in the timestamps and no
+missing values in the target variable.
+
+For more, please refer to the tutorial on [Dealing with Missing Values
+in
+TimeGPT](https://docs.nixtla.io/docs/tutorials-dealing_with_missing_values_in_timegpt).
+
+### Minimum Data Requirements
+
+`TimeGPT` currently supports any amount of data for generating point
+forecasts. That is, the minimum size per series to expect results from
+this call `nixtla_client.forecast(df=df, h=h, freq=freq)` is one,
+regardless of the frequency.
+
+In other cases, namely when using the arguments `level`,
+`finetune_steps`, `X_df` (exogenous variables), or `add_history`, the
+API requires a minimum number of data points depending on the frequency.
+Here are the minimum sizes for each frequency:
+
+| Frequency                                            | Minimum Size |
+|------------------------------------------------------|--------------|
+| Hourly and subhourly (e.g., “H”, “min”, “15T”)       | 1008         |
+| Daily (“D”)                                          | 300          |
+| Weekly (e.g., “W-MON”,…, “W-SUN”)                    | 64           |
+| Monthly and other frequencies (e.g., “M”, “MS”, “Y”) | 48           |
+
+For cross-validation, you need to consider these numbers as well as the
+forecast horizon (`h`), the number of windows (`n_windows`), and the gap
+between windows (`step_size`). Thus, the minimum number of observations
+per series in this case would be determined by the following
+relationship:
+
+Minimum number described previously + h + step_size + (n_windows - 1)
 
