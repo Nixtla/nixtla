@@ -41,6 +41,13 @@ nixtla_client = NixtlaClient(
 )
 ```
 
+> 👍 Use an Azure AI endpoint
+>
+> To use an Azure AI endpoint, remember to set also the `base_url`
+> argument:
+>
+> `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
+
 ## 2. Load the data
 
 The following dataset contains prices of different electricity markets
@@ -102,6 +109,20 @@ INFO:nixtlats.nixtla_client:Calling Forecast Endpoint...
 | 3   | BE        | 2016-12-31 03:00:00 | 38.265339 | 26.841481     | 31.022093     | 45.508585     | 49.689197     |
 | 4   | BE        | 2016-12-31 04:00:00 | 36.618801 | 18.541384     | 27.981346     | 45.256256     | 54.696218     |
 
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.forecast(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
 ```python
 nixtla_client.plot(df, timegpt_fcst_multiseries_df, max_insample_length=365, level=[80, 90])
 ```
@@ -140,6 +161,20 @@ INFO:nixtlats.nixtla_client:Calling Historical Forecast Endpoint...
 | 2   | BE        | 2016-12-06 02:00:00 | 46.851070 | 33.161214     | 29.280331     | 60.540926     | 64.421810     |
 | 3   | BE        | 2016-12-06 03:00:00 | 50.640892 | 36.951036     | 33.070152     | 64.330748     | 68.211632     |
 | 4   | BE        | 2016-12-06 04:00:00 | 52.420410 | 38.730554     | 34.849670     | 66.110266     | 69.991150     |
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.forecast(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
 
 ```python
 nixtla_client.plot(

@@ -46,6 +46,13 @@ nixtla_client = NixtlaClient(
 )
 ```
 
+> 👍 Use an Azure AI endpoint
+>
+> To use an Azure AI endpoint, remember to set also the `base_url`
+> argument:
+>
+> `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
+
 ## 2. Load data
 
 Let’s see an example, using the Peyton Manning dataset.
@@ -118,6 +125,20 @@ INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 | 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 |
 | 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 |
 
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.cross_validation(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
 ```python
 cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
@@ -171,6 +192,20 @@ INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 | 2   | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 | 7.146560      | 7.266829      | 8.266404      | 8.386674      |
 | 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 | 7.493021      | 7.657075      | 8.205929      | 8.369982      |
 | 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 | 7.017335      | 7.446677      | 9.178586      | 9.607928      |
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.cross_validation(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
 
 ```python
 cutoffs = timegpt_cv_df['cutoff'].unique()
@@ -300,6 +335,20 @@ INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 
 ![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-13-output-3.png)
 
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.cross_validation(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
 ## 6. Cross-validation with different TimeGPT instances
 
 Also, you can generate cross validation for different instances of
@@ -337,4 +386,18 @@ INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-14-output-2.png)
 
 ![](/nixtla/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-14-output-3.png)
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.cross_validation(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
 
