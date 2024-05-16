@@ -23,6 +23,13 @@ nixtla_client = NixtlaClient(
 )
 ```
 
+> 👍 Use an Azure AI endpoint
+>
+> To use an Azure AI endpoint, remember to set also the `base_url`
+> argument:
+>
+> `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
+
 ## 2. Load data
 
 We load the website visit data, and set it to the right format to use
@@ -121,6 +128,20 @@ INFO:nixtla.nixtla_client:Validating inputs...
 | 2   | daily_visits | 2021-07-03 | 2021-06-30 | 2020  | 2346.991455 | 2043.731296     | 2150.005078   | 2171.187012   | 2522.795898   | 2543.977832   | 2650.251614     |
 | 3   | daily_visits | 2021-07-04 | 2021-06-30 | 1828  | 2182.191895 | 1836.848173     | 1897.684900   | 1929.914575   | 2434.469214   | 2466.698889   | 2527.535616     |
 | 4   | daily_visits | 2021-07-05 | 2021-06-30 | 2722  | 3082.715088 | 2736.008055     | 2746.997034   | 2791.375342   | 3374.054834   | 3418.433142   | 3429.422121     |
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.cross_validation(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
 
 Here, we have performed a rolling cross-validation of 8 folds. Let’s
 plot the cross-validated forecasts including the prediction intervals:
