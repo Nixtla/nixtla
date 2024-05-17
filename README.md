@@ -164,7 +164,6 @@ For zero-shot inference, our internal tests recorded an average GPU inference sp
 If you find TimeGPT useful for your research, please consider citing the associated [paper](https://arxiv.org/abs/2310.03589):
 
 ```
-@article{ansari2024chronos,
 @misc{garza2023timegpt1,
       title={TimeGPT-1}, 
       author={Azul Garza and Max Mergenthaler-Canseco},
