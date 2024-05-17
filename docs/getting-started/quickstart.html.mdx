@@ -1,7 +1,5 @@
 ---
-description: >-
-  Unlock the power of accurate predictions and confidently navigate uncertainty.
-  Reduce uncertainty and resource limitations.
+description: "TimeGPT is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code \U0001F680."
 output-file: quickstart.html
 title: TimeGPT Quickstart
 ---
@@ -66,10 +64,10 @@ Key](https://docs.nixtla.io/docs/getting-started-setting_up_your_api_key).**
 
 ## Step 4: Start making forecasts!
 
-Now you can start making forecasts! Let’s import an example on the
+Now you can start making forecasts! Let’s import an example using the
 classic `AirPassengers` dataset. This dataset contains the monthly
 number of airline passengers in Australia between 1949 and 1960. First,
-let’s load the dataset and plot it:
+load the dataset and plot it:
 
 ```python
 import pandas as pd
@@ -95,7 +93,7 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
 
 ![](/nixtla/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-8-output-1.png)
 
-> **Important requirements of the data**
+> 📘 Data Requirments
 >
 > -   Make sure the target variable column does not have missing or
 >     non-numeric values.
@@ -106,19 +104,23 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
 >     (see [this
 >     link](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html)
 >     for more details).
+>
+> For further details go to [Data
+> Requeriments](https://docs.nixtla.io/docs/getting-started-data_requirements).
 
-### Produce a longer forecast
+### Forecast a longer horizon into the future
 
 Next, forecast the next 12 months using the SDK `forecast` method. Set
 the following parameters:
 
--   `df`: A pandas dataframe containing the time series data.
--   `h`: The number of steps ahead to forecast.
+-   `df`: A pandas DataFrame containing the time series data.
+-   `h`: Horizons is the number of steps ahead to forecast.
 -   `freq`: The frequency of the time series in Pandas format. See
     [pandas’ available
     frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
--   `time_col`: Column that identifies the datestamp column.
--   `target_col`: The variable that we want to forecast.
+    (If you don’t provide any frequency, the SDK will try to infer it)
+-   `time_col`: The column that identifies the datestamp.
+-   `target_col`: The variable to forecast.
 
 ```python
 timegpt_fcst_df = nixtla_client.forecast(df=df, h=12, freq='MS', time_col='timestamp', target_col='value')
@@ -146,8 +148,8 @@ nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value'
 
 ![](/nixtla/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-10-output-1.png)
 
-You can also produce longer forecasts increasing the horizon parameter
-and selecting the `timegpt-1-long-horizon` model. We recomend using this
+You can also produce longer forecasts by increasing the horizon
+parameter and selecting the `timegpt-1-long-horizon` model. Use this
 model if you want to predict more than one seasonal period of your data.
 
 For example, let’s forecast the next 36 months:
@@ -197,45 +199,4 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 ![](/nixtla/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-13-output-2.png)
-
-> **Warning**
->
-> TimeGPT-1 is currently optimized for short horizon forecasting. While
-> the `forecast` method will allow any positive and large horizons, the
-> accuracy of the forecasts might degrade. We are currently working to
-> improve the accuracy on longer forecasts.
-
-### Use DateTime index to infer frequency
-
-The freq parameter, which indicates the time unit between consecutive
-data points, is particularly critical. Fortunately, you can pass a
-DataFrame with a DateTime index to the forecasting method, ensuring that
-your time series data is equipped with necessary temporal features. By
-assigning a suitable freq parameter to the DateTime index of a
-DataFrame, you inform the model about the consistent interval between
-observations — be it days (‘D’), months (‘M’), or another suitable
-frequency.
-
-```python
-df_time_index = df.set_index('timestamp')
-df_time_index.index = pd.DatetimeIndex(df_time_index.index, freq='MS')
-nixtla_client.forecast(df=df, h=36, time_col='timestamp', target_col='value').head()
-```
-
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtla.nixtla_client:Restricting input...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-```
-
-|     | timestamp  | TimeGPT    |
-|-----|------------|------------|
-| 0   | 1961-01-01 | 437.837921 |
-| 1   | 1961-02-01 | 426.062714 |
-| 2   | 1961-03-01 | 463.116547 |
-| 3   | 1961-04-01 | 478.244507 |
-| 4   | 1961-05-01 | 505.646484 |
 
