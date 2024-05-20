@@ -95,6 +95,23 @@ of the `NixtlaClient` class.
 
 ## Features and Capabilities
 
+What is the input to TimeGPT?
+
+`TimeGPT` accepts `pandas` dataframes in [long
+format](https://www.theanalysisfactor.com/wide-and-long-data/#comments)
+with the following necessary columns:
+
+-   `ds` (timestamp): timestamp in format `YYYY-MM-DD` or
+    `YYYY-MM-DD HH:MM:SS`.
+-   `y` (numeric): The target variable to forecast.
+
+(Optionally, you can also pass a DataFrame without the `ds` column as
+long as it has DatetimeIndex)
+
+`TimeGPT` also works with [distributed
+dataframes](https://docs.nixtla.io/docs/tutorials-computing_at_scale)
+like `dask`, `spark` and `ray`.
+
 Can TimeGPT handle multiple time series?
 
 Yes. For guidance on forecasting multiple time series at once, consult
@@ -196,8 +213,7 @@ on Python scripts.
 
 Does TimeGPT support polars?
 
-As of now, `TimeGPT` supports only pandas DataFrames and does not offer
-support for polars.
+As of now, `TimeGPT` does not offer support for polars.
 
 Does TimeGPT produce stable predictions?
 
