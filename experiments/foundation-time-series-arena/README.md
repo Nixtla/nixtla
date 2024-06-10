@@ -2,6 +2,7 @@
 
 > TL;DR: Foundation models for time series outperform alternatives and are ready to be tested in production. TimeGPT-1 is (so far) the most accurate and fastest model but TimesFM from Google comes very close. Some models are still outperformed by classical alternatives.
 
+Note: The Amazon team responded to the original benchmark with this [PR](https://github.com/Nixtla/nixtla/pull/382) that shows, according to them, that by changing some parameters, Chronos is significantly faster and more accurate. We are currently reviewing the PR. 
 
 # Introduction
 
@@ -19,6 +20,8 @@ We have also seen some of these models being offered as out-of-the-box solutions
 We at Nixtla have provided some [early success stories](https://techcommunity.microsoft.com/t5/ai-machine-learning-blog/announcing-timegen-1-in-azure-ai-leap-forward-in-time-series/ba-p/4140446) of real companies leveraging the simplicity and accuracy of `TimeGPT-1` and we are sure that more positive examples will follow from other models.
 
 However, the field [is still divided](https://news.ycombinator.com/item?id=39235983) on how all the different foundation models compare against each other. In the spirit of collaboration, we are starting a new project, `xiuhmolpilli`, in honor of how ancient civilizations celebrated the end of cycles, to build a benchmark to compare all the different foundation models for time series data in a large scale dataset and against classical, ML and Deep Learning Models.
+
+
 
 # Empirical Evaluation
 
