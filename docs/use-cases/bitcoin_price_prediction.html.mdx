@@ -54,65 +54,28 @@ payment for goods and services, traded for other currencies, or held as
 a store of value.
 
 In this tutorial, we will first download the historical Bitcoin price
-data with `cryptocmd`, a Python package for downloading data from
-[CoinMarketCap](https://coinmarketcap.com/). To start, we need to define
-a `scraper`, selecting our cryptocurrency of interest and the start and
-end dates in format dd-mm-yyyy.
-
-> **Note**
->
-> You can install `cryptocmd` with `pip`:
->
-> ```python
-> pip install cryptocmd
-> ```
+data in USD as a `pandas` DataFrame.
 
 ```python
 import pandas as pd 
-from cryptocmd import CmcScraper
-```
 
-
-```python
-scraper = CmcScraper('BTC', '01-01-2020', '31-12-2023')
-```
-
-Next we create a `pandas` DataFrame with the data. Note that it is
-important to sort the data by date in ascending order.
-
-```python
-df = scraper.get_dataframe()
-df = df.sort_values('Date', ascending=True)
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/bitcoin_price_usd.csv', sep=',')  
 df.head()
 ```
 
-|      | Date       | Open        | High        | Low         | Close       | Volume       | Market Cap   | Time Open                | Time High                | Time Low                 | Time Close               |
-|------|------------|-------------|-------------|-------------|-------------|--------------|--------------|--------------------------|--------------------------|--------------------------|--------------------------|
-| 1460 | 2020-01-01 | 7194.891971 | 7254.330611 | 7174.944153 | 7200.174393 | 1.856566e+10 | 1.305808e+11 | 2020-01-01T00:00:00.000Z | 2020-01-01T15:42:01.000Z | 2020-01-01T01:06:01.000Z | 2020-01-01T23:59:59.999Z |
-| 1459 | 2020-01-02 | 7202.551122 | 7212.155253 | 6935.269972 | 6985.470001 | 2.080208e+10 | 1.266994e+11 | 2020-01-02T00:00:00.000Z | 2020-01-02T01:30:00.000Z | 2020-01-02T23:02:01.000Z | 2020-01-02T23:59:59.999Z |
-| 1458 | 2020-01-03 | 6984.428612 | 7413.715099 | 6914.995908 | 7344.884183 | 2.811148e+10 | 1.332334e+11 | 2020-01-03T00:00:00.000Z | 2020-01-03T17:04:00.000Z | 2020-01-03T02:10:01.000Z | 2020-01-03T23:59:59.999Z |
-| 1457 | 2020-01-04 | 7345.375275 | 7427.385794 | 7309.514012 | 7410.656566 | 1.844427e+10 | 1.344425e+11 | 2020-01-04T00:00:00.000Z | 2020-01-04T18:44:02.000Z | 2020-01-04T00:39:02.000Z | 2020-01-04T23:59:59.999Z |
-| 1456 | 2020-01-05 | 7410.451694 | 7544.496872 | 7400.535561 | 7411.317327 | 1.972507e+10 | 1.344695e+11 | 2020-01-05T00:00:00.000Z | 2020-01-05T18:57:00.000Z | 2020-01-05T23:18:00.000Z | 2020-01-05T23:59:59.999Z |
+|     | Date       | Close       |
+|-----|------------|-------------|
+| 0   | 2020-01-01 | 7200.174316 |
+| 1   | 2020-01-02 | 6985.470215 |
+| 2   | 2020-01-03 | 7344.884277 |
+| 3   | 2020-01-04 | 7410.656738 |
+| 4   | 2020-01-05 | 7411.317383 |
 
-The `scraper` provides different details regarding the price of Bitcoin.
-Here, we will use the `Close` column as our target variable, although
-any other column could also be used. It’s important to note that unlike
-traditional financial assets, Bitcoin trades 24/7. Therefore, the
-closing price represents the price of Bitcoin at a specific time each
-day, rather than at the end of a trading day.
-
-```python
-df = df[['Date', 'Close']]
-df.head()
-```
-
-|      | Date       | Close       |
-|------|------------|-------------|
-| 1460 | 2020-01-01 | 7200.174393 |
-| 1459 | 2020-01-02 | 6985.470001 |
-| 1458 | 2020-01-03 | 7344.884183 |
-| 1457 | 2020-01-04 | 7410.656566 |
-| 1456 | 2020-01-05 | 7411.317327 |
+This dataset contains the closing price of Bitcoin in USD from
+2020-01-01 to 2023-12-31. It’s important to note that unlike traditional
+financial assets, Bitcoin trades 24/7. Therefore, the closing price
+represents the price of Bitcoin at a specific time each day, rather than
+at the end of a trading day.
 
 For convenience, we will rename the `Date` and `Close` columns to `ds`
 and `y`, respectively.
@@ -164,7 +127,7 @@ can also use `plotly` for interactive plots.
 nixtla_client.plot(df)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-10-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-7-output-1.png)
 
 If you haven’t renamed the column names of your DataFrame to `ds` and
 `y`, you will need to specify the `time_col` and `target_col` arguments
@@ -237,7 +200,7 @@ visualize the predictions with the historical data.
 nixtla_client.plot(df, fcst, level=level)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-12-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-9-output-1.png)
 
 To get a closer look at the predictions, we can zoom in on the plot or
 specify the maximum number of in-sample observations to be plotted using
@@ -249,7 +212,7 @@ historical values along with the complete forecast.
 nixtla_client.plot(df, fcst, level=level, max_insample_length=60)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-13-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-10-output-1.png)
 
 Additionally, if you set the `add_history` argument of the `forecast`
 method to `True`, `TimeGPT` will generate predictions for the historical
@@ -295,7 +258,7 @@ INFO:nixtla.nixtla_client:Calling Historical Forecast Endpoint...
 nixtla_client.plot(df, forecast, level=level)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-15-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-12-output-1.png)
 
 ## 5. Extend Bitcoin Price Analysis with TimeGPT
 
@@ -339,7 +302,7 @@ INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 nixtla_client.plot(df, anomalies_df, plot_anomalies=True)
 ```
 
-![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-17-output-1.png)
+![](/nixtla/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-14-output-1.png)
 
 To learn more about how to detect anomalies with `TimeGPT`, take a look
 at our [Anomaly
@@ -366,10 +329,13 @@ tutorial.
 ## 6. Understand the Model’s Limitations
 
 As stated in the introduction, predicting the future prices of financial
-assets is a challenging task, especially for assets like Bitcoin.
-However, for those who need or want to forecast these assets, `TimeGPT`
-can be a powerful tool that simplifies the forecasting process. With
-just a couple of lines of code, `TimeGPT` can help you:
+assets is a challenging task, especially for assets like Bitcoin. The
+predictions in this tutorial seem very accurate, because we are doing
+historical forecasting. The real challenge is forecasting the price of
+Bitcoin for the upcoming days, not its historical price. For those who
+need or want to try to forecast these assets, `TimeGPT` can be an option
+that simplifies the forecasting process. With just a couple of lines of
+code, `TimeGPT` can help you:
 
 -   Produce point forecasts
 -   Quantify the uncertainty of your predictions
