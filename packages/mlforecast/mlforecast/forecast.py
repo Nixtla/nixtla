@@ -558,7 +558,7 @@ class MLForecast:
         if level is not None:
             res = ufp.add_insample_levels(
                 res,
-                models=self.models_.keys(),
+                models=list(self.models_.keys()),
                 level=level,
                 id_col=self.ts.id_col,
                 target_col=self.ts.target_col,

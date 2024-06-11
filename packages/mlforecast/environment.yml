@@ -19,6 +19,7 @@ dependencies:
   - pyspark>=3.3
   - s3fs
   - scikit-learn
+  - setuptools<70
   - shap
   - statsmodels
   - window-ops

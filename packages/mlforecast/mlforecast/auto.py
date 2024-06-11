@@ -11,11 +11,11 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import optuna
+import utilsforecast.processing as ufp
 from sklearn.base import BaseEstimator, clone
 from sklearn.preprocessing import FunctionTransformer
 from utilsforecast.compat import DataFrame
 from utilsforecast.losses import smape
-from utilsforecast.processing import counts_by_id
 from utilsforecast.validation import validate_freq
 
 from . import MLForecast
@@ -441,6 +441,7 @@ class AutoMLForecast:
         target_col: str = "y",
         study_kwargs: Optional[Dict[str, Any]] = None,
         optimize_kwargs: Optional[Dict[str, Any]] = None,
+        fitted: bool = False,
     ) -> "AutoMLForecast":
         """Carry out the optimization process.
         Each model is optimized independently and the best one is trained on all data
@@ -472,6 +473,8 @@ class AutoMLForecast:
             Keyword arguments to be passed to the optuna.Study constructor.
         optimize_kwargs : dict, optional (default=None)
             Keyword arguments to be passed to the optuna.Study.optimize method.
+        fitted : bool (default=False)
+            Whether to compute the fitted values when retraining the best model.
 
         Returns
         -------
@@ -482,7 +485,7 @@ class AutoMLForecast:
         if self.init_config is not None:
             init_config = self.init_config
         else:
-            min_size = counts_by_id(df, id_col)["counts"].min()
+            min_size = ufp.counts_by_id(df, id_col)["counts"].min()
             min_train_size = min_size - n_windows * h
             init_config = self._seasonality_based_config(
                 h=h,
@@ -534,6 +537,7 @@ class AutoMLForecast:
             study.optimize(objective, n_trials=num_samples, **optimize_kwargs)
             self.results_[name] = study
             best_config = study.best_trial.user_attrs["config"]
+            best_config["mlf_fit_params"].pop("fitted", None)
             best_model = clone(auto_model.model)
             best_model.set_params(**best_config["model_params"])
             self.models_[name] = MLForecast(
@@ -541,7 +545,11 @@ class AutoMLForecast:
                 freq=self.freq,
                 **best_config["mlf_init_params"],
             )
-            self.models_[name].fit(df, **best_config["mlf_fit_params"])
+            self.models_[name].fit(
+                df,
+                fitted=fitted,
+                **best_config["mlf_fit_params"],
+            )
         return self
 
     def predict(
@@ -569,7 +577,7 @@ class AutoMLForecast:
             if all_preds is None:
                 all_preds = preds
             else:
-                all_preds[name] = preds[name]
+                all_preds = ufp.assign_columns(all_preds, name, preds[name])
         return all_preds
 
     def save(self, path: Union[str, Path]) -> None:
@@ -581,3 +589,33 @@ class AutoMLForecast:
             Directory where artifacts will be stored."""
         for name, model in self.models_.items():
             model.save(f"{path}/{name}")
+
+    def forecast_fitted_values(
+        self,
+        level: Optional[List[Union[int, float]]] = None,
+    ) -> DataFrame:
+        """Access in-sample predictions.
+
+        Parameters
+        ----------
+        level : list of ints or floats, optional (default=None)
+            Confidence levels between 0 and 100 for prediction intervals.
+
+        Returns
+        -------
+        pandas or polars DataFrame
+            Dataframe with predictions for the training set
+        """
+        fitted_vals = None
+        for name, model in self.models_.items():
+            model_fitted = model.forecast_fitted_values(level=level)
+            if fitted_vals is None:
+                fitted_vals = model_fitted
+            else:
+                fitted_vals = ufp.join(
+                    fitted_vals,
+                    ufp.drop_columns(model_fitted, model.ts.target_col),
+                    on=[model.ts.id_col, model.ts.time_col],
+                    how="inner",
+                )
+        return fitted_vals
