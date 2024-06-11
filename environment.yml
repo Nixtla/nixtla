@@ -22,4 +22,3 @@ dependencies:
     - fire
     - tabulate
     - tenacity
-    - cryptocmd
