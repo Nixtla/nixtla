@@ -28,6 +28,8 @@ def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
         else:
             if isinstance(freq, str):
                 # this raises a nice error message if it isn't a valid datetime
+                if isinstance(bound, pd.Timestamp) and bound.tz is not None:
+                    bound = bound.tz_localize(None)
                 val = np.datetime64(bound)
             else:
                 val = bound
@@ -149,8 +151,13 @@ def fill_gaps(
             # such as MS = 'Month Start' -> 'M', YS = 'Year Start' -> 'Y'
             freq = freq[0]
         delta: Union[np.timedelta64, int] = np.timedelta64(n, freq)
+        tz = df[time_col].dt.tz
+        if tz is not None:
+            df = df.copy(deep=False)
+            df[time_col] = df[time_col].dt.tz_localize(None)
     else:
         delta = freq
+        tz = None
     times_by_id = df.groupby(id_col, observed=True)[time_col].agg(["min", "max"])
     starts = _determine_bound(start, freq, times_by_id, "min")
     ends = _determine_bound(end, freq, times_by_id, "max") + delta
@@ -172,6 +179,8 @@ def fill_gaps(
             times += offset.base
     idx = pd.MultiIndex.from_arrays([uids, times], names=[id_col, time_col])
     res = df.set_index([id_col, time_col]).reindex(idx).reset_index()
+    if tz is not None:
+        res[time_col] = res[time_col].dt.tz_localize(tz, ambiguous="infer")
     extra_cols = df.columns.drop([id_col, time_col]).tolist()
     if extra_cols:
         check_col = extra_cols[0]
