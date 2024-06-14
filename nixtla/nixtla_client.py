@@ -726,6 +726,7 @@ def validate_model_parameter(func):
             rename_models_dict = {
                 "short-horizon": "timegpt-1",
                 "long-horizon": "timegpt-1-long-horizon",
+                "azureai": "timegpt-1",
             }
             if model in rename_models_dict.keys():
                 new_model = rename_models_dict[model]
@@ -739,6 +740,7 @@ def validate_model_parameter(func):
                     f'unsupported model: {kwargs["model"]} '
                     f'supported models: {", ".join(self.supported_models)}'
                 )
+            kwargs["model"] = model
         return func(self, *args, **kwargs)
 
     return wrapper
