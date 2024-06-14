@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdint>
 
-using GroupedArrayHandle = void *;
 using indptr_t = int32_t;
 
 template <typename T> inline indptr_t FirstNotNaN(const T *data, indptr_t n) {
@@ -35,15 +34,14 @@ template <typename T> inline void SkipLags(T *out, int n, int lag) {
 template <class T> class GroupedArray {
 private:
   const T *data_;
-  indptr_t n_data_;
   const indptr_t *indptr_;
   int n_groups_;
   int num_threads_;
 
 public:
-  GroupedArray(const T *data, indptr_t n_data, const indptr_t *indptr,
-               int n_indptr, int num_threads)
-      : data_(data), n_data_(n_data), indptr_(indptr), n_groups_(n_indptr - 1),
+  GroupedArray(const T *data, const indptr_t *indptr, int n_indptr,
+               int num_threads)
+      : data_(data), indptr_(indptr), n_groups_(n_indptr - 1),
         num_threads_(num_threads) {}
   ~GroupedArray() {}
   template <typename Func, typename... Args>
@@ -149,17 +147,17 @@ public:
   }
 
   template <typename Func>
-  void Zip(Func f, const GroupedArray<T> *other, const indptr_t *out_indptr,
+  void Zip(Func f, const GroupedArray<T> &other, const indptr_t *out_indptr,
            T *out) const noexcept {
 #pragma omp parallel for schedule(static) num_threads(num_threads_)
     for (int i = 0; i < n_groups_; ++i) {
       indptr_t start = indptr_[i];
       indptr_t end = indptr_[i + 1];
       indptr_t n = end - start;
-      indptr_t other_start = other->indptr_[i];
-      indptr_t other_end = other->indptr_[i + 1];
+      indptr_t other_start = other.indptr_[i];
+      indptr_t other_end = other.indptr_[i + 1];
       indptr_t other_n = other_end - other_start;
-      f(data_ + start, n, other->data_ + other_start, other_n,
+      f(data_ + start, n, other.data_ + other_start, other_n,
         out + out_indptr[i]);
     }
   }

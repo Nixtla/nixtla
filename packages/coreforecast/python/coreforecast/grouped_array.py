@@ -16,6 +16,12 @@ class GroupedArray:
         num_threads (int): Number of threads to use when computing transformations."""
 
     def __init__(self, data: np.ndarray, indptr: np.ndarray, num_threads: int = 1):
+        if data.ndim != 1:
+            raise ValueError("data must be a 1d array")
+        if indptr.ndim != 1:
+            raise ValueError("indptr must be a 1d array")
+        if indptr[-1] != data.size:
+            raise ValueError("Last element of indptr must be equal to the size of data")
         self.data = np.ascontiguousarray(data, dtype=data.dtype)
         self.data = _ensure_float(self.data)
         if self.data.dtype == np.float32:
@@ -24,18 +30,6 @@ class GroupedArray:
             self.prefix = "GroupedArrayFloat64"
         self.indptr = indptr.astype(_indptr_dtype, copy=False)
         self.num_threads = num_threads
-        self._handle = ctypes.c_void_p()
-        _LIB[f"{self.prefix}_Create"](
-            _data_as_void_ptr(self.data),
-            _indptr_t(self.data.size),
-            self.indptr.ctypes.data_as(ctypes.POINTER(_indptr_t)),
-            _indptr_t(self.indptr.size),
-            ctypes.c_int(num_threads),
-            ctypes.byref(self._handle),
-        )
-
-    def __del__(self):
-        _LIB[f"{self.prefix}_Delete"](self._handle)
 
     def __len__(self):
         return self.indptr.size - 1
@@ -61,8 +55,13 @@ class GroupedArray:
         new_indptr = self.indptr + other.indptr
         new_data = np.empty_like(self.data, shape=new_indptr[-1])
         _LIB[f"{self.prefix}_Append"](
-            self._handle,
-            other._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
+            _data_as_void_ptr(other.data),
+            _data_as_void_ptr(other.indptr),
+            _indptr_t(other.indptr.size),
             _data_as_void_ptr(new_indptr),
             _data_as_void_ptr(new_data),
         )
@@ -76,7 +75,10 @@ class GroupedArray:
     def _scaler_fit(self, scaler_type: str) -> np.ndarray:
         stats = np.empty_like(self.data, shape=(len(self), 2))
         _LIB[f"{self.prefix}_{scaler_type}ScalerStats"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             _data_as_void_ptr(stats),
         )
         return stats
@@ -85,7 +87,10 @@ class GroupedArray:
         out = np.empty_like(self.data)
         stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_ScalerTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             _data_as_void_ptr(stats),
             _data_as_void_ptr(out),
         )
@@ -95,7 +100,10 @@ class GroupedArray:
         out = np.empty_like(self.data)
         stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_ScalerInverseTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             _data_as_void_ptr(stats),
             _data_as_void_ptr(out),
         )
@@ -104,7 +112,10 @@ class GroupedArray:
     def _index_from_end(self, k: int) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_IndexFromEnd"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(k),
             _data_as_void_ptr(out),
         )
@@ -113,7 +124,10 @@ class GroupedArray:
     def _head(self, k: int) -> np.ndarray:
         out = np.empty_like(self.data, shape=k * len(self))
         _LIB[f"{self.prefix}_Head"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(k),
             _data_as_void_ptr(out),
         )
@@ -122,7 +136,10 @@ class GroupedArray:
     def _tail(self, k: int) -> np.ndarray:
         out = np.empty_like(self.data, shape=k * len(self))
         _LIB[f"{self.prefix}_Tail"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(k),
             _data_as_void_ptr(out),
         )
@@ -131,7 +148,10 @@ class GroupedArray:
     def _tails(self, indptr_out: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data, shape=indptr_out[-1])
         _LIB[f"{self.prefix}_Tails"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             _data_as_void_ptr(indptr_out),
             _data_as_void_ptr(out),
         )
@@ -143,7 +163,10 @@ class GroupedArray:
     def _lag_transform(self, lag: int) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_LagTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             _data_as_void_ptr(out),
         )
@@ -154,7 +177,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Rolling{stat_name}Transform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             ctypes.c_int(window_size),
             ctypes.c_int(min_samples),
@@ -167,7 +193,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_RollingQuantileTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             self._pyfloat_to_c(p),
             ctypes.c_int(window_size),
@@ -181,7 +210,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_Rolling{stat_name}Update"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             ctypes.c_int(window_size),
             ctypes.c_int(min_samples),
@@ -194,7 +226,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_RollingQuantileUpdate"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             self._pyfloat_to_c(p),
             ctypes.c_int(window_size),
@@ -213,7 +248,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_SeasonalRolling{stat_name}Transform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             ctypes.c_int(season_length),
             ctypes.c_int(window_size),
@@ -232,7 +270,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_SeasonalRolling{stat_name}Update"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             ctypes.c_int(season_length),
             ctypes.c_int(window_size),
@@ -251,7 +292,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_SeasonalRollingQuantileTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             ctypes.c_int(season_length),
             self._pyfloat_to_c(p),
@@ -271,7 +315,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_SeasonalRollingQuantileUpdate"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             ctypes.c_int(season_length),
             self._pyfloat_to_c(p),
@@ -289,7 +336,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Expanding{stat_name}Transform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             _data_as_void_ptr(out),
             _data_as_void_ptr(aggs),
@@ -303,7 +353,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Expanding{stat_name}Transform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             _data_as_void_ptr(out),
         )
@@ -312,7 +365,10 @@ class GroupedArray:
     def _expanding_quantile_transform(self, lag: int, p: float) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ExpandingQuantileTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             self._pyfloat_to_c(p),
             _data_as_void_ptr(out),
@@ -322,7 +378,10 @@ class GroupedArray:
     def _expanding_quantile_update(self, lag: int, p: float) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_ExpandingQuantileUpdate"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             self._pyfloat_to_c(p),
             _data_as_void_ptr(out),
@@ -337,7 +396,10 @@ class GroupedArray:
     ) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_ExponentiallyWeighted{stat_name}Transform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(lag),
             self._pyfloat_to_c(alpha),
             _data_as_void_ptr(out),
@@ -351,7 +413,10 @@ class GroupedArray:
         if method == "guerrero":
             assert season_length is not None
             _LIB[f"{self.prefix}_BoxCoxLambdaGuerrero"](
-                self._handle,
+                _data_as_void_ptr(self.data),
+                _data_as_void_ptr(self.indptr),
+                _indptr_t(self.indptr.size),
+                ctypes.c_int(self.num_threads),
                 ctypes.c_int(season_length),
                 _pyfloat_to_np_c(lower, self.data.dtype),
                 _pyfloat_to_np_c(upper, self.data.dtype),
@@ -359,7 +424,10 @@ class GroupedArray:
             )
         else:
             _LIB[f"{self.prefix}_BoxCoxLambdaLogLik"](
-                self._handle,
+                _data_as_void_ptr(self.data),
+                _data_as_void_ptr(self.indptr),
+                _indptr_t(self.indptr.size),
+                ctypes.c_int(self.num_threads),
                 _pyfloat_to_np_c(lower, self.data.dtype),
                 _pyfloat_to_np_c(upper, self.data.dtype),
                 _data_as_void_ptr(out),
@@ -370,7 +438,10 @@ class GroupedArray:
         out = np.empty_like(self.data)
         stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_BoxCoxTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             _data_as_void_ptr(stats),
             _data_as_void_ptr(out),
         )
@@ -380,7 +451,10 @@ class GroupedArray:
         out = np.empty_like(self.data)
         stats = stats.astype(self.data.dtype, copy=False)
         _LIB[f"{self.prefix}_BoxCoxInverseTransform"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             _data_as_void_ptr(stats),
             _data_as_void_ptr(out),
         )
@@ -389,7 +463,10 @@ class GroupedArray:
     def _num_diffs(self, max_d: int = 1) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_NumDiffs"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(max_d),
             _data_as_void_ptr(out),
         )
@@ -398,7 +475,10 @@ class GroupedArray:
     def _num_seas_diffs(self, season_length: int, max_d: int = 1) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_NumSeasDiffs"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(season_length),
             ctypes.c_int(max_d),
             _data_as_void_ptr(out),
@@ -409,7 +489,10 @@ class GroupedArray:
         periods_and_out = np.empty_like(self.data, shape=(len(self), 2))
         periods_and_out[:, 0] = periods
         _LIB[f"{self.prefix}_NumSeasDiffsPeriods"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(max_d),
             _data_as_void_ptr(periods_and_out),
         )
@@ -418,7 +501,10 @@ class GroupedArray:
     def _periods(self, max_period: int) -> np.ndarray:
         out = np.empty_like(self.data, shape=len(self))
         _LIB[f"{self.prefix}_Period"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_size_t(max_period),
             _data_as_void_ptr(out),
         )
@@ -427,7 +513,10 @@ class GroupedArray:
     def _diff(self, d: int) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Difference"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             ctypes.c_int(d),
             _data_as_void_ptr(out),
         )
@@ -436,7 +525,10 @@ class GroupedArray:
     def _diffs(self, ds: np.ndarray) -> np.ndarray:
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_Differences"](
-            self._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
             _data_as_void_ptr(ds),
             _data_as_void_ptr(out),
         )
@@ -444,17 +536,20 @@ class GroupedArray:
 
     def _inv_diff(self, d: int, tails: np.ndarray) -> np.ndarray:
         ds = np.full(len(self), d, dtype=_indptr_dtype)
-        tails = tails.astype(self.data.dtype, copy=False)
         return self._inv_diffs(ds, tails)
 
     def _inv_diffs(self, ds: np.ndarray, tails: np.ndarray) -> np.ndarray:
         tails_indptr = _diffs_to_indptr(ds)
         tails = tails.astype(self.data.dtype, copy=False)
-        tails_ga = GroupedArray(tails, tails_indptr)
         out = np.empty_like(self.data)
         _LIB[f"{self.prefix}_InvertDifferences"](
-            self._handle,
-            tails_ga._handle,
+            _data_as_void_ptr(self.data),
+            _data_as_void_ptr(self.indptr),
+            _indptr_t(self.indptr.size),
+            ctypes.c_int(self.num_threads),
+            _data_as_void_ptr(tails),
+            _data_as_void_ptr(tails_indptr),
+            _indptr_t(tails_indptr.size),
             _data_as_void_ptr(self.indptr),
             _data_as_void_ptr(out),
         )

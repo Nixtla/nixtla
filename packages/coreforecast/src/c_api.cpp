@@ -148,381 +148,384 @@ int Float32_Period(const float *x, size_t n, int max_lag) {
 
 // GA
 // Lag
-int GroupedArrayFloat32_LagTransform(GroupedArrayHandle handle, int lag,
-                                     float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(LagTransform<float>, lag, out);
-  return 0;
+void GroupedArrayFloat32_LagTransform(const float *data, const indptr_t *indptr,
+                                      int n_indptr, int num_threads, int lag,
+                                      float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(LagTransform<float>, lag, out);
 }
 
 // Manipulation
-int GroupedArrayFloat32_Create(const float *data, indptr_t n_data,
-                               indptr_t *indptr, indptr_t n_indptr,
-                               int num_threads, GroupedArrayHandle *out) {
-  *out = new GroupedArray<float>(data, n_data, indptr, n_indptr, num_threads);
-  return 0;
-}
-int GroupedArrayFloat32_Delete(GroupedArrayHandle handle) {
-  delete reinterpret_cast<GroupedArray<float> *>(handle);
-  return 0;
-}
-int GroupedArrayFloat32_IndexFromEnd(GroupedArrayHandle handle, int k,
-                                     float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(IndexFromEnd<float>, 1, out, 0, k);
-  return 0;
+void GroupedArrayFloat32_IndexFromEnd(const float *data, const indptr_t *indptr,
+                                      int n_indptr, int num_threads, int k,
+                                      float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(IndexFromEnd<float>, 1, out, 0, k);
 }
 
-void GroupedArrayFloat32_Head(GroupedArrayHandle handle, int k, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(Head<float>, k, out, 0, k);
+void GroupedArrayFloat32_Head(const float *data, const indptr_t *indptr,
+                              int n_indptr, int num_threads, int k,
+                              float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(Head<float>, k, out, 0, k);
 }
-void GroupedArrayFloat32_Tail(GroupedArrayHandle handle, int k, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(Tail<float>, k, out, 0, k);
+void GroupedArrayFloat32_Tail(const float *data, const indptr_t *indptr,
+                              int n_indptr, int num_threads, int k,
+                              float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(Tail<float>, k, out, 0, k);
 }
-void GroupedArrayFloat32_Append(GroupedArrayHandle handle,
-                                GroupedArrayHandle other_handle,
-                                const indptr_t *out_indptr, float *out_data) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  auto other = reinterpret_cast<const GroupedArray<float> *>(other_handle);
-  ga->Zip(Append<float>, other, out_indptr, out_data);
+void GroupedArrayFloat32_Append(const float *data, const indptr_t *indptr,
+                                int n_indptr, int num_threads,
+                                const float *other_data,
+                                const indptr_t *other_indptr,
+                                int other_n_indptr, const indptr_t *out_indptr,
+                                float *out_data) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  auto other = GroupedArray<float>(other_data, other_indptr, other_n_indptr,
+                                   num_threads);
+  ga.Zip(Append<float>, other, out_indptr, out_data);
 }
-void GroupedArrayFloat32_Tails(GroupedArrayHandle handle,
+void GroupedArrayFloat32_Tails(const float *data, const indptr_t *indptr,
+                               int n_indptr, int num_threads,
                                const indptr_t *indptr_out, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->VariableReduce(Tail<float>, indptr_out, out);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.VariableReduce(Tail<float>, indptr_out, out);
 }
 
 // Lag
 // Rolling
-int GroupedArrayFloat32_RollingMeanTransform(GroupedArrayHandle handle, int lag,
-                                             int window_size, int min_samples,
-                                             float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(RollingMeanTransform<float>, lag, out, window_size,
-                min_samples);
-  return 0;
+void GroupedArrayFloat32_RollingMeanTransform(const float *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              int lag, int window_size,
+                                              int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingMeanTransform<float>, lag, out, window_size, min_samples);
 }
-int GroupedArrayFloat32_RollingStdTransform(GroupedArrayHandle handle, int lag,
-                                            int window_size, int min_samples,
-                                            float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(RollingStdTransform<float>, lag, out, window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_RollingStdTransform(const float *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
+                                             int lag, int window_size,
+                                             int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingStdTransform<float>, lag, out, window_size, min_samples);
 }
-int GroupedArrayFloat32_RollingMinTransform(GroupedArrayHandle handle, int lag,
-                                            int window_size, int min_samples,
-                                            float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(RollingMinTransform<float>, lag, out, window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_RollingMinTransform(const float *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
+                                             int lag, int window_size,
+                                             int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingMinTransform<float>, lag, out, window_size, min_samples);
 }
-int GroupedArrayFloat32_RollingMaxTransform(GroupedArrayHandle handle, int lag,
-                                            int window_size, int min_samples,
-                                            float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(RollingMaxTransform<float>, lag, out, window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_RollingMaxTransform(const float *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
+                                             int lag, int window_size,
+                                             int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingMaxTransform<float>, lag, out, window_size, min_samples);
 }
-int GroupedArrayFloat32_RollingQuantileTransform(GroupedArrayHandle handle,
-                                                 int lag, float p,
-                                                 int window_size,
-                                                 int min_samples, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(RollingQuantileTransform<float>, lag, out, window_size,
-                min_samples, p);
-  return 0;
+void GroupedArrayFloat32_RollingQuantileTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float p, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingQuantileTransform<float>, lag, out, window_size,
+               min_samples, p);
 }
-int GroupedArrayFloat32_RollingMeanUpdate(GroupedArrayHandle handle, int lag,
+void GroupedArrayFloat32_RollingMeanUpdate(const float *data,
+                                           const indptr_t *indptr, int n_indptr,
+                                           int num_threads, int lag,
+                                           int window_size, int min_samples,
+                                           float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingMeanUpdate<float>(), 1, out, lag, window_size, min_samples);
+}
+void GroupedArrayFloat32_RollingStdUpdate(const float *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag,
                                           int window_size, int min_samples,
                                           float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(RollingMeanUpdate<float>(), 1, out, lag, window_size, min_samples);
-  return 0;
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingStdUpdate<float>(), 1, out, lag, window_size, min_samples);
 }
-int GroupedArrayFloat32_RollingStdUpdate(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(RollingStdUpdate<float>(), 1, out, lag, window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_RollingMinUpdate(const float *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag,
+                                          int window_size, int min_samples,
+                                          float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingMinUpdate<float>(), 1, out, lag, window_size, min_samples);
 }
-int GroupedArrayFloat32_RollingMinUpdate(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(RollingMinUpdate<float>(), 1, out, lag, window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_RollingMaxUpdate(const float *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag,
+                                          int window_size, int min_samples,
+                                          float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingMaxUpdate<float>(), 1, out, lag, window_size, min_samples);
 }
-int GroupedArrayFloat32_RollingMaxUpdate(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(RollingMaxUpdate<float>(), 1, out, lag, window_size, min_samples);
-  return 0;
-}
-int GroupedArrayFloat32_RollingQuantileUpdate(GroupedArrayHandle handle,
-                                              int lag, float p, int window_size,
-                                              int min_samples, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(RollingQuantileUpdate<float>(), 1, out, lag, window_size,
-             min_samples, p);
-  return 0;
+void GroupedArrayFloat32_RollingQuantileUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float p, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingQuantileUpdate<float>(), 1, out, lag, window_size,
+            min_samples, p);
 }
 
 // Seasonal rolling
-int GroupedArrayFloat32_SeasonalRollingMeanTransform(GroupedArrayHandle handle,
-                                                     int lag, int season_length,
-                                                     int window_size,
-                                                     int min_samples,
-                                                     float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(SeasonalRollingMeanTransform<float>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingMeanTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingMeanTransform<float>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingStdTransform(GroupedArrayHandle handle,
-                                                    int lag, int season_length,
-                                                    int window_size,
-                                                    int min_samples,
-                                                    float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(SeasonalRollingStdTransform<float>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingStdTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingStdTransform<float>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingMinTransform(GroupedArrayHandle handle,
-                                                    int lag, int season_length,
-                                                    int window_size,
-                                                    int min_samples,
-                                                    float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(SeasonalRollingMinTransform<float>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingMinTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingMinTransform<float>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingMaxTransform(GroupedArrayHandle handle,
-                                                    int lag, int season_length,
-                                                    int window_size,
-                                                    int min_samples,
-                                                    float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(SeasonalRollingMaxTransform<float>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingMaxTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingMaxTransform<float>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingQuantileTransform(
-    GroupedArrayHandle handle, int lag, int season_length, float p,
-    int window_size, int min_samples, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(SeasonalRollingQuantileTransform<float>(), lag, out,
-                season_length, window_size, min_samples, p);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingQuantileTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, float p, int window_size, int min_samples,
+    float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingQuantileTransform<float>(), lag, out,
+               season_length, window_size, min_samples, p);
 }
-int GroupedArrayFloat32_SeasonalRollingMeanUpdate(GroupedArrayHandle handle,
-                                                  int lag, int season_length,
-                                                  int window_size,
-                                                  int min_samples, float *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(SeasonalRollingMeanUpdate<float>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingMeanUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingMeanUpdate<float>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingStdUpdate(GroupedArrayHandle handle,
-                                                 int lag, int season_length,
-                                                 int window_size,
-                                                 int min_samples, float *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(SeasonalRollingStdUpdate<float>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingStdUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingStdUpdate<float>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingMinUpdate(GroupedArrayHandle handle,
-                                                 int lag, int season_length,
-                                                 int window_size,
-                                                 int min_samples, float *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(SeasonalRollingMinUpdate<float>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingMinUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingMinUpdate<float>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingMaxUpdate(GroupedArrayHandle handle,
-                                                 int lag, int season_length,
-                                                 int window_size,
-                                                 int min_samples, float *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(SeasonalRollingMaxUpdate<float>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingMaxUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingMaxUpdate<float>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat32_SeasonalRollingQuantileUpdate(
-    GroupedArrayHandle handle, int lag, int season_length, float p,
-    int window_size, int min_samples, float *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(SeasonalRollingQuantileUpdate<float>(), 1, out, lag, season_length,
-             window_size, min_samples, p);
-  return 0;
+void GroupedArrayFloat32_SeasonalRollingQuantileUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, float p, int window_size, int min_samples,
+    float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingQuantileUpdate<float>(), 1, out, lag, season_length,
+            window_size, min_samples, p);
 }
 
 // Expanding
-int GroupedArrayFloat32_ExpandingMeanTransform(GroupedArrayHandle handle,
+void GroupedArrayFloat32_ExpandingMeanTransform(const float *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
+                                                int lag, float *out,
+                                                float *agg) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.TransformAndReduce(ExpandingMeanTransform<float>, lag, out, 1, agg);
+}
+void GroupedArrayFloat32_ExpandingStdTransform(const float *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
                                                int lag, float *out,
                                                float *agg) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->TransformAndReduce(ExpandingMeanTransform<float>, lag, out, 1, agg);
-  return 0;
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.TransformAndReduce(ExpandingStdTransform<float>, lag, out, 3, agg);
 }
-int GroupedArrayFloat32_ExpandingStdTransform(GroupedArrayHandle handle,
-                                              int lag, float *out, float *agg) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->TransformAndReduce(ExpandingStdTransform<float>, lag, out, 3, agg);
-  return 0;
+void GroupedArrayFloat32_ExpandingMinTransform(const float *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
+                                               int lag, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExpandingMinTransform<float>(), lag, out);
 }
-int GroupedArrayFloat32_ExpandingMinTransform(GroupedArrayHandle handle,
-                                              int lag, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(ExpandingMinTransform<float>(), lag, out);
-  return 0;
+void GroupedArrayFloat32_ExpandingMaxTransform(const float *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
+                                               int lag, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExpandingMaxTransform<float>(), lag, out);
 }
-int GroupedArrayFloat32_ExpandingMaxTransform(GroupedArrayHandle handle,
-                                              int lag, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(ExpandingMaxTransform<float>(), lag, out);
-
-  return 0;
+void GroupedArrayFloat32_ExpandingQuantileTransform(const float *data,
+                                                    const indptr_t *indptr,
+                                                    int n_indptr,
+                                                    int num_threads, int lag,
+                                                    float p, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExpandingQuantileTransform<float>, lag, out, p);
 }
-int GroupedArrayFloat32_ExpandingQuantileTransform(GroupedArrayHandle handle,
-                                                   int lag, float p,
-                                                   float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(ExpandingQuantileTransform<float>, lag, out, p);
-  return 0;
-}
-int GroupedArrayFloat32_ExpandingQuantileUpdate(GroupedArrayHandle handle,
-                                                int lag, float p, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(ExpandingQuantileUpdate<float>, 1, out, lag, p);
-  return 0;
+void GroupedArrayFloat32_ExpandingQuantileUpdate(const float *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int lag, float p, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(ExpandingQuantileUpdate<float>, 1, out, lag, p);
 }
 
 // Exponentially weighted
-int GroupedArrayFloat32_ExponentiallyWeightedMeanTransform(
-    GroupedArrayHandle handle, int lag, float alpha, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(ExponentiallyWeightedMeanTransform<float>, lag, out, alpha);
-  return 0;
+void GroupedArrayFloat32_ExponentiallyWeightedMeanTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float alpha, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExponentiallyWeightedMeanTransform<float>, lag, out, alpha);
 }
 
 // Scalers
-int GroupedArrayFloat32_MinMaxScalerStats(GroupedArrayHandle handle,
-                                          float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(MinMaxScalerStats<float>, 2, out, 0);
-  return 0;
+void GroupedArrayFloat32_MinMaxScalerStats(const float *data,
+                                           const indptr_t *indptr, int n_indptr,
+                                           int num_threads, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(MinMaxScalerStats<float>, 2, out, 0);
 }
-int GroupedArrayFloat32_StandardScalerStats(GroupedArrayHandle handle,
-                                            float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(StandardScalerStats<float>, 2, out, 0);
-  return 0;
-}
-int GroupedArrayFloat32_RobustIqrScalerStats(GroupedArrayHandle handle,
+void GroupedArrayFloat32_StandardScalerStats(const float *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
                                              float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(RobustScalerIqrStats<float>, 2, out, 0);
-  return 0;
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(StandardScalerStats<float>, 2, out, 0);
 }
-int GroupedArrayFloat32_RobustMadScalerStats(GroupedArrayHandle handle,
-                                             float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(RobustScalerMadStats<float>, 2, out, 0);
-  return 0;
+void GroupedArrayFloat32_RobustIqrScalerStats(const float *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RobustScalerIqrStats<float>, 2, out, 0);
 }
-int GroupedArrayFloat32_ScalerTransform(GroupedArrayHandle handle,
-                                        const float *stats, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->ScalerTransform(CommonScalerTransform<float>, stats, out);
-  return 0;
+void GroupedArrayFloat32_RobustMadScalerStats(const float *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RobustScalerMadStats<float>, 2, out, 0);
 }
-int GroupedArrayFloat32_ScalerInverseTransform(GroupedArrayHandle handle,
-                                               const float *stats, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->ScalerTransform(CommonScalerInverseTransform<float>, stats, out);
-  return 0;
+void GroupedArrayFloat32_ScalerTransform(const float *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, const float *stats,
+                                         float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(CommonScalerTransform<float>, stats, out);
 }
-int GroupedArrayFloat32_BoxCoxLambdaGuerrero(GroupedArrayHandle handle,
-                                             int period, float lower,
-                                             float upper, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(BoxCoxLambda_Guerrero<float>, 2, out, 0, period, lower, upper);
-  return 0;
+void GroupedArrayFloat32_ScalerInverseTransform(const float *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
+                                                const float *stats,
+                                                float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(CommonScalerInverseTransform<float>, stats, out);
 }
-void GroupedArrayFloat32_BoxCoxLambdaLogLik(GroupedArrayHandle handle,
+void GroupedArrayFloat32_BoxCoxLambdaGuerrero(const float *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              int period, float lower,
+                                              float upper, float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(BoxCoxLambda_Guerrero<float>, 2, out, 0, period, lower, upper);
+}
+void GroupedArrayFloat32_BoxCoxLambdaLogLik(const float *data,
+                                            const indptr_t *indptr,
+                                            int n_indptr, int num_threads,
                                             float lower, float upper,
                                             float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(BoxCoxLambda_LogLik<float>, 2, out, 0, lower, upper);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(BoxCoxLambda_LogLik<float>, 2, out, 0, lower, upper);
 }
-int GroupedArrayFloat32_BoxCoxTransform(GroupedArrayHandle handle,
-                                        const float *lambdas, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->ScalerTransform(BoxCoxTransform<float>, lambdas, out);
-  return 0;
+void GroupedArrayFloat32_BoxCoxTransform(const float *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, const float *lambdas,
+                                         float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(BoxCoxTransform<float>, lambdas, out);
 }
-int GroupedArrayFloat32_BoxCoxInverseTransform(GroupedArrayHandle handle,
-                                               const float *lambdas,
-                                               float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->ScalerTransform(BoxCoxInverseTransform<float>, lambdas, out);
-  return 0;
+void GroupedArrayFloat32_BoxCoxInverseTransform(const float *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
+                                                const float *lambdas,
+                                                float *out) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(BoxCoxInverseTransform<float>, lambdas, out);
 }
 
 // Differences
-void GroupedArrayFloat32_NumDiffs(GroupedArrayHandle handle, int max_d,
+void GroupedArrayFloat32_NumDiffs(const float *data, const indptr_t *indptr,
+                                  int n_indptr, int num_threads, int max_d,
                                   float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(NumDiffs<float>, 1, out, 0, max_d);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(NumDiffs<float>, 1, out, 0, max_d);
 }
-void GroupedArrayFloat32_NumSeasDiffs(GroupedArrayHandle handle, int period,
+void GroupedArrayFloat32_NumSeasDiffs(const float *data, const indptr_t *indptr,
+                                      int n_indptr, int num_threads, int period,
                                       int max_d, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(NumSeasDiffs<float>, 1, out, 0, period, max_d);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(NumSeasDiffs<float>, 1, out, 0, period, max_d);
 }
-void GroupedArrayFloat32_NumSeasDiffsPeriods(GroupedArrayHandle handle,
+void GroupedArrayFloat32_NumSeasDiffsPeriods(const float *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
                                              int max_d,
                                              float *periods_and_out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(NumSeasDiffsPeriods<float>, 2, periods_and_out, 0, max_d);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(NumSeasDiffsPeriods<float>, 2, periods_and_out, 0, max_d);
 }
 
-void GroupedArrayFloat32_Period(GroupedArrayHandle handle, size_t max_lag,
+void GroupedArrayFloat32_Period(const float *data, const indptr_t *indptr,
+                                int n_indptr, int num_threads, size_t max_lag,
                                 float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Reduce(GreatestAutocovariance<float>, 1, out, 0, max_lag);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(GreatestAutocovariance<float>, 1, out, 0, max_lag);
 }
-void GroupedArrayFloat32_Difference(GroupedArrayHandle handle, int d,
+void GroupedArrayFloat32_Difference(const float *data, const indptr_t *indptr,
+                                    int n_indptr, int num_threads, int d,
                                     float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->Transform(Difference<float>, 0, out, d);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.Transform(Difference<float>, 0, out, d);
 }
-void GroupedArrayFloat32_Differences(GroupedArrayHandle handle,
+void GroupedArrayFloat32_Differences(const float *data, const indptr_t *indptr,
+                                     int n_indptr, int num_threads,
                                      const indptr_t *ds, float *out) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  ga->VariableTransform(Differences<float>, ds, out);
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  ga.VariableTransform(Differences<float>, ds, out);
 }
-void GroupedArrayFloat32_InvertDifferences(GroupedArrayHandle handle,
-                                           GroupedArrayHandle tails_handle,
-                                           const indptr_t *out_indptr,
-                                           float *out_data) {
-  auto ga = reinterpret_cast<GroupedArray<float> *>(handle);
-  auto tails_ga = reinterpret_cast<const GroupedArray<float> *>(tails_handle);
-  ga->Zip(InvertDifference<float>, tails_ga, out_indptr, out_data);
+void GroupedArrayFloat32_InvertDifferences(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const float *other_data, const indptr_t *other_indptr, int other_n_indptr,
+    const indptr_t *out_indptr, float *out_data) {
+  auto ga = GroupedArray<float>(data, indptr, n_indptr, num_threads);
+  auto tails_ga = GroupedArray<float>(other_data, other_indptr, other_n_indptr,
+                                      num_threads);
+  ga.Zip(InvertDifference<float>, tails_ga, out_indptr, out_data);
 }
 
 // Float64 Methods
@@ -674,388 +677,385 @@ int Float64_Period(const double *x, size_t n, int max_lag) {
 
 // GA
 // Lag
-int GroupedArrayFloat64_LagTransform(GroupedArrayHandle handle, int lag,
-                                     double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(LagTransform<double>, lag, out);
-  return 0;
+void GroupedArrayFloat64_LagTransform(const double *data,
+                                      const indptr_t *indptr, int n_indptr,
+                                      int num_threads, int lag, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(LagTransform<double>, lag, out);
 }
 
 // Manipulation
-int GroupedArrayFloat64_Create(const double *data, indptr_t n_data,
-                               indptr_t *indptr, indptr_t n_indptr,
-                               int num_threads, GroupedArrayHandle *out) {
-  *out = new GroupedArray<double>(data, n_data, indptr, n_indptr, num_threads);
-  return 0;
-}
-int GroupedArrayFloat64_Delete(GroupedArrayHandle handle) {
-  delete reinterpret_cast<GroupedArray<double> *>(handle);
-  return 0;
-}
-int GroupedArrayFloat64_IndexFromEnd(GroupedArrayHandle handle, int k,
-                                     double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(IndexFromEnd<double>, 1, out, 0, k);
-  return 0;
+void GroupedArrayFloat64_IndexFromEnd(const double *data,
+                                      const indptr_t *indptr, int n_indptr,
+                                      int num_threads, int k, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(IndexFromEnd<double>, 1, out, 0, k);
 }
 
-void GroupedArrayFloat64_Head(GroupedArrayHandle handle, int k, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(Head<double>, k, out, 0, k);
+void GroupedArrayFloat64_Head(const double *data, const indptr_t *indptr,
+                              int n_indptr, int num_threads, int k,
+                              double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(Head<double>, k, out, 0, k);
 }
-void GroupedArrayFloat64_Tail(GroupedArrayHandle handle, int k, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(Tail<double>, k, out, 0, k);
+void GroupedArrayFloat64_Tail(const double *data, const indptr_t *indptr,
+                              int n_indptr, int num_threads, int k,
+                              double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(Tail<double>, k, out, 0, k);
 }
-void GroupedArrayFloat64_Append(GroupedArrayHandle handle,
-                                GroupedArrayHandle other_handle,
-                                const indptr_t *out_indptr, double *out_data) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  auto other = reinterpret_cast<const GroupedArray<double> *>(other_handle);
-  ga->Zip(Append<double>, other, out_indptr, out_data);
+void GroupedArrayFloat64_Append(const double *data, const indptr_t *indptr,
+                                int n_indptr, int num_threads,
+                                const double *other_data,
+                                const indptr_t *other_indptr,
+                                int other_n_indptr, const indptr_t *out_indptr,
+                                double *out_data) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  auto other = GroupedArray<double>(other_data, other_indptr, other_n_indptr,
+                                    num_threads);
+  ga.Zip(Append<double>, other, out_indptr, out_data);
 }
-void GroupedArrayFloat64_Tails(GroupedArrayHandle handle,
+void GroupedArrayFloat64_Tails(const double *data, const indptr_t *indptr,
+                               int n_indptr, int num_threads,
                                const indptr_t *indptr_out, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->VariableReduce(Tail<double>, indptr_out, out);
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.VariableReduce(Tail<double>, indptr_out, out);
 }
 
 // Lag
 // Rolling
-int GroupedArrayFloat64_RollingMeanTransform(GroupedArrayHandle handle, int lag,
-                                             int window_size, int min_samples,
-                                             double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(RollingMeanTransform<double>, lag, out, window_size,
-                min_samples);
-  return 0;
+void GroupedArrayFloat64_RollingMeanTransform(const double *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              int lag, int window_size,
+                                              int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingMeanTransform<double>, lag, out, window_size,
+               min_samples);
 }
-int GroupedArrayFloat64_RollingStdTransform(GroupedArrayHandle handle, int lag,
-                                            int window_size, int min_samples,
-                                            double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(RollingStdTransform<double>, lag, out, window_size,
-                min_samples);
-  return 0;
+void GroupedArrayFloat64_RollingStdTransform(const double *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
+                                             int lag, int window_size,
+                                             int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingStdTransform<double>, lag, out, window_size, min_samples);
 }
-int GroupedArrayFloat64_RollingMinTransform(GroupedArrayHandle handle, int lag,
-                                            int window_size, int min_samples,
-                                            double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(RollingMinTransform<double>, lag, out, window_size,
-                min_samples);
-  return 0;
+void GroupedArrayFloat64_RollingMinTransform(const double *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
+                                             int lag, int window_size,
+                                             int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingMinTransform<double>, lag, out, window_size, min_samples);
 }
-int GroupedArrayFloat64_RollingMaxTransform(GroupedArrayHandle handle, int lag,
-                                            int window_size, int min_samples,
-                                            double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(RollingMaxTransform<double>, lag, out, window_size,
-                min_samples);
-  return 0;
+void GroupedArrayFloat64_RollingMaxTransform(const double *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
+                                             int lag, int window_size,
+                                             int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingMaxTransform<double>, lag, out, window_size, min_samples);
 }
-int GroupedArrayFloat64_RollingQuantileTransform(GroupedArrayHandle handle,
-                                                 int lag, double p,
-                                                 int window_size,
-                                                 int min_samples, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(RollingQuantileTransform<double>, lag, out, window_size,
-                min_samples, p);
-  return 0;
+void GroupedArrayFloat64_RollingQuantileTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double p, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(RollingQuantileTransform<double>, lag, out, window_size,
+               min_samples, p);
 }
-int GroupedArrayFloat64_RollingMeanUpdate(GroupedArrayHandle handle, int lag,
+void GroupedArrayFloat64_RollingMeanUpdate(const double *data,
+                                           const indptr_t *indptr, int n_indptr,
+                                           int num_threads, int lag,
+                                           int window_size, int min_samples,
+                                           double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingMeanUpdate<double>(), 1, out, lag, window_size, min_samples);
+}
+void GroupedArrayFloat64_RollingStdUpdate(const double *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag,
                                           int window_size, int min_samples,
                                           double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(RollingMeanUpdate<double>(), 1, out, lag, window_size,
-             min_samples);
-  return 0;
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingStdUpdate<double>(), 1, out, lag, window_size, min_samples);
 }
-int GroupedArrayFloat64_RollingStdUpdate(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(RollingStdUpdate<double>(), 1, out, lag, window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_RollingMinUpdate(const double *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag,
+                                          int window_size, int min_samples,
+                                          double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingMinUpdate<double>(), 1, out, lag, window_size, min_samples);
 }
-int GroupedArrayFloat64_RollingMinUpdate(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(RollingMinUpdate<double>(), 1, out, lag, window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_RollingMaxUpdate(const double *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag,
+                                          int window_size, int min_samples,
+                                          double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingMaxUpdate<double>(), 1, out, lag, window_size, min_samples);
 }
-int GroupedArrayFloat64_RollingMaxUpdate(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(RollingMaxUpdate<double>(), 1, out, lag, window_size, min_samples);
-  return 0;
-}
-int GroupedArrayFloat64_RollingQuantileUpdate(GroupedArrayHandle handle,
-                                              int lag, double p,
-                                              int window_size, int min_samples,
-                                              double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(RollingQuantileUpdate<double>(), 1, out, lag, window_size,
-             min_samples, p);
-  return 0;
+void GroupedArrayFloat64_RollingQuantileUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double p, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RollingQuantileUpdate<double>(), 1, out, lag, window_size,
+            min_samples, p);
 }
 
 // Seasonal rolling
-int GroupedArrayFloat64_SeasonalRollingMeanTransform(GroupedArrayHandle handle,
-                                                     int lag, int season_length,
-                                                     int window_size,
-                                                     int min_samples,
-                                                     double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(SeasonalRollingMeanTransform<double>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingMeanTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingMeanTransform<double>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingStdTransform(GroupedArrayHandle handle,
-                                                    int lag, int season_length,
-                                                    int window_size,
-                                                    int min_samples,
-                                                    double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(SeasonalRollingStdTransform<double>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingStdTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingStdTransform<double>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingMinTransform(GroupedArrayHandle handle,
-                                                    int lag, int season_length,
-                                                    int window_size,
-                                                    int min_samples,
-                                                    double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(SeasonalRollingMinTransform<double>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingMinTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingMinTransform<double>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingMaxTransform(GroupedArrayHandle handle,
-                                                    int lag, int season_length,
-                                                    int window_size,
-                                                    int min_samples,
-                                                    double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(SeasonalRollingMaxTransform<double>(), lag, out, season_length,
-                window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingMaxTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingMaxTransform<double>(), lag, out, season_length,
+               window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingQuantileTransform(
-    GroupedArrayHandle handle, int lag, int season_length, double p,
-    int window_size, int min_samples, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(SeasonalRollingQuantileTransform<double>(), lag, out,
-                season_length, window_size, min_samples, p);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingQuantileTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, double p, int window_size, int min_samples,
+    double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(SeasonalRollingQuantileTransform<double>(), lag, out,
+               season_length, window_size, min_samples, p);
 }
-int GroupedArrayFloat64_SeasonalRollingMeanUpdate(GroupedArrayHandle handle,
-                                                  int lag, int season_length,
-                                                  int window_size,
-                                                  int min_samples,
-                                                  double *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(SeasonalRollingMeanUpdate<double>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingMeanUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingMeanUpdate<double>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingStdUpdate(GroupedArrayHandle handle,
-                                                 int lag, int season_length,
-                                                 int window_size,
-                                                 int min_samples, double *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(SeasonalRollingStdUpdate<double>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingStdUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingStdUpdate<double>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingMinUpdate(GroupedArrayHandle handle,
-                                                 int lag, int season_length,
-                                                 int window_size,
-                                                 int min_samples, double *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(SeasonalRollingMinUpdate<double>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingMinUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingMinUpdate<double>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingMaxUpdate(GroupedArrayHandle handle,
-                                                 int lag, int season_length,
-                                                 int window_size,
-                                                 int min_samples, double *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(SeasonalRollingMaxUpdate<double>(), 1, out, lag, season_length,
-             window_size, min_samples);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingMaxUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingMaxUpdate<double>(), 1, out, lag, season_length,
+            window_size, min_samples);
 }
-int GroupedArrayFloat64_SeasonalRollingQuantileUpdate(
-    GroupedArrayHandle handle, int lag, int season_length, double p,
-    int window_size, int min_samples, double *out) {
-
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(SeasonalRollingQuantileUpdate<double>(), 1, out, lag,
-             season_length, window_size, min_samples, p);
-  return 0;
+void GroupedArrayFloat64_SeasonalRollingQuantileUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, double p, int window_size, int min_samples,
+    double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(SeasonalRollingQuantileUpdate<double>(), 1, out, lag, season_length,
+            window_size, min_samples, p);
 }
 
 // Expanding
-int GroupedArrayFloat64_ExpandingMeanTransform(GroupedArrayHandle handle,
+void GroupedArrayFloat64_ExpandingMeanTransform(const double *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
+                                                int lag, double *out,
+                                                double *agg) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.TransformAndReduce(ExpandingMeanTransform<double>, lag, out, 1, agg);
+}
+void GroupedArrayFloat64_ExpandingStdTransform(const double *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
                                                int lag, double *out,
                                                double *agg) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->TransformAndReduce(ExpandingMeanTransform<double>, lag, out, 1, agg);
-  return 0;
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.TransformAndReduce(ExpandingStdTransform<double>, lag, out, 3, agg);
 }
-int GroupedArrayFloat64_ExpandingStdTransform(GroupedArrayHandle handle,
-                                              int lag, double *out,
-                                              double *agg) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->TransformAndReduce(ExpandingStdTransform<double>, lag, out, 3, agg);
-  return 0;
+void GroupedArrayFloat64_ExpandingMinTransform(const double *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
+                                               int lag, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExpandingMinTransform<double>(), lag, out);
 }
-int GroupedArrayFloat64_ExpandingMinTransform(GroupedArrayHandle handle,
-                                              int lag, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(ExpandingMinTransform<double>(), lag, out);
-  return 0;
+void GroupedArrayFloat64_ExpandingMaxTransform(const double *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
+                                               int lag, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExpandingMaxTransform<double>(), lag, out);
 }
-int GroupedArrayFloat64_ExpandingMaxTransform(GroupedArrayHandle handle,
-                                              int lag, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(ExpandingMaxTransform<double>(), lag, out);
-
-  return 0;
+void GroupedArrayFloat64_ExpandingQuantileTransform(const double *data,
+                                                    const indptr_t *indptr,
+                                                    int n_indptr,
+                                                    int num_threads, int lag,
+                                                    double p, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExpandingQuantileTransform<double>, lag, out, p);
 }
-int GroupedArrayFloat64_ExpandingQuantileTransform(GroupedArrayHandle handle,
-                                                   int lag, double p,
-                                                   double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(ExpandingQuantileTransform<double>, lag, out, p);
-  return 0;
-}
-int GroupedArrayFloat64_ExpandingQuantileUpdate(GroupedArrayHandle handle,
-                                                int lag, double p,
-                                                double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(ExpandingQuantileUpdate<double>, 1, out, lag, p);
-  return 0;
+void GroupedArrayFloat64_ExpandingQuantileUpdate(const double *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int lag, double p,
+                                                 double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(ExpandingQuantileUpdate<double>, 1, out, lag, p);
 }
 
 // Exponentially weighted
-int GroupedArrayFloat64_ExponentiallyWeightedMeanTransform(
-    GroupedArrayHandle handle, int lag, double alpha, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(ExponentiallyWeightedMeanTransform<double>, lag, out, alpha);
-  return 0;
+void GroupedArrayFloat64_ExponentiallyWeightedMeanTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double alpha, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(ExponentiallyWeightedMeanTransform<double>, lag, out, alpha);
 }
 
 // Scalers
-int GroupedArrayFloat64_MinMaxScalerStats(GroupedArrayHandle handle,
-                                          double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(MinMaxScalerStats<double>, 2, out, 0);
-  return 0;
+void GroupedArrayFloat64_MinMaxScalerStats(const double *data,
+                                           const indptr_t *indptr, int n_indptr,
+                                           int num_threads, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(MinMaxScalerStats<double>, 2, out, 0);
 }
-int GroupedArrayFloat64_StandardScalerStats(GroupedArrayHandle handle,
-                                            double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(StandardScalerStats<double>, 2, out, 0);
-  return 0;
-}
-int GroupedArrayFloat64_RobustIqrScalerStats(GroupedArrayHandle handle,
+void GroupedArrayFloat64_StandardScalerStats(const double *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
                                              double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(RobustScalerIqrStats<double>, 2, out, 0);
-  return 0;
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(StandardScalerStats<double>, 2, out, 0);
 }
-int GroupedArrayFloat64_RobustMadScalerStats(GroupedArrayHandle handle,
-                                             double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(RobustScalerMadStats<double>, 2, out, 0);
-  return 0;
+void GroupedArrayFloat64_RobustIqrScalerStats(const double *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RobustScalerIqrStats<double>, 2, out, 0);
 }
-int GroupedArrayFloat64_ScalerTransform(GroupedArrayHandle handle,
-                                        const double *stats, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->ScalerTransform(CommonScalerTransform<double>, stats, out);
-  return 0;
+void GroupedArrayFloat64_RobustMadScalerStats(const double *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(RobustScalerMadStats<double>, 2, out, 0);
 }
-int GroupedArrayFloat64_ScalerInverseTransform(GroupedArrayHandle handle,
-                                               const double *stats,
-                                               double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->ScalerTransform(CommonScalerInverseTransform<double>, stats, out);
-  return 0;
+void GroupedArrayFloat64_ScalerTransform(const double *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, const double *stats,
+                                         double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(CommonScalerTransform<double>, stats, out);
 }
-int GroupedArrayFloat64_BoxCoxLambdaGuerrero(GroupedArrayHandle handle,
-                                             int period, double lower,
-                                             double upper, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(BoxCoxLambda_Guerrero<double>, 2, out, 0, period, lower, upper);
-  return 0;
+void GroupedArrayFloat64_ScalerInverseTransform(const double *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
+                                                const double *stats,
+                                                double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(CommonScalerInverseTransform<double>, stats, out);
 }
-void GroupedArrayFloat64_BoxCoxLambdaLogLik(GroupedArrayHandle handle,
+void GroupedArrayFloat64_BoxCoxLambdaGuerrero(const double *data,
+                                              const indptr_t *indptr,
+                                              int n_indptr, int num_threads,
+                                              int period, double lower,
+                                              double upper, double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(BoxCoxLambda_Guerrero<double>, 2, out, 0, period, lower, upper);
+}
+void GroupedArrayFloat64_BoxCoxLambdaLogLik(const double *data,
+                                            const indptr_t *indptr,
+                                            int n_indptr, int num_threads,
                                             double lower, double upper,
                                             double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(BoxCoxLambda_LogLik<double>, 2, out, 0, lower, upper);
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(BoxCoxLambda_LogLik<double>, 2, out, 0, lower, upper);
 }
-int GroupedArrayFloat64_BoxCoxTransform(GroupedArrayHandle handle,
-                                        const double *lambdas, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->ScalerTransform(BoxCoxTransform<double>, lambdas, out);
-  return 0;
+void GroupedArrayFloat64_BoxCoxTransform(const double *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, const double *lambdas,
+                                         double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(BoxCoxTransform<double>, lambdas, out);
 }
-int GroupedArrayFloat64_BoxCoxInverseTransform(GroupedArrayHandle handle,
-                                               const double *lambdas,
-                                               double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->ScalerTransform(BoxCoxInverseTransform<double>, lambdas, out);
-  return 0;
+void GroupedArrayFloat64_BoxCoxInverseTransform(const double *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
+                                                const double *lambdas,
+                                                double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.ScalerTransform(BoxCoxInverseTransform<double>, lambdas, out);
 }
 
 // Differences
-void GroupedArrayFloat64_NumDiffs(GroupedArrayHandle handle, int max_d,
+void GroupedArrayFloat64_NumDiffs(const double *data, const indptr_t *indptr,
+                                  int n_indptr, int num_threads, int max_d,
                                   double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(NumDiffs<double>, 1, out, 0, max_d);
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(NumDiffs<double>, 1, out, 0, max_d);
 }
-void GroupedArrayFloat64_NumSeasDiffs(GroupedArrayHandle handle, int period,
-                                      int max_d, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(NumSeasDiffs<double>, 1, out, 0, period, max_d);
+void GroupedArrayFloat64_NumSeasDiffs(const double *data,
+                                      const indptr_t *indptr, int n_indptr,
+                                      int num_threads, int period, int max_d,
+                                      double *out) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(NumSeasDiffs<double>, 1, out, 0, period, max_d);
 }
-void GroupedArrayFloat64_NumSeasDiffsPeriods(GroupedArrayHandle handle,
+void GroupedArrayFloat64_NumSeasDiffsPeriods(const double *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
                                              int max_d,
                                              double *periods_and_out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(NumSeasDiffsPeriods<double>, 2, periods_and_out, 0, max_d);
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(NumSeasDiffsPeriods<double>, 2, periods_and_out, 0, max_d);
 }
 
-void GroupedArrayFloat64_Period(GroupedArrayHandle handle, size_t max_lag,
+void GroupedArrayFloat64_Period(const double *data, const indptr_t *indptr,
+                                int n_indptr, int num_threads, size_t max_lag,
                                 double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Reduce(GreatestAutocovariance<double>, 1, out, 0, max_lag);
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Reduce(GreatestAutocovariance<double>, 1, out, 0, max_lag);
 }
-void GroupedArrayFloat64_Difference(GroupedArrayHandle handle, int d,
+void GroupedArrayFloat64_Difference(const double *data, const indptr_t *indptr,
+                                    int n_indptr, int num_threads, int d,
                                     double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->Transform(Difference<double>, 0, out, d);
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.Transform(Difference<double>, 0, out, d);
 }
-void GroupedArrayFloat64_Differences(GroupedArrayHandle handle,
+void GroupedArrayFloat64_Differences(const double *data, const indptr_t *indptr,
+                                     int n_indptr, int num_threads,
                                      const indptr_t *ds, double *out) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  ga->VariableTransform(Differences<double>, ds, out);
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  ga.VariableTransform(Differences<double>, ds, out);
 }
-void GroupedArrayFloat64_InvertDifferences(GroupedArrayHandle handle,
-                                           GroupedArrayHandle tails_handle,
-                                           const indptr_t *out_indptr,
-                                           double *out_data) {
-  auto ga = reinterpret_cast<GroupedArray<double> *>(handle);
-  auto tails_ga = reinterpret_cast<const GroupedArray<double> *>(tails_handle);
-  ga->Zip(InvertDifference<double>, tails_ga, out_indptr, out_data);
+void GroupedArrayFloat64_InvertDifferences(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const double *other_data, const indptr_t *other_indptr, int other_n_indptr,
+    const indptr_t *out_indptr, double *out_data) {
+  auto ga = GroupedArray<double>(data, indptr, n_indptr, num_threads);
+  auto tails_ga = GroupedArray<double>(other_data, other_indptr, other_n_indptr,
+                                       num_threads);
+  ga.Zip(InvertDifference<double>, tails_ga, out_indptr, out_data);
 }

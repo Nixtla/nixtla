@@ -10,6 +10,10 @@ template <typename T> void Difference(const T *data, int n, T *out, int d) {
     std::copy(data, data + n, out);
     return;
   }
+  if (n < d) {
+    std::fill(out, out + n, std::numeric_limits<T>::quiet_NaN());
+    return;
+  }
   std::fill(out, out + d, std::numeric_limits<T>::quiet_NaN());
   for (int i = d; i < n; ++i) {
     out[i] = data[i] - data[i - d];

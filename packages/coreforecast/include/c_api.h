@@ -92,179 +92,199 @@ DLL_EXPORT int Float32_Period(const float *x, size_t n, int period);
 
 // GA
 // Manipulation
-DLL_EXPORT int GroupedArrayFloat32_Create(const float *data, indptr_t n_data,
-                                          indptr_t *indptr, indptr_t n_indptr,
-                                          int num_threads,
-                                          GroupedArrayHandle *out);
-DLL_EXPORT int GroupedArrayFloat32_Delete(GroupedArrayHandle handle);
+DLL_EXPORT void GroupedArrayFloat32_IndexFromEnd(const float *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int k, float *out);
 
-DLL_EXPORT int GroupedArrayFloat32_IndexFromEnd(GroupedArrayHandle handle,
-                                                int k, float *out);
-DLL_EXPORT void GroupedArrayFloat32_Head(GroupedArrayHandle handle, int k,
-                                         float *out);
-DLL_EXPORT void GroupedArrayFloat32_Tail(GroupedArrayHandle handle, int k,
-                                         float *out);
-DLL_EXPORT void GroupedArrayFloat32_Tails(GroupedArrayHandle handle,
+// Lag
+DLL_EXPORT void GroupedArrayFloat32_LagTransform(const float *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int lag, float *out);
+DLL_EXPORT void GroupedArrayFloat32_IndexFromEnd(const float *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int k, float *out);
+DLL_EXPORT void GroupedArrayFloat32_Head(const float *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, int k, float *out);
+DLL_EXPORT void GroupedArrayFloat32_Tail(const float *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, int k, float *out);
+DLL_EXPORT void GroupedArrayFloat32_Append(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const float *other_data, const indptr_t *other_indptr, int other_n_indptr,
+    const indptr_t *out_indptr, float *out_data);
+DLL_EXPORT void GroupedArrayFloat32_Tails(const float *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads,
                                           const indptr_t *indptr_out,
                                           float *out);
-DLL_EXPORT void GroupedArrayFloat32_Append(GroupedArrayHandle handle,
-                                           GroupedArrayHandle other_handle,
-                                           const indptr_t *out_indptr,
-                                           float *out_data);
-// Lag
-DLL_EXPORT int GroupedArrayFloat32_LagTransform(GroupedArrayHandle handle,
-                                                int lag, float *out);
 
 // Rolling
-DLL_EXPORT int
-GroupedArrayFloat32_RollingMeanTransform(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_RollingStdTransform(GroupedArrayHandle handle, int lag,
-                                        int window_size, int min_samples,
-                                        float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_RollingMinTransform(GroupedArrayHandle handle, int lag,
-                                        int window_size, int min_samples,
-                                        float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_RollingMaxTransform(GroupedArrayHandle handle, int lag,
-                                        int window_size, int min_samples,
-                                        float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_RollingQuantileTransform(GroupedArrayHandle handle, int lag,
-                                             float p, int window_size,
-                                             int min_samples, float *out);
-DLL_EXPORT int GroupedArrayFloat32_RollingMeanUpdate(GroupedArrayHandle handle,
-                                                     int lag, int window_size,
-                                                     int min_samples,
-                                                     float *out);
-DLL_EXPORT int GroupedArrayFloat32_RollingStdUpdate(GroupedArrayHandle handle,
-                                                    int lag, int window_size,
-                                                    int min_samples,
-                                                    float *out);
-DLL_EXPORT int GroupedArrayFloat32_RollingMinUpdate(GroupedArrayHandle handle,
-                                                    int lag, int window_size,
-                                                    int min_samples,
-                                                    float *out);
-DLL_EXPORT int GroupedArrayFloat32_RollingMaxUpdate(GroupedArrayHandle handle,
-                                                    int lag, int window_size,
-                                                    int min_samples,
-                                                    float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_RollingQuantileUpdate(GroupedArrayHandle handle, int lag,
-                                          float p, int window_size,
-                                          int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingMeanTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingStdTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingMinTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingMaxTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingQuantileTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float p, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingMeanUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingStdUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingMinUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingMaxUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_RollingQuantileUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float p, int window_size, int min_samples, float *out);
 
 // Seasonal rolling
-DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingMeanTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, float *out);
-DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingStdTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, float *out);
-DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingMinTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, float *out);
-DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingMaxTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, float *out);
-DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingQuantileTransform(
-    GroupedArrayHandle handle, int lag, int season_length, float p,
-    int window_size, int min_samples, float *out);
-DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingMeanUpdate(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_SeasonalRollingStdUpdate(GroupedArrayHandle handle, int lag,
-                                             int season_length, int window_size,
-                                             int min_samples, float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_SeasonalRollingMinUpdate(GroupedArrayHandle handle, int lag,
-                                             int season_length, int window_size,
-                                             int min_samples, float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_SeasonalRollingMaxUpdate(GroupedArrayHandle handle, int lag,
-                                             int season_length, int window_size,
-                                             int min_samples, float *out);
-DLL_EXPORT int GroupedArrayFloat32_SeasonalRollingQuantileUpdate(
-    GroupedArrayHandle handle, int lag, int season_length, float p,
-    int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingMeanTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingStdTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingMinTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingMaxTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingQuantileTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, float p, int window_size, int min_samples,
+    float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingMeanUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingStdUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingMinUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingMaxUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, float *out);
+DLL_EXPORT void GroupedArrayFloat32_SeasonalRollingQuantileUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, float p, int window_size, int min_samples,
+    float *out);
 
 // Expanding
-DLL_EXPORT int
-GroupedArrayFloat32_ExpandingMeanTransform(GroupedArrayHandle handle, int lag,
-                                           float *out, float *agg);
-DLL_EXPORT int
-GroupedArrayFloat32_ExpandingStdTransform(GroupedArrayHandle handle, int lag,
-                                          float *out, float *agg);
-DLL_EXPORT int
-GroupedArrayFloat32_ExpandingMinTransform(GroupedArrayHandle handle, int lag,
-                                          float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_ExpandingMaxTransform(GroupedArrayHandle handle, int lag,
-                                          float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_ExpandingQuantileTransform(GroupedArrayHandle handle,
-                                               int lag, float p, float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_ExpandingQuantileUpdate(GroupedArrayHandle handle, int lag,
-                                            float p, float *out);
+DLL_EXPORT void GroupedArrayFloat32_ExpandingMeanTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float *out, float *agg);
+DLL_EXPORT void GroupedArrayFloat32_ExpandingStdTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float *out, float *agg);
+DLL_EXPORT void
+GroupedArrayFloat32_ExpandingMinTransform(const float *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag, float *out);
+DLL_EXPORT void
+GroupedArrayFloat32_ExpandingMaxTransform(const float *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads, int lag, float *out);
+DLL_EXPORT void GroupedArrayFloat32_ExpandingQuantileTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float p, float *out);
+DLL_EXPORT void GroupedArrayFloat32_ExpandingQuantileUpdate(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float p, float *out);
 
 // Exponentially weighted
-DLL_EXPORT int GroupedArrayFloat32_ExponentiallyWeightedMeanTransform(
-    GroupedArrayHandle handle, int lag, float alpha, float *out);
+DLL_EXPORT void GroupedArrayFloat32_ExponentiallyWeightedMeanTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, float alpha, float *out);
 
 // Scalers
-DLL_EXPORT int GroupedArrayFloat32_MinMaxScalerStats(GroupedArrayHandle handle,
-                                                     float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_StandardScalerStats(GroupedArrayHandle handle, float *out);
-
-DLL_EXPORT int
-GroupedArrayFloat32_RobustIqrScalerStats(GroupedArrayHandle handle, float *out);
-
-DLL_EXPORT int
-GroupedArrayFloat32_RobustMadScalerStats(GroupedArrayHandle handle, float *out);
-
-DLL_EXPORT int GroupedArrayFloat32_ScalerTransform(GroupedArrayHandle handle,
-                                                   const float *stats,
-                                                   float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_ScalerInverseTransform(GroupedArrayHandle handle,
-                                           const float *stats, float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_BoxCoxLambdaGuerrero(GroupedArrayHandle handle, int period,
-                                         float lower, float upper, float *out);
-
+DLL_EXPORT void GroupedArrayFloat32_MinMaxScalerStats(const float *data,
+                                                      const indptr_t *indptr,
+                                                      int n_indptr,
+                                                      int num_threads,
+                                                      float *out);
+DLL_EXPORT void GroupedArrayFloat32_StandardScalerStats(const float *data,
+                                                        const indptr_t *indptr,
+                                                        int n_indptr,
+                                                        int num_threads,
+                                                        float *out);
+DLL_EXPORT void GroupedArrayFloat32_RobustIqrScalerStats(const float *data,
+                                                         const indptr_t *indptr,
+                                                         int n_indptr,
+                                                         int num_threads,
+                                                         float *out);
+DLL_EXPORT void GroupedArrayFloat32_RobustMadScalerStats(const float *data,
+                                                         const indptr_t *indptr,
+                                                         int n_indptr,
+                                                         int num_threads,
+                                                         float *out);
 DLL_EXPORT void
-GroupedArrayFloat32_BoxCoxLambdaLogLik(GroupedArrayHandle handle, float lower,
-                                       float upper, float *out);
-DLL_EXPORT int GroupedArrayFloat32_BoxCoxTransform(GroupedArrayHandle handle,
-                                                   const float *lambdas,
-                                                   float *out);
-DLL_EXPORT int
-GroupedArrayFloat32_BoxCoxInverseTransform(GroupedArrayHandle handle,
-                                           const float *lambdas, float *out);
+GroupedArrayFloat32_ScalerTransform(const float *data, const indptr_t *indptr,
+                                    int n_indptr, int num_threads,
+                                    const float *stats, float *out);
+DLL_EXPORT void GroupedArrayFloat32_ScalerInverseTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const float *stats, float *out);
+DLL_EXPORT void GroupedArrayFloat32_BoxCoxLambdaGuerrero(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int period, float lower, float upper, float *out);
+DLL_EXPORT void GroupedArrayFloat32_BoxCoxLambdaLogLik(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    float lower, float upper, float *out);
+DLL_EXPORT void
+GroupedArrayFloat32_BoxCoxTransform(const float *data, const indptr_t *indptr,
+                                    int n_indptr, int num_threads,
+                                    const float *lambdas, float *out);
+DLL_EXPORT void GroupedArrayFloat32_BoxCoxInverseTransform(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const float *lambdas, float *out);
 
 // Differences
-DLL_EXPORT void GroupedArrayFloat32_NumDiffs(GroupedArrayHandle handle,
+DLL_EXPORT void GroupedArrayFloat32_NumDiffs(const float *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
                                              int max_d, float *out);
-DLL_EXPORT void GroupedArrayFloat32_NumSeasDiffs(GroupedArrayHandle handle,
+DLL_EXPORT void GroupedArrayFloat32_NumSeasDiffs(const float *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
                                                  int period, int max_d,
                                                  float *out);
-DLL_EXPORT void
-GroupedArrayFloat32_NumSeasDiffsPeriods(GroupedArrayHandle handle, int max_d,
-                                        float *periods_and_out);
-DLL_EXPORT void GroupedArrayFloat32_Period(GroupedArrayHandle handle,
-                                           size_t max_lag, float *out);
-DLL_EXPORT void GroupedArrayFloat32_Difference(GroupedArrayHandle handle, int d,
-                                               float *out);
-DLL_EXPORT void GroupedArrayFloat32_Differences(GroupedArrayHandle handle,
+DLL_EXPORT void GroupedArrayFloat32_NumSeasDiffsPeriods(
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int max_d, float *periods_and_out);
+DLL_EXPORT void GroupedArrayFloat32_Period(const float *data,
+                                           const indptr_t *indptr, int n_indptr,
+                                           int num_threads, size_t max_lag,
+                                           float *out);
+DLL_EXPORT void GroupedArrayFloat32_Difference(const float *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
+                                               int d, float *out);
+DLL_EXPORT void GroupedArrayFloat32_Differences(const float *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
                                                 const indptr_t *ds, float *out);
 DLL_EXPORT void GroupedArrayFloat32_InvertDifferences(
-    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
+    const float *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const float *other_data, const indptr_t *other_indptr, int other_n_indptr,
     const indptr_t *out_indptr, float *out_data);
 
 // Float64 Methods
@@ -349,182 +369,197 @@ DLL_EXPORT int Float64_Period(const double *x, size_t n, int period);
 
 // GA
 // Manipulation
-DLL_EXPORT int GroupedArrayFloat64_Create(const double *data, indptr_t n_data,
-                                          indptr_t *indptr, indptr_t n_indptr,
-                                          int num_threads,
-                                          GroupedArrayHandle *out);
-DLL_EXPORT int GroupedArrayFloat64_Delete(GroupedArrayHandle handle);
+DLL_EXPORT void GroupedArrayFloat64_IndexFromEnd(const double *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int k, double *out);
 
-DLL_EXPORT int GroupedArrayFloat64_IndexFromEnd(GroupedArrayHandle handle,
-                                                int k, double *out);
-DLL_EXPORT void GroupedArrayFloat64_Head(GroupedArrayHandle handle, int k,
-                                         double *out);
-DLL_EXPORT void GroupedArrayFloat64_Tail(GroupedArrayHandle handle, int k,
-                                         double *out);
-DLL_EXPORT void GroupedArrayFloat64_Tails(GroupedArrayHandle handle,
+// Lag
+DLL_EXPORT void GroupedArrayFloat64_LagTransform(const double *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int lag, double *out);
+DLL_EXPORT void GroupedArrayFloat64_IndexFromEnd(const double *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
+                                                 int k, double *out);
+DLL_EXPORT void GroupedArrayFloat64_Head(const double *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, int k, double *out);
+DLL_EXPORT void GroupedArrayFloat64_Tail(const double *data,
+                                         const indptr_t *indptr, int n_indptr,
+                                         int num_threads, int k, double *out);
+DLL_EXPORT void GroupedArrayFloat64_Append(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const double *other_data, const indptr_t *other_indptr, int other_n_indptr,
+    const indptr_t *out_indptr, double *out_data);
+DLL_EXPORT void GroupedArrayFloat64_Tails(const double *data,
+                                          const indptr_t *indptr, int n_indptr,
+                                          int num_threads,
                                           const indptr_t *indptr_out,
                                           double *out);
-DLL_EXPORT void GroupedArrayFloat64_Append(GroupedArrayHandle handle,
-                                           GroupedArrayHandle other_handle,
-                                           const indptr_t *out_indptr,
-                                           double *out_data);
-// Lag
-DLL_EXPORT int GroupedArrayFloat64_LagTransform(GroupedArrayHandle handle,
-                                                int lag, double *out);
 
 // Rolling
-DLL_EXPORT int
-GroupedArrayFloat64_RollingMeanTransform(GroupedArrayHandle handle, int lag,
-                                         int window_size, int min_samples,
-                                         double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_RollingStdTransform(GroupedArrayHandle handle, int lag,
-                                        int window_size, int min_samples,
-                                        double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_RollingMinTransform(GroupedArrayHandle handle, int lag,
-                                        int window_size, int min_samples,
-                                        double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_RollingMaxTransform(GroupedArrayHandle handle, int lag,
-                                        int window_size, int min_samples,
-                                        double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_RollingQuantileTransform(GroupedArrayHandle handle, int lag,
-                                             double p, int window_size,
-                                             int min_samples, double *out);
-DLL_EXPORT int GroupedArrayFloat64_RollingMeanUpdate(GroupedArrayHandle handle,
-                                                     int lag, int window_size,
-                                                     int min_samples,
-                                                     double *out);
-DLL_EXPORT int GroupedArrayFloat64_RollingStdUpdate(GroupedArrayHandle handle,
-                                                    int lag, int window_size,
-                                                    int min_samples,
-                                                    double *out);
-DLL_EXPORT int GroupedArrayFloat64_RollingMinUpdate(GroupedArrayHandle handle,
-                                                    int lag, int window_size,
-                                                    int min_samples,
-                                                    double *out);
-DLL_EXPORT int GroupedArrayFloat64_RollingMaxUpdate(GroupedArrayHandle handle,
-                                                    int lag, int window_size,
-                                                    int min_samples,
-                                                    double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_RollingQuantileUpdate(GroupedArrayHandle handle, int lag,
-                                          double p, int window_size,
-                                          int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingMeanTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingStdTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingMinTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingMaxTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingQuantileTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double p, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingMeanUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingStdUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingMinUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingMaxUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_RollingQuantileUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double p, int window_size, int min_samples, double *out);
 
 // Seasonal rolling
-DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingMeanTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, double *out);
-DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingStdTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, double *out);
-DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingMinTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, double *out);
-DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingMaxTransform(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, double *out);
-DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingQuantileTransform(
-    GroupedArrayHandle handle, int lag, int season_length, double p,
-    int window_size, int min_samples, double *out);
-DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingMeanUpdate(
-    GroupedArrayHandle handle, int lag, int season_length, int window_size,
-    int min_samples, double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_SeasonalRollingStdUpdate(GroupedArrayHandle handle, int lag,
-                                             int season_length, int window_size,
-                                             int min_samples, double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_SeasonalRollingMinUpdate(GroupedArrayHandle handle, int lag,
-                                             int season_length, int window_size,
-                                             int min_samples, double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_SeasonalRollingMaxUpdate(GroupedArrayHandle handle, int lag,
-                                             int season_length, int window_size,
-                                             int min_samples, double *out);
-DLL_EXPORT int GroupedArrayFloat64_SeasonalRollingQuantileUpdate(
-    GroupedArrayHandle handle, int lag, int season_length, double p,
-    int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingMeanTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingStdTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingMinTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingMaxTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingQuantileTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, double p, int window_size, int min_samples,
+    double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingMeanUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingStdUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingMinUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingMaxUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, int window_size, int min_samples, double *out);
+DLL_EXPORT void GroupedArrayFloat64_SeasonalRollingQuantileUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, int season_length, double p, int window_size, int min_samples,
+    double *out);
 
 // Expanding
-DLL_EXPORT int
-GroupedArrayFloat64_ExpandingMeanTransform(GroupedArrayHandle handle, int lag,
-                                           double *out, double *agg);
-DLL_EXPORT int
-GroupedArrayFloat64_ExpandingStdTransform(GroupedArrayHandle handle, int lag,
-                                          double *out, double *agg);
-DLL_EXPORT int
-GroupedArrayFloat64_ExpandingMinTransform(GroupedArrayHandle handle, int lag,
-                                          double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_ExpandingMaxTransform(GroupedArrayHandle handle, int lag,
-                                          double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_ExpandingQuantileTransform(GroupedArrayHandle handle,
-                                               int lag, double p, double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_ExpandingQuantileUpdate(GroupedArrayHandle handle, int lag,
-                                            double p, double *out);
+DLL_EXPORT void GroupedArrayFloat64_ExpandingMeanTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double *out, double *agg);
+DLL_EXPORT void GroupedArrayFloat64_ExpandingStdTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double *out, double *agg);
+DLL_EXPORT void GroupedArrayFloat64_ExpandingMinTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double *out);
+DLL_EXPORT void GroupedArrayFloat64_ExpandingMaxTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double *out);
+DLL_EXPORT void GroupedArrayFloat64_ExpandingQuantileTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double p, double *out);
+DLL_EXPORT void GroupedArrayFloat64_ExpandingQuantileUpdate(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double p, double *out);
 
 // Exponentially weighted
-DLL_EXPORT int GroupedArrayFloat64_ExponentiallyWeightedMeanTransform(
-    GroupedArrayHandle handle, int lag, double alpha, double *out);
+DLL_EXPORT void GroupedArrayFloat64_ExponentiallyWeightedMeanTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int lag, double alpha, double *out);
 
 // Scalers
-DLL_EXPORT int GroupedArrayFloat64_MinMaxScalerStats(GroupedArrayHandle handle,
-                                                     double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_StandardScalerStats(GroupedArrayHandle handle, double *out);
-
-DLL_EXPORT int
-GroupedArrayFloat64_RobustIqrScalerStats(GroupedArrayHandle handle,
-                                         double *out);
-
-DLL_EXPORT int
-GroupedArrayFloat64_RobustMadScalerStats(GroupedArrayHandle handle,
-                                         double *out);
-
-DLL_EXPORT int GroupedArrayFloat64_ScalerTransform(GroupedArrayHandle handle,
-                                                   const double *stats,
-                                                   double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_ScalerInverseTransform(GroupedArrayHandle handle,
-                                           const double *stats, double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_BoxCoxLambdaGuerrero(GroupedArrayHandle handle, int period,
-                                         double lower, double upper,
-                                         double *out);
-
+DLL_EXPORT void GroupedArrayFloat64_MinMaxScalerStats(const double *data,
+                                                      const indptr_t *indptr,
+                                                      int n_indptr,
+                                                      int num_threads,
+                                                      double *out);
+DLL_EXPORT void GroupedArrayFloat64_StandardScalerStats(const double *data,
+                                                        const indptr_t *indptr,
+                                                        int n_indptr,
+                                                        int num_threads,
+                                                        double *out);
+DLL_EXPORT void GroupedArrayFloat64_RobustIqrScalerStats(const double *data,
+                                                         const indptr_t *indptr,
+                                                         int n_indptr,
+                                                         int num_threads,
+                                                         double *out);
+DLL_EXPORT void GroupedArrayFloat64_RobustMadScalerStats(const double *data,
+                                                         const indptr_t *indptr,
+                                                         int n_indptr,
+                                                         int num_threads,
+                                                         double *out);
 DLL_EXPORT void
-GroupedArrayFloat64_BoxCoxLambdaLogLik(GroupedArrayHandle handle, double lower,
-                                       double upper, double *out);
-DLL_EXPORT int GroupedArrayFloat64_BoxCoxTransform(GroupedArrayHandle handle,
-                                                   const double *lambdas,
-                                                   double *out);
-DLL_EXPORT int
-GroupedArrayFloat64_BoxCoxInverseTransform(GroupedArrayHandle handle,
-                                           const double *lambdas, double *out);
+GroupedArrayFloat64_ScalerTransform(const double *data, const indptr_t *indptr,
+                                    int n_indptr, int num_threads,
+                                    const double *stats, double *out);
+DLL_EXPORT void GroupedArrayFloat64_ScalerInverseTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const double *stats, double *out);
+DLL_EXPORT void GroupedArrayFloat64_BoxCoxLambdaGuerrero(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int period, double lower, double upper, double *out);
+DLL_EXPORT void GroupedArrayFloat64_BoxCoxLambdaLogLik(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    double lower, double upper, double *out);
+DLL_EXPORT void
+GroupedArrayFloat64_BoxCoxTransform(const double *data, const indptr_t *indptr,
+                                    int n_indptr, int num_threads,
+                                    const double *lambdas, double *out);
+DLL_EXPORT void GroupedArrayFloat64_BoxCoxInverseTransform(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const double *lambdas, double *out);
 
 // Differences
-DLL_EXPORT void GroupedArrayFloat64_NumDiffs(GroupedArrayHandle handle,
+DLL_EXPORT void GroupedArrayFloat64_NumDiffs(const double *data,
+                                             const indptr_t *indptr,
+                                             int n_indptr, int num_threads,
                                              int max_d, double *out);
-DLL_EXPORT void GroupedArrayFloat64_NumSeasDiffs(GroupedArrayHandle handle,
+DLL_EXPORT void GroupedArrayFloat64_NumSeasDiffs(const double *data,
+                                                 const indptr_t *indptr,
+                                                 int n_indptr, int num_threads,
                                                  int period, int max_d,
                                                  double *out);
-DLL_EXPORT void
-GroupedArrayFloat64_NumSeasDiffsPeriods(GroupedArrayHandle handle, int max_d,
-                                        double *periods_and_out);
-DLL_EXPORT void GroupedArrayFloat64_Period(GroupedArrayHandle handle,
-                                           size_t max_lag, double *out);
-DLL_EXPORT void GroupedArrayFloat64_Difference(GroupedArrayHandle handle, int d,
-                                               double *out);
-DLL_EXPORT void GroupedArrayFloat64_Differences(GroupedArrayHandle handle,
+DLL_EXPORT void GroupedArrayFloat64_NumSeasDiffsPeriods(
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    int max_d, double *periods_and_out);
+DLL_EXPORT void GroupedArrayFloat64_Period(const double *data,
+                                           const indptr_t *indptr, int n_indptr,
+                                           int num_threads, size_t max_lag,
+                                           double *out);
+DLL_EXPORT void GroupedArrayFloat64_Difference(const double *data,
+                                               const indptr_t *indptr,
+                                               int n_indptr, int num_threads,
+                                               int d, double *out);
+DLL_EXPORT void GroupedArrayFloat64_Differences(const double *data,
+                                                const indptr_t *indptr,
+                                                int n_indptr, int num_threads,
                                                 const indptr_t *ds,
                                                 double *out);
 DLL_EXPORT void GroupedArrayFloat64_InvertDifferences(
-    GroupedArrayHandle handle, GroupedArrayHandle tails_handle,
+    const double *data, const indptr_t *indptr, int n_indptr, int num_threads,
+    const double *other_data, const indptr_t *other_indptr, int other_n_indptr,
     const indptr_t *out_indptr, double *out_data);
 }

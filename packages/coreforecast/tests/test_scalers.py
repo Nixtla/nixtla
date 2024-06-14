@@ -21,15 +21,17 @@ from coreforecast.scalers import (
 from coreforecast.seasonal import find_season_length
 
 
+rng = np.random.default_rng(seed=0)
+
 @pytest.fixture
 def indptr():
-    lengths = np.random.randint(low=1_000, high=2_000, size=5_000)
+    lengths = rng.integers(low=1_000, high=2_000, size=5_000)
     return np.append(0, lengths.cumsum()).astype(np.int32)
 
 
 @pytest.fixture
 def data(indptr):
-    return np.random.randn(indptr[-1])
+    return rng.normal(size=indptr[-1])
 
 
 def std_scaler_stats(x):
