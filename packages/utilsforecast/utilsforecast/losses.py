@@ -171,7 +171,6 @@ def mape(
             .sub(df[target_col], axis=0)
             .abs()
             .div(_zero_to_nan(df[target_col].abs()), axis=0)
-            .fillna(0)
             .groupby(df[id_col], observed=True)
             .mean()
         )
@@ -183,7 +182,7 @@ def mape(
             abs_err = pl.col(target_col).sub(pl.col(model)).abs()
             abs_target = _zero_to_nan(pl.col(target_col))
             ratio = abs_err.truediv(abs_target).alias(model)
-            return ratio.fill_nan(0)
+            return ratio.fill_nan(None)
 
         res = _pl_agg_expr(df, models, id_col, gen_expr)
     return res
