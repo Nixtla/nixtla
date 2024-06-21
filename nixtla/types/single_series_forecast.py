@@ -11,16 +11,8 @@ from .single_series_forecast_finetune_loss import SingleSeriesForecastFinetuneLo
 
 
 class SingleSeriesForecast(pydantic_v1.BaseModel):
-    fewshot_steps: typing.Optional[int] = pydantic_v1.Field(default=None)
-    """
-    Deprecated. Please use finetune_steps instead.
-    """
-
-    fewshot_loss: typing.Optional[SingleSeriesForecastFewshotLoss] = pydantic_v1.Field(default=None)
-    """
-    Deprecated. Please use finetune_loss instead.
-    """
-
+    fewshot_steps: typing.Optional[int] = None
+    fewshot_loss: typing.Optional[SingleSeriesForecastFewshotLoss] = None
     model: typing.Optional[Model] = pydantic_v1.Field(default=None)
     """
     Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
@@ -31,22 +23,14 @@ class SingleSeriesForecast(pydantic_v1.BaseModel):
     The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
     """
 
-    level: typing.Optional[typing.List[typing.Any]] = pydantic_v1.Field(default=None)
-    """
-    A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
-    """
-
+    level: typing.Optional[typing.List[typing.Any]] = None
     fh: typing.Optional[int] = pydantic_v1.Field(default=None)
     """
     The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
     """
 
     y: typing.Optional[typing.Any] = None
-    x: typing.Optional[typing.Dict[str, typing.List[float]]] = pydantic_v1.Field(default=None)
-    """
-    The exogenous variables provided as a dictionary. Each key is a timestamp (string format: YYYY-MM-DD) and the corresponding value is a list of exogenous variable values at that time point. For example: {"2021-01-01": [0.1], "2021-01-02": [0.4]}. This should also include forecasting horizon (fh) additional timestamps to calculate the future values.
-    """
-
+    x: typing.Optional[typing.Dict[str, typing.Optional[typing.List[float]]]] = None
     clean_ex_first: typing.Optional[bool] = pydantic_v1.Field(default=None)
     """
     A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.

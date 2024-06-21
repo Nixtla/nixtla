@@ -3333,10 +3333,177 @@
                 ],
                 "x-fern-sdk-method-name": "timegpt_model_params"
             }
+        },
+        "/v2/forecast": {
+            "post": {
+                "summary": "V2 Forecast",
+                "operationId": "v2_forecast_v2_forecast_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ForecastInput"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ForecastOutput"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "x-fern-sdk-method-name": "v2/forecast"
+            }
         }
     },
     "components": {
         "schemas": {
+            "ForecastInput": {
+                "properties": {
+                    "series": {
+                        "$ref": "#/components/schemas/SeriesWithFutureExogenous"
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": [
+                            "timegpt-1",
+                            "timegpt-1-long-horizon"
+                        ],
+                        "title": "Model",
+                        "default": "timegpt-1"
+                    },
+                    "h": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "title": "H"
+                    },
+                    "freq": {
+                        "type": "string",
+                        "title": "Freq"
+                    },
+                    "clean_ex_first": {
+                        "type": "boolean",
+                        "title": "Clean Ex First",
+                        "default": true
+                    },
+                    "level": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "number"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "items": {
+                                    "type": "integer"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Level"
+                    },
+                    "finetune_steps": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "title": "Finetune Steps",
+                        "default": 0
+                    },
+                    "finetune_loss": {
+                        "type": "string",
+                        "enum": [
+                            "default",
+                            "mae",
+                            "mse",
+                            "rmse",
+                            "mape",
+                            "smape"
+                        ],
+                        "title": "Finetune Loss",
+                        "default": "default"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "series",
+                    "h",
+                    "freq"
+                ],
+                "title": "ForecastInput"
+            },
+            "ForecastOutput": {
+                "properties": {
+                    "mean": {
+                        "items": {
+                            "type": "number"
+                        },
+                        "type": "array",
+                        "title": "Mean"
+                    },
+                    "intervals": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "type": "array"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Intervals"
+                    },
+                    "weights_x": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "number"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Weights X"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "mean"
+                ],
+                "title": "ForecastOutput"
+            },
             "HTTPValidationError": {
                 "properties": {
                     "detail": {
@@ -3824,12 +3991,14 @@
                         }
                     },
                     "x": {
-                        "allOf": [
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/MultiSeriesInput"
+                            },
+                            {
+                                "type": "null"
                             }
                         ],
-                        "title": "X",
                         "description": "The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {\"columns\": [\"unique_id\", \"ds\", \"ex_1\", \"ex_2\"], \"data\": [[\"ts_0\", \"2021-01-01\", 0.2, 0.67], [\"ts_0\", \"2021-01-02\", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values."
                     },
                     "clean_ex_first": {
@@ -3845,20 +4014,34 @@
             "MultiSeriesCrossValidation": {
                 "properties": {
                     "fewshot_steps": {
-                        "type": "integer",
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Fewshot Steps",
                         "description": "Deprecated. Please use finetune_steps instead.",
                         "deprecated": true
                     },
                     "fewshot_loss": {
-                        "type": "string",
-                        "enum": [
-                            "default",
-                            "mae",
-                            "mse",
-                            "rmse",
-                            "mape",
-                            "smape"
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "default",
+                                    "mae",
+                                    "mse",
+                                    "rmse",
+                                    "mape",
+                                    "smape"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
                         ],
                         "title": "Fewshot Loss",
                         "description": "Deprecated. Please use finetune_loss instead.",
@@ -3884,14 +4067,21 @@
                         "default": "D"
                     },
                     "level": {
-                        "items": {},
-                        "type": "array",
+                        "anyOf": [
+                            {
+                                "items": {},
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Level",
                         "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
                     },
                     "fh": {
                         "type": "integer",
-                        "exclusiveMinimum": 0.0,
+                        "exclusiveMinimum": 0,
                         "title": "Fh",
                         "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.",
                         "default": 7
@@ -4340,24 +4530,33 @@
                         }
                     },
                     "x": {
-                        "allOf": [
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/MultiSeriesInput"
+                            },
+                            {
+                                "type": "null"
                             }
                         ],
-                        "title": "X",
                         "description": "The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {\"columns\": [\"unique_id\", \"ds\", \"ex_1\", \"ex_2\"], \"data\": [[\"ts_0\", \"2021-01-01\", 0.2, 0.67], [\"ts_0\", \"2021-01-02\", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values."
                     },
                     "n_windows": {
                         "type": "integer",
-                        "exclusiveMinimum": 0.0,
+                        "exclusiveMinimum": 0,
                         "title": "N Windows",
                         "description": "Number of windows to evaluate.",
                         "default": 1
                     },
                     "step_size": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0.0,
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Step Size",
                         "description": "Step size between each cross validation window. If None it will be equal to the forecasting horizon."
                     },
@@ -4369,7 +4568,7 @@
                     },
                     "finetune_steps": {
                         "type": "integer",
-                        "minimum": 0.0,
+                        "minimum": 0,
                         "title": "Finetune Steps",
                         "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
                         "default": 0
@@ -4395,20 +4594,34 @@
             "MultiSeriesForecast": {
                 "properties": {
                     "fewshot_steps": {
-                        "type": "integer",
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Fewshot Steps",
                         "description": "Deprecated. Please use finetune_steps instead.",
                         "deprecated": true
                     },
                     "fewshot_loss": {
-                        "type": "string",
-                        "enum": [
-                            "default",
-                            "mae",
-                            "mse",
-                            "rmse",
-                            "mape",
-                            "smape"
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "default",
+                                    "mae",
+                                    "mse",
+                                    "rmse",
+                                    "mape",
+                                    "smape"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
                         ],
                         "title": "Fewshot Loss",
                         "description": "Deprecated. Please use finetune_loss instead.",
@@ -4434,14 +4647,21 @@
                         "default": "D"
                     },
                     "level": {
-                        "items": {},
-                        "type": "array",
+                        "anyOf": [
+                            {
+                                "items": {},
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Level",
                         "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
                     },
                     "fh": {
                         "type": "integer",
-                        "exclusiveMinimum": 0.0,
+                        "exclusiveMinimum": 0,
                         "title": "Fh",
                         "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.",
                         "default": 7
@@ -4890,12 +5110,14 @@
                         }
                     },
                     "x": {
-                        "allOf": [
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/MultiSeriesInput"
+                            },
+                            {
+                                "type": "null"
                             }
                         ],
-                        "title": "X",
                         "description": "The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {\"columns\": [\"unique_id\", \"ds\", \"ex_1\", \"ex_2\"], \"data\": [[\"ts_0\", \"2021-01-01\", 0.2, 0.67], [\"ts_0\", \"2021-01-02\", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values."
                     },
                     "clean_ex_first": {
@@ -4906,7 +5128,7 @@
                     },
                     "finetune_steps": {
                         "type": "integer",
-                        "minimum": 0.0,
+                        "minimum": 0,
                         "title": "Finetune Steps",
                         "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
                         "default": 0
@@ -4973,8 +5195,15 @@
                         "default": "D"
                     },
                     "level": {
-                        "items": {},
-                        "type": "array",
+                        "anyOf": [
+                            {
+                                "items": {},
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Level",
                         "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
                     },
@@ -5422,12 +5651,14 @@
                         }
                     },
                     "x": {
-                        "allOf": [
+                        "anyOf": [
                             {
                                 "$ref": "#/components/schemas/MultiSeriesInput"
+                            },
+                            {
+                                "type": "null"
                             }
                         ],
-                        "title": "X",
                         "description": "The exogenous  variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {\"columns\": [\"unique_id\", \"ds\", \"ex_1\", \"ex_2\"], \"data\": [[\"ts_0\", \"2021-01-01\", 0.2, 0.67], [\"ts_0\", \"2021-01-02\", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values."
                     },
                     "clean_ex_first": {
@@ -5440,23 +5671,95 @@
                 "type": "object",
                 "title": "MultiSeriesInsampleForecast"
             },
+            "SeriesWithFutureExogenous": {
+                "properties": {
+                    "X_future": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "type": "array"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "X Future"
+                    },
+                    "X": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "type": "array"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "X"
+                    },
+                    "y": {
+                        "items": {
+                            "type": "number"
+                        },
+                        "type": "array",
+                        "title": "Y"
+                    },
+                    "sizes": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array",
+                        "title": "Sizes"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "y",
+                    "sizes"
+                ],
+                "title": "SeriesWithFutureExogenous"
+            },
             "SingleSeriesForecast": {
                 "properties": {
                     "fewshot_steps": {
-                        "type": "integer",
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Fewshot Steps",
                         "description": "Deprecated. Please use finetune_steps instead.",
                         "deprecated": true
                     },
                     "fewshot_loss": {
-                        "type": "string",
-                        "enum": [
-                            "default",
-                            "mae",
-                            "mse",
-                            "rmse",
-                            "mape",
-                            "smape"
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "default",
+                                    "mae",
+                                    "mse",
+                                    "rmse",
+                                    "mape",
+                                    "smape"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
                         ],
                         "title": "Fewshot Loss",
                         "description": "Deprecated. Please use finetune_loss instead.",
@@ -5482,14 +5785,21 @@
                         "default": "D"
                     },
                     "level": {
-                        "items": {},
-                        "type": "array",
+                        "anyOf": [
+                            {
+                                "items": {},
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Level",
                         "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
                     },
                     "fh": {
                         "type": "integer",
-                        "exclusiveMinimum": 0.0,
+                        "exclusiveMinimum": 0,
                         "title": "Fh",
                         "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.",
                         "default": 7
@@ -5544,13 +5854,20 @@
                         }
                     },
                     "x": {
-                        "additionalProperties": {
-                            "items": {
-                                "type": "number"
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "type": "array"
+                                },
+                                "type": "object"
                             },
-                            "type": "array"
-                        },
-                        "type": "object",
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "X",
                         "description": "The exogenous variables provided as a dictionary. Each key is a timestamp (string format: YYYY-MM-DD) and the corresponding value is a list of exogenous variable values at that time point. For example: {\"2021-01-01\": [0.1], \"2021-01-02\": [0.4]}. This should also include forecasting horizon (fh) additional timestamps to calculate the future values."
                     },
@@ -5562,7 +5879,7 @@
                     },
                     "finetune_steps": {
                         "type": "integer",
-                        "minimum": 0.0,
+                        "minimum": 0,
                         "title": "Finetune Steps",
                         "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
                         "default": 0
@@ -5607,8 +5924,15 @@
                         "default": "D"
                     },
                     "level": {
-                        "items": {},
-                        "type": "array",
+                        "anyOf": [
+                            {
+                                "items": {},
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Level",
                         "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
                     },

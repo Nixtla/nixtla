@@ -12,16 +12,8 @@ from .multi_series_input import MultiSeriesInput
 
 
 class MultiSeriesCrossValidation(pydantic_v1.BaseModel):
-    fewshot_steps: typing.Optional[int] = pydantic_v1.Field(default=None)
-    """
-    Deprecated. Please use finetune_steps instead.
-    """
-
-    fewshot_loss: typing.Optional[MultiSeriesCrossValidationFewshotLoss] = pydantic_v1.Field(default=None)
-    """
-    Deprecated. Please use finetune_loss instead.
-    """
-
+    fewshot_steps: typing.Optional[int] = None
+    fewshot_loss: typing.Optional[MultiSeriesCrossValidationFewshotLoss] = None
     model: typing.Optional[Model] = pydantic_v1.Field(default=None)
     """
     Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
@@ -32,32 +24,20 @@ class MultiSeriesCrossValidation(pydantic_v1.BaseModel):
     The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
     """
 
-    level: typing.Optional[typing.List[typing.Any]] = pydantic_v1.Field(default=None)
-    """
-    A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
-    """
-
+    level: typing.Optional[typing.List[typing.Any]] = None
     fh: typing.Optional[int] = pydantic_v1.Field(default=None)
     """
     The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
     """
 
     y: typing.Optional[typing.Any] = None
-    x: typing.Optional[MultiSeriesInput] = pydantic_v1.Field(default=None)
-    """
-    The exogenous variables provided as a dictionary of two colums: columns and data. The columns contains the columns of the dataframe and data contains eaach data point. For example: {"columns": ["unique_id", "ds", "ex_1", "ex_2"], "data": [["ts_0", "2021-01-01", 0.2, 0.67], ["ts_0", "2021-01-02", 0.4, 0.7]}. This should also include forecasting horizon (fh) additional timestamps for each unique_id to calculate the future values.
-    """
-
+    x: typing.Optional[MultiSeriesInput] = None
     n_windows: typing.Optional[int] = pydantic_v1.Field(default=None)
     """
     Number of windows to evaluate.
     """
 
-    step_size: typing.Optional[int] = pydantic_v1.Field(default=None)
-    """
-    Step size between each cross validation window. If None it will be equal to the forecasting horizon.
-    """
-
+    step_size: typing.Optional[int] = None
     clean_ex_first: typing.Optional[bool] = pydantic_v1.Field(default=None)
     """
     A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.

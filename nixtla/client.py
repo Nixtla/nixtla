@@ -13,11 +13,16 @@ from .core.pydantic_utilities import pydantic_v1
 from .core.remove_none_from_dict import remove_none_from_dict
 from .core.request_options import RequestOptions
 from .errors.unprocessable_entity_error import UnprocessableEntityError
+from .types.forecast_input_finetune_loss import ForecastInputFinetuneLoss
+from .types.forecast_output import ForecastOutput
 from .types.http_validation_error import HttpValidationError
+from .types.level import Level
+from .types.model import Model
 from .types.multi_series_anomaly import MultiSeriesAnomaly
 from .types.multi_series_cross_validation import MultiSeriesCrossValidation
 from .types.multi_series_forecast import MultiSeriesForecast
 from .types.multi_series_insample_forecast import MultiSeriesInsampleForecast
+from .types.series_with_future_exogenous import SeriesWithFutureExogenous
 from .types.single_series_forecast import SingleSeriesForecast
 from .types.single_series_insample_forecast import SingleSeriesInsampleForecast
 
@@ -3387,6 +3392,104 @@ class Nixtla:
             raise ApiError(status_code=_response.status_code, body=_response.text)
         raise ApiError(status_code=_response.status_code, body=_response_json)
 
+    def v_2_forecast(
+        self,
+        *,
+        series: SeriesWithFutureExogenous,
+        model: typing.Optional[Model] = OMIT,
+        h: int,
+        freq: str,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[Level] = OMIT,
+        finetune_steps: typing.Optional[int] = OMIT,
+        finetune_loss: typing.Optional[ForecastInputFinetuneLoss] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> ForecastOutput:
+        """
+        Parameters:
+            - series: SeriesWithFutureExogenous.
+
+            - model: typing.Optional[Model].
+
+            - h: int.
+
+            - freq: str.
+
+            - clean_ex_first: typing.Optional[bool].
+
+            - level: typing.Optional[Level].
+
+            - finetune_steps: typing.Optional[int].
+
+            - finetune_loss: typing.Optional[ForecastInputFinetuneLoss].
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import SeriesWithFutureExogenous
+        from nixtla.client import Nixtla
+
+        client = Nixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        client.v_2_forecast(
+            series=SeriesWithFutureExogenous(
+                y=[1.1],
+                sizes=[1],
+            ),
+            h=1,
+            freq="freq",
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "h": h, "freq": freq}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        if finetune_steps is not OMIT:
+            _request["finetune_steps"] = finetune_steps
+        if finetune_loss is not OMIT:
+            _request["finetune_loss"] = finetune_loss
+        _response = self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/forecast"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(ForecastOutput, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
 
 class AsyncNixtla:
     """
@@ -6740,6 +6843,104 @@ class AsyncNixtla:
         )
         if 200 <= _response.status_code < 300:
             return pydantic_v1.parse_obj_as(typing.Any, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def v_2_forecast(
+        self,
+        *,
+        series: SeriesWithFutureExogenous,
+        model: typing.Optional[Model] = OMIT,
+        h: int,
+        freq: str,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[Level] = OMIT,
+        finetune_steps: typing.Optional[int] = OMIT,
+        finetune_loss: typing.Optional[ForecastInputFinetuneLoss] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> ForecastOutput:
+        """
+        Parameters:
+            - series: SeriesWithFutureExogenous.
+
+            - model: typing.Optional[Model].
+
+            - h: int.
+
+            - freq: str.
+
+            - clean_ex_first: typing.Optional[bool].
+
+            - level: typing.Optional[Level].
+
+            - finetune_steps: typing.Optional[int].
+
+            - finetune_loss: typing.Optional[ForecastInputFinetuneLoss].
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import SeriesWithFutureExogenous
+        from nixtla.client import AsyncNixtla
+
+        client = AsyncNixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        await client.v_2_forecast(
+            series=SeriesWithFutureExogenous(
+                y=[1.1],
+                sizes=[1],
+            ),
+            h=1,
+            freq="freq",
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "h": h, "freq": freq}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        if finetune_steps is not OMIT:
+            _request["finetune_steps"] = finetune_steps
+        if finetune_loss is not OMIT:
+            _request["finetune_loss"] = finetune_loss
+        _response = await self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/forecast"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(ForecastOutput, _response.json())  # type: ignore
         if _response.status_code == 422:
             raise UnprocessableEntityError(
                 pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
