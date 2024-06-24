@@ -175,7 +175,5 @@ d = { 'settings': { 'branch': 'main',
                                                                                             'nixtla/v2/nixtla_client.py'),
                                          'nixtla.v2.nixtla_client.NixtlaClient._partition_series': ( 'v2.nixtla_client.html#nixtlaclient._partition_series',
                                                                                                      'nixtla/v2/nixtla_client.py'),
-                                         'nixtla.v2.nixtla_client.NixtlaClient.async_forecast': ( 'v2.nixtla_client.html#nixtlaclient.async_forecast',
-                                                                                                  'nixtla/v2/nixtla_client.py'),
                                          'nixtla.v2.nixtla_client.NixtlaClient.forecast': ( 'v2.nixtla_client.html#nixtlaclient.forecast',
                                                                                             'nixtla/v2/nixtla_client.py')}}}

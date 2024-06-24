@@ -4,20 +4,21 @@
 __all__ = ['NixtlaClient']
 
 # %% ../../nbs/v2.nixtla_client.ipynb 3
-import asyncio
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
-from typing import List, Literal, Optional, Union
+from typing import Any, List, Literal, Mapping, Optional, Union
 
+import httpx
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
+from tqdm.auto import tqdm
 from utilsforecast.compat import DataFrame, pl_DataFrame, pl_Series
 from utilsforecast.validation import validate_format, validate_freq
 
-import nixtla.types as types
-from ..client import AsyncNixtla, Nixtla
+from ..core.http_client import HttpClient
 
 # %% ../../nbs/v2.nixtla_client.ipynb 4
 _LOSS = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
@@ -39,21 +40,25 @@ class NixtlaClient:
             base_url = os.getenv("NIXTLA_BASE_URL", "https://dashboard.nixtla.io/api")
         self._client_kwargs = {
             "base_url": base_url,
-            "token": api_key,
+            "headers": {"Authorization": f"Bearer {api_key}"},
             "timeout": timeout,
         }
         self.max_retries = max_retries
 
-    def _partition_series(self, payload, n_part, h):
+    def _partition_series(
+        self, payload: Mapping[str, Any], n_part: int, h: int
+    ) -> List[Mapping[str, Any]]:
         parts = []
         series = payload.pop("series")
         n_series = len(series["sizes"])
         n_part = min(n_part, n_series)
         series_per_part = math.ceil(n_series / n_part)
-        indptr = np.array([0] + series["sizes"]).cumsum()
+        prev_size = 0
         for i in range(0, n_series, series_per_part):
             sizes = series["sizes"][i : i + series_per_part]
-            part_idxs = slice(indptr[i], indptr[i + series_per_part])
+            curr_size = sum(sizes)
+            part_idxs = slice(prev_size, prev_size + curr_size)
+            prev_size += curr_size
             part_series = {
                 "y": series["y"][part_idxs],
                 "sizes": sizes,
@@ -68,120 +73,6 @@ class NixtlaClient:
                 ]
             parts.append({"series": part_series, **payload})
         return parts
-
-    async def async_forecast(
-        self,
-        df: DataFrame,
-        h: int,
-        freq: str,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        X_df: Optional[DataFrame] = None,
-        level: Optional[List[Union[int, float]]] = None,
-        quantiles: Optional[List[float]] = None,
-        finetune_steps: int = 0,
-        finetune_loss: _LOSS = "default",
-        clean_ex_first: bool = True,
-        validate_api_key: bool = False,
-        add_history: bool = False,
-        date_features: Union[bool, List[str]] = False,
-        model: _MODEL = "timegpt-1",
-        num_partitions: Optional[int] = None,
-    ):
-        if add_history:
-            raise NotImplementedError("add_history=True not yet supported")
-        if quantiles is not None:
-            raise NotImplementedError("quantiles!=None not yet supported")
-        validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
-        validate_freq(times=df[time_col], freq=freq)
-        processed = ufp.process_df(
-            df=df, id_col=id_col, time_col=time_col, target_col=target_col
-        )
-        if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].tolist()
-            if X_df is None:
-                raise ValueError(
-                    "Training exogenous features were provided but no future values."
-                )
-            processed_X = ufp.process_df(
-                df=X_df,
-                id_col=id_col,
-                time_col=time_col,
-                target_col=None,
-            )
-            X_future = processed_X.data.tolist()
-            x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
-        else:
-            X = None
-            X_future = None
-            x_cols = None
-        payload = {
-            "series": {
-                "y": processed.data[:, 0].tolist(),
-                "sizes": np.diff(processed.indptr).tolist(),
-                "X": X,
-                "X_future": X_future,
-            },
-            "model": model,
-            "h": h,
-            "freq": freq,
-            "clean_ex_first": clean_ex_first,
-            "level": level,
-            "finetune_steps": finetune_steps,
-            "finetune_loss": finetune_loss,
-        }
-        if num_partitions is None:
-            client = Nixtla(**self._client_kwargs)
-            resp = client.v_2_forecast(
-                **payload, request_options={"max_retries": self.max_retries}
-            )
-        else:
-            client = AsyncNixtla(**self._client_kwargs)
-            payloads = self._partition_series(payload, num_partitions, h)
-            coros = [
-                client.v_2_forecast(
-                    **payload, request_options={"max_retries": self.max_retries}
-                )
-                for payload in payloads
-            ]
-            results = await asyncio.gather(*coros)
-            resp = types.ForecastOutput(
-                mean=list(chain.from_iterable(res.mean for res in results)),
-                intervals=None if level is None else {},
-            )
-            if payload["level"] is not None:
-                for lvl in payload["level"]:
-                    for side in ["lo", "hi"]:
-                        resp.intervals[f"{side}-{lvl}"] = list(
-                            chain.from_iterable(
-                                res.intervals[f"{side}-{lvl}"] for res in results
-                            )
-                        )
-        if isinstance(df, pd.DataFrame):
-            times = pd.Index(processed.times)
-        elif isinstance(df, pl_DataFrame):
-            times = pl_Series(processed.times)
-        out = ufp.make_future_dataframe(
-            uids=processed.uids,
-            last_times=times,
-            freq=freq,
-            h=h,
-            id_col=id_col,
-            time_col=time_col,
-        )
-        out = ufp.assign_columns(out, "TimeGPT", resp.mean)
-        if resp.intervals is not None:
-            for lvl, vals in resp.intervals.items():
-                out = ufp.assign_columns(out, f"TimeGPT-{lvl}", vals)
-        if resp.weights_x is not None:
-            self.weights_x = type(df)(
-                {
-                    "features": x_cols,
-                    "weights": resp.weights_x,
-                }
-            )
-        return out
 
     def forecast(
         self,
@@ -274,30 +165,119 @@ class NixtlaClient:
             DataFrame with TimeGPT forecasts for point predictions and probabilistic
             predictions (if level is not None).
         """
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            raise Exception(
-                "Can't use this function when there's already a running loop. "
-                "Use `await async_forecast(...) instead.`"
-            )
-        return asyncio.run(
-            self.async_forecast(
-                df=df,
-                h=h,
-                freq=freq,
+        if add_history:
+            raise NotImplementedError("add_history=True not yet supported")
+        if quantiles is not None:
+            raise NotImplementedError("quantiles!=None not yet supported")
+        validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
+        validate_freq(times=df[time_col], freq=freq)
+        processed = ufp.process_df(
+            df=df, id_col=id_col, time_col=time_col, target_col=target_col
+        )
+        if processed.data.shape[1] > 1:
+            X = processed.data[:, 1:].T.tolist()
+            if X_df is None:
+                raise ValueError(
+                    "Training exogenous features were provided but no future values."
+                )
+            processed_X = ufp.process_df(
+                df=X_df,
                 id_col=id_col,
                 time_col=time_col,
-                target_col=target_col,
-                X_df=X_df,
-                level=level,
-                quantiles=quantiles,
-                finetune_steps=finetune_steps,
-                finetune_loss=finetune_loss,
-                clean_ex_first=clean_ex_first,
-                validate_api_key=validate_api_key,
-                add_history=add_history,
-                date_features=date_features,
-                model=model,
-                num_partitions=num_partitions,
+                target_col=None,
             )
+            X_future = processed_X.data.T.tolist()
+            x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+        else:
+            X = None
+            X_future = None
+            x_cols = None
+        payload = {
+            "series": {
+                "y": processed.data[:, 0].tolist(),
+                "sizes": np.diff(processed.indptr).tolist(),
+                "X": X,
+                "X_future": X_future,
+            },
+            "model": model,
+            "h": h,
+            "freq": freq,
+            "clean_ex_first": clean_ex_first,
+            "level": level,
+            "finetune_steps": finetune_steps,
+            "finetune_loss": finetune_loss,
+        }
+        with httpx.Client(**self._client_kwargs) as httpx_client:
+            client = HttpClient(httpx_client=httpx_client)
+            if num_partitions is None:
+                resp = client.request(
+                    method="post",
+                    url="/v2/forecast",
+                    json=payload,
+                    max_retries=self.max_retries,
+                ).json()
+            else:
+                payloads = self._partition_series(payload, num_partitions, h)
+                results = [None for _ in payloads]
+                with ThreadPoolExecutor(min(10, num_partitions)) as executor:
+                    future2pos = {
+                        executor.submit(
+                            client.request,
+                            method="post",
+                            url="/v2/forecast",
+                            json=payload,
+                            max_retries=self.max_retries,
+                        ): i
+                        for i, payload in enumerate(payloads)
+                    }
+                    for future in tqdm(as_completed(future2pos), total=len(future2pos)):
+                        pos = future2pos[future]
+                        results[pos] = future.result().json()
+                resp = {
+                    "mean": list(chain.from_iterable(res["mean"] for res in results))
+                }
+                if payload["level"] is None:
+                    resp["intervals"] = None
+                else:
+                    resp["intervals"] = {}
+                    for lvl in payload["level"]:
+                        for side in ["lo", "hi"]:
+                            resp["intervals"][f"{side}-{lvl}"] = list(
+                                chain.from_iterable(
+                                    res["intervals"][f"{side}-{lvl}"] for res in results
+                                )
+                            )
+                if X is None:
+                    resp["weights_x"] = None
+                else:
+                    resp["weights_x"] = [res["weights_x"] for res in results]
+        if isinstance(df, pd.DataFrame):
+            times = pd.Index(processed.times)
+        elif isinstance(df, pl_DataFrame):
+            times = pl_Series(processed.times)
+        out = ufp.make_future_dataframe(
+            uids=processed.uids,
+            last_times=times,
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
         )
+        out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
+        if resp["intervals"] is not None:
+            for lvl, vals in resp["intervals"].items():
+                out = ufp.assign_columns(out, f"TimeGPT-{lvl}", vals)
+        if resp["weights_x"] is not None:
+            if isinstance(resp["weights_x"], list):
+                self.weights_x = [
+                    type(df)({"features": x_cols, "weights": weights_x})
+                    for weights_x in resp["weights_x"]
+                ]
+            else:
+                self.weights_x = type(df)(
+                    {
+                        "features": x_cols,
+                        "weights": resp["weights_x"],
+                    }
+                )
+        return out
