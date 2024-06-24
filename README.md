@@ -143,8 +143,6 @@ from a broad array of domains, including finance, economics, demographics, healt
 IoT sensor data, energy, web traffic, sales, transport, and banking. Due to this diverse set of domains,
 the training dataset contains time series with a wide range of characteristics
 
-For the Zero-shot Results section of your README, you can enhance the clarity and effectiveness by focusing on emphasizing the key findings and their implications, while also making the text more concise and digestible. Here's a refined version:
-
 ---
 
 ## ⚡️ Zero-shot Results
