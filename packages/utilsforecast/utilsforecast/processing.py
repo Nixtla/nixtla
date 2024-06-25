@@ -5,14 +5,14 @@ __all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_col
            'filter_with_mask', 'is_nan', 'is_none', 'is_nan_or_none', 'match_if_categorical', 'vertical_concat',
            'horizontal_concat', 'copy_if_pandas', 'join', 'drop_index_if_pandas', 'rename', 'sort', 'offset_times',
            'offset_dates', 'time_ranges', 'repeat', 'cv_times', 'group_by', 'group_by_agg', 'is_in', 'between',
-           'fill_null', 'cast', 'value_cols_to_numpy', 'make_future_dataframe', 'anti_join', 'process_df',
-           'DataFrameProcessor', 'backtest_splits', 'add_insample_levels']
+           'fill_null', 'cast', 'value_cols_to_numpy', 'make_future_dataframe', 'anti_join', 'ensure_sorted',
+           'process_df', 'DataFrameProcessor', 'backtest_splits', 'add_insample_levels']
 
 # %% ../nbs/processing.ipynb 2
 import re
 import reprlib
 import warnings
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -626,12 +626,27 @@ def anti_join(df1: DataFrame, df2: DataFrame, on: Union[str, List[str]]) -> Data
     return out
 
 # %% ../nbs/processing.ipynb 74
+def ensure_sorted(df: DataFrame, id_col: str, time_col: str) -> DataFrame:
+    sort_idxs = maybe_compute_sort_indices(df=df, id_col=id_col, time_col=time_col)
+    if sort_idxs is not None:
+        df = take_rows(df=df, idxs=sort_idxs)
+    return df
+
+# %% ../nbs/processing.ipynb 75
+class _ProcessedDF(NamedTuple):
+    uids: Series
+    times: np.ndarray
+    data: np.ndarray
+    indptr: np.ndarray
+    sort_idxs: Optional[np.ndarray]
+
+# %% ../nbs/processing.ipynb 76
 def process_df(
     df: DataFrame,
     id_col: str,
     time_col: str,
     target_col: Optional[str],
-) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
+) -> _ProcessedDF:
     """Extract components from dataframe
 
     Parameters
@@ -674,9 +689,9 @@ def process_df(
         data = data[sort_idxs]
         last_idxs = sort_idxs[last_idxs]
     times = df[time_col].to_numpy()[last_idxs]
-    return uids, times, data, indptr, sort_idxs
+    return _ProcessedDF(uids, times, data, indptr, sort_idxs)
 
-# %% ../nbs/processing.ipynb 76
+# %% ../nbs/processing.ipynb 78
 class DataFrameProcessor:
     def __init__(
         self,
@@ -693,7 +708,7 @@ class DataFrameProcessor:
     ) -> Tuple[Series, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
         return process_df(df, self.id_col, self.time_col, self.target_col)
 
-# %% ../nbs/processing.ipynb 81
+# %% ../nbs/processing.ipynb 83
 def _single_split(
     df: DataFrame,
     i_window: int,
@@ -758,7 +773,7 @@ def _single_split(
         )
     return cutoffs, train_mask, valid_mask
 
-# %% ../nbs/processing.ipynb 82
+# %% ../nbs/processing.ipynb 84
 def backtest_splits(
     df: DataFrame,
     n_windows: int,
@@ -790,7 +805,7 @@ def backtest_splits(
         valid = filter_with_mask(df, valid_mask)
         yield cutoffs, train, valid
 
-# %% ../nbs/processing.ipynb 86
+# %% ../nbs/processing.ipynb 88
 def add_insample_levels(
     df: DataFrame,
     models: List[str],
