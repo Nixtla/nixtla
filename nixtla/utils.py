@@ -12,3 +12,10 @@ def colab_badge(path: str):
     nb_url = f"{base_url}/Nixtla/nixtla/blob/main/nbs/{path}.ipynb"
     badge_md = f"[![]({badge_svg})]({nb_url})"
     display(Markdown(badge_md))
+
+# %% ../nbs/utils.ipynb 4
+import sys
+
+# %% ../nbs/utils.ipynb 5
+def in_colab():
+    return "google.colab" in sys.modules

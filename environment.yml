@@ -29,3 +29,4 @@ dependencies:
     - python-dotenv
     - ray[serve-grpc]<2.6.3
     - tabulate
+    - tenacity
