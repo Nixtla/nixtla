@@ -38,6 +38,7 @@ from .types.multi_series_cross_validation import MultiSeriesCrossValidation
 from .types.multi_series_forecast import MultiSeriesForecast
 from .types.multi_series_insample_forecast import MultiSeriesInsampleForecast
 from .types.single_series_forecast import SingleSeriesForecast
+from .utils import _restrict_input_samples
 
 logging.basicConfig(level=logging.INFO)
 main_logger = logging.getLogger(__name__)
@@ -543,21 +544,12 @@ class _NixtlaClientModel:
 
     def _restrict_input_samples(self) -> int:
         main_logger.info("Restricting input...")
-        if self.level is not None:
-            # add sufficient info to compute
-            # conformal interval
-            # @AzulGarza
-            #  this is an old opinionated decision
-            #  about reducing the data sent to the api
-            #  to reduce latency when
-            #  a user passes level. since currently the model
-            #  uses conformal prediction, we can change a minimum
-            #  amount of data if the series are too large
-            new_input_size = 3 * self.input_size + max(self.model_horizon, self.h)
-        else:
-            # we only want to forecast
-            new_input_size = self.input_size
-        return new_input_size
+        return _restrict_input_samples(
+            level=self.level,
+            input_size=self.input_size,
+            model_horizon=self.model_horizon,
+            h=self.h,
+        )
 
     def forecast(
         self,
