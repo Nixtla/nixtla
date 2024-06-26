@@ -178,6 +178,9 @@ d = { 'settings': { 'branch': 'main',
                                                                                                      'nixtla/v2/nixtla_client.py'),
                                          'nixtla.v2.nixtla_client.NixtlaClient._make_request': ( 'v2.nixtla_client.html#nixtlaclient._make_request',
                                                                                                  'nixtla/v2/nixtla_client.py'),
+                                         'nixtla.v2.nixtla_client.NixtlaClient._standardize_freq': ( 'v2.nixtla_client.html#nixtlaclient._standardize_freq',
+                                                                                                     'nixtla/v2/nixtla_client.py'),
+                                         'nixtla.v2.nixtla_client.NixtlaClient._tail': ( 'v2.nixtla_client.html#nixtlaclient._tail',
+                                                                                         'nixtla/v2/nixtla_client.py'),
                                          'nixtla.v2.nixtla_client.NixtlaClient.forecast': ( 'v2.nixtla_client.html#nixtlaclient.forecast',
-                                                                                            'nixtla/v2/nixtla_client.py'),
-                                         'nixtla.v2.nixtla_client._tail': ('v2.nixtla_client.html#_tail', 'nixtla/v2/nixtla_client.py')}}}
+                                                                                            'nixtla/v2/nixtla_client.py')}}}

@@ -9,7 +9,7 @@ import math
 import os
 import warnings
 from itertools import chain
-from typing import Any, List, Literal, Mapping, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import httpx
 import numpy as np
@@ -28,25 +28,7 @@ logger = logging.getLogger(__name__)
 
 # %% ../../nbs/v2.nixtla_client.ipynb 5
 _LOSS = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
-_MODEL = Literal["timepgt-1", "timegpt-1-long-horizon"]
-
-
-def _tail(proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
-    n_series = proc.indptr.size - 1
-    new_sizes = np.minimum(np.diff(proc.indptr), n)
-    new_indptr = np.append(0, new_sizes.cumsum())
-    new_data = np.empty_like(proc.data, shape=(new_indptr[-1], proc.data.shape[1]))
-    for i in range(n_series):
-        new_data[new_indptr[i] : new_indptr[i + 1]] = proc.data[
-            proc.indptr[i + 1] - new_sizes[i] : proc.indptr[i + 1]
-        ]
-    return ufp.ProcessedDF(
-        uids=proc.uids,
-        last_times=proc.last_times,
-        data=new_data,
-        indptr=new_indptr,
-        sort_idxs=None,
-    )
+_MODEL = Literal["timegpt-1", "timegpt-1-long-horizon"]
 
 # %% ../../nbs/v2.nixtla_client.ipynb 6
 class NixtlaClient:
@@ -68,9 +50,9 @@ class NixtlaClient:
             "timeout": timeout,
         }
         self.max_retries = max_retries
-        self._model_params: Mapping[str, Tuple[int]] = {}
+        self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
 
-    def _make_request(self, endpoint: str, payload: Mapping[str, any]):
+    def _make_request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with httpx.Client(**self._client_kwargs) as httpx_client:
             client = HttpClient(httpx_client=httpx_client)
             resp = client.request(
@@ -86,13 +68,34 @@ class NixtlaClient:
             resp_body = resp_body["data"]
         return resp_body
 
-    def _get_model_params(self, freq: str, model: str):
-        key = (freq, model)
+    def _standardize_freq(self, freq: str) -> str:
+        return freq.replace("mo", "MS")
+
+    def _get_model_params(self, model: str, freq: str):
+        key = (model, freq)
         if key not in self._model_params:
-            payload = {"freq": freq, "model": model}
+            logger.info("Querying model metadata...")
+            payload = {"model": model, "freq": freq}
             params = self._make_request("/model_params", payload)["detail"]
             self._model_params[key] = (params["input_size"], params["horizon"])
         return self._model_params[key]
+
+    def _tail(self, proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
+        n_series = proc.indptr.size - 1
+        new_sizes = np.minimum(np.diff(proc.indptr), n)
+        new_indptr = np.append(0, new_sizes.cumsum())
+        new_data = np.empty_like(proc.data, shape=(new_indptr[-1], proc.data.shape[1]))
+        for i in range(n_series):
+            new_data[new_indptr[i] : new_indptr[i + 1]] = proc.data[
+                proc.indptr[i + 1] - new_sizes[i] : proc.indptr[i + 1]
+            ]
+        return ufp.ProcessedDF(
+            uids=proc.uids,
+            last_times=proc.last_times,
+            data=new_data,
+            indptr=new_indptr,
+            sort_idxs=None,
+        )
 
     def forecast(
         self,
@@ -118,37 +121,33 @@ class NixtlaClient:
         h : int
             Forecast horizon.
         freq : str
-            pandas or polars frequency string.
+            pandas or polars offset alias.
         id_col : str (default='unique_id')
             Column that identifies each serie.
         time_col : str (default='ds')
             Column that identifies each timestep, its values must be timestamps.
         target_col : str (default='y')
             Column that contains the target.
-        X_df : pandas.DataFrame, optional (default=None)
-            DataFrame with [id_col, time_col] columns and `df`'s future exogenous.
-        level : List[float], optional (default=None)
+        X_df : pandas or polars DataFrame, optional (default=None)
+            dataframe with [id_col, time_col] columns and `df`'s future exogenous.
+        level : list of int or float, optional (default=None)
             Confidence levels between 0 and 100 for prediction intervals.
         finetune_steps : int (default=0)
-            Number of steps used to finetune learning TimeGPT in the
-            new data.
+            Number of steps used to finetune learning TimeGPT in the new data.
         finetune_loss : str (default='default')
-            Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
+            Loss function to use for finetuning. Options are: 'default', 'mae', 'mse', 'rmse', 'mape', and 'smape'.
         clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts
-            using TimeGPT.
+            Clean exogenous signal before making forecasts using TimeGPT.
         model : str (default='timegpt-1')
-            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
-            We recommend using `timegpt-1-long-horizon` for forecasting
-            if you want to predict more than one seasonal
-            period given the frequency of your data.
+            Model to use as a string. Options are: 'timegpt-1', and 'timegpt-1-long-horizon'.
+            We recommend using 'timegpt-1-long-horizon' if you want to predict more than one seasonal period.
 
         Returns
         -------
-        fcsts_df : pandas.DataFrame
-            DataFrame with TimeGPT forecasts for point predictions and probabilistic
-            predictions (if level is not None).
+        pandas or polars DataFrame
+            dataframe with TimeGPT forecasts for point and probabilistic predictions (if level is not `None`).
         """
+        self.__dict__.pop("weights_x", None)
         logger.info("Validating inputs...")
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
         validate_freq(times=df[time_col], freq=freq)
@@ -169,8 +168,8 @@ class NixtlaClient:
                 )
             if exog_df != exog_X_df:
                 # rearrange columns if necessary
-                X_df = X_df[[id_col, time_col, *x_cols]]
-            x_cols = exog_df
+                X_df = X_df[[id_col, time_col, *exog_df]]
+            x_cols: Optional[List[str]] = exog_df
         else:
             if exog_df:
                 warnings.warn(
@@ -195,7 +194,8 @@ class NixtlaClient:
         else:
             X_future = None
 
-        model_input_size, model_horizon = self._get_model_params(freq, model)
+        standard_freq = self._standardize_freq(freq)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         restrict_input = finetune_steps == 0 and X_df is None
         if restrict_input:
             logger.info("Restricting input...")
@@ -205,7 +205,7 @@ class NixtlaClient:
                 model_horizon=model_horizon,
                 h=h,
             )
-            processed = _tail(processed, new_input_size)
+            processed = self._tail(processed, new_input_size)
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
         else:
@@ -219,7 +219,7 @@ class NixtlaClient:
             },
             "model": model,
             "h": h,
-            "freq": freq,
+            "freq": standard_freq,
             "clean_ex_first": clean_ex_first,
             "level": level,
             "finetune_steps": finetune_steps,
