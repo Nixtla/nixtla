@@ -120,8 +120,12 @@ def maybe_compute_sort_indices(
 def assign_columns(
     df: DataFrame,
     names: Union[str, List[str]],
-    values: Union[np.ndarray, pd.Series, pl_Series],
+    values: Union[np.ndarray, pd.Series, pl_Series, List[float]],
 ) -> DataFrame:
+    if isinstance(values, list) and (
+        len(values) != df.shape[0] or not isinstance(names, str)
+    ):
+        raise ValueError("Only single column assignment is supported for lists.")
     if isinstance(df, pd.DataFrame):
         df[names] = values
     else:
@@ -133,9 +137,13 @@ def assign_columns(
             assert isinstance(names, str)
             vals = values.alias(names)
         else:
-            if isinstance(names, str):
-                names = [names]
-            vals = pl.from_numpy(values, schema=names, orient="row")
+            if isinstance(values, np.ndarray):
+                if isinstance(names, str):
+                    names = [names]
+                vals = pl.from_numpy(values, schema=names, orient="row")
+            elif isinstance(values, list):
+                assert isinstance(names, str)
+                vals = pl_Series(name=names, values=values)
         df = df.with_columns(vals)
     return df
 
