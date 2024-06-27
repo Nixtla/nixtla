@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -16,7 +17,7 @@ import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
 from pydantic import NonNegativeInt, PositiveInt
-from utilsforecast.compat import DataFrame, pl_DataFrame, pl_Series
+from utilsforecast.compat import DataFrame
 from utilsforecast.validation import validate_format, validate_freq
 
 from ..core.api_error import ApiError
@@ -52,21 +53,53 @@ class NixtlaClient:
         self.max_retries = max_retries
         self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
 
-    def _make_request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        with httpx.Client(**self._client_kwargs) as httpx_client:
-            client = HttpClient(httpx_client=httpx_client)
-            resp = client.request(
-                method="post",
-                url=endpoint,
-                json=payload,
-                max_retries=self.max_retries,
-            )
-            resp_body = resp.json()
-            if resp.status_code != 200:
-                raise ApiError(status_code=resp.status_code, body=resp_body)
+    def _make_request(
+        self, client: HttpClient, endpoint: str, payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        resp = client.request(
+            method="post",
+            url=endpoint,
+            json=payload,
+            max_retries=self.max_retries,
+        )
+        resp_body = resp.json()
+        if resp.status_code != 200:
+            raise ApiError(status_code=resp.status_code, body=resp_body)
         if "data" in resp_body:
             resp_body = resp_body["data"]
         return resp_body
+
+    def _make_partitioned_requests(
+        self, client: HttpClient, endpoint: str, payloads: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        from tqdm.auto import tqdm
+
+        num_partitions = len(payloads)
+        results = num_partitions * [None]
+        max_workers = min(10, num_partitions)
+        with ThreadPoolExecutor(max_workers) as executor:
+            future2pos = {
+                executor.submit(self._make_request, client, endpoint, payload): i
+                for i, payload in enumerate(payloads)
+            }
+            for future in tqdm(as_completed(future2pos), total=len(future2pos)):
+                pos = future2pos[future]
+                results[pos] = future.result()
+        resp = {"mean": list(chain.from_iterable(res["mean"] for res in results))}
+        first_res = results[0]
+        if first_res["intervals"] is None:
+            resp["intervals"] = None
+        else:
+            resp["intervals"] = {}
+            for k in first_res["intervals"].keys():
+                resp["intervals"][k] = list(
+                    chain.from_iterable(res["intervals"][k] for res in results)
+                )
+        if first_res["weights_x"] is None:
+            resp["weights_x"] = None
+        else:
+            resp["weights_x"] = [res["weights_x"] for res in results]
+        return resp
 
     def _standardize_freq(self, freq: str) -> str:
         return freq.replace("mo", "MS")
@@ -76,7 +109,9 @@ class NixtlaClient:
         if key not in self._model_params:
             logger.info("Querying model metadata...")
             payload = {"model": model, "freq": freq}
-            params = self._make_request("/model_params", payload)["detail"]
+            with httpx.Client(**self._client_kwargs) as httpx_client:
+                client = HttpClient(httpx_client=httpx_client)
+                params = self._make_request(client, "/model_params", payload)["detail"]
             self._model_params[key] = (params["input_size"], params["horizon"])
         return self._model_params[key]
 
@@ -97,6 +132,35 @@ class NixtlaClient:
             sort_idxs=None,
         )
 
+    def _partition_series(
+        self, payload: Dict[str, Any], n_part: int, h: int
+    ) -> List[Dict[str, Any]]:
+        parts = []
+        series = payload.pop("series")
+        n_series = len(series["sizes"])
+        n_part = min(n_part, n_series)
+        series_per_part = math.ceil(n_series / n_part)
+        prev_size = 0
+        for i in range(0, n_series, series_per_part):
+            sizes = series["sizes"][i : i + series_per_part]
+            curr_size = sum(sizes)
+            part_idxs = slice(prev_size, prev_size + curr_size)
+            prev_size += curr_size
+            part_series = {
+                "y": series["y"][part_idxs],
+                "sizes": sizes,
+            }
+            if series["X"] is None:
+                part_series["X"] = None
+                part_series["X_future"] = None
+            else:
+                part_series["X"] = [x[part_idxs] for x in series["X"]]
+                part_series["X_future"] = [
+                    x[i * h : (i + series_per_part) * h] for x in series["X_future"]
+                ]
+            parts.append({"series": part_series, **payload})
+        return parts
+
     def forecast(
         self,
         df: DataFrame,
@@ -111,6 +175,7 @@ class NixtlaClient:
         finetune_loss: _LOSS = "default",
         clean_ex_first: bool = True,
         model: _MODEL = "timegpt-1",
+        num_partitions: Optional[int] = None,
     ):
         """Forecast your time series using TimeGPT.
 
@@ -141,6 +206,8 @@ class NixtlaClient:
         model : str (default='timegpt-1')
             Model to use as a string. Options are: 'timegpt-1', and 'timegpt-1-long-horizon'.
             We recommend using 'timegpt-1-long-horizon' if you want to predict more than one seasonal period.
+        num_partitions : int, optional (default=None)
+            Split the series into this number of partitions and make that many requests in parallel.
 
         Returns
         -------
@@ -227,7 +294,13 @@ class NixtlaClient:
         }
 
         logger.info("Calling Forecast Endpoint...")
-        resp = self._make_request("/v2/forecast", payload)
+        with httpx.Client(**self._client_kwargs) as httpx_client:
+            client = HttpClient(httpx_client=httpx_client)
+            if num_partitions is None:
+                resp = self._make_request(client, "/v2/forecast", payload)
+            else:
+                payloads = self._partition_series(payload, num_partitions, h)
+                resp = self._make_partitioned_requests(client, "/v2/forecast", payloads)
 
         # assemble result
         out = ufp.make_future_dataframe(
