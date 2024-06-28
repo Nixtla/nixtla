@@ -24,5 +24,5 @@ dependencies:
   - pip:
     - datasetsforecast
     - nbdev
-    - polars
+    - polars[numpy]>=0.0.0rc0
     - utilsforecast>=0.0.27

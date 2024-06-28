@@ -766,9 +766,8 @@ class TimeSeries:
                     )
                     raise ValueError(msg)
                 drop_cols = [self.id_col, self.time_col, "_start", "_end"]
-                X_df = ufp.sort(X_df, [self.id_col, self.time_col]).drop(
-                    columns=drop_cols
-                )
+                X_df = ufp.sort(X_df, [self.id_col, self.time_col])
+                X_df = ufp.drop_columns(X_df, drop_cols)
             if getattr(self, "max_horizon", None) is None:
                 preds = self._predict_recursive(
                     models=models,

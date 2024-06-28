@@ -30,7 +30,7 @@ dependencies:
     - fugue[ray]
     - lightgbm_ray
     - nbdev
-    - polars
+    - polars[numpy]>=0.0.0rc0
     - ray<2.8
     - triad==0.9.1
     - utilsforecast>=0.0.27

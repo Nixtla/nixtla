@@ -71,11 +71,18 @@ def generate_daily_series(
             "id_" + series["unique_id"].astype(str).str.rjust(n_digits, "0")
         ).astype("category")
     else:
-        series = series.with_columns(
-            ("id_" + pl.col("unique_id").cast(pl.Utf8).str.rjust(n_digits, "0"))
-            .alias("unique_id")
-            .cast(pl.Categorical)
-        )
+        try:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.pad_start(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
+        except AttributeError:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.rjust(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
     return series
 
 # %% ../nbs/utils.ipynb 16
