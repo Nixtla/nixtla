@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
 
       - name: Install nbdev
         run: pip install nbdev
@@ -50,7 +50,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_NIXTLA_TMP }}
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up environment
         uses: mamba-org/setup-micromamba@v1
@@ -74,7 +74,7 @@ jobs:
         python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up environment
         uses: mamba-org/setup-micromamba@v1
@@ -98,10 +98,10 @@ jobs:
         python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up environment
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -115,10 +115,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10' 
           cache: 'pip'
@@ -132,9 +132,9 @@ jobs:
   efficiency-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -148,9 +148,9 @@ jobs:
   performance-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
