@@ -19,8 +19,8 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Install linters
-        run: pip install mypy ruff
+      - name: Install dependencies
+        run: pip install black nbdev pre-commit
 
-      - name: Lint
-        run: ./action_files/lint
+      - name: Run pre-commit
+        run: pre-commit run --files mlforecast/*

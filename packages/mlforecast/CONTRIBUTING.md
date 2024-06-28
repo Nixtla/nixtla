@@ -42,11 +42,15 @@ Once you have `conda/mamba` go to the top level directory of the repository and 
 ```
 
 Once you have your environment setup, activate it using `conda activate mlforecast`.
+
 ##### PyPI
 From the top level directory of the repository run: `pip install ".[dev]"`
 
 #### 3. Install the library
-From the top level directory of the repository run: `pip install -e .`
+From the top level directory of the repository run: `pip install -e .[dev]`
+
+##### Setting up pre-commit
+Run `pre-commit install`
 
 ### Building the library
 The library is built using the notebooks contained in the `nbs` folder. If you want to make any changes to the library you have to find the relevant notebook, make your changes and then call `nbdev_export`.
@@ -55,15 +59,14 @@ The library is built using the notebooks contained in the `nbs` folder. If you w
 
 * If you're working on the local interface, use `nbdev_test --skip_file_glob "distributed*" --n_workers 1`.
 * If you're modifying the distributed interface run the tests using `nbdev_test --n_workers 1`.
-### Linters
-This project uses a couple of linters to validate different aspects of the code. Before opening a PR, please make sure that it passes all the linting tasks by following the next steps.
 
-#### Run the linting tasks
-* `mypy mlforecast/`
-* `flake8 --select=F mlforecast/`
+### Run the linting tasks
+Run `./action_files/lint`
 
 ### Cleaning notebooks
-Run `nbdev_clean`.
+Run `./action_files/clean_nbs`
+
+
 ## Do you want to contribute to the documentation?
 
 * Docs are automatically created from the notebooks in the `nbs` folder.
