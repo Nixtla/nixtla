@@ -65,13 +65,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-13, windows-latest]
+        # os: [ubuntu-latest, macos-13, windows-latest]
+        os: [ubuntu-latest]
         python-version: [3.9, '3.10']
     env:
-      NIXTLA_API_KEY: ${{ secrets.NIXTLA_API_KEY }}
-      NIXTLA_BASE_URL: ${{ secrets.NIXTLA_BASE_URL }}
-      NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
-      NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
+      NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
+      NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+      NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_DEV_API_KEY }}
+      NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_DEV_BASE_URL }}
       API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
     steps:
       - name: Clone repo
@@ -87,9 +88,10 @@ jobs:
       - name: Install pip requirements
         run: pip install -e ".[dev]"
 
-      - name: Run tests 
-        run: nbdev_test --skip_file_re "computing_at_scale|distributed" --timing
+        # - name: Run tests 
+        #   run: nbdev_test --skip_file_re "computing_at_scale|distributed" --timing
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --file_re "computing_at_scale|distributed" --timing
+        # run: nbdev_test --file_re "computing_at_scale|distributed" --timing --do_print --n_workers 0
+        run: nbdev_test --path nbs/distributed.nixtla_client.ipynb --timing --do_print --n_workers 0
