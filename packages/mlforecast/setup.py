@@ -31,6 +31,7 @@ spark_requirements = cfg['spark_requirements'].split()
 aws_requirements = cfg['aws_requirements'].split()
 azure_requirements = cfg['azure_requirements'].split()
 gcp_requirements = cfg['gcp_requirements'].split()
+polars_requirements = cfg['polars_requirements'].split()
 all_extras = [
     dask_requirements,
     ray_requirements,
@@ -38,6 +39,7 @@ all_extras = [
     aws_requirements,
     azure_requirements,
     gcp_requirements,
+    polars_requirements,
 ]
 dev_requirements = sorted(set(sum([cfg['dev_requirements'].split()] + all_extras, [])))
 min_python = cfg['min_python']
@@ -63,6 +65,7 @@ setuptools.setup(
         'aws': aws_requirements,
         'azure': azure_requirements,
         'gcp': gcp_requirements,
+        'polars': polars_requirements,
         'dev': dev_requirements,
     },
     dependency_links = cfg.get('dep_links','').split(),
