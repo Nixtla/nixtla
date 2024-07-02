@@ -20,7 +20,8 @@ import numpy as np
 import pandas as pd
 from packaging.version import Version, parse as parse_version
 
-from .compat import DataFrame, pl_Series
+import utilsforecast.processing as ufp
+from .compat import DataFrame, pl_Series, pl
 from .validation import validate_format
 
 # %% ../nbs/plotting.ipynb 5
@@ -32,25 +33,17 @@ def _filter_series(df, id_col, time_col, uids, models=None, max_insample_length=
             c for c in df.columns if re.search(rf"^({models_pat})-(?:lo|hi)-\d+", c)
         ]
         out_cols.extend(models + interval_cols)
-    if isinstance(df, pd.DataFrame):
-        df = df.loc[df[id_col].isin(uids), out_cols].sort_values(time_col)
-    else:
-        import polars as pl
-
-        df = df.filter(pl.col(id_col).is_in(uids)).select(*out_cols).sort(time_col)
+    mask = ufp.is_in(df[id_col], uids)
+    df = ufp.filter_with_mask(df, mask)
+    df = df[out_cols]
+    df = ufp.sort(df, time_col)
     if max_insample_length is not None:
-        try:
-            df = df.group_by(id_col).tail(max_insample_length)
-        except AttributeError:
-            if isinstance(df, pd.DataFrame):
-                df = df.groupby(id_col, observed=True).tail(max_insample_length)
-            else:
-                df = df.groupby(id_col).tail(max_insample_length)
+        df = ufp.group_by(df, id_col, maintain_order=True).tail(max_insample_length)
     return df
 
 # %% ../nbs/plotting.ipynb 6
 def plot_series(
-    df: DataFrame,
+    df: Optional[DataFrame] = None,
     forecasts_df: Optional[DataFrame] = None,
     ids: Optional[List[str]] = None,
     plot_random: bool = True,
@@ -71,7 +64,7 @@ def plot_series(
 
     Parameters
     ----------
-    df : pandas or polars DataFrame
+    df : pandas or polars DataFrame, optional (default=None)
         DataFrame with columns [`id_col`, `time_col`, `target_col`].
     forecasts_df : pandas or polars DataFrame, optional (default=None)
         DataFrame with columns [`id_col`, `time_col`] and models.
@@ -133,7 +126,12 @@ def plot_series(
         )
     elif level is None:
         level = []
-    validate_format(df, id_col, time_col, target_col)
+    if df is None and forecasts_df is None:
+        raise ValueError("At least one of `df` and `forecasts_df` must be provided.")
+    elif df is not None:
+        validate_format(df, id_col, time_col, target_col)
+    elif forecasts_df is not None:
+        validate_format(forecasts_df, id_col, time_col, None)
 
     # models to plot
     if models is None:
@@ -149,7 +147,11 @@ def plot_series(
 
     # ids
     if ids is None:
-        uids: Union[np.ndarray, pl_Series, List] = df[id_col].unique()
+        if df is not None:
+            uids: Union[np.ndarray, pl_Series, List] = df[id_col].unique()
+        else:
+            assert forecasts_df is not None
+            uids = forecasts_df[id_col].unique()
     else:
         uids = ids
     if len(uids) > max_ids and plot_random:
@@ -159,14 +161,15 @@ def plot_series(
         uids = uids[:max_ids]
 
     # filtering
-    df = _filter_series(
-        df=df,
-        id_col=id_col,
-        time_col=time_col,
-        uids=uids,
-        models=[target_col],
-        max_insample_length=max_insample_length,
-    )
+    if df is not None:
+        df = _filter_series(
+            df=df,
+            id_col=id_col,
+            time_col=time_col,
+            uids=uids,
+            models=[target_col],
+            max_insample_length=max_insample_length,
+        )
     if forecasts_df is not None:
         forecasts_df = _filter_series(
             df=forecasts_df,
@@ -176,13 +179,13 @@ def plot_series(
             models=[target_col] + models if target_col in forecasts_df else models,
             max_insample_length=None,
         )
-        if isinstance(df, pd.DataFrame):
-            df = pd.concat([df, forecasts_df])
-
+        if df is None:
+            df = forecasts_df
         else:
-            import polars as pl
-
-            df = pl.concat([df, forecasts_df], how="align")
+            if isinstance(df, pd.DataFrame):
+                df = pd.concat([df, forecasts_df])
+            else:
+                df = pl.concat([df, forecasts_df], how="align")
 
     # common setup
     n_series = len(uids)
@@ -333,11 +336,8 @@ def plot_series(
                 )
 
     for i, uid in enumerate(uids):
-        if isinstance(df, pd.DataFrame):
-            uid_df = df[df[id_col].eq(uid)]
-        else:
-            cond = df[id_col].eq(uid)
-            uid_df = df.filter(cond)
+        mask = df[id_col].eq(uid)
+        uid_df = ufp.filter_with_mask(df, mask)
         row, col = divmod(i, n_cols)
         for y_col, color in zip([target_col] + models, colors):
             if engine == "matplotlib":

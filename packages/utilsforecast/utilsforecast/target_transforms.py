@@ -145,8 +145,7 @@ class LocalRobustScaler(BaseTargetTransform):
 class LocalBoxCox(BaseTargetTransform):
     """Finds optimum lambda for each serie and applies Box-Cox transformation."""
 
-    def __init__(self):
-        ...
+    def __init__(self): ...
 
     def fit(self, ga: GroupedArray) -> np.ndarray:
         from scipy.stats import boxcox

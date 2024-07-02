@@ -20,11 +20,9 @@ try:
 except ImportError:
     pl = None
 
-    class pl_DataFrame:
-        ...
+    class pl_DataFrame: ...
 
-    class pl_Series:
-        ...
+    class pl_Series: ...
 
     POLARS_INSTALLED = False
 
