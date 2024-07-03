@@ -27,6 +27,7 @@ from mlforecast.target_transforms import (
     LocalStandardScaler,
     GlobalSklearnTransformer,
 )
+from .utils import PredictionIntervals
 
 # %% ../nbs/auto.ipynb 4
 def lightgbm_space(trial: optuna.Trial):
@@ -442,6 +443,7 @@ class AutoMLForecast:
         study_kwargs: Optional[Dict[str, Any]] = None,
         optimize_kwargs: Optional[Dict[str, Any]] = None,
         fitted: bool = False,
+        prediction_intervals: Optional[PredictionIntervals] = None,
     ) -> "AutoMLForecast":
         """Carry out the optimization process.
         Each model is optimized independently and the best one is trained on all data
@@ -475,6 +477,8 @@ class AutoMLForecast:
             Keyword arguments to be passed to the optuna.Study.optimize method.
         fitted : bool (default=False)
             Whether to compute the fitted values when retraining the best model.
+        prediction_intervals :
+            Configuration to calibrate prediction intervals when retraining the best model.
 
         Returns
         -------
@@ -538,6 +542,7 @@ class AutoMLForecast:
             self.results_[name] = study
             best_config = study.best_trial.user_attrs["config"]
             best_config["mlf_fit_params"].pop("fitted", None)
+            best_config["mlf_fit_params"].pop("prediction_intervals", None)
             best_model = clone(auto_model.model)
             best_model.set_params(**best_config["model_params"])
             self.models_[name] = MLForecast(
@@ -548,6 +553,7 @@ class AutoMLForecast:
             self.models_[name].fit(
                 df,
                 fitted=fitted,
+                prediction_intervals=prediction_intervals,
                 **best_config["mlf_fit_params"],
             )
         return self
@@ -556,6 +562,7 @@ class AutoMLForecast:
         self,
         h: int,
         X_df: Optional[DataFrame] = None,
+        level: Optional[List[Union[int, float]]] = None,
     ) -> DataFrame:
         """ "Compute forecasts
 
@@ -565,6 +572,8 @@ class AutoMLForecast:
             Number of periods to predict.
         X_df : pandas or polars DataFrame, optional (default=None)
             Dataframe with the future exogenous features. Should have the id column and the time column.
+        level : list of ints or floats, optional (default=None)
+            Confidence levels between 0 and 100 for prediction intervals.
 
         Returns
         -------
@@ -573,11 +582,12 @@ class AutoMLForecast:
         """
         all_preds = None
         for name, model in self.models_.items():
-            preds = model.predict(h=h, X_df=X_df)
+            preds = model.predict(h=h, X_df=X_df, level=level)
             if all_preds is None:
                 all_preds = preds
             else:
-                all_preds = ufp.assign_columns(all_preds, name, preds[name])
+                model_cols = [c for c in preds.columns if c not in all_preds.columns]
+                all_preds = ufp.horizontal_concat([all_preds, preds[model_cols]])
         return all_preds
 
     def save(self, path: Union[str, Path]) -> None:
