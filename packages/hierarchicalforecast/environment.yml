@@ -3,7 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - jupyterlab
-  - numpy<1.24
+  - numpy
   - numba
   - pandas
   - scikit-learn
