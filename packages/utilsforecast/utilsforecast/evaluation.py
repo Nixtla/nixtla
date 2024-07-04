@@ -49,6 +49,7 @@ def evaluate(
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
+    agg_fn: Optional[str] = None,
 ) -> DataFrame:
     """Evaluate forecast using different metrics.
 
@@ -72,11 +73,14 @@ def evaluate(
         Column that identifies each timestep, its values can be timestamps or integers.
     target_col : str (default='y')
         Column that contains the target.
+    agg_fn : str, optional (default=None)
+        Statistic to compute on the scores by id to reduce them to a single number.
 
     Returns
     -------
     pandas or polars DataFrame
         Metrics with one row per (id, metric) combination and one column per model.
+        If `agg_fn` is not `None`, there is only one row per metric.
     """
     if models is None:
         model_cols = [
@@ -184,10 +188,16 @@ def evaluate(
             results_per_metric.append(result)
     if isinstance(df, pd.DataFrame):
         df = pd.concat(results_per_metric).reset_index(drop=True)
-        out_cols = [c for c in df.columns if c not in (id_col, "metric")]
-        df = df[[id_col, "metric", *out_cols]]
     else:
         df = pl.concat(results_per_metric, how="diagonal")
-        out_cols = [c for c in df.columns if c not in (id_col, "metric")]
-        df = df.select([id_col, "metric", *out_cols])
+    id_cols = [id_col, "metric"]
+    model_cols = [c for c in df.columns if c not in id_cols]
+    df = df[id_cols + model_cols]
+    if agg_fn is not None:
+        df = ufp.group_by_agg(
+            df,
+            by="metric",
+            aggs={m: agg_fn for m in model_cols},
+            maintain_order=True,
+        )
     return df
