@@ -98,13 +98,13 @@ future_df = future_df.merge(monthly_holidays)
 future_df.head()
 ```
 
-|     | month      | US_New Year's Day | US_Memorial Day | US_Juneteenth National Independence Day | US_Independence Day | US_Labor Day | US_Veterans Day | US_Thanksgiving | US_Christmas Day | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Columbus Day |
-|-----|------------|-------------------|-----------------|-----------------------------------------|---------------------|--------------|-----------------|-----------------|------------------|-------------------------------|--------------------------|-----------------|
-| 0   | 2024-05-31 | 0                 | 0               | 0                                       | 0                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
-| 1   | 2024-06-30 | 0                 | 0               | 1                                       | 0                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
-| 2   | 2024-07-31 | 0                 | 0               | 0                                       | 1                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
-| 3   | 2024-08-31 | 0                 | 0               | 0                                       | 0                   | 0            | 0               | 0               | 0                | 0                             | 0                        | 0               |
-| 4   | 2024-09-30 | 0                 | 0               | 0                                       | 0                   | 1            | 0               | 0               | 0                | 0                             | 0                        | 0               |
+|  | month | US_New Year's Day | US_Memorial Day | US_Juneteenth National Independence Day | US_Independence Day | US_Labor Day | US_Veterans Day | US_Thanksgiving | US_Christmas Day | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Columbus Day |
+|----|----|----|----|----|----|----|----|----|----|----|----|----|
+| 0 | 2024-05-31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 1 | 2024-06-30 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 2 | 2024-07-31 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 3 | 2024-08-31 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 4 | 2024-09-30 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 We perform the same steps for the input dataframe.
 
@@ -122,13 +122,13 @@ df = df.merge(monthly_holidays)
 df.tail()
 ```
 
-|     | month      | chocolate | US_New Year's Day | US_New Year's Day (observed) | US_Memorial Day | US_Independence Day | US_Independence Day (observed) | US_Labor Day | US_Veterans Day | US_Thanksgiving | US_Christmas Day | US_Christmas Day (observed) | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Columbus Day | US_Veterans Day (observed) | US_Juneteenth National Independence Day | US_Juneteenth National Independence Day (observed) |
-|-----|------------|-----------|-------------------|------------------------------|-----------------|---------------------|--------------------------------|--------------|-----------------|-----------------|------------------|-----------------------------|-------------------------------|--------------------------|-----------------|----------------------------|-----------------------------------------|----------------------------------------------------|
-| 239 | 2023-12-31 | 90        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 1                | 0                           | 0                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
-| 240 | 2024-01-31 | 64        | 1                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 1                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
-| 241 | 2024-02-29 | 66        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 0                             | 1                        | 0               | 0                          | 0                                       | 0                                                  |
-| 242 | 2024-03-31 | 59        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 0                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
-| 243 | 2024-04-30 | 51        | 0                 | 0                            | 0               | 0                   | 0                              | 0            | 0               | 0               | 0                | 0                           | 0                             | 0                        | 0               | 0                          | 0                                       | 0                                                  |
+|  | month | chocolate | US_New Year's Day | US_New Year's Day (observed) | US_Memorial Day | US_Independence Day | US_Independence Day (observed) | US_Labor Day | US_Veterans Day | US_Thanksgiving | US_Christmas Day | US_Christmas Day (observed) | US_Martin Luther King Jr. Day | US_Washington's Birthday | US_Columbus Day | US_Veterans Day (observed) | US_Juneteenth National Independence Day | US_Juneteenth National Independence Day (observed) |
+|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|----|
+| 239 | 2023-12-31 | 90 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 240 | 2024-01-31 | 64 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 241 | 2024-02-29 | 66 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
+| 242 | 2024-03-31 | 59 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 243 | 2024-04-30 | 51 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 Great! Now, TimeGPT will consider the holidays as exogenous variables
 and the upcoming holidays will help it make predictions.
