@@ -870,7 +870,7 @@ class _NixtlaClient:
         if base_url is None:
             base_url = os.environ.get(
                 "NIXTLA_BASE_URL",
-                "https://api.nixtla.io/",
+                "https://dashboard.nixtla.io/api",
             )
         self.client = Nixtla(base_url=base_url, token=api_key)
         self.max_retries = max_retries
