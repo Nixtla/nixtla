@@ -9,7 +9,7 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            micromamba install -n base -c conda-forge -y python=3.7
+            micromamba install -n base -c conda-forge -y python=3.10
             micromamba update -n base -f environment.yml
       - run:
           name: Run nbdev tests
@@ -17,7 +17,7 @@ jobs:
             eval "$(micromamba shell hook --shell bash)"
             micromamba activate base
             pip install ".[dev]"
-            nbdev_test --do_print --timing --n_workers 1
+            nbdev_test --do_print --timing --n_workers 0
   test-model-performance:
     resource_class: large
     docker:
@@ -27,7 +27,7 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            micromamba install -n base -c conda-forge -y python=3.7
+            micromamba install -n base -c conda-forge -y python=3.10
             micromamba update -n base -f environment.yml
       - run:
           name: Run model performance tests

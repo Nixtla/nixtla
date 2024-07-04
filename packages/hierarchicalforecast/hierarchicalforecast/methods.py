@@ -575,7 +575,7 @@ class MinTrace(HReconciler):
     `method`: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.<br>
     `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
     `mint_shr_ridge`: float=2e-8, ridge numeric protection to MinTrace-shr covariance estimator.<br>
-    `num_threads`: int=1, number of threads to use for solving the optimization problems.
+    `num_threads`: int=1, number of threads to use for solving the optimization problems (when nonnegative=True).
 
     **References:**<br>
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
@@ -596,6 +596,8 @@ class MinTrace(HReconciler):
         if method == 'mint_shrink':
             self.mint_shr_ridge = mint_shr_ridge
         self.num_threads = num_threads
+        if not self.nonnegative and self.num_threads > 1:
+            warnings.warn('`num_threads` is only used when `nonnegative=True`')
 
     def _get_PW_matrices(self, 
                   S: np.ndarray,
