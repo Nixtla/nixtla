@@ -3,7 +3,7 @@
     "info": {
         "title": "Nixtla Forecast API",
         "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-        "version": "0.3.5"
+        "version": "0.3.6"
     },
     "paths": {
         "/validate_token": {
