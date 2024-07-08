@@ -53,7 +53,7 @@ def plot_series(
     max_insample_length: Optional[int] = None,
     plot_anomalies: bool = False,
     engine: str = "matplotlib",
-    palette: str = "viridis",
+    palette: Optional[str] = None,
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
@@ -85,8 +85,8 @@ def plot_series(
         Plot anomalies for each prediction interval.
     engine : str (default='matplotlib')
         Library used to plot. 'plotly', 'plotly-resampler' or 'matplotlib'.
-    palette : str (default='viridis')
-        Name of the matplotlib colormap to use.
+    palette : str (default=None)
+        Name of the matplotlib colormap to use for the plots. If None, uses the current style.
     id_col : str (default='unique_id')
         Column that identifies each serie.
     time_col : str (default='ds')
@@ -197,11 +197,19 @@ def plot_series(
     n_rows = quot + resid
     xlabel = f"Time [{time_col}]"
     ylabel = f"Target [{target_col}]"
-    if parse_version(mpl.__version__) < Version("3.6"):
-        cmap = plt.cm.get_cmap(palette, len(models) + 1)
+    if palette is not None:
+        if parse_version(mpl.__version__) < Version("3.6"):
+            cmap = plt.cm.get_cmap(palette, len(models) + 1)
+        else:
+            cmap = mpl.colormaps[palette].resampled(len(models) + 1)
+        colors = [cm.to_hex(color) for color in cmap.colors]
     else:
-        cmap = mpl.colormaps[palette].resampled(len(models) + 1)
-    colors = [cm.to_hex(color) for color in cmap.colors]
+        colors_stylesheet = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        cmap = cm.LinearSegmentedColormap.from_list(
+            "mymap", colors_stylesheet
+        ).resampled(len(models) + 1)
+        rgb_colors = cmap(np.linspace(0, 1, len(models) + 1))
+        colors = [cm.to_hex(color) for color in rgb_colors]
 
     # define plot grid
     if engine.startswith("plotly"):
@@ -236,9 +244,9 @@ def plot_series(
         fig, ax = plt.subplots(
             nrows=n_rows,
             ncols=n_cols,
-            figsize=(24, 3.5 * n_rows),
+            figsize=(16, 3.5 * n_rows),
             squeeze=False,
-            gridspec_kw=dict(hspace=0.25, wspace=0.05),
+            constrained_layout=True,
         )
 
     def _add_mpl_plot(axi, df, y_col, levels):
@@ -346,15 +354,27 @@ def plot_series(
                 _add_plotly_plot(fig, uid_df, y_col, level)
         if engine == "matplotlib":
             ax[row, col].set_title(f"{id_col}={uid}")
-            ax[row, col].grid()
             if col == 0:
                 ax[row, col].set_ylabel(ylabel)
             if row == n_rows - 1:
                 ax[row, col].set_xlabel(xlabel)
+            xticklabels = ax[row, col].get_xticklabels()
+            xticks = ax[row, col].get_xticks()
+            ax[row, col].set_xticks(
+                rotation=30,
+                ticks=xticks,
+                labels=xticklabels,
+                ha="right",
+            )
 
     if engine == "matplotlib":
         handles, labels = ax[0, 0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="center right")
+        fig.legend(
+            handles,
+            labels,
+            loc="upper left",
+            bbox_to_anchor=(1.01, 0.97),
+        )
         plt.close(fig)
         if len(ax.flat) > n_series:
             for axi in ax.flat[n_series:]:
