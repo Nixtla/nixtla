@@ -183,6 +183,7 @@ class _NixtlaClientModel:
         self.drop_uid: bool = False
         self.input_size: int
         self.model_horizon: int
+        self.utc_flag: bool = False
 
     @staticmethod
     def _prepare_level_and_quantiles(
@@ -252,8 +253,11 @@ class _NixtlaClientModel:
             self.target_col: "y",
         }
         df = df.rename(columns=renamer)
+        self.utc_flag = isinstance(df["ds"].dtype, pd.DatetimeTZDtype)
         if df.dtypes.ds != "object":
             df["ds"] = df["ds"].astype(str)
+            if self.utc_flag:
+                df["ds"] = df["ds"].str.replace(r"[\-\+][0-9:]+$", "", regex=True)
         if "unique_id" not in df.columns:
             # Insert unique_id column
             df = df.assign(unique_id="ts_0")
@@ -1602,7 +1606,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 16
+# %% ../nbs/nixtla_client.ipynb 19
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
