@@ -184,6 +184,7 @@ class _NixtlaClientModel:
         self.input_size: int
         self.model_horizon: int
         self.utc_flag: bool = False
+        self.timezone: str = None
 
     @staticmethod
     def _prepare_level_and_quantiles(
@@ -255,9 +256,13 @@ class _NixtlaClientModel:
         df = df.rename(columns=renamer)
         self.utc_flag = isinstance(df["ds"].dtype, pd.DatetimeTZDtype)
         if df.dtypes.ds != "object":
-            df["ds"] = df["ds"].astype(str)
             if self.utc_flag:
+                self.timezone = df["ds"].dt.tz
+                df["ds"] = df["ds"].astype(str)
                 df["ds"] = df["ds"].str.replace(r"[\-\+][0-9:]+$", "", regex=True)
+            else:
+                df["ds"] = df["ds"].astype(str)
+
         if "unique_id" not in df.columns:
             # Insert unique_id column
             df = df.assign(unique_id="ts_0")
@@ -269,6 +274,10 @@ class _NixtlaClientModel:
                 X_df = X_df.assign(unique_id="ts_0")
             if X_df.dtypes.ds != "object":
                 X_df["ds"] = X_df["ds"].astype(str)
+                if self.utc_flag:
+                    X_df["ds"] = X_df["ds"].str.replace(
+                        r"[\-\+][0-9:]+$", "", regex=True
+                    )
 
         return df, X_df
 
@@ -282,6 +291,8 @@ class _NixtlaClientModel:
         }
         if self.drop_uid:
             fcst_df = fcst_df.drop(columns="unique_id")
+        if self.utc_flag:
+            fcst_df["ds"] = pd.to_datetime(fcst_df["ds"]).dt.tz_localize(self.timezone)
         fcst_df = fcst_df.rename(columns=renamer)
         # transfom levels to quantiles if needed
         if level_to_quantiles and self.quantiles is not None:
@@ -1606,7 +1617,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 19
+# %% ../nbs/nixtla_client.ipynb 16
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
