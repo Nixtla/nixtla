@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
 
       - name: Install nbdev
         run: pip install nbdev
@@ -50,10 +50,10 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_NIXTLA_TMP }}
     steps:
       - name: Clone repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Set up environment
-        uses: mamba-org/setup-micromamba@v1
+        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 # v1.9.0
         with:
           environment-file: environment.yml
           create-args: python=${{ matrix.python-version }}
@@ -74,10 +74,10 @@ jobs:
         python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Set up environment
-        uses: mamba-org/setup-micromamba@v1
+        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 # v1.9.0
         with:
           environment-file: local_environment.yml
           create-args: python=${{ matrix.python-version }}
@@ -98,10 +98,10 @@ jobs:
         python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Set up environment
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -115,10 +115,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
           python-version: '3.10' 
           cache: 'pip'
@@ -132,9 +132,9 @@ jobs:
   efficiency-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -148,9 +148,9 @@ jobs:
   performance-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
           python-version: '3.10'
           cache: 'pip'
