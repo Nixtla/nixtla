@@ -6,7 +6,10 @@ with open("README.md", "r", encoding="utf8") as fh:
 dev = [
     "black",
     "datasetsforecast",
+    "hierarchicalforecast",
+    "jupyterlab",
     "nbdev",
+    "neuralforecast",
     "plotly",
     "pre-commit",
     "python-dotenv",

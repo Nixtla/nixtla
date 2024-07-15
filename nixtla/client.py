@@ -2300,11 +2300,14 @@ class Nixtla:
                     }
                 )
             ),
-            timeout=request_options.get("timeout_in_seconds")
-            if request_options is not None and request_options.get("timeout_in_seconds") is not None
-            else self._client_wrapper.get_timeout(),
-            retries=0,
-            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+            # timeout=request_options.get("timeout_in_seconds")
+            # if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            # else self._client_wrapper.get_timeout(),
+            # retries=0,
+            # max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+            timeout=10,
+            retries=2,
+            max_retries=2,
         )
         if 200 <= _response.status_code < 300:
             return pydantic_v1.parse_obj_as(typing.Any, _response.json())  # type: ignore
