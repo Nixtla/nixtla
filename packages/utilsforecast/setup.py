@@ -29,11 +29,9 @@ if cfg.get('pip_requirements'): requirements += shlex.split(cfg.get('pip_require
 min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
 plotting_requirements = cfg['plotting_requirements'].split()
-scalers_requirements = cfg['scalers_requirements'].split()
 polars_requirements = cfg['polars_requirements'].split()
 dev_requirements = cfg['dev_requirements'].split()
 dev_requirements.extend(plotting_requirements)
-dev_requirements.extend(scalers_requirements)
 dev_requirements.extend(polars_requirements)
 dev_requirements = list(set(dev_requirements))
 
@@ -52,7 +50,6 @@ setuptools.setup(
     install_requires = requirements,
     extras_require={
         'plotting': plotting_requirements,
-        'scalers': scalers_requirements,
         'polars': polars_requirements,
         'dev': dev_requirements,
     },
