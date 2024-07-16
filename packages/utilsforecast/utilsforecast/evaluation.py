@@ -148,6 +148,8 @@ def evaluate(
         if metric_requires_y_train[metric_name]:
             kwargs["train_df"] = train_df
         metric_params = inspect.signature(metric).parameters
+        if "baseline" in metric_params:
+            metric_name = f"{metric_name}_{metric_params['baseline'].default}"
         if "q" in metric_params or metric_params["models"].annotation is Dict[str, str]:
             assert level is not None  # we've already made sure of this above
             for lvl in level:

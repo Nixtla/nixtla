@@ -297,7 +297,7 @@ def mase(
 def rmae(
     df: DataFrame,
     models: List[str],
-    baseline_models: List[str],
+    baseline: str,
     id_col: str = "unique_id",
     target_col: str = "y",
 ) -> DataFrame:
@@ -313,8 +313,8 @@ def rmae(
         Input dataframe with id, times, actuals and predictions.
     models : list of str
         Columns that identify the models predictions.
-    baseline_models : list of str
-        Columns that identify the baseline models predictions.
+    baseline : str
+        Column that identifies the baseline model predictions.
     id_col : str (default='unique_id')
         Column that identifies each serie.
     target_col : str (default='y')
@@ -326,30 +326,24 @@ def rmae(
         dataframe with one row per id and one column per model.
     """
     numerator = mae(df, models, id_col, target_col)
-    denominator = mae(df, baseline_models, id_col, target_col)
+    denominator = mae(df, [baseline], id_col, target_col)
+    if ufp.is_nan(denominator[baseline]).any():
+        raise ValueError(f"baseline model ({baseline}) contains NaNs.")
+    denominator = ufp.rename(denominator, {baseline: f"{baseline}_denominator"})
+    res = ufp.join(numerator, denominator, on=id_col)
     if isinstance(numerator, pd.DataFrame):
-        res = numerator.merge(denominator, on=id_col, suffixes=("", "_denominator"))
-        out_cols = [id_col]
-        for model, baseline in zip(models, baseline_models):
-            col_name = f"{model}_div_{baseline}"
-            res[col_name] = (
+        for model in models:
+            res[model] = (
                 res[model].div(_zero_to_nan(res[f"{baseline}_denominator"])).fillna(0)
             )
-            out_cols.append(col_name)
-        res = res[out_cols]
+        res = res[[id_col, *models]]
     else:
 
         def gen_expr(model, baseline):
             denominator = _zero_to_nan(pl.col(f"{baseline}_denominator"))
-            return (
-                pl.col(model)
-                .truediv(denominator)
-                .fill_nan(0)
-                .alias(f"{model}_div_{baseline}")
-            )
+            return pl.col(model).truediv(denominator).fill_nan(0).alias(model)
 
-        res = numerator.join(denominator, on=id_col, suffix="_denominator")
-        exprs = [gen_expr(m1, m2) for m1, m2 in zip(models, baseline_models)]
+        exprs = [gen_expr(m, baseline) for m in models]
         res = res.select([id_col, *exprs])
     return res
 
