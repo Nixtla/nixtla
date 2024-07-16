@@ -183,6 +183,7 @@ class _NixtlaClientModel:
         self.drop_uid: bool = False
         self.input_size: int
         self.model_horizon: int
+        self.timezone: str = None
 
     @staticmethod
     def _prepare_level_and_quantiles(
