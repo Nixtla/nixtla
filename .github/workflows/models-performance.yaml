@@ -44,7 +44,7 @@ jobs:
           git config --global user.email azul@nixtla.io
           git config --global user.name AzulGarza
           git push https://$GITHUB_TOKEN@github.com/nixtla/nixtla.git --delete docs-figs-model-performance || true
-          git checkout -b docs-figs-model-performance 
+          git checkout -b docs-figs-model-performance
           git add -f "*.png"
           git commit -m "[cd] update png images" || echo "No changes to commit"
           git push https://$GITHUB_TOKEN@github.com/nixtla/nixtla.git HEAD:docs-figs-model-performance
@@ -54,20 +54,3 @@ jobs:
         with:
           script: "const fs = require('fs');\nconst markdown = fs.readFileSync('./action_files/models_performance/summary.md', 'utf8');\nawait github.rest.issues.createComment({\n  issue_number: context.issue.number,\n  owner: context.repo.owner,\n  repo: context.repo.repo,\n  body: markdown\n});                    \n"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -17,7 +17,7 @@ jobs:
   deploy-readme:
     runs-on: ubuntu-latest
     env:
-      readme_version: '0.0.2'
+      readme_version: "0.0.2"
     steps:
       - name: Clone repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -50,7 +50,7 @@ jobs:
           git config --global user.name 'FedericoGarza'
           git config --global user.email 'fede.garza.ramirez@gmail.com'
           git push https://${{ secrets.TOKEN_GITHUB }}@github.com/${{ github.repository }} --delete readme_docs || true
-          git checkout -b readme_docs 
+          git checkout -b readme_docs
           git add -f "*.png"
           git commit -m "[cd] update png images" || echo "No changes to commit"
           git push https://${{ secrets.TOKEN_GITHUB }}@github.com/${{ github.repository }} HEAD:readme_docs
@@ -59,11 +59,3 @@ jobs:
         uses: readmeio/rdme@51a80867c45de15e2b41af0c4bd5bbc61b932804 # 8.6.6
         with:
           rdme: docs ./nbs/_docs/docs/ --key=${{ secrets.README_API_KEY }} --version=${{ env.readme_version }}
-
-
-
-
-
-
-
-
