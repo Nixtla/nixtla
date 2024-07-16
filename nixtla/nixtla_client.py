@@ -183,8 +183,6 @@ class _NixtlaClientModel:
         self.drop_uid: bool = False
         self.input_size: int
         self.model_horizon: int
-        self.utc_flag: bool = False
-        self.timezone: str = None
 
     @staticmethod
     def _prepare_level_and_quantiles(
@@ -254,14 +252,11 @@ class _NixtlaClientModel:
             self.target_col: "y",
         }
         df = df.rename(columns=renamer)
-        self.utc_flag = isinstance(df["ds"].dtype, pd.DatetimeTZDtype)
-        if df.dtypes.ds != "object":
-            if self.utc_flag:
+        if df.dtypes.ds != "object":  # then 'ds' must be datetime
+            if df["ds"].dt.tz is not None:
                 self.timezone = df["ds"].dt.tz
-                df["ds"] = df["ds"].astype(str)
-                df["ds"] = df["ds"].str.replace(r"[\-\+][0-9:]+$", "", regex=True)
-            else:
-                df["ds"] = df["ds"].astype(str)
+                df["ds"] = df["ds"].dt.tz_localize(None)
+        df["ds"] = df["ds"].astype(str)
 
         if "unique_id" not in df.columns:
             # Insert unique_id column
@@ -273,11 +268,9 @@ class _NixtlaClientModel:
             if "unique_id" not in X_df.columns:
                 X_df = X_df.assign(unique_id="ts_0")
             if X_df.dtypes.ds != "object":
+                if X_df["ds"].dt.tz is not None:
+                    X_df["ds"] = X_df["ds"].dt.tz_localize(None)
                 X_df["ds"] = X_df["ds"].astype(str)
-                if self.utc_flag:
-                    X_df["ds"] = X_df["ds"].str.replace(
-                        r"[\-\+][0-9:]+$", "", regex=True
-                    )
 
         return df, X_df
 
@@ -291,7 +284,7 @@ class _NixtlaClientModel:
         }
         if self.drop_uid:
             fcst_df = fcst_df.drop(columns="unique_id")
-        if self.utc_flag:
+        if self.timezone is not None:
             fcst_df["ds"] = pd.to_datetime(fcst_df["ds"]).dt.tz_localize(self.timezone)
         fcst_df = fcst_df.rename(columns=renamer)
         # transfom levels to quantiles if needed
@@ -1617,7 +1610,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 17
+# %% ../nbs/nixtla_client.ipynb 16
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
