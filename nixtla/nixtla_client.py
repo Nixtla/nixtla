@@ -257,7 +257,7 @@ class _NixtlaClientModel:
             if df["ds"].dt.tz is not None:
                 self.timezone = df["ds"].dt.tz
                 df["ds"] = df["ds"].dt.tz_localize(None)
-        df["ds"] = df["ds"].astype(str)
+            df["ds"] = df["ds"].astype(str)
 
         if "unique_id" not in df.columns:
             # Insert unique_id column
