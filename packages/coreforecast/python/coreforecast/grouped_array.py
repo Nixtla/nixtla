@@ -1,4 +1,5 @@
 import ctypes
+import warnings
 from typing import Optional, Union
 
 import numpy as np
@@ -22,6 +23,12 @@ class GroupedArray:
             raise ValueError("indptr must be a 1d array")
         if indptr[-1] != data.size:
             raise ValueError("Last element of indptr must be equal to the size of data")
+        if num_threads < 1:
+            warnings.warn(
+                f"num_threads must be a positive integer, got: {num_threads}. "
+                "Setting num_threads=1."
+            )
+            num_threads = 1
         self.data = np.ascontiguousarray(data, dtype=data.dtype)
         self.data = _ensure_float(self.data)
         if self.data.dtype == np.float32:

@@ -63,16 +63,18 @@ public:
   template <typename Func, typename... Args>
   void Reduce(Func f, int n_out, T *out, int lag,
               Args &&...args) const noexcept {
-    Parallelize([&](int start_group, int end_group) {
+    Parallelize([data = data_, indptr = indptr_, &f, n_out, out, lag,
+                 &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr_[i];
-        indptr_t end = indptr_[i + 1];
+        indptr_t start = indptr[i];
+        indptr_t end = indptr[i + 1];
         indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data_ + start, n);
+        indptr_t start_idx = FirstNotNaN(data + start, n);
         if (start_idx + lag >= n)
           return;
         start += start_idx;
-        f(data_ + start, n - start_idx - lag, out + n_out * i, args...);
+        f(data + start, n - start_idx - lag, out + n_out * i,
+          std::forward<Args>(args)...);
       }
     });
   }
@@ -80,13 +82,14 @@ public:
   template <typename Func, typename... Args>
   void VariableReduce(Func f, const indptr_t *indptr_out, T *out,
                       Args &&...args) const noexcept {
-    Parallelize([&](int start_group, int end_group) {
+    Parallelize([data = data_, indptr = indptr_, &f, indptr_out, out,
+                 &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr_[i];
-        indptr_t end = indptr_[i + 1];
+        indptr_t start = indptr[i];
+        indptr_t end = indptr[i + 1];
         indptr_t n = end - start;
         indptr_t out_n = indptr_out[i + 1] - indptr_out[i];
-        f(data_ + start, n, out + indptr_out[i], out_n,
+        f(data + start, n, out + indptr_out[i], out_n,
           std::forward<Args>(args)...);
       }
     });
@@ -94,17 +97,18 @@ public:
 
   template <typename Func>
   void ScalerTransform(Func f, const T *stats, T *out) const noexcept {
-    Parallelize([&](int start_group, int end_group) {
+    Parallelize([data = data_, indptr = indptr_, &f, stats,
+                 out](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr_[i];
-        indptr_t end = indptr_[i + 1];
+        indptr_t start = indptr[i];
+        indptr_t end = indptr[i + 1];
         T offset = stats[2 * i];
         T scale = stats[2 * i + 1];
         if (std::abs(scale) < std::numeric_limits<T>::epsilon()) {
           scale = static_cast<T>(1.0);
         }
         for (indptr_t j = start; j < end; ++j) {
-          out[j] = f(data_[j], offset, scale);
+          out[j] = f(data[j], offset, scale);
         }
       }
     });
@@ -112,18 +116,19 @@ public:
 
   template <typename Func, typename... Args>
   void Transform(Func f, int lag, T *out, Args &&...args) const noexcept {
-    Parallelize([&](int start_group, int end_group) {
+    Parallelize([data = data_, indptr = indptr_, &f, lag, out,
+                 &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr_[i];
-        indptr_t end = indptr_[i + 1];
+        indptr_t start = indptr[i];
+        indptr_t end = indptr[i + 1];
         indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data_ + start, n, out + start);
+        indptr_t start_idx = FirstNotNaN(data + start, n, out + start);
         SkipLags(out + start + start_idx, n - start_idx, lag);
         if (start_idx + lag >= n) {
           continue;
         }
         start += start_idx;
-        f(data_ + start, n - start_idx - lag, out + start + lag,
+        f(data + start, n - start_idx - lag, out + start + lag,
           std::forward<Args>(args)...);
       }
     });
@@ -132,17 +137,18 @@ public:
   template <typename Func>
   void VariableTransform(Func f, const indptr_t *params,
                          T *out) const noexcept {
-    Parallelize([&](int start_group, int end_group) {
+    Parallelize([data = data_, indptr = indptr_, &f, params,
+                 out](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr_[i];
-        indptr_t end = indptr_[i + 1];
+        indptr_t start = indptr[i];
+        indptr_t end = indptr[i + 1];
         indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data_ + start, n, out + start);
+        indptr_t start_idx = FirstNotNaN(data + start, n, out + start);
         if (start_idx >= n) {
           continue;
         }
         start += start_idx;
-        f(data_ + start, n - start_idx, params[i], out + start);
+        f(data + start, n - start_idx, params[i], out + start);
       }
     });
   }
@@ -150,18 +156,19 @@ public:
   template <typename Func, typename... Args>
   void TransformAndReduce(Func f, int lag, T *out, int n_agg, T *agg,
                           Args &&...args) const noexcept {
-    Parallelize([&](int start_group, int end_group) {
+    Parallelize([data = data_, indptr = indptr_, &f, lag, out, n_agg, agg,
+                 &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr_[i];
-        indptr_t end = indptr_[i + 1];
+        indptr_t start = indptr[i];
+        indptr_t end = indptr[i + 1];
         indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data_ + start, n, out + start);
+        indptr_t start_idx = FirstNotNaN(data + start, n, out + start);
         SkipLags(out + start + start_idx, n - start_idx, lag);
         if (start_idx + lag >= n)
           continue;
         start += start_idx;
-        f(data_ + start, n - start_idx - lag, out + start + lag,
-          agg + i * n_agg, std::forward<Args>(args)...);
+        f(data + start, n - start_idx - lag, out + start + lag, agg + i * n_agg,
+          std::forward<Args>(args)...);
       }
     });
   }
@@ -169,15 +176,17 @@ public:
   template <typename Func>
   void Zip(Func f, const GroupedArray<T> &other, const indptr_t *out_indptr,
            T *out) const noexcept {
-    Parallelize([&](int start_group, int end_group) {
+    Parallelize([data = data_, indptr = indptr_, &f, other_data = other.data_,
+                 other_indptr = other.indptr_, out_indptr,
+                 out](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr_[i];
-        indptr_t end = indptr_[i + 1];
+        indptr_t start = indptr[i];
+        indptr_t end = indptr[i + 1];
         indptr_t n = end - start;
-        indptr_t other_start = other.indptr_[i];
-        indptr_t other_end = other.indptr_[i + 1];
+        indptr_t other_start = other_indptr[i];
+        indptr_t other_end = other_indptr[i + 1];
         indptr_t other_n = other_end - other_start;
-        f(data_ + start, n, other.data_ + other_start, other_n,
+        f(data + start, n, other_data + other_start, other_n,
           out + out_indptr[i]);
       }
     });
