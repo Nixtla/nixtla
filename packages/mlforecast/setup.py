@@ -32,21 +32,22 @@ aws_requirements = cfg['aws_requirements'].split()
 azure_requirements = cfg['azure_requirements'].split()
 gcp_requirements = cfg['gcp_requirements'].split()
 polars_requirements = cfg['polars_requirements'].split()
-all_extras = [
-    dask_requirements,
-    ray_requirements,
-    spark_requirements,
-    aws_requirements,
-    azure_requirements,
-    gcp_requirements,
-    polars_requirements,
-]
-dev_requirements = sorted(set(sum([cfg['dev_requirements'].split()] + all_extras, [])))
+dev_requirements = cfg['dev_requirements'].split()
+all_requirements = {
+    *dask_requirements,
+    *ray_requirements,
+    *spark_requirements,
+    *aws_requirements,
+    *azure_requirements,
+    *gcp_requirements,
+    *polars_requirements,
+    *dev_requirements,
+}
 min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
 
 setuptools.setup(
-    name = 'mlforecast', 
+    name = 'mlforecast',
     license = lic[0],
     classifiers = [
         'Development Status :: ' + statuses[int(cfg['status'])],
@@ -67,6 +68,7 @@ setuptools.setup(
         'gcp': gcp_requirements,
         'polars': polars_requirements,
         'dev': dev_requirements,
+        'all': all_requirements,
     },
     dependency_links = cfg.get('dep_links','').split(),
     python_requires  = '>=' + cfg['min_python'],
@@ -78,4 +80,3 @@ setuptools.setup(
         'nbdev': [f'{cfg.get("lib_path")}={cfg.get("lib_path")}._modidx:d']
     },
     **setup_cfg)
-

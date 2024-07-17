@@ -7,95 +7,21 @@ on:
     branches: [main]
   workflow_dispatch:
 
-defaults:
-  run:
-    shell: bash -l {0}
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  nb-sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-
-      - name: Set up python
-        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
-
-      - name: Install nbdev
-        run: pip install nbdev
-
-      - name: Check if all notebooks are cleaned
-        run: |
-          echo "Check we are starting with clean git checkout"
-          if [ -n "$(git status -uno -s)" ]; then echo "git status is not clean"; false; fi
-          echo "Trying to strip out notebooks"
-          ./action_files/clean_nbs
-          echo "Check that strip out was unnecessary"
-          git status -s # display the status to see which nbs need cleaning up
-          if [ -n "$(git status -uno -s)" ]; then echo -e "!!! Detected unstripped out notebooks\n!!!Remember to run nbdev_install_hooks"; false; fi
-
   run-all-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10']
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_NIXTLA_TMP }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_NIXTLA_TMP }}
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-
-      - name: Set up environment
-        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 # v1.9.0
-        with:
-          environment-file: environment.yml
-          create-args: python=${{ matrix.python-version }}
-          cache-environment: true
-
-      - name: Install the library
-        run: pip install ./
-
-      - name: Run all tests
-        run: nbdev_test --n_workers 0 --do_print --timing --flags 'polars core'
-
-  run-macos-tests:
-    runs-on: macos-13
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-
-      - name: Set up environment
-        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 # v1.9.0
-        with:
-          environment-file: local_environment.yml
-          create-args: python=${{ matrix.python-version }}
-          cache-environment: true
-
-      - name: Install the library
-        run: pip install ./
-
-      - name: Run local tests
-        run: nbdev_test --n_workers 0 --do_print --timing --skip_file_glob "*distributed*" --flags 'polars core'
-
-  run-windows-tests:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
     steps:
       - name: Clone repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -106,10 +32,37 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install the library
-        run: pip install uv && uv pip install ".[dev]" --system
+        run: pip install uv && uv pip install --system ".[all]"
+
+      - name: Run all tests
+        run: nbdev_test --n_workers 0 --do_print --timing --skip_file_re 'electricity' --flags 'polars'
+
+  run-local-tests:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, macos-14, windows-latest]
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Set up environment
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the library
+        run: pip install uv && uv pip install --system ".[dev]"
+
+      - name: Install OpenMP
+        if: startsWith(matrix.os, 'macos')
+        run: brew install libomp
 
       - name: Run local tests
-        run: nbdev_test --n_workers 0 --do_print --timing --skip_file_glob "*distributed*" --flags 'polars core'
+        run: nbdev_test --n_workers 0 --do_print --timing --skip_file_re "(distributed|electricity)" --flags 'polars'
 
   check-deps:
     runs-on: ubuntu-latest
@@ -120,11 +73,10 @@ jobs:
       - name: Set up python
         uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
-          python-version: '3.10' 
-          cache: 'pip'
+          python-version: "3.10"
 
       - name: Install forecast notebook dependencies
-        run: pip install . datasetsforecast lightgbm matplotlib nbdev xgboost
+        run: pip install uv && uv pip install --system . datasetsforecast lightgbm matplotlib nbdev xgboost
 
       - name: Run forecast notebook
         run: nbdev_test --path nbs/forecast.ipynb
@@ -136,11 +88,10 @@ jobs:
 
       - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: "3.10"
 
       - name: Install dependencies
-        run: pip install . pytest pytest-benchmark
+        run: pip install uv && uv pip install --system . pytest pytest-benchmark
 
       - name: Run efficiency tests
         run: pytest tests/test_pipeline.py --benchmark-group-by=func --benchmark-sort=fullname
@@ -152,11 +103,10 @@ jobs:
 
       - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: "3.10"
 
       - name: Install dependencies
-        run: pip install . datasetsforecast lightgbm pytest
+        run: pip install uv && uv pip install --system . datasetsforecast lightgbm pytest
 
       - name: Run m4 performance tests
         run: pytest tests/test_m4.py

@@ -11,7 +11,7 @@ from typing import Iterable, List, Optional, Sequence
 
 import coreforecast.scalers as core_scalers
 import numpy as np
-import pandas as pd
+import utilsforecast.processing as ufp
 from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
 from sklearn.base import TransformerMixin, clone
 from utilsforecast.compat import DataFrame
@@ -295,25 +295,26 @@ class GlobalSklearnTransformer(BaseTargetTransform):
     def __init__(self, transformer: TransformerMixin):
         self.transformer = transformer
 
-    def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy(deep=False)
+    def fit_transform(self, df: DataFrame) -> DataFrame:
+        df = ufp.copy_if_pandas(df, deep=False)
         self.transformer_ = clone(self.transformer)
-        df[self.target_col] = self.transformer_.fit_transform(
-            df[[self.target_col]].values
+        transformed = self.transformer_.fit_transform(df[[self.target_col]].to_numpy())
+        return ufp.assign_columns(df, self.target_col, transformed[:, 0])
+
+    def inverse_transform(self, df: DataFrame) -> DataFrame:
+        df = ufp.copy_if_pandas(df, deep=False)
+        cols_to_transform = [
+            c for c in df.columns if c not in (self.id_col, self.time_col)
+        ]
+        transformed = self.transformer_.inverse_transform(
+            df[cols_to_transform].to_numpy()
         )
-        return df
+        return ufp.assign_columns(df, cols_to_transform, transformed)
 
-    def inverse_transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy(deep=False)
-        cols_to_transform = df.columns.drop([self.id_col, self.time_col])
-        for col in cols_to_transform:
-            df[col] = self.transformer_.inverse_transform(df[[col]].values)
-        return df
-
-    def update(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy(deep=False)
-        df[self.target_col] = self.transformer_.transform(df[[self.target_col]].values)
-        return df
+    def update(self, df: DataFrame) -> DataFrame:
+        df = ufp.copy_if_pandas(df, deep=False)
+        transformed = self.transformer_.transform(df[[self.target_col]].to_numpy())
+        return ufp.assign_columns(df, self.target_col, transformed[:, 0])
 
     @staticmethod
     def stack(transforms: Sequence["GlobalSklearnTransformer"]) -> "GlobalSklearnTransformer":  # type: ignore[override]
