@@ -46,6 +46,7 @@ from mlforecast.core import (
     Lags,
     TargetTransform,
     TimeSeries,
+    _build_transform_name,
     _name_models,
 )
 from ..forecast import MLForecast
@@ -71,6 +72,7 @@ class DistributedMLForecast:
         target_transforms: Optional[List[TargetTransform]] = None,
         engine=None,
         num_partitions: Optional[int] = None,
+        lag_transforms_namer: Optional[Callable] = None,
     ):
         """Create distributed forecast object
 
@@ -98,6 +100,8 @@ class DistributedMLForecast:
             by the `fit` and `cross_validation` methods will be used. If a Ray
             Dataset is provided and `num_partitions` is None, the partitioning
             will be done by the `id_col`.
+        lag_transforms_namer : callable, optional(default=None)
+            Function that takes a transformation (either function or class), a lag and extra arguments and produces a name
         """
         if not isinstance(models, dict) and not isinstance(models, list):
             models = [models]
@@ -107,6 +111,13 @@ class DistributedMLForecast:
         else:
             models_with_names = models
         self.models = models_with_names
+        if lag_transforms_namer is None:
+
+            def name_without_dots(tfm, lag, *args):
+                name = _build_transform_name(tfm, lag, args)
+                return name.replace(".", "_")
+
+            lag_transforms_namer = name_without_dots
         self._base_ts = TimeSeries(
             freq=freq,
             lags=lags,
@@ -114,6 +125,7 @@ class DistributedMLForecast:
             date_features=date_features,
             num_threads=num_threads,
             target_transforms=target_transforms,
+            lag_transforms_namer=lag_transforms_namer,
         )
         self.engine = engine
         self.num_partitions = num_partitions
