@@ -183,7 +183,6 @@ class _NixtlaClientModel:
         self.drop_uid: bool = False
         self.input_size: int
         self.model_horizon: int
-        self.timezone: str = None
 
     @staticmethod
     def _prepare_level_and_quantiles(
@@ -253,10 +252,9 @@ class _NixtlaClientModel:
             self.target_col: "y",
         }
         df = df.rename(columns=renamer)
-        if df.dtypes.ds != "object":  # then 'ds' must be datetime
-            if df["ds"].dt.tz is not None:
-                self.timezone = df["ds"].dt.tz
-                df["ds"] = df["ds"].dt.tz_localize(None)
+        if pd.api.types.is_datetime64_any_dtype(df["ds"].dtype):
+            self.timezone = df["ds"].dt.tz
+            df["ds"] = df["ds"].dt.tz_localize(None)
             df["ds"] = df["ds"].astype(str)
 
         if "unique_id" not in df.columns:
@@ -268,9 +266,8 @@ class _NixtlaClientModel:
             X_df = X_df.rename(columns=renamer)
             if "unique_id" not in X_df.columns:
                 X_df = X_df.assign(unique_id="ts_0")
-            if X_df.dtypes.ds != "object":
-                if X_df["ds"].dt.tz is not None:
-                    X_df["ds"] = X_df["ds"].dt.tz_localize(None)
+            if pd.api.types.is_datetime64_any_dtype(X_df["ds"].dtype):
+                X_df["ds"] = X_df["ds"].dt.tz_localize(None)
                 X_df["ds"] = X_df["ds"].astype(str)
 
         return df, X_df
