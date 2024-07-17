@@ -319,6 +319,14 @@ class MLForecast:
         In this simplest case, we assume the width of the interval
         is the same for all the forecasting horizon (`h=1`).
         """
+        min_size = ufp.counts_by_id(df, id_col)["counts"].min()
+        min_samples = h * n_windows + 1
+        if min_size < min_samples:
+            raise ValueError(
+                "Minimum required samples in each serie for the prediction intervals "
+                f"settings are: {min_samples}, shortest serie has: {min_size}. "
+                "Please reduce the number of windows, horizon or remove those series."
+            )
         cv_results = self.cross_validation(
             df=df,
             n_windows=n_windows,
@@ -668,6 +676,10 @@ class MLForecast:
             )
 
         if new_df is not None:
+            if level is not None:
+                raise ValueError(
+                    "Prediction intervals are not supported in transfer learning."
+                )
             new_ts = TimeSeries(
                 freq=self.ts.freq,
                 lags=self.ts.lags,
@@ -961,6 +973,11 @@ class MLForecast:
         self.ts.save(f"{path}/ts.pkl")
         with fsspec.open(f"{path}/models.pkl", "wb") as f:
             cloudpickle.dump(self.models_, f)
+        if self._cs_df is not None:
+            with fsspec.open(f"{path}/intervals.pkl", "wb") as f:
+                cloudpickle.dump(
+                    {"scores": self._cs_df, "settings": self.prediction_intervals}, f
+                )
 
     @staticmethod
     def load(path: Union[str, Path]) -> "MLForecast":
@@ -973,9 +990,17 @@ class MLForecast:
         ts = TimeSeries.load(f"{path}/ts.pkl")
         with fsspec.open(f"{path}/models.pkl", "rb") as f:
             models = cloudpickle.load(f)
+        try:
+            with fsspec.open(f"{path}/intervals.pkl", "rb") as f:
+                intervals = cloudpickle.load(f)
+        except FileNotFoundError:
+            intervals = None
         fcst = MLForecast(models=models, freq=ts.freq)
         fcst.ts = ts
         fcst.models_ = models
+        if intervals is not None:
+            fcst.prediction_intervals = intervals["settings"]
+            fcst._cs_df = intervals["scores"]
         return fcst
 
     def update(self, df: DataFrame) -> None:
