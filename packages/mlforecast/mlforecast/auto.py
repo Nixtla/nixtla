@@ -102,7 +102,7 @@ def random_forest_space(trial: optuna.Trial):
     return {
         "n_estimators": trial.suggest_int("n_estimators", 50, 1000),
         "max_depth": trial.suggest_int("max_depth", 1, 10),
-        "min_samples_split": trial.suggest_int("min_child_samples", 1, 100),
+        "min_samples_split": trial.suggest_int("min_samples_split", 2, 100),
         "max_features": trial.suggest_float("max_features", 0.5, 1.0),
         "criterion": trial.suggest_categorical(
             "criterion", ["squared_error", "absolute_error"]
