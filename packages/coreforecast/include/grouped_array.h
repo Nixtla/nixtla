@@ -70,8 +70,12 @@ public:
         indptr_t end = indptr[i + 1];
         indptr_t n = end - start;
         indptr_t start_idx = FirstNotNaN(data + start, n);
-        if (start_idx + lag >= n)
-          return;
+        if (start_idx + lag >= n) {
+          for (int j = 0; j < n_out; ++j) {
+            out[n_out * i + j] = std::numeric_limits<T>::quiet_NaN();
+          }
+          continue;
+        }
         start += start_idx;
         f(data + start, n - start_idx - lag, out + n_out * i,
           std::forward<Args>(args)...);
