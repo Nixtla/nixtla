@@ -57,7 +57,7 @@ def to_numpy(df: DataFrame) -> np.ndarray:
 # %% ../nbs/processing.ipynb 7
 def counts_by_id(df: DataFrame, id_col: str) -> DataFrame:
     if isinstance(df, pd.DataFrame):
-        id_counts = df[id_col].value_counts(sort=False, dropna=False)
+        id_counts = df[id_col].value_counts(sort=False, dropna=True)
         ids = id_counts.index
         if isinstance(ids.dtype, pd.CategoricalDtype):
             # there's no observed argument in value_counts
