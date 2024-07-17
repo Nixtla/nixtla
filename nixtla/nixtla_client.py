@@ -256,6 +256,8 @@ class _NixtlaClientModel:
             self.timezone = df["ds"].dt.tz
             df["ds"] = df["ds"].dt.tz_localize(None)
             df["ds"] = df["ds"].astype(str)
+        else:
+            self.timezone = None
 
         if "unique_id" not in df.columns:
             # Insert unique_id column
@@ -269,6 +271,8 @@ class _NixtlaClientModel:
             if pd.api.types.is_datetime64_any_dtype(X_df["ds"].dtype):
                 X_df["ds"] = X_df["ds"].dt.tz_localize(None)
                 X_df["ds"] = X_df["ds"].astype(str)
+            else:
+                self.timezone = None
 
         return df, X_df
 
