@@ -138,7 +138,7 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/nixtla_client.ipynb 10
+# %% ../nbs/nixtla_client.ipynb 11
 class _NixtlaClientModel:
 
     def __init__(
@@ -234,6 +234,13 @@ class _NixtlaClientModel:
     def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
         df = df.copy()
         main_logger.info("Validating inputs...")
+        if pd.api.types.is_datetime64_any_dtype(df[self.time_col].dtype):
+            self.timezone = df[self.time_col].dt.tz
+            df[self.time_col] = df[self.time_col].dt.tz_localize(None)
+            df[self.time_col] = df[self.time_col].astype(str)
+            df = df.drop_duplicates(subset=[self.id_col, self.time_col])
+        else:
+            self.timezone = None
         if self.base_freq is None and hasattr(df.index, "freq"):
             inferred_freq = df.index.freq
             if inferred_freq is not None:
@@ -252,13 +259,6 @@ class _NixtlaClientModel:
             self.target_col: "y",
         }
         df = df.rename(columns=renamer)
-        if pd.api.types.is_datetime64_any_dtype(df["ds"].dtype):
-            self.timezone = df["ds"].dt.tz
-            df["ds"] = df["ds"].dt.tz_localize(None)
-            df["ds"] = df["ds"].astype(str)
-        else:
-            self.timezone = None
-
         if "unique_id" not in df.columns:
             # Insert unique_id column
             df = df.assign(unique_id="ts_0")
@@ -271,8 +271,6 @@ class _NixtlaClientModel:
             if pd.api.types.is_datetime64_any_dtype(X_df["ds"].dtype):
                 X_df["ds"] = X_df["ds"].dt.tz_localize(None)
                 X_df["ds"] = X_df["ds"].astype(str)
-            else:
-                self.timezone = None
 
         return df, X_df
 
@@ -728,7 +726,7 @@ class _NixtlaClientModel:
         cv_df = self.transform_outputs(cv_df, level_to_quantiles=True)
         return cv_df
 
-# %% ../nbs/nixtla_client.ipynb 11
+# %% ../nbs/nixtla_client.ipynb 12
 def validate_model_parameter(func):
     def wrapper(self, *args, **kwargs):
         if "model" in kwargs:
@@ -753,7 +751,7 @@ def validate_model_parameter(func):
 
     return wrapper
 
-# %% ../nbs/nixtla_client.ipynb 12
+# %% ../nbs/nixtla_client.ipynb 13
 def remove_unused_categories(df: pd.DataFrame, col: str):
     """Check if col exists in df and if it is a category column.
     In that case, it removes the unused levels."""
@@ -763,7 +761,7 @@ def remove_unused_categories(df: pd.DataFrame, col: str):
             df[col] = df[col].cat.remove_unused_categories()
     return df
 
-# %% ../nbs/nixtla_client.ipynb 13
+# %% ../nbs/nixtla_client.ipynb 14
 def partition_by_uid(func):
     def wrapper(self, num_partitions, **kwargs):
         if num_partitions is None or num_partitions == 1:
@@ -820,7 +818,7 @@ def partition_by_uid(func):
 
     return wrapper
 
-# %% ../nbs/nixtla_client.ipynb 14
+# %% ../nbs/nixtla_client.ipynb 15
 class _NixtlaClient:
     """
     A class used to interact with Nixtla API.
@@ -1208,7 +1206,7 @@ class _NixtlaClient:
             target_col=target_col,
         )
 
-# %% ../nbs/nixtla_client.ipynb 15
+# %% ../nbs/nixtla_client.ipynb 16
 class NixtlaClient(_NixtlaClient):
 
     def _instantiate_distributed_nixtla_client(self):
@@ -1612,7 +1610,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 16
+# %% ../nbs/nixtla_client.ipynb 17
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
