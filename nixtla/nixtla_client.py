@@ -138,7 +138,7 @@ date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/nixtla_client.ipynb 11
+# %% ../nbs/nixtla_client.ipynb 10
 class _NixtlaClientModel:
 
     def __init__(
@@ -726,7 +726,7 @@ class _NixtlaClientModel:
         cv_df = self.transform_outputs(cv_df, level_to_quantiles=True)
         return cv_df
 
-# %% ../nbs/nixtla_client.ipynb 12
+# %% ../nbs/nixtla_client.ipynb 11
 def validate_model_parameter(func):
     def wrapper(self, *args, **kwargs):
         if "model" in kwargs:
@@ -751,7 +751,7 @@ def validate_model_parameter(func):
 
     return wrapper
 
-# %% ../nbs/nixtla_client.ipynb 13
+# %% ../nbs/nixtla_client.ipynb 12
 def remove_unused_categories(df: pd.DataFrame, col: str):
     """Check if col exists in df and if it is a category column.
     In that case, it removes the unused levels."""
@@ -761,7 +761,7 @@ def remove_unused_categories(df: pd.DataFrame, col: str):
             df[col] = df[col].cat.remove_unused_categories()
     return df
 
-# %% ../nbs/nixtla_client.ipynb 14
+# %% ../nbs/nixtla_client.ipynb 13
 def partition_by_uid(func):
     def wrapper(self, num_partitions, **kwargs):
         if num_partitions is None or num_partitions == 1:
@@ -818,7 +818,7 @@ def partition_by_uid(func):
 
     return wrapper
 
-# %% ../nbs/nixtla_client.ipynb 15
+# %% ../nbs/nixtla_client.ipynb 14
 class _NixtlaClient:
     """
     A class used to interact with Nixtla API.
@@ -1206,7 +1206,7 @@ class _NixtlaClient:
             target_col=target_col,
         )
 
-# %% ../nbs/nixtla_client.ipynb 16
+# %% ../nbs/nixtla_client.ipynb 15
 class NixtlaClient(_NixtlaClient):
 
     def _instantiate_distributed_nixtla_client(self):
@@ -1610,7 +1610,7 @@ class NixtlaClient(_NixtlaClient):
                 step_size=step_size,
             )
 
-# %% ../nbs/nixtla_client.ipynb 17
+# %% ../nbs/nixtla_client.ipynb 16
 class TimeGPT(NixtlaClient):
     """
     Class `TimeGPT` is deprecated; use `NixtlaClient` instead.
