@@ -8,6 +8,7 @@ dev = [
     "datasetsforecast",
     "nbdev",
     "plotly",
+    "polars",
     "pre-commit",
     "python-dotenv",
     "pyreadr",
@@ -41,6 +42,7 @@ setuptools.setup(
         "pydantic",
         "requests",
         "tenacity",
+        "tqdm",
         "utilsforecast>=0.1.12",
     ],
     extras_require={
