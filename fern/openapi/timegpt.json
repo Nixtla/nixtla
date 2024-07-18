@@ -4091,7 +4091,7 @@
                     },
                     "fh": {
                         "type": "integer",
-                        "exclusiveMinimum": 0,
+                        "exclusiveMinimum": 0.0,
                         "title": "Fh",
                         "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.",
                         "default": 7
@@ -4552,7 +4552,7 @@
                     },
                     "n_windows": {
                         "type": "integer",
-                        "exclusiveMinimum": 0,
+                        "exclusiveMinimum": 0.0,
                         "title": "N Windows",
                         "description": "Number of windows to evaluate.",
                         "default": 1
@@ -4578,7 +4578,7 @@
                     },
                     "finetune_steps": {
                         "type": "integer",
-                        "minimum": 0,
+                        "minimum": 0.0,
                         "title": "Finetune Steps",
                         "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
                         "default": 0
@@ -4680,7 +4680,7 @@
                     },
                     "fh": {
                         "type": "integer",
-                        "exclusiveMinimum": 0,
+                        "exclusiveMinimum": 0.0,
                         "title": "Fh",
                         "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.",
                         "default": 7
@@ -5147,7 +5147,7 @@
                     },
                     "finetune_steps": {
                         "type": "integer",
-                        "minimum": 0,
+                        "minimum": 0.0,
                         "title": "Finetune Steps",
                         "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
                         "default": 0
@@ -5836,7 +5836,7 @@
                     },
                     "fh": {
                         "type": "integer",
-                        "exclusiveMinimum": 0,
+                        "exclusiveMinimum": 0.0,
                         "title": "Fh",
                         "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.",
                         "default": 7
@@ -5916,7 +5916,7 @@
                     },
                     "finetune_steps": {
                         "type": "integer",
-                        "minimum": 0,
+                        "minimum": 0.0,
                         "title": "Finetune Steps",
                         "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
                         "default": 0

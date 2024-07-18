@@ -4,7 +4,6 @@ from .forecast_input_finetune_loss import ForecastInputFinetuneLoss
 from .forecast_input_level_item import ForecastInputLevelItem
 from .forecast_output import ForecastOutput
 from .http_validation_error import HttpValidationError
-from .level import Level
 from .model import Model
 from .multi_series_anomaly import MultiSeriesAnomaly
 from .multi_series_cross_validation import MultiSeriesCrossValidation
@@ -33,7 +32,6 @@ __all__ = [
     "ForecastInputLevelItem",
     "ForecastOutput",
     "HttpValidationError",
-    "Level",
     "Model",
     "MultiSeriesAnomaly",
     "MultiSeriesCrossValidation",
