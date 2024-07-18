@@ -14,9 +14,9 @@ from .core.remove_none_from_dict import remove_none_from_dict
 from .core.request_options import RequestOptions
 from .errors.unprocessable_entity_error import UnprocessableEntityError
 from .types.forecast_input_finetune_loss import ForecastInputFinetuneLoss
+from .types.forecast_input_level_item import ForecastInputLevelItem
 from .types.forecast_output import ForecastOutput
 from .types.http_validation_error import HttpValidationError
-from .types.level import Level
 from .types.model import Model
 from .types.multi_series_anomaly import MultiSeriesAnomaly
 from .types.multi_series_cross_validation import MultiSeriesCrossValidation
@@ -3400,7 +3400,7 @@ class Nixtla:
         h: int,
         freq: str,
         clean_ex_first: typing.Optional[bool] = OMIT,
-        level: typing.Optional[Level] = OMIT,
+        level: typing.Optional[typing.Sequence[ForecastInputLevelItem]] = OMIT,
         finetune_steps: typing.Optional[int] = OMIT,
         finetune_loss: typing.Optional[ForecastInputFinetuneLoss] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
@@ -3417,7 +3417,7 @@ class Nixtla:
 
             - clean_ex_first: typing.Optional[bool].
 
-            - level: typing.Optional[Level].
+            - level: typing.Optional[typing.Sequence[ForecastInputLevelItem]].
 
             - finetune_steps: typing.Optional[int].
 
@@ -6861,7 +6861,7 @@ class AsyncNixtla:
         h: int,
         freq: str,
         clean_ex_first: typing.Optional[bool] = OMIT,
-        level: typing.Optional[Level] = OMIT,
+        level: typing.Optional[typing.Sequence[ForecastInputLevelItem]] = OMIT,
         finetune_steps: typing.Optional[int] = OMIT,
         finetune_loss: typing.Optional[ForecastInputFinetuneLoss] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
@@ -6878,7 +6878,7 @@ class AsyncNixtla:
 
             - clean_ex_first: typing.Optional[bool].
 
-            - level: typing.Optional[Level].
+            - level: typing.Optional[typing.Sequence[ForecastInputLevelItem]].
 
             - finetune_steps: typing.Optional[int].
 

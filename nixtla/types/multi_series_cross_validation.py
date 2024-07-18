@@ -8,6 +8,7 @@ from ..core.pydantic_utilities import pydantic_v1
 from .model import Model
 from .multi_series_cross_validation_fewshot_loss import MultiSeriesCrossValidationFewshotLoss
 from .multi_series_cross_validation_finetune_loss import MultiSeriesCrossValidationFinetuneLoss
+from .multi_series_cross_validation_level_item import MultiSeriesCrossValidationLevelItem
 from .multi_series_input import MultiSeriesInput
 
 
@@ -24,7 +25,7 @@ class MultiSeriesCrossValidation(pydantic_v1.BaseModel):
     The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
     """
 
-    level: typing.Optional[typing.List[typing.Any]] = None
+    level: typing.Optional[typing.List[MultiSeriesCrossValidationLevelItem]] = None
     fh: typing.Optional[int] = pydantic_v1.Field(default=None)
     """
     The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.

@@ -3,7 +3,7 @@
     "info": {
         "title": "Nixtla Forecast API",
         "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-        "version": "0.3.6"
+        "version": "0.3.7"
     },
     "paths": {
         "/validate_token": {
@@ -3397,7 +3397,7 @@
                     },
                     "h": {
                         "type": "integer",
-                        "exclusiveMinimum": 0,
+                        "exclusiveMinimum": 0.0,
                         "title": "H"
                     },
                     "freq": {
@@ -3413,13 +3413,14 @@
                         "anyOf": [
                             {
                                 "items": {
-                                    "type": "number"
-                                },
-                                "type": "array"
-                            },
-                            {
-                                "items": {
-                                    "type": "integer"
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
                                 },
                                 "type": "array"
                             },
@@ -3431,7 +3432,7 @@
                     },
                     "finetune_steps": {
                         "type": "integer",
-                        "minimum": 0,
+                        "minimum": 0.0,
                         "title": "Finetune Steps",
                         "default": 0
                     },
@@ -4069,7 +4070,16 @@
                     "level": {
                         "anyOf": [
                             {
-                                "items": {},
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
                                 "type": "array"
                             },
                             {
@@ -4551,7 +4561,7 @@
                         "anyOf": [
                             {
                                 "type": "integer",
-                                "exclusiveMinimum": 0
+                                "exclusiveMinimum": 0.0
                             },
                             {
                                 "type": "null"
@@ -4649,7 +4659,16 @@
                     "level": {
                         "anyOf": [
                             {
-                                "items": {},
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
                                 "type": "array"
                             },
                             {
@@ -5197,7 +5216,16 @@
                     "level": {
                         "anyOf": [
                             {
-                                "items": {},
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
                                 "type": "array"
                             },
                             {
@@ -5787,7 +5815,16 @@
                     "level": {
                         "anyOf": [
                             {
-                                "items": {},
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
                                 "type": "array"
                             },
                             {
@@ -5926,7 +5963,16 @@
                     "level": {
                         "anyOf": [
                             {
-                                "items": {},
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "number"
+                                        }
+                                    ]
+                                },
                                 "type": "array"
                             },
                             {

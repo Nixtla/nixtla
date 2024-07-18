@@ -6,6 +6,7 @@ import typing
 from ..core.datetime_utils import serialize_datetime
 from ..core.pydantic_utilities import pydantic_v1
 from .model import Model
+from .single_series_insample_forecast_level_item import SingleSeriesInsampleForecastLevelItem
 
 
 class SingleSeriesInsampleForecast(pydantic_v1.BaseModel):
@@ -19,7 +20,7 @@ class SingleSeriesInsampleForecast(pydantic_v1.BaseModel):
     The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
     """
 
-    level: typing.Optional[typing.List[typing.Any]] = None
+    level: typing.Optional[typing.List[SingleSeriesInsampleForecastLevelItem]] = None
     y: typing.Optional[typing.Any] = None
     x: typing.Optional[typing.Any] = None
     clean_ex_first: typing.Optional[bool] = pydantic_v1.Field(default=None)
