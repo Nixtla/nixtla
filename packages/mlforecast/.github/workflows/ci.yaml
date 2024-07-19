@@ -91,10 +91,13 @@ jobs:
           python-version: "3.10"
 
       - name: Install dependencies
-        run: pip install uv && uv pip install --system . pytest pytest-benchmark
+        run: pip install uv && uv pip install --system . pytest pytest-codspeed
 
-      - name: Run efficiency tests
-        run: pytest tests/test_pipeline.py --benchmark-group-by=func --benchmark-sort=fullname
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@a58b84c0b61569a9cbb7cfb378cc849d65cf1ce5 # 2.4.3
+        with:
+          token: ${{ secrets.CODESPEED_TOKEN }}
+          run: pytest tests/test_pipeline.py --codspeed
 
   performance-tests:
     runs-on: ubuntu-latest
