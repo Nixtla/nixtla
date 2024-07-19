@@ -236,9 +236,9 @@ class _NixtlaClientModel:
         main_logger.info("Validating inputs...")
         if pd.api.types.is_datetime64_any_dtype(df[self.time_col].dtype):
             self.timezone = df[self.time_col].dt.tz
+            df[self.time_col] = df[self.time_col].dt.tz_convert("utc")
             df[self.time_col] = df[self.time_col].dt.tz_localize(None)
             df[self.time_col] = df[self.time_col].astype(str)
-            df = df.drop_duplicates(subset=[self.id_col, self.time_col])
         else:
             self.timezone = None
         if self.base_freq is None and hasattr(df.index, "freq"):
