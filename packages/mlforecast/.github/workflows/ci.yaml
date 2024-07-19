@@ -88,16 +88,16 @@ jobs:
 
       - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install uv && uv pip install --system . pytest pytest-codspeed
+        run: pip install uv && uv pip install --system . pytest-codspeed pytest-xdist
 
       - name: Run benchmarks
         uses: CodSpeedHQ/action@a58b84c0b61569a9cbb7cfb378cc849d65cf1ce5 # 2.4.3
         with:
           token: ${{ secrets.CODESPEED_TOKEN }}
-          run: pytest tests/test_pipeline.py --codspeed
+          run: pytest tests/test_pipeline.py --codspeed -n 2
 
   performance-tests:
     runs-on: ubuntu-latest
