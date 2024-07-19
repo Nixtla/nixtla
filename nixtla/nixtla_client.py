@@ -236,8 +236,9 @@ class _NixtlaClientModel:
         main_logger.info("Validating inputs...")
         if pd.api.types.is_datetime64_any_dtype(df[self.time_col].dtype):
             self.timezone = df[self.time_col].dt.tz
-            df[self.time_col] = df[self.time_col].dt.tz_convert("utc")
-            df[self.time_col] = df[self.time_col].dt.tz_localize(None)
+            if self.timezone is not None:
+                df[self.time_col] = df[self.time_col].dt.tz_convert("utc")
+                df[self.time_col] = df[self.time_col].dt.tz_localize(None)
             df[self.time_col] = df[self.time_col].astype(str)
         else:
             self.timezone = None
