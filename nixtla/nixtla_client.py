@@ -687,10 +687,9 @@ class _NixtlaClientModel:
         self.set_model_params()
         if x_cols:
             X_df = df[["unique_id", "ds", *x_cols]]
-            restrict_input = False
         else:
             X_df = None
-            restrict_input = True
+        restrict_input = self.finetune_steps == 0 and X_df is None
         if restrict_input:
             if step_size is None:
                 step_size = self.h
