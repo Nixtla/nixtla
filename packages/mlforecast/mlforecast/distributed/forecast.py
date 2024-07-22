@@ -791,6 +791,8 @@ class DistributedMLForecast:
             return combined
 
         def combine_target_tfms(by_partition):
+            if by_partition[0] is None:
+                return None
             by_transform = [
                 [part[i] for part in by_partition] for i in range(len(by_partition[0]))
             ]
@@ -836,7 +838,10 @@ class DistributedMLForecast:
             statics = ufp.drop_index_if_pandas(statics)
             for tfm in combined_core_lag_tfms.values():
                 tfm._core_tfm = tfm._core_tfm.take(sort_idxs)
-            combined_target_tfms = [tfm.take(sort_idxs) for tfm in combined_target_tfms]
+            if combined_target_tfms is not None:
+                combined_target_tfms = [
+                    tfm.take(sort_idxs) for tfm in combined_target_tfms
+                ]
             old_data = data.copy()
             old_indptr = indptr.copy()
             indptr = np.append(0, sizes[sort_idxs]).cumsum()
