@@ -234,16 +234,6 @@ class _NixtlaClientModel:
     def transform_inputs(self, df: pd.DataFrame, X_df: pd.DataFrame):
         df = df.copy()
         main_logger.info("Validating inputs...")
-        if df.index.name == self.time_col:
-            df.reset_index(inplace=True)
-        if pd.api.types.is_datetime64_any_dtype(df[self.time_col].dtype):
-            self.timezone = df[self.time_col].dt.tz
-            if self.timezone is not None:
-                df[self.time_col] = df[self.time_col].dt.tz_convert("utc")
-                df[self.time_col] = df[self.time_col].dt.tz_localize(None)
-            df[self.time_col] = df[self.time_col].astype(str)
-        else:
-            self.timezone = None
         if self.base_freq is None and hasattr(df.index, "freq"):
             inferred_freq = df.index.freq
             if inferred_freq is not None:
@@ -254,8 +244,16 @@ class _NixtlaClientModel:
             self.time_col = time_col
             df.index.name = time_col
             df = df.reset_index()
+        if df.index.name == self.time_col:
+            df.reset_index(inplace=True)
+        if pd.api.types.is_datetime64_any_dtype(df[self.time_col].dtype):
+            self.timezone = df[self.time_col].dt.tz
+            if self.timezone is not None:
+                df[self.time_col] = df[self.time_col].dt.tz_convert("utc")
+                df[self.time_col] = df[self.time_col].dt.tz_localize(None)
+            df[self.time_col] = df[self.time_col].astype(str)
         else:
-            self.freq = self.base_freq
+            self.timezone = None
         renamer = {
             self.id_col: "unique_id",
             self.time_col: "ds",
