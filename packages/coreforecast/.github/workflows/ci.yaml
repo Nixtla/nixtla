@@ -61,12 +61,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-13, macos-14, ubuntu-latest, windows-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
         exclude:
           - os: macos-14
-            python-version: '3.8'
+            python-version: "3.8"
           - os: macos-14
-            python-version: '3.9'
+            python-version: "3.9"
     steps:
       - name: Clone repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
@@ -74,20 +74,37 @@ jobs:
       - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements-test.txt
+        run: pip install uv && uv pip install --system ".[dev]"
 
       - name: Download wheels
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           path: dist
-          pattern: 'artifact-*'
+          pattern: "artifact-*"
           merge-multiple: true
 
       - name: Install the library
         run: pip install --no-index --find-links dist coreforecast
 
       - name: Run tests
-        run: pytest --benchmark-group-by=param:scaler_name --benchmark-sort=fullname
+        run: pytest -k "not test_efficiency"
+
+  run_benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # 4.1.7
+
+      - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install uv && uv pip install --system ".[dev]" pytest-codspeed
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@a58b84c0b61569a9cbb7cfb378cc849d65cf1ce5 # 2.4.3
+        with:
+          token: ${{ secrets.CODESPEED_TOKEN }}
+          run: pytest tests/test_efficiency.py --codspeed

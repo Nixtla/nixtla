@@ -6,7 +6,6 @@ from ._lib import _LIB
 from .differences import num_seas_diffs
 from .utils import _data_as_void_ptr, _ensure_float, _float_arr_to_prefix
 
-
 _LIB.Float32_Period.restype = ctypes.c_int
 _LIB.Float64_Period.restype = ctypes.c_int
 

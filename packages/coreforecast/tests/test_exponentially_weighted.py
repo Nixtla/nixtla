@@ -1,8 +1,7 @@
 import numpy as np
 import pytest
-from window_ops.ewm import ewm_mean
-
 from coreforecast.exponentially_weighted import exponentially_weighted_mean
+from window_ops.ewm import ewm_mean
 
 
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])

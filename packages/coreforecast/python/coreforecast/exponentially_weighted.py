@@ -6,9 +6,9 @@ import numpy as np
 
 from ._lib import _LIB
 from .utils import (
+    _data_as_void_ptr,
     _ensure_float,
     _float_arr_to_prefix,
-    _data_as_void_ptr,
     _pyfloat_to_np_c,
 )
 

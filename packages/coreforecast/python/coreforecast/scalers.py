@@ -14,7 +14,6 @@ from .utils import (
     _pyfloat_to_np_c,
 )
 
-
 __all__ = [
     "AutoDifferences",
     "AutoSeasonalDifferences",

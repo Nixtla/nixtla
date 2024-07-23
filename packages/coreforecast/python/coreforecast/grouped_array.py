@@ -5,7 +5,7 @@ from typing import Optional, Union
 import numpy as np
 
 from ._lib import _LIB, _indptr_dtype, _indptr_t
-from .utils import _diffs_to_indptr, _ensure_float, _data_as_void_ptr, _pyfloat_to_np_c
+from .utils import _data_as_void_ptr, _diffs_to_indptr, _ensure_float, _pyfloat_to_np_c
 
 
 class GroupedArray:

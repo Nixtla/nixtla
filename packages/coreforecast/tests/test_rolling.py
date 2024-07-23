@@ -1,8 +1,8 @@
+import coreforecast.rolling as cf_rolling
 import numpy as np
 import pytest
 import window_ops.rolling as wops_rolling
 
-import coreforecast.rolling as cf_rolling
 from .test_lag_transforms import pd_rolling_quantile, pd_seasonal_rolling_quantile
 
 quantile_ops = ["rolling_quantile", "seasonal_rolling_quantile"]

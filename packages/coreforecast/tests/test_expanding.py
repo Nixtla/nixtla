@@ -1,9 +1,9 @@
+import coreforecast.expanding as cf_expanding
 import numpy as np
 import pytest
 import window_ops.expanding as wops_expanding
 
-import coreforecast.expanding as cf_expanding
-from .test_lag_transforms import pd_rolling_quantile, pd_seasonal_rolling_quantile
+from .test_lag_transforms import pd_rolling_quantile
 
 quantile_ops = ["expanding_quantile"]
 other_ops = [op for op in cf_expanding.__all__ if op not in quantile_ops]

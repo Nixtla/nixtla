@@ -2,7 +2,6 @@ import math
 
 import numpy as np
 import pytest
-
 from coreforecast.differences import diff
 from coreforecast.grouped_array import GroupedArray
 from coreforecast.scalers import (
@@ -11,73 +10,20 @@ from coreforecast.scalers import (
     AutoSeasonalityAndDifferences,
     Difference,
     LocalBoxCoxScaler,
-    LocalMinMaxScaler,
-    LocalRobustScaler,
-    LocalStandardScaler,
     boxcox,
     boxcox_lambda,
     inv_boxcox,
 )
 from coreforecast.seasonal import find_season_length
 
-
-rng = np.random.default_rng(seed=0)
-
-@pytest.fixture
-def indptr():
-    lengths = rng.integers(low=1_000, high=2_000, size=5_000)
-    return np.append(0, lengths.cumsum()).astype(np.int32)
-
-
-@pytest.fixture
-def data(indptr):
-    return rng.normal(size=indptr[-1])
-
-
-def std_scaler_stats(x):
-    return np.nanmean(x), np.nanstd(x)
-
-
-def minmax_scaler_stats(x):
-    min, max = np.nanmin(x), np.nanmax(x)
-    return min, max - min
-
-
-def robust_scaler_iqr_stats(x):
-    q25, median, q75 = np.nanquantile(x, [0.25, 0.5, 0.75])
-    return median, q75 - q25
-
-
-def robust_scaler_mad_stats(x):
-    median = np.nanmedian(x)
-    mad = np.nanmedian(np.abs(x - median))
-    return median, mad
-
-
-def scaler_transform(x, stats):
-    offset, scale = stats
-    return (x - offset) / scale
-
-
-def scaler_inverse_transform(x, stats):
-    offset, scale = stats
-    return x * scale + offset
-
-
-scaler2fns = {
-    "standard": std_scaler_stats,
-    "minmax": minmax_scaler_stats,
-    "robust-iqr": robust_scaler_iqr_stats,
-    "robust-mad": robust_scaler_mad_stats,
-}
-scaler2core = {
-    "standard": LocalStandardScaler(),
-    "minmax": LocalMinMaxScaler(),
-    "robust-iqr": LocalRobustScaler("iqr"),
-    "robust-mad": LocalRobustScaler("mad"),
-}
-scalers = list(scaler2fns.keys())
-dtypes = [np.float32, np.float64]
+from . import (
+    dtypes,
+    scaler2core,
+    scaler2fns,
+    scaler_inverse_transform,
+    scaler_transform,
+    scalers,
+)
 
 
 @pytest.mark.parametrize("scaler_name", scalers)
@@ -374,39 +320,3 @@ def test_seasonality_and_differences_correctness(dtype):
     combined = sc.stack([sc, sc])
     np.testing.assert_equal(combined.diffs_[0], np.tile(sc.diffs_[0], 2))
     np.testing.assert_equal(combined.tails_[0], np.tile(sc.tails_[0], 2))
-
-
-@pytest.mark.parametrize("scaler_name", scalers)
-@pytest.mark.parametrize("dtype", [np.float32, np.float64])
-@pytest.mark.parametrize("lib", ["core", "utils"])
-def test_performance(benchmark, data, indptr, scaler_name, dtype, lib):
-    from utilsforecast.target_transforms import (
-        LocalStandardScaler as UtilsStandardScaler,
-        LocalMinMaxScaler as UtilsMinMaxScaler,
-        LocalRobustScaler as UtilsRobustScaler,
-    )
-
-    scaler2utils = {
-        "standard": UtilsStandardScaler(),
-        "minmax": UtilsMinMaxScaler(),
-        "robust-iqr": UtilsRobustScaler("iqr"),
-        "robust-mad": UtilsRobustScaler("mad"),
-    }
-
-    ga = GroupedArray(data.astype(dtype), indptr)
-    if lib == "core":
-        scaler = scaler2core[scaler_name]
-    else:
-        scaler = scaler2utils[scaler_name]
-    benchmark(scaler.fit, ga)
-
-
-@pytest.mark.parametrize("scaler_name", scalers)
-@pytest.mark.parametrize("dtype", dtypes)
-@pytest.mark.parametrize("num_threads", [1, 2])
-def test_multithreaded_performance(
-    benchmark, data, indptr, scaler_name, dtype, num_threads
-):
-    ga = GroupedArray(data.astype(dtype), indptr, num_threads=num_threads)
-    scaler = scaler2core[scaler_name]
-    benchmark(scaler.fit, ga)

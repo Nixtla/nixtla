@@ -1,18 +1,13 @@
+import coreforecast.lag_transforms as lag_tf
 import numpy as np
 import pandas as pd
 import pytest
-from window_ops.expanding import *
-from window_ops.ewm import ewm_mean
-from window_ops.rolling import *
+from coreforecast.grouped_array import GroupedArray
 from window_ops.shift import shift_array
 
-from coreforecast.grouped_array import GroupedArray
-from coreforecast.lag_transforms import *
+from . import lag_tfms_map, min_samples, season_length, window_size
 
 lag = 2
-season_length = 7
-window_size = 4
-min_samples = 2
 lengths = np.random.randint(low=100, high=200, size=100)
 indptr = np.append(0, lengths.cumsum()).astype(np.int32)
 
@@ -60,40 +55,7 @@ def data():
     return 10 * np.random.rand(indptr[-1])
 
 
-combs_map = {
-    "rolling_mean": (rolling_mean, RollingMean, [window_size, min_samples]),
-    "rolling_std": (rolling_std, RollingStd, [window_size, min_samples]),
-    "rolling_min": (rolling_min, RollingMin, [window_size, min_samples]),
-    "rolling_max": (rolling_max, RollingMax, [window_size, min_samples]),
-    "seasonal_rolling_mean": (
-        seasonal_rolling_mean,
-        SeasonalRollingMean,
-        [season_length, window_size, min_samples],
-    ),
-    "seasonal_rolling_std": (
-        seasonal_rolling_std,
-        SeasonalRollingStd,
-        [season_length, window_size, min_samples],
-    ),
-    "seasonal_rolling_min": (
-        seasonal_rolling_min,
-        SeasonalRollingMin,
-        [season_length, window_size, min_samples],
-    ),
-    "seasonal_rolling_max": (
-        seasonal_rolling_max,
-        SeasonalRollingMax,
-        [season_length, window_size, min_samples],
-    ),
-    "expanding_mean": (expanding_mean, ExpandingMean, []),
-    "expanding_std": (expanding_std, ExpandingStd, []),
-    "expanding_min": (expanding_min, ExpandingMin, []),
-    "expanding_max": (expanding_max, ExpandingMax, []),
-    "ewm_mean": (ewm_mean, ExponentiallyWeightedMean, [0.8]),
-}
-
-
-@pytest.mark.parametrize("comb", list(combs_map.keys()))
+@pytest.mark.parametrize("comb", list(lag_tfms_map.keys()))
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_correctness(data, comb, dtype):
     atol = 1e-4
@@ -105,7 +67,7 @@ def test_correctness(data, comb, dtype):
         rtol *= 100
     data = data.astype(dtype, copy=True)
     ga = GroupedArray(data, indptr)
-    wf, cf, args = combs_map[comb]
+    wf, cf, args = lag_tfms_map[comb]
     # transform
     wres = transform(data, indptr, False, lag, wf, *args)
     cobj = cf(lag, *args)
@@ -131,11 +93,11 @@ def test_correctness_quantiles(data, dtype, p, window_type):
     data = data.astype(dtype, copy=True)
     ga = GroupedArray(data, indptr)
     if window_type == "rolling":
-        core_cls = RollingQuantile(lag, p, window_size, min_samples)
+        core_cls = lag_tf.RollingQuantile(lag, p, window_size, min_samples)
         pd_fun = pd_rolling_quantile
         pd_kwargs = dict(window_size=window_size, min_samples=min_samples)
     elif window_type == "seasonal_rolling":
-        core_cls = SeasonalRollingQuantile(
+        core_cls = lag_tf.SeasonalRollingQuantile(
             lag, p, season_length, window_size, min_samples
         )
         pd_fun = pd_seasonal_rolling_quantile
@@ -145,7 +107,7 @@ def test_correctness_quantiles(data, dtype, p, window_type):
             min_samples=min_samples,
         )
     else:
-        core_cls = ExpandingQuantile(lag, p)
+        core_cls = lag_tf.ExpandingQuantile(lag, p)
         pd_fun = pd_expanding_quantile
         pd_kwargs = {}
     cres = core_cls.transform(ga)
