@@ -29,7 +29,7 @@ def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
             if isinstance(freq, str):
                 # this raises a nice error message if it isn't a valid datetime
                 if isinstance(bound, pd.Timestamp) and bound.tz is not None:
-                    bound = bound.tz_localize(None)
+                    bound = bound.tz_convert("UTC").tz_localize(None)
                 val = np.datetime64(bound)
             else:
                 val = bound
@@ -154,7 +154,7 @@ def fill_gaps(
         tz = df[time_col].dt.tz
         if tz is not None:
             df = df.copy(deep=False)
-            df[time_col] = df[time_col].dt.tz_localize(None)
+            df[time_col] = df[time_col].dt.tz_convert("UTC").dt.tz_localize(None)
     else:
         delta = freq
         tz = None
@@ -180,7 +180,7 @@ def fill_gaps(
     idx = pd.MultiIndex.from_arrays([uids, times], names=[id_col, time_col])
     res = df.set_index([id_col, time_col]).reindex(idx).reset_index()
     if tz is not None:
-        res[time_col] = res[time_col].dt.tz_localize(tz, ambiguous="infer")
+        res[time_col] = res[time_col].dt.tz_localize("UTC").dt.tz_convert(tz)
     extra_cols = df.columns.drop([id_col, time_col]).tolist()
     if extra_cols:
         check_col = extra_cols[0]
