@@ -144,3 +144,6 @@ Gemfile.lock
 _docs/
 sidebar.yml
 _proc/
+
+# VS Code project settings
+.vscode

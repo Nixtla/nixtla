@@ -114,8 +114,10 @@ def rel_mse(y, y_hat, y_train, mask=None):
     Computes Relative mean squared error (RelMSE), as proposed by Hyndman & Koehler (2006)
     as an alternative to percentage errors, to avoid measure unstability.
 
-    $$ \mathrm{RelMSE}(\\mathbf{y}, \\mathbf{\hat{y}}, \\mathbf{\hat{y}}^{naive1}) =
-    \\frac{\mathrm{MSE}(\\mathbf{y}, \\mathbf{\hat{y}})}{\mathrm{MSE}(\\mathbf{y}, \\mathbf{\hat{y}}^{naive1})} $$
+    $$
+    \mathrm{RelMSE}(\\mathbf{y}, \\mathbf{\hat{y}}, \\mathbf{\hat{y}}^{naive1}) =
+    \\frac{\mathrm{MSE}(\\mathbf{y}, \\mathbf{\hat{y}})}{\mathrm{MSE}(\\mathbf{y}, \\mathbf{\hat{y}}^{naive1})}
+    $$
 
     **Parameters:**<br>
     `y`: numpy array, Actual values of size (`n_series`, `horizon`).<br>
@@ -151,8 +153,10 @@ def msse(y, y_hat, y_train, mask=None):
     Computes Mean squared scaled error (MSSE), as proposed by Hyndman & Koehler (2006)
     as an alternative to percentage errors, to avoid measure unstability.
 
-    $$ \\mathrm{MSSE}(\\mathbf{y}, \\mathbf{\\hat{y}}, \\mathbf{y}^{in-sample}) =
-    \\frac{\\frac{1}{h} \\sum^{t+h}_{\\tau=t+1} (y_{\\tau} - \\hat{y}_{\\tau})^2}{\\frac{1}{t-1} \\sum^{t}_{\\tau=2} (y_{\\tau} - y_{\\tau-1})^2},$$
+    $$
+    \\mathrm{MSSE}(\\mathbf{y}, \\mathbf{\\hat{y}}, \\mathbf{y}^{in-sample}) =
+    \\frac{\\frac{1}{h} \\sum^{t+h}_{\\tau=t+1} (y_{\\tau} - \\hat{y}_{\\tau})^2}{\\frac{1}{t-1} \\sum^{t}_{\\tau=2} (y_{\\tau} - y_{\\tau-1})^2}
+    $$
 
     where $n$ ($n=$`n`) is the size of the training data, and $h$ is the forecasting horizon ($h=$`horizon`).
 
@@ -192,9 +196,11 @@ def scaled_crps(y, y_hat, quantiles):
     This metric averages percentual weighted absolute deviations as 
     defined by the quantile losses.
 
-    $$ \mathrm{sCRPS}(\hat{F}_{\\tau}, \mathbf{y}_{\\tau}) = \\frac{2}{N} \sum_{i}
+    $$
+    \mathrm{sCRPS}(\hat{F}_{\\tau}, \mathbf{y}_{\\tau}) = \\frac{2}{N} \sum_{i}
     \int^{1}_{0}
-    \\frac{\mathrm{QL}(\hat{F}_{i,\\tau}, y_{i,\\tau})_{q}}{\sum_{i} | y_{i,\\tau} |} dq $$
+    \\frac{\mathrm{QL}(\hat{F}_{i,\\tau}, y_{i,\\tau})_{q}}{\sum_{i} | y_{i,\\tau} |} dq
+    $$
 
     where $\hat{F}_{\\tau}$ is the an estimated multivariate distribution, and $y_{i,\\tau}$
     are its realizations.
@@ -231,10 +237,12 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
     `y` and independent multivariate samples `y_sample1` and `y_sample2`.
     The Energy Score generalizes the CRPS (`beta`=1) in the multivariate setting.
 
-    $$ \mathrm{ES}(\\mathbf{y}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}') 
+    $$
+    \mathrm{ES}(\\mathbf{y}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}') 
     = \\frac{1}{2} \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{\hat{y}}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}'||^{\\beta} \\right]
     -  \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{y}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}||^{\\beta} \\right] 
-    \quad \\beta \in (0,2]$$
+    \quad \\beta \in (0,2]
+    $$
 
     where $\\mathbf{\hat{y}}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}'$ are independent samples drawn from $\hat{P}$.
 
@@ -274,21 +282,25 @@ def log_score(y, y_hat, cov, allow_singular=True):
     One of the simplest multivariate probability scoring rules,
     it evaluates the negative density at the value of the realisation.
 
-    $$ \mathrm{LS}(\\mathbf{y}_{\\tau}, \\mathbf{P}(\\theta_{\\tau}))
-    = - \\log(f(\\mathbf{y}_{\\tau}, \\theta_{\\tau}))$$
+    $$
+    \mathrm{LS}(\\mathbf{y}_{\\tau}, \\mathbf{P}(\\theta_{\\tau}))
+    = - \\log(f(\\mathbf{y}_{\\tau}, \\theta_{\\tau}))
+    $$
 
     where $f$ is the density, $\\mathbf{P}(\\theta_{\\tau})$ is a 
     parametric distribution and $f(\\mathbf{y}_{\\tau}, \\theta_{\\tau})$
     represents its density. 
     For the moment we only support multivariate normal log score.
 
-    $$f(\\mathbf{y}_{\\tau}, \\theta_{\\tau}) =
+    $$
+    f(\\mathbf{y}_{\\tau}, \\theta_{\\tau}) =
     (2\\pi )^{-k/2}\\det({\\boldsymbol{\Sigma }})^{-1/2}
     \,\\exp \\left(
     -{\\frac {1}{2}}(\mathbf{y}_{\\tau} -\\hat{\mathbf{y}}_{\\tau})^{\!{\mathsf{T}}}
     {\\boldsymbol{\Sigma }}^{-1}
     (\mathbf{y}_{\\tau} -\\hat{\mathbf{y}}_{\\tau})
-    \\right)$$
+    \\right)
+    $$
 
     **Parameters:**<br>
     `y`: numpy array, Actual values of size (`n_series`, `horizon`).<br>

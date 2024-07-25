@@ -611,10 +611,18 @@ class MinTrace(HReconciler):
         if self.method in res_methods and y_insample is None and y_hat_insample is None:
             raise ValueError(f"For methods {', '.join(res_methods)} you need to pass residuals")
         n_hiers, n_bottom = S.shape
+        n_aggs = n_hiers - n_bottom
+        # Construct J and U.T
+        J = np.concatenate((np.zeros((n_bottom, n_aggs), dtype=np.float64), S[n_aggs:]), axis=1)
+        Ut = np.concatenate((np.eye(n_aggs, dtype=np.float64), -S[:n_aggs]), axis=1)
         if self.method == 'ols':
             W = np.eye(n_hiers)
+            UtW = Ut
         elif self.method == 'wls_struct':
-            W = np.diag(S @ np.ones((n_bottom,)))
+            # W = np.diag(S @ np.ones((n_bottom,)))
+            Wdiag = np.sum(S, axis=1, dtype=np.float64)
+            UtW = Ut * Wdiag
+            W = np.diag(Wdiag)
         elif self.method in res_methods:
             # Residuals with shape (obs, n_hiers)
             residuals = (y_insample - y_hat_insample).T
@@ -627,18 +635,23 @@ class MinTrace(HReconciler):
             if zero_residual_prc > .98:
                 raise Exception(f'Insample residuals close to 0, zero_residual_prc={zero_residual_prc}. Check `Y_df`')
 
-            # Protection: cases where data is unavailable/nan
-            masked_res = np.ma.array(residuals, mask=np.isnan(residuals))
-            covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
-
             if self.method == 'wls_var':
-                W = np.diag(np.diag(covm))
+                Wdiag = np.nansum(residuals**2, axis=0, dtype=np.float64) / residuals.shape[0]
+                W = np.diag(Wdiag)
+                UtW = Ut * Wdiag
             elif self.method == 'mint_cov':
+                # Protection: cases where data is unavailable/nan
+                masked_res = np.ma.array(residuals, mask=np.isnan(residuals))
+                covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
                 W = covm
+                UtW = Ut @ W
+
             elif self.method == 'mint_shrink':
                 # Schäfer and Strimmer 2005, scale invariant shrinkage
-                # lasso or ridge might improve numerical stability but
-                # this version follows https://robjhyndman.com/papers/MinT.pdf
+
+                # Protection: cases where data is unavailable/nan
+                masked_res = np.ma.array(residuals, mask=np.isnan(residuals))
+                covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
                 tar = np.diag(np.diag(covm))
 
                 # Protections: constant's correlation set to 0
@@ -661,24 +674,22 @@ class MinTrace(HReconciler):
 
                 # Protection: final ridge diagonal protection
                 W = (lmd * tar + (1 - lmd) * covm) + self.mint_shr_ridge
+
+                UtW = Ut @ W
         else:
             raise ValueError(f'Unknown reconciliation method {self.method}')
 
         if self.method not in diag_only_methods:
-            eigenvalues, _ = np.linalg.eig(W)
+            try:
+                L = np.linalg.cholesky(W)
+            except np.linalg.LinAlgError:
+                raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite.')
         else:
             eigenvalues = np.diag(W)
-
-        if any(eigenvalues < 1e-8):
-            raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite.')
-
-        else:
-            # compute P for free reconciliation
-            if self.method not in diag_only_methods:
-                R = S.T @ np.linalg.pinv(W)
-            else:
-                R = S.T * np.reciprocal(np.diag(W))
-            P = np.linalg.pinv(R @ S) @ R
+            if any(eigenvalues < 1e-8):
+                raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite.')
+            
+        P = (J - np.linalg.solve(UtW[:, n_aggs:] @ Ut.T[n_aggs:] + UtW[:, :n_aggs], UtW[:, n_aggs:] @ J.T[n_aggs:]).T @ Ut)
 
         return P, W
 
