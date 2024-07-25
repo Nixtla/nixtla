@@ -293,8 +293,6 @@ class TimeSeries:
                     tfm.set_column_names(id_col, time_col, target_col)
                     sorted_df = tfm.fit_transform(sorted_df)
                     ga.data = sorted_df[target_col].to_numpy()
-        self.ga = ga
-        last_idxs_per_serie = self.ga.indptr[1:] - 1
         to_drop = [id_col, time_col, target_col]
         if static_features is None:
             static_features = [c for c in df.columns if c not in [time_col, target_col]]
@@ -302,10 +300,27 @@ class TimeSeries:
             static_features = [id_col] + static_features
         else:  # static_features defined and contain id_col
             to_drop = [time_col, target_col]
+        self.ga = ga
+        series_starts = ga.indptr[:-1]
+        series_ends = ga.indptr[1:] - 1
         if self._sort_idxs is not None:
-            last_idxs_per_serie = self._sort_idxs[last_idxs_per_serie]
-        self.static_features_ = ufp.take_rows(df, last_idxs_per_serie)[static_features]
-        self.static_features_ = ufp.drop_index_if_pandas(self.static_features_)
+            series_starts = self._sort_idxs[series_starts]
+            series_ends = self._sort_idxs[series_ends]
+        statics_on_starts = ufp.drop_index_if_pandas(
+            ufp.take_rows(df, series_starts)[static_features]
+        )
+        statics_on_ends = ufp.drop_index_if_pandas(
+            ufp.take_rows(df, series_ends)[static_features]
+        )
+        for feat in static_features:
+            if (statics_on_starts[feat] != statics_on_ends[feat]).any():
+                raise ValueError(
+                    f"{feat} is declared as a static feature but its values change "
+                    "over time. Please set the `static_features` argument to "
+                    "indicate which features are static.\nIf all of your features "
+                    "are dynamic please set `static_features=[]`."
+                )
+        self.static_features_ = statics_on_ends
         self.features_order_ = [
             c for c in df.columns if c not in to_drop
         ] + self.features
