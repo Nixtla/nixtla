@@ -10,7 +10,7 @@ import os
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import httpx
 import numpy as np
@@ -18,6 +18,7 @@ import pandas as pd
 import utilsforecast.processing as ufp
 from pydantic import NonNegativeInt, PositiveInt
 from utilsforecast.compat import DataFrame
+from utilsforecast.feature_engineering import _add_time_features, time_features
 from utilsforecast.validation import validate_format, validate_freq
 
 from ..core.api_error import ApiError
@@ -30,6 +31,54 @@ logger = logging.getLogger(__name__)
 # %% ../../nbs/v2.nixtla_client.ipynb 5
 _LOSS = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _MODEL = Literal["timegpt-1", "timegpt-1-long-horizon"]
+
+_date_features_by_freq = {
+    # Daily frequencies
+    "B": ["year", "month", "day", "weekday"],
+    "C": ["year", "month", "day", "weekday"],
+    "D": ["year", "month", "day", "weekday"],
+    # Weekly
+    "W": ["year", "week", "weekday"],
+    # Monthly
+    "M": ["year", "month"],
+    "SM": ["year", "month", "day"],
+    "BM": ["year", "month"],
+    "CBM": ["year", "month"],
+    "MS": ["year", "month"],
+    "SMS": ["year", "month", "day"],
+    "BMS": ["year", "month"],
+    "CBMS": ["year", "month"],
+    # Quarterly
+    "Q": ["year", "quarter"],
+    "BQ": ["year", "quarter"],
+    "QS": ["year", "quarter"],
+    "BQS": ["year", "quarter"],
+    # Yearly
+    "A": ["year"],
+    "Y": ["year"],
+    "BA": ["year"],
+    "BY": ["year"],
+    "AS": ["year"],
+    "YS": ["year"],
+    "BAS": ["year"],
+    "BYS": ["year"],
+    # Hourly
+    "BH": ["year", "month", "day", "hour", "weekday"],
+    "H": ["year", "month", "day", "hour"],
+    # Minutely
+    "T": ["year", "month", "day", "hour", "minute"],
+    "min": ["year", "month", "day", "hour", "minute"],
+    # Secondly
+    "S": ["year", "month", "day", "hour", "minute", "second"],
+    # Milliseconds
+    "L": ["year", "month", "day", "hour", "minute", "second", "millisecond"],
+    "ms": ["year", "month", "day", "hour", "minute", "second", "millisecond"],
+    # Microseconds
+    "U": ["year", "month", "day", "hour", "minute", "second", "microsecond"],
+    "us": ["year", "month", "day", "hour", "minute", "second", "microsecond"],
+    # Nanoseconds
+    "N": [],
+}
 
 # %% ../../nbs/v2.nixtla_client.ipynb 6
 class NixtlaClient:
@@ -70,7 +119,10 @@ class NixtlaClient:
         return resp_body
 
     def _make_partitioned_requests(
-        self, client: HttpClient, endpoint: str, payloads: List[Dict[str, Any]]
+        self,
+        client: HttpClient,
+        endpoint: str,
+        payloads: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         from tqdm.auto import tqdm
 
@@ -101,10 +153,7 @@ class NixtlaClient:
             resp["weights_x"] = [res["weights_x"] for res in results]
         return resp
 
-    def _standardize_freq(self, freq: str) -> str:
-        return freq.replace("mo", "MS")
-
-    def _get_model_params(self, model: str, freq: str):
+    def _get_model_params(self, model: str, freq: str) -> Tuple[int, int]:
         key = (model, freq)
         if key not in self._model_params:
             logger.info("Querying model metadata...")
@@ -115,7 +164,12 @@ class NixtlaClient:
             self._model_params[key] = (params["input_size"], params["horizon"])
         return self._model_params[key]
 
-    def _tail(self, proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
+    @staticmethod
+    def _standardize_freq(freq: str) -> str:
+        return freq.replace("mo", "MS")
+
+    @staticmethod
+    def _tail(proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
         n_series = proc.indptr.size - 1
         new_sizes = np.minimum(np.diff(proc.indptr), n)
         new_indptr = np.append(0, new_sizes.cumsum())
@@ -132,8 +186,9 @@ class NixtlaClient:
             sort_idxs=None,
         )
 
+    @staticmethod
     def _partition_series(
-        self, payload: Dict[str, Any], n_part: int, h: int
+        payload: Dict[str, Any], n_part: int, h: int
     ) -> List[Dict[str, Any]]:
         parts = []
         series = payload.pop("series")
@@ -161,6 +216,153 @@ class NixtlaClient:
             parts.append({"series": part_series, **payload})
         return parts
 
+    @staticmethod
+    def _maybe_add_date_features(
+        df: DataFrame,
+        X_df: Optional[DataFrame],
+        features: Union[bool, List[Union[str, Callable]]],
+        one_hot: Union[bool, List[str]],
+        freq: str,
+        h: int,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+    ) -> Tuple[DataFrame, Optional[DataFrame]]:
+        if not features:
+            return df, X_df
+        if isinstance(features, list):
+            date_features = features
+        else:
+            date_features = _date_features_by_freq.get(freq, [])
+            if not date_features:
+                warnings.warn(
+                    f"Non default date features for {freq} "
+                    "please provide a list of date features"
+                )
+        # add features
+        if X_df is None:
+            df, X_df = time_features(
+                df=df,
+                freq=freq,
+                features=date_features,
+                h=h,
+                id_col=id_col,
+                time_col=time_col,
+            )
+        else:
+            df = _add_time_features(df, features=date_features, time_col=time_col)
+            X_df = _add_time_features(X_df, features=date_features, time_col=time_col)
+        # one hot
+        if isinstance(one_hot, list):
+            features_one_hot = one_hot
+        elif one_hot:
+            features_one_hot = [f for f in date_features if not callable(f)]
+        else:
+            features_one_hot = []
+        if features_one_hot:
+            X_df = ufp.assign_columns(X_df, target_col, 0)
+            full_df = ufp.vertical_concat([df, X_df])
+            if isinstance(full_df, pd.DataFrame):
+                full_df = pd.get_dummies(
+                    full_df, columns=features_one_hot, dtype="float32"
+                )
+            else:
+                full_df = full_df.to_dummies(columns=features_one_hot)
+            df = ufp.take_rows(full_df, slice(0, df.shape[0]))
+            X_df = ufp.take_rows(full_df, slice(df.shape[0], full_df.shape[0]))
+            X_df = ufp.drop_columns(X_df, target_col)
+        return df, X_df
+
+    @staticmethod
+    def _validate_exog(
+        df: DataFrame,
+        X_df: Optional[DataFrame],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+    ) -> Optional[List[str]]:
+        exogs_df = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+        if X_df is not None:
+            exogs_X = [c for c in X_df.columns if c not in (id_col, time_col)]
+            missing_df = set(exogs_X) - set(exogs_df)
+            if missing_df:
+                raise ValueError(
+                    "The following exogenous features are present in `X_df` "
+                    f"but not in `df`: {missing_df}."
+                )
+            missing_X_df = set(exogs_df) - set(exogs_X)
+            if missing_X_df:
+                raise ValueError(
+                    "The following exogenous features are present in `df` "
+                    f"but not in `X_df`: {missing_X_df}."
+                )
+            if exogs_df != exogs_X:
+                # rearrange columns if necessary
+                X_df = X_df[[id_col, time_col, *exogs_df]]
+            x_cols: Optional[List[str]] = exogs_df
+        else:
+            if exogs_df:
+                warnings.warn(
+                    f"`df` contains the following exogenous features: {exogs_df}, "
+                    "but `X_df` was not provided. They will be ignored."
+                )
+                df = df[[id_col, time_col, target_col]]
+            x_cols = None
+            X_df = None
+        return df, X_df, x_cols
+
+    @staticmethod
+    def _validate_input_size(
+        df: DataFrame,
+        id_col: str,
+        model_input_size: int,
+        model_horizon: int,
+    ) -> None:
+        min_size = ufp.counts_by_id(df, id_col)["counts"].min()
+        if min_size < model_input_size + model_horizon:
+            raise ValueError(
+                "Your time series data is too short "
+                "Please make sure that your each serie contains "
+                f"at least {model_input_size + model_horizon} observations."
+            )
+
+    @staticmethod
+    def _prepare_level_and_quantiles(
+        level: Optional[List[Union[int, float]]],
+        quantiles: Optional[List[float]],
+    ) -> Tuple[List[Union[int, float]], Optional[List[float]]]:
+        if level is not None and quantiles is not None:
+            raise ValueError("You should provide `level` or `quantiles`, but not both.")
+        if quantiles is None:
+            return level, quantiles
+        # we recover level from quantiles
+        if not all(0 < q < 1 for q in quantiles):
+            raise ValueError("`quantiles` should be floats between 0 and 1.")
+        level = [abs(int(100 - 200 * q)) for q in quantiles]
+        return level, quantiles
+
+    @staticmethod
+    def _maybe_convert_level_to_quantiles(
+        df: DataFrame,
+        quantiles: Optional[List[float]],
+    ) -> DataFrame:
+        if quantiles is None:
+            return df
+        out_cols = [c for c in df.columns if "-lo-" not in col and "-hi-" not in col]
+        df = ufp.copy_if_pandas(df, deep=False)
+        for q in sorted(quantiles):
+            if q == 0.5:
+                col = "TimeGPT"
+            else:
+                lv = int(100 - 200 * q)
+                hi_or_lo = "lo" if lv > 0 else "hi"
+                lv = abs(lv)
+                col = f"TimeGPT-{hi_or_lo}-{lv}"
+            q_col = f"TimeGPT-q-{int(q * 100)}"
+            df[q_col] = df[col]
+            out_cols.append(q_col)
+        return df[out_cols]
+
     def forecast(
         self,
         df: DataFrame,
@@ -171,9 +373,13 @@ class NixtlaClient:
         target_col: str = "y",
         X_df: Optional[DataFrame] = None,
         level: Optional[List[Union[int, float]]] = None,
+        quantiles: Optional[List[float]] = None,
         finetune_steps: NonNegativeInt = 0,
         finetune_loss: _LOSS = "default",
         clean_ex_first: bool = True,
+        add_history: bool = False,
+        date_features: Union[bool, List[Union[str, Callable]]] = False,
+        date_features_to_one_hot: Union[bool, List[str]] = True,
         model: _MODEL = "timegpt-1",
         num_partitions: Optional[int] = None,
     ):
@@ -181,72 +387,107 @@ class NixtlaClient:
 
         Parameters
         ----------
-        df : pandas or polars DataFrame
-            dataframe to forecast. Must have at least [id_col, time_col, target_col] columns.
+        df : pandas.DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
         h : int
             Forecast horizon.
         freq : str
-            pandas or polars offset alias.
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
             Column that identifies each serie.
         time_col : str (default='ds')
-            Column that identifies each timestep, its values must be timestamps.
+            Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
             Column that contains the target.
-        X_df : pandas or polars DataFrame, optional (default=None)
-            dataframe with [id_col, time_col] columns and `df`'s future exogenous.
-        level : list of int or float, optional (default=None)
+        X_df : pandas.DataFrame, optional (default=None)
+            DataFrame with [`unique_id`, `ds`] columns and `df`'s future exogenous.
+        level : List[float], optional (default=None)
             Confidence levels between 0 and 100 for prediction intervals.
+        quantiles : List[float], optional (default=None)
+            Quantiles to forecast, list between (0, 1).
+            `level` and `quantiles` should not be used simultaneously.
+            The output dataframe will have the quantile columns
+            formatted as TimeGPT-q-(100 * q) for each q.
+            100 * q represents percentiles but we choose this notation
+            to avoid having dots in column names.
         finetune_steps : int (default=0)
-            Number of steps used to finetune learning TimeGPT in the new data.
+            Number of steps used to finetune learning TimeGPT in the
+            new data.
         finetune_loss : str (default='default')
-            Loss function to use for finetuning. Options are: 'default', 'mae', 'mse', 'rmse', 'mape', and 'smape'.
+            Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts using TimeGPT.
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        validate_api_key : bool (default=False)
+            If True, validates api_key before
+            sending requests.
+        add_history : bool (default=False)
+            Return fitted values of the model.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=True)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
         model : str (default='timegpt-1')
-            Model to use as a string. Options are: 'timegpt-1', and 'timegpt-1-long-horizon'.
-            We recommend using 'timegpt-1-long-horizon' if you want to predict more than one seasonal period.
-        num_partitions : int, optional (default=None)
-            Split the series into this number of partitions and make that many requests in parallel.
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
+        num_partitions : int (default=None)
+            Number of partitions to use.
+            If None, the number of partitions will be equal
+            to the available parallel resources in distributed environments.
 
         Returns
         -------
-        pandas or polars DataFrame
-            dataframe with TimeGPT forecasts for point and probabilistic predictions (if level is not `None`).
+        fcsts_df : pandas.DataFrame
+            DataFrame with TimeGPT forecasts for point predictions and probabilistic
+            predictions (if level is not None).
         """
         self.__dict__.pop("weights_x", None)
         logger.info("Validating inputs...")
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
+        if ufp.is_nan_or_none(df[target_col]).any():
+            raise ValueError(
+                f"Target column ({target_col}) cannot contain missing values."
+            )
         validate_freq(times=df[time_col], freq=freq)
-        exog_df = [c for c in df.columns if c not in (id_col, time_col, target_col)]
-        if X_df is not None:
-            exog_X_df = [c for c in X_df.columns if c not in (id_col, time_col)]
-            missing_df = set(exog_X_df) - set(exog_df)
-            if missing_df:
-                raise ValueError(
-                    "The following exogenous features are present in `X_df` "
-                    f"but not in `df`: {missing_df}."
-                )
-            missing_X_df = set(exog_df) - set(exog_X_df)
-            if missing_X_df:
-                raise ValueError(
-                    "The following exogenous features are present in `df` "
-                    f"but not in `X_df`: {missing_X_df}."
-                )
-            if exog_df != exog_X_df:
-                # rearrange columns if necessary
-                X_df = X_df[[id_col, time_col, *exog_df]]
-            x_cols: Optional[List[str]] = exog_df
-        else:
-            if exog_df:
-                warnings.warn(
-                    f"`df` contains the following exogenous features: {exog_df}, "
-                    "but `X_df` was not provided. They will be ignored."
-                )
-                df = df[[id_col, time_col, target_col]]
-            x_cols = None
+        df, X_df, x_cols = self._validate_exog(
+            df, X_df, id_col=id_col, time_col=time_col, target_col=target_col
+        )
+        level, quantiles = self._prepare_level_and_quantiles(level, quantiles)
+        standard_freq = self._standardize_freq(freq)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
+        if finetune_steps > 0 or level is not None:
+            self._validate_input_size(df, id_col, model_input_size, model_horizon)
 
         logger.info("Preprocessing dataframes...")
+        df, X_df = self._maybe_add_date_features(
+            df=df,
+            X_df=X_df,
+            features=date_features,
+            one_hot=date_features_to_one_hot,
+            freq=standard_freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
         processed = ufp.process_df(
             df=df, id_col=id_col, time_col=time_col, target_col=target_col
         )
@@ -261,9 +502,13 @@ class NixtlaClient:
         else:
             X_future = None
 
-        standard_freq = self._standardize_freq(freq)
-        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
-        restrict_input = finetune_steps == 0 and X_df is None
+        if h > model_horizon:
+            logger.warning(
+                'The specified horizon "h" exceeds the model horizon. '
+                "This may lead to less accurate forecasts. "
+                "Please consider using a smaller horizon."
+            )
+        restrict_input = finetune_steps == 0 and X_df is None and not add_history
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -315,6 +560,9 @@ class NixtlaClient:
         if resp["intervals"] is not None:
             intervals_df = type(df)(
                 {f"TimeGPT-{k}": v for k, v in resp["intervals"].items()}
+            )
+            intervals_df = self._maybe_convert_level_to_quantiles(
+                intervals_df, quantiles
             )
             out = ufp.horizontal_concat([out, intervals_df])
         if resp["weights_x"] is not None:
