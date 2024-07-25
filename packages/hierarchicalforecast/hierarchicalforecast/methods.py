@@ -143,10 +143,11 @@ class BottomUp(HReconciler):
 
     def _get_PW_matrices(self, S, idx_bottom):
         n_hiers, n_bottom = S.shape
-        P = np.zeros_like(S, dtype=np.float32)
-        P[idx_bottom] = S[idx_bottom]
-        P = P.T
-        W = np.eye(n_hiers, dtype=np.float32)
+        P = np.eye(n_bottom, n_hiers, n_hiers - n_bottom, np.float32)
+        if getattr(self, "intervals_method", False) is None:
+            W = None
+        else:
+            W = np.eye(n_hiers, dtype=np.float32)
         return P, W
 
     def fit(self,
@@ -173,6 +174,7 @@ class BottomUp(HReconciler):
         **Returns:**<br>
         `self`: object, fitted reconciler.
         """
+        self.intervals_method = intervals_method
         self.P, self.W = self._get_PW_matrices(S=S, idx_bottom=idx_bottom)
         self.sampler = self._get_sampler(S=S,
                                          P=self.P,
@@ -245,10 +247,11 @@ class BottomUpSparse(BottomUp):
 
     def _get_PW_matrices(self, S, idx_bottom):
         n_hiers, n_bottom = S.shape
-        P = sparse.lil_matrix(S.shape, dtype=np.float32)
-        P[idx_bottom] = S[idx_bottom]
-        P = sparse.csr_matrix(P.T)
-        W = sparse.identity(n_hiers, dtype=np.float32)
+        P = sparse.eye(n_bottom, n_hiers, n_hiers - n_bottom, np.float32, "csr")
+        if getattr(self, "intervals_method", False) is None:
+            W = None
+        else:
+            W = sparse.eye(n_hiers, dtype=np.float32, format="csr")
         return P, W
 
 # %% ../nbs/methods.ipynb 22
@@ -506,7 +509,7 @@ class MiddleOut(HReconciler):
         idxs_bu = np.hstack(idxs_bu)
         #bottom up forecasts
         bu = BottomUp().fit_predict(
-            S=np.unique(S[idxs_bu], axis=1), 
+            S=np.fliplr(np.unique(S[idxs_bu], axis=1)), 
             y_hat=y_hat[idxs_bu], 
             idx_bottom=np.arange(len(idxs_bu))[-len(cut_nodes):]
         )
