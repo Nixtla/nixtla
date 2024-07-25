@@ -295,6 +295,8 @@ def horizontal_concat(dfs: List[DataFrame]) -> DataFrame:
 def copy_if_pandas(df: DataFrame, deep: bool = False) -> DataFrame:
     if isinstance(df, pd.DataFrame):
         df = df.copy(deep=deep)
+        if not deep:
+            df = ensure_shallow_copy(df)
     return df
 
 # %% ../nbs/processing.ipynb 30
