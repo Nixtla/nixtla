@@ -29,7 +29,7 @@ from .utils import _restrict_input_samples
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 
-# %% ../nbs/nixtla_client.ipynb 7
+# %% ../nbs/nixtla_client.ipynb 8
 _LOSS = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _MODEL = Literal["azureai", "timegpt-1", "timegpt-1-long-horizon"]
 
@@ -81,7 +81,7 @@ _date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/nixtla_client.ipynb 8
+# %% ../nbs/nixtla_client.ipynb 9
 class NixtlaClient:
 
     def __init__(
@@ -212,15 +212,26 @@ class NixtlaClient:
         return freq.replace("mo", "MS")
 
     @staticmethod
+    def _array_tails(
+        x: np.ndarray,
+        indptr: np.ndarray,
+        out_sizes: np.ndarray,
+    ) -> np.ndarray:
+        if (out_sizes > np.diff(indptr)).any():
+            raise ValueError("out_sizes must be at most the original sizes.")
+        idxs = np.hstack(
+            [
+                np.arange(end - size, end)
+                for end, size in zip(indptr[1:], out_sizes, strict=True)
+            ]
+        )
+        return x[idxs]
+
+    @staticmethod
     def _tail(proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
-        n_series = proc.indptr.size - 1
         new_sizes = np.minimum(np.diff(proc.indptr), n)
         new_indptr = np.append(0, new_sizes.cumsum())
-        new_data = np.empty_like(proc.data, shape=(new_indptr[-1], proc.data.shape[1]))
-        for i in range(n_series):
-            new_data[new_indptr[i] : new_indptr[i + 1]] = proc.data[
-                proc.indptr[i + 1] - new_sizes[i] : proc.indptr[i + 1]
-            ]
+        new_data = NixtlaClient._array_tails(proc.data, proc.indptr, new_sizes)
         return ufp.ProcessedDF(
             uids=proc.uids,
             last_times=proc.last_times,
@@ -316,6 +327,10 @@ class NixtlaClient:
             df = ufp.take_rows(full_df, slice(0, df.shape[0]))
             X_df = ufp.take_rows(full_df, slice(df.shape[0], full_df.shape[0]))
             X_df = ufp.drop_columns(X_df, target_col)
+            X_df = ufp.drop_index_if_pandas(X_df)
+        if h == 0:
+            # time_features returns an empty df, we use it as None here
+            X_df = None
         return df, X_df
 
     @staticmethod
@@ -325,7 +340,7 @@ class NixtlaClient:
         id_col: str,
         time_col: str,
         target_col: str,
-    ) -> Tuple[DataFrame, Optional[DataFrame], Optional[List[str]]]:
+    ) -> Tuple[DataFrame, Optional[DataFrame]]:
         exogs_df = [c for c in df.columns if c not in (id_col, time_col, target_col)]
         if X_df is None:
             if exogs_df:
@@ -334,7 +349,7 @@ class NixtlaClient:
                     "but `X_df` was not provided. They will be ignored."
                 )
                 df = df[[id_col, time_col, target_col]]
-            return df, None, None
+            return df, None
         exogs_X = [c for c in X_df.columns if c not in (id_col, time_col)]
         missing_df = set(exogs_X) - set(exogs_df)
         if missing_df:
@@ -351,7 +366,7 @@ class NixtlaClient:
         if exogs_df != exogs_X:
             # rearrange columns
             X_df = X_df[[id_col, time_col, *exogs_df]]
-        return df, X_df, exogs_df
+        return df, X_df
 
     @staticmethod
     def _validate_input_size(
@@ -422,7 +437,9 @@ class NixtlaClient:
     ) -> DataFrame:
         if intervals is None:
             return df
-        intervals_df = type(df)({f"TimeGPT-{k}": v for k, v in intervals.items()})
+        intervals_df = type(df)(
+            {f"TimeGPT-{k}": intervals[k] for k in sorted(intervals.keys())}
+        )
         return ufp.horizontal_concat([df, intervals_df])
 
     @staticmethod
@@ -439,10 +456,12 @@ class NixtlaClient:
         if processed.sort_idxs is not None:
             times = times[processed.sort_idxs]
             targets = targets[processed.sort_idxs]
-        iterables = zip(processed.indptr[1:], in_sample_output["sizes"], strict=True)
-        keep_idxs = np.hstack([np.arange(end - size, end) for end, size in iterables])
-        times = times[keep_idxs]
-        targets = targets[keep_idxs]
+        times = NixtlaClient._array_tails(
+            times, processed.indptr, in_sample_output["sizes"]
+        )
+        targets = NixtlaClient._array_tails(
+            targets, processed.indptr, in_sample_output["sizes"]
+        )
         uids = ufp.repeat(processed.uids, in_sample_output["sizes"])
         out = type(df)(
             {
@@ -458,7 +477,7 @@ class NixtlaClient:
         self,
         weights: Optional[Union[list[float, list[list[float]]]]],
         df: DataFrame,
-        x_cols: Optional[List[str]],
+        x_cols: List[str],
     ) -> None:
         if weights is None:
             return
@@ -481,10 +500,16 @@ class NixtlaClient:
         id_col: str,
         time_col: str,
         target_col: str,
+        model: str,
         validate_api_key: bool,
     ) -> Tuple[DataFrame, bool]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
+        supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
+        if model not in supported_models:
+            raise ValueError(
+                f"unsupported model: {model}. supported models: {supported_models}"
+            )
         drop_id = id_col not in df.columns
         if drop_id:
             df = ufp.copy_if_pandas(df, deep=False)
@@ -514,7 +539,7 @@ class NixtlaClient:
         id_col: str,
         time_col: str,
         target_col: str,
-    ) -> Tuple[ufp.ProcessedDF, Optional[DataFrame]]:
+    ) -> Tuple[ufp.ProcessedDF, Optional[DataFrame], List[str]]:
         df, X_df = self._maybe_add_date_features(
             df=df,
             X_df=X_df,
@@ -539,7 +564,8 @@ class NixtlaClient:
             X_future = processed_X.data.T.tolist()
         else:
             X_future = None
-        return processed, X_future
+        x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+        return processed, X_future, x_cols
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Returns True if your api_key is valid."""
@@ -658,8 +684,9 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
+            model=model,
         )
-        df, X_df, x_cols = self._validate_exog(
+        df, X_df = self._validate_exog(
             df, X_df, id_col=id_col, time_col=time_col, target_col=target_col
         )
         level, quantiles = self._prepare_level_and_quantiles(level, quantiles)
@@ -676,7 +703,7 @@ class NixtlaClient:
             )
 
         logger.info("Preprocessing dataframes...")
-        processed, X_future = self._preprocess(
+        processed, X_future, x_cols = self._preprocess(
             df=df,
             X_df=X_df,
             h=h,
@@ -687,7 +714,7 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        restrict_input = finetune_steps == 0 and X_df is None and not add_history
+        restrict_input = finetune_steps == 0 and x_cols and not add_history
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -850,13 +877,14 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
+            model=model,
         )
         freq = self._maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         standard_freq = self._standardize_freq(freq)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
 
         logger.info("Preprocessing dataframes...")
-        processed, _ = self._preprocess(
+        processed, _, x_cols = self._preprocess(
             df=df,
             X_df=None,
             h=0,
@@ -869,10 +897,8 @@ class NixtlaClient:
         )
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
-            x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
         else:
             X = None
-            x_cols = None
 
         logger.info("Calling Anomaly Detector Endpoint...")
         payload = {
@@ -1011,6 +1037,7 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
+            model=model,
         )
         freq = self._maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         standard_freq = self._standardize_freq(freq)
@@ -1020,7 +1047,7 @@ class NixtlaClient:
             step_size = h
 
         logger.info("Preprocessing dataframes...")
-        processed, _ = self._preprocess(
+        processed, _, x_cols = self._preprocess(
             df=df,
             X_df=None,
             h=0,
@@ -1031,12 +1058,26 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        times = df[time_col].to_numpy()
+        if processed.sort_idxs is not None:
+            times = times[processed.sort_idxs]
+        restrict_input = finetune_steps == 0 and x_cols
+        if restrict_input:
+            logger.info("Restricting input...")
+            new_input_size = _restrict_input_samples(
+                level=level,
+                input_size=model_input_size,
+                model_horizon=model_horizon,
+                h=h,
+            )
+            new_input_size += h + step_size * (n_windows - 1)
+            orig_indptr = processed.indptr
+            processed = self._tail(processed, new_input_size)
+            times = self._array_tails(times, orig_indptr, np.diff(processed.indptr))
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
-            x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
         else:
             X = None
-            x_cols = None
 
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
@@ -1067,13 +1108,14 @@ class NixtlaClient:
 
         # assemble result
         out = ufp.cv_times(
-            times=df[time_col].to_numpy(),
+            times=times,
             uids=processed.uids,
             indptr=processed.indptr,
             h=h,
             test_size=h + step_size * (n_windows - 1),
             step_size=step_size,
         )
+        out = ufp.sort(out, by=[id_col, "cutoff", time_col])
         out = ufp.assign_columns(out, "y", resp["y"])
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = self._maybe_add_intervals(out, resp["intervals"])
