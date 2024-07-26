@@ -14,6 +14,7 @@ import pandas as pd
 try:
     import polars as pl
     from polars import DataFrame as pl_DataFrame
+    from polars import Expr as pl_Expr
     from polars import Series as pl_Series
 
     POLARS_INSTALLED = True
@@ -21,6 +22,8 @@ except ImportError:
     pl = None
 
     class pl_DataFrame: ...
+
+    class pl_Expr: ...
 
     class pl_Series: ...
 

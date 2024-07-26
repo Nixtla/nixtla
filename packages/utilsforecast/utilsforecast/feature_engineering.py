@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 import utilsforecast.processing as ufp
-from .compat import DataFrame, Series, pl, pl_DataFrame
+from .compat import DataFrame, pl, pl_DataFrame, pl_Expr
 from .validation import validate_format, validate_freq
 
 # %% ../nbs/feature_engineering.ipynb 4
@@ -194,12 +194,19 @@ def trend(
 
 # %% ../nbs/feature_engineering.ipynb 15
 def _compute_time_feature(
-    times: Union[Series, pd.Index],
+    times: Union[pd.Index, pl_Expr],
     feature: Union[str, Callable],
-) -> Union[Series, pd.Index]:
+) -> Tuple[
+    Union[str, List[str]],
+    Union[pd.DataFrame, pl_Expr, List[pl_Expr], pd.Index, np.ndarray],
+]:
     if callable(feature):
-        feat_name = feature.__name__
         feat_vals = feature(times)
+        if isinstance(feat_vals, pd.DataFrame):
+            feat_name = feat_vals.columns.tolist()
+            feat_vals = feat_vals.to_numpy()
+        else:
+            feat_name = feature.__name__
     else:
         feat_name = feature
         if isinstance(times, pd.DatetimeIndex):
@@ -229,7 +236,11 @@ def _add_time_features(
         exprs = []
         for feature in features:
             name, vals = _compute_time_feature(pl.col(time_col), feature)
-            exprs.append(vals.alias(name))
+            if isinstance(vals, list):
+                exprs.extend(vals)
+            else:
+                assert isinstance(vals, pl_Expr)
+                exprs.append(vals.alias(name))
         feats = unique_times.to_frame().with_columns(*exprs)
         df = df.join(feats, on=time_col, how="left")
     return df
@@ -283,7 +294,7 @@ def time_features(
     future = _add_time_features(df=future, features=features, time_col=time_col)
     return transformed, future
 
-# %% ../nbs/feature_engineering.ipynb 18
+# %% ../nbs/feature_engineering.ipynb 19
 def pipeline(
     df: DataFrame,
     features: List[Callable],
