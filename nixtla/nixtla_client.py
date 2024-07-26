@@ -24,7 +24,7 @@ from .core.api_error import ApiError
 from .core.http_client import HttpClient
 from .utils import _restrict_input_samples
 
-# %% ../nbs/nixtla_client.ipynb 5
+# %% ../nbs/nixtla_client.ipynb 4
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.ERROR)
@@ -469,6 +469,78 @@ class NixtlaClient:
         else:
             self.weights_x = type(df)({"features": x_cols, "weights": weights})
 
+    @staticmethod
+    def _maybe_drop_id(df: DataFrame, id_col: str, drop: bool) -> DataFrame:
+        if drop:
+            df = ufp.drop_columns(df, id_col)
+        return df
+
+    def _run_validations(
+        self,
+        df: DataFrame,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        validate_api_key: bool,
+    ) -> Tuple[DataFrame, bool]:
+        if validate_api_key and not self.validate_api_key(log=False):
+            raise Exception("API Key not valid, please email ops@nixtla.io")
+        drop_id = id_col not in df.columns
+        if drop_id:
+            df = ufp.copy_if_pandas(df, deep=False)
+            df = ufp.assign_columns(df, id_col, 0)
+        if (
+            isinstance(df, pd.DataFrame)
+            and time_col not in df
+            and pd.api.types.is_datetime64_any_dtype(df.index)
+        ):
+            df.index.name = time_col
+            df = df.reset_index()
+        validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
+        if ufp.is_nan_or_none(df[target_col]).any():
+            raise ValueError(
+                f"Target column ({target_col}) cannot contain missing values."
+            )
+        return df, drop_id
+
+    def _preprocess(
+        self,
+        df: DataFrame,
+        X_df: Optional[DataFrame],
+        h: int,
+        freq: str,
+        date_features: Union[bool, List[Union[str, Callable]]],
+        date_features_to_one_hot: Union[bool, List[str]],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+    ) -> Tuple[ufp.ProcessedDF, Optional[DataFrame]]:
+        df, X_df = self._maybe_add_date_features(
+            df=df,
+            X_df=X_df,
+            features=date_features,
+            one_hot=date_features_to_one_hot,
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        processed = ufp.process_df(
+            df=df, id_col=id_col, time_col=time_col, target_col=target_col
+        )
+        if X_df is not None:
+            processed_X = ufp.process_df(
+                df=X_df,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=None,
+            )
+            X_future = processed_X.data.T.tolist()
+        else:
+            X_future = None
+        return processed, X_future
+
     def validate_api_key(self, log: bool = True) -> bool:
         """Returns True if your api_key is valid."""
         try:
@@ -500,7 +572,7 @@ class NixtlaClient:
         validate_api_key: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[Union[str, Callable]]] = False,
-        date_features_to_one_hot: Union[bool, List[str]] = True,
+        date_features_to_one_hot: Union[bool, List[str]] = False,
         model: _MODEL = "timegpt-1",
         num_partitions: Optional[int] = None,
     ) -> DataFrame:
@@ -558,7 +630,7 @@ class NixtlaClient:
             Can be pandas date attributes or functions that will take the dates as input.
             If True automatically adds most used date features for the
             frequency of `df`.
-        date_features_to_one_hot : bool or list of str (default=True)
+        date_features_to_one_hot : bool or list of str (default=False)
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
@@ -578,15 +650,15 @@ class NixtlaClient:
             DataFrame with TimeGPT forecasts for point predictions and probabilistic
             predictions (if level is not None).
         """
-        if validate_api_key and not self.validate_api_key(log=False):
-            raise Exception("API Key not valid, please email ops@nixtla.io")
         self.__dict__.pop("weights_x", None)
         logger.info("Validating inputs...")
-        validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
-        if ufp.is_nan_or_none(df[target_col]).any():
-            raise ValueError(
-                f"Target column ({target_col}) cannot contain missing values."
-            )
+        df, drop_id = self._run_validations(
+            df=df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=validate_api_key,
+        )
         df, X_df, x_cols = self._validate_exog(
             df, X_df, id_col=id_col, time_col=time_col, target_col=target_col
         )
@@ -604,31 +676,17 @@ class NixtlaClient:
             )
 
         logger.info("Preprocessing dataframes...")
-        df, X_df = self._maybe_add_date_features(
+        processed, X_future = self._preprocess(
             df=df,
             X_df=X_df,
-            features=date_features,
-            one_hot=date_features_to_one_hot,
-            freq=standard_freq,
             h=h,
+            freq=standard_freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
-        processed = ufp.process_df(
-            df=df, id_col=id_col, time_col=time_col, target_col=target_col
-        )
-        if X_df is not None:
-            processed_X = ufp.process_df(
-                df=X_df,
-                id_col=id_col,
-                time_col=time_col,
-                target_col=None,
-            )
-            X_future = processed_X.data.T.tolist()
-        else:
-            X_future = None
-
         restrict_input = finetune_steps == 0 and X_df is None and not add_history
         if restrict_input:
             logger.info("Restricting input...")
@@ -643,6 +701,8 @@ class NixtlaClient:
             X = processed.data[:, 1:].T.tolist()
         else:
             X = None
+
+        logger.info("Calling Forecast Endpoint...")
         payload = {
             "series": {
                 "y": processed.data[:, 0].tolist(),
@@ -658,8 +718,6 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_loss": finetune_loss,
         }
-
-        logger.info("Calling Forecast Endpoint...")
         with httpx.Client(**self._client_kwargs) as httpx_client:
             client = HttpClient(httpx_client=httpx_client)
             if num_partitions is None:
@@ -710,6 +768,7 @@ class NixtlaClient:
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
             out = ufp.sort(out, by=[id_col, time_col])
+        out = self._maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         return out
 
@@ -724,7 +783,7 @@ class NixtlaClient:
         clean_ex_first: bool = True,
         validate_api_key: bool = False,
         date_features: Union[bool, List[str]] = False,
-        date_features_to_one_hot: Union[bool, List[str]] = True,
+        date_features_to_one_hot: Union[bool, List[str]] = False,
         model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ):
@@ -765,7 +824,7 @@ class NixtlaClient:
             Can be pandas date attributes or functions that will take the dates as input.
             If True automatically adds most used date features for the
             frequency of `df`.
-        date_features_to_one_hot : bool or list of str (default=True)
+        date_features_to_one_hot : bool or list of str (default=False)
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
@@ -784,41 +843,38 @@ class NixtlaClient:
         pandas or polars DataFrame
             DataFrame with anomalies flagged with 1 detected by TimeGPT.
         """
-        if validate_api_key and not self.validate_api_key(log=False):
-            raise Exception("API Key not valid, please email ops@nixtla.io")
         self.__dict__.pop("weights_x", None)
-        logger.info("Validating inputs...")
-        validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
-        if ufp.is_nan_or_none(df[target_col]).any():
-            raise ValueError(
-                f"Target column ({target_col}) cannot contain missing values."
-            )
+        df, drop_id = self._run_validations(
+            df=df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=validate_api_key,
+        )
         freq = self._maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         standard_freq = self._standardize_freq(freq)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
 
         logger.info("Preprocessing dataframes...")
-        df, _ = self._maybe_add_date_features(
+        processed, _ = self._preprocess(
             df=df,
             X_df=None,
-            features=date_features,
-            one_hot=date_features_to_one_hot,
-            freq=standard_freq,
             h=0,
+            freq=standard_freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
-        processed = ufp.process_df(
-            df=df, id_col=id_col, time_col=time_col, target_col=target_col
-        )
-
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
             x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
         else:
             X = None
             x_cols = None
+
+        logger.info("Calling Anomaly Detector Endpoint...")
         payload = {
             "series": {
                 "y": processed.data[:, 0].tolist(),
@@ -830,8 +886,6 @@ class NixtlaClient:
             "clean_ex_first": clean_ex_first,
             "level": level,
         }
-
-        logger.info("Calling Anomaly Detector Endpoint...")
         with httpx.Client(**self._client_kwargs) as httpx_client:
             client = HttpClient(httpx_client=httpx_client)
             if num_partitions is None:
@@ -852,6 +906,7 @@ class NixtlaClient:
             target_col=target_col,
         )
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
+        out = self._maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         return out
 
@@ -872,7 +927,7 @@ class NixtlaClient:
         finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
-        date_features_to_one_hot: Union[bool, List[str]] = True,
+        date_features_to_one_hot: Union[bool, List[str]] = False,
         model: str = "timegpt-1",
         num_partitions: Optional[int] = None,
     ):
@@ -931,7 +986,7 @@ class NixtlaClient:
             Can be pandas date attributes or functions that will take the dates as input.
             If True automatically adds most used date features for the
             frequency of `df`.
-        date_features_to_one_hot : bool or list of str (default=True)
+        date_features_to_one_hot : bool or list of str (default=False)
             Apply one-hot encoding to these date features.
             If `date_features=True`, then all date features are
             one-hot encoded by default.
@@ -950,15 +1005,13 @@ class NixtlaClient:
         pandas or polars DataFrame
             DataFrame with cross validation forecasts.
         """
-        if validate_api_key and not self.validate_api_key(log=False):
-            raise Exception("API Key not valid, please email ops@nixtla.io")
-        self.__dict__.pop("weights_x", None)
-        logger.info("Validating inputs...")
-        validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
-        if ufp.is_nan_or_none(df[target_col]).any():
-            raise ValueError(
-                f"Target column ({target_col}) cannot contain missing values."
-            )
+        df, drop_id = self._run_validations(
+            df=df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=validate_api_key,
+        )
         freq = self._maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         standard_freq = self._standardize_freq(freq)
         level, quantiles = self._prepare_level_and_quantiles(level, quantiles)
@@ -967,27 +1020,25 @@ class NixtlaClient:
             step_size = h
 
         logger.info("Preprocessing dataframes...")
-        df, _ = self._maybe_add_date_features(
+        processed, _ = self._preprocess(
             df=df,
             X_df=None,
-            features=date_features,
-            one_hot=date_features_to_one_hot,
-            freq=standard_freq,
             h=0,
+            freq=standard_freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
-        processed = ufp.process_df(
-            df=df, id_col=id_col, time_col=time_col, target_col=target_col
-        )
-
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
             x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
         else:
             X = None
             x_cols = None
+
+        logger.info("Calling Cross Validation Endpoint...")
         payload = {
             "series": {
                 "y": processed.data[:, 0].tolist(),
@@ -1004,8 +1055,6 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_loss": finetune_loss,
         }
-
-        logger.info("Calling Cross Validation Endpoint...")
         with httpx.Client(**self._client_kwargs) as httpx_client:
             client = HttpClient(httpx_client=httpx_client)
             if num_partitions is None:
@@ -1028,4 +1077,108 @@ class NixtlaClient:
         out = ufp.assign_columns(out, "y", resp["y"])
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = self._maybe_add_intervals(out, resp["intervals"])
+        out = self._maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         return self._maybe_convert_level_to_quantiles(out, quantiles)
+
+    def plot(
+        self,
+        df: Optional[DataFrame] = None,
+        forecasts_df: Optional[DataFrame] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        unique_ids: Union[Optional[List[str]], np.ndarray] = None,
+        plot_random: bool = True,
+        models: Optional[List[str]] = None,
+        level: Optional[List[float]] = None,
+        max_insample_length: Optional[int] = None,
+        plot_anomalies: bool = False,
+        engine: str = "matplotlib",
+        resampler_kwargs: Optional[Dict] = None,
+    ):
+        """Plot forecasts and insample values.
+
+        Parameters
+        ----------
+        df : pandas or polars DataFrame, optional (default=None)
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        forecasts_df : pandas or polars DataFrame, optional (default=None)
+            DataFrame with columns [`unique_id`, `ds`] and models.
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        unique_ids : List[str], optional (default=None)
+            Time Series to plot.
+            If None, time series are selected randomly.
+        plot_random : bool (default=True)
+            Select time series to plot randomly.
+        models : List[str], optional (default=None)
+            List of models to plot.
+        level : List[float], optional (default=None)
+            List of prediction intervals to plot if paseed.
+        max_insample_length : int, optional (default=None)
+            Max number of train/insample observations to be plotted.
+        plot_anomalies : bool (default=False)
+            Plot anomalies for each prediction interval.
+        engine : str (default='plotly')
+            Library used to plot. 'plotly', 'plotly-resampler' or 'matplotlib'.
+        resampler_kwargs : dict
+            Kwargs to be passed to plotly-resampler constructor.
+            For further custumization ("show_dash") call the method,
+            store the plotting object and add the extra arguments to
+            its `show_dash` method.
+        """
+        try:
+            from utilsforecast.plotting import plot_series
+        except ModuleNotFoundError:
+            raise Exception(
+                "You have to install additional dependencies to use this method, "
+                'please install them using `pip install "nixtla[plotting]"`'
+            )
+        if df is not None and id_col not in df.columns:
+            df = ufp.copy_if_pandas(df, deep=False)
+            df = ufp.assign_columns(df, id_col, "ts_0")
+        if forecasts_df is not None:
+            forecasts_df = ufp.copy_if_pandas(forecasts_df, deep=False)
+            forecasts_df = ufp.assign_columns(forecasts_df, id_col, "ts_0")
+            if "anomaly" in forecasts_df.columns:
+                # special case to plot outputs
+                # from detect_anomalies
+                df = None
+                forecasts_df = ufp.drop_columns(forecasts_df, "anomaly")
+                cols = forecasts_df.columns
+                cols = cols[cols.str.contains("TimeGPT-lo-")]
+                level = cols.str.replace("TimeGPT-lo-", "")[0]
+                level = float(level) if "." in level else int(level)
+                level = [level]
+                plot_anomalies = True
+                models = ["TimeGPT"]
+        return plot_series(
+            df=df,
+            forecasts_df=forecasts_df,
+            ids=unique_ids,
+            plot_random=plot_random,
+            models=models,
+            level=level,
+            max_insample_length=max_insample_length,
+            plot_anomalies=plot_anomalies,
+            engine=engine,
+            resampler_kwargs=resampler_kwargs,
+            palette="tab20b",
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
