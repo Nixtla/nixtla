@@ -5,7 +5,7 @@ __all__ = ['plot_series']
 
 # %% ../nbs/plotting.ipynb 4
 import re
-from typing import Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 try:
     import matplotlib as mpl
@@ -18,6 +18,9 @@ except ImportError:
     )
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    import plotly
 from packaging.version import Version, parse as parse_version
 
 import utilsforecast.processing as ufp
@@ -59,6 +62,7 @@ def plot_series(
     target_col: str = "y",
     seed: int = 0,
     resampler_kwargs: Optional[Dict] = None,
+    ax: Optional[Union[plt.Axes, "plotly.graph_objects.Figure"]] = None,
 ):
     """Plot forecasts and insample values.
 
@@ -100,6 +104,8 @@ def plot_series(
         For further custumization ("show_dash") call the method,
         store the plotting object and add the extra arguments to
         its `show_dash` method.
+    ax : matplotlib axes or plotly Figure, optional (default=None)
+        Object where plots will be added.
 
     Returns
     -------
@@ -110,6 +116,15 @@ def plot_series(
     supported_engines = ["matplotlib", "plotly", "plotly-resampler"]
     if engine not in supported_engines:
         raise ValueError(f"engine must be one of {supported_engines}, got '{engine}'.")
+    if engine.startswith("plotly"):
+        try:
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+        except ImportError:
+            raise ImportError(
+                "plotly is not installed. Please install it and try again.\n"
+                "You can find detailed instructions at https://github.com/plotly/plotly.py#installation"
+            )
     if plot_anomalies:
         if level is None:
             raise ValueError(
@@ -154,11 +169,32 @@ def plot_series(
             uids = forecasts_df[id_col].unique()
     else:
         uids = ids
+    if ax is not None:
+        if isinstance(ax, np.ndarray) and isinstance(ax.flat[0], plt.Axes):
+            gs = ax.flat[0].get_gridspec()
+            n_rows, n_cols = gs.nrows, gs.ncols
+            ax = ax.reshape(n_rows, n_cols)
+        elif engine.startswith("plotly") and isinstance(ax, go.Figure):
+            rows, cols = ax._get_subplot_rows_columns()
+            # rows and cols are ranges
+            n_rows = len(rows)
+            n_cols = len(cols)
+        else:
+            raise ValueError(f"Cannot process `ax` of type: {type(ax).__name__}.")
+        max_ids = n_rows * n_cols
     if len(uids) > max_ids and plot_random:
         rng = np.random.RandomState(seed)
         uids = rng.choice(uids, size=max_ids, replace=False)
     else:
         uids = uids[:max_ids]
+    n_series = len(uids)
+    if ax is None:
+        if n_series == 1:
+            n_cols = 1
+        else:
+            n_cols = 2
+        quot, resid = divmod(n_series, n_cols)
+        n_rows = quot + resid
 
     # filtering
     if df is not None:
@@ -187,14 +223,6 @@ def plot_series(
             else:
                 df = pl.concat([df, forecasts_df], how="align")
 
-    # common setup
-    n_series = len(uids)
-    if n_series == 1:
-        n_cols = 1
-    else:
-        n_cols = 2
-    quot, resid = divmod(n_series, n_cols)
-    n_rows = quot + resid
     xlabel = f"Time [{time_col}]"
     ylabel = f"Target [{target_col}]"
     if palette is not None:
@@ -212,42 +240,42 @@ def plot_series(
         colors = [cm.to_hex(color) for color in rgb_colors]
 
     # define plot grid
-    if engine.startswith("plotly"):
-        try:
-            import plotly.graph_objects as go
-            from plotly.subplots import make_subplots
-        except ImportError:
-            raise ImportError(
-                "plotly is not installed. Please install it and try again.\n"
-                "You can find detailed instructions at https://github.com/plotly/plotly.py#installation"
+    if ax is None:
+        postprocess = True
+        if engine.startswith("plotly"):
+            fig = make_subplots(
+                rows=n_rows,
+                cols=n_cols,
+                vertical_spacing=0.15,
+                horizontal_spacing=0.07,
+                x_title=xlabel,
+                y_title=ylabel,
+                subplot_titles=[f"{id_col}={uid}" for uid in uids],
             )
-        fig = make_subplots(
-            rows=n_rows,
-            cols=n_cols,
-            vertical_spacing=0.15,
-            horizontal_spacing=0.07,
-            x_title=xlabel,
-            y_title=ylabel,
-            subplot_titles=[f"{id_col}={uid}" for uid in uids],
-        )
-        if engine == "plotly-resampler":
-            try:
-                from plotly_resampler import FigureResampler
-            except ImportError:
-                raise ImportError(
-                    "plotly-resampler is not installed.\n"
-                    "Please install it with `pip install plotly-resampler` or `conda install -c conda-forge plotly-resampler`"
-                )
-            resampler_kwargs = {} if resampler_kwargs is None else resampler_kwargs
-            fig = FigureResampler(fig, **resampler_kwargs)
+            if engine == "plotly-resampler":
+                try:
+                    from plotly_resampler import FigureResampler
+                except ImportError:
+                    raise ImportError(
+                        "The 'plotly-resampler' package is required "
+                        "when `engine='plotly-resampler'`."
+                    )
+                resampler_kwargs = {} if resampler_kwargs is None else resampler_kwargs
+                fig = FigureResampler(fig, **resampler_kwargs)
+        else:
+            fig, ax = plt.subplots(
+                nrows=n_rows,
+                ncols=n_cols,
+                figsize=(16, 3.5 * n_rows),
+                squeeze=False,
+                constrained_layout=True,
+            )
     else:
-        fig, ax = plt.subplots(
-            nrows=n_rows,
-            ncols=n_cols,
-            figsize=(16, 3.5 * n_rows),
-            squeeze=False,
-            constrained_layout=True,
-        )
+        postprocess = False
+        if engine.startswith("plotly"):
+            fig = ax
+        else:
+            fig = plt.gcf()
 
     def _add_mpl_plot(axi, df, y_col, levels):
         axi.plot(df[time_col], df[y_col], label=y_col, color=color)
@@ -348,12 +376,13 @@ def plot_series(
         uid_df = ufp.filter_with_mask(df, mask)
         row, col = divmod(i, n_cols)
         for y_col, color in zip([target_col] + models, colors):
-            if engine == "matplotlib":
+            if isinstance(ax, np.ndarray):
                 _add_mpl_plot(ax[row, col], uid_df, y_col, level)
             else:
                 _add_plotly_plot(fig, uid_df, y_col, level)
-        if engine == "matplotlib":
-            ax[row, col].set_title(f"{id_col}={uid}")
+        title = f"{id_col}={uid}"
+        if isinstance(ax, np.ndarray):
+            ax[row, col].set_title(title)
             if col == 0:
                 ax[row, col].set_ylabel(ylabel)
             if row == n_rows - 1:
@@ -366,8 +395,10 @@ def plot_series(
                 labels=xticklabels,
                 ha="right",
             )
+        else:
+            fig.update_annotations(selector={"text": str(i)}, text=title)
 
-    if engine == "matplotlib":
+    if isinstance(ax, np.ndarray):
         handles, labels = ax[0, 0].get_legend_handles_labels()
         fig.legend(
             handles,
@@ -381,8 +412,9 @@ def plot_series(
                 axi.set_axis_off()
     else:
         fig.update_xaxes(matches=None, showticklabels=True, visible=True)
-        fig.update_layout(margin=dict(l=60, r=10, t=20, b=50))
-        fig.update_layout(template="plotly_white", font=dict(size=10))
         fig.update_annotations(font_size=10)
-        fig.update_layout(autosize=True, height=200 * n_rows)
+        if postprocess:
+            fig.update_layout(margin=dict(l=60, r=10, t=20, b=50))
+            fig.update_layout(template="plotly_white", font=dict(size=10))
+            fig.update_layout(autosize=True, height=200 * n_rows)
     return fig
