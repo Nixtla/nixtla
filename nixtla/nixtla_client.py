@@ -16,12 +16,20 @@ import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
 from pydantic import NonNegativeInt, PositiveInt
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    stop_after_delay,
+    wait_fixed,
+)
 from utilsforecast.compat import DataFrame, pl_DataFrame
 from utilsforecast.feature_engineering import _add_time_features, time_features
 from utilsforecast.validation import validate_format, validate_freq
 
 from .core.api_error import ApiError
-from .core.http_client import HttpClient
 from .utils import _restrict_input_samples
 
 # %% ../nbs/nixtla_client.ipynb 4
@@ -29,7 +37,7 @@ from .utils import _restrict_input_samples
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 
-# %% ../nbs/nixtla_client.ipynb 8
+# %% ../nbs/nixtla_client.ipynb 7
 _LOSS = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _MODEL = Literal["azureai", "timegpt-1", "timegpt-1-long-horizon"]
 
@@ -81,7 +89,33 @@ _date_features_by_freq = {
     "N": [],
 }
 
-# %% ../nbs/nixtla_client.ipynb 9
+
+def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
+    def should_retry(exc: Exception) -> bool:
+        timeout_exceptions = (
+            httpx.ReadTimeout,
+            httpx.WriteTimeout,
+            httpx.ConnectTimeout,
+            httpx.PoolTimeout,
+        )
+        retriable_codes = [408, 409, 429, 502, 503, 504]
+        return isinstance(exc, timeout_exceptions) or (
+            isinstance(exc, ApiError) and exc.status_code in retriable_codes
+        )
+
+    def after_retry(retry_state: RetryCallState) -> None:
+        error = retry_state.outcome.exception().body
+        logger.error(f"Attempt {retry_state.attempt_number} failed with error: {error}")
+
+    return retry(
+        retry=retry_if_exception(should_retry),
+        wait=wait_fixed(retry_interval),
+        after=after_retry,
+        stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
+        reraise=True,
+    )
+
+# %% ../nbs/nixtla_client.ipynb 8
 class NixtlaClient:
 
     def __init__(
@@ -90,7 +124,39 @@ class NixtlaClient:
         base_url: Optional[str] = None,
         timeout: int = 60,
         max_retries: int = 6,
+        retry_interval: int = 10,
+        max_wait_time: int = 6 * 60,
     ):
+        """
+        Client to interact with the Nixtla API.
+
+        Parameters
+        ----------
+        api_key : str, optional (default=None)
+            The authorization api_key interacts with the Nixtla API.
+            If not provided, will use the NIXTLA_API_KEY environment variable.
+        base_url : str, optional (default=None)
+            Custom base_url.
+            If not provided, will use the NIXTLA_BASE_URL environment variable.
+        timeout : int, optional (default=60)
+            Request timeout in seconds. Set this to `None` to disable it.
+        max_retries : int (default=6)
+            The maximum number of attempts to make when calling the API before giving up.
+            It defines how many times the client will retry the API call if it fails.
+            Default value is 6, indicating the client will attempt the API call up to 6 times in total
+        retry_interval : int (default=10)
+            The interval in seconds between consecutive retry attempts.
+            This is the waiting period before the client tries to call the API again after a failed attempt.
+            Default value is 10 seconds, meaning the client waits for 10 seconds between retries.
+        max_wait_time : int (default=360)
+            The maximum total time in seconds that the client will spend on all retry attempts before giving up.
+            This sets an upper limit on the cumulative waiting time for all retry attempts.
+            If this time is exceeded, the client will stop retrying and raise an exception.
+            Default value is 360 seconds, meaning the client will cease retrying if the total time
+            spent on retries exceeds 360 seconds.
+            The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to
+            catch these errors, use max_wait_time >> 60.
+        """
         if api_key is None:
             api_key = os.environ["NIXTLA_API_KEY"]
         if base_url is None:
@@ -100,17 +166,20 @@ class NixtlaClient:
             "headers": {"Authorization": f"Bearer {api_key}"},
             "timeout": timeout,
         }
-        self.max_retries = max_retries
+        self._retry_strategy = _retry_strategy(
+            max_retries=max_retries,
+            retry_interval=retry_interval,
+            max_wait_time=max_wait_time,
+        )
         self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
 
     def _make_request(
-        self, client: HttpClient, endpoint: str, payload: Dict[str, Any]
+        self, client: httpx.Client, endpoint: str, payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         resp = client.request(
             method="post",
             url=endpoint,
             json=payload,
-            max_retries=self.max_retries,
         )
         resp_body = resp.json()
         if resp.status_code != 200:
@@ -119,9 +188,21 @@ class NixtlaClient:
             resp_body = resp_body["data"]
         return resp_body
 
+    def _make_request_with_retries(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return self._retry_strategy(self._make_request)(
+            client=client,
+            endpoint=endpoint,
+            payload=payload,
+        )
+
     def _make_partitioned_requests(
         self,
-        client: HttpClient,
+        client: httpx.Client,
         endpoint: str,
         payloads: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
@@ -132,7 +213,9 @@ class NixtlaClient:
         max_workers = min(10, num_partitions)
         with ThreadPoolExecutor(max_workers) as executor:
             future2pos = {
-                executor.submit(self._make_request, client, endpoint, payload): i
+                executor.submit(
+                    self._make_request_with_retries, client, endpoint, payload
+                ): i
                 for i, payload in enumerate(payloads)
             }
             for future in tqdm(as_completed(future2pos), total=len(future2pos)):
@@ -151,7 +234,7 @@ class NixtlaClient:
                 resp["intervals"][k] = np.hstack(
                     [res["intervals"][k] for res in results]
                 )
-        if "weights_x" not in first_res:
+        if "weights_x" not in first_res or first_res["weights_x"] is None:
             resp["weights_x"] = None
         else:
             resp["weights_x"] = [res["weights_x"] for res in results]
@@ -162,9 +245,10 @@ class NixtlaClient:
         if key not in self._model_params:
             logger.info("Querying model metadata...")
             payload = {"model": model, "freq": freq}
-            with httpx.Client(**self._client_kwargs) as httpx_client:
-                client = HttpClient(httpx_client=httpx_client)
-                params = self._make_request(client, "model_params", payload)["detail"]
+            with httpx.Client(**self._client_kwargs) as client:
+                params = self._make_request_with_retries(
+                    client, "model_params", payload
+                )["detail"]
             self._model_params[key] = (params["input_size"], params["horizon"])
         return self._model_params[key]
 
@@ -570,9 +654,10 @@ class NixtlaClient:
     def validate_api_key(self, log: bool = True) -> bool:
         """Returns True if your api_key is valid."""
         try:
-            with httpx.Client(**self._client_kwargs) as httpx_client:
-                client = HttpClient(httpx_client=httpx_client)
-                validation = self._make_request(client, "validate_token", {})
+            with httpx.Client(**self._client_kwargs) as client:
+                validation = self._make_request_with_retries(
+                    client, "validate_token", {}
+                )
         except:
             validation = {}
         if "support" in validation and log:
@@ -714,7 +799,7 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        restrict_input = finetune_steps == 0 and x_cols and not add_history
+        restrict_input = finetune_steps == 0 and not x_cols and not add_history
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -745,14 +830,13 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_loss": finetune_loss,
         }
-        with httpx.Client(**self._client_kwargs) as httpx_client:
-            client = HttpClient(httpx_client=httpx_client)
+        with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
-                resp = self._make_request(client, "v2/forecast", payload)
+                resp = self._make_request_with_retries(client, "v2/forecast", payload)
                 if add_history:
                     in_sample_payload = self._forecast_payload_to_in_sample(payload)
                     logger.info("Calling Historical Forecast Endpoint...")
-                    in_sample_resp = self._make_request(
+                    in_sample_resp = self._make_request_with_retries(
                         client,
                         "v2/historic_forecast",
                         in_sample_payload,
@@ -912,10 +996,11 @@ class NixtlaClient:
             "clean_ex_first": clean_ex_first,
             "level": level,
         }
-        with httpx.Client(**self._client_kwargs) as httpx_client:
-            client = HttpClient(httpx_client=httpx_client)
+        with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
-                resp = self._make_request(client, "v2/anomaly_detection", payload)
+                resp = self._make_request_with_retries(
+                    client, "v2/anomaly_detection", payload
+                )
             else:
                 payloads = self._partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
@@ -1061,7 +1146,7 @@ class NixtlaClient:
         times = df[time_col].to_numpy()
         if processed.sort_idxs is not None:
             times = times[processed.sort_idxs]
-        restrict_input = finetune_steps == 0 and x_cols
+        restrict_input = finetune_steps == 0 and not x_cols
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -1096,10 +1181,11 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_loss": finetune_loss,
         }
-        with httpx.Client(**self._client_kwargs) as httpx_client:
-            client = HttpClient(httpx_client=httpx_client)
+        with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
-                resp = self._make_request(client, "v2/cross_validation", payload)
+                resp = self._make_request_with_retries(
+                    client, "v2/cross_validation", payload
+                )
             else:
                 payloads = self._partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
@@ -1114,6 +1200,8 @@ class NixtlaClient:
             h=h,
             test_size=h + step_size * (n_windows - 1),
             step_size=step_size,
+            id_col=id_col,
+            time_col=time_col,
         )
         out = ufp.sort(out, by=[id_col, "cutoff", time_col])
         out = ufp.assign_columns(out, "y", resp["y"])
