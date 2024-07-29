@@ -39,7 +39,7 @@ jobs:
 
       - name: Set up QEMU
         if: matrix.platform-id == 'manylinux_aarch64'
-        uses: docker/setup-qemu-action@5927c834f5b4fdf503fca6f4c7eccda82949e1ee # v3.1.0
+        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3.2.0
         with:
           platforms: arm64
 
@@ -104,7 +104,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev]" pytest-codspeed
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@a58b84c0b61569a9cbb7cfb378cc849d65cf1ce5 # 2.4.3
+        uses: CodSpeedHQ/action@ab07afd34cbbb7a1306e8d14b7cc44e029eee37a # 3.0.0
         with:
           token: ${{ secrets.CODESPEED_TOKEN }}
           run: pytest tests/test_efficiency.py --codspeed
