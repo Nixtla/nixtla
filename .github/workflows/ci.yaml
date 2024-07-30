@@ -66,4 +66,4 @@ jobs:
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --file_re "computing_at_scale|distributed" --timing
+        run: nbdev_test --file_re "computing_at_scale|distributed" --timing --flags 'distributed'

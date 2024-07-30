@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
 from fastcore.basics import patch
+from httpcore import RemoteProtocolError
 from pydantic import NonNegativeInt, PositiveInt
 from tenacity import (
     RetryCallState,
@@ -106,14 +107,15 @@ _date_features_by_freq = {
 
 def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     def should_retry(exc: Exception) -> bool:
-        timeout_exceptions = (
+        retriable_exceptions = [
             httpx.ReadTimeout,
             httpx.WriteTimeout,
             httpx.ConnectTimeout,
             httpx.PoolTimeout,
-        )
+            RemoteProtocolError,
+        ]
         retriable_codes = [408, 409, 429, 502, 503, 504]
-        return isinstance(exc, timeout_exceptions) or (
+        return isinstance(exc, retriable_exceptions) or (
             isinstance(exc, ApiError) and exc.status_code in retriable_codes
         )
 
@@ -159,8 +161,8 @@ def _maybe_infer_freq(
     if freq is not None:
         # check we have the same base frequency
         # except when we have yearly frequency (A, and Y means the same)
-        if (freq != inferred_freq[0] and freq != "Y") or (
-            freq == "Y" and inferred_freq[0] != "A"
+        if (freq[0] != inferred_freq[0] and freq[0] not in ("A", "Y")) or (
+            freq[0] in ("A", "Y") and inferred_freq[0] not in ("A", "Y")
         ):
             raise RuntimeError(
                 f"Failed to infer special date, inferred freq {inferred_freq}"
@@ -423,7 +425,7 @@ def _forecast_payload_to_in_sample(payload):
     in_sample_payload = {
         k: v
         for k, v in payload.items()
-        if k not in ("h", "finetune_steps", "finetune_Loss")
+        if k not in ("h", "finetune_steps", "finetune_loss")
     }
     del in_sample_payload["series"]["X_future"]
     return in_sample_payload
@@ -709,7 +711,7 @@ class NixtlaClient:
         level: Optional[List[Union[int, float]]] = None,
         quantiles: Optional[List[float]] = None,
         finetune_steps: NonNegativeInt = 0,
-        finetune_Loss: _Loss = "default",
+        finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
         validate_api_key: bool = False,
         add_history: bool = False,
@@ -759,7 +761,7 @@ class NixtlaClient:
         finetune_steps : int (default=0)
             Number of steps used to finetune learning TimeGPT in the
             new data.
-        finetune_Loss : str (default='default')
+        finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts using TimeGPT.
@@ -804,7 +806,7 @@ class NixtlaClient:
                 level=level,
                 quantiles=quantiles,
                 finetune_steps=finetune_steps,
-                finetune_Loss=finetune_Loss,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
@@ -882,7 +884,7 @@ class NixtlaClient:
             "clean_ex_first": clean_ex_first,
             "level": level,
             "finetune_steps": finetune_steps,
-            "finetune_Loss": finetune_Loss,
+            "finetune_loss": finetune_loss,
         }
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -1106,7 +1108,7 @@ class NixtlaClient:
         n_windows: PositiveInt = 1,
         step_size: Optional[PositiveInt] = None,
         finetune_steps: NonNegativeInt = 0,
-        finetune_Loss: str = "default",
+        finetune_loss: str = "default",
         clean_ex_first: bool = True,
         date_features: Union[bool, List[str]] = False,
         date_features_to_one_hot: Union[bool, List[str]] = False,
@@ -1158,7 +1160,7 @@ class NixtlaClient:
         finetune_steps : int (default=0)
             Number of steps used to finetune TimeGPT in the
             new data.
-        finetune_Loss : str (default='default')
+        finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
@@ -1201,7 +1203,7 @@ class NixtlaClient:
                 step_size=step_size,
                 validate_api_key=validate_api_key,
                 finetune_steps=finetune_steps,
-                finetune_Loss=finetune_Loss,
+                finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
@@ -1273,7 +1275,7 @@ class NixtlaClient:
             "clean_ex_first": clean_ex_first,
             "level": level,
             "finetune_steps": finetune_steps,
-            "finetune_Loss": finetune_Loss,
+            "finetune_loss": finetune_loss,
         }
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -1421,7 +1423,7 @@ def _forecast_wrapper(
     level: Optional[List[Union[int, float]]],
     quantiles: Optional[List[float]],
     finetune_steps: NonNegativeInt,
-    finetune_Loss: _Loss,
+    finetune_loss: _Loss,
     clean_ex_first: bool,
     validate_api_key: bool,
     add_history: bool,
@@ -1447,7 +1449,7 @@ def _forecast_wrapper(
         level=level,
         quantiles=quantiles,
         finetune_steps=finetune_steps,
-        finetune_Loss=finetune_Loss,
+        finetune_loss=finetune_loss,
         clean_ex_first=clean_ex_first,
         validate_api_key=validate_api_key,
         add_history=add_history,
@@ -1503,7 +1505,7 @@ def _cross_validation_wrapper(
     n_windows: PositiveInt,
     step_size: Optional[PositiveInt],
     finetune_steps: NonNegativeInt,
-    finetune_Loss: str,
+    finetune_loss: str,
     clean_ex_first: bool,
     date_features: Union[bool, List[str]],
     date_features_to_one_hot: Union[bool, List[str]],
@@ -1523,7 +1525,7 @@ def _cross_validation_wrapper(
         n_windows=n_windows,
         step_size=step_size,
         finetune_steps=finetune_steps,
-        finetune_Loss=finetune_Loss,
+        finetune_loss=finetune_loss,
         clean_ex_first=clean_ex_first,
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
@@ -1612,7 +1614,7 @@ def _distributed_forecast(
     level: Optional[List[Union[int, float]]],
     quantiles: Optional[List[float]],
     finetune_steps: NonNegativeInt,
-    finetune_Loss: _Loss,
+    finetune_loss: _Loss,
     clean_ex_first: bool,
     validate_api_key: bool,
     add_history: bool,
@@ -1652,7 +1654,7 @@ def _distributed_forecast(
             level=level,
             quantiles=quantiles,
             finetune_steps=finetune_steps,
-            finetune_Loss=finetune_Loss,
+            finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
             validate_api_key=validate_api_key,
             add_history=add_history,
@@ -1732,7 +1734,7 @@ def _distributed_cross_validation(
     n_windows: PositiveInt,
     step_size: Optional[PositiveInt],
     finetune_steps: NonNegativeInt,
-    finetune_Loss: _Loss,
+    finetune_loss: _Loss,
     clean_ex_first: bool,
     date_features: Union[bool, List[Union[str, Callable]]],
     date_features_to_one_hot: Union[bool, List[str]],
@@ -1768,7 +1770,7 @@ def _distributed_cross_validation(
             n_windows=n_windows,
             step_size=step_size,
             finetune_steps=finetune_steps,
-            finetune_Loss=finetune_Loss,
+            finetune_loss=finetune_loss,
             clean_ex_first=clean_ex_first,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
