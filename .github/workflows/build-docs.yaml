@@ -28,7 +28,7 @@ jobs:
       - name: Build docs
         run: |
           set -ux
-          pip install uv && uv pip install --system ".[dev]"
+          pip install uv && uv pip install --system ".[dev]" nbdev_plotly
           mkdir nbs/_extensions
           cp -r docs-scripts/mintlify/ nbs/_extensions/
           python docs-scripts/update-quarto.py

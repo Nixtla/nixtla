@@ -57,9 +57,10 @@ jobs:
       - name: Install pip requirements
         run: pip install uv && uv pip install --system -e ".[dev]"
 
-      - name: Run tests
-        run: nbdev_test --skip_file_re "computing_at_scale|distributed" --timing
+      - name: Run local tests
+        if: matrix.os != 'ubuntu-latest'
+        run: nbdev_test --skip_file_re "computing_at_scale|distributed" --timing --do_print
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --file_re "computing_at_scale|distributed" --timing --flags 'distributed'
+        run: nbdev_test --timing --do_print --flags 'distributed'
