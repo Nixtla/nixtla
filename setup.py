@@ -18,8 +18,8 @@ dev = [
     "jupyterlab",
     "setuptools<70",
 ]
-distributed = ["dask[dataframe]", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
-plotting = ["utilsforecast[plotting]>=0.1.12"]
+distributed = ["dask[dataframe]", "dask-sql", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
+plotting = ["utilsforecast[plotting]>=0.2.2"]
 date_extras = ["holidays"]
 
 setuptools.setup(
@@ -43,7 +43,7 @@ setuptools.setup(
         "requests",
         "tenacity",
         "tqdm",
-        "utilsforecast>=0.1.12",
+        "utilsforecast>=0.2.2",
     ],
     extras_require={
         "dev": dev + distributed + plotting + date_extras,
