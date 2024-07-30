@@ -1640,7 +1640,7 @@ def _distributed_forecast(
         X_df = fa.assign(X_df, _in_sample=False, **{target_col: 0.0})
         X_df = fa.select(X_df, *fa.get_column_names(df))
         df = fa.union(df, X_df)
-    return fa.transform(
+    result_df = fa.transform(
         df,
         using=_forecast_wrapper,
         schema=schema,
@@ -1666,6 +1666,7 @@ def _distributed_forecast(
         partition=partition_config,
         as_fugue=True,
     )
+    return fa.get_native_as_df(result_df)
 
 
 @patch
@@ -1684,7 +1685,7 @@ def _distributed_detect_anomalies(
     model: str,
     num_partitions: Optional[int],
 ):
-    from fugue import transform
+    import fugue.api as fa
 
     schema, partition_config = _distributed_setup(
         df=df,
@@ -1696,7 +1697,7 @@ def _distributed_detect_anomalies(
         quantiles=None,
         num_partitions=num_partitions,
     )
-    return transform(
+    result_df = fa.transform(
         df,
         using=_detect_anomalies_wrapper,
         schema=schema,
@@ -1717,6 +1718,7 @@ def _distributed_detect_anomalies(
         partition=partition_config,
         as_fugue=True,
     )
+    return fa.get_native_as_df(result_df)
 
 
 @patch
@@ -1741,7 +1743,7 @@ def _distributed_cross_validation(
     model: _Model,
     num_partitions: Optional[int],
 ) -> "fugue.AnyDataFrame":
-    from fugue import transform
+    import fugue.api as fa
 
     schema, partition_config = _distributed_setup(
         df=df,
@@ -1753,7 +1755,7 @@ def _distributed_cross_validation(
         quantiles=quantiles,
         num_partitions=num_partitions,
     )
-    return transform(
+    result_df = fa.transform(
         df,
         using=_cross_validation_wrapper,
         schema=schema,
@@ -1780,3 +1782,4 @@ def _distributed_cross_validation(
         partition=partition_config,
         as_fugue=True,
     )
+    return fa.get_native_as_df(result_df)

@@ -6,6 +6,10 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-docs:
     runs-on: ubuntu-latest
@@ -20,11 +24,15 @@ jobs:
           path: docs-scripts
       - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
-          python-version: "3.10"
+          cache: "pip"
+          python-version: '3.10'
+          cache-dependency-path: settings.ini
       - name: Build docs
         run: |
           set -ux
-          pip install uv && uv pip install --system ".[dev]" nbdev_plotly
+          python -m pip install --upgrade pip
+          pip install -Uq nbdev nbdev_plotly
+          pip install -e ".[dev]"
           mkdir nbs/_extensions
           cp -r docs-scripts/mintlify/ nbs/_extensions/
           python docs-scripts/update-quarto.py
