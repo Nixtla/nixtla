@@ -195,7 +195,6 @@ class Experiment:
             cv_df.append(cv_model_df.set_index([self.id_col, self.time_col, "cutoff"]))
         eval_df = pd.concat(eval_df, axis=1).reset_index()
         cv_df = pd.concat(cv_df, axis=1).reset_index()
-        cv_df[self.time_col] = cv_df[self.time_col].astype(str)
         if not self.has_id_col:
             cv_df = cv_df.drop(columns=[self.id_col])
         return eval_df, cv_df.drop(columns=[self.target_col, "cutoff"])
