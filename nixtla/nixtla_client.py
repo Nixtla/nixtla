@@ -1434,9 +1434,9 @@ def _forecast_wrapper(
     num_partitions: Optional[PositiveInt],
 ) -> pd.DataFrame:
     if "_in_sample" in df:
-        in_sample_mask = df["_in_sample"].to_numpy()
-        X_df = df[~in_sample_mask].drop(columns=["_in_sample", target_col])
-        df = df[in_sample_mask].drop(columns="_in_sample")
+        in_sample_mask = df["_in_sample"]
+        X_df = df.loc[~in_sample_mask].drop(columns=["_in_sample", target_col])
+        df = df.loc[in_sample_mask].drop(columns="_in_sample")
     else:
         X_df = None
     return client.forecast(
