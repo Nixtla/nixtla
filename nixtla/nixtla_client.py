@@ -651,6 +651,7 @@ class NixtlaClient:
             df=df, id_col=id_col, time_col=time_col, target_col=target_col
         )
         if X_df is not None:
+            X_df = ensure_time_dtype(X_df, time_col=time_col)
             processed_X = ufp.process_df(
                 df=X_df,
                 id_col=id_col,
