@@ -45,7 +45,6 @@ if TYPE_CHECKING:
     import triad
 
 from .core.api_error import ApiError
-from .utils import _restrict_input_samples
 
 # %% ../nbs/nixtla_client.ipynb 4
 logging.basicConfig(level=logging.INFO)
@@ -473,6 +472,24 @@ def _parse_in_sample_output(
         }
     )
     return _maybe_add_intervals(out, in_sample_output["intervals"])
+
+
+def _restrict_input_samples(level, input_size, model_horizon, h) -> int:
+    if level is not None:
+        # add sufficient info to compute
+        # conformal interval
+        # @AzulGarza
+        #  this is an old opinionated decision
+        #  about reducing the data sent to the api
+        #  to reduce latency when
+        #  a user passes level. since currently the model
+        #  uses conformal prediction, we can change a minimum
+        #  amount of data if the series are too large
+        new_input_size = 3 * input_size + max(model_horizon, h)
+    else:
+        # we only want to forecast
+        new_input_size = input_size
+    return new_input_size
 
 # %% ../nbs/nixtla_client.ipynb 8
 class NixtlaClient:

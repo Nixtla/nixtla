@@ -37,6 +37,7 @@ setuptools.setup(
     ],
     python_requires=">=3.8",
     install_requires=[
+        "fastcore",
         "httpx",
         "pandas",
         "pydantic",
