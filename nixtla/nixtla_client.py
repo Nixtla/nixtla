@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
 from fastcore.basics import patch
-from httpcore import RemoteProtocolError
+from httpcore import ConnectError, RemoteProtocolError
 from pydantic import NonNegativeInt, PositiveInt
 from tenacity import (
     RetryCallState,
@@ -112,6 +112,7 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
             httpx.WriteTimeout,
             httpx.ConnectTimeout,
             httpx.PoolTimeout,
+            ConnectError,
             RemoteProtocolError,
         )
         retriable_codes = [408, 409, 429, 502, 503, 504]
