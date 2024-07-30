@@ -65,7 +65,7 @@ jobs:
 
       - name: Run local tests
         if: matrix.os != 'ubuntu-latest'
-        run: nbdev_test --timing --do_print --n_workers 0 --skip_file_re "computing_at_scale|distributed"
+        run: nbdev_test --timing --do_print --skip_file_re "computing_at_scale|distributed"
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'

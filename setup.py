@@ -18,7 +18,7 @@ dev = [
     "setuptools<70",
     "statsforecast",
 ]
-distributed = ["dask[dataframe]", "dask-sql", "fugue[ray]>=0.8.7", "pyspark"]
+distributed = ["dask-sql", "fugue[dask,ray,spark,sql]>=0.8.7"]
 plotting = ["utilsforecast[plotting]>=0.2.2"]
 date_extras = ["holidays"]
 
