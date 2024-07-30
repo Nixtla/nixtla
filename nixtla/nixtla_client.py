@@ -112,6 +112,7 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
             httpcore.RemoteProtocolError,
             httpx.ConnectTimeout,
             httpx.ReadError,
+            httpx.RemoteProtocolError,
             httpx.ReadTimeout,
             httpx.PoolTimeout,
             httpx.WriteError,
@@ -1639,9 +1640,24 @@ def _distributed_forecast(
         num_partitions=num_partitions,
     )
     if X_df is not None:
-        df = fa.assign(df, _in_sample=True)
-        X_df = fa.assign(X_df, _in_sample=False, **{target_col: 0.0})
-        X_df = fa.select(X_df, *fa.get_column_names(df))
+
+        def format_df(df: pd.DataFrame) -> pd.DataFrame:
+            return df.assign(_in_sample=True)
+
+        def format_X_df(
+            X_df: pd.DataFrame,
+            target_col: str,
+            df_cols: List[str],
+        ) -> pd.DataFrame:
+            return X_df.assign(**{"_in_sample": False, target_col: 0.0})[df_cols]
+
+        df = fa.transform(df, format_df, schema="*,_in_sample:bool")
+        X_df = fa.transform(
+            X_df,
+            format_X_df,
+            schema=fa.get_schema(df),
+            params={"target_col": target_col, "df_cols": fa.get_column_names(df)},
+        )
         df = fa.union(df, X_df)
     result_df = fa.transform(
         df,

@@ -58,7 +58,7 @@ jobs:
         with:
           environment-file: environment.yml
           create-args: python=${{ matrix.python-version }}
-          cache-environment: true
+          cache-environment: ${{ matrix.os }} != 'windows-latest'
 
       - name: Install pip requirements
         run: pip install -e ".[dev]"
@@ -69,4 +69,6 @@ jobs:
 
       - name: Run tests with distributed (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: nbdev_test --timing --do_print --n_workers 0 --flags 'distributed'
+        run: |
+          pip install ".[distributed]"
+          nbdev_test --timing --do_print --n_workers 0 --flags 'distributed'

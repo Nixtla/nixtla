@@ -18,7 +18,7 @@ dev = [
     "setuptools<70",
     "statsforecast",
 ]
-distributed = ["dask-sql", "fugue[dask,ray,spark,sql]>=0.8.7"]
+distributed = ["fugue[dask,ray,spark]>=0.8.7"]
 plotting = ["utilsforecast[plotting]>=0.2.2"]
 date_extras = ["holidays"]
 
@@ -46,7 +46,7 @@ setuptools.setup(
         "utilsforecast>=0.2.2",
     ],
     extras_require={
-        "dev": dev + distributed + plotting + date_extras,
+        "dev": dev + plotting + date_extras,
         "distributed": distributed,
         "plotting": plotting,
         "date_extras": date_extras,
