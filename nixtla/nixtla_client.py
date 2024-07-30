@@ -107,13 +107,13 @@ _date_features_by_freq = {
 
 def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     def should_retry(exc: Exception) -> bool:
-        retriable_exceptions = [
+        retriable_exceptions = (
             httpx.ReadTimeout,
             httpx.WriteTimeout,
             httpx.ConnectTimeout,
             httpx.PoolTimeout,
             RemoteProtocolError,
-        ]
+        )
         retriable_codes = [408, 409, 429, 502, 503, 504]
         return isinstance(exc, retriable_exceptions) or (
             isinstance(exc, ApiError) and exc.status_code in retriable_codes
