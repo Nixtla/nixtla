@@ -6,6 +6,7 @@ __all__ = ['fill_gaps']
 # %% ../nbs/preprocessing.ipynb 2
 import warnings
 from datetime import date, datetime
+from functools import partial
 from typing import Union
 
 import numpy as np
@@ -13,7 +14,7 @@ import pandas as pd
 
 from .compat import DataFrame, pl, pl_DataFrame, pl_Series
 from .processing import group_by, repeat
-from .validation import _is_int_dtype
+from .validation import _is_int_dtype, ensure_time_dtype
 
 # %% ../nbs/preprocessing.ipynb 4
 def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
@@ -91,6 +92,7 @@ def fill_gaps(
     filled_df : pandas or polars DataFrame
         Dataframe with gaps filled.
     """
+    ensure_time_dtype(df, time_col=time_col)
     if isinstance(df, pl_DataFrame):
         times_by_id = (
             group_by(df, id_col)
@@ -113,7 +115,10 @@ def fill_gaps(
             if starts.dtype == pl.Date:
                 ranges_fn = pl.date_ranges
             else:
-                ranges_fn = pl.datetime_ranges
+                ranges_fn = partial(
+                    pl.datetime_ranges,
+                    time_unit=df.schema[time_col].time_unit,
+                )
             grid = grid.with_columns(
                 ranges_fn(
                     starts,
