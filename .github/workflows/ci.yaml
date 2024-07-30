@@ -58,7 +58,7 @@ jobs:
         with:
           environment-file: environment.yml
           create-args: python=${{ matrix.python-version }}
-          cache-environment: ${{ matrix.os }} != 'windows-latest'
+          cache-environment: true
 
       - name: Install pip requirements
         run: pip install -e ".[dev]"
