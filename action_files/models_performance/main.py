@@ -254,6 +254,7 @@ class ExperimentConfig:
             time_col = experiment.get("time_col", "ds")
             target_col = experiment.get("target_col", "y")
             season_length = experiment["season_length"]
+            df[id_col] = pd.to_datetime(df[id_col])
             # list parameters
             # we will iterate over this parameters
             horizons = experiment["h"]
