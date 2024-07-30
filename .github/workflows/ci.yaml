@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.9, '3.10']
+        python-version: ["3.9", "3.10"]
     steps:
       - name: Clone repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -66,12 +66,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-13, windows-latest]
-        python-version: [3.9, '3.10']
+        python-version: ["3.9", "3.10"]
     env:
-      NIXTLA_API_KEY: ${{ secrets.NIXTLA_API_KEY }}
-      NIXTLA_BASE_URL: ${{ secrets.NIXTLA_BASE_URL }}
-      NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
-      NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
+      NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
+      NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+      NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_DEV_API_KEY }}
+      NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_DEV_BASE_URL }}
       API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
     steps:
       - name: Clone repo
