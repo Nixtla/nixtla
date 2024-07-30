@@ -21,12 +21,12 @@ from typing import (
     Union,
 )
 
+import httpcore
 import httpx
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
 from fastcore.basics import patch
-from httpcore import ConnectError, RemoteProtocolError
 from pydantic import NonNegativeInt, PositiveInt
 from tenacity import (
     RetryCallState,
@@ -108,12 +108,14 @@ _date_features_by_freq = {
 def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     def should_retry(exc: Exception) -> bool:
         retriable_exceptions = (
-            httpx.ReadTimeout,
-            httpx.WriteTimeout,
+            httpcore.ConnectError,
+            httpcore.RemoteProtocolError,
             httpx.ConnectTimeout,
+            httpx.ReadError,
+            httpx.ReadTimeout,
             httpx.PoolTimeout,
-            ConnectError,
-            RemoteProtocolError,
+            httpx.WriteError,
+            httpx.WriteTimeout,
         )
         retriable_codes = [408, 409, 429, 502, 503, 504]
         return isinstance(exc, retriable_exceptions) or (
