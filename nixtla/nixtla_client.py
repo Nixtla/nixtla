@@ -37,7 +37,7 @@ from tenacity import (
 )
 from utilsforecast.compat import DataFrame, pl_DataFrame
 from utilsforecast.feature_engineering import _add_time_features, time_features
-from utilsforecast.validation import validate_format, validate_freq
+from utilsforecast.validation import ensure_time_dtype, validate_format, validate_freq
 
 if TYPE_CHECKING:
     import fugue
@@ -118,7 +118,7 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
         )
 
     def after_retry(retry_state: RetryCallState) -> None:
-        error = retry_state.outcome.exception().body
+        error = retry_state.outcome.exception()
         logger.error(f"Attempt {retry_state.attempt_number} failed with error: {error}")
 
     return retry(
@@ -318,10 +318,7 @@ class NixtlaClient:
         if (out_sizes > np.diff(indptr)).any():
             raise ValueError("out_sizes must be at most the original sizes.")
         idxs = np.hstack(
-            [
-                np.arange(end - size, end)
-                for end, size in zip(indptr[1:], out_sizes, strict=True)
-            ]
+            [np.arange(end - size, end) for end, size in zip(indptr[1:], out_sizes)]
         )
         return x[idxs]
 
@@ -619,6 +616,7 @@ class NixtlaClient:
         ):
             df.index.name = time_col
             df = df.reset_index()
+        df = ensure_time_dtype(df, time_col=time_col)
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
         if ufp.is_nan_or_none(df[target_col]).any():
             raise ValueError(
@@ -1717,9 +1715,12 @@ class NixtlaClient:
         if df is not None and id_col not in df.columns:
             df = ufp.copy_if_pandas(df, deep=False)
             df = ufp.assign_columns(df, id_col, "ts_0")
+        df = ensure_time_dtype(df, time_col=time_col)
         if forecasts_df is not None:
-            forecasts_df = ufp.copy_if_pandas(forecasts_df, deep=False)
-            forecasts_df = ufp.assign_columns(forecasts_df, id_col, "ts_0")
+            if id_col not in forecasts_df.columns:
+                forecasts_df = ufp.copy_if_pandas(forecasts_df, deep=False)
+                forecasts_df = ufp.assign_columns(forecasts_df, id_col, "ts_0")
+            forecasts_df = ensure_time_dtype(forecasts_df, time_col=time_col)
             if "anomaly" in forecasts_df.columns:
                 # special case to plot outputs
                 # from detect_anomalies
