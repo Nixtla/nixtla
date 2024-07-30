@@ -6,19 +6,19 @@ with open("README.md", "r", encoding="utf8") as fh:
 dev = [
     "black",
     "datasetsforecast",
+    "hierarchicalforecast",
+    "jupyterlab",
     "nbdev",
+    "neuralforecast",
     "plotly",
     "polars",
     "pre-commit",
-    "python-dotenv",
     "pyreadr",
-    "statsforecast",
-    "neuralforecast",
-    "hierarchicalforecast",
-    "jupyterlab",
+    "python-dotenv",
     "setuptools<70",
+    "statsforecast",
 ]
-distributed = ["dask[dataframe]", "dask-sql", "fugue[ray]>=0.8.7", "pyspark", "ray[serve-grpc]"]
+distributed = ["dask[dataframe]", "dask-sql", "fugue[ray]>=0.8.7", "pyspark"]
 plotting = ["utilsforecast[plotting]>=0.2.2"]
 date_extras = ["holidays"]
 
@@ -41,7 +41,6 @@ setuptools.setup(
         "httpx",
         "pandas",
         "pydantic",
-        "requests",
         "tenacity",
         "tqdm",
         "utilsforecast>=0.2.2",
