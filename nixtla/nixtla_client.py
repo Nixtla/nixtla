@@ -156,7 +156,7 @@ def _maybe_infer_freq(
     times = df.loc[df[id_col] == sizes.index[0], time_col].sort_values()
     if times.dt.tz is not None:
         times = times.dt.tz_convert("UTC").dt.tz_localize(None)
-    inferred_freq = pd.infer_freq(times)
+    inferred_freq = pd.infer_freq(times.values)
     if inferred_freq is None:
         raise RuntimeError(
             "Could not infer the frequency of the time column. This could be due "
