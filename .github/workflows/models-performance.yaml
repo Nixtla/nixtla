@@ -30,7 +30,7 @@ jobs:
           python-version: "3.10"
 
       - name: Install pip requirements
-        run: pip install uv && uv pip install --system '.[plotting]'
+        run: pip install uv && uv pip install --system '.[plotting]' PyYAML
 
       - name: Run evaluation
         run: python -m action_files.models_performance.main

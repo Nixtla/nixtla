@@ -15,7 +15,6 @@ dev = [
     "pre-commit",
     "pyreadr",
     "python-dotenv",
-    "PyYAML",
     "setuptools<70",
     "statsforecast",
 ]
