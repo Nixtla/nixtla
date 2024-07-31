@@ -17,8 +17,6 @@ concurrency:
 jobs:
   run-models-performance:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     env:
       NIXTLA_API_KEY: ${{ secrets.NIXTLA_API_KEY }}
       PLOTS_REPO_URL: https://github.com/Nixtla/nixtla/blob/docs-figs-model-performance
@@ -26,12 +24,11 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-      - name: Set up environment
-        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 # v1.9.0
+      - name: Set up python
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
-          environment-file: environment.yml
-          create-args: python=3.9
-          cache-environment: true
+          python-version: "3.10"
+          cache: "pip"
 
       - name: Install pip requirements
         run: pip install '.[plotting]'
