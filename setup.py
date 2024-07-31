@@ -10,11 +10,13 @@ dev = [
     "jupyterlab",
     "nbdev",
     "neuralforecast",
+    "pandas<2.2",
     "plotly",
     "polars",
     "pre-commit",
     "pyreadr",
     "python-dotenv",
+    "ray<2.6.3",
     "setuptools<70",
     "statsforecast",
 ]

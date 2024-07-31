@@ -26,3 +26,5 @@ nbs/.last_checked
 */summary.md
 */*.png
 longhorizon
+data
+*.rda
