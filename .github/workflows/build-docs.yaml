@@ -23,7 +23,7 @@ jobs:
           python-version: "3.10"
       - name: Build docs
         run: |
-          pip install uv && uv pip install --system ".[dev,distributed]" nbdev_plotly
+          pip install uv && uv pip install --system -e ".[dev,distributed]" nbdev_plotly
           mkdir nbs/_extensions
           cp -r docs-scripts/mintlify/ nbs/_extensions/
           python docs-scripts/update-quarto.py
