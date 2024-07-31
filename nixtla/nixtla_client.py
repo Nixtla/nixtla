@@ -108,6 +108,7 @@ _date_features_by_freq = {
 def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     def should_retry(exc: Exception) -> bool:
         retriable_exceptions = (
+            ConnectionResetError,
             httpcore.ConnectError,
             httpcore.RemoteProtocolError,
             httpx.ConnectTimeout,
