@@ -32,19 +32,10 @@ Bug fixes and features are added through pull requests (PRs).
 * SSH: `git clone git@github.com:Nixtla/nixtla.git`
 * GitHub CLI: `gh repo clone Nixtla/nixtla`
 
-#### Set up a conda environment
-The repo comes with an `environment.yml` file which contains the libraries needed to run all the tests. In order to set up the environment you must have `conda` installed, we recommend [miniconda](https://docs.conda.io/en/latest/miniconda.html).
-
-Once you have `conda` go to the top level directory of the repository and run the following lines (we recommend to use `python=3.10` for development):
-
-```
-conda create -n nixtla python=3.10
-conda activate nixtla
-conda env update -f environment.yml
-```
-
-#### Install the library
-Once you have your environment setup, activate it using `conda activate nixtla` and then install the library in editable mode using `pip install -e ".[dev]"`
+#### Set up an environment
+Create a virtual environment to install the library's dependencies. We recommend [astral's uv](https://github.com/astral-sh/uv).
+Once you've created the virtual environment you should activate it and then install the library in editable mode along with its
+development dependencies with the following command: `uv pip install -e ".[dev]"`
 
 #### Set Up TimeGPT token
 This library uses `python-dotenv` for development. To set up your TimeGPT token, add the following lines to your `.env` file:
@@ -72,7 +63,7 @@ nbdev_export
 ```
 
 ### Running tests
-If you're working on the local interface you can just use `nbdev_test --n_workers 1 --do_print --timing`. 
+If you're working on the local interface you can just use `nbdev_test --n_workers 1 --do_print --timing`.
 
 ### Cleaning notebooks
 Since the notebooks output cells can vary from run to run (even if they produce the same outputs) the notebooks are cleaned before committing them. Please make sure to run `nbdev_clean ` before committing your changes.
@@ -86,4 +77,3 @@ Since the notebooks output cells can vary from run to run (even if they produce 
     3. Run all cells.
     5. Run `nbdev_preview`.
     6. Clean the notebook metadata using `nbdev_clean`.
-

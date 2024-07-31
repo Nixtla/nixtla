@@ -10,17 +10,15 @@ dev = [
     "jupyterlab",
     "nbdev",
     "neuralforecast",
-    "pandas<2.2",
     "plotly",
     "polars",
     "pre-commit",
     "pyreadr",
     "python-dotenv",
-    "ray<2.6.3",
     "setuptools<70",
     "statsforecast",
 ]
-distributed = ["fugue[dask,ray,spark]>=0.8.7"]
+distributed = ["fugue[dask,ray,spark]>=0.8.7", "pandas<2.2", "ray<2.6.3"]
 plotting = ["utilsforecast[plotting]>=0.2.2"]
 date_extras = ["holidays"]
 
