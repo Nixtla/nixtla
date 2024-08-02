@@ -27,7 +27,7 @@ body:
     attributes:
       label: Versions / Dependencies
       description: Please specify the versions of the library, Python, OS, and other libraries that are used.
-      placeholder: >
+      value: >
         <details><summary>Click to expand</summary>
         Dependencies:
 
@@ -41,7 +41,7 @@ body:
       description: >
         Please provide a reproducible script. Providing a simple way to reproduce the issue
         (minimal / no external dependencies) will help us triage and address issues in the timely manner!
-      placeholder: >
+      value: >
         ```python
         # paste your code here
         ```
