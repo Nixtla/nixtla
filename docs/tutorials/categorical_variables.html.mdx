@@ -63,7 +63,8 @@ First, we load the data using `datasetsforecast`. This returns:
 
 ```python
 Y_df, X_df, _ = M5.load(directory=os.getcwd())
-
+Y_df['ds'] = pd.to_datetime(Y_df['ds'])
+X_df['ds'] = pd.to_datetime(X_df['ds'])
 Y_df.head(10)
 ```
 
@@ -352,7 +353,6 @@ from utilsforecast.losses import mae
 ```python
 # Create target dataframe
 df_target = df[['unique_id', 'ds', 'y']].query("ds >= '2016-02-01' & ds <= '2016-02-07'")
-df_target['ds'] = df_target['ds'].astype(str)
 
 # Rename forecast columns
 timegpt_fcst_without_cat_vars_df = timegpt_fcst_without_cat_vars_df.rename(columns={'TimeGPT': 'TimeGPT-without-cat-vars'})

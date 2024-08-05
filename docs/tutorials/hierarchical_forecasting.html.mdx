@@ -218,7 +218,6 @@ reconcilers = [
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
 
 Y_df_with_insample_fcsts = Y_df.copy()
-Y_df_with_insample_fcsts['ds'] = Y_df_with_insample_fcsts['ds'].astype(str)
 Y_df_with_insample_fcsts = timegpt_fcst_insample.merge(Y_df_with_insample_fcsts)
 Y_df_with_insample_fcsts = Y_df_with_insample_fcsts.set_index('unique_id')
 

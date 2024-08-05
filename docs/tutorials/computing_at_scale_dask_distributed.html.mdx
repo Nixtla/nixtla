@@ -51,7 +51,10 @@ import pandas as pd
 
 
 ```python
-df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv') 
+df = pd.read_csv(
+    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv',
+    parse_dates=['ds'],
+) 
 df.head()
 ```
 
