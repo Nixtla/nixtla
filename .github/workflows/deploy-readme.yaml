@@ -24,12 +24,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up environment
-        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 # v1.9.0
+      - name: Set up python
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # 5.1.1
         with:
-          environment-file: environment.yml
-          create-args: python=3.9
-          cache-environment: true
+          python-version: "3.10"
 
       - name: Install pip requirements
         run: pip install ./
