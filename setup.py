@@ -6,6 +6,7 @@ with open("README.md", "r", encoding="utf8") as fh:
 dev = [
     "black",
     "datasetsforecast",
+    "fire",
     "hierarchicalforecast",
     "jupyterlab",
     "nbdev",
