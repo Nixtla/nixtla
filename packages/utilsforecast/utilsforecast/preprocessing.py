@@ -12,7 +12,7 @@ from typing import Union
 import numpy as np
 import pandas as pd
 
-from .compat import DataFrame, pl, pl_DataFrame, pl_Series
+from .compat import DFType, pl, pl_DataFrame, pl_Series
 from .processing import group_by, repeat
 from .validation import _is_int_dtype, validate_format
 
@@ -57,13 +57,13 @@ def _determine_bound_pl(
 
 # %% ../nbs/preprocessing.ipynb 6
 def fill_gaps(
-    df: DataFrame,
+    df: DFType,
     freq: Union[str, int],
     start: Union[str, int, date, datetime] = "per_serie",
     end: Union[str, int, date, datetime] = "global",
     id_col: str = "unique_id",
     time_col: str = "ds",
-) -> pd.DataFrame:
+) -> DFType:
     """Enforce start and end datetimes for dataframe.
 
     Parameters

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 import utilsforecast.processing as ufp
-from .compat import DataFrame, pl, pl_DataFrame, pl_Expr
+from .compat import DFType, DataFrame, pl, pl_DataFrame, pl_Expr
 from .validation import validate_format, validate_freq
 
 # %% ../nbs/feature_engineering.ipynb 4
@@ -19,13 +19,13 @@ _Features = Tuple[List[str], np.ndarray, np.ndarray]
 
 
 def _add_features(
-    df: DataFrame,
+    df: DFType,
     freq: str,
     h: int,
     id_col: str,
     time_col: str,
     f: Callable[[np.ndarray, int], _Features],
-) -> Tuple[DataFrame, DataFrame]:
+) -> Tuple[DFType, DFType]:
     # validations
     if not isinstance(h, int) or h < 0:
         raise ValueError("`h` must be a non-negative integer")
@@ -109,14 +109,14 @@ def _trend(sizes: np.ndarray, h: int) -> _Features:
 
 # %% ../nbs/feature_engineering.ipynb 5
 def fourier(
-    df: DataFrame,
+    df: DFType,
     freq: str,
     season_length: int,
     k: int,
     h: int = 0,
     id_col: str = "unique_id",
     time_col: str = "ds",
-) -> Tuple[DataFrame, DataFrame]:
+) -> Tuple[DFType, DFType]:
     """Compute fourier seasonal terms for training and forecasting
 
     Parameters
@@ -155,12 +155,12 @@ def fourier(
 
 # %% ../nbs/feature_engineering.ipynb 12
 def trend(
-    df: DataFrame,
+    df: DFType,
     freq: str,
     h: int = 0,
     id_col: str = "unique_id",
     time_col: str = "ds",
-) -> Tuple[DataFrame, DataFrame]:
+) -> Tuple[DFType, DFType]:
     """Add a trend column with consecutive integers for training and forecasting
 
     Parameters
@@ -219,10 +219,10 @@ def _compute_time_feature(
 
 
 def _add_time_features(
-    df: DataFrame,
+    df: DFType,
     features: List[Union[str, Callable]],
     time_col: str = "ds",
-) -> DataFrame:
+) -> DFType:
     df = ufp.copy_if_pandas(df, deep=False)
     unique_times = df[time_col].unique()
     if isinstance(df, pd.DataFrame):
@@ -247,13 +247,13 @@ def _add_time_features(
 
 # %% ../nbs/feature_engineering.ipynb 16
 def time_features(
-    df: DataFrame,
+    df: DFType,
     freq: str,
     features: List[Union[str, Callable]],
     h: int = 0,
     id_col: str = "unique_id",
     time_col: str = "ds",
-) -> Tuple[DataFrame, DataFrame]:
+) -> Tuple[DFType, DFType]:
     """Compute timestamp-based features for training and forecasting
 
     Parameters
@@ -296,13 +296,13 @@ def time_features(
 
 # %% ../nbs/feature_engineering.ipynb 19
 def pipeline(
-    df: DataFrame,
+    df: DFType,
     features: List[Callable],
     freq: str,
     h: int = 0,
     id_col: str = "unique_id",
     time_col: str = "ds",
-) -> Tuple[DataFrame, DataFrame]:
+) -> Tuple[DFType, DFType]:
     """Compute several features for training and forecasting
 
     Parameters

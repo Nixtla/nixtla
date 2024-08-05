@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 from packaging.version import Version, parse as parse_version
 
 import utilsforecast.processing as ufp
-from .compat import DataFrame, pl_Series, pl
+from .compat import DFType, pl_Series, pl
 from .validation import validate_format
 
 # %% ../nbs/plotting.ipynb 5
@@ -46,8 +46,8 @@ def _filter_series(df, id_col, time_col, uids, models=None, max_insample_length=
 
 # %% ../nbs/plotting.ipynb 6
 def plot_series(
-    df: Optional[DataFrame] = None,
-    forecasts_df: Optional[DataFrame] = None,
+    df: Optional[DFType] = None,
+    forecasts_df: Optional[DFType] = None,
     ids: Optional[List[str]] = None,
     plot_random: bool = True,
     max_ids: int = 8,

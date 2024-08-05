@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 import utilsforecast.processing as ufp
-from .compat import DataFrame, pl
+from .compat import DFType, pl
 
 # %% ../nbs/evaluation.ipynb 4
 def _function_name(f: Callable):
@@ -41,16 +41,16 @@ def _models_from_levels(model_name: str, level: List[int]) -> List[str]:
 
 # %% ../nbs/evaluation.ipynb 5
 def evaluate(
-    df: DataFrame,
+    df: DFType,
     metrics: List[Callable],
     models: Optional[List[str]] = None,
-    train_df: Optional[DataFrame] = None,
+    train_df: Optional[DFType] = None,
     level: Optional[List[int]] = None,
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
     agg_fn: Optional[str] = None,
-) -> DataFrame:
+) -> DFType:
     """Evaluate forecast using different metrics.
 
     Parameters

@@ -4,14 +4,15 @@
 __all__ = ['generate_series']
 
 # %% ../nbs/data.ipynb 4
-from typing import List, Optional
+from typing import List, Literal, Optional, overload
 
 import numpy as np
 import pandas as pd
 
-from .compat import DataFrame, pl
+from .compat import DataFrame, pl, pl_DataFrame
 
 # %% ../nbs/data.ipynb 5
+@overload
 def generate_series(
     n_series: int,
     freq: str = "D",
@@ -23,7 +24,38 @@ def generate_series(
     static_as_categorical: bool = True,
     n_models: int = 0,
     level: Optional[List[float]] = None,
-    engine: str = "pandas",
+    engine: Literal["pandas"] = "pandas",
+) -> pd.DataFrame: ...
+
+
+@overload
+def generate_series(
+    n_series: int,
+    freq: str = "D",
+    min_length: int = 50,
+    max_length: int = 500,
+    n_static_features: int = 0,
+    equal_ends: bool = False,
+    with_trend: bool = False,
+    static_as_categorical: bool = True,
+    n_models: int = 0,
+    level: Optional[List[float]] = None,
+    engine: Literal["polars"] = "polars",
+) -> pl_DataFrame: ...
+
+
+def generate_series(
+    n_series: int,
+    freq: str = "D",
+    min_length: int = 50,
+    max_length: int = 500,
+    n_static_features: int = 0,
+    equal_ends: bool = False,
+    with_trend: bool = False,
+    static_as_categorical: bool = True,
+    n_models: int = 0,
+    level: Optional[List[float]] = None,
+    engine: Literal["pandas", "polars"] = "pandas",
     seed: int = 0,
 ) -> DataFrame:
     """Generate Synthetic Panel Series.
@@ -62,7 +94,7 @@ def generate_series(
         Synthetic panel with columns [`unique_id`, `ds`, `y`] and exogenous features.
     """
     available_engines = ["pandas", "polars"]
-    engine = engine.lower()
+    engine = engine.lower()  # type: ignore
     if engine not in available_engines:
         raise ValueError(
             f"{engine} is not a correct engine; available options: {available_engines}"

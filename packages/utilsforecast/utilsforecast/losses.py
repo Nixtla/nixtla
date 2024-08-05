@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 import utilsforecast.processing as ufp
-from .compat import DataFrame, pl_DataFrame, pl
+from .compat import DFType, DataFrame, pl_DataFrame, pl, pl_Expr
 
 # %% ../nbs/losses.ipynb 11
 def _base_docstring(*args, **kwargs) -> Callable:
@@ -55,11 +55,11 @@ def _pl_agg_expr(
 # %% ../nbs/losses.ipynb 13
 @_base_docstring
 def mae(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Mean Absolute Error (MAE)
 
     MAE measures the relative prediction
@@ -87,11 +87,11 @@ def mae(
 # %% ../nbs/losses.ipynb 19
 @_base_docstring
 def mse(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Mean Squared Error (MSE)
 
     MSE measures the relative prediction
@@ -119,11 +119,11 @@ def mse(
 # %% ../nbs/losses.ipynb 24
 @_base_docstring
 def rmse(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> Union[float, np.ndarray]:
+) -> DFType:
     """Root Mean Squared Error (RMSE)
 
     RMSE measures the relative prediction
@@ -152,11 +152,11 @@ def _zero_to_nan(series: Union[pd.Series, "pl.Expr"]) -> Union[pd.Series, "pl.Ex
 # %% ../nbs/losses.ipynb 31
 @_base_docstring
 def mape(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> Union[float, np.ndarray]:
+) -> DFType:
     """Mean Absolute Percentage Error (MAPE)
 
     MAPE measures the relative prediction
@@ -190,11 +190,11 @@ def mape(
 # %% ../nbs/losses.ipynb 35
 @_base_docstring
 def smape(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> Union[float, np.ndarray]:
+) -> DFType:
     """Symmetric Mean Absolute Percentage Error (SMAPE)
 
     SMAPE measures the relative prediction
@@ -227,13 +227,13 @@ def smape(
 
 # %% ../nbs/losses.ipynb 41
 def mase(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     seasonality: int,
-    train_df: DataFrame,
+    train_df: DFType,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Mean Absolute Scaled Error (MASE)
 
     MASE measures the relative prediction
@@ -295,12 +295,12 @@ def mase(
 
 # %% ../nbs/losses.ipynb 46
 def rmae(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     baseline: str,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Relative Mean Absolute Error (RMAE)
 
     Calculates the RAME between two sets of forecasts (from two different forecasting methods).
@@ -339,22 +339,22 @@ def rmae(
         res = res[[id_col, *models]]
     else:
 
-        def gen_expr(model, baseline):
+        def gen_expr(model, baseline) -> pl_Expr:
             denominator = _zero_to_nan(pl.col(f"{baseline}_denominator"))
             return pl.col(model).truediv(denominator).fill_nan(0).alias(model)
 
-        exprs = [gen_expr(m, baseline) for m in models]
+        exprs: List[pl_Expr] = [gen_expr(m, baseline) for m in models]
         res = res.select([id_col, *exprs])
     return res
 
 # %% ../nbs/losses.ipynb 52
 def quantile_loss(
-    df: DataFrame,
+    df: DFType,
     models: Dict[str, str],
     q: float = 0.5,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Quantile Loss (QL)
 
     QL measures the deviation of a quantile forecast.
@@ -411,12 +411,12 @@ def quantile_loss(
 
 # %% ../nbs/losses.ipynb 58
 def mqloss(
-    df: DataFrame,
+    df: DFType,
     models: Dict[str, List[str]],
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Multi-Quantile loss (MQL)
 
     MQL calculates the average multi-quantile Loss for
@@ -470,12 +470,12 @@ def mqloss(
 
 # %% ../nbs/losses.ipynb 64
 def coverage(
-    df: DataFrame,
+    df: DFType,
     models: List[str],
     level: int,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Coverage of y with y_hat_lo and y_hat_hi.
 
     Parameters
@@ -529,11 +529,11 @@ def coverage(
 
 # %% ../nbs/losses.ipynb 68
 def calibration(
-    df: DataFrame,
+    df: DFType,
     models: Dict[str, str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """
     Fraction of y that is lower than the model's predictions.
 
@@ -579,12 +579,12 @@ def calibration(
 
 # %% ../nbs/losses.ipynb 72
 def scaled_crps(
-    df: DataFrame,
+    df: DFType,
     models: Dict[str, List[str]],
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DataFrame:
+) -> DFType:
     """Scaled Continues Ranked Probability Score
 
     Calculates a scaled variation of the CRPS, as proposed by Rangapuram (2021),
@@ -614,7 +614,7 @@ def scaled_crps(
     ----------
     [1] https://proceedings.mlr.press/v139/rangapuram21a.html
     """
-    eps = np.finfo(float).eps
+    eps: np.float64 = np.finfo(np.float64).eps
     quantiles = np.asarray(quantiles)
     loss = mqloss(df, models, quantiles, id_col, target_col)
     sizes = ufp.counts_by_id(df, id_col)

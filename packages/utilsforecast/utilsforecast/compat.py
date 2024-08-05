@@ -6,17 +6,19 @@ __all__ = ['DataFrame', 'Series']
 # %% ../nbs/compat.ipynb 1
 import warnings
 from functools import wraps
-from typing import Union
+from typing import TypeVar, Union
 
 import pandas as pd
 
 # %% ../nbs/compat.ipynb 2
 try:
+    import polars
     import polars as pl
     from polars import DataFrame as pl_DataFrame
     from polars import Expr as pl_Expr
     from polars import Series as pl_Series
 
+    DFType = TypeVar("DFType", pd.DataFrame, polars.DataFrame)
     POLARS_INSTALLED = True
 except ImportError:
     pl = None
@@ -27,6 +29,7 @@ except ImportError:
 
     class pl_Series: ...
 
+    DFType = pd.DataFrame
     POLARS_INSTALLED = False
 
 try:

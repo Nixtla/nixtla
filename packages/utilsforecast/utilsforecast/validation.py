@@ -9,7 +9,7 @@ from typing import Optional, Union
 
 import pandas as pd
 
-from .compat import DataFrame, Series, pl_DataFrame, pl_Series, pl
+from .compat import DFType, DataFrame, Series, pl_DataFrame, pl_Series, pl
 
 # %% ../nbs/validation.ipynb 5
 def _is_int_dtype(s: Union[pd.Index, Series]) -> bool:
@@ -44,7 +44,7 @@ def ensure_shallow_copy(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # %% ../nbs/validation.ipynb 11
-def ensure_time_dtype(df: DataFrame, time_col: str = "ds") -> DataFrame:
+def ensure_time_dtype(df: DFType, time_col: str = "ds") -> DFType:
     """Make sure that `time_col` contains timestamps or integers.
     If it contains strings, try to cast them as timestamps."""
     times = df[time_col]
