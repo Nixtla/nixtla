@@ -62,7 +62,7 @@ def plot_series(
     target_col: str = "y",
     seed: int = 0,
     resampler_kwargs: Optional[Dict] = None,
-    ax: Optional[Union[plt.Axes, "plotly.graph_objects.Figure"]] = None,
+    ax: Optional[Union[plt.Axes, np.ndarray, "plotly.graph_objects.Figure"]] = None,
 ):
     """Plot forecasts and insample values.
 
@@ -104,7 +104,7 @@ def plot_series(
         For further custumization ("show_dash") call the method,
         store the plotting object and add the extra arguments to
         its `show_dash` method.
-    ax : matplotlib axes or plotly Figure, optional (default=None)
+    ax : matplotlib axes, array of matplotlib axes or plotly Figure, optional (default=None)
         Object where plots will be added.
 
     Returns
@@ -170,6 +170,8 @@ def plot_series(
     else:
         uids = ids
     if ax is not None:
+        if isinstance(ax, plt.Axes):
+            ax = np.array([ax])
         if isinstance(ax, np.ndarray) and isinstance(ax.flat[0], plt.Axes):
             gs = ax.flat[0].get_gridspec()
             n_rows, n_cols = gs.nrows, gs.ncols
