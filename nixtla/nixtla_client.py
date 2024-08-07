@@ -605,10 +605,18 @@ class NixtlaClient:
                 pos = future2pos[future]
                 results[pos] = future.result()
         resp = {"mean": np.hstack([res["mean"] for res in results])}
-        for k in ("sizes", "anomaly", "y"):
-            if k in results[0]:
-                resp[k] = np.hstack([res[k] for res in results])
         first_res = results[0]
+        for k in ("sizes", "anomaly"):
+            if k in first_res:
+                resp[k] = np.hstack([res[k] for res in results])
+        if "idxs" in first_res:
+            offsets = [0] + [sum(p["series"]["sizes"]) for p in payloads[:-1]]
+            resp["idxs"] = np.hstack(
+                [
+                    np.array(res["idxs"]) + offset
+                    for res, offset in zip(results, offsets)
+                ]
+            )
         if first_res["intervals"] is None:
             resp["intervals"] = None
         else:
