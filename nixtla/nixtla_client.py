@@ -1294,18 +1294,18 @@ class NixtlaClient:
                 )
 
         # assemble result
-        out = ufp.cv_times(
-            times=times,
-            uids=processed.uids,
-            indptr=processed.indptr,
-            h=h,
-            test_size=h + step_size * (n_windows - 1),
-            step_size=step_size,
-            id_col=id_col,
-            time_col=time_col,
+        idxs = np.array(resp["idxs"])
+        sizes = np.array(resp["sizes"])
+        window_starts = np.arange(0, sizes.sum(), h)
+        cutoff_idxs = np.repeat(idxs[window_starts] - 1, h)
+        out = type(df)(
+            {
+                id_col: ufp.repeat(processed.uids, sizes),
+                time_col: times[idxs],
+                "cutoff": times[cutoff_idxs],
+                target_col: processed.data[idxs, 0],
+            }
         )
-        out = ufp.sort(out, by=[id_col, "cutoff", time_col])
-        out = ufp.assign_columns(out, target_col, resp["y"])
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = _maybe_add_intervals(out, resp["intervals"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
