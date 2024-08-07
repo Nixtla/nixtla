@@ -43,10 +43,22 @@ from utilsforecast.feature_engineering import _add_time_features, time_features
 from utilsforecast.validation import ensure_time_dtype, validate_format, validate_freq
 
 if TYPE_CHECKING:
-    import fugue
-    import matplotlib.pyplot as plt
-    import triad
-
+    try:
+        from fugue import AnyDataFrame
+    except ModuleNotFoundError:
+        pass
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError:
+        pass
+    try:
+        import plotly
+    except ModuleNotFoundError:
+        pass
+    try:
+        import triad
+    except ModuleNotFoundError:
+        pass
     try:
         from polars import DataFrame as PolarsDataFrame
     except ModuleNotFoundError:
@@ -1358,7 +1370,7 @@ class NixtlaClient:
         level: Optional[List[float]] = None,
         max_insample_length: Optional[int] = None,
         plot_anomalies: bool = False,
-        engine: str = "matplotlib",
+        engine: Literal["matplotlib", "plotly", "plotly-resampler"] = "matplotlib",
         resampler_kwargs: Optional[Dict] = None,
         ax: Optional[
             Union["plt.Axes", np.ndarray, "plotly.graph_objects.Figure"]
@@ -1403,8 +1415,8 @@ class NixtlaClient:
             Max number of train/insample observations to be plotted.
         plot_anomalies : bool (default=False)
             Plot anomalies for each prediction interval.
-        engine : str (default='plotly')
-            Library used to plot. 'plotly', 'plotly-resampler' or 'matplotlib'.
+        engine : str (default='matplotlib')
+            Library used to plot. 'matplotlib', 'plotly' or 'plotly-resampler'.
         resampler_kwargs : dict
             Kwargs to be passed to plotly-resampler constructor.
             For further custumization ("show_dash") call the method,
