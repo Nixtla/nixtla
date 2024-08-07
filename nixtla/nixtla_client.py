@@ -605,10 +605,18 @@ class NixtlaClient:
                 pos = future2pos[future]
                 results[pos] = future.result()
         resp = {"mean": np.hstack([res["mean"] for res in results])}
-        for k in ("sizes", "anomaly", "y"):
-            if k in results[0]:
-                resp[k] = np.hstack([res[k] for res in results])
         first_res = results[0]
+        for k in ("sizes", "anomaly"):
+            if k in first_res:
+                resp[k] = np.hstack([res[k] for res in results])
+        if "idxs" in first_res:
+            offsets = [0] + [sum(p["series"]["sizes"]) for p in payloads[:-1]]
+            resp["idxs"] = np.hstack(
+                [
+                    np.array(res["idxs"]) + offset
+                    for res, offset in zip(results, offsets)
+                ]
+            )
         if first_res["intervals"] is None:
             resp["intervals"] = None
         else:
@@ -1294,18 +1302,18 @@ class NixtlaClient:
                 )
 
         # assemble result
-        out = ufp.cv_times(
-            times=times,
-            uids=processed.uids,
-            indptr=processed.indptr,
-            h=h,
-            test_size=h + step_size * (n_windows - 1),
-            step_size=step_size,
-            id_col=id_col,
-            time_col=time_col,
+        idxs = np.array(resp["idxs"])
+        sizes = np.array(resp["sizes"])
+        window_starts = np.arange(0, sizes.sum(), h)
+        cutoff_idxs = np.repeat(idxs[window_starts] - 1, h)
+        out = type(df)(
+            {
+                id_col: ufp.repeat(processed.uids, sizes),
+                time_col: times[idxs],
+                "cutoff": times[cutoff_idxs],
+                target_col: processed.data[idxs, 0],
+            }
         )
-        out = ufp.sort(out, by=[id_col, "cutoff", time_col])
-        out = ufp.assign_columns(out, target_col, resp["y"])
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = _maybe_add_intervals(out, resp["intervals"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
