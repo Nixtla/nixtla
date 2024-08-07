@@ -22,7 +22,7 @@ dev = [
     "tabulate",
 ]
 distributed = ["fugue[dask,ray,spark]>=0.8.7", "pandas<2.2", "ray<2.6.3"]
-plotting = ["utilsforecast[plotting]>=0.2.2"]
+plotting = ["utilsforecast[plotting]>=0.2.3"]
 date_extras = ["holidays"]
 
 setuptools.setup(
@@ -33,6 +33,8 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Nixtla/nixtla",
     packages=setuptools.find_packages(exclude=["action_files"]),
+    include_package_data=True,
+    package_data={'nixtla': ['py.typed']},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -46,7 +48,7 @@ setuptools.setup(
         "pydantic",
         "tenacity",
         "tqdm",
-        "utilsforecast>=0.2.2",
+        "utilsforecast>=0.2.3",
     ],
     extras_require={
         "dev": dev + plotting + date_extras,
