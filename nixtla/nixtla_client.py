@@ -1251,8 +1251,10 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        targets = df[target_col].to_numpy()
         times = df[time_col].to_numpy()
         if processed.sort_idxs is not None:
+            targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
         restrict_input = finetune_steps == 0 and not x_cols
         if restrict_input:
@@ -1267,6 +1269,7 @@ class NixtlaClient:
             orig_indptr = processed.indptr
             processed = _tail(processed, new_input_size)
             times = _array_tails(times, orig_indptr, np.diff(processed.indptr))
+            targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
             logger.info(f"Using the following exogenous features: {x_cols}")
@@ -1276,7 +1279,7 @@ class NixtlaClient:
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
             "series": {
-                "y": processed.data[:, 0].tolist(),
+                "y": targets.tolist(),
                 "sizes": np.diff(processed.indptr).tolist(),
                 "X": X,
             },
@@ -1311,7 +1314,7 @@ class NixtlaClient:
                 id_col: ufp.repeat(processed.uids, sizes),
                 time_col: times[idxs],
                 "cutoff": times[cutoff_idxs],
-                target_col: processed.data[idxs, 0],
+                target_col: targets[idxs],
             }
         )
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
