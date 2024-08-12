@@ -6,6 +6,7 @@ __all__ = ['lightgbm_space', 'xgboost_space', 'catboost_space', 'linear_regressi
            'AutoLinearRegression', 'AutoRidge', 'AutoLasso', 'AutoElasticNet', 'AutoRandomForest', 'AutoMLForecast']
 
 # %% ../nbs/auto.ipynb 3
+import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -246,8 +247,9 @@ class AutoMLForecast:
         Auto models to be optimized.
     freq : str or int
         pandas' or polars' offset alias or integer denoting the frequency of the series.
-    season_length : int
+    season_length : int, optional (default=None)
         Length of the seasonal period. This is used for producing the feature space.
+        Only required if `init_config` is None.
     init_config : callable, optional (default=None)
         Function that takes an optuna trial and produces a configuration passed to the MLForecast constructor.
     fit_config : callable, optional (default=None)
@@ -260,13 +262,28 @@ class AutoMLForecast:
         self,
         models: Union[List[AutoModel], Dict[str, AutoModel]],
         freq: Freq,
-        season_length: int,
+        season_length: Optional[int] = None,
         init_config: Optional[_TrialToConfig] = None,
         fit_config: Optional[_TrialToConfig] = None,
         num_threads: int = 1,
     ):
         self.freq = freq
+        if season_length is None and init_config is None:
+            raise ValueError(
+                "`season_length` is required when `init_config` is not provided."
+            )
+        if init_config is not None and not callable(init_config):
+            raise ValueError("`init_config` must be a function.")
+        if season_length is not None and init_config is not None:
+            warnings.warn("`season_length` is not used when `init_config` is provided.")
+        self.init_config = init_config
         self.season_length = season_length
+        if fit_config is not None:
+            if not callable(fit_config):
+                raise ValueError("`fit_config` must be a function.")
+            self.fit_config = fit_config
+        else:
+            self.fit_config = lambda trial: {}  # noqa: ARG005
         self.num_threads = num_threads
         if isinstance(models, list):
             model_names = _name_models([_get_model_name(m) for m in models])
@@ -274,15 +291,6 @@ class AutoMLForecast:
         else:
             models_with_names = models
         self.models = models_with_names
-        if init_config is not None and not callable(init_config):
-            raise ValueError("`init_config` must be a function.")
-        self.init_config = init_config
-        if fit_config is not None:
-            if not callable(fit_config):
-                raise ValueError("`fit_config` must be a function.")
-            self.fit_config = fit_config
-        else:
-            self.fit_config = lambda trial: {}  # noqa: ARG005
 
     def __repr__(self):
         return f"AutoMLForecast(models={self.models})"
@@ -293,6 +301,7 @@ class AutoMLForecast:
         min_samples: int,
         min_value: float,
     ) -> _TrialToConfig:
+        assert self.season_length is not None
         # target transforms
         candidate_targ_tfms: List[Any] = [
             None,
