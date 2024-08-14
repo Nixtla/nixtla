@@ -144,6 +144,8 @@ series.head()
 | 3   | id_00     | 2000-01-04 | 232.704110 | 72       |
 | 4   | id_00     | 2000-01-05 | 317.510474 | 72       |
 
+> Note: The unique_id serves as an identifier for each distinct time series in your dataset. If you are using only single time series from your dataset, set this column to a constant value.
+
 </div>
 
 ### Models
