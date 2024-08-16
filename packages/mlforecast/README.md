@@ -144,14 +144,16 @@ series.head()
 | 3   | id_00     | 2000-01-04 | 232.704110 | 72       |
 | 4   | id_00     | 2000-01-05 | 317.510474 | 72       |
 
-> Note: The unique_id serves as an identifier for each distinct time series in your dataset. If you are using only single time series from your dataset, set this column to a constant value.
-
 </div>
+
+> Note: The unique_id serves as an identifier for each distinct time
+> series in your dataset. If you are using only single time series from
+> your dataset, set this column to a constant value.
 
 ### Models
 
-Next define your models. These can be any regressor that follows the
-scikit-learn API.
+Next define your models, each one will be trained on all series. These
+can be any regressor that follows the scikit-learn API.
 
 ``` python
 import lightgbm as lgb
