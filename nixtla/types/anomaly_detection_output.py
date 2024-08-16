@@ -7,14 +7,15 @@ from ..core.datetime_utils import serialize_datetime
 from ..core.pydantic_utilities import pydantic_v1
 
 
-class ForecastOutput(pydantic_v1.BaseModel):
+class AnomalyDetectionOutput(pydantic_v1.BaseModel):
     input_tokens: int
     output_tokens: int
     finetune_tokens: int
     mean: typing.List[float]
+    sizes: typing.List[int]
     intervals: typing.Optional[typing.Dict[str, typing.Optional[typing.List[float]]]] = None
     weights_x: typing.Optional[typing.List[float]] = None
-    feature_contributions: typing.Optional[typing.List[typing.List[float]]] = None
+    anomaly: typing.List[bool]
 
     def json(self, **kwargs: typing.Any) -> str:
         kwargs_with_defaults: typing.Any = {"by_alias": True, "exclude_unset": True, **kwargs}

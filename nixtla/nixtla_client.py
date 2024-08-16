@@ -605,10 +605,18 @@ class NixtlaClient:
                 pos = future2pos[future]
                 results[pos] = future.result()
         resp = {"mean": np.hstack([res["mean"] for res in results])}
-        for k in ("sizes", "anomaly", "y"):
-            if k in results[0]:
-                resp[k] = np.hstack([res[k] for res in results])
         first_res = results[0]
+        for k in ("sizes", "anomaly"):
+            if k in first_res:
+                resp[k] = np.hstack([res[k] for res in results])
+        if "idxs" in first_res:
+            offsets = [0] + [sum(p["series"]["sizes"]) for p in payloads[:-1]]
+            resp["idxs"] = np.hstack(
+                [
+                    np.array(res["idxs"]) + offset
+                    for res, offset in zip(results, offsets)
+                ]
+            )
         if first_res["intervals"] is None:
             resp["intervals"] = None
         else:
@@ -1283,8 +1291,10 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        targets = df[target_col].to_numpy()
         times = df[time_col].to_numpy()
         if processed.sort_idxs is not None:
+            targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
         restrict_input = finetune_steps == 0 and not x_cols
         if restrict_input:
@@ -1299,6 +1309,7 @@ class NixtlaClient:
             orig_indptr = processed.indptr
             processed = _tail(processed, new_input_size)
             times = _array_tails(times, orig_indptr, np.diff(processed.indptr))
+            targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
             logger.info(f"Using the following exogenous features: {x_cols}")
@@ -1308,7 +1319,7 @@ class NixtlaClient:
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
             "series": {
-                "y": processed.data[:, 0].tolist(),
+                "y": targets.tolist(),
                 "sizes": np.diff(processed.indptr).tolist(),
                 "X": X,
             },
@@ -1334,18 +1345,18 @@ class NixtlaClient:
                 )
 
         # assemble result
-        out = ufp.cv_times(
-            times=times,
-            uids=processed.uids,
-            indptr=processed.indptr,
-            h=h,
-            test_size=h + step_size * (n_windows - 1),
-            step_size=step_size,
-            id_col=id_col,
-            time_col=time_col,
+        idxs = np.array(resp["idxs"])
+        sizes = np.array(resp["sizes"])
+        window_starts = np.arange(0, sizes.sum(), h)
+        cutoff_idxs = np.repeat(idxs[window_starts] - 1, h)
+        out = type(df)(
+            {
+                id_col: ufp.repeat(processed.uids, sizes),
+                time_col: times[idxs],
+                "cutoff": times[cutoff_idxs],
+                target_col: targets[idxs],
+            }
         )
-        out = ufp.sort(out, by=[id_col, "cutoff", time_col])
-        out = ufp.assign_columns(out, target_col, resp["y"])
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = _maybe_add_intervals(out, resp["intervals"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)

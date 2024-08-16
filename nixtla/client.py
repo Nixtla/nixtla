@@ -13,15 +13,23 @@ from .core.pydantic_utilities import pydantic_v1
 from .core.remove_none_from_dict import remove_none_from_dict
 from .core.request_options import RequestOptions
 from .errors.unprocessable_entity_error import UnprocessableEntityError
+from .types.anomaly_detection_output import AnomalyDetectionOutput
+from .types.cross_validation_input_finetune_loss import CrossValidationInputFinetuneLoss
+from .types.cross_validation_input_level_item import CrossValidationInputLevelItem
+from .types.cross_validation_output import CrossValidationOutput
 from .types.forecast_input_finetune_loss import ForecastInputFinetuneLoss
 from .types.forecast_input_level_item import ForecastInputLevelItem
 from .types.forecast_output import ForecastOutput
 from .types.http_validation_error import HttpValidationError
+from .types.in_sample_input_level_item import InSampleInputLevelItem
+from .types.in_sample_output import InSampleOutput
+from .types.level import Level
 from .types.model import Model
 from .types.multi_series_anomaly import MultiSeriesAnomaly
 from .types.multi_series_cross_validation import MultiSeriesCrossValidation
 from .types.multi_series_forecast import MultiSeriesForecast
 from .types.multi_series_insample_forecast import MultiSeriesInsampleForecast
+from .types.series import Series
 from .types.series_with_future_exogenous import SeriesWithFutureExogenous
 from .types.single_series_forecast import SingleSeriesForecast
 from .types.single_series_insample_forecast import SingleSeriesInsampleForecast
@@ -3396,9 +3404,9 @@ class Nixtla:
         self,
         *,
         series: SeriesWithFutureExogenous,
-        model: typing.Optional[Model] = OMIT,
-        h: int,
         freq: str,
+        h: int,
+        model: typing.Optional[Model] = OMIT,
         clean_ex_first: typing.Optional[bool] = OMIT,
         level: typing.Optional[typing.Sequence[ForecastInputLevelItem]] = OMIT,
         finetune_steps: typing.Optional[int] = OMIT,
@@ -3406,22 +3414,24 @@ class Nixtla:
         request_options: typing.Optional[RequestOptions] = None,
     ) -> ForecastOutput:
         """
+        Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - series: SeriesWithFutureExogenous.
 
-            - model: typing.Optional[Model].
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
-            - h: int.
+            - h: int. The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
 
-            - freq: str.
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
 
-            - clean_ex_first: typing.Optional[bool].
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
 
             - level: typing.Optional[typing.Sequence[ForecastInputLevelItem]].
 
-            - finetune_steps: typing.Optional[int].
+            - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
 
-            - finetune_loss: typing.Optional[ForecastInputFinetuneLoss].
+            - finetune_loss: typing.Optional[ForecastInputFinetuneLoss]. The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
@@ -3437,11 +3447,11 @@ class Nixtla:
                 y=[1.1],
                 sizes=[1],
             ),
-            h=1,
             freq="freq",
+            h=1,
         )
         """
-        _request: typing.Dict[str, typing.Any] = {"series": series, "h": h, "freq": freq}
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq, "h": h}
         if model is not OMIT:
             _request["model"] = model
         if clean_ex_first is not OMIT:
@@ -3480,6 +3490,287 @@ class Nixtla:
         )
         if 200 <= _response.status_code < 300:
             return pydantic_v1.parse_obj_as(ForecastOutput, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    def v_2_cross_validation(
+        self,
+        *,
+        series: Series,
+        freq: str,
+        n_windows: int,
+        h: int,
+        model: typing.Optional[Model] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[typing.Sequence[CrossValidationInputLevelItem]] = OMIT,
+        finetune_steps: typing.Optional[int] = OMIT,
+        finetune_loss: typing.Optional[CrossValidationInputFinetuneLoss] = OMIT,
+        step_size: typing.Optional[int] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> CrossValidationOutput:
+        """
+        Perform Cross Validation for multiple series
+
+        Parameters:
+            - series: Series.
+
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - n_windows: int. Number of windows to evaluate.
+
+            - h: int. The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
+
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
+
+            - level: typing.Optional[typing.Sequence[CrossValidationInputLevelItem]].
+
+            - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
+
+            - finetune_loss: typing.Optional[CrossValidationInputFinetuneLoss]. The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
+
+            - step_size: typing.Optional[int].
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import Series
+        from nixtla.client import Nixtla
+
+        client = Nixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        client.v_2_cross_validation(
+            series=Series(
+                y=[1.1],
+                sizes=[1],
+            ),
+            freq="freq",
+            n_windows=1,
+            h=1,
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq, "n_windows": n_windows, "h": h}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        if finetune_steps is not OMIT:
+            _request["finetune_steps"] = finetune_steps
+        if finetune_loss is not OMIT:
+            _request["finetune_loss"] = finetune_loss
+        if step_size is not OMIT:
+            _request["step_size"] = step_size
+        _response = self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/cross_validation"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(CrossValidationOutput, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    def v_2_historic_forecast(
+        self,
+        *,
+        series: Series,
+        freq: str,
+        model: typing.Optional[Model] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[typing.Sequence[InSampleInputLevelItem]] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> InSampleOutput:
+        """
+        Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
+
+        Parameters:
+            - series: Series.
+
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
+
+            - level: typing.Optional[typing.Sequence[InSampleInputLevelItem]].
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import Series
+        from nixtla.client import Nixtla
+
+        client = Nixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        client.v_2_historic_forecast(
+            series=Series(
+                y=[1.1],
+                sizes=[1],
+            ),
+            freq="freq",
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        _response = self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/historic_forecast"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(InSampleOutput, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    def v_2_anomaly_detection(
+        self,
+        *,
+        series: Series,
+        freq: str,
+        model: typing.Optional[Model] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[Level] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> AnomalyDetectionOutput:
+        """
+        Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has a anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.
+
+        Parameters:
+            - series: Series.
+
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
+
+            - level: typing.Optional[Level]. Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import Series
+        from nixtla.client import Nixtla
+
+        client = Nixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        client.v_2_anomaly_detection(
+            series=Series(
+                y=[1.1],
+                sizes=[1],
+            ),
+            freq="freq",
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        _response = self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/anomaly_detection"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(AnomalyDetectionOutput, _response.json())  # type: ignore
         if _response.status_code == 422:
             raise UnprocessableEntityError(
                 pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
@@ -6857,9 +7148,9 @@ class AsyncNixtla:
         self,
         *,
         series: SeriesWithFutureExogenous,
-        model: typing.Optional[Model] = OMIT,
-        h: int,
         freq: str,
+        h: int,
+        model: typing.Optional[Model] = OMIT,
         clean_ex_first: typing.Optional[bool] = OMIT,
         level: typing.Optional[typing.Sequence[ForecastInputLevelItem]] = OMIT,
         finetune_steps: typing.Optional[int] = OMIT,
@@ -6867,22 +7158,24 @@ class AsyncNixtla:
         request_options: typing.Optional[RequestOptions] = None,
     ) -> ForecastOutput:
         """
+        Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.
+
         Parameters:
             - series: SeriesWithFutureExogenous.
 
-            - model: typing.Optional[Model].
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
 
-            - h: int.
+            - h: int. The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
 
-            - freq: str.
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
 
-            - clean_ex_first: typing.Optional[bool].
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
 
             - level: typing.Optional[typing.Sequence[ForecastInputLevelItem]].
 
-            - finetune_steps: typing.Optional[int].
+            - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
 
-            - finetune_loss: typing.Optional[ForecastInputFinetuneLoss].
+            - finetune_loss: typing.Optional[ForecastInputFinetuneLoss]. The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
@@ -6898,11 +7191,11 @@ class AsyncNixtla:
                 y=[1.1],
                 sizes=[1],
             ),
-            h=1,
             freq="freq",
+            h=1,
         )
         """
-        _request: typing.Dict[str, typing.Any] = {"series": series, "h": h, "freq": freq}
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq, "h": h}
         if model is not OMIT:
             _request["model"] = model
         if clean_ex_first is not OMIT:
@@ -6941,6 +7234,287 @@ class AsyncNixtla:
         )
         if 200 <= _response.status_code < 300:
             return pydantic_v1.parse_obj_as(ForecastOutput, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def v_2_cross_validation(
+        self,
+        *,
+        series: Series,
+        freq: str,
+        n_windows: int,
+        h: int,
+        model: typing.Optional[Model] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[typing.Sequence[CrossValidationInputLevelItem]] = OMIT,
+        finetune_steps: typing.Optional[int] = OMIT,
+        finetune_loss: typing.Optional[CrossValidationInputFinetuneLoss] = OMIT,
+        step_size: typing.Optional[int] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> CrossValidationOutput:
+        """
+        Perform Cross Validation for multiple series
+
+        Parameters:
+            - series: Series.
+
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - n_windows: int. Number of windows to evaluate.
+
+            - h: int. The forecasting horizon. This represents the number of time steps into the future that the forecast should predict.
+
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
+
+            - level: typing.Optional[typing.Sequence[CrossValidationInputLevelItem]].
+
+            - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
+
+            - finetune_loss: typing.Optional[CrossValidationInputFinetuneLoss]. The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
+
+            - step_size: typing.Optional[int].
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import Series
+        from nixtla.client import AsyncNixtla
+
+        client = AsyncNixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        await client.v_2_cross_validation(
+            series=Series(
+                y=[1.1],
+                sizes=[1],
+            ),
+            freq="freq",
+            n_windows=1,
+            h=1,
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq, "n_windows": n_windows, "h": h}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        if finetune_steps is not OMIT:
+            _request["finetune_steps"] = finetune_steps
+        if finetune_loss is not OMIT:
+            _request["finetune_loss"] = finetune_loss
+        if step_size is not OMIT:
+            _request["step_size"] = step_size
+        _response = await self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/cross_validation"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(CrossValidationOutput, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def v_2_historic_forecast(
+        self,
+        *,
+        series: Series,
+        freq: str,
+        model: typing.Optional[Model] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[typing.Sequence[InSampleInputLevelItem]] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> InSampleOutput:
+        """
+        Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.
+
+        Parameters:
+            - series: Series.
+
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
+
+            - level: typing.Optional[typing.Sequence[InSampleInputLevelItem]].
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import Series
+        from nixtla.client import AsyncNixtla
+
+        client = AsyncNixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        await client.v_2_historic_forecast(
+            series=Series(
+                y=[1.1],
+                sizes=[1],
+            ),
+            freq="freq",
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        _response = await self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/historic_forecast"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(InSampleOutput, _response.json())  # type: ignore
+        if _response.status_code == 422:
+            raise UnprocessableEntityError(
+                pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
+            )
+        try:
+            _response_json = _response.json()
+        except JSONDecodeError:
+            raise ApiError(status_code=_response.status_code, body=_response.text)
+        raise ApiError(status_code=_response.status_code, body=_response_json)
+
+    async def v_2_anomaly_detection(
+        self,
+        *,
+        series: Series,
+        freq: str,
+        model: typing.Optional[Model] = OMIT,
+        clean_ex_first: typing.Optional[bool] = OMIT,
+        level: typing.Optional[Level] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> AnomalyDetectionOutput:
+        """
+        Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has a anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.
+
+        Parameters:
+            - series: Series.
+
+            - freq: str. The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
+
+            - model: typing.Optional[Model]. Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon.` We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.
+
+            - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
+
+            - level: typing.Optional[Level]. Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.
+
+            - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
+        ---
+        from nixtla import Series
+        from nixtla.client import AsyncNixtla
+
+        client = AsyncNixtla(
+            token="YOUR_TOKEN",
+            base_url="https://yourhost.com/path/to/api",
+        )
+        await client.v_2_anomaly_detection(
+            series=Series(
+                y=[1.1],
+                sizes=[1],
+            ),
+            freq="freq",
+        )
+        """
+        _request: typing.Dict[str, typing.Any] = {"series": series, "freq": freq}
+        if model is not OMIT:
+            _request["model"] = model
+        if clean_ex_first is not OMIT:
+            _request["clean_ex_first"] = clean_ex_first
+        if level is not OMIT:
+            _request["level"] = level
+        _response = await self._client_wrapper.httpx_client.request(
+            "POST",
+            urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/anomaly_detection"),
+            params=jsonable_encoder(
+                request_options.get("additional_query_parameters") if request_options is not None else None
+            ),
+            json=jsonable_encoder(_request)
+            if request_options is None or request_options.get("additional_body_parameters") is None
+            else {
+                **jsonable_encoder(_request),
+                **(jsonable_encoder(remove_none_from_dict(request_options.get("additional_body_parameters", {})))),
+            },
+            headers=jsonable_encoder(
+                remove_none_from_dict(
+                    {
+                        **self._client_wrapper.get_headers(),
+                        **(request_options.get("additional_headers", {}) if request_options is not None else {}),
+                    }
+                )
+            ),
+            timeout=request_options.get("timeout_in_seconds")
+            if request_options is not None and request_options.get("timeout_in_seconds") is not None
+            else self._client_wrapper.get_timeout(),
+            retries=0,
+            max_retries=request_options.get("max_retries") if request_options is not None else 0,  # type: ignore
+        )
+        if 200 <= _response.status_code < 300:
+            return pydantic_v1.parse_obj_as(AnomalyDetectionOutput, _response.json())  # type: ignore
         if _response.status_code == 422:
             raise UnprocessableEntityError(
                 pydantic_v1.parse_obj_as(HttpValidationError, _response.json())  # type: ignore
