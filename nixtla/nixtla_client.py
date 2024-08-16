@@ -621,6 +621,15 @@ class NixtlaClient:
             resp["weights_x"] = None
         else:
             resp["weights_x"] = [res["weights_x"] for res in results]
+        if (
+            "feature_contributions" not in first_res
+            or first_res["feature_contributions"] is None
+        ):
+            resp["feature_contributions"] = None
+        else:
+            resp["feature_contributions"] = [
+                res["feature_contributions"] for res in results
+            ]
         return resp
 
     def _get_model_params(self, model: str, freq: str) -> Tuple[int, int]:
@@ -649,6 +658,20 @@ class NixtlaClient:
             ]
         else:
             self.weights_x = type(df)({"features": x_cols, "weights": weights})
+
+    def _maybe_assign_feature_contributions(
+        self,
+        feature_contributions: Optional[list[list[float]]],
+        x_cols: List[str],
+        out_df: pd.DataFrame,
+    ) -> None:
+        if feature_contributions is None:
+            return
+        else:
+            shap_df = pd.DataFrame(
+                np.array(feature_contributions).T, columns=x_cols + ["base_value"]
+            )
+            self.feature_contributions = pd.concat([out_df, shap_df], axis=1)
 
     def _run_validations(
         self,
@@ -724,6 +747,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, List[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[PositiveInt] = None,
+        feature_contributions: bool = False,
     ) -> DataFrame:
         """Forecast your time series using TimeGPT.
 
@@ -792,6 +816,10 @@ class NixtlaClient:
             Number of partitions to use.
             If None, the number of partitions will be equal
             to the available parallel resources in distributed environments.
+        feature_contributions: bool (default=False)
+            Compute SHAP values
+            Gives access to computed SHAP values to explain the impact
+            of features on the final predictions.
 
         Returns
         -------
@@ -819,6 +847,7 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=num_partitions,
+                feature_contributions=feature_contributions,
             )
         self.__dict__.pop("weights_x", None)
         logger.info("Validating inputs...")
@@ -890,6 +919,7 @@ class NixtlaClient:
             "level": level,
             "finetune_steps": finetune_steps,
             "finetune_loss": finetune_loss,
+            "feature_contributions": feature_contributions,
         }
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -942,6 +972,11 @@ class NixtlaClient:
             out = ufp.sort(out, by=[id_col, time_col])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
+        self._maybe_assign_feature_contributions(
+            feature_contributions=resp["feature_contributions"],
+            x_cols=x_cols,
+            out_df=out[[id_col, time_col, "TimeGPT"]],
+        )
         return out
 
     def detect_anomalies(
@@ -1097,6 +1132,11 @@ class NixtlaClient:
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
+        self._maybe_assign_feature_contributions(
+            feature_contributions=resp["feature_contributions"],
+            x_cols=x_cols,
+            out_df=out[[id_col, time_col, "TimeGPT"]],
+        )
         return out
 
     def cross_validation(
@@ -1627,6 +1667,7 @@ def _distributed_forecast(
     date_features_to_one_hot: Union[bool, List[str]],
     model: _Model,
     num_partitions: Optional[int],
+    feature_contributions: Optional[bool],
 ) -> "fugue.AnyDataFrame":
     import fugue.api as fa
 
@@ -1682,6 +1723,7 @@ def _distributed_forecast(
             date_features_to_one_hot=date_features_to_one_hot,
             model=model,
             num_partitions=None,
+            feature_contributions=feature_contributions,
         ),
         partition=partition_config,
         as_fugue=True,

@@ -76,7 +76,8 @@
           "pages":[
             "docs/tutorials/exogenous_variables.html", 
             "docs/tutorials/holidays.html",
-            "docs/tutorials/categorical_variables.html"
+            "docs/tutorials/categorical_variables.html",
+            "docs/tutorials/shap_values.html"
           ]
         },
         {
