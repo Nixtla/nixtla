@@ -11,6 +11,7 @@ dev = [
     "jupyterlab",
     "nbdev",
     "neuralforecast",
+    "numpy<2",
     "plotly",
     "polars",
     "pre-commit",
