@@ -651,13 +651,13 @@ class NixtlaClient:
 
     def _maybe_assign_weights(
         self,
-        weights: Optional[Union[List[float, List[List[float]]]]],
+        weights: Optional[Union[List[float], List[List[float]]]],
         df: DataFrame,
         x_cols: List[str],
     ) -> None:
         if weights is None:
             return
-        if isinstance(weights[0], List):
+        if isinstance(weights[0], list):
             self.weights_x = [
                 type(df)({"features": x_cols, "weights": w}) for w in weights
             ]
