@@ -46,12 +46,16 @@ title: SDK Reference
 >                     ame,NoneType]=None, id_col:str='unique_id',
 >                     time_col:str='ds', target_col:str='y', unique_ids:Unio
 >                     n[List[str],NoneType,numpy.ndarray]=None,
->                     plot_random:bool=True,
+>                     plot_random:bool=True, max_ids:int=8,
 >                     models:Optional[List[str]]=None,
 >                     level:Optional[List[float]]=None,
 >                     max_insample_length:Optional[int]=None,
->                     plot_anomalies:bool=False, engine:str='matplotlib',
->                     resampler_kwargs:Optional[Dict]=None)
+>                     plot_anomalies:bool=False,
+>                     engine:Literal['matplotlib','plotly','plotly-
+>                     resampler']='matplotlib',
+>                     resampler_kwargs:Optional[Dict]=None, ax:Union[Forward
+>                     Ref('plt.Axes'),numpy.ndarray,ForwardRef('plotly.graph
+>                     _objects.Figure'),NoneType]=None)
 > ```
 
 *Plot forecasts and insample values.*
@@ -65,26 +69,24 @@ title: SDK Reference
 | target_col | str | y | Column that contains the target. |
 | unique_ids | Union | None | Time Series to plot.<br/>If None, time series are selected randomly. |
 | plot_random | bool | True | Select time series to plot randomly. |
+| max_ids | int | 8 | Maximum number of ids to plot. |
 | models | Optional | None | List of models to plot. |
 | level | Optional | None | List of prediction intervals to plot if paseed. |
 | max_insample_length | Optional | None | Max number of train/insample observations to be plotted. |
 | plot_anomalies | bool | False | Plot anomalies for each prediction interval. |
-| engine | str | matplotlib | Library used to plot. ‘plotly’, ‘plotly-resampler’ or ‘matplotlib’. |
+| engine | Literal | matplotlib | Library used to plot. ‘matplotlib’, ‘plotly’ or ‘plotly-resampler’. |
 | resampler_kwargs | Optional | None | Kwargs to be passed to plotly-resampler constructor.<br/>For further custumization (“show_dash”) call the method,<br/>store the plotting object and add the extra arguments to<br/>its `show_dash` method. |
+| ax | Union | None | Object where plots will be added. |
 
 ------------------------------------------------------------------------
 
 ## NixtlaClient.forecast
 
 > ``` text
->  NixtlaClient.forecast
->                         (df:Union[pandas.core.frame.DataFrame,polars.dataf
->                         rame.frame.DataFrame],
->                         h:typing.Annotated[int,Gt(gt=0)],
+>  NixtlaClient.forecast (df:~AnyDFType, h:typing.Annotated[int,Gt(gt=0)],
 >                         freq:Optional[str]=None, id_col:str='unique_id',
->                         time_col:str='ds', target_col:str='y', X_df:Union[
->                         pandas.core.frame.DataFrame,polars.dataframe.frame
->                         .DataFrame,NoneType]=None,
+>                         time_col:str='ds', target_col:str='y',
+>                         X_df:Optional[~AnyDFType]=None,
 >                         level:Optional[List[Union[int,float]]]=None,
 >                         quantiles:Optional[List[float]]=None,
 >                         finetune_steps:typing.Annotated[int,Ge(ge=0)]=0, f
@@ -104,13 +106,13 @@ title: SDK Reference
 
 |  | **Type** | **Default** | **Details** |
 |------|------------------|-------------------------|-------------------------|
-| df | Union |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
+| df | AnyDFType |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
 | h | Annotated |  | Forecast horizon. |
 | freq | Optional | None | Frequency of the data. By default, the freq will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
 | id_col | str | unique_id | Column that identifies each serie. |
 | time_col | str | ds | Column that identifies each timestep, its values can be timestamps or integers. |
 | target_col | str | y | Column that contains the target. |
-| X_df | Union | None | DataFrame with \[`unique_id`, `ds`\] columns and `df`’s future exogenous. |
+| X_df | Optional | None | DataFrame with \[`unique_id`, `ds`\] columns and `df`’s future exogenous. |
 | level | Optional | None | Confidence levels between 0 and 100 for prediction intervals. |
 | quantiles | Optional | None | Quantiles to forecast, list between (0, 1).<br/>`level` and `quantiles` should not be used simultaneously.<br/>The output dataframe will have the quantile columns<br/>formatted as TimeGPT-q-(100 \* q) for each q.<br/>100 \* q represents percentiles but we choose this notation<br/>to avoid having dots in column names. |
 | finetune_steps | Annotated | 0 | Number of steps used to finetune learning TimeGPT in the<br/>new data. |
@@ -122,16 +124,14 @@ title: SDK Reference
 | date_features_to_one_hot | Union | False | Apply one-hot encoding to these date features.<br/>If `date_features=True`, then all date features are<br/>one-hot encoded by default. |
 | model | Literal | timegpt-1 | Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.<br/>We recommend using `timegpt-1-long-horizon` for forecasting<br/>if you want to predict more than one seasonal<br/>period given the frequency of your data. |
 | num_partitions | Optional | None | Number of partitions to use.<br/>If None, the number of partitions will be equal<br/>to the available parallel resources in distributed environments. |
-| **Returns** | **Union** |  | **DataFrame with TimeGPT forecasts for point predictions and probabilistic<br/>predictions (if level is not None).** |
+| **Returns** | **AnyDFType** |  | **DataFrame with TimeGPT forecasts for point predictions and probabilistic<br/>predictions (if level is not None).** |
 
 ------------------------------------------------------------------------
 
 ## NixtlaClient.cross_validation
 
 > ``` text
->  NixtlaClient.cross_validation
->                                 (df:Union[pandas.core.frame.DataFrame,pola
->                                 rs.dataframe.frame.DataFrame],
+>  NixtlaClient.cross_validation (df:~AnyDFType,
 >                                 h:typing.Annotated[int,Gt(gt=0)],
 >                                 freq:Optional[str]=None,
 >                                 id_col:str='unique_id', time_col:str='ds',
@@ -155,7 +155,7 @@ title: SDK Reference
 
 |  | **Type** | **Default** | **Details** |
 |------|------------------|-------------------------|-------------------------|
-| df | Union |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
+| df | AnyDFType |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
 | h | Annotated |  | Forecast horizon. |
 | freq | Optional | None | Frequency of the data. By default, the freq will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
 | id_col | str | unique_id | Column that identifies each serie. |
@@ -173,17 +173,14 @@ title: SDK Reference
 | date_features_to_one_hot | Union | False | Apply one-hot encoding to these date features.<br/>If `date_features=True`, then all date features are<br/>one-hot encoded by default. |
 | model | str | timegpt-1 | Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.<br/>We recommend using `timegpt-1-long-horizon` for forecasting<br/>if you want to predict more than one seasonal<br/>period given the frequency of your data. |
 | num_partitions | Optional | None | Number of partitions to use.<br/>If None, the number of partitions will be equal<br/>to the available parallel resources in distributed environments. |
-| **Returns** | **pandas or polars DataFrame** |  | **DataFrame with cross validation forecasts.** |
+| **Returns** | **AnyDFType** |  | **DataFrame with cross validation forecasts.** |
 
 ------------------------------------------------------------------------
 
 ## NixtlaClient.detect_anomalies
 
 > ``` text
->  NixtlaClient.detect_anomalies
->                                 (df:Union[pandas.core.frame.DataFrame,pola
->                                 rs.dataframe.frame.DataFrame],
->                                 freq:Optional[str]=None,
+>  NixtlaClient.detect_anomalies (df:~AnyDFType, freq:Optional[str]=None,
 >                                 id_col:str='unique_id', time_col:str='ds',
 >                                 target_col:str='y',
 >                                 level:Union[int,float]=99,
@@ -201,7 +198,7 @@ title: SDK Reference
 
 |  | **Type** | **Default** | **Details** |
 |------|------------------|-------------------------|-------------------------|
-| df | Union |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
+| df | AnyDFType |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
 | freq | Optional | None | Frequency of the data. By default, the freq will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
 | id_col | str | unique_id | Column that identifies each serie. |
 | time_col | str | ds | Column that identifies each timestep, its values can be timestamps or integers. |
@@ -213,5 +210,5 @@ title: SDK Reference
 | date_features_to_one_hot | Union | False | Apply one-hot encoding to these date features.<br/>If `date_features=True`, then all date features are<br/>one-hot encoded by default. |
 | model | Literal | timegpt-1 | Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.<br/>We recommend using `timegpt-1-long-horizon` for forecasting<br/>if you want to predict more than one seasonal<br/>period given the frequency of your data. |
 | num_partitions | Optional | None | Number of partitions to use.<br/>If None, the number of partitions will be equal<br/>to the available parallel resources in distributed environments. |
-| **Returns** | **pandas or polars DataFrame** |  | **DataFrame with anomalies flagged by TimeGPT.** |
+| **Returns** | **AnyDFType** |  | **DataFrame with anomalies flagged by TimeGPT.** |
 
