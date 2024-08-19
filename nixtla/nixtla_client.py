@@ -1140,11 +1140,6 @@ class NixtlaClient:
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
-        self._maybe_assign_feature_contributions(
-            feature_contributions=resp["feature_contributions"],
-            x_cols=x_cols,
-            out_df=out[[id_col, time_col, "TimeGPT"]],
-        )
         return out
 
     def cross_validation(
@@ -1467,7 +1462,7 @@ class NixtlaClient:
             target_col=target_col,
         )
 
-# %% ../nbs/nixtla_client.ipynb 52
+# %% ../nbs/nixtla_client.ipynb 54
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
