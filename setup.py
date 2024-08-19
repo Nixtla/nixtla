@@ -34,8 +34,6 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Nixtla/nixtla",
     packages=setuptools.find_packages(exclude=["action_files"]),
-    include_package_data=True,
-    package_data={'nixtla': ['py.typed']},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
