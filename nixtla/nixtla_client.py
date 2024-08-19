@@ -629,15 +629,12 @@ class NixtlaClient:
             resp["weights_x"] = None
         else:
             resp["weights_x"] = [res["weights_x"] for res in results]
-        if (
-            "feature_contributions" not in first_res
-            or first_res["feature_contributions"] is None
-        ):
+        if first_res["feature_contributions"] is None:
             resp["feature_contributions"] = None
         else:
-            resp["feature_contributions"] = [
-                res["feature_contributions"] for res in results
-            ]
+            resp["feature_contributions"] = np.vstack(
+                [np.stack(res["feature_contributions"], axis=1) for res in results]
+            ).T
         return resp
 
     def _get_model_params(self, model: str, freq: str) -> Tuple[int, int]:
@@ -654,13 +651,13 @@ class NixtlaClient:
 
     def _maybe_assign_weights(
         self,
-        weights: Optional[Union[list[float, list[list[float]]]]],
+        weights: Optional[Union[List[float, List[List[float]]]]],
         df: DataFrame,
         x_cols: List[str],
     ) -> None:
         if weights is None:
             return
-        if isinstance(weights[0], list):
+        if isinstance(weights[0], List):
             self.weights_x = [
                 type(df)({"features": x_cols, "weights": w}) for w in weights
             ]
@@ -669,17 +666,17 @@ class NixtlaClient:
 
     def _maybe_assign_feature_contributions(
         self,
-        feature_contributions: Optional[list[list[float]]],
+        feature_contributions: Optional[List[List[float]]],
         x_cols: List[str],
-        out_df: pd.DataFrame,
+        out_df: DataFrame,
     ) -> None:
         if feature_contributions is None:
             return
         else:
-            shap_df = pd.DataFrame(
-                np.array(feature_contributions).T, columns=x_cols + ["base_value"]
+            shap_df = type(out_df)(
+                dict(zip(x_cols + ["base_value"], feature_contributions))
             )
-            self.feature_contributions = pd.concat([out_df, shap_df], axis=1)
+            self.feature_contributions = ufp.horizontal_concat([out_df, shap_df])
 
     def _run_validations(
         self,
