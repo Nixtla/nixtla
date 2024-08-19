@@ -4117,6 +4117,19 @@
                             }
                         ],
                         "title": "Weights X"
+                    },
+                    "feature_contributions": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "array"
+                                }
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "feature_contributions"
                     }
                 },
                 "type": "object",
@@ -4259,6 +4272,19 @@
                             }
                         ],
                         "title": "Weights X"
+                    },
+                    "feature_contributions": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "array"
+                                }
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "feature_contributions"
                     }
                 },
                 "type": "object",
