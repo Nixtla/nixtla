@@ -600,6 +600,10 @@ class NixtlaClient:
             max_wait_time=max_wait_time,
         )
         self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
+        if "ai.azure" in base_url:
+            self.supported_models = ["azureai", "timegpt-1-long-horizon"]
+        else:
+            self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
 
     def _make_request(
         self, client: httpx.Client, endpoint: str, payload: Dict[str, Any]
@@ -715,10 +719,9 @@ class NixtlaClient:
     ) -> Tuple[DFType, Optional[DFType], bool]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
-        supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
-        if model not in supported_models:
+        if model not in self.supported_models:
             raise ValueError(
-                f"unsupported model: {model}. supported models: {supported_models}"
+                f"unsupported model: {model}. supported models: {self.supported_models}"
             )
         drop_id = id_col not in df.columns
         if drop_id:
