@@ -23,7 +23,7 @@ dev = [
     "tabulate",
 ]
 distributed = ["fugue[dask,ray,spark]>=0.8.7", "pandas<2.2", "ray<2.6.3"]
-plotting = ["utilsforecast[plotting]>=0.2.2"]
+plotting = ["utilsforecast[plotting]>=0.2.3"]
 date_extras = ["holidays"]
 
 setuptools.setup(
@@ -47,7 +47,7 @@ setuptools.setup(
         "pydantic",
         "tenacity",
         "tqdm",
-        "utilsforecast>=0.2.2",
+        "utilsforecast>=0.2.3",
     ],
     extras_require={
         "dev": dev + plotting + date_extras,
