@@ -678,7 +678,10 @@ class NixtlaClient:
             resp["weights_x"] = None
         else:
             resp["weights_x"] = [res["weights_x"] for res in results]
-        if first_res["feature_contributions"] is None:
+        if (
+            "feature_contributions" not in first_res
+            or first_res["feature_contributions"] is None
+        ):
             resp["feature_contributions"] = None
         else:
             resp["feature_contributions"] = np.vstack(
