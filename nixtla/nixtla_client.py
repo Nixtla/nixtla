@@ -718,14 +718,27 @@ class NixtlaClient:
         feature_contributions: Optional[List[List[float]]],
         x_cols: List[str],
         out_df: DataFrame,
+        insample_feat_contributions: Optional[List[List[float]]],
     ) -> None:
         if feature_contributions is None:
             return
         else:
-            shap_df = type(out_df)(
-                dict(zip(x_cols + ["base_value"], feature_contributions))
-            )
-            self.feature_contributions = ufp.horizontal_concat([out_df, shap_df])
+            if insample_feat_contributions is not None:
+                insample_shap_df = type(out_df)(
+                    dict(zip(x_cols + ["base_value"], insample_feat_contributions))
+                )
+                shap_df = type(out_df)(
+                    dict(zip(x_cols + ["base_value"], feature_contributions))
+                )
+                full_shap_df = ufp.vertical_concat([insample_shap_df, shap_df])
+                self.feature_contributions = ufp.horizontal_concat(
+                    [out_df, full_shap_df]
+                )
+            else:
+                shap_df = type(out_df)(
+                    dict(zip(x_cols + ["base_value"], feature_contributions))
+                )
+                self.feature_contributions = ufp.horizontal_concat([out_df, shap_df])
 
     def _run_validations(
         self,
@@ -975,6 +988,7 @@ class NixtlaClient:
             "feature_contributions": feature_contributions,
         }
         with httpx.Client(**self._client_kwargs) as client:
+            insample_feat_contributions = None
             if num_partitions is None:
                 resp = self._make_request_with_retries(client, "v2/forecast", payload)
                 if add_history:
@@ -985,6 +999,9 @@ class NixtlaClient:
                         "v2/historic_forecast",
                         in_sample_payload,
                     )
+                    insample_feat_contributions = in_sample_resp[
+                        "feature_contributions"
+                    ]
             else:
                 payloads = _partition_series(payload, num_partitions, h)
                 resp = self._make_partitioned_requests(client, "v2/forecast", payloads)
@@ -998,6 +1015,9 @@ class NixtlaClient:
                         "v2/historic_forecast",
                         in_sample_payloads,
                     )
+                    insample_feat_contributions = in_sample_resp[
+                        "feature_contributions"
+                    ]
 
         # assemble result
         out = ufp.make_future_dataframe(
@@ -1027,6 +1047,7 @@ class NixtlaClient:
             feature_contributions=resp["feature_contributions"],
             x_cols=x_cols,
             out_df=out[[id_col, time_col, "TimeGPT"]],
+            insample_feat_contributions=insample_feat_contributions,
         )
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
