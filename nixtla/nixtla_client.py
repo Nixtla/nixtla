@@ -1023,13 +1023,13 @@ class NixtlaClient:
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
             out = ufp.sort(out, by=[id_col, time_col])
-        out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         self._maybe_assign_feature_contributions(
             feature_contributions=resp["feature_contributions"],
             x_cols=x_cols,
             out_df=out[[id_col, time_col, "TimeGPT"]],
         )
+        out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
+        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         return out
 
     def detect_anomalies(
