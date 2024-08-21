@@ -18,7 +18,7 @@ jobs:
   run-models-performance:
     runs-on: ubuntu-latest
     env:
-      NIXTLA_API_KEY: ${{ secrets.NIXTLA_API_KEY }}
+      NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
       NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
       NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_DEV_API_KEY }}
       NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_DEV_BASE_URL }}
