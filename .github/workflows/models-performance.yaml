@@ -20,9 +20,6 @@ jobs:
     env:
       NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
       NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
-      NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_DEV_API_KEY }}
-      NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_DEV_BASE_URL }}
-      API_KEY_FRED: ${{ secrets.API_KEY_FRED }}    
       PLOTS_REPO_URL: https://github.com/Nixtla/nixtla/blob/docs-figs-model-performance
     steps:
       - name: Clone repo
