@@ -33,14 +33,13 @@ from tenacity import (
     RetryCallState,
     retry,
     retry_if_exception,
-    retry_if_exception_type,
     stop_after_attempt,
     stop_after_delay,
     wait_fixed,
 )
 from utilsforecast.compat import DFType, DataFrame, pl_DataFrame
 from utilsforecast.feature_engineering import _add_time_features, time_features
-from utilsforecast.validation import ensure_time_dtype, validate_format, validate_freq
+from utilsforecast.validation import ensure_time_dtype, validate_format
 
 if TYPE_CHECKING:
     try:
@@ -1609,7 +1608,7 @@ def _cross_validation_wrapper(
 
 
 def _get_schema(
-    df: "fugue.AnyDataFrame",
+    df: "AnyDataFrame",
     method: str,
     id_col: str,
     time_col: str,
@@ -1644,7 +1643,7 @@ def _get_schema(
 
 
 def _distributed_setup(
-    df: "fugue.AnyDataFrame",
+    df: "AnyDataFrame",
     method: str,
     id_col: str,
     time_col: str,
