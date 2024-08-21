@@ -725,23 +725,14 @@ class NixtlaClient:
     ) -> None:
         if feature_contributions is None:
             return
-        else:
-            if insample_feat_contributions is not None:
-                insample_shap_df = type(out_df)(
-                    dict(zip(x_cols + ["base_value"], insample_feat_contributions))
-                )
-                shap_df = type(out_df)(
-                    dict(zip(x_cols + ["base_value"], feature_contributions))
-                )
-                full_shap_df = ufp.vertical_concat([insample_shap_df, shap_df])
-                self.feature_contributions = ufp.horizontal_concat(
-                    [out_df, full_shap_df]
-                )
-            else:
-                shap_df = type(out_df)(
-                    dict(zip(x_cols + ["base_value"], feature_contributions))
-                )
-                self.feature_contributions = ufp.horizontal_concat([out_df, shap_df])
+        shap_cols = x_cols + ["base_value"]
+        shap_df = type(out_df)(dict(zip(shap_cols, feature_contributions)))
+        if insample_feat_contributions is not None:
+            insample_shap_df = type(out_df)(
+                dict(zip(shap_cols, insample_feat_contributions))
+            )
+            shap_df = ufp.vertical_concat([insample_shap_df, shap_df])
+        self.feature_contributions = ufp.horizontal_concat([out_df, shap_df])
 
     def _run_validations(
         self,
@@ -1045,13 +1036,15 @@ class NixtlaClient:
             )
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
-            out = ufp.sort(out, by=[id_col, time_col])
         self._maybe_assign_feature_contributions(
             feature_contributions=resp["feature_contributions"],
             x_cols=x_cols,
             out_df=out[[id_col, time_col, "TimeGPT"]],
             insample_feat_contributions=insample_feat_contributions,
         )
+        if add_history:
+            out = ufp.sort(out, by=[id_col, time_col])
+
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         return out
