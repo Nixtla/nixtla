@@ -1752,6 +1752,7 @@ def _distributed_forecast(
     date_features_to_one_hot: Union[bool, List[str]],
     model: _Model,
     num_partitions: Optional[int],
+    feature_contributions: bool,
 ) -> DistributedDFType:
     import fugue.api as fa
 
