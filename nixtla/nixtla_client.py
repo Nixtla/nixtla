@@ -348,33 +348,28 @@ def _validate_exog(
     time_col: str,
     target_col: str,
 ) -> Tuple[DFType, Optional[DFType]]:
-    exogs_df = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+
+    exog_list = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+
     if X_df is None:
-        if exogs_df:
-            warnings.warn(
-                f"`df` contains the following exogenous features: {exogs_df}, "
-                "but `X_df` was not provided. They will be ignored."
-            )
-            df = df[[id_col, time_col, target_col]]
+        df = df[[id_col, time_col, target_col, *exog_list]]
         return df, None
-    exogs_X = [c for c in X_df.columns if c not in (id_col, time_col)]
-    missing_df = set(exogs_X) - set(exogs_df)
-    if missing_df:
+
+    futr_exog_list = [c for c in X_df.columns if c not in (id_col, time_col)]
+    hist_exog_list = list(set(exog_list) - set(futr_exog_list))
+
+    # Capture case where future exogenous are provided in X_df that are not in df
+    missing_futr = set(futr_exog_list) - set(exog_list)
+    if missing_futr:
         raise ValueError(
             "The following exogenous features are present in `X_df` "
-            f"but not in `df`: {missing_df}."
+            f"but not in `df`: {missing_futr}."
         )
-    missing_X_df = set(exogs_df) - set(exogs_X)
-    if missing_X_df:
-        warnings.warn(
-            "The following exogenous features are present in `df` "
-            f"but not in `X_df`: {missing_X_df}. They will be ignored"
-        )
-        exogs_df = [c for c in exogs_df if c in exogs_X]
-        df = df[[id_col, time_col, target_col, *exogs_df]]
-    if exogs_df != exogs_X:
-        # rearrange columns
-        X_df = X_df[[id_col, time_col, *exogs_df]]
+
+    # Make sure df and X_df are in right order
+    df = df[[id_col, time_col, target_col, *futr_exog_list, *hist_exog_list]]
+    X_df = X_df[[id_col, time_col, *futr_exog_list]]
+
     return df, X_df
 
 
@@ -464,10 +459,12 @@ def _preprocess(
             target_col=None,
         )
         X_future = processed_X.data.T.tolist()
+        futr_cols = [c for c in X_df.columns if c not in (id_col, time_col)]
     else:
         X_future = None
+        futr_cols = None
     x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
-    return processed, X_future, x_cols
+    return processed, X_future, x_cols, futr_cols
 
 
 def _forecast_payload_to_in_sample(payload):
@@ -903,7 +900,7 @@ class NixtlaClient:
             )
 
         logger.info("Preprocessing dataframes...")
-        processed, X_future, x_cols = _preprocess(
+        processed, X_future, x_cols, futr_cols = _preprocess(
             df=df,
             X_df=X_df,
             h=h,
@@ -926,7 +923,15 @@ class NixtlaClient:
             processed = _tail(processed, new_input_size)
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T.tolist()
-            logger.info(f"Using the following exogenous features: {x_cols}")
+            if futr_cols is not None:
+                hist_exog_set = set(x_cols) - set(futr_cols)
+                if hist_exog_set:
+                    logger.info(
+                        f"Using historical exogenous features: {list(hist_exog_set)}"
+                    )
+                logger.info(f"Using future exogenous features: {futr_cols}")
+            else:
+                logger.info(f"Using historical exogenous features: {x_cols}")
         else:
             X = None
 
@@ -1100,7 +1105,7 @@ class NixtlaClient:
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
 
         logger.info("Preprocessing dataframes...")
-        processed, _, x_cols = _preprocess(
+        processed, _, x_cols, _ = _preprocess(
             df=df,
             X_df=None,
             h=0,
@@ -1287,7 +1292,7 @@ class NixtlaClient:
             step_size = h
 
         logger.info("Preprocessing dataframes...")
-        processed, _, x_cols = _preprocess(
+        processed, _, x_cols, _ = _preprocess(
             df=df,
             X_df=None,
             h=0,
