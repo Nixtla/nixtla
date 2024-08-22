@@ -1307,7 +1307,14 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        targets = df[target_col].to_numpy()
+        if isinstance(df, pd.DataFrame):
+            # in pandas<2.2 to_numpy can lead to an object array if
+            # the type is a pandas nullable type, e.g. pd.Float64Dtype
+            # we thus use the dtype's type as the target dtype
+            target_dtype = df.dtypes[target_col].type
+            targets = df[target_col].to_numpy(dtype=target_dtype)
+        else:
+            targets = df[target_col].to_numpy()
         times = df[time_col].to_numpy()
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
