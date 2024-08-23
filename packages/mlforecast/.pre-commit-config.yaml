@@ -21,3 +21,4 @@ repos:
       - id: mypy
         args: [--ignore-missing-imports]
         exclude: 'setup.py'
+        additional_dependencies: ['types-PyYAML']
