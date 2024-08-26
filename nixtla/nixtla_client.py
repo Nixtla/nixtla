@@ -806,7 +806,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, List[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[PositiveInt] = None,
-        feature_contributions: bool = True,
+        feature_contributions: bool = False,
     ) -> AnyDFType:
         """Forecast your time series using TimeGPT.
 
@@ -978,7 +978,7 @@ class NixtlaClient:
             "level": level,
             "finetune_steps": finetune_steps,
             "finetune_loss": finetune_loss,
-            "feature_contributions": feature_contributions,
+            "feature_contributions": feature_contributions and X is not None,
         }
         with httpx.Client(**self._client_kwargs) as client:
             insample_feat_contributions = None
@@ -1047,7 +1047,7 @@ class NixtlaClient:
             )
             if sort_idxs is not None:
                 out = ufp.take_rows(out, sort_idxs)
-                if feature_contributions:
+                if hasattr(self, "feature_contributions"):
                     self.feature_contributions = ufp.take_rows(
                         self.feature_contributions, sort_idxs
                     )
