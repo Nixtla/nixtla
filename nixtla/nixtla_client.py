@@ -909,6 +909,7 @@ class NixtlaClient:
                 feature_contributions=feature_contributions,
             )
         self.__dict__.pop("weights_x", None)
+        self.__dict__.pop("feature_contributions", None)
         logger.info("Validating inputs...")
         df, X_df, drop_id = self._run_validations(
             df=df,
