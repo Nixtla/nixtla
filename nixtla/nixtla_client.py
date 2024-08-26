@@ -1045,11 +1045,12 @@ class NixtlaClient:
             sort_idxs = ufp.maybe_compute_sort_indices(
                 out, id_col=id_col, time_col=time_col
             )
-            assert sort_idxs is not None
-            out = ufp.take_rows(out, sort_idxs)
-            self.feature_contributions = ufp.take_rows(
-                self.feature_contributions, sort_idxs
-            )
+            if sort_idxs is not None:
+                out = ufp.take_rows(out, sort_idxs)
+                if feature_contributions:
+                    self.feature_contributions = ufp.take_rows(
+                        self.feature_contributions, sort_idxs
+                    )
 
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
