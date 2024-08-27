@@ -25,6 +25,7 @@ from typing import (
 import httpcore
 import httpx
 import numpy as np
+import orjson
 import pandas as pd
 import utilsforecast.processing as ufp
 from fastcore.basics import patch
@@ -458,7 +459,7 @@ def _preprocess(
             time_col=time_col,
             target_col=None,
         )
-        X_future = processed_X.data.T.tolist()
+        X_future = processed_X.data.T
         futr_cols = [c for c in X_df.columns if c not in (id_col, time_col)]
     else:
         X_future = None
@@ -587,7 +588,10 @@ class NixtlaClient:
             base_url = os.getenv("NIXTLA_BASE_URL", "https://api.nixtla.io")
         self._client_kwargs = {
             "base_url": base_url,
-            "headers": {"Authorization": f"Bearer {api_key}"},
+            "headers": {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
             "timeout": timeout,
         }
         self._retry_strategy = _retry_strategy(
@@ -604,12 +608,17 @@ class NixtlaClient:
     def _make_request(
         self, client: httpx.Client, endpoint: str, payload: Dict[str, Any]
     ) -> Dict[str, Any]:
-        resp = client.request(
-            method="post",
-            url=endpoint,
-            json=payload,
-        )
-        resp_body = resp.json()
+        def ensure_contiguous_arrays(d: Dict[str, Any]) -> None:
+            for k, v in d.items():
+                if isinstance(v, np.ndarray):
+                    d[k] = np.ascontiguousarray(v)
+                elif isinstance(v, dict):
+                    ensure_contiguous_arrays(v)
+
+        ensure_contiguous_arrays(payload)
+        content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
+        resp = client.post(url=endpoint, content=content)
+        resp_body = orjson.loads(resp.content)
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=resp_body)
         if "data" in resp_body:
@@ -922,7 +931,7 @@ class NixtlaClient:
             )
             processed = _tail(processed, new_input_size)
         if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].T.tolist()
+            X = processed.data[:, 1:].T
             if futr_cols is not None:
                 hist_exog_set = set(x_cols) - set(futr_cols)
                 if hist_exog_set:
@@ -938,8 +947,8 @@ class NixtlaClient:
         logger.info("Calling Forecast Endpoint...")
         payload = {
             "series": {
-                "y": processed.data[:, 0].tolist(),
-                "sizes": np.diff(processed.indptr).tolist(),
+                "y": processed.data[:, 0],
+                "sizes": np.diff(processed.indptr),
                 "X": X,
                 "X_future": X_future,
             },
@@ -1117,7 +1126,7 @@ class NixtlaClient:
             target_col=target_col,
         )
         if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].T.tolist()
+            X = processed.data[:, 1:].T
             logger.info(f"Using the following exogenous features: {x_cols}")
         else:
             X = None
@@ -1125,8 +1134,8 @@ class NixtlaClient:
         logger.info("Calling Anomaly Detector Endpoint...")
         payload = {
             "series": {
-                "y": processed.data[:, 0].tolist(),
-                "sizes": np.diff(processed.indptr).tolist(),
+                "y": processed.data[:, 0],
+                "sizes": np.diff(processed.indptr),
                 "X": X,
             },
             "model": model,
@@ -1303,7 +1312,14 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        targets = df[target_col].to_numpy()
+        if isinstance(df, pd.DataFrame):
+            # in pandas<2.2 to_numpy can lead to an object array if
+            # the type is a pandas nullable type, e.g. pd.Float64Dtype
+            # we thus use the dtype's type as the target dtype
+            target_dtype = df.dtypes[target_col].type
+            targets = df[target_col].to_numpy(dtype=target_dtype)
+        else:
+            targets = df[target_col].to_numpy()
         times = df[time_col].to_numpy()
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
@@ -1323,7 +1339,7 @@ class NixtlaClient:
             times = _array_tails(times, orig_indptr, np.diff(processed.indptr))
             targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
         if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].T.tolist()
+            X = processed.data[:, 1:].T
             logger.info(f"Using the following exogenous features: {x_cols}")
         else:
             X = None
@@ -1331,8 +1347,8 @@ class NixtlaClient:
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
             "series": {
-                "y": targets.tolist(),
-                "sizes": np.diff(processed.indptr).tolist(),
+                "y": targets,
+                "sizes": np.diff(processed.indptr),
                 "X": X,
             },
             "model": model,
