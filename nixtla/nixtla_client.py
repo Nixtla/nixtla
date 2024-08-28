@@ -630,7 +630,13 @@ class NixtlaClient:
         ensure_contiguous_arrays(payload)
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
         resp = client.post(url=endpoint, content=content)
-        resp_body = orjson.loads(resp.content)
+        try:
+            resp_body = orjson.loads(resp.content)
+        except orjson.JSONDecodeError:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=f"Could not parse JSON: {resp.content}",
+            )
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=resp_body)
         if "data" in resp_body:
