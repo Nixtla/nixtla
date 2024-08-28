@@ -58,7 +58,7 @@ df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-tim
 fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
 
 # 4. Plot your results (optional)
-nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value', level=[80, 90])
+nixtla_client.plot(df, fcst_df, level=[80, 90])
 
 ```
 ![Forecast Results](./nbs/img/forecast_readme.png)
@@ -143,8 +143,6 @@ from a broad array of domains, including finance, economics, demographics, healt
 IoT sensor data, energy, web traffic, sales, transport, and banking. Due to this diverse set of domains,
 the training dataset contains time series with a wide range of characteristics
 
-For the Zero-shot Results section of your README, you can enhance the clarity and effectiveness by focusing on emphasizing the key findings and their implications, while also making the text more concise and digestible. Here's a refined version:
-
 ---
 
 ## ⚡️ Zero-shot Results
@@ -164,7 +162,6 @@ For zero-shot inference, our internal tests recorded an average GPU inference sp
 If you find TimeGPT useful for your research, please consider citing the associated [paper](https://arxiv.org/abs/2310.03589):
 
 ```
-@article{ansari2024chronos,
 @misc{garza2023timegpt1,
       title={TimeGPT-1}, 
       author={Azul Garza and Max Mergenthaler-Canseco},
