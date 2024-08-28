@@ -10,20 +10,20 @@ jobs:
   fern-check:
     runs-on: ubuntu-latest
     steps:
-        - uses: actions/checkout@v2
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-        - uses: actions/setup-node@v4
+      - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # 4.0.3
 
-        - name: Install fern
-          run: npm install -g fern-api
+      - name: Install fern
+        run: npm install -g fern-api
 
-        - name: Generate code
-          env:
-            FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
-          run: fern generate --group publish --local --log-level=debug
+      - name: Generate code
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+        run: fern generate --group publish --local --log-level=debug
 
-        - name: Copy files
-          run: rm generated/__init__.py && cp -r generated/* nixtla
+      - name: Copy files
+        run: rm generated/__init__.py && cp -r generated/* nixtla
 
-        - name: Verify no changes were made
-          run: if git diff --exit-code; then echo "No changes"; else echo "Changes were made"; exit 1; fi
+      - name: Verify no changes were made
+        run: if git diff --exit-code; then echo "No changes"; else echo "Changes were made"; exit 1; fi

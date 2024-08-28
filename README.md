@@ -58,7 +58,7 @@ df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-tim
 fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
 
 # 4. Plot your results (optional)
-nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value', level=[80, 90])
+nixtla_client.plot(df, fcst_df, level=[80, 90])
 
 ```
 ![Forecast Results](./nbs/img/forecast_readme.png)

@@ -4,7 +4,7 @@ from time import time
 
 import fire
 from dotenv import load_dotenv
-from nixtla import TimeGPT
+from nixtla import NixtlaClient
 
 from src.utils.data_handler import ExperimentDataset, ForecastDataset
 
@@ -16,7 +16,7 @@ def timegpt_forecast(dataset_path: str, results_dir: str = "./results"):
     size_df = sys.getsizeof(dataset.Y_df_train) / (1024 * 1024)
     max_partition_size_mb = 20
     num_partitions = int(size_df / max_partition_size_mb) + 1
-    timegpt = TimeGPT(max_retries=1)
+    timegpt = NixtlaClient(max_retries=1)
     start = time()
     forecast_df = timegpt.forecast(
         df=dataset.Y_df_train,

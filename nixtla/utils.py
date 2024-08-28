@@ -5,7 +5,7 @@ __all__ = []
 
 # %% ../nbs/utils.ipynb 3
 def colab_badge(path: str):
-    from IPython.display import Markdown
+    from IPython.display import Markdown, display
 
     base_url = "https://colab.research.google.com/github"
     badge_svg = "https://colab.research.google.com/assets/colab-badge.svg"
