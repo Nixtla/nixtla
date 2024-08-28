@@ -611,7 +611,7 @@ class NixtlaClient:
         def ensure_contiguous_arrays(d: Dict[str, Any]) -> None:
             for k, v in d.items():
                 if isinstance(v, np.ndarray):
-                    d[k] = np.ascontiguousarray(v)
+                    d[k] = np.ascontiguousarray(v, dtype=np.float32)
                 elif isinstance(v, dict):
                     ensure_contiguous_arrays(v)
 
@@ -1505,7 +1505,7 @@ class NixtlaClient:
             ax=ax,
         )
 
-# %% ../nbs/nixtla_client.ipynb 52
+# %% ../nbs/nixtla_client.ipynb 51
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
