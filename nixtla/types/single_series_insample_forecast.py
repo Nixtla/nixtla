@@ -6,6 +6,7 @@ import typing
 from ..core.datetime_utils import serialize_datetime
 from ..core.pydantic_utilities import pydantic_v1
 from .model import Model
+from .single_series_insample_forecast_level_item import SingleSeriesInsampleForecastLevelItem
 
 
 class SingleSeriesInsampleForecast(pydantic_v1.BaseModel):
@@ -19,11 +20,7 @@ class SingleSeriesInsampleForecast(pydantic_v1.BaseModel):
     The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available.
     """
 
-    level: typing.Optional[typing.List[typing.Any]] = pydantic_v1.Field(default=None)
-    """
-    A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals.
-    """
-
+    level: typing.Optional[typing.List[SingleSeriesInsampleForecastLevelItem]] = None
     y: typing.Optional[typing.Any] = None
     x: typing.Optional[typing.Any] = None
     clean_ex_first: typing.Optional[bool] = pydantic_v1.Field(default=None)
