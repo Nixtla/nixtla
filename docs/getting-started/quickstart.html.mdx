@@ -109,6 +109,15 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
 > For further details go to [Data
 > Requeriments](https://docs.nixtla.io/docs/getting-started-data_requirements).
 
+> 👍 Save figures made with TimeGPT
+>
+> The `plot` method automatically displays figures when in a notebook
+> environment. To save figures locally, you can do:
+>
+> `fig = nixtla_client.plot(df, time_col='timestamp', target_col='value')`
+>
+> `fig.savefig('plot.png', bbox_inches='tight')`
+
 ### Forecast a longer horizon into the future
 
 Next, forecast the next 12 months using the SDK `forecast` method. Set
