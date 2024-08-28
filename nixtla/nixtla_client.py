@@ -667,7 +667,7 @@ class NixtlaClient:
             offsets = [0] + [sum(p["series"]["sizes"]) for p in payloads[:-1]]
             resp["idxs"] = np.hstack(
                 [
-                    np.array(res["idxs"]) + offset
+                    np.array(res["idxs"], dtype=np.int32) + offset
                     for res, offset in zip(results, offsets)
                 ]
             )
@@ -1373,8 +1373,8 @@ class NixtlaClient:
                 )
 
         # assemble result
-        idxs = np.array(resp["idxs"])
-        sizes = np.array(resp["sizes"])
+        idxs = np.array(resp["idxs"], dtype=np.int32)
+        sizes = np.array(resp["sizes"], dtype=np.int64)
         window_starts = np.arange(0, sizes.sum(), h)
         cutoff_idxs = np.repeat(idxs[window_starts] - 1, h)
         out = type(df)(
