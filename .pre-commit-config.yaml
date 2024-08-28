@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: nbdev_clean
         name: Clean notebooks
-        entry: sh action_files/clean_nbs
+        entry: sh -c 'nbdev_clean && nbdev_clean --fname nbs/src --clear_all'
         language: system
 
   - repo: https://github.com/fastai/nbdev

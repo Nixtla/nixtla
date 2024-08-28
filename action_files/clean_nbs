@@ -1,3 +1,0 @@
-#!/usr/bin/env sh
-nbdev_clean
-nbdev_clean --fname nbs/src/ --clear_all
