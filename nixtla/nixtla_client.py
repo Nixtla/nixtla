@@ -604,6 +604,15 @@ class NixtlaClient:
         )
         self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
         if "ai.azure" in base_url:
+            from packaging.version import Version
+
+            import nixtla
+
+            if Version(nixtla.__version__) > Version("0.5.2"):
+                raise NotImplementedError(
+                    "This version doesn't support Azure endpoints, please install "
+                    "an earlier version with: `pip install 'nixtla<=0.5.2'`"
+                )
             self.supported_models = ["azureai", "timegpt-1-long-horizon"]
         else:
             self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
