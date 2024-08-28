@@ -6,7 +6,6 @@ __all__ = ['NixtlaClient']
 # %% ../nbs/nixtla_client.ipynb 3
 import logging
 import math
-import sys
 import os
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -621,7 +620,7 @@ class NixtlaClient:
 
         ensure_contiguous_arrays(payload)
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
-        content_size_mb = sys.getsizeof(content) / (1024 * 1024)
+        content_size_mb = len(content) / (1024 * 1024)
         if content_size_mb > 200:
             raise ValueError(
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
