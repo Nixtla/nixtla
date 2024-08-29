@@ -611,7 +611,18 @@ class NixtlaClient:
         def ensure_contiguous_arrays(d: Dict[str, Any]) -> None:
             for k, v in d.items():
                 if isinstance(v, np.ndarray):
-                    d[k] = np.ascontiguousarray(v, dtype=np.float32)
+                    if np.issubdtype(v.dtype, np.floating):
+                        v_cont = np.ascontiguousarray(v, dtype=np.float32)
+                        d[k] = np.nan_to_num(
+                            v_cont,
+                            nan=np.nan,
+                            posinf=np.finfo(np.float32).max,
+                            neginf=np.finfo(np.float32).min,
+                            copy=False,
+                        )
+                    else:
+                        d[k] = np.ascontiguousarray(v)
+
                 elif isinstance(v, dict):
                     ensure_contiguous_arrays(v)
 
@@ -667,7 +678,7 @@ class NixtlaClient:
             offsets = [0] + [sum(p["series"]["sizes"]) for p in payloads[:-1]]
             resp["idxs"] = np.hstack(
                 [
-                    np.array(res["idxs"], dtype=np.int32) + offset
+                    np.array(res["idxs"], dtype=np.int64) + offset
                     for res, offset in zip(results, offsets)
                 ]
             )
@@ -1373,7 +1384,7 @@ class NixtlaClient:
                 )
 
         # assemble result
-        idxs = np.array(resp["idxs"], dtype=np.int32)
+        idxs = np.array(resp["idxs"], dtype=np.int64)
         sizes = np.array(resp["sizes"], dtype=np.int64)
         window_starts = np.arange(0, sizes.sum(), h)
         cutoff_idxs = np.repeat(idxs[window_starts] - 1, h)
