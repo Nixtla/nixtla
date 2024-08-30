@@ -601,7 +601,16 @@ class NixtlaClient:
         )
         self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
         if "ai.azure" in base_url:
-            self.supported_models = ["azureai", "timegpt-1-long-horizon"]
+            from packaging.version import Version
+
+            import nixtla
+
+            if Version(nixtla.__version__) > Version("0.5.2"):
+                raise NotImplementedError(
+                    "This version doesn't support Azure endpoints, please install "
+                    "an earlier version with: `pip install 'nixtla<=0.5.2'`"
+                )
+            self.supported_models = ["azureai"]
         else:
             self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
 
@@ -629,7 +638,13 @@ class NixtlaClient:
         ensure_contiguous_arrays(payload)
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
         resp = client.post(url=endpoint, content=content)
-        resp_body = orjson.loads(resp.content)
+        try:
+            resp_body = orjson.loads(resp.content)
+        except orjson.JSONDecodeError:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=f"Could not parse JSON: {resp.content}",
+            )
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=resp_body)
         if "data" in resp_body:
