@@ -43,6 +43,7 @@ setuptools.setup(
     install_requires=[
         "fastcore",
         "httpx",
+        "orjson",
         "pandas",
         "pydantic",
         "tenacity",
