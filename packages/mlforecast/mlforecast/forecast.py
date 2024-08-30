@@ -13,10 +13,9 @@ from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tupl
 import cloudpickle
 import fsspec
 import numpy as np
-import pandas as pd
 import utilsforecast.processing as ufp
 from sklearn.base import BaseEstimator, clone
-from utilsforecast.compat import DataFrame
+from utilsforecast.compat import DFType, DataFrame
 
 from mlforecast.core import (
     DateFeature,
@@ -38,15 +37,15 @@ from .utils import PredictionIntervals
 
 # %% ../nbs/forecast.ipynb 6
 def _add_conformal_distribution_intervals(
-    fcst_df: DataFrame,
-    cs_df: DataFrame,
+    fcst_df: DFType,
+    cs_df: DFType,
     model_names: List[str],
     level: List[Union[int, float]],
     cs_n_windows: int,
     cs_h: int,
     n_series: int,
     horizon: int,
-) -> DataFrame:
+) -> DFType:
     """
     Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
     `level` should be already sorted. This strategy creates forecasts paths
@@ -76,15 +75,15 @@ def _add_conformal_distribution_intervals(
 
 # %% ../nbs/forecast.ipynb 7
 def _add_conformal_error_intervals(
-    fcst_df: DataFrame,
-    cs_df: DataFrame,
+    fcst_df: DFType,
+    cs_df: DFType,
     model_names: List[str],
     level: List[Union[int, float]],
     cs_n_windows: int,
     cs_h: int,
     n_series: int,
     horizon: int,
-) -> DataFrame:
+) -> DFType:
     """
     Adds conformal intervals to a `fcst_df` based on conformal scores `cs_df`.
     `level` should be already sorted. This startegy creates prediction intervals
@@ -205,7 +204,7 @@ class MLForecast:
 
     def preprocess(
         self,
-        df: DataFrame,
+        df: DFType,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -215,7 +214,7 @@ class MLForecast:
         max_horizon: Optional[int] = None,
         return_X_y: bool = False,
         as_numpy: bool = False,
-    ) -> Union[DataFrame, Tuple[DataFrame, np.ndarray]]:
+    ) -> Union[DFType, Tuple[DFType, np.ndarray]]:
         """Add the features to `data`.
 
         Parameters
@@ -297,7 +296,7 @@ class MLForecast:
 
     def _conformity_scores(
         self,
-        df: DataFrame,
+        df: DFType,
         id_col: str,
         time_col: str,
         target_col: str,
@@ -308,7 +307,7 @@ class MLForecast:
         n_windows: int = 2,
         h: int = 1,
         as_numpy: bool = False,
-    ):
+    ) -> DFType:
         """Compute conformity scores.
 
         We need at least two cross validation errors to compute
@@ -349,7 +348,7 @@ class MLForecast:
             cv_results = ufp.assign_columns(cv_results, model, abs_err)
         return ufp.drop_columns(cv_results, target_col)
 
-    def _invert_transforms_fitted(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _invert_transforms_fitted(self, df: DFType) -> DFType:
         if self.ts.target_transforms is None:
             return df
         if any(
@@ -379,9 +378,9 @@ class MLForecast:
 
     def _extract_X_y(
         self,
-        prep: DataFrame,
+        prep: DFType,
         target_col: str,
-    ) -> Tuple[Union[DataFrame, np.ndarray], np.ndarray]:
+    ) -> Tuple[Union[DFType, np.ndarray], np.ndarray]:
         X = prep[self.ts.features_order_]
         targets = [c for c in prep.columns if re.match(rf"^{target_col}\d*$", c)]
         if len(targets) == 1:
@@ -391,14 +390,14 @@ class MLForecast:
 
     def _compute_fitted_values(
         self,
-        base: DataFrame,
-        X: Union[DataFrame, np.ndarray],
+        base: DFType,
+        X: Union[DFType, np.ndarray],
         y: np.ndarray,
         id_col: str,
         time_col: str,
         target_col: str,
         max_horizon: Optional[int],
-    ) -> DataFrame:
+    ) -> DFType:
         base = ufp.copy_if_pandas(base, deep=False)
         sort_idxs = ufp.maybe_compute_sort_indices(base, id_col, time_col)
         if sort_idxs is not None:
@@ -597,7 +596,7 @@ class MLForecast:
             time_col=self.ts.time_col,
         )
 
-    def get_missing_future(self, h: int, X_df: DataFrame) -> DataFrame:
+    def get_missing_future(self, h: int, X_df: DFType) -> DFType:
         """Get the missing id and time combinations in `X_df`.
 
         Parameters
@@ -621,11 +620,11 @@ class MLForecast:
         h: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
-        new_df: Optional[DataFrame] = None,
+        new_df: Optional[DFType] = None,
         level: Optional[List[Union[int, float]]] = None,
-        X_df: Optional[DataFrame] = None,
+        X_df: Optional[DFType] = None,
         ids: Optional[List[str]] = None,
-    ) -> DataFrame:
+    ) -> DFType:
         """Compute the predictions for the next `h` steps.
 
         Parameters
@@ -766,7 +765,7 @@ class MLForecast:
 
     def cross_validation(
         self,
-        df: DataFrame,
+        df: DFType,
         n_windows: int,
         h: int,
         id_col: str = "unique_id",
@@ -785,7 +784,7 @@ class MLForecast:
         input_size: Optional[int] = None,
         fitted: bool = False,
         as_numpy: bool = False,
-    ) -> DataFrame:
+    ) -> DFType:
         """Perform time series cross validation.
         Creates `n_windows` splits where each window has `h` test periods,
         trains the models, computes the predictions and merges the actuals.

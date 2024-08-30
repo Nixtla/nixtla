@@ -32,6 +32,7 @@ import utilsforecast.processing as ufp
 from sklearn.base import BaseEstimator, clone
 from sklearn.pipeline import Pipeline
 from utilsforecast.compat import (
+    DFType,
     DataFrame,
     pl,
     pl_DataFrame,
@@ -367,12 +368,12 @@ class TimeSeries:
 
     def _transform(
         self,
-        df: DataFrame,
+        df: DFType,
         dropna: bool = True,
         max_horizon: Optional[int] = None,
         return_X_y: bool = False,
         as_numpy: bool = False,
-    ) -> pd.DataFrame:
+    ) -> DFType:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
@@ -480,7 +481,7 @@ class TimeSeries:
 
     def fit_transform(
         self,
-        data: DataFrame,
+        data: DFType,
         id_col: str,
         time_col: str,
         target_col: str,
@@ -490,7 +491,7 @@ class TimeSeries:
         max_horizon: Optional[int] = None,
         return_X_y: bool = False,
         as_numpy: bool = False,
-    ) -> Union[DataFrame, Tuple[DataFrame, np.ndarray]]:
+    ) -> Union[DFType, Tuple[DFType, np.ndarray]]:
         """Add the features to `data` and save the required information for the predictions step.
 
         If not all features are static, specify which ones are in `static_features`.
@@ -626,8 +627,8 @@ class TimeSeries:
         horizon: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
-        X_df: Optional[DataFrame] = None,
-    ) -> DataFrame:
+        X_df: Optional[DFType] = None,
+    ) -> DFType:
         """Use `model` to predict the next `horizon` timesteps."""
         for i, (name, model) in enumerate(models.items()):
             with self._backup():
@@ -654,8 +655,8 @@ class TimeSeries:
         models: Dict[str, BaseEstimator],
         horizon: int,
         before_predict_callback: Optional[Callable] = None,
-        X_df: Optional[DataFrame] = None,
-    ) -> DataFrame:
+        X_df: Optional[DFType] = None,
+    ) -> DFType:
         assert self.max_horizon is not None
         if horizon > self.max_horizon:
             raise ValueError(
@@ -729,9 +730,9 @@ class TimeSeries:
         horizon: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
-        X_df: Optional[DataFrame] = None,
+        X_df: Optional[DFType] = None,
         ids: Optional[List[str]] = None,
-    ) -> DataFrame:
+    ) -> DFType:
         if ids is not None:
             unseen = set(ids) - set(self.uids)
             if unseen:
