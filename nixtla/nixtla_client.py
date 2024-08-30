@@ -610,7 +610,7 @@ class NixtlaClient:
                     "This version doesn't support Azure endpoints, please install "
                     "an earlier version with: `pip install 'nixtla<=0.5.2'`"
                 )
-            self.supported_models = ["azureai", "timegpt-1-long-horizon"]
+            self.supported_models = ["azureai"]
         else:
             self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
 
