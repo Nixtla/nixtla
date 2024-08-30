@@ -27,16 +27,3 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
 
-      - name: Build nixtlats package
-        run: >
-          rm -rf build dist &&
-          mv nixtla nixtlats &&
-          sed -i 's/name="nixtla"/name="nixtlats"/g' setup.py &&
-          find nixtlats -type f -name '*.py' -exec sed -i 's/from nixtla/from nixtlats/g' {} + &&
-          echo -e 'import warnings\nwarnings.warn("This package is deprecated, please install nixtla instead.", category=FutureWarning)' >> nixtlats/__init__.py &&
-          python -m build
-
-      - name: Publish nixtlats package
-        uses: pypa/gh-action-pypi-publish@ec4db0b4ddc65acdf4bff5fa45ac92d78b56bdf0 # v1.9.0
-        with:
-          repository-url: https://test.pypi.org/legacy/
