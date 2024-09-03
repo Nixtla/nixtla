@@ -4,8 +4,6 @@ title: Add exogenous variables
 ---
 
 
-[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/02_exogenous_variables.ipynb)
-
 ```python
 import pandas as pd
 from nixtla import NixtlaClient
@@ -25,8 +23,27 @@ nixtla_client = NixtlaClient(
 >
 > `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
 
+## 1. Historical exogenous variables
+
 ```python
 # Read data
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+
+# Forecast
+forecast_df = nixtla_client.forecast(
+    df=df, 
+    h=24,
+    id_col='unique_id',
+    target_col='y',
+    time_col='ds'
+)
+```
+
+## 2. Future exogenous variables
+
+```python
+# Read data
+import numpy as np
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
 
 # Load the future value of exogenous variables over the forecast horizon
@@ -43,12 +60,27 @@ forecast_df = nixtla_client.forecast(
 )
 ```
 
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+## 3. Historical and future exogenous variables
+
+```python
+# Read data
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+
+# Load the future value of exogenous variables over the forecast horizon
+future_ex_vars_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv')
+
+# We will only use 2 exogenous of future_ex_vars_df. The columns not included in future_ex_vars_df will be considered as historical exogenous variables, as the future values have not been supplied.
+future_ex_vars_df = future_ex_vars_df[["unique_id", "ds", "Exogenous1", "Exogenous2"]]
+
+# Forecast
+forecast_df = nixtla_client.forecast(
+    df=df, 
+    X_df=future_ex_vars_df, 
+    h=24,
+    id_col='unique_id',
+    target_col='y',
+    time_col='ds'
+)
 ```
 
 > 📘 Available models in Azure AI

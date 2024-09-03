@@ -64,17 +64,12 @@ df.head()
 | 3 | BE | 2016-10-22 03:00:00 | 44.75 | 44483.0 | 48428.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
 | 4 | BE | 2016-10-22 04:00:00 | 37.10 | 44338.0 | 46721.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
 
-## 3. Forecasting electricity prices using exogenous variables
+## 3a. Forecasting electricity prices using future exogenous variables
 
-To produce forecasts we also have to add the future values of the
-exogenous variables. Let’s read this dataset. In this case, we want to
-predict 24 steps ahead, therefore each `unique_id` will have 24
-observations.
-
-> **Important**
->
-> If you want to use exogenous variables when forecasting with TimeGPT,
-> you need to have the future values of those exogenous variables too.
+To produce forecasts with future exogenous variables we have to add the
+future values of the exogenous variables. Let’s read this dataset. In
+this case, we want to predict 24 steps ahead, therefore each `unique_id`
+will have 24 observations.
 
 ```python
 future_ex_vars_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv')
@@ -98,19 +93,20 @@ timegpt_fcst_ex_vars_df.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Using future exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
-|  | unique_id | ds | TimeGPT | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
+|  | unique_id | ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
 |----|----|----|----|----|----|----|----|
-| 0 | BE | 2016-12-31 00:00:00 | 74.540773 | 68.360707 | 69.771055 | 79.310490 | 80.720839 |
-| 1 | BE | 2016-12-31 01:00:00 | 43.344289 | 34.178730 | 37.014974 | 49.673604 | 52.509848 |
-| 2 | BE | 2016-12-31 02:00:00 | 44.429220 | 32.082046 | 38.029457 | 50.828984 | 56.776394 |
-| 3 | BE | 2016-12-31 03:00:00 | 38.094395 | 25.394914 | 31.756504 | 44.432286 | 50.793876 |
-| 4 | BE | 2016-12-31 04:00:00 | 37.389141 | 23.840479 | 28.535553 | 46.242729 | 50.937804 |
+| 0 | BE | 2016-12-31 00:00:00 | 74.540771 | 84.506861 | 89.003936 | 64.574681 | 60.077606 |
+| 1 | BE | 2016-12-31 01:00:00 | 43.344290 | 52.200879 | 57.771782 | 34.487701 | 28.916798 |
+| 2 | BE | 2016-12-31 02:00:00 | 44.429219 | 51.034622 | 57.623160 | 37.823817 | 31.235279 |
+| 3 | BE | 2016-12-31 03:00:00 | 38.094396 | 48.108948 | 51.528001 | 28.079844 | 24.660791 |
+| 4 | BE | 2016-12-31 04:00:00 | 37.389140 | 46.747685 | 52.186070 | 28.030595 | 22.592211 |
 
 > 📘 Available models in Azure AI
 >
@@ -148,23 +144,126 @@ nixtla_client.weights_x.plot.barh(x='features', y='weights')
 This plot shows that `Exogenous1` and `Exogenous2` are the most
 important for this forecasting task, as they have the largest weight.
 
-## 4. How to generate future exogenous variables?
+## 3b. Forecasting electricity prices using historic exogenous variables
 
 In the example above, we just loaded the future exogenous variables.
-Often, these are not available because these variables are unknown.
-Hence, we need to forecast these too.
+Often, these are not available because these variables are unknown. We
+can als make forecasts using only historic exogenous variables. This can
+be done simply by omitting the `X_df` parameter. In that case, the
+exogenous variables that are present in `df` will be considered as
+historic exogenous variables.
 
 > **Important**
 >
-> If you would only include historic exogenous variables in your model,
-> you would be *implicitly* making assumptions about the future of these
-> exogenous variables in your forecast. That’s why TimeGPT requires you
-> to explicitly incorporate the future of these exogenous variables too,
-> so that you make your assumptions about these variables *explicit*.
+> If you include historic exogenous variables in your model, you are
+> *implicitly* making assumptions about the future of these exogenous
+> variables in your forecast. It is recommended to make these
+> assumptions explicit by making use of future exogenous variables.
 
-Below, we’ll show you how we can also forecast `Exogenous1` and
-`Exogenous2` separately, so that you can generate the future exogenous
-variables in case they are not available.
+Let’s call the `forecast` method, removing `X_df`:
+
+```python
+timegpt_fcst_hist_ex_vars_df = nixtla_client.forecast(df=df, h=24, level=[80, 90])
+timegpt_fcst_hist_ex_vars_df.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Using historical exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|  | unique_id | ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
+|----|----|----|----|----|----|----|----|
+| 0 | BE | 2016-12-31 00:00:00 | 45.769382 | 55.735472 | 60.232546 | 35.803292 | 31.306217 |
+| 1 | BE | 2016-12-31 01:00:00 | 47.991004 | 56.847593 | 62.418496 | 39.134415 | 33.563512 |
+| 2 | BE | 2016-12-31 02:00:00 | 49.496135 | 56.101537 | 62.690075 | 42.890732 | 36.302195 |
+| 3 | BE | 2016-12-31 03:00:00 | 49.510808 | 59.525360 | 62.944413 | 39.496257 | 36.077203 |
+| 4 | BE | 2016-12-31 04:00:00 | 48.510558 | 57.869103 | 63.307488 | 39.152014 | 33.713629 |
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.forecast(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
+```python
+nixtla_client.plot(
+    df[['unique_id', 'ds', 'y']], 
+    timegpt_fcst_hist_ex_vars_df, 
+    max_insample_length=365, 
+    level=[80, 90], 
+)
+```
+
+![](/nixtla/docs/tutorials/01_exogenous_variables_files/figure-markdown_strict/cell-11-output-1.png)
+
+## 3c. Forecasting electricity prices using future and historic exogenous variables
+
+A third option is to use both historic and future exogenous variables.
+For example, we might not have available the future information for
+`Exogenous1` and `Exogenous2`. In this example, we drop these variables
+from our future exogenous dataframe (because we assume we do not know
+the future value of these variables).
+
+```python
+future_ex_vars_df_limited = future_ex_vars_df.drop(columns = ["Exogenous1", "Exogenous2"])
+timegpt_fcst_ex_vars_df_limited = nixtla_client.forecast(df=df, X_df=future_ex_vars_df_limited, h=24, level=[80, 90])
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Using historical exogenous features: ['Exogenous2', 'Exogenous1']
+INFO:nixtla.nixtla_client:Using future exogenous features: ['day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.forecast(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
+```python
+nixtla_client.plot(
+    df[['unique_id', 'ds', 'y']], 
+    timegpt_fcst_ex_vars_df_limited, 
+    max_insample_length=365, 
+    level=[80, 90], 
+)
+```
+
+![](/nixtla/docs/tutorials/01_exogenous_variables_files/figure-markdown_strict/cell-13-output-1.png)
+
+Note that TimeGPT informs you which variables are used as historic
+exogenous and which are used as future exogenous.
+
+## 3d. Forecasting future exogenous variables
+
+A fourth option in case the future exogenous variables are not available
+is to forecast them. Below, we’ll show you how we can also forecast
+`Exogenous1` and `Exogenous2` separately, so that you can generate the
+future exogenous variables in case they are not available.
 
 ```python
 # We read the data and create separate dataframes for the historic exogenous that we want to forecast separately.
@@ -330,7 +429,7 @@ nixtla_client.plot(
 )
 ```
 
-![](/nixtla/docs/tutorials/01_exogenous_variables_files/figure-markdown_strict/cell-19-output-1.png)
+![](/nixtla/docs/tutorials/01_exogenous_variables_files/figure-markdown_strict/cell-23-output-1.png)
 
 As you can see, we obtain a slightly different forecast if we use our
 forecasted exogenous variables.

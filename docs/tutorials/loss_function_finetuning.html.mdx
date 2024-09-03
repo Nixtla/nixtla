@@ -258,7 +258,7 @@ loss_fct_dict = {
 pct_improv = []
 
 for loss in losses[1:]:
-    evaluation = loss_fct_dict[f'{loss}'](test, models=['timegpt_default', f'timegpt_{loss}'], id_col='unique_id', target_col='value')
+    evaluation = loss_fct_dict[f'{loss}'](test, models=['TimeGPT_default', f'TimeGPT_{loss}'], id_col='unique_id', target_col='value')
     pct_diff = (evaluation['TimeGPT_default'] - evaluation[f'TimeGPT_{loss}']) / evaluation['TimeGPT_default'] * 100
     pct_improv.append(round(pct_diff, 2))
 ```
