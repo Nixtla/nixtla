@@ -12,7 +12,6 @@
 [![Downloads](https://pepy.tech/badge/nixtla)](https://pepy.tech/project/nixtla)
 [![Downloads](https://pepy.tech/badge/nixtla/month)](https://pepy.tech/project/nixtla)
 [![Downloads](https://pepy.tech/badge/nixtla/week)](https://pepy.tech/project/nixtla)
-[![fern shield](https://img.shields.io/badge/%F0%9F%8C%BF-SDK%20generated%20by%20Fern-brightgreen)](https://buildwithfern.com/?utm_source=nixtla/nixtla/readme)
 
 **TimeGPT** is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code 🚀. </div>
 
@@ -51,7 +50,7 @@ from nixtla import NixtlaClient
 # 1. Instantiate the NixtlaClient
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
 
-# 2. Read historic electricity demand data 
+# 2. Read historic electricity demand data
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
 
 # 3. Forecast the next 24 hours
@@ -74,7 +73,7 @@ nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
 
 
-# 3. Detect Anomalies 
+# 3. Detect Anomalies
 anomalies_df = nixtla_client.detect_anomalies(df, time_col='timestamp', target_col='value', freq='D')
 
 # 4. Plot your results (optional)
@@ -88,21 +87,21 @@ Explore our [API Reference](https://docs.nixtla.io) to discover how to leverage 
 ## 🔥 Features and Capabilities
 
 - **Zero-shot Inference**: TimeGPT can generate forecasts and detect anomalies straight out of the box, requiring no prior training data. This allows for immediate deployment and quick insights from any time series data.
-  
+
 - **Fine-tuning**: Enhance TimeGPT's capabilities by fine-tuning the model on your specific datasets, enabling the model to adapt to the nuances of your unique time series data and improving performance on tailored tasks.
 
 - **API Access**: Integrate TimeGPT seamlessly into your applications via our robust API. Upcoming support for Azure Studio will provide even more flexible integration options. Alternatively, deploy TimeGPT on your own infrastructure to maintain full control over your data and workflows.
-  
+
 - **Add Exogenous Variables**: Incorporate additional variables that might influence your predictions to enhance forecast accuracy. (E.g. Special Dates, events or prices)
-  
+
 - **Multiple Series Forecasting**: Simultaneously forecast multiple time series data, optimizing workflows and resources.
-  
+
 - **Custom Loss Function**: Tailor the fine-tuning process with a custom loss function to meet specific performance metrics.
 
 - **Cross Validation**: Implement out of the box cross-validation techniques to ensure model robustness and generalizability.
 
 - **Prediction Intervals**: Provide intervals in your predictions to quantify uncertainty effectively.
-  
+
 - **Irregular Timestamps**: Handle data with irregular timestamps, accommodating non-uniform interval series without preprocessing.
 
 ## 📚 Documentation with examples and use cases
@@ -150,12 +149,12 @@ the training dataset contains time series with a wide range of characteristics
 TimeGPT has been tested for its zero-shot inference capabilities on more than 300K unique series, which involve using the model without additional fine-tuning on the test dataset. TimeGPT outperforms a comprehensive range of well-established statistical and cutting-edge deep learning models, consistently ranking among the top three performers across various frequencies.
 
 ### Ease of use:
-TimeGPT also excels by offering simple and rapid predictions using a pre-trained model. This stands in stark contrast to other models that typically require an extensive training and prediction pipeline. 
+TimeGPT also excels by offering simple and rapid predictions using a pre-trained model. This stands in stark contrast to other models that typically require an extensive training and prediction pipeline.
 
 ![Results](nbs/img/results.jpg)
 
-### Efficiency and Speed: 
-For zero-shot inference, our internal tests recorded an average GPU inference speed of 0.6 milliseconds per series for TimeGPT, which nearly mirrors that of the simple Seasonal Naive. 
+### Efficiency and Speed:
+For zero-shot inference, our internal tests recorded an average GPU inference speed of 0.6 milliseconds per series for TimeGPT, which nearly mirrors that of the simple Seasonal Naive.
 
 ## 📝 How to cite?
 
@@ -163,7 +162,7 @@ If you find TimeGPT useful for your research, please consider citing the associa
 
 ```
 @misc{garza2023timegpt1,
-      title={TimeGPT-1}, 
+      title={TimeGPT-1},
       author={Azul Garza and Max Mergenthaler-Canseco},
       year={2023},
       eprint={2310.03589},
@@ -187,7 +186,7 @@ TimeGPT has been featured in many publications and has been recognized for its i
 
 
 ## 🔖 License
-TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute. 
+TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute.
 
 ## 📞 Get in touch
 For any questions or feedback, please feel free to reach out to us at ops [at] nixtla.io.
