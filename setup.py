@@ -44,6 +44,7 @@ setuptools.setup(
         "fastcore",
         "httpx",
         "orjson",
+        "packaging",
         "pandas",
         "pydantic",
         "tenacity",
