@@ -12,7 +12,7 @@ from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from quadprog import solve_qp
 from scipy import sparse
 
@@ -781,7 +781,6 @@ class MinTrace(HReconciler):
             W = np.eye(n_hiers)
             UtW = Ut
         elif self.method == 'wls_struct':
-            # W = np.diag(S @ np.ones((n_bottom,)))
             Wdiag = np.sum(S, axis=1, dtype=np.float64)
             UtW = Ut * Wdiag
             W = np.diag(Wdiag)
@@ -807,35 +806,14 @@ class MinTrace(HReconciler):
                 covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
                 W = covm
                 UtW = Ut @ W
-
             elif self.method == 'mint_shrink':
-                # Schäfer and Strimmer 2005, scale invariant shrinkage
-
-                # Protection: cases where data is unavailable/nan
-                masked_res = np.ma.array(residuals, mask=np.isnan(residuals))
-                covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
-                tar = np.diag(np.diag(covm))
-
-                # Protections: constant's correlation set to 0
-                # standardized residuals 0 where residual_std=0
-                corm, residual_std = cov2corr(covm, return_std=True)
-                corm = np.nan_to_num(corm, nan=0.0)
-                xs = np.divide(residuals, residual_std, 
-                               out=np.zeros_like(residuals), where=residual_std!=0)
-
-                xs = xs[~np.isnan(xs).any(axis=1), :]
-                v = (1 / (n * (n - 1))) * (crossprod(xs ** 2) - (1 / n) * (crossprod(xs) ** 2))
-                np.fill_diagonal(v, 0)
-
-                # Protection: constant's correlation set to 0
-                corapn = cov2corr(tar)
-                corapn = np.nan_to_num(corapn, nan=0.0)
-                d = (corm - corapn) ** 2
-                lmd = v.sum() / d.sum()
-                lmd = max(min(lmd, 1), 0)
-
-                # Protection: final ridge diagonal protection
-                W = (lmd * tar + (1 - lmd) * covm) + self.mint_shr_ridge
+                # Compute nans
+                nan_mask = np.isnan(residuals.T)
+                # Compute shrunk empirical covariance
+                if np.any(nan_mask):
+                    W = _shrunk_covariance_schaferstrimmer_with_nans(residuals.T, ~nan_mask, self.mint_shr_ridge)
+                else:
+                    W = _shrunk_covariance_schaferstrimmer_no_nans(residuals.T, self.mint_shr_ridge)
 
                 UtW = Ut @ W
         else:
@@ -845,7 +823,7 @@ class MinTrace(HReconciler):
             try:
                 L = np.linalg.cholesky(W)
             except np.linalg.LinAlgError:
-                raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite.')
+                raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite. \n Please use another reconciliation method.')
         else:
             eigenvalues = np.diag(W)
             if any(eigenvalues < 1e-8):
@@ -987,6 +965,127 @@ class MinTrace(HReconciler):
                                level=level, sampler=self.sampler)
 
     __call__ = fit_predict
+
+@njit(parallel=True, fastmath=True, error_model="numpy")
+def _shrunk_covariance_schaferstrimmer_no_nans(residuals: np.ndarray, mint_shr_ridge: float):
+    """Shrink empirical covariance according to the following method:
+        Schäfer, Juliane, and Korbinian Strimmer. 
+        ‘A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and 
+        Implications for Functional Genomics’. Statistical Applications in 
+        Genetics and Molecular Biology 4, no. 1 (14 January 2005). 
+        https://doi.org/10.2202/1544-6115.1175.
+
+    :meta private:
+    """
+    n_timeseries = residuals.shape[0]
+    n_samples = residuals.shape[1]
+    
+    # We need the empirical covariance, the off-diagonal sum of the variance of 
+    # the empirical correlation matrix and the off-diagonal sum of the squared 
+    # empirical correlation matrix.
+    W = np.zeros((n_timeseries, n_timeseries), dtype=np.float64).T
+    sum_var_emp_corr = np.float64(0.0)
+    sum_sq_emp_corr = np.float64(0.0)
+    factor_emp_cov = np.float64(1 / (n_samples - 1))
+    factor_shrinkage = np.float64(1 / (n_samples * (n_samples - 1)))
+    epsilon = np.float64(2e-8)
+    for i in prange(n_timeseries):
+        # Mean of the standardized residuals
+        X_i = residuals[i] - np.mean(residuals[i])
+        Xs_i = X_i / (np.std(residuals[i]) + epsilon)
+        Xs_i_mean = np.mean(Xs_i)
+        for j in range(i + 1):
+            # Empirical covariance
+            X_j = residuals[j] - np.mean(residuals[j])
+            W[i, j] = factor_emp_cov * np.mean(X_i * X_j)
+            # Off-diagonal sums
+            if i != j:
+                Xs_j = X_j / (np.std(residuals[j]) + epsilon)
+                Xs_j_mean = np.mean(Xs_j)
+                # Sum off-diagonal variance of empirical correlation
+                w = (Xs_i - Xs_i_mean) * (Xs_j - Xs_j_mean)
+                w_mean = np.mean(w)
+                sum_var_emp_corr += np.sum(np.square(w - w_mean))
+                # Sum squared empirical correlation
+                sum_sq_emp_corr += w_mean**2
+
+    # Calculate shrinkage intensity 
+    shrinkage = 1.0 - max(min((factor_shrinkage * sum_var_emp_corr) / (sum_sq_emp_corr + epsilon), 1.0), 0.0)
+    # Shrink the empirical covariance
+    for i in prange(n_timeseries):
+        for j in range(i + 1):
+            if i != j:    
+                W[i, j] = W[j, i] = shrinkage * W[i, j] + mint_shr_ridge
+            else:
+                W[i, j] = W[j, i] = W[i, j] + mint_shr_ridge
+    return W
+
+@njit(parallel=True, fastmath=True, error_model="numpy")
+def _shrunk_covariance_schaferstrimmer_with_nans(residuals: np.ndarray, not_nan_mask: np.ndarray, mint_shr_ridge: float):
+    """Shrink empirical covariance according to the following method:
+        Schäfer, Juliane, and Korbinian Strimmer. 
+        ‘A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and 
+        Implications for Functional Genomics’. Statistical Applications in 
+        Genetics and Molecular Biology 4, no. 1 (14 January 2005). 
+        https://doi.org/10.2202/1544-6115.1175.
+
+    :meta private:
+    """
+    n_timeseries = residuals.shape[0]
+    
+    # We need the empirical covariance, the off-diagonal sum of the variance of 
+    # the empirical correlation matrix and the off-diagonal sum of the squared 
+    # empirical correlation matrix.
+    W = np.zeros((n_timeseries, n_timeseries), dtype=np.float64).T
+    sum_var_emp_corr = np.float64(0.0)
+    sum_sq_emp_corr = np.float64(0.0)
+    epsilon = np.float64(2e-8)
+    for i in prange(n_timeseries):
+        not_nan_mask_i = not_nan_mask[i]
+        for j in range(i + 1):
+            not_nan_mask_j = not_nan_mask[j]
+            not_nan_mask_ij = not_nan_mask_i & not_nan_mask_j   
+            n_samples = np.sum(not_nan_mask_ij)
+            # Only compute if we have enough non-nan samples in the time series pair
+            if n_samples > 1:
+                # Masked residuals
+                residuals_i = residuals[i][not_nan_mask_ij]
+                residuals_j = residuals[j][not_nan_mask_ij]
+                residuals_i_mean = np.mean(residuals_i)
+                residuals_j_mean = np.mean(residuals_j)
+                X_i = (residuals_i - residuals_i_mean)
+                X_j = (residuals_j - residuals_j_mean)
+                # Empirical covariance
+                factor_emp_cov = np.float64(1 / (n_samples - 1))
+                W[i, j] = factor_emp_cov * np.mean(X_i * X_j)
+                # Off-diagonal sums
+                if i != j:
+                    factor_var_emp_cor = np.float64(n_samples / (n_samples - 1)**3)
+                    residuals_i_std = np.std(residuals_i) + epsilon
+                    residuals_j_std = np.std(residuals_j) + epsilon
+                    Xs_i = X_i / (residuals_i_std + epsilon)
+                    Xs_j = X_j / (residuals_j_std + epsilon)
+                    Xs_im_mean = np.mean(Xs_i)
+                    Xs_jm_mean = np.mean(Xs_j)
+                    # Sum off-diagonal variance of empirical correlation
+                    w = (Xs_i - Xs_im_mean) * (Xs_j - Xs_jm_mean)
+                    w_mean = np.mean(w)
+                    sum_var_emp_corr += factor_var_emp_cor * np.sum(np.square(w - w_mean))
+                    # Sum squared empirical correlation
+                    sum_sq_emp_corr += np.square(factor_emp_cov * n_samples * w_mean)
+
+    # Calculate shrinkage intensity 
+    shrinkage = 1.0 - max(min((sum_var_emp_corr) / (sum_sq_emp_corr + epsilon), 1.0), 0.0)
+
+    # Shrink the empirical covariance
+    for i in prange(n_timeseries):
+        for j in range(i + 1):
+            if i != j:    
+                W[i, j] = W[j, i] = shrinkage * W[i, j] + mint_shr_ridge
+            else:
+                W[i, j] = W[j, i] = W[i, j] + mint_shr_ridge
+
+    return W
 
 # %% ../nbs/methods.ipynb 45
 class MinTraceSparse(MinTrace):

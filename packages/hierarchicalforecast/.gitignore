@@ -147,3 +147,4 @@ _proc/
 
 # VS Code project settings
 .vscode
+/tmp
