@@ -15,6 +15,7 @@ class AnomalyDetectionOutput(pydantic_v1.BaseModel):
     sizes: typing.List[int]
     intervals: typing.Optional[typing.Dict[str, typing.Optional[typing.List[float]]]] = None
     weights_x: typing.Optional[typing.List[float]] = None
+    feature_contributions: typing.Optional[typing.List[typing.List[float]]] = None
     anomaly: typing.List[bool]
 
     def json(self, **kwargs: typing.Any) -> str:

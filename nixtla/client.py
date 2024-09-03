@@ -3411,6 +3411,7 @@ class Nixtla:
         level: typing.Optional[typing.Sequence[ForecastInputLevelItem]] = OMIT,
         finetune_steps: typing.Optional[int] = OMIT,
         finetune_loss: typing.Optional[ForecastInputFinetuneLoss] = OMIT,
+        feature_contributions: typing.Optional[bool] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> ForecastOutput:
         """
@@ -3432,6 +3433,8 @@ class Nixtla:
             - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
 
             - finetune_loss: typing.Optional[ForecastInputFinetuneLoss]. The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
+
+            - feature_contributions: typing.Optional[bool]. Compute the exogenous features contributions to the forecast.
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
@@ -3462,6 +3465,8 @@ class Nixtla:
             _request["finetune_steps"] = finetune_steps
         if finetune_loss is not OMIT:
             _request["finetune_loss"] = finetune_loss
+        if feature_contributions is not OMIT:
+            _request["feature_contributions"] = feature_contributions
         _response = self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/forecast"),
@@ -3617,6 +3622,7 @@ class Nixtla:
         model: typing.Optional[Model] = OMIT,
         clean_ex_first: typing.Optional[bool] = OMIT,
         level: typing.Optional[typing.Sequence[InSampleInputLevelItem]] = OMIT,
+        feature_contributions: typing.Optional[bool] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> InSampleOutput:
         """
@@ -3632,6 +3638,8 @@ class Nixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
 
             - level: typing.Optional[typing.Sequence[InSampleInputLevelItem]].
+
+            - feature_contributions: typing.Optional[bool]. Compute the exogenous features contributions to the forecast.
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
@@ -3657,6 +3665,8 @@ class Nixtla:
             _request["clean_ex_first"] = clean_ex_first
         if level is not OMIT:
             _request["level"] = level
+        if feature_contributions is not OMIT:
+            _request["feature_contributions"] = feature_contributions
         _response = self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/historic_forecast"),
@@ -7155,6 +7165,7 @@ class AsyncNixtla:
         level: typing.Optional[typing.Sequence[ForecastInputLevelItem]] = OMIT,
         finetune_steps: typing.Optional[int] = OMIT,
         finetune_loss: typing.Optional[ForecastInputFinetuneLoss] = OMIT,
+        feature_contributions: typing.Optional[bool] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> ForecastOutput:
         """
@@ -7176,6 +7187,8 @@ class AsyncNixtla:
             - finetune_steps: typing.Optional[int]. The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.
 
             - finetune_loss: typing.Optional[ForecastInputFinetuneLoss]. The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.
+
+            - feature_contributions: typing.Optional[bool]. Compute the exogenous features contributions to the forecast.
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
@@ -7206,6 +7219,8 @@ class AsyncNixtla:
             _request["finetune_steps"] = finetune_steps
         if finetune_loss is not OMIT:
             _request["finetune_loss"] = finetune_loss
+        if feature_contributions is not OMIT:
+            _request["feature_contributions"] = feature_contributions
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/forecast"),
@@ -7361,6 +7376,7 @@ class AsyncNixtla:
         model: typing.Optional[Model] = OMIT,
         clean_ex_first: typing.Optional[bool] = OMIT,
         level: typing.Optional[typing.Sequence[InSampleInputLevelItem]] = OMIT,
+        feature_contributions: typing.Optional[bool] = OMIT,
         request_options: typing.Optional[RequestOptions] = None,
     ) -> InSampleOutput:
         """
@@ -7376,6 +7392,8 @@ class AsyncNixtla:
             - clean_ex_first: typing.Optional[bool]. A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.
 
             - level: typing.Optional[typing.Sequence[InSampleInputLevelItem]].
+
+            - feature_contributions: typing.Optional[bool]. Compute the exogenous features contributions to the forecast.
 
             - request_options: typing.Optional[RequestOptions]. Request-specific configuration.
         ---
@@ -7401,6 +7419,8 @@ class AsyncNixtla:
             _request["clean_ex_first"] = clean_ex_first
         if level is not OMIT:
             _request["level"] = level
+        if feature_contributions is not OMIT:
+            _request["feature_contributions"] = feature_contributions
         _response = await self._client_wrapper.httpx_client.request(
             "POST",
             urllib.parse.urljoin(f"{self._client_wrapper.get_base_url()}/", "v2/historic_forecast"),

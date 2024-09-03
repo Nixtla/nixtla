@@ -14,6 +14,7 @@ class ForecastOutput(pydantic_v1.BaseModel):
     mean: typing.List[float]
     intervals: typing.Optional[typing.Dict[str, typing.Optional[typing.List[float]]]] = None
     weights_x: typing.Optional[typing.List[float]] = None
+    feature_contributions: typing.Optional[typing.List[typing.List[float]]] = None
 
     def json(self, **kwargs: typing.Any) -> str:
         kwargs_with_defaults: typing.Any = {"by_alias": True, "exclude_unset": True, **kwargs}

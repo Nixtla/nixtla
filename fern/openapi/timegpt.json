@@ -3,7 +3,7 @@
     "info": {
         "title": "Nixtla Forecast API",
         "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-        "version": "0.3.9"
+        "version": "0.4.0"
     },
     "paths": {
         "/validate_token": {
@@ -3787,6 +3787,23 @@
                         ],
                         "title": "Weights X"
                     },
+                    "feature_contributions": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "type": "array"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feature Contributions"
+                    },
                     "anomaly": {
                         "items": {
                             "type": "boolean"
@@ -3851,10 +3868,14 @@
                                 "items": {
                                     "anyOf": [
                                         {
-                                            "type": "integer"
+                                            "type": "integer",
+                                            "exclusiveMaximum": 100.0,
+                                            "minimum": 0.0
                                         },
                                         {
-                                            "type": "number"
+                                            "type": "number",
+                                            "exclusiveMaximum": 100.0,
+                                            "minimum": 0.0
                                         }
                                     ]
                                 },
@@ -4017,10 +4038,14 @@
                                 "items": {
                                     "anyOf": [
                                         {
-                                            "type": "integer"
+                                            "type": "integer",
+                                            "exclusiveMaximum": 100.0,
+                                            "minimum": 0.0
                                         },
                                         {
-                                            "type": "number"
+                                            "type": "number",
+                                            "exclusiveMaximum": 100.0,
+                                            "minimum": 0.0
                                         }
                                     ]
                                 },
@@ -4053,6 +4078,12 @@
                         "title": "Finetune Loss",
                         "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.",
                         "default": "default"
+                    },
+                    "feature_contributions": {
+                        "type": "boolean",
+                        "title": "Feature Contributions",
+                        "description": "Compute the exogenous features contributions to the forecast.",
+                        "default": false
                     }
                 },
                 "type": "object",
@@ -4117,6 +4148,23 @@
                             }
                         ],
                         "title": "Weights X"
+                    },
+                    "feature_contributions": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "type": "array"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feature Contributions"
                     }
                 },
                 "type": "object",
@@ -4174,10 +4222,14 @@
                                 "items": {
                                     "anyOf": [
                                         {
-                                            "type": "integer"
+                                            "type": "integer",
+                                            "exclusiveMaximum": 100.0,
+                                            "minimum": 0.0
                                         },
                                         {
-                                            "type": "number"
+                                            "type": "number",
+                                            "exclusiveMaximum": 100.0,
+                                            "minimum": 0.0
                                         }
                                     ]
                                 },
@@ -4189,6 +4241,12 @@
                         ],
                         "title": "Level",
                         "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
+                    },
+                    "feature_contributions": {
+                        "type": "boolean",
+                        "title": "Feature Contributions",
+                        "description": "Compute the exogenous features contributions to the forecast.",
+                        "default": false
                     }
                 },
                 "type": "object",
@@ -4259,6 +4317,23 @@
                             }
                         ],
                         "title": "Weights X"
+                    },
+                    "feature_contributions": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "type": "array"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feature Contributions"
                     }
                 },
                 "type": "object",
