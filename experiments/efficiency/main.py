@@ -66,7 +66,7 @@ df.index = df.index.str.split("-", expand=True)
 df.index.names = ["endpoint", "features", "level"]
 df = df.sort_index()
 df["speedup"] = df["v1"] / df["v2"]
-df["speedup"] = df["speedup"].map("{:.1f}x".format)
+df["speedup"] = df["speedup"].map("{:.0f}x".format)
 for col in ("v1", "v2"):
     df[col] = df[col].map("{:.0f}s".format)
 with open("endpoint_times.md", "wt") as f:
