@@ -15,16 +15,16 @@ We've optimized the core functionalities—forecasting, anomaly detection, and c
 
 | Endpoint          | Features   | Level   | v1   | v2   | Speedup   |
 |:------------------|:-----------|:--------|:-----|:-----|:----------|
-| anomaly_detection | exog       | [80]    | 24s  | 3s   | 8.9x      |
-| anomaly_detection | none       | [80]    | 13s  | 2s   | 7.7x      |
-| cross_validation  | exog       | None    | 22s  | 4s   | 5.9x      |
-| cross_validation  | exog       | [80]    | 31s  | 6s   | 5.3x      |
-| cross_validation  | none       | None    | 5s   | 1s   | 9.2x      |
-| cross_validation  | none       | [80]    | 9s   | 2s   | 4.5x      |
-| forecast          | exog       | None    | 18s  | 1s   | 13.3x     |
-| forecast          | exog       | [80]    | 20s  | 2s   | 10.1x     |
-| forecast          | none       | None    | 1s   | 0s   | 5.5x      |
-| forecast          | none       | [80]    | 3s   | 1s   | 6.1x      |
+| anomaly_detection | exog       | [80]    | 24s  | 3s   | 9x        |
+| anomaly_detection | none       | [80]    | 13s  | 2s   | 8x        |
+| cross_validation  | exog       | None    | 22s  | 4s   | 6x        |
+| cross_validation  | exog       | [80]    | 31s  | 6s   | 5x        |
+| cross_validation  | none       | None    | 5s   | 1s   | 9x        |
+| cross_validation  | none       | [80]    | 9s   | 2s   | 4x        |
+| forecast          | exog       | None    | 18s  | 1s   | 13x       |
+| forecast          | exog       | [80]    | 20s  | 2s   | 10x       |
+| forecast          | none       | None    | 1s   | 0s   | 6x        |
+| forecast          | none       | [80]    | 3s   | 1s   | 6x        |
 
 These results represent the huge leap in efficiency v2 provides, allowing you to analyze vast datasets and derive insights faster than ever before. 🚀
 
