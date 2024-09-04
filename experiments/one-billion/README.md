@@ -14,7 +14,7 @@ The goal is simple: forecast the future for **one billion different time series*
 
 ## Results 📊
 
-| 📈 **Number of Series** | ⏳ **Time (hours)** |
+| 📈 **Number of Series** | ⏳ **CPU Time (hours)** |
 |:-----------------------:|:------------------:|
 | 1e9                     | 5.5                |
 
