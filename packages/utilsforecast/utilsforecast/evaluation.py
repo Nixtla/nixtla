@@ -174,7 +174,7 @@ def evaluate(
     models : list of str, optional (default=None)
         Names of the models to evaluate.
         If `None` will use every column in the dataframe after removing id, time and target.
-    train_df :pandas, polars, dask or spark DataFrame, optional (default=None)
+    train_df : pandas, polars, dask or spark DataFrame, optional (default=None)
         Training set. Used to evaluate metrics such as `mase`.
     level : list of int, optional (default=None)
         Prediction interval levels. Used to compute losses that rely on quantiles.
