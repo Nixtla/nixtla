@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 import utilsforecast.processing as ufp
-from .compat import DFType, pl
+from .compat import AnyDFType, DFType, DistributedDFType, pl, pl_DataFrame
 
 # %% ../nbs/evaluation.ipynb 4
 def _function_name(f: Callable):
@@ -39,23 +39,134 @@ def _models_from_levels(model_name: str, level: List[int]) -> List[str]:
     cols.extend([f"{model_name}-hi-{lv}" for lv in level])
     return cols
 
+
+def _get_model_cols(
+    cols: List[str],
+    id_col: str,
+    time_col: str,
+    target_col: str,
+) -> List[str]:
+    return [
+        c
+        for c in cols
+        if c not in [id_col, time_col, target_col]
+        and not re.search(r"-(?:lo|hi)-\d+", c)
+    ]
+
 # %% ../nbs/evaluation.ipynb 5
+def _evaluate_wrapper(
+    df: pd.DataFrame,
+    metrics: List[Callable],
+    models: Optional[List[str]],
+    level: Optional[List[int]],
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    agg_fn: Optional[str],
+) -> pd.DataFrame:
+    if "_in_sample" in df:
+        in_sample_mask = df["_in_sample"]
+        train_df = df.loc[in_sample_mask, [id_col, time_col, target_col]]
+        df = df.loc[~in_sample_mask].drop(columns="_in_sample")
+    else:
+        train_df = None
+    return evaluate(
+        df=df,
+        metrics=metrics,
+        models=models,
+        train_df=train_df,
+        level=level,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        agg_fn=agg_fn,
+    )
+
+
+def _distributed_evaluate(
+    df: DistributedDFType,
+    metrics: List[Callable],
+    models: Optional[List[str]],
+    train_df: Optional[DFType],
+    level: Optional[List[int]],
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    agg_fn: Optional[str],
+) -> DistributedDFType:
+    import fugue.api as fa
+
+    if agg_fn is not None:
+        raise ValueError("`agg_fn` is not supported in distributed")
+    df_cols = fa.get_column_names(df)
+    if train_df is not None:
+        # align columns in order to vstack them
+        def assign_cols(df: pd.DataFrame, cols) -> pd.DataFrame:
+            return df.assign(**cols)
+
+        train_cols = [id_col, time_col, target_col]
+        extra_cols = [c for c in df_cols if c not in train_cols]
+        train_df = fa.select_columns(train_df, train_cols)
+        train_df = fa.transform(
+            train_df,
+            using=assign_cols,
+            schema=(
+                "*," + str(fa.get_schema(df).extract(extra_cols)) + ",_in_sample:bool"
+            ),
+            params={
+                "cols": {
+                    **{c: float("nan") for c in extra_cols},
+                    "_in_sample": True,
+                },
+            },
+        )
+        df = fa.transform(
+            df,
+            using=assign_cols,
+            schema="*,_in_sample:bool",
+            params={"cols": {"_in_sample": False}},
+        )
+        df = fa.union(train_df, df)
+
+    if models is None:
+        model_cols = _get_model_cols(df_cols, id_col, time_col, target_col)
+    else:
+        model_cols = models
+    models_schema = ",".join(f"{m}:double" for m in model_cols)
+    result_schema = fa.get_schema(df).extract(id_col) + "metric:str" + models_schema
+    return fa.transform(
+        df,
+        using=_evaluate_wrapper,
+        schema=result_schema,
+        params=dict(
+            metrics=metrics,
+            models=models,
+            level=level,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            agg_fn=agg_fn,
+        ),
+        partition={"by": id_col, "algo": "coarse"},
+    )
+
+# %% ../nbs/evaluation.ipynb 6
 def evaluate(
-    df: DFType,
+    df: AnyDFType,
     metrics: List[Callable],
     models: Optional[List[str]] = None,
-    train_df: Optional[DFType] = None,
+    train_df: Optional[AnyDFType] = None,
     level: Optional[List[int]] = None,
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
     agg_fn: Optional[str] = None,
-) -> DFType:
+) -> AnyDFType:
     """Evaluate forecast using different metrics.
 
     Parameters
     ----------
-    df : pandas or polars DataFrame
+    df : pandas, polars, dask or spark DataFrame.
         Forecasts to evaluate.
         Must have `id_col`, `time_col`, `target_col` and models' predictions.
     metrics : list of callable
@@ -63,7 +174,7 @@ def evaluate(
     models : list of str, optional (default=None)
         Names of the models to evaluate.
         If `None` will use every column in the dataframe after removing id, time and target.
-    train_df : pandas DataFrame, optional (default=None)
+    train_df :pandas, polars, dask or spark DataFrame, optional (default=None)
         Training set. Used to evaluate metrics such as `mase`.
     level : list of int, optional (default=None)
         Prediction interval levels. Used to compute losses that rely on quantiles.
@@ -78,17 +189,24 @@ def evaluate(
 
     Returns
     -------
-    pandas or polars DataFrame
+    pandas, polars, dask or spark DataFrame
         Metrics with one row per (id, metric) combination and one column per model.
         If `agg_fn` is not `None`, there is only one row per metric.
     """
+    if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+        return _distributed_evaluate(
+            df=df,
+            metrics=metrics,
+            models=models,
+            train_df=train_df,
+            level=level,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            agg_fn=agg_fn,
+        )
     if models is None:
-        model_cols = [
-            c
-            for c in df.columns
-            if c not in [id_col, time_col, target_col]
-            and not re.search(r"-(?:lo|hi)-\d+", c)
-        ]
+        model_cols = _get_model_cols(df.columns, id_col, time_col, target_col)
     else:
         model_cols = models
 
@@ -131,10 +249,7 @@ def evaluate(
                 f"The following metrics require y_train: {y_train_metrics}. "
                 "Please provide `train_df`."
             )
-        if isinstance(train_df, pd.DataFrame):
-            train_df = train_df.sort_values([id_col, time_col])
-        else:
-            train_df = train_df.sort([id_col, time_col])
+        train_df = ufp.sort(train_df, by=[id_col, time_col])
         missing_series = set(df[id_col].unique()) - set(train_df[id_col].unique())
         if missing_series:
             raise ValueError(
