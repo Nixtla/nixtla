@@ -1,4 +1,4 @@
-name: Upload Python Package
+name: Upload Python Package to PyPI
 
 on:
   push:
@@ -61,7 +61,7 @@ jobs:
         with:
           path: dist/*.tar.gz
 
-  upload_to_pypi:
+  upload:
     name: Upload to PyPI
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
@@ -70,8 +70,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          name: artifact
           path: dist
+          merge-multiple: true
 
-      - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@0ab0b79471669eb3a4d647e625009c62f9f3b241 # v1.10.1
+      - uses: pypa/gh-action-pypi-publish@0ab0b79471669eb3a4d647e625009c62f9f3b241 # v1.10.1
