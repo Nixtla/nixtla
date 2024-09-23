@@ -389,14 +389,7 @@ def plot_series(
                 ax[row, col].set_ylabel(ylabel)
             if row == n_rows - 1:
                 ax[row, col].set_xlabel(xlabel)
-            xticklabels = ax[row, col].get_xticklabels()
-            xticks = ax[row, col].get_xticks()
-            ax[row, col].set_xticks(
-                rotation=30,
-                ticks=xticks,
-                labels=xticklabels,
-                ha="right",
-            )
+            ax[row, col].tick_params(axis="x", labelrotation=30)
         else:
             fig.update_annotations(selector={"text": str(i)}, text=title)
 
