@@ -902,7 +902,7 @@ class NixtlaClient:
             new data.
         finetune_depth: int (default=1)
             The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
-            and 5 means that the entire model is finetuned.
+            and 5 means that the entire model is finetuned. By default, the value is set to 1.
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
@@ -1345,7 +1345,7 @@ class NixtlaClient:
             new data.
         finetune_depth: int (default=1)
             The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
-            and 5 means that the entire model is finetuned.
+            and 5 means that the entire model is finetuned. By default, the value is set to 1.
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
