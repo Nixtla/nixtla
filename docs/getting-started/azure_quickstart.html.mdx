@@ -1,0 +1,222 @@
+---
+description: "TimeGEN-1 is TimeGPT optimized for the Azure infrastructure. It is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code \U0001F680."
+output-file: azure_quickstart.html
+title: TimeGEN-1 Quickstart (Azure)
+---
+
+
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/getting-started/22_azure_quickstart.ipynb)
+
+## Step 1: Set up a TimeGEN-1 endpoint account and generate your API key on Azure
+
+-   Go to [ml.azure.com](https://ml.azure.com/)
+-   Sign in or create an account at Microsoft
+-   Click on ‘Models’ in the sidebar
+-   Search for ‘TimeGEN’ in the model catalog
+-   Select TimeGEN-1
+
+<figure>
+<img
+src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/azure-model-catalog.png?raw=true"
+alt="Azure Model Catalog landing page. Search for forecast and TimeGEN-1 comes up as the only option." />
+<figcaption aria-hidden="true">Azure Model Catalog landing page. Search
+for forecast and TimeGEN-1 comes up as the only option.</figcaption>
+</figure>
+
+-   Click ‘Deploy’ and this will create an Endpoint
+
+<figure>
+<img
+src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/azure-deploy.png?raw=true"
+alt="TimeGEN-1 in the model catalog. Cursor is on the Deploy button indicating what to select to deploy TimeGEN-1." />
+<figcaption aria-hidden="true">TimeGEN-1 in the model catalog. Cursor is
+on the Deploy button indicating what to select to deploy
+TimeGEN-1.</figcaption>
+</figure>
+
+-   Go to ‘Endpoint’ in the sidebar and you will see your TimeGEN-1
+    endpoint there
+-   In that Endpoint are the base URL and API Key you will use
+
+<figure>
+<img
+src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/azure-endpoint.png?raw=true"
+alt="Endpoint is highlighted in the side panel. The main panel shows the endpoint and API key for the TimeGEN-1 endpoint, with buttons where you can copy the information." />
+<figcaption aria-hidden="true">Endpoint is highlighted in the side
+panel. The main panel shows the endpoint and API key for the TimeGEN-1
+endpoint, with buttons where you can copy the information.</figcaption>
+</figure>
+
+## Step 2: Install Nixtla
+
+In your favorite Python development environment:
+
+Install `nixtla` with `pip`:
+
+```shell
+pip install nixtla
+```
+
+## Step 3: Import the Nixtla TimeGPT client
+
+```python
+from nixtla import NixtlaClient
+```
+
+You can instantiate the `NixtlaClient` class providing your
+authentication API key.
+
+```python
+nixtla_client = NixtlaClient(
+    base_url = "YOUR_BASE_URL",
+    api_key = "YOUR_API_KEY"
+)
+```
+
+## Step 4: Start making forecasts!
+
+Now you can start making forecasts! Let’s import an example using the
+classic `AirPassengers` dataset. This dataset contains the monthly
+number of airline passengers in Australia between 1949 and 1960. First,
+load the dataset and plot it:
+
+```python
+import pandas as pd
+```
+
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+df.head()
+```
+
+|     | timestamp  | value |
+|-----|------------|-------|
+| 0   | 1949-01-01 | 112   |
+| 1   | 1949-02-01 | 118   |
+| 2   | 1949-03-01 | 132   |
+| 3   | 1949-04-01 | 129   |
+| 4   | 1949-05-01 | 121   |
+
+```python
+nixtla_client.plot(df, time_col='timestamp', target_col='value')
+```
+
+![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-7-output-1.png)
+
+> 📘 Data Requirments
+>
+> -   Make sure the target variable column does not have missing or
+>     non-numeric values.
+> -   Do not include gaps/jumps in the datestamps (for the given
+>     frequency) between the first and late datestamps. The forecast
+>     function will not impute missing dates.
+> -   The format of the datestamp column should be readable by Pandas
+>     (see [this
+>     link](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html)
+>     for more details).
+>
+> For further details go to [Data
+> Requeriments](https://docs.nixtla.io/docs/getting-started-data_requirements).
+
+> 👍 Save figures made with TimeGPT
+>
+> The `plot` method automatically displays figures when in a notebook
+> environment. To save figures locally, you can do:
+>
+> `fig = nixtla_client.plot(df, time_col='timestamp', target_col='value')`
+>
+> `fig.savefig('plot.png', bbox_inches='tight')`
+
+### Forecast a longer horizon into the future
+
+Next, forecast the next 12 months using the SDK `forecast` method. Set
+the following parameters:
+
+-   `df`: A pandas DataFrame containing the time series data.
+-   `h`: Horizons is the number of steps ahead to forecast.
+-   `freq`: The frequency of the time series in Pandas format. See
+    [pandas’ available
+    frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+    (If you don’t provide any frequency, the SDK will try to infer it)
+-   `time_col`: The column that identifies the datestamp.
+-   `target_col`: The variable to forecast.
+
+```python
+timegpt_fcst_df = nixtla_client.forecast(df=df, h=12, freq='MS', time_col='timestamp', target_col='value')
+timegpt_fcst_df.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | timestamp  | TimeGPT    |
+|-----|------------|------------|
+| 0   | 1961-01-01 | 437.837921 |
+| 1   | 1961-02-01 | 426.062714 |
+| 2   | 1961-03-01 | 463.116547 |
+| 3   | 1961-04-01 | 478.244507 |
+| 4   | 1961-05-01 | 505.646484 |
+
+```python
+nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+```
+
+![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-9-output-1.png)
+
+You can also produce longer forecasts by increasing the horizon
+parameter and selecting the `timegpt-1-long-horizon` model. Use this
+model if you want to predict more than one seasonal period of your data.
+
+For example, let’s forecast the next 36 months:
+
+```python
+timegpt_fcst_df = nixtla_client.forecast(df=df, h=36, time_col='timestamp', target_col='value', freq='MS', model='timegpt-1-long-horizon')
+timegpt_fcst_df.head()
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+|     | timestamp  | TimeGPT    |
+|-----|------------|------------|
+| 0   | 1961-01-01 | 436.843414 |
+| 1   | 1961-02-01 | 419.351532 |
+| 2   | 1961-03-01 | 458.943146 |
+| 3   | 1961-04-01 | 477.876068 |
+| 4   | 1961-05-01 | 505.656921 |
+
+```python
+nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+```
+
+![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-11-output-1.png)
+
+### Produce a shorter forecast
+
+You can also produce a shorter forecast. For this, we recommend using
+the default model, `timegpt-1`.
+
+```python
+timegpt_fcst_df = nixtla_client.forecast(df=df, h=6, time_col='timestamp', target_col='value', freq='MS')
+nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-12-output-2.png)
+

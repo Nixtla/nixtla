@@ -346,6 +346,43 @@ In the `Usage` section of your
 record of your token consumption history, helping you track and manage
 your usage effectively.
 
+What counts as an API call?
+
+An API call is a request made to TimeGPT to perform an action like
+forecasting or detecting anomalies, or to fetch the model’s metadata.
+
+For example, if we forecast monthly data using the `timegpt-1` model,
+then the first time doing this results in 2 API calls: we - API call #1:
+fetch the model’s metadata - API call #2: perform the forecast action.
+Calling the forecast method again, with the same frequency and model
+counts only as 1 API call.
+
+However, if we forecast on another frequency, or using the
+`timegpt-1-long-horizon` model, then 2 API calls are made, because new
+metadata must be fetched on top of running the forecast.
+
+We can also get historical forecasts using the `add_history=True`
+parameter in the `forecast` method. This leads to 2 API calls.
+
+Then, if the API call requires to send more than 200MB of data, the API
+will return an error and will require you to use the `num_partitions`
+parameter in order to partition your request. Every partition will count
+as an API call, thus for 2 partitions there will be 2 API calls.
+
+If we perform
+[cross-validation](https://docs.nixtla.io/docs/tutorials-cross_validation),
+no matter the number of windows, it always counts as 1 API call.
+
+**Examples** 1. A user, for the first time, uses TimeGPT to forecast
+daily data, using the `timegpt-1` model. How many API calls are made?
+(*Ans*: 2) 2. The same user as above calls the `cross_validation` method
+on the same dataset, using the same model. How many API calls are made
+(*Ans*: 1) 3. That user now decides to forecast on a longer horizon, so
+they use the `timegpt-1-long-horizon` model. How many API calls are made
+(*Ans*: 2) 4. The user now gets a very large dataset, with a daily
+frequency, and they must set `num_partitions=4` when forecasting. How
+many API calls are made (*Ans*: 4)
+
 How does billing work?
 
 Billing is done through Stripe. We’ve partnered with Stripe to handle
