@@ -29,6 +29,7 @@ def mlforecast_objective(
     freq: Freq,
     n_windows: int,
     h: int,
+    step_size: Optional[int] = None,
     refit: Union[bool, int] = False,
     id_col: str = "unique_id",
     time_col: str = "ds",
@@ -53,6 +54,8 @@ def mlforecast_objective(
         Number of windows to evaluate.
     h : int
         Forecast horizon.
+    step_size : int, optional (default=None)
+        Step size between each cross validation window. If None it will be equal to `h`.
     refit : bool or int (default=False)
         Retrain model for each cross validation window.
         If False, the models are trained at the beginning and then used to predict each window.
@@ -82,6 +85,7 @@ def mlforecast_objective(
             id_col=id_col,
             time_col=time_col,
             freq=freq,
+            step_size=step_size,
         )
         model_copy = clone(model)
         model_params = config["model_params"]
