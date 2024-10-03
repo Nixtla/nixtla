@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import warnings
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
     TYPE_CHECKING,
@@ -664,12 +665,21 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         payload: Dict[str, Any],
+        lock: Union[None, Lock] = None,
     ) -> Dict[str, Any]:
-        return self._retry_strategy(self._make_request)(
-            client=client,
-            endpoint=endpoint,
-            payload=payload,
-        )
+        if lock is not None:
+            with lock:
+                return self._retry_strategy(self._make_request)(
+                    client=client,
+                    endpoint=endpoint,
+                    payload=payload,
+                )
+        else:
+            return self._retry_strategy(self._make_request)(
+                client=client,
+                endpoint=endpoint,
+                payload=payload,
+            )
 
     def _make_partitioned_requests(
         self,
@@ -682,10 +692,11 @@ class NixtlaClient:
         num_partitions = len(payloads)
         results = num_partitions * [None]
         max_workers = min(10, num_partitions)
+        lock = Lock()
         with ThreadPoolExecutor(max_workers) as executor:
             future2pos = {
                 executor.submit(
-                    self._make_request_with_retries, client, endpoint, payload
+                    self._make_request_with_retries, client, endpoint, payload, lock
                 ): i
                 for i, payload in enumerate(payloads)
             }
