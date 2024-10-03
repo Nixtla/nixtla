@@ -613,16 +613,8 @@ class NixtlaClient:
             max_wait_time=max_wait_time,
         )
         self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
-        if "ai.azure" in base_url:
-            from packaging.version import Version
-
-            import nixtla
-
-            if Version(nixtla.__version__) > Version("0.5.2"):
-                raise NotImplementedError(
-                    "This version doesn't support Azure endpoints, please install "
-                    "an earlier version with: `pip install 'nixtla<=0.5.2'`"
-                )
+        self._is_azure = "ai.azure" in base_url
+        if self._is_azure:
             self.supported_models = ["azureai"]
         else:
             self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
@@ -644,7 +636,6 @@ class NixtlaClient:
                         )
                     else:
                         d[k] = np.ascontiguousarray(v)
-
                 elif isinstance(v, dict):
                     ensure_contiguous_arrays(v)
 
@@ -738,6 +729,11 @@ class NixtlaClient:
             ).T
         return resp
 
+    def _maybe_override_model(self, model: str) -> str:
+        if self._is_azure:
+            model = "azureai"
+        return model
+
     def _get_model_params(self, model: str, freq: str) -> Tuple[int, int]:
         key = (model, freq)
         if key not in self._model_params:
@@ -767,11 +763,23 @@ class NixtlaClient:
 
     def _maybe_assign_feature_contributions(
         self,
-        feature_contributions: Optional[List[List[float]]],
+        expected_contributions: bool,
+        resp: Dict[str, Any],
         x_cols: List[str],
         out_df: DataFrame,
         insample_feat_contributions: Optional[List[List[float]]],
     ) -> None:
+        if not expected_contributions:
+            return
+        if "feature_contributions" not in resp:
+            if self._is_azure:
+                warnings.warn("feature_contributions aren't implemented in Azure yet.")
+                return
+            else:
+                raise RuntimeError(
+                    "feature_contributions expected in response but not found"
+                )
+        feature_contributions = resp["feature_contributions"]
         if feature_contributions is None:
             return
         shap_cols = x_cols + ["base_value"]
@@ -965,6 +973,7 @@ class NixtlaClient:
             )
         self.__dict__.pop("weights_x", None)
         self.__dict__.pop("feature_contributions", None)
+        model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
         df, X_df, drop_id = self._run_validations(
             df=df,
@@ -1053,13 +1062,11 @@ class NixtlaClient:
                     in_sample_payload = _forecast_payload_to_in_sample(payload)
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_request_with_retries(
-                        client,
-                        "v2/historic_forecast",
-                        in_sample_payload,
+                        client, "v2/historic_forecast", in_sample_payload
                     )
-                    insample_feat_contributions = in_sample_resp[
-                        "feature_contributions"
-                    ]
+                    insample_feat_contributions = in_sample_resp.get(
+                        "feature_contributions", None
+                    )
             else:
                 payloads = _partition_series(payload, num_partitions, h)
                 resp = self._make_partitioned_requests(client, "v2/forecast", payloads)
@@ -1069,13 +1076,11 @@ class NixtlaClient:
                     ]
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
-                        client,
-                        "v2/historic_forecast",
-                        in_sample_payloads,
+                        client, "v2/historic_forecast", in_sample_payloads
                     )
-                    insample_feat_contributions = in_sample_resp[
-                        "feature_contributions"
-                    ]
+                    insample_feat_contributions = in_sample_resp.get(
+                        "feature_contributions", None
+                    )
 
         # assemble result
         out = ufp.make_future_dataframe(
@@ -1101,7 +1106,8 @@ class NixtlaClient:
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
         self._maybe_assign_feature_contributions(
-            feature_contributions=resp["feature_contributions"],
+            expected_contributions=feature_contributions,
+            resp=resp,
             x_cols=x_cols,
             out_df=out[[id_col, time_col, "TimeGPT"]],
             insample_feat_contributions=insample_feat_contributions,
@@ -1116,7 +1122,6 @@ class NixtlaClient:
                     self.feature_contributions = ufp.take_rows(
                         self.feature_contributions, sort_idxs
                     )
-
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         return out
@@ -1208,6 +1213,8 @@ class NixtlaClient:
                 num_partitions=num_partitions,
             )
         self.__dict__.pop("weights_x", None)
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
         df, _, drop_id = self._run_validations(
             df=df,
             X_df=None,
@@ -1397,6 +1404,8 @@ class NixtlaClient:
                 model=model,
                 num_partitions=num_partitions,
             )
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
         df, _, drop_id = self._run_validations(
             df=df,
             X_df=None,
