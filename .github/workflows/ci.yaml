@@ -19,7 +19,7 @@ env:
 
 jobs:
   check-import:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-large
     strategy:
       fail-fast: false
       matrix:
@@ -40,7 +40,7 @@ jobs:
         run: python -c "from nixtla import NixtlaClient"
 
   run-all-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-large
     timeout-minutes: 60
     strategy:
       fail-fast: false
