@@ -1,3 +1,4 @@
-__version__ = "0.5.2"
+__all__ = ["NixtlaClient"]
+__version__ = "0.6.1"
 
-from .nixtla_client import NixtlaClient, TimeGPT
+from .nixtla_client import NixtlaClient

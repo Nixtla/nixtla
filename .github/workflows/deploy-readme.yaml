@@ -1,8 +1,8 @@
 name: Deploy to readme dot com
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
   workflow_dispatch:
 
 defaults:
@@ -15,29 +15,27 @@ concurrency:
 
 jobs:
   deploy-readme:
-    runs-on: ubuntu-latest 
+    runs-on: ubuntu-latest
     env:
-      readme_version: '0.0.2'
+      readme_version: "0.0.2"
     steps:
       - name: Clone repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
         with:
           persist-credentials: false
 
-      - name: Set up environment
-        uses: mamba-org/setup-micromamba@v1 
+      - name: Set up python
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
         with:
-          environment-file: environment.yml
-          create-args: python=3.9
-          cache-environment: true
+          python-version: "3.10"
 
       - name: Install pip requirements
-        run: pip install ./ 
+        run: pip install ".[dev]"
 
       - name: Install Quarto
         run: nbdev_install_quarto
 
-      - name: Create readme docs 
+      - name: Create readme docs
         env:
           README_HOST_URL: ${{ secrets.README_HOST_URL }}
           README_CATEGORY: ${{ secrets.README_CATEGORY }}
@@ -50,12 +48,12 @@ jobs:
           git config --global user.name 'FedericoGarza'
           git config --global user.email 'fede.garza.ramirez@gmail.com'
           git push https://${{ secrets.TOKEN_GITHUB }}@github.com/${{ github.repository }} --delete readme_docs || true
-          git checkout -b readme_docs 
+          git checkout -b readme_docs
           git add -f "*.png"
           git commit -m "[cd] update png images" || echo "No changes to commit"
           git push https://${{ secrets.TOKEN_GITHUB }}@github.com/${{ github.repository }} HEAD:readme_docs
 
       - name: Deploy to readme com
-        uses: readmeio/rdme@v8
+        uses: readmeio/rdme@51a80867c45de15e2b41af0c4bd5bbc61b932804 # 8.6.6
         with:
           rdme: docs ./nbs/_docs/docs/ --key=${{ secrets.README_API_KEY }} --version=${{ env.readme_version }}

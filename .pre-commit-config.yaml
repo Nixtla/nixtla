@@ -1,6 +1,17 @@
 repos:
+  - repo: local
+    hooks:
+      - id: nbdev_clean
+        name: Clean notebooks
+        entry: sh -c 'nbdev_clean && nbdev_clean --fname nbs/src --clear_all'
+        language: system
+
   - repo: https://github.com/fastai/nbdev
     rev: 2.2.10
     hooks:
-      - id: nbdev_clean
       - id: nbdev_export
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      - id: ruff

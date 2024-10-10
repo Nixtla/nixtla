@@ -3,7 +3,7 @@ from time import time
 
 import fire
 from dotenv import load_dotenv
-from nixtla import TimeGPT
+from nixtla import NixtlaClient
 
 from src.tools import ExperimentHandler
 
@@ -22,8 +22,8 @@ def evaluate_experiment(file: str):
     size_df = sys.getsizeof(Y_df) / (1024 * 1024)
     max_partition_size_mb = 20
     num_partitions = int(size_df / max_partition_size_mb) + 1
-    timegpt = TimeGPT(
-        environment="https://timegpt-endpoint.eastus.inference.ml.azure.com/",
+    timegpt = NixtlaClient(
+        base_url="https://timegpt-endpoint.eastus.inference.ml.azure.com/",
         max_retries=1,
     )
     start = time()

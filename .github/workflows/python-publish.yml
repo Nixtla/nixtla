@@ -10,30 +10,19 @@ jobs:
     permissions:
       id-token: write
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # 5.2.0
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: python -m pip install --upgrade pip && pip install build
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install build
 
-    - name: Build nixtla package
-      run: python -m build
+      - name: Build nixtla package
+        run: python -m build
 
-    - name: Publish nixtla package
-      uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish nixtla package
+        uses: pypa/gh-action-pypi-publish@f7600683efdcb7656dec5b29656edb7bc586e597 # v1.10.3
 
-    - name: Build nixtlats package
-      run: >
-        rm -rf build dist &&
-        mv nixtla nixtlats &&
-        sed -i 's/name="nixtla"/name="nixtlats"/g' setup.py &&
-        find nixtlats -type f -name '*.py' -exec sed -i 's/from nixtla/from nixtlats/g' {} + &&
-        echo -e 'import warnings\nwarnings.warn("This package is deprecated, please install nixtla instead.", category=FutureWarning)' >> nixtlats/__init__.py &&
-        python -m build
-
-    - name: Publish nixtlats package
-      uses: pypa/gh-action-pypi-publish@release/v1
