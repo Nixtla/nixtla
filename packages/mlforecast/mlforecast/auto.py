@@ -444,6 +444,7 @@ class AutoMLForecast:
         n_windows: int,
         h: int,
         num_samples: int,
+        step_size: Optional[int] = None,
         refit: Union[bool, int] = False,
         loss: Optional[Callable[[DataFrame, DataFrame], float]] = None,
         id_col: str = "unique_id",
@@ -467,6 +468,8 @@ class AutoMLForecast:
             Forecast horizon.
         num_samples : int
             Number of trials to run
+        step_size : int, optional (default=None)
+            Step size between each cross validation window. If None it will be equal to `h`.
         refit : bool or int (default=False)
             Retrain model for each cross validation window.
             If False, the models are trained at the beginning and then used to predict each window.
@@ -541,6 +544,7 @@ class AutoMLForecast:
                 freq=self.freq,
                 n_windows=n_windows,
                 h=h,
+                step_size=step_size,
                 refit=refit,
                 id_col=id_col,
                 time_col=time_col,
