@@ -29,3 +29,4 @@ longhorizon
 data
 *.rda
 nbs/_extensions
+!nbs/assets/*
