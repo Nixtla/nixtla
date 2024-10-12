@@ -1,21 +1,19 @@
 [project]
 name = "coreforecast"
 version = "0.0.12"
-requires-python = ">=3.8"
-dependencies = [
-    "importlib_resources ; python_version < '3.10'",
-    "numpy>=1.20.0",
-]
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.20.0"]
 license = { text = "Apache-2.0" }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 description = "Fast implementations of common forecasting routines"
 authors = [{ name = "Jose Morales", email = "jmoralz92@gmail.com" }]
@@ -23,15 +21,7 @@ readme = "README.md"
 keywords = ["forecasting", "time-series"]
 
 [project.optional-dependencies]
-dev = [
-    "numba>=0.58.0",
-    "pandas",
-    "pre-commit",
-    "pytest",
-    "ruff",
-    "utilsforecast",
-    "window-ops",
-]
+dev = ["pandas", "pre-commit", "pytest"]
 
 [project.urls]
 homepage = "https://nixtla.github.io/coreforecast"
@@ -39,7 +29,7 @@ documentation = "https://nixtla.github.io/coreforecast"
 repository = "https://github.com/Nixtla/coreforecast"
 
 [build-system]
-requires = ["scikit-build-core"]
+requires = ["scikit-build-core", "pybind11"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
@@ -47,18 +37,23 @@ cmake.verbose = true
 logging.level = "INFO"
 sdist.exclude = ["tests", "*.yml"]
 sdist.reproducible = true
+wheel.exclude = ["Release"]
+wheel.expand-macos-universal-tags = true
 wheel.install-dir = "coreforecast"
 wheel.packages = ["python/coreforecast"]
-wheel.py-api = "py3"
 
 [tool.cibuildwheel]
 archs = "all"
 build-verbosity = 3
-test-command = 'python -c "import coreforecast._lib"'
+test-extras = "dev"
+test-skip = "*linux_aarch64"
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
 
 [tool.ruff.lint]
-select = ["F", "I"]
+select = [
+    "F", # pyflakes
+    "I", # isort
+]

@@ -268,7 +268,8 @@ def test_seasonality_and_differences_correctness(dtype):
     max_season_length = 24
     max_diffs = 2
     t = 1 + np.arange(500)
-    x = np.random.normal(scale=0.1, size=t.size).astype(dtype)
+    rng = np.random.default_rng(0)
+    x = rng.normal(scale=0.1, size=t.size).astype(dtype)
     for amplitude, period in zip(amplitudes, seasonal_periods):
         x += amplitude * np.cos(2 * np.pi * t / period)
 

@@ -3,6 +3,8 @@
 #include "SkipList.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <numeric>
 
 template <typename T> inline T Quantile(T *data, T p, int n) {

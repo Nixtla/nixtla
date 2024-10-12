@@ -15,8 +15,11 @@ from . import (
 
 all_lag_tfms = {
     **lag_tfms_map,
-    "rolling_quantile": (None, lag_tf.RollingQuantile, [0.5, window_size, min_samples]),
-    "seasonal_rolling_quantile": (None, lag_tf.SeasonalRollingQuantile, [0.5, season_length, window_size, min_samples])
+    "rolling_quantile": (lag_tf.RollingQuantile, [0.5, window_size, min_samples]),
+    "seasonal_rolling_quantile": (
+        lag_tf.SeasonalRollingQuantile,
+        [0.5, season_length, window_size, min_samples],
+    ),
 }
 
 
@@ -41,10 +44,10 @@ def test_scalers(benchmark, data, indptr, scaler):
 @pytest.mark.parametrize("tfm", all_lag_tfms.keys())
 def test_lag_transforms(benchmark, data, indptr, tfm):
     ga = GroupedArray(data, indptr)
-    _, Transform, args = all_lag_tfms[tfm]
+    Transform, args = all_lag_tfms[tfm]
     tfm = Transform(5, *args)
     benchmark(tfm.transform, ga)
 
 
 def test_ewm(benchmark, data, indptr):
-    benchmark(exponentially_weighted_mean, x=data[:indptr[1]], alpha=0.9)
+    benchmark(exponentially_weighted_mean, x=data[: indptr[1]], alpha=0.9)

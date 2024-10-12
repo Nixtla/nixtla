@@ -1,0 +1,6 @@
+[submodule "external_libs/stl-cpp"]
+	path = external_libs/stl-cpp
+	url = https://github.com/jmoralez/stl-cpp.git
+[submodule "external_libs/skiplist"]
+	path = external_libs/skiplist
+	url = https://github.com/paulross/skiplist.git

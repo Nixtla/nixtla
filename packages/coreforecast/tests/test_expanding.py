@@ -1,7 +1,7 @@
 import coreforecast.expanding as cf_expanding
 import numpy as np
+import pandas as pd
 import pytest
-import window_ops.expanding as wops_expanding
 
 from .test_lag_transforms import pd_rolling_quantile
 
@@ -11,11 +11,12 @@ other_ops = [op for op in cf_expanding.__all__ if op not in quantile_ops]
 
 @pytest.mark.parametrize("op", other_ops)
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_rolling(op, dtype):
+def test_expanding(op, dtype):
     x = np.random.rand(100).astype(dtype)
+    serie = pd.Series(x)
     cf_res = getattr(cf_expanding, op)(x)
-    wo_res = getattr(wops_expanding, op)(x)
-    np.testing.assert_allclose(cf_res, wo_res, rtol=1e-5)
+    pd_res = getattr(serie.expanding(), op.replace("expanding_", ""))()
+    np.testing.assert_allclose(cf_res, pd_res, rtol=1e-5)
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])

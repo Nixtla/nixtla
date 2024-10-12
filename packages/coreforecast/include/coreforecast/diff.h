@@ -1,11 +1,12 @@
 #pragma once
 
-#include "grouped_array.h"
+#include "common.h"
 #include "kpss.h"
 #include "seasonal.h"
 
+namespace diff {
 template <typename T> void Differences(const T *data, int n, int d, T *out) {
-  Difference(data, n, out, d);
+  seasonal::Difference(data, n, out, d);
 }
 
 template <typename T> inline bool IsConstant(const T *data, int n) {
@@ -50,7 +51,7 @@ template <typename T> void NumDiffs(const T *x, indptr_t n, T *out, int max_d) {
   std::vector<T> diff_x(n);
   while (do_diff && d < max_d) {
     ++d;
-    Difference(x_vec.data(), x_vec.size(), diff_x.data(), 1);
+    seasonal::Difference(x_vec.data(), x_vec.size(), diff_x.data(), 1);
     if (IsConstant(diff_x.data() + d, diff_x.size() - d)) {
       *out = d;
       return;
@@ -79,13 +80,13 @@ void NumSeasDiffs(const T *x, indptr_t n, T *out, int period, int max_d) {
   }
   constexpr T threshold = 0.64;
   int d = 0;
-  bool do_diff = SeasHeuristic(x, n, period) > threshold;
+  bool do_diff = seasonal::SeasHeuristic(x, n, period) > threshold;
   std::vector<T> x_vec(n);
   std::copy(x, x + n, x_vec.begin());
   std::vector<T> diff_x(n);
   while (do_diff && d < max_d) {
     ++d;
-    Difference(x_vec.data(), x_vec.size(), diff_x.data(), period);
+    seasonal::Difference(x_vec.data(), x_vec.size(), diff_x.data(), period);
     if (IsConstant(diff_x.data() + d * period, n - d * period)) {
       *out = d;
       return;
@@ -93,8 +94,8 @@ void NumSeasDiffs(const T *x, indptr_t n, T *out, int period, int max_d) {
     std::copy(diff_x.begin(), diff_x.end(), x_vec.begin());
     // we'll have d * period NaNs and we need 2 * period samples for the STL
     if (n > (d + 2) * period && d < max_d) {
-      do_diff = SeasHeuristic(x_vec.data() + d * period, n - d * period,
-                              period) > threshold;
+      do_diff = seasonal::SeasHeuristic(x_vec.data() + d * period,
+                                        n - d * period, period) > threshold;
     } else {
       do_diff = false;
     }
@@ -109,3 +110,4 @@ void NumSeasDiffsPeriods(const T *x, indptr_t n, T *period_and_out, int max_d) {
   T *out = period_and_out + 1;
   NumSeasDiffs(x, n, out, period, max_d);
 }
+} // namespace diff

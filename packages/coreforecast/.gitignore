@@ -37,3 +37,6 @@ __pycache__
 
 # CMake
 build
+
+# jupyter
+.ipynb_checkpoints

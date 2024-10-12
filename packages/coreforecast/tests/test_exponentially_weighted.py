@@ -1,7 +1,7 @@
 import numpy as np
+import pandas as pd
 import pytest
 from coreforecast.exponentially_weighted import exponentially_weighted_mean
-from window_ops.ewm import ewm_mean
 
 
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
@@ -9,5 +9,5 @@ from window_ops.ewm import ewm_mean
 def test_exponentially_weighted_mean(alpha, dtype):
     x = np.random.rand(100).astype(dtype)
     cf_res = exponentially_weighted_mean(x, alpha)
-    wo_res = ewm_mean(x, alpha)
-    np.testing.assert_allclose(cf_res, wo_res, rtol=1e-5)
+    pd_res = pd.Series(x).ewm(alpha=alpha, adjust=False).mean()
+    np.testing.assert_allclose(cf_res, pd_res, rtol=1e-5)

@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import pytest
 from coreforecast.grouped_array import GroupedArray
-from window_ops.shift import shift_array
 
 from . import lag_tfms_map, min_samples, season_length, window_size
 
@@ -12,19 +11,35 @@ lengths = np.random.randint(low=100, high=200, size=100)
 indptr = np.append(0, lengths.cumsum()).astype(np.int32)
 
 
-def transform(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
-    n_series = len(indptr) - 1
-    if updates_only:
-        out = np.empty_like(data[:n_series])
-        for i in range(n_series):
-            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
-            out[i] = func(lagged, *args)[-1]
+def pd_transform(data, indptr, updates_only, lag, op, *args) -> np.ndarray:
+    func, agg = op.rsplit("_", maxsplit=1)
+    seasonal = func.startswith("seasonal")
+    func = func.replace("seasonal_", "")
+    sizes = np.diff(indptr)
+    n_series = sizes.size
+    df = pd.DataFrame(
+        {
+            "unique_id": np.repeat(np.arange(n_series), sizes),
+            "ds": np.hstack([np.arange(size) for size in sizes]),
+            "y": data,
+        }
+    )
+    df["lagged"] = df.groupby("unique_id", observed=True)["y"].shift(lag)
+    if seasonal:
+        season_length, *args = args
+        grouped_lagged = df.groupby(
+            ["unique_id", np.arange(df.shape[0]) % season_length], observed=True
+        )["lagged"]
     else:
-        out = np.empty_like(data)
-        for i in range(n_series):
-            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
-            out[indptr[i] : indptr[i + 1]] = func(lagged, *args)
-    return out
+        grouped_lagged = df.groupby("unique_id", observed=True)["lagged"]
+    if func == "ewm":
+        res = grouped_lagged.ewm(alpha=args[0], adjust=False).mean()
+    else:
+        res = getattr(getattr(grouped_lagged, func)(*args), agg)()
+    res = res.sort_index(level=-1)
+    if updates_only:
+        res = res.groupby("unique_id", observed=True).tail(1)
+    return res.to_numpy()
 
 
 def pd_rolling_quantile(x, lag, p, window_size, min_samples):
@@ -67,16 +82,16 @@ def test_correctness(data, comb, dtype):
         rtol *= 100
     data = data.astype(dtype, copy=True)
     ga = GroupedArray(data, indptr)
-    wf, cf, args = lag_tfms_map[comb]
+    cf, args = lag_tfms_map[comb]
     # transform
-    wres = transform(data, indptr, False, lag, wf, *args)
+    pd_res = pd_transform(data, indptr, False, lag, comb, *args)
     cobj = cf(lag, *args)
     cres = cobj.transform(ga)
-    np.testing.assert_allclose(wres, cres, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(pd_res, cres, atol=atol, rtol=rtol)
     # update
-    wres = transform(data, indptr, True, lag - 1, wf, *args)
+    pd_res = pd_transform(data, indptr, True, lag - 1, comb, *args)
     cres = cobj.update(ga)
-    np.testing.assert_allclose(wres, cres, atol=atol, rtol=rtol)
+    np.testing.assert_allclose(pd_res, cres, atol=atol, rtol=rtol)
     # stack
     combined = cobj.stack([cobj, cobj])
     if hasattr(cobj, "stats_"):

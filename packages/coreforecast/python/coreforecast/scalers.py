@@ -1,19 +1,3 @@
-import copy
-import ctypes
-from typing import List, Optional, Sequence
-
-import numpy as np
-
-from ._lib import _LIB, _indptr_dtype
-from .grouped_array import GroupedArray
-from .utils import (
-    _data_as_void_ptr,
-    _diffs_to_indptr,
-    _ensure_float,
-    _float_arr_to_prefix,
-    _pyfloat_to_np_c,
-)
-
 __all__ = [
     "AutoDifferences",
     "AutoSeasonalDifferences",
@@ -28,11 +12,22 @@ __all__ = [
     "inv_boxcox",
 ]
 
+import copy
+from typing import TYPE_CHECKING, List, Optional, Sequence, TypeVar, Union
 
-_LIB.Float32_BoxCoxLambdaGuerrero.restype = ctypes.c_float
-_LIB.Float64_BoxCoxLambdaGuerrero.restype = ctypes.c_double
-_LIB.Float32_BoxCoxLambdaLogLik.restype = ctypes.c_float
-_LIB.Float64_BoxCoxLambdaLogLik.restype = ctypes.c_double
+import numpy as np
+
+from ._lib import scalers as _scalers
+from ._lib.grouped_array import GroupedArray
+from .utils import _diffs_to_indptr, _indptr_dtype
+
+if TYPE_CHECKING:
+    from ._lib.grouped_array import _GroupedArrayFloat32, _GroupedArrayFloat64
+
+    GroupedArrayT = Union["_GroupedArrayFloat32", "_GroupedArrayFloat64"]
+
+
+T = TypeVar("T", "_GroupedArrayFloat32", "_GroupedArrayFloat64")
 
 
 def _boxcox_lambda_checks(
@@ -81,25 +76,11 @@ def boxcox_lambda(
     )
     if method == "loglik" and any(x <= 0):
         raise ValueError("All values in x must be positive when method='loglik'")
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
     if method == "guerrero":
         assert season_length is not None
-        # _LIB[fn] doesn't get the restype assignment (keeps c_int)
-        res = getattr(_LIB, f"{prefix}_BoxCoxLambdaGuerrero")(
-            _data_as_void_ptr(x),
-            ctypes.c_int(x.size),
-            ctypes.c_int(season_length),
-            _pyfloat_to_np_c(lower, x.dtype),
-            _pyfloat_to_np_c(upper, x.dtype),
-        )
+        res = _scalers.boxcox_lambda_guerrero(x, season_length, lower, upper)
     else:
-        res = getattr(_LIB, f"{prefix}_BoxCoxLambdaLogLik")(
-            _data_as_void_ptr(x),
-            ctypes.c_int(x.size),
-            _pyfloat_to_np_c(lower, x.dtype),
-            _pyfloat_to_np_c(upper, x.dtype),
-        )
+        res = _scalers.boxcox_lambda_loglik(x, lower, upper)
     return res
 
 
@@ -112,16 +93,7 @@ def boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
 
     Returns:
         np.ndarray: Array with the transformed data."""
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
-    getattr(_LIB, f"{prefix}_BoxCoxTransform")(
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        _pyfloat_to_np_c(lmbda, x.dtype),
-        _data_as_void_ptr(out),
-    )
-    return out
+    return _scalers.boxcox(x, lmbda)
 
 
 def inv_boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
@@ -133,19 +105,10 @@ def inv_boxcox(x: np.ndarray, lmbda: float) -> np.ndarray:
 
     Returns:
         np.ndarray: Array with the inverted transformation."""
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
-    getattr(_LIB, f"{prefix}_BoxCoxInverseTransform")(
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        _pyfloat_to_np_c(lmbda, x.dtype),
-        _data_as_void_ptr(out),
-    )
-    return out
+    return _scalers.inv_boxcox(x, lmbda)
 
 
-def _validate_scaler_size(stats: np.ndarray, ga: GroupedArray) -> None:
+def _validate_scaler_size(stats: np.ndarray, ga: "GroupedArrayT") -> None:
     if stats.shape[0] != len(ga):
         raise ValueError(
             f"Number of groups in the scaler ({stats.shape[0]:,}) "
@@ -156,7 +119,7 @@ def _validate_scaler_size(stats: np.ndarray, ga: GroupedArray) -> None:
 class _BaseLocalScaler:
     _scaler_type: str
 
-    def fit(self, ga: GroupedArray) -> "_BaseLocalScaler":
+    def fit(self, ga: "GroupedArrayT") -> "_BaseLocalScaler":
         """Compute the statistics for each group.
 
         Args:
@@ -164,10 +127,10 @@ class _BaseLocalScaler:
 
         Returns:
             self: The fitted scaler object."""
-        self.stats_ = ga._scaler_fit(self._scaler_type)
+        self.stats_ = getattr(ga, f"_{self._scaler_type}_stats")()
         return self
 
-    def transform(self, ga: GroupedArray) -> np.ndarray:
+    def transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Use the computed statistics to apply the transformation.
 
         Args:
@@ -178,7 +141,7 @@ class _BaseLocalScaler:
         _validate_scaler_size(self.stats_, ga)
         return ga._scaler_transform(self.stats_)
 
-    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+    def fit_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """ "Compute the statistics for each group and apply the transformation.
 
         Args:
@@ -188,7 +151,7 @@ class _BaseLocalScaler:
             np.ndarray: Array with the transformed data."""
         return self.fit(ga).transform(ga)
 
-    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+    def inverse_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Use the computed statistics to invert the transformation.
 
         Args:
@@ -214,13 +177,13 @@ class _BaseLocalScaler:
 class LocalMinMaxScaler(_BaseLocalScaler):
     """Scale each group to the [0, 1] interval"""
 
-    _scaler_type = "MinMax"
+    _scaler_type = "minmax"
 
 
 class LocalStandardScaler(_BaseLocalScaler):
     """Scale each group to have zero mean and unit variance"""
 
-    _scaler_type = "Standard"
+    _scaler_type = "standard"
 
 
 class LocalRobustScaler(_BaseLocalScaler):
@@ -233,9 +196,9 @@ class LocalRobustScaler(_BaseLocalScaler):
 
     def __init__(self, scale: str):
         if scale == "iqr":
-            self._scaler_type = "RobustIqr"
+            self._scaler_type = "robust_iqr"
         else:
-            self._scaler_type = "RobustMad"
+            self._scaler_type = "robust_mad"
 
 
 class LocalBoxCoxScaler(_BaseLocalScaler):
@@ -263,7 +226,7 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
         self.lower = lower
         self.upper = upper
 
-    def fit(self, ga: GroupedArray) -> "_BaseLocalScaler":
+    def fit(self, ga: "GroupedArrayT") -> "_BaseLocalScaler":
         """Compute the statistics for each group.
 
         Args:
@@ -273,15 +236,20 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
             self: The fitted scaler object."""
         if self.method == "loglik" and any(ga.data < 0):
             raise ValueError("All values in data must be positive for method='loglik'")
-        self.stats_ = ga._boxcox_fit(
-            method=self.method,
-            season_length=self.season_length,
-            lower=self.lower,
-            upper=self.upper,
-        )
+        if self.method == "loglik":
+            self.stats_ = ga._boxcox_loglik(
+                self.lower,
+                self.upper,
+            )
+        else:
+            self.stats_ = ga._boxcox_guerrero(
+                self.season_length,
+                self.lower,
+                self.upper,
+            )
         return self
 
-    def transform(self, ga: GroupedArray) -> np.ndarray:
+    def transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Use the computed lambdas to apply the transformation.
 
         Args:
@@ -290,9 +258,9 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
         Returns:
             np.ndarray: Array with the transformed data."""
         _validate_scaler_size(self.stats_, ga)
-        return ga._boxcox_transform(self.stats_)
+        return ga._boxcox(self.stats_)
 
-    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+    def inverse_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Use the computed lambdas to invert the transformation.
 
         Args:
@@ -301,7 +269,7 @@ class LocalBoxCoxScaler(_BaseLocalScaler):
         Returns:
             np.ndarray: Array with the inverted transformation."""
         _validate_scaler_size(self.stats_, ga)
-        return ga._boxcox_inverse_transform(self.stats_)
+        return ga._inv_boxcox(self.stats_)
 
 
 class Difference:
@@ -313,7 +281,7 @@ class Difference:
     def __init__(self, d: int):
         self.d = d
 
-    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+    def fit_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Apply the transformation
 
         Args:
@@ -324,7 +292,7 @@ class Difference:
         self.tails_ = ga._tail(self.d)
         return ga._diff(self.d)
 
-    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+    def inverse_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Invert the transformation
 
         Args:
@@ -334,7 +302,7 @@ class Difference:
             np.ndarray: Array with the inverted transformation."""
         return ga._inv_diff(self.d, self.tails_)
 
-    def update(self, ga: GroupedArray) -> np.ndarray:
+    def update(self, ga: "GroupedArrayT") -> np.ndarray:
         """Update the last observations from each serie
 
         Args:
@@ -377,7 +345,7 @@ class AutoDifferences:
             raise ValueError("max_diff must be a positive integer")
         self.max_diffs = max_diffs
 
-    def _transform(self, ga: GroupedArray, season_length: int) -> np.ndarray:
+    def _transform(self, ga: "GroupedArrayT", season_length: int) -> np.ndarray:
         max_d = int(self.diffs_.max())
         transformed = ga.data.copy()
         self.tails_: List[np.ndarray] = []
@@ -390,7 +358,7 @@ class AutoDifferences:
             transformed = ga._diffs(ds)
         return transformed
 
-    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+    def fit_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Compute and apply the optimal number of differences for each group
 
         Args:
@@ -401,7 +369,7 @@ class AutoDifferences:
         self.diffs_ = ga._num_diffs(self.max_diffs)
         return self._transform(ga, season_length=1)
 
-    def _inverse_transform(self, ga: GroupedArray, season_length: int) -> np.ndarray:
+    def _inverse_transform(self, ga: "GroupedArrayT", season_length: int) -> np.ndarray:
         _validate_scaler_size(self.diffs_, ga)
         transformed = ga.data.copy()
         n_diffs = len(self.tails_)
@@ -412,7 +380,7 @@ class AutoDifferences:
             transformed = ga._inv_diffs(ds, tails)
         return transformed
 
-    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+    def inverse_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Invert the differences
 
         Args:
@@ -422,7 +390,7 @@ class AutoDifferences:
             np.ndarray: Array with the inverted transformation."""
         return self._inverse_transform(ga, 1)
 
-    def _update(self, ga: GroupedArray, season_length: int) -> np.ndarray:
+    def _update(self, ga: "GroupedArrayT", season_length: int) -> np.ndarray:
         _validate_scaler_size(self.diffs_, ga)
         tail_indptr = np.arange(
             0, season_length * ga.indptr.size, season_length, dtype=_indptr_dtype
@@ -442,7 +410,7 @@ class AutoDifferences:
         self.tails_ = new_tails
         return transformed
 
-    def update(self, ga: GroupedArray) -> np.ndarray:
+    def update(self, ga: "GroupedArrayT") -> np.ndarray:
         """Update the last observations from each serie
 
         Args:
@@ -501,7 +469,7 @@ class AutoSeasonalDifferences(AutoDifferences):
             raise ValueError("n_seasons must be at least 2")
         self.n_seasons = n_seasons
 
-    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+    def fit_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Compute and apply the optimal number of seasonal differences for each group
 
         Args:
@@ -521,7 +489,7 @@ class AutoSeasonalDifferences(AutoDifferences):
         self.diffs_ = tails_ga._num_seas_diffs(self.season_length, self.max_diffs)
         return self._transform(ga, self.season_length)
 
-    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+    def inverse_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Invert the seasonal differences
 
         Args:
@@ -531,7 +499,7 @@ class AutoSeasonalDifferences(AutoDifferences):
             np.ndarray: Array with the inverted transformation."""
         return self._inverse_transform(ga, self.season_length)
 
-    def update(self, ga: GroupedArray) -> np.ndarray:
+    def update(self, ga: "GroupedArrayT") -> np.ndarray:
         """Update the last observations from each serie
 
         Args:
@@ -567,7 +535,7 @@ class AutoSeasonalityAndDifferences:
             raise ValueError("n_seasons must be at least 2")
         self.n_seasons = n_seasons
 
-    def fit_transform(self, ga: GroupedArray) -> np.ndarray:
+    def fit_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Compute the optimal length of the seasonal period and apply the optimal number of differences for each group
 
         Args:
@@ -598,7 +566,7 @@ class AutoSeasonalityAndDifferences:
             transformed = ga._diffs(diffs)
         return transformed
 
-    def inverse_transform(self, ga: GroupedArray) -> np.ndarray:
+    def inverse_transform(self, ga: "GroupedArrayT") -> np.ndarray:
         """Invert the seasonal differences
 
         Args:
@@ -613,7 +581,7 @@ class AutoSeasonalityAndDifferences:
             transformed = ga._inv_diffs(diffs, tails)
         return transformed
 
-    def update(self, ga: GroupedArray) -> np.ndarray:
+    def update(self, ga: "GroupedArrayT") -> np.ndarray:
         _validate_scaler_size(self.diffs_[0], ga)
         new_tails = []
         transformed = ga.data.copy()

@@ -11,18 +11,11 @@ __all__ = [
     "seasonal_rolling_quantile",
 ]
 
-import ctypes
 from typing import Callable, Optional
 
 import numpy as np
 
-from ._lib import _LIB
-from .utils import (
-    _data_as_void_ptr,
-    _ensure_float,
-    _float_arr_to_prefix,
-    _pyfloat_to_np_c,
-)
+from ._lib import rolling as _rolling
 
 
 def _rolling_stat(
@@ -31,19 +24,9 @@ def _rolling_stat(
     window_size: int,
     min_samples: Optional[int] = None,
 ) -> np.ndarray:
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
     if min_samples is None:
         min_samples = window_size
-    _LIB[f"{prefix}_Rolling{stat}Transform"](
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        ctypes.c_int(window_size),
-        ctypes.c_int(min_samples),
-        _data_as_void_ptr(out),
-    )
-    return out
+    return getattr(_rolling, f"rolling_{stat}")(x, window_size, min_samples)
 
 
 def _seasonal_rolling_stat(
@@ -53,20 +36,11 @@ def _seasonal_rolling_stat(
     window_size: int,
     min_samples: Optional[int] = None,
 ) -> np.ndarray:
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
     if min_samples is None:
         min_samples = window_size
-    _LIB[f"{prefix}_SeasonalRolling{stat}Transform"](
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        ctypes.c_int(season_length),
-        ctypes.c_int(window_size),
-        ctypes.c_int(min_samples),
-        _data_as_void_ptr(out),
+    return getattr(_rolling, f"seasonal_rolling_{stat}")(
+        x, season_length, window_size, min_samples
     )
-    return out
 
 
 def _rolling_docstring(*args, **kwargs) -> Callable:
@@ -114,28 +88,28 @@ def _seasonal_rolling_docstring(*args, **kwargs) -> Callable:
 def rolling_mean(
     x: np.ndarray, window_size: int, min_samples: Optional[int] = None
 ) -> np.ndarray:
-    return _rolling_stat(x, "Mean", window_size, min_samples)
+    return _rolling_stat(x, "mean", window_size, min_samples)
 
 
 @_rolling_docstring
 def rolling_std(
     x: np.ndarray, window_size: int, min_samples: Optional[int] = None
 ) -> np.ndarray:
-    return _rolling_stat(x, "Std", window_size, min_samples)
+    return _rolling_stat(x, "std", window_size, min_samples)
 
 
 @_rolling_docstring
 def rolling_min(
     x: np.ndarray, window_size: int, min_samples: Optional[int] = None
 ) -> np.ndarray:
-    return _rolling_stat(x, "Min", window_size, min_samples)
+    return _rolling_stat(x, "min", window_size, min_samples)
 
 
 @_rolling_docstring
 def rolling_max(
     x: np.ndarray, window_size: int, min_samples: Optional[int] = None
 ) -> np.ndarray:
-    return _rolling_stat(x, "Max", window_size, min_samples)
+    return _rolling_stat(x, "max", window_size, min_samples)
 
 
 def rolling_quantile(
@@ -153,20 +127,9 @@ def rolling_quantile(
     Returns:
         np.ndarray: Array with rolling statistic
     """
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
     if min_samples is None:
         min_samples = window_size
-    _LIB[f"{prefix}_RollingQuantileTransform"](
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        _pyfloat_to_np_c(p, x.dtype),
-        ctypes.c_int(window_size),
-        ctypes.c_int(min_samples),
-        _data_as_void_ptr(out),
-    )
-    return out
+    return _rolling.rolling_quantile(x, window_size, min_samples, p)
 
 
 @_seasonal_rolling_docstring
@@ -176,7 +139,7 @@ def seasonal_rolling_mean(
     window_size: int,
     min_samples: Optional[int] = None,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "Mean", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(x, "mean", season_length, window_size, min_samples)
 
 
 @_seasonal_rolling_docstring
@@ -186,7 +149,7 @@ def seasonal_rolling_std(
     window_size: int,
     min_samples: Optional[int] = None,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "Std", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(x, "std", season_length, window_size, min_samples)
 
 
 @_seasonal_rolling_docstring
@@ -196,7 +159,7 @@ def seasonal_rolling_min(
     window_size: int,
     min_samples: Optional[int] = None,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "Min", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(x, "min", season_length, window_size, min_samples)
 
 
 @_seasonal_rolling_docstring
@@ -206,7 +169,7 @@ def seasonal_rolling_max(
     window_size: int,
     min_samples: Optional[int] = None,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "Max", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(x, "max", season_length, window_size, min_samples)
 
 
 def seasonal_rolling_quantile(
@@ -229,18 +192,8 @@ def seasonal_rolling_quantile(
     Returns:
         np.ndarray: Array with rolling statistic
     """
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
     if min_samples is None:
         min_samples = window_size
-    _LIB[f"{prefix}_SeasonalRollingQuantileTransform"](
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        ctypes.c_int(season_length),
-        _pyfloat_to_np_c(p, x.dtype),
-        ctypes.c_int(window_size),
-        ctypes.c_int(min_samples),
-        _data_as_void_ptr(out),
+    return _rolling.seasonal_rolling_quantile(
+        x, season_length, window_size, min_samples, p
     )
-    return out

@@ -6,30 +6,15 @@ __all__ = [
     "expanding_quantile",
 ]
 
-import ctypes
 from typing import Callable
 
 import numpy as np
 
-from ._lib import _LIB
-from .utils import (
-    _data_as_void_ptr,
-    _ensure_float,
-    _float_arr_to_prefix,
-    _pyfloat_to_np_c,
-)
+from ._lib import expanding as _expanding
 
 
 def _expanding_stat(x: np.ndarray, stat: str) -> np.ndarray:
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
-    _LIB[f"{prefix}_Expanding{stat}Transform"](
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        _data_as_void_ptr(out),
-    )
-    return out
+    return getattr(_expanding, f"expanding_{stat}")(x)
 
 
 def _expanding_docstring(*args, **kwargs) -> Callable:
@@ -51,22 +36,22 @@ def _expanding_docstring(*args, **kwargs) -> Callable:
 
 @_expanding_docstring
 def expanding_mean(x: np.ndarray) -> np.ndarray:
-    return _expanding_stat(x, "Mean")
+    return _expanding_stat(x, "mean")
 
 
 @_expanding_docstring
 def expanding_std(x: np.ndarray) -> np.ndarray:
-    return _expanding_stat(x, "Std")
+    return _expanding_stat(x, "std")
 
 
 @_expanding_docstring
 def expanding_min(x: np.ndarray) -> np.ndarray:
-    return _expanding_stat(x, "Min")
+    return _expanding_stat(x, "min")
 
 
 @_expanding_docstring
 def expanding_max(x: np.ndarray) -> np.ndarray:
-    return _expanding_stat(x, "Max")
+    return _expanding_stat(x, "max")
 
 
 def expanding_quantile(x: np.ndarray, p: float) -> np.ndarray:
@@ -79,13 +64,4 @@ def expanding_quantile(x: np.ndarray, p: float) -> np.ndarray:
     Returns:
         np.ndarray: Array with the expanding statistic
     """
-    x = _ensure_float(x)
-    prefix = _float_arr_to_prefix(x)
-    out = np.empty_like(x)
-    _LIB[f"{prefix}_ExpandingQuantileTransform"](
-        _data_as_void_ptr(x),
-        ctypes.c_int(x.size),
-        _pyfloat_to_np_c(p, x.dtype),
-        _data_as_void_ptr(out),
-    )
-    return out
+    return _expanding.expanding_quantile(x, p)

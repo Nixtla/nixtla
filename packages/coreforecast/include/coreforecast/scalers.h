@@ -1,14 +1,13 @@
 #pragma once
 
 #include "brent.h"
-#include "grouped_array.h"
-#include "scalers.h"
 #include "stats.h"
 
 #include <algorithm>
 #include <numeric>
 #include <vector>
 
+namespace scalers {
 template <typename T>
 inline T CommonScalerTransform(T data, T offset, T scale) {
   return (data - offset) / scale;
@@ -89,8 +88,8 @@ T BoxCox_GuerreroCV(T lambda, const std::vector<T> &x_mean,
 }
 
 template <typename T>
-void BoxCoxLambda_Guerrero(const T *x, int n, T *out, int period, T lower,
-                           T upper) {
+void BoxCoxLambdaGuerrero(const T *x, int n, T *out, int period, T lower,
+                          T upper) {
   if (n <= 2 * period) {
     *out = static_cast<T>(1.0);
     return;
@@ -166,7 +165,7 @@ inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
   return -std::exp(std::log(-lambda * x - 1) / lambda);
 }
 
-template <typename T> T BoxCox_LogLik(T lambda, const T *data, int n) {
+template <typename T> T BoxCoxLogLik(T lambda, const T *data, int n) {
   T *logdata = new T[n];
   std::transform(data, data + n, logdata, [](T x) { return std::log(x); });
   double var;
@@ -188,7 +187,8 @@ template <typename T> T BoxCox_LogLik(T lambda, const T *data, int n) {
 }
 
 template <typename T>
-void BoxCoxLambda_LogLik(const T *x, int n, T *out, T lower, T upper) {
+void BoxCoxLambdaLogLik(const T *x, int n, T *out, T lower, T upper) {
   T tol = std::pow(std::numeric_limits<T>::epsilon(), 0.25);
-  *out = Brent(BoxCox_LogLik<T>, lower, upper, tol, x, n);
+  *out = Brent(BoxCoxLogLik<T>, lower, upper, tol, x, n);
 }
+} // namespace scalers

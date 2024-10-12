@@ -1,10 +1,12 @@
 #pragma once
 
+#include "common.h"
 #include "stats.h"
 #include "stl.hpp"
 
 #include <cmath>
 
+namespace seasonal {
 template <typename T> void Difference(const T *data, int n, T *out, int d) {
   if (d == 0) {
     std::copy(data, data + n, out);
@@ -61,3 +63,4 @@ void GreatestAutocovariance(const T *x, size_t n, T *out, size_t max_lag) {
   delete[] resids;
   *out = static_cast<T>(lag);
 }
+} // namespace seasonal

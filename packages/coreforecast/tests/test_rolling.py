@@ -1,7 +1,7 @@
 import coreforecast.rolling as cf_rolling
 import numpy as np
+import pandas as pd
 import pytest
-import window_ops.rolling as wops_rolling
 
 from .test_lag_transforms import pd_rolling_quantile, pd_seasonal_rolling_quantile
 
@@ -16,13 +16,20 @@ def test_rolling(op, min_samples, dtype):
     window_size = 10
     season_length = 4
     x = np.random.rand(100).astype(dtype)
+    serie = pd.Series(x)
     if op.startswith("seasonal"):
         args = (season_length, window_size, min_samples)
+        serie = serie.groupby(np.arange(serie.size) % season_length)
     else:
         args = (window_size, min_samples)
     cf_res = getattr(cf_rolling, op)(x, *args)
-    wo_res = getattr(wops_rolling, op)(x, *args)
-    np.testing.assert_allclose(cf_res, wo_res, rtol=1e-5)
+    pd_res = getattr(
+        serie.rolling(window=window_size, min_periods=min_samples),
+        op.replace("rolling_", "").replace("seasonal_", ""),
+    )()
+    if op.startswith("seasonal"):
+        pd_res = pd_res.reset_index(level=0, drop=True).sort_index()
+    np.testing.assert_allclose(cf_res, pd_res, rtol=1e-5)
 
 
 @pytest.mark.parametrize("op", quantile_ops)
