@@ -5,6 +5,7 @@
 #include "expanding.h"
 #include "exponentially_weighted.h"
 #include "grouped_array_functions.h"
+#include "lag.h"
 #include "rolling.h"
 #include "scalers.h"
 #include "seasonal.h"
@@ -268,6 +269,12 @@ public:
     py::array_t<T> out(out_indptr.data()[NumGroups()]);
     VariableReduce(grouped_array_functions::Tail<T>, out_indptr.data(),
                    out.mutable_data());
+    return out;
+  }
+
+  py::array_t<T> LagTransform(int lag) {
+    py::array_t<T> out(data_.size());
+    Transform(lag::LagTransform<T>, lag, out.mutable_data());
     return out;
   }
 
@@ -587,6 +594,7 @@ template <typename T> void bind_ga(py::module &m, const std::string &name) {
       .def("_tail", &GroupedArray<T>::Tail)
       .def("_tails", &GroupedArray<T>::Tails)
       .def("_append", &GroupedArray<T>::Append)
+      .def("_lag", &GroupedArray<T>::LagTransform)
       .def("_rolling_mean", &GroupedArray<T>::RollingMeanTransform)
       .def("_rolling_std", &GroupedArray<T>::RollingStdTransform)
       .def("_rolling_min", &GroupedArray<T>::RollingMinTransform)
@@ -671,10 +679,10 @@ void init_ga(py::module_ &m) {
         if (data.dtype().kind() != 'f') {
           data = data.attr("astype")("float32");
         }
-        if (data.dtype().is(py::dtype::of<float>())) {
+        if (py::isinstance<py::array_t<float>>(data)) {
           return py::cast(std::make_unique<GroupedArray<float>>(
               data.cast<py::array_t<float>>(), indptr, num_threads));
-        } else if (data.dtype().is(py::dtype::of<double>())) {
+        } else if (py::isinstance<py::array_t<double>>(data)) {
           return py::cast(std::make_unique<GroupedArray<double>>(
               data.cast<py::array_t<double>>(), indptr, num_threads));
         } else {

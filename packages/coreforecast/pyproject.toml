@@ -1,6 +1,6 @@
 [project]
 name = "coreforecast"
-version = "0.0.12"
+version = "0.0.13"
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.20.0"]
 license = { text = "Apache-2.0" }
@@ -33,9 +33,10 @@ requires = ["scikit-build-core", "pybind11"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
+build-dir = "build"
 cmake.verbose = true
 logging.level = "INFO"
-sdist.exclude = ["tests", "*.yml"]
+sdist.exclude = ["docs", "tests", "*.yml"]
 sdist.reproducible = true
 wheel.exclude = ["Release"]
 wheel.expand-macos-universal-tags = true
