@@ -1150,11 +1150,6 @@ class MinTraceSparse(MinTrace):
                 "Only the methods with diagonal W are supported as sparse operations"
             )
 
-        if self.nonnegative:
-            raise NotImplementedError(
-                "Non-negative MinT is currently not implemented as sparse"
-            )
-
         S = sparse.csr_matrix(S)
 
         if self.method in res_methods and y_insample is None and y_hat_insample is None:
@@ -1213,7 +1208,7 @@ class MinTraceSparse(MinTrace):
                 (b.size, b.size), matvec=lambda v: R @ (S @ v)
             )
 
-            x_tilde, exit_code = sparse.linalg.bicgstab(A, b, atol="legacy")
+            x_tilde, exit_code = sparse.linalg.bicgstab(A, b)
 
             return x_tilde
 
@@ -1224,7 +1219,72 @@ class MinTraceSparse(MinTrace):
 
         return P, W
 
-# %% ../nbs/methods.ipynb 55
+    def fit(self,
+            S: sparse.csr_matrix,
+            y_hat: np.ndarray,
+            y_insample: Optional[np.ndarray] = None,
+            y_hat_insample: Optional[np.ndarray] = None,
+            sigmah: Optional[np.ndarray] = None,
+            intervals_method: Optional[str] = None,
+            num_samples: Optional[int] = None,
+            seed: Optional[int] = None,            
+            tags: Optional[Dict[str, np.ndarray]] = None,
+            idx_bottom: Optional[np.ndarray] = None):
+        # Clip the base forecasts if required to align them with their use in practice.
+        if self.nonnegative:
+            self.y_hat = np.clip(y_hat, 0, None)
+        else:
+            self.y_hat = y_hat
+        # Get the reconciliation matrices.
+        self.P, self.W = self._get_PW_matrices(
+            S=S, 
+            y_hat=self.y_hat, 
+            y_insample=y_insample, 
+            y_hat_insample=y_hat_insample, 
+            idx_bottom=idx_bottom,
+        )
+
+        if self.nonnegative:
+            # Get the number of leaf nodes.
+            _, n_bottom = S.shape
+            # Although it is now sufficient to ensure that all of the entries in P are 
+            # positive, as it is implemented as a linear operator for the iterative 
+            # method to solve the sparse linear system, we need to reconcile to find 
+            # if any of the coherent bottom level point forecasts are negative.
+            y_tilde = self._reconcile(
+                S=S, P=self.P, y_hat=self.y_hat, level=None, sampler=None
+            )["mean"][-n_bottom:]
+            # Find if any of the forecasts are negative.
+            if np.any(y_tilde < 0):
+                # Clip the negative forecasts.
+                y_tilde = np.clip(y_tilde, 0, None)
+                # Force non-negative coherence by overwriting the base forecasts with 
+                # the aggregated, clipped bottom level forecasts.
+                self.y_hat = S @ y_tilde
+                # Overwrite the attributes for the P and W matrices with those for 
+                # bottom-up reconciliation to force projection onto the non-negative 
+                # coherent subspace.
+                self.P, self.W = BottomUpSparse()._get_PW_matrices(S=S, idx_bottom=None)  
+
+        # Get the sampler for probabilistic reconciliation.
+        self.sampler = self._get_sampler(
+            S=S,
+            P=self.P,
+            W=self.W,
+            y_hat=self.y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+        )
+        # Set the instance as fitted.
+        self.fitted = True
+        return self
+
+# %% ../nbs/methods.ipynb 56
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -1258,7 +1318,7 @@ class OptimalCombination(MinTrace):
         super().__init__(method=method, nonnegative=nonnegative, num_threads=num_threads)
         self.insample = False
 
-# %% ../nbs/methods.ipynb 64
+# %% ../nbs/methods.ipynb 65
 @njit
 def lasso(X: np.ndarray, y: np.ndarray, 
           lambda_reg: float, max_iters: int = 1_000,
@@ -1290,7 +1350,7 @@ def lasso(X: np.ndarray, y: np.ndarray,
     #print(it)
     return beta
 
-# %% ../nbs/methods.ipynb 65
+# %% ../nbs/methods.ipynb 66
 class ERM(HReconciler):
     """Optimal Combination Reconciliation Class.
 
