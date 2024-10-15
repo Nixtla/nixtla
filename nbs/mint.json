@@ -116,7 +116,8 @@
             "docs/tutorials/irregular_timestamps.html",
             "docs/tutorials/bounded_forecasts.html",
             "docs/tutorials/hierarchical_forecasting.html", 
-            "docs/tutorials/missing_values.html"
+            "docs/tutorials/missing_values.html",
+            "docs/tutorials/how_to_improve_forecast_accuracy.html"
           ]
         },
         {
