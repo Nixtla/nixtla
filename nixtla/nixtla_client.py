@@ -382,8 +382,8 @@ def _validate_input_size(
     min_size = ufp.counts_by_id(df, id_col)["counts"].min()
     if min_size < model_input_size + model_horizon:
         raise ValueError(
-            "Your time series data is too short "
-            "Please make sure that your each serie contains "
+            "Some series are too short. "
+            "Please make sure that each serie contains "
             f"at least {model_input_size + model_horizon} observations."
         )
 
