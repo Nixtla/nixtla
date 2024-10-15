@@ -371,7 +371,7 @@ class HierarchicalEvaluation:
         for level, cats in tags_.items():
             Y_h_cats = Y_hat_df.loc[cats]
             y_test_cats = Y_test_df.loc[cats, 'y'].values.reshape(-1, h)
-            if has_y_insample:
+            if has_y_insample and Y_df is not None:
                 y_insample = Y_df.pivot(columns='ds', values='y').loc[cats].values
             for i_fn, fn in enumerate(self.evaluators):
                 if 'y_insample' in signature(fn).parameters:

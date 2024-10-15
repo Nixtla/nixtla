@@ -46,10 +46,12 @@ conda env create -f environment.yml
 Once you have your environment setup, activate it using `conda activate hierarchicalforecast` and then install the library in editable mode using `pip install -e ".[dev]"`
 
 #### Install git hooks
-Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
+Before doing any changes to the code, please install the git hooks and checks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
 ```
 nbdev_install_hooks
+pre-commit install
 ```
+
 ### Preview Changes
 You can preview changes in your local browser before pushing by using the `nbdev_preview`.
 
@@ -58,12 +60,6 @@ The library is built using the notebooks contained in the `nbs` folder. If you w
 ```
 nbdev_export
 ```
-
-### Check syntax with Linters
-This project uses a couple of linters to validate different aspects of the code. Before opening a PR, please make sure that it passes all the linting tasks by following the next steps. After installing `pip install flake8` and `pip install mypy`.
-
-* `mypy hierarchicalforecast/`
-* `flake8 --select=F hierarchicalforecast/`
 
 ### Run tests
 If you're working on the local interface you can just use `nbdev_test --n_workers 1 --do_print --timing`. 

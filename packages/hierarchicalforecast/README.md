@@ -15,7 +15,7 @@
 </div>
 
 ## 📚 Intro
-A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include categories, brands, or geographical groupings. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers differnt reconciliation methods that render coherent forecasts across hierachies. 
+A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include categories, brands, or geographical groupings. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers different reconciliation methods that render coherent forecasts across hierachies. 
 Until recent, this methods were mainly avaiable in the R ecosystem. This Python-based framework aims to bridge the gap between statistical modeling and Machine Learning in the time series field.
 
 ## 🎊 Features 

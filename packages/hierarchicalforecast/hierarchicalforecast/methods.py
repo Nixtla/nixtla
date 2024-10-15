@@ -9,7 +9,7 @@ import warnings
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from typing import Callable, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 from numba import njit, prange
@@ -17,13 +17,16 @@ from quadprog import solve_qp
 from scipy import sparse
 
 # %% ../nbs/methods.ipynb 4
-from .utils import is_strictly_hierarchical, cov2corr
+from .utils import is_strictly_hierarchical
 from .probabilistic_methods import Normality, Bootstrap, PERMBU
 
 # %% ../nbs/methods.ipynb 6
 class HReconciler:
     fitted = False
     is_sparse_method = False
+    insample = False
+    P = None
+    sampler = None
 
     def _get_sampler(self,
                      intervals_method,
@@ -64,7 +67,7 @@ class HReconciler:
                    y_hat: np.ndarray,
                    SP: np.ndarray = None,
                    level: Optional[List[int]] = None,
-                   sampler: Optional[Callable] = None):
+                   sampler: Optional[Union[Normality, PERMBU, Bootstrap]] = None):
 
         # Mean reconciliation
         res = {'mean': (S @ (P @ y_hat))}
@@ -124,6 +127,20 @@ class HReconciler:
 
         samples = self.sampler.get_samples(num_samples=num_samples)
         return samples
+    
+    def fit(self,
+        *args,
+        **kwargs):
+
+        raise NotImplementedError("This method is not implemented yet.")
+    
+    def fit_predict(self,
+        *args,
+        **kwargs):
+
+        raise NotImplementedError("This method is not implemented yet.")  
+
+    __call__ = fit_predict      
 
 # %% ../nbs/methods.ipynb 8
 class BottomUp(HReconciler):
@@ -161,7 +178,7 @@ class BottomUp(HReconciler):
             intervals_method: Optional[str] = None,
             num_samples: Optional[int] = None,
             seed: Optional[int] = None,            
-            tags: Dict[str, np.ndarray] = None):
+            tags: Optional[Dict[str, np.ndarray]] = None):
         """Bottom Up Fit Method.
 
         **Parameters:**<br>
@@ -202,7 +219,7 @@ class BottomUp(HReconciler):
                     intervals_method: Optional[str] = None,
                     num_samples: Optional[int] = None,
                     seed: Optional[int] = None,
-                    tags: Dict[str, np.ndarray] = None):
+                    tags: Optional[Dict[str, np.ndarray]] = None):
         """BottomUp Reconciliation Method.
 
         **Parameters:**<br>
@@ -321,18 +338,28 @@ class TopDown(HReconciler):
     def _get_PW_matrices(self,
                          S: np.ndarray,
                          y_hat: np.ndarray,
-                         tags: Dict[str, np.ndarray],
-                         y_insample: Optional[np.ndarray] = None):
-        if not is_strictly_hierarchical(S, tags):
-            raise ValueError('Top down reconciliation requires strictly hierarchical structures.')
+                         y_insample: np.ndarray,
+                         tags: Optional[Dict[str, np.ndarray]] = None,
+                         ):
 
         n_hiers, n_bottom = S.shape
-        idx_top = int(S.sum(axis=1).argmax())
-        levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
-        idx_bottom = levels_[list(levels_)[-1]]
+
+        # Check if the data structure is strictly hierarchical.
+        if tags is not None:
+            if not is_strictly_hierarchical(S, tags):
+                raise ValueError(
+                    "Top-down reconciliation requires strictly hierarchical structures."
+                )
+            idx_top = int(S.sum(axis=1).argmax())
+            levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
+            idx_bottom = levels_[list(levels_)[-1]]
+            y_btm = y_insample[idx_bottom]
+        else:
+            idx_top = 0
+            y_btm = y_insample[(n_hiers - n_bottom):]
 
         y_top = y_insample[idx_top]
-        y_btm = y_insample[idx_bottom]
+
         if self.method == 'average_proportions':
             prop = np.mean(y_btm / y_top, axis=1)
         elif self.method == 'proportion_averages':
@@ -350,13 +377,13 @@ class TopDown(HReconciler):
     def fit(self, 
             S,
             y_hat,
-            y_insample: Optional[np.ndarray] = None,
+            y_insample: np.ndarray,
             y_hat_insample: Optional[np.ndarray] = None,
             sigmah: Optional[np.ndarray] = None,
             intervals_method: Optional[str] = None,
             num_samples: Optional[int] = None,
             seed: Optional[int] = None,            
-            tags: Dict[str, np.ndarray] = None,
+            tags: Optional[Dict[str, np.ndarray]] = None,
             idx_bottom: Optional[np.ndarray] = None):
         """TopDown Fit Method.
 
@@ -462,8 +489,8 @@ class TopDownSparse(TopDown):
         self,
         S: sparse.csr_matrix,
         y_hat: np.ndarray,
+        y_insample: np.ndarray,
         tags: Optional[Dict[str, np.ndarray]] = None,
-        y_insample: Optional[np.ndarray] = None,
     ):
         # Check if the data structure is strictly hierarchical.
         if tags is not None and not is_strictly_hierarchical(S, tags):
@@ -693,14 +720,14 @@ class MiddleOutSparse(MiddleOut):
                 # the subgraph.
                 sub_tags = {}
                 acc = 0
-                for level, nodes in levels.items():
+                for level_, nodes in levels.items():
                     # Find all the nodes in the subgraph for the level.
                     nodes = np.intersect1d(nodes, sub_idx, True)
                     # Get the number of nodes in the level.
                     n = len(nodes)
                     # Exclude any levels above the cut node or empty ones below.
                     if len(nodes) > 0:
-                        sub_tags[level] = np.arange(acc, n + acc)
+                        sub_tags[level_] = np.arange(acc, n + acc)
                         acc += n
 
             # Perform sparse top-down reconciliation from the cut node.
@@ -784,7 +811,7 @@ class MinTrace(HReconciler):
             Wdiag = np.sum(S, axis=1, dtype=np.float64)
             UtW = Ut * Wdiag
             W = np.diag(Wdiag)
-        elif self.method in res_methods:
+        elif self.method in res_methods and y_insample is not None and y_hat_insample is not None:         
             # Residuals with shape (obs, n_hiers)
             residuals = (y_insample - y_hat_insample).T
             n, _ = residuals.shape
@@ -821,7 +848,7 @@ class MinTrace(HReconciler):
 
         if self.method not in diag_only_methods:
             try:
-                L = np.linalg.cholesky(W)
+                _ = np.linalg.cholesky(W)
             except np.linalg.LinAlgError:
                 raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite. \n Please use another reconciliation method.')
         else:
@@ -842,7 +869,7 @@ class MinTrace(HReconciler):
             intervals_method: Optional[str] = None,
             num_samples: Optional[int] = None,
             seed: Optional[int] = None,            
-            tags: Dict[str, np.ndarray] = None,
+            tags: Optional[Dict[str, np.ndarray]] = None,
             idx_bottom: Optional[np.ndarray] = None):
         """MinTrace Fit Method.
 
@@ -929,7 +956,7 @@ class MinTrace(HReconciler):
                     intervals_method: Optional[str] = None,
                     num_samples: Optional[int] = None,
                     seed: Optional[int] = None,                    
-                    tags: Dict[str, np.ndarray] = None):
+                    tags: Optional[Dict[str, np.ndarray]] = None):
         """MinTrace Reconciliation Method.
 
         **Parameters:**<br>
@@ -1140,7 +1167,7 @@ class MinTraceSparse(MinTrace):
             W_diag = np.ones(n_hiers)
         elif self.method == "wls_struct":
             W_diag = S @ np.ones((n_bottom,))
-        elif self.method == "wls_var":
+        elif self.method == "wls_var" and y_insample is not None and y_hat_insample is not None:
             # Residuals with shape (obs, n_hiers)
             residuals = (y_insample - y_hat_insample).T
             n, _ = residuals.shape
@@ -1347,7 +1374,7 @@ class ERM(HReconciler):
             intervals_method: Optional[str] = None,
             num_samples: Optional[int] = None,
             seed: Optional[int] = None,
-            tags: Dict[str, np.ndarray] = None,
+            tags: Optional[Dict[str, np.ndarray]] = None,
             idx_bottom: Optional[np.ndarray] = None):
         """ERM Fit Method.
 
@@ -1394,7 +1421,7 @@ class ERM(HReconciler):
                     intervals_method: Optional[str] = None,
                     num_samples: Optional[int] = None,
                     seed: Optional[int] = None,
-                    tags: Dict[str, np.ndarray] = None):
+                    tags: Optional[Dict[str, np.ndarray]] = None):
         """ERM Reconciliation Method.
 
         **Parameters:**<br>

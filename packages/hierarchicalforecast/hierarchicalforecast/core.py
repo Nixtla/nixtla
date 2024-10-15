@@ -8,10 +8,11 @@ import re
 import gc
 import time
 import copy
+from .methods import HReconciler
 from inspect import signature
 from scipy.stats import norm
 from scipy import sparse
-from typing import Callable, Dict, List, Optional
+from typing import Dict, List, Optional
 import warnings
 
 import numpy as np
@@ -90,7 +91,7 @@ class HierarchicalReconciliation:
     [Rob J. Hyndman and George Athanasopoulos (2018). \"Forecasting principles and practice, Hierarchical and Grouped Series\".](https://otexts.com/fpp3/hierarchical.html)
     """
     def __init__(self,
-                 reconcilers: List[Callable]):
+                 reconcilers: List[HReconciler]):
         self.reconcilers = reconcilers
         self.orig_reconcilers = copy.deepcopy(reconcilers) # TODO: elegant solution
         self.insample = any([method.insample for method in reconcilers])
@@ -154,7 +155,7 @@ class HierarchicalReconciliation:
         model_names = [name for name in model_names if name not in pi_model_names]
         
         # TODO: Complete y_hat_insample protection
-        if intervals_method in ['bootstrap', 'permbu']:
+        if intervals_method in ['bootstrap', 'permbu'] and Y_df is not None:
             if not (set(model_names) <= set(Y_df.columns)):
                 raise Exception('Check `Y_hat_df`s models are included in `Y_df` columns')
 
@@ -257,16 +258,16 @@ class HierarchicalReconciliation:
         self.execution_times = {}
         self.level_names = {}
         self.sample_names = {}
-        for reconcile_fn, name_copy in zip(self.reconcilers, self.orig_reconcilers):
+        for reconciler, name_copy in zip(self.reconcilers, self.orig_reconcilers):
             reconcile_fn_name = _build_fn_name(name_copy)
 
-            if reconcile_fn.is_sparse_method:
+            if reconciler.is_sparse_method:
                 reconciler_args["S"] = S_for_sparse
             else:
                 reconciler_args["S"] = S_df.values.astype(np.float32)
 
-            has_fitted = 'y_hat_insample' in signature(reconcile_fn).parameters
-            has_level = 'level' in signature(reconcile_fn).parameters
+            has_fitted = 'y_hat_insample' in signature(reconciler.fit_predict).parameters
+            has_level = 'level' in signature(reconciler.fit_predict).parameters
 
             for model_name in self.model_names:
                 recmodel_name = f'{model_name}/{reconcile_fn_name}'
@@ -291,17 +292,17 @@ class HierarchicalReconciliation:
                     reconciler_args['seed'] = seed
 
                 # Mean and Probabilistic reconciliation
-                kwargs = [key for key in signature(reconcile_fn).parameters if key in reconciler_args.keys()]
-                kwargs = {key: reconciler_args[key] for key in kwargs}
+                kwargs_ls = [key for key in signature(reconciler.fit_predict).parameters if key in reconciler_args.keys()]
+                kwargs = {key: reconciler_args[key] for key in kwargs_ls}
                 
                 if (level is not None) and (num_samples > 0):
                     # Store reconciler's memory to generate samples
-                    reconciler = reconcile_fn.fit(**kwargs)
+                    reconciler = reconciler.fit(**kwargs)
                     fcsts_model = reconciler.predict(S=reconciler_args['S'], 
                                                      y_hat=reconciler_args['y_hat'], level=level)
                 else:
                     # Memory efficient reconciler's fit_predict
-                    fcsts_model = reconcile_fn(**kwargs, level=level)
+                    fcsts_model = reconciler(**kwargs, level=level)
 
                 # Parse final outputs
                 Y_tilde_df[recmodel_name] = fcsts_model['mean'].flatten()

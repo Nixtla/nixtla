@@ -9,12 +9,12 @@ import timeit
 import warnings
 from itertools import chain
 from typing import Callable, Dict, List, Optional, Iterable
+from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
-from scipy import sparse
 
 plt.rcParams['font.family'] = 'serif'
 
@@ -117,14 +117,14 @@ def aggregate_before(df: pd.DataFrame,
     """
     max_len_idx = np.argmax([len(hier) for hier in spec])
     bottom_comb = spec[max_len_idx]
-    df_hiers = []
+    hiers = []
     for hier in spec:
         df_hier = df.groupby(hier + ['ds'])['y'].apply(agg_fn).reset_index()
         df_hier['unique_id'] = df_hier[hier].agg('/'.join, axis=1)
         if hier == bottom_comb:
             bottom_hier = df_hier['unique_id'].unique()
-        df_hiers.append(df_hier)
-    df_hiers = pd.concat(df_hiers)
+        hiers.append(df_hier)
+    df_hiers = pd.concat(hiers)
     S_df = df_hiers[['unique_id'] + bottom_comb].drop_duplicates().reset_index(drop=True)
     S_df = S_df.set_index('unique_id')
     S_df = S_df.fillna('agg')
@@ -263,7 +263,7 @@ class HierarchicalPlot:
 
     def plot_series(self,
                     series: str,
-                    Y_df: Optional[pd.DataFrame] = None,
+                    Y_df: pd.DataFrame,
                     models: Optional[List[str]] = None,
                     level: Optional[List[int]] = None):
         """ Single Series plot
@@ -318,7 +318,7 @@ class HierarchicalPlot:
                     
     def plot_hierarchically_linked_series(self,
                                           bottom_series: str,
-                                          Y_df: Optional[pd.DataFrame] = None,
+                                          Y_df: pd.DataFrame,
                                           models: Optional[List[str]] = None,
                                           level: Optional[List[int]] = None):
         """ Hierarchically Linked Series plot
@@ -382,8 +382,8 @@ class HierarchicalPlot:
     def plot_hierarchical_predictions_gap(self,
                                           Y_df: pd.DataFrame,
                                           models: Optional[List[str]] = None,
-                                          xlabel: Optional=None,
-                                          ylabel: Optional=None,
+                                          xlabel: Optional[str] = None,
+                                          ylabel: Optional[str] = None,
                                           ):
         """ Hierarchically Predictions Gap plot
 
@@ -476,12 +476,12 @@ def quantiles_to_outputs(quantiles:Iterable[float]):
 # %% ../nbs/utils.ipynb 37
 # given input array of sample forecasts and inptut quantiles/levels, 
 # output a Pandas Dataframe with columns of quantile predictions
-def samples_to_quantiles_df(samples:np.ndarray, 
-                            unique_ids:Iterable[str], 
-                            dates:Iterable, 
-                            quantiles:Optional[Iterable[float]] = None,
-                            level:Optional[Iterable[int]] = None, 
-                            model_name:Optional[str] = "model"):
+def samples_to_quantiles_df(samples: np.ndarray, 
+                            unique_ids: Sequence[str], 
+                            dates: List[str], 
+                            quantiles: Optional[List[float]] = None,
+                            level: Optional[List[int]] = None, 
+                            model_name: Optional[str] = "model"):
     """ Transform Random Samples into HierarchicalForecast input.
     Auxiliary function to create compatible HierarchicalForecast input `Y_hat_df` dataframe.
 
@@ -512,17 +512,21 @@ def samples_to_quantiles_df(samples:np.ndarray,
     data = pd.DataFrame({"unique_id":unique_ids, "ds":ds, model_name:forecasts_mean})
 
     #create quantiles and quantile names
-    quantiles, quantile_names = level_to_outputs(level) if level is not None else quantiles_to_outputs(quantiles)
-    percentiles = [quantile * 100 for quantile in quantiles]
+    if level is not None:
+        _quantiles, quantile_names = level_to_outputs(level)
+    elif quantiles is not None:
+        _quantiles, quantile_names = quantiles_to_outputs(quantiles)
+
+    percentiles = [quantile * 100 for quantile in _quantiles]
     col_names = np.array([model_name + quantile_name for quantile_name in quantile_names])
     
     #add quantiles to dataframe
     forecasts_quantiles = np.percentile(samples, percentiles, axis=1)
 
     forecasts_quantiles = np.transpose(forecasts_quantiles, (1,2,0)) # [Q,H,N] -> [N,H,Q]
-    forecasts_quantiles = forecasts_quantiles.reshape(-1,len(quantiles))
+    forecasts_quantiles = forecasts_quantiles.reshape(-1,len(_quantiles))
 
     df = pd.DataFrame(data=forecasts_quantiles, 
                       columns=col_names)
     
-    return quantiles, pd.concat([data,df], axis=1).set_index('unique_id')
+    return _quantiles, pd.concat([data,df], axis=1).set_index('unique_id')
