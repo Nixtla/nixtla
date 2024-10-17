@@ -796,7 +796,6 @@ class MinTrace(HReconciler):
                   idx_bottom: Optional[List[int]] = None,):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ['wls_var', 'mint_cov', 'mint_shrink']
-        diag_only_methods = ['ols', 'wls_struct', 'wls_var']
         if self.method in res_methods and y_insample is None and y_hat_insample is None:
             raise ValueError(f"For methods {', '.join(res_methods)} you need to pass residuals")
         n_hiers, n_bottom = S.shape
@@ -825,13 +824,17 @@ class MinTrace(HReconciler):
 
             if self.method == 'wls_var':
                 Wdiag = np.nansum(residuals**2, axis=0, dtype=np.float64) / residuals.shape[0]
+                Wdiag += np.full(n_hiers, 2e-8, dtype=np.float64)
                 W = np.diag(Wdiag)
                 UtW = Ut * Wdiag
             elif self.method == 'mint_cov':
-                # Protection: cases where data is unavailable/nan
-                masked_res = np.ma.array(residuals, mask=np.isnan(residuals))
-                covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
-                W = covm
+                # Compute nans
+                nan_mask = np.isnan(residuals.T)
+                if np.any(nan_mask):
+                    W = _ma_cov(residuals.T, ~nan_mask)
+                else:
+                    W = np.cov(residuals.T)
+
                 UtW = Ut @ W
             elif self.method == 'mint_shrink':
                 # Compute nans
@@ -841,22 +844,18 @@ class MinTrace(HReconciler):
                     W = _shrunk_covariance_schaferstrimmer_with_nans(residuals.T, ~nan_mask, self.mint_shr_ridge)
                 else:
                     W = _shrunk_covariance_schaferstrimmer_no_nans(residuals.T, self.mint_shr_ridge)
-
+                
                 UtW = Ut @ W
         else:
             raise ValueError(f'Unknown reconciliation method {self.method}')
 
-        if self.method not in diag_only_methods:
-            try:
-                _ = np.linalg.cholesky(W)
-            except np.linalg.LinAlgError:
-                raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite. \n Please use another reconciliation method.')
-        else:
-            eigenvalues = np.diag(W)
-            if any(eigenvalues < 1e-8):
-                raise Exception(f'min_trace ({self.method}) needs covariance matrix to be positive definite.')
-            
-        P = (J - np.linalg.solve(UtW[:, n_aggs:] @ Ut.T[n_aggs:] + UtW[:, :n_aggs], UtW[:, n_aggs:] @ J.T[n_aggs:]).T @ Ut)
+        try:
+            P = (J - np.linalg.solve(UtW[:, n_aggs:] @ Ut.T[n_aggs:] + UtW[:, :n_aggs], UtW[:, n_aggs:] @ J.T[n_aggs:]).T @ Ut)
+        except np.linalg.LinAlgError:
+            if self.method == "mint_shrink":
+                raise Exception(f"min_trace ({self.method}) is ill-conditioned. Increase the value of parameter 'mint_shr_ridge' or use another reconciliation method.")            
+            else:
+                raise Exception(f'min_trace ({self.method}) is ill-conditioned. Please use another reconciliation method.')
 
         return P, W
 
@@ -908,6 +907,10 @@ class MinTrace(HReconciler):
             # https://scaron.info/blog/quadratic-programming-in-python.html
             a = S.T @ W_inv
             G = a @ S
+            try:
+                _ = np.linalg.cholesky(G)
+            except np.linalg.LinAlgError:
+                raise Exception(f"min_trace ({self.method}) is ill-conditioned. Try setting nonnegative=False or use another reconciliation method.")            
             C = np.eye(n_bottom)
             b = np.zeros(n_bottom)
             # the quadratic programming problem
@@ -993,7 +996,36 @@ class MinTrace(HReconciler):
 
     __call__ = fit_predict
 
-@njit(parallel=True, fastmath=True, error_model="numpy")
+@njit(nogil=True, cache=True, parallel=True, fastmath=True, error_model="numpy")
+def _ma_cov(residuals: np.ndarray, not_nan_mask: np.ndarray):
+    """Masked empirical covariance matrix.
+
+    :meta private:
+    """
+    n_timeseries = residuals.shape[0]
+    W = np.zeros((n_timeseries, n_timeseries), dtype=np.float64).T
+    for i in prange(n_timeseries):
+        not_nan_mask_i = not_nan_mask[i]
+        for j in range(i + 1):
+            not_nan_mask_j = not_nan_mask[j]
+            not_nan_mask_ij = not_nan_mask_i & not_nan_mask_j   
+            n_samples = np.sum(not_nan_mask_ij)
+            # Only compute if we have enough non-nan samples in the time series pair
+            if n_samples > 1:
+                # Masked residuals
+                residuals_i = residuals[i][not_nan_mask_ij]
+                residuals_j = residuals[j][not_nan_mask_ij]
+                residuals_i_mean = np.mean(residuals_i)
+                residuals_j_mean = np.mean(residuals_j)
+                X_i = (residuals_i - residuals_i_mean)
+                X_j = (residuals_j - residuals_j_mean)
+                # Empirical covariance
+                factor_emp_cov = np.float64(1 / (n_samples - 1))
+                W[i, j] = W[j, i] = factor_emp_cov * np.sum(X_i * X_j)
+
+    return W    
+
+@njit(nogil=True, cache=True, parallel=True, fastmath=True, error_model="numpy")
 def _shrunk_covariance_schaferstrimmer_no_nans(residuals: np.ndarray, mint_shr_ridge: float):
     """Shrink empirical covariance according to the following method:
         Schäfer, Juliane, and Korbinian Strimmer. 
@@ -1024,7 +1056,7 @@ def _shrunk_covariance_schaferstrimmer_no_nans(residuals: np.ndarray, mint_shr_r
         for j in range(i + 1):
             # Empirical covariance
             X_j = residuals[j] - np.mean(residuals[j])
-            W[i, j] = factor_emp_cov * np.mean(X_i * X_j)
+            W[i, j] = factor_emp_cov * np.sum(X_i * X_j)
             # Off-diagonal sums
             if i != j:
                 Xs_j = X_j / (np.std(residuals[j]) + epsilon)
@@ -1042,12 +1074,12 @@ def _shrunk_covariance_schaferstrimmer_no_nans(residuals: np.ndarray, mint_shr_r
     for i in prange(n_timeseries):
         for j in range(i + 1):
             if i != j:    
-                W[i, j] = W[j, i] = shrinkage * W[i, j] + mint_shr_ridge
+                W[i, j] = W[j, i] = shrinkage * W[i, j]
             else:
-                W[i, j] = W[j, i] = W[i, j] + mint_shr_ridge
+                W[i, j] = W[j, i] = max(W[i, j], mint_shr_ridge)
     return W
 
-@njit(parallel=True, fastmath=True, error_model="numpy")
+@njit(nogil=True, cache=True, parallel=True, fastmath=True, error_model="numpy")
 def _shrunk_covariance_schaferstrimmer_with_nans(residuals: np.ndarray, not_nan_mask: np.ndarray, mint_shr_ridge: float):
     """Shrink empirical covariance according to the following method:
         Schäfer, Juliane, and Korbinian Strimmer. 
@@ -1084,7 +1116,7 @@ def _shrunk_covariance_schaferstrimmer_with_nans(residuals: np.ndarray, not_nan_
                 X_j = (residuals_j - residuals_j_mean)
                 # Empirical covariance
                 factor_emp_cov = np.float64(1 / (n_samples - 1))
-                W[i, j] = factor_emp_cov * np.mean(X_i * X_j)
+                W[i, j] = factor_emp_cov * np.sum(X_i * X_j)
                 # Off-diagonal sums
                 if i != j:
                     factor_var_emp_cor = np.float64(n_samples / (n_samples - 1)**3)
@@ -1108,9 +1140,9 @@ def _shrunk_covariance_schaferstrimmer_with_nans(residuals: np.ndarray, not_nan_
     for i in prange(n_timeseries):
         for j in range(i + 1):
             if i != j:    
-                W[i, j] = W[j, i] = shrinkage * W[i, j] + mint_shr_ridge
+                W[i, j] = W[j, i] = shrinkage * W[i, j]
             else:
-                W[i, j] = W[j, i] = W[i, j] + mint_shr_ridge
+                W[i, j] = W[j, i] = max(W[i, j], mint_shr_ridge)
 
     return W
 
@@ -1208,7 +1240,7 @@ class MinTraceSparse(MinTrace):
                 (b.size, b.size), matvec=lambda v: R @ (S @ v)
             )
 
-            x_tilde, exit_code = sparse.linalg.bicgstab(A, b)
+            x_tilde, exit_code = sparse.linalg.bicgstab(A, b, atol=1e-5)
 
             return x_tilde
 
