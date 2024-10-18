@@ -7,6 +7,7 @@ __all__ = ['ApiError', 'NixtlaClient']
 import logging
 import math
 import os
+import uuid
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
@@ -604,6 +605,7 @@ class NixtlaClient:
             "headers": {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
+                "X-Client-ID": str(uuid.uuid4()),
             },
             "timeout": timeout,
         }
