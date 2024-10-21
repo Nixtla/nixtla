@@ -1,12 +1,5 @@
 # How to contribute
 
-## How to get started
-
-Before anything else, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts). After cloning the repository, run the following command inside it:
-```
-nbdev_install_hooks
-```
-
 ## Did you find a bug?
 
 * Ensure the bug was not already reported by searching on GitHub under Issues.
@@ -39,7 +32,7 @@ The repo comes with an `environment.yml` file which contains the libraries neede
 
 Once you have `conda` go to the top level directory of the repository and run:
 ```
-conda env create -f environment.yml
+conda env update -f environment.yml
 ```
 
 #### Install the library

@@ -8,8 +8,7 @@ import sys
 import timeit
 import warnings
 from itertools import chain
-from typing import Callable, Dict, List, Optional, Iterable
-from collections.abc import Sequence
+from typing import Callable, Dict, List, Optional, Iterable, Union, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -154,6 +153,7 @@ def _to_upper_hierarchy(bottom_split, bottom_values, upper_key):
 def aggregate(
     df: pd.DataFrame,
     spec: List[List[str]],
+    exog_vars: Optional[Dict[str, Union[str, List[str]]]] = None,
     is_balanced: bool = False,
     sparse_s: bool = False,
 ):
@@ -167,6 +167,8 @@ def aggregate(
         Dataframe with columns `['ds', 'y']` and columns to aggregate.
     spec : list of list of str
         List of levels. Each element of the list should contain a list of columns of `df` to aggregate.
+    exog_vars: dictionary of string keys & values that can either be a list of strings or a single string
+        keys correspond to column names and the values represent the aggregation(s) that will be applied to each column. Accepted values are those from Pandas aggregation Functions, check the Pandas docs for guidance
     is_balanced : bool (default=False)
         Deprecated.
     sparse_s : bool (default=False)
@@ -190,14 +192,39 @@ def aggregate(
             "Don't set this argument to suppress this warning.",
             category=DeprecationWarning,
         )
+         
             
     # compute aggregations and tags
     spec = sorted(spec, key=len)
     bottom = spec[-1]
     aggs = []
     tags = {}
+    # Prepare the aggregation dictionary
+    agg_dict = {
+        "y": ("y", "sum")
+    }
+
+
+    # Check if exog_vars are present in df & add to the aggregation dictionary if it is not None
+    if exog_vars is not None:
+        missing_vars = [var for var in exog_vars.keys() if var not in df.columns]
+        if missing_vars:
+            raise ValueError(f"The following exogenous variables are not present in the DataFrame: {', '.join(missing_vars)}")    
+        else:
+          # Update agg_dict to handle multiple aggregations for each exog_vars key
+            for key, agg_func in exog_vars.items():
+                # Ensure agg_func is a list
+                if isinstance(agg_func, str):  # If it's a single string, convert to list
+                    agg_func = [agg_func]
+                elif not isinstance(agg_func, list):  # Raise an error if it's neither
+                    raise ValueError(f"Aggregation functions for '{key}' must be a string or a list of strings.")
+                
+                for func in agg_func:
+                    agg_dict[f"{key}_{func}"] = (key, func)  # Update the agg_dict with the new naming structure
+
+    # Perform the aggregation
     for levels in spec:
-        agg = df.groupby(levels + ['ds'], observed=True)['y'].sum()
+        agg = df.groupby(levels + ['ds'], observed=True).agg(**agg_dict)
         if not agg.index.is_monotonic_increasing:
             agg = agg.sort_index()
         agg = agg.reset_index('ds')
