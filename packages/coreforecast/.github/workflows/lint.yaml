@@ -11,6 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
-      - uses: astral-sh/setup-uv@f731690a1dacb2f6393acc910887b8cda1a97789 # v3.1.6
+      - uses: astral-sh/setup-uv@f3bcaebff5eace81a1c062af9f9011aae482ca9d # v3.1.7
       - name: Run linters
         run: uvx pre-commit run --all-files

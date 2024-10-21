@@ -42,7 +42,7 @@ jobs:
           platforms: arm64
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@f731690a1dacb2f6393acc910887b8cda1a97789 # v3.1.6
+        uses: astral-sh/setup-uv@f3bcaebff5eace81a1c062af9f9011aae482ca9d # v3.1.7
 
       - name: Build wheels and run tests
         uses: pypa/cibuildwheel@7940a4c0e76eb2030e473a5f864f291f63ee879b # v2.21.3
@@ -65,7 +65,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev]" pytest-codspeed
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@ab07afd34cbbb7a1306e8d14b7cc44e029eee37a # 3.0.0
+        uses: CodSpeedHQ/action@b587655f756aab640e742fec141261bc6f0a569d # 3.0.1
         with:
           token: ${{ secrets.CODESPEED_TOKEN }}
           run: pytest tests/test_efficiency.py --codspeed
