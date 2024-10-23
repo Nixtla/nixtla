@@ -19,11 +19,11 @@ from .validation import _is_int_dtype, validate_format
 # %% ../nbs/preprocessing.ipynb 4
 def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
     if bound == "per_serie":
-        out = times_by_id[agg].values
+        out = times_by_id[agg].to_numpy()
     else:
         # the following return a scalar
         if bound == "global":
-            val = getattr(times_by_id[agg].values, agg)()
+            val = getattr(times_by_id[agg].to_numpy(), agg)()
             if isinstance(freq, str):
                 val = np.datetime64(val)
         else:
