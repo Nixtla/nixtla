@@ -490,28 +490,6 @@ def _maybe_add_intervals(
     return ufp.horizontal_concat([df, intervals_df])
 
 
-def _maybe_add_id(df: DFType, X_df: DFType, id_col: str) -> Tuple[DFType, DFType, bool]:
-    add_id = id_col not in df.columns
-    if add_id:
-        df = ufp.copy_if_pandas(df, deep=False)
-        df = ufp.assign_columns(df, id_col, 0)
-        if X_df is not None:
-            X_df = ufp.copy_if_pandas(X_df, deep=False)
-            X_df = ufp.assign_columns(X_df, id_col, 0)
-    return df, X_df, add_id
-
-
-def _maybe_set_time_from_index(df: DFType, time_col: str) -> DFType:
-    if (
-        isinstance(df, pd.DataFrame)
-        and time_col not in df
-        and pd.api.types.is_datetime64_any_dtype(df.index)
-    ):
-        df.index.name = time_col
-        df = df.reset_index()
-    return df
-
-
 def _maybe_drop_id(df: DFType, id_col: str, drop: bool) -> DFType:
     if drop:
         df = ufp.drop_columns(df, id_col)
@@ -823,20 +801,35 @@ class NixtlaClient:
         target_col: str,
         model: str,
         validate_api_key: bool,
-        freq: str,
-    ) -> Tuple[DFType, Optional[DFType]]:
+        freq: Optional[str],
+    ) -> Tuple[DFType, Optional[DFType], bool]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
         if model not in self.supported_models:
             raise ValueError(
                 f"unsupported model: {model}. supported models: {self.supported_models}"
             )
+        drop_id = id_col not in df.columns
+        if drop_id:
+            df = ufp.copy_if_pandas(df, deep=False)
+            df = ufp.assign_columns(df, id_col, 0)
+            if X_df is not None:
+                X_df = ufp.copy_if_pandas(X_df, deep=False)
+                X_df = ufp.assign_columns(X_df, id_col, 0)
+        if (
+            isinstance(df, pd.DataFrame)
+            and time_col not in df
+            and pd.api.types.is_datetime64_any_dtype(df.index)
+        ):
+            df.index.name = time_col
+            df = df.reset_index()
         df = ensure_time_dtype(df, time_col=time_col)
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
         if ufp.is_nan_or_none(df[target_col]).any():
             raise ValueError(
                 f"Target column ({target_col}) cannot contain missing values."
             )
+        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         expected_ids_times = id_time_grid(
             df,
             freq=freq,
@@ -854,7 +847,7 @@ class NixtlaClient:
                 "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
                 "for an end to end example."
             )
-        return df, X_df
+        return df, X_df, drop_id, freq
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Returns True if your api_key is valid."""
@@ -1002,10 +995,7 @@ class NixtlaClient:
         self.__dict__.pop("feature_contributions", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, X_df, drop_id = _maybe_add_id(df, X_df=X_df, id_col=id_col)
-        df = _maybe_set_time_from_index(df, time_col=time_col)
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
-        df, X_df = self._run_validations(
+        df, X_df, drop_id, freq = self._run_validations(
             df=df,
             X_df=X_df,
             id_col=id_col,
@@ -1245,10 +1235,7 @@ class NixtlaClient:
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id = _maybe_add_id(df, X_df=None, id_col=id_col)
-        df = _maybe_set_time_from_index(df, time_col=time_col)
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
-        df, _ = self._run_validations(
+        df, _, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -1439,10 +1426,7 @@ class NixtlaClient:
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id = _maybe_add_id(df, X_df=None, id_col=id_col)
-        df = _maybe_set_time_from_index(df, time_col=time_col)
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
-        df, _ = self._run_validations(
+        df, _, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -1664,7 +1648,7 @@ class NixtlaClient:
             ax=ax,
         )
 
-# %% ../nbs/src/nixtla_client.ipynb 50
+# %% ../nbs/src/nixtla_client.ipynb 51
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
