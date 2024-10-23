@@ -70,7 +70,7 @@ nixtla_client.plot(df, fcst_df, level=[80, 90])
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
 
 # 2. Read Data # Wikipedia visits of NFL Star (
-df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+df = pd.read_csv('https://datasets-nixtla.s3.amazonaws.com/peyton-manning.csv')
 
 
 # 3. Detect Anomalies
