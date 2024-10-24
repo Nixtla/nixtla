@@ -367,7 +367,8 @@ def _validate_exog(
 
     # exogs in df that weren't declared as historic nor future
     futr_exog = [c for c in X_df.columns if c not in (id_col, time_col)]
-    ignored_exogs = [c for c in exogs if c not in {*hist_exog, *futr_exog}]
+    declared_exogs = {*hist_exog, *futr_exog}
+    ignored_exogs = [c for c in exogs if c not in declared_exogs]
     if ignored_exogs:
         warnings.warn(
             f"`df` contains the following exogenous features: {ignored_exogs}, "
