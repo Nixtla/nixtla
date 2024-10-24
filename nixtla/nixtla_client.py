@@ -358,7 +358,7 @@ def _validate_exog(
         if ignored_exogs:
             warnings.warn(
                 f"`df` contains the following exogenous features: {ignored_exogs}, "
-                "but `X_df` was not provided and they were not set as `hist_exog`. "
+                "but `X_df` was not provided and they were not declared in `hist_exog_list`. "
                 "They will be ignored."
             )
         exogs = [c for c in exogs if c in hist_exog]
@@ -371,7 +371,7 @@ def _validate_exog(
     if ignored_exogs:
         warnings.warn(
             f"`df` contains the following exogenous features: {ignored_exogs}, "
-            "but they were not found in `X_df` nor set as `hist_exog`. "
+            "but they were not found in `X_df` nor declared in `hist_exog_list`. "
             "They will be ignored."
         )
 
@@ -876,7 +876,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth = 1,
         finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
-        hist_exog: Optional[List[str]] = None,
+        hist_exog_list: Optional[List[str]] = None,
         validate_api_key: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[Union[str, Callable]]] = False,
@@ -933,7 +933,7 @@ class NixtlaClient:
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts using TimeGPT.
-        hist_exog : list of str, optional (default=None)
+        hist_exog_list : list of str, optional (default=None)
             Column names of the historical exogenous features.
         validate_api_key : bool (default=False)
             If True, validates api_key before sending requests.
@@ -1010,7 +1010,7 @@ class NixtlaClient:
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-            hist_exog=hist_exog,
+            hist_exog=hist_exog_list,
         )
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
         freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
@@ -1051,8 +1051,8 @@ class NixtlaClient:
             X = processed.data[:, 1:].T
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")
-            if hist_exog is not None:
-                logger.info(f"Using historical exogenous features: {hist_exog}")
+            if hist_exog_list is not None:
+                logger.info(f"Using historical exogenous features: {hist_exog_list}")
         else:
             X = None
 
