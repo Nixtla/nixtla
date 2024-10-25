@@ -104,7 +104,7 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
 
 ![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-7-output-1.png)
 
-> 📘 Data Requirments
+> 📘 Data Requirements
 >
 > -   Make sure the target variable column does not have missing or
 >     non-numeric values.
@@ -117,9 +117,9 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
 >     for more details).
 >
 > For further details go to [Data
-> Requeriments](https://docs.nixtla.io/docs/getting-started-data_requirements).
+> Requirements](https://docs.nixtla.io/docs/getting-started-data_requirements).
 
-> 👍 Save figures made with TimeGPT
+> 👍 Save figures made with TimeGEN
 >
 > The `plot` method automatically displays figures when in a notebook
 > environment. To save figures locally, you can do:
@@ -143,8 +143,8 @@ the following parameters:
 -   `target_col`: The variable to forecast.
 
 ```python
-timegpt_fcst_df = nixtla_client.forecast(df=df, h=12, freq='MS', time_col='timestamp', target_col='value')
-timegpt_fcst_df.head()
+timegen_fcst_df = nixtla_client.forecast(df=df, h=12, freq='MS', time_col='timestamp', target_col='value', model="azureai")
+timegen_fcst_df.head()
 ```
 
 ``` text
@@ -163,7 +163,7 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 | 4   | 1961-05-01 | 505.646484 |
 
 ```python
-nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+nixtla_client.plot(df, timegen_fcst_df, time_col='timestamp', target_col='value')
 ```
 
 ![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-9-output-1.png)
@@ -175,8 +175,8 @@ model if you want to predict more than one seasonal period of your data.
 For example, let’s forecast the next 36 months:
 
 ```python
-timegpt_fcst_df = nixtla_client.forecast(df=df, h=36, time_col='timestamp', target_col='value', freq='MS', model='timegpt-1-long-horizon')
-timegpt_fcst_df.head()
+timegen_fcst_df = nixtla_client.forecast(df=df, h=36, time_col='timestamp', target_col='value', freq='MS', model='timegpt-1-long-horizon')
+timegen_fcst_df.head()
 ```
 
 ``` text
@@ -196,7 +196,7 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 | 4   | 1961-05-01 | 505.656921 |
 
 ```python
-nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+nixtla_client.plot(df, timegen_fcst_df, time_col='timestamp', target_col='value')
 ```
 
 ![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-11-output-1.png)
@@ -204,11 +204,11 @@ nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value'
 ### Produce a shorter forecast
 
 You can also produce a shorter forecast. For this, we recommend using
-the default model, `timegpt-1`.
+the default Azure TimeGEN-1 model, `azureai`.
 
 ```python
-timegpt_fcst_df = nixtla_client.forecast(df=df, h=6, time_col='timestamp', target_col='value', freq='MS')
-nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+timegen_fcst_df = nixtla_client.forecast(df=df, h=6, time_col='timestamp', target_col='value', freq='MS', model="azureai")
+nixtla_client.plot(df, timegen_fcst_df, time_col='timestamp', target_col='value')
 ```
 
 ``` text

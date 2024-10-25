@@ -68,15 +68,6 @@ X_df['ds'] = pd.to_datetime(X_df['ds'])
 Y_df.head(10)
 ```
 
-``` text
-100%|██████████| 50.2M/50.2M [00:04<00:00, 12.2MiB/s]  
-INFO:datasetsforecast.utils:Successfully downloaded m5.zip, 50219189, bytes.
-INFO:datasetsforecast.utils:Decompressing zip file...
-INFO:datasetsforecast.utils:Successfully decompressed c:\Users\ospra\OneDrive\Phd\Repositories\nixtla\m5\datasets\m5.zip
-c:\Users\ospra\miniconda3\envs\nixtla\lib\site-packages\datasetsforecast\m5.py:143: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
-  keep_mask = long.groupby('id')['y'].transform(first_nz_mask, engine='numba')
-```
-
 |     | unique_id        | ds         | y   |
 |-----|------------------|------------|-----|
 | 0   | FOODS_1_001_CA_1 | 2011-01-29 | 3.0 |

@@ -29,6 +29,7 @@
         "docs/getting-started/azure_quickstart.html",
         "docs/getting-started/setting_up_your_api_key.html",
         "docs/getting-started/data_requirements.html",
+        "docs/getting-started/pricing.html",
         "docs/getting-started/faq.html", 
         "docs/getting-started/glossary.html"     
       ]
@@ -116,7 +117,8 @@
             "docs/tutorials/irregular_timestamps.html",
             "docs/tutorials/bounded_forecasts.html",
             "docs/tutorials/hierarchical_forecasting.html", 
-            "docs/tutorials/missing_values.html"
+            "docs/tutorials/missing_values.html",
+            "docs/tutorials/how_to_improve_forecast_accuracy.html"
           ]
         },
         {

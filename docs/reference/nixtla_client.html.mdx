@@ -89,10 +89,10 @@ title: SDK Reference
 >                         X_df:Optional[~AnyDFType]=None,
 >                         level:Optional[List[Union[int,float]]]=None,
 >                         quantiles:Optional[List[float]]=None,
->                         finetune_steps:typing.Annotated[int,Ge(ge=0)]=0, f
->                         inetune_loss:Literal['default','mae','mse','rmse',
->                         'mape','smape']='default',
->                         clean_ex_first:bool=True,
+>                         finetune_steps:typing.Annotated[int,Ge(ge=0)]=0,
+>                         finetune_depth:Literal[1,2,3,4,5]=1, finetune_loss
+>                         :Literal['default','mae','mse','rmse','mape','smap
+>                         e']='default', clean_ex_first:bool=True,
 >                         validate_api_key:bool=False,
 >                         add_history:bool=False, date_features:Union[bool,L
 >                         ist[Union[str,Callable]]]=False, date_features_to_
@@ -117,6 +117,7 @@ title: SDK Reference
 | level | Optional | None | Confidence levels between 0 and 100 for prediction intervals. |
 | quantiles | Optional | None | Quantiles to forecast, list between (0, 1).<br/>`level` and `quantiles` should not be used simultaneously.<br/>The output dataframe will have the quantile columns<br/>formatted as TimeGPT-q-(100 \* q) for each q.<br/>100 \* q represents percentiles but we choose this notation<br/>to avoid having dots in column names. |
 | finetune_steps | Annotated | 0 | Number of steps used to finetune learning TimeGPT in the<br/>new data. |
+| finetune_depth | Literal | 1 |  |
 | finetune_loss | Literal | default | Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. |
 | clean_ex_first | bool | True | Clean exogenous signal before making forecasts using TimeGPT. |
 | validate_api_key | bool | False | If True, validates api_key before sending requests. |
@@ -144,7 +145,8 @@ title: SDK Reference
 >                                 ing.Annotated[int,Gt(gt=0)]=1, step_size:O
 >                                 ptional[Annotated[int,Gt(gt=0)]]=None, fin
 >                                 etune_steps:typing.Annotated[int,Ge(ge=0)]
->                                 =0, finetune_loss:str='default',
+>                                 =0, finetune_depth:Literal[1,2,3,4,5]=1,
+>                                 finetune_loss:str='default',
 >                                 clean_ex_first:bool=True,
 >                                 date_features:Union[bool,List[str]]=False,
 >                                 date_features_to_one_hot:Union[bool,List[s
@@ -169,6 +171,7 @@ title: SDK Reference
 | n_windows | Annotated | 1 | Number of windows to evaluate. |
 | step_size | Optional | None | Step size between each cross validation window. If None it will be equal to `h`. |
 | finetune_steps | Annotated | 0 | Number of steps used to finetune TimeGPT in the<br/>new data. |
+| finetune_depth | Literal | 1 |  |
 | finetune_loss | str | default | Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. |
 | clean_ex_first | bool | True | Clean exogenous signal before making forecasts<br/>using TimeGPT. |
 | date_features | Union | False | Features computed from the dates.<br/>Can be pandas date attributes or functions that will take the dates as input.<br/>If True automatically adds most used date features for the<br/>frequency of `df`. |
