@@ -322,9 +322,9 @@ class TimeSeries:
                     "are dynamic please set `static_features=[]`."
                 )
         self.static_features_ = statics_on_ends
-        self.features_order_ = [
-            c for c in df.columns if c not in to_drop
-        ] + self.features
+        self.features_order_ = [c for c in df.columns if c not in to_drop] + [
+            f for f in self.features if f not in df.columns
+        ]
         return self
 
     def _compute_transforms(
@@ -377,8 +377,12 @@ class TimeSeries:
         """Add the features to `df`.
 
         if `dropna=True` then all the null rows are dropped."""
-        transforms = {k: v for k, v in self.transforms.items() if k not in df}
-        features = self._compute_transforms(transforms=transforms, updates_only=False)
+        # we need to compute all transformations in case they save state
+        features = self._compute_transforms(
+            transforms=self.transforms, updates_only=False
+        )
+        # filter out the features that already exist in df to avoid overwriting them
+        features = {k: v for k, v in features.items() if k not in df}
         if self._restore_idxs is not None:
             for k, v in features.items():
                 features[k] = v[self._restore_idxs]
@@ -433,8 +437,9 @@ class TimeSeries:
         del self._restore_idxs, self._sort_idxs
 
         # lag transforms
-        for feat in transforms.keys():
-            df = ufp.assign_columns(df, feat, features[feat])
+        for feat in self.transforms.keys():
+            if feat in features:
+                df = ufp.assign_columns(df, feat, features[feat])
 
         # date features
         names = [f.__name__ if callable(f) else f for f in self.date_features]

@@ -293,12 +293,14 @@ class DistributedMLForecast:
             keep_last_n=keep_last_n,
             window_info=window_info,
         )
-        base_schema = str(fa.get_schema(data))
-        features_schema = ",".join(f"{feat}:double" for feat in self._base_ts.features)
+        base_schema = fa.get_schema(data)
+        features_schema = {
+            f: "double" for f in self._base_ts.features if f not in base_schema
+        }
         res = fa.transform(
             self._partition_results,
             DistributedMLForecast._retrieve_df,
-            schema=f"{base_schema},{features_schema}",
+            schema=base_schema + features_schema,
             engine=self.engine,
         )
         return fa.get_native_as_df(res)
