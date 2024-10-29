@@ -6,10 +6,12 @@ repos:
         entry: sh -c 'nbdev_clean && nbdev_clean --fname nbs/src --clear_all'
         language: system
 
-  - repo: https://github.com/fastai/nbdev
-    rev: 2.2.10
+  - repo: local
     hooks:
       - id: nbdev_export
+        name: nbdev_export
+        entry: sh -c 'nbdev_export'
+        language: system
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.2.1
