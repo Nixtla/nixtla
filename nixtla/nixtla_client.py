@@ -748,7 +748,8 @@ class NixtlaClient:
         return resp
 
     def _maybe_override_model(self, model: str) -> str:
-        if self._is_azure:
+        if self._is_azure and model != "azureai":
+            warnings.warn("Azure endpoint detected, setting `model` to 'azureai'.")
             model = "azureai"
         return model
 
