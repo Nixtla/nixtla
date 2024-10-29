@@ -1093,7 +1093,6 @@ class NixtlaClient:
         )
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = _maybe_add_intervals(out, resp["intervals"])
-        out = _maybe_convert_level_to_quantiles(out, quantiles)
         if add_history:
             in_sample_df = _parse_in_sample_output(
                 in_sample_output=in_sample_resp,
@@ -1105,6 +1104,7 @@ class NixtlaClient:
             )
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
+        out = _maybe_convert_level_to_quantiles(out, quantiles)
         self._maybe_assign_feature_contributions(
             expected_contributions=feature_contributions,
             resp=resp,
@@ -1118,9 +1118,13 @@ class NixtlaClient:
             )
             if sort_idxs is not None:
                 out = ufp.take_rows(out, sort_idxs)
+                out = ufp.drop_index_if_pandas(out)
                 if hasattr(self, "feature_contributions"):
                     self.feature_contributions = ufp.take_rows(
                         self.feature_contributions, sort_idxs
+                    )
+                    self.feature_contributions = ufp.drop_index_if_pandas(
+                        self.feature_contributions
                     )
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
