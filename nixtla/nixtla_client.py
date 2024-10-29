@@ -348,19 +348,37 @@ def _validate_exog(
     id_col: str,
     time_col: str,
     target_col: str,
+    hist_exog: Optional[List[str]],
 ) -> Tuple[DFType, Optional[DFType]]:
-
-    exog_list = [c for c in df.columns if c not in (id_col, time_col, target_col)]
-
+    exogs = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+    if hist_exog is None:
+        hist_exog = []
     if X_df is None:
-        df = df[[id_col, time_col, target_col, *exog_list]]
+        # all exogs must be historic
+        ignored_exogs = [c for c in exogs if c not in hist_exog]
+        if ignored_exogs:
+            warnings.warn(
+                f"`df` contains the following exogenous features: {ignored_exogs}, "
+                "but `X_df` was not provided and they were not declared in `hist_exog_list`. "
+                "They will be ignored."
+            )
+        exogs = [c for c in exogs if c in hist_exog]
+        df = df[[id_col, time_col, target_col, *exogs]]
         return df, None
 
-    futr_exog_list = [c for c in X_df.columns if c not in (id_col, time_col)]
-    hist_exog_list = list(set(exog_list) - set(futr_exog_list))
+    # exogs in df that weren't declared as historic nor future
+    futr_exog = [c for c in X_df.columns if c not in (id_col, time_col)]
+    declared_exogs = {*hist_exog, *futr_exog}
+    ignored_exogs = [c for c in exogs if c not in declared_exogs]
+    if ignored_exogs:
+        warnings.warn(
+            f"`df` contains the following exogenous features: {ignored_exogs}, "
+            "but they were not found in `X_df` nor declared in `hist_exog_list`. "
+            "They will be ignored."
+        )
 
-    # Capture case where future exogenous are provided in X_df that are not in df
-    missing_futr = set(futr_exog_list) - set(exog_list)
+    # future exogenous are provided in X_df that are not in df
+    missing_futr = set(futr_exog) - set(exogs)
     if missing_futr:
         raise ValueError(
             "The following exogenous features are present in `X_df` "
@@ -368,8 +386,8 @@ def _validate_exog(
         )
 
     # Make sure df and X_df are in right order
-    df = df[[id_col, time_col, target_col, *futr_exog_list, *hist_exog_list]]
-    X_df = X_df[[id_col, time_col, *futr_exog_list]]
+    df = df[[id_col, time_col, target_col, *futr_exog, *hist_exog]]
+    X_df = X_df[[id_col, time_col, *futr_exog]]
 
     return df, X_df
 
@@ -731,7 +749,8 @@ class NixtlaClient:
         return resp
 
     def _maybe_override_model(self, model: str) -> str:
-        if self._is_azure:
+        if self._is_azure and model != "azureai":
+            warnings.warn("Azure endpoint detected, setting `model` to 'azureai'.")
             model = "azureai"
         return model
 
@@ -879,6 +898,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth = 1,
         finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
+        hist_exog_list: Optional[List[str]] = None,
         validate_api_key: bool = False,
         add_history: bool = False,
         date_features: Union[bool, List[Union[str, Callable]]] = False,
@@ -935,6 +955,8 @@ class NixtlaClient:
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts using TimeGPT.
+        hist_exog_list : list of str, optional (default=None)
+            Column names of the historical exogenous features.
         validate_api_key : bool (default=False)
             If True, validates api_key before sending requests.
         add_history : bool (default=False)
@@ -1006,7 +1028,12 @@ class NixtlaClient:
             freq=freq,
         )
         df, X_df = _validate_exog(
-            df, X_df, id_col=id_col, time_col=time_col, target_col=target_col
+            df=df,
+            X_df=X_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            hist_exog=hist_exog_list,
         )
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
         standard_freq = _standardize_freq(freq)
@@ -1045,14 +1072,9 @@ class NixtlaClient:
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T
             if futr_cols is not None:
-                hist_exog_set = set(x_cols) - set(futr_cols)
-                if hist_exog_set:
-                    logger.info(
-                        f"Using historical exogenous features: {list(hist_exog_set)}"
-                    )
                 logger.info(f"Using future exogenous features: {futr_cols}")
-            else:
-                logger.info(f"Using historical exogenous features: {x_cols}")
+            if hist_exog_list is not None:
+                logger.info(f"Using historical exogenous features: {hist_exog_list}")
         else:
             X = None
 
@@ -1113,7 +1135,6 @@ class NixtlaClient:
         )
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = _maybe_add_intervals(out, resp["intervals"])
-        out = _maybe_convert_level_to_quantiles(out, quantiles)
         if add_history:
             in_sample_df = _parse_in_sample_output(
                 in_sample_output=in_sample_resp,
@@ -1125,6 +1146,7 @@ class NixtlaClient:
             )
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
+        out = _maybe_convert_level_to_quantiles(out, quantiles)
         self._maybe_assign_feature_contributions(
             expected_contributions=feature_contributions,
             resp=resp,
@@ -1138,9 +1160,13 @@ class NixtlaClient:
             )
             if sort_idxs is not None:
                 out = ufp.take_rows(out, sort_idxs)
+                out = ufp.drop_index_if_pandas(out)
                 if hasattr(self, "feature_contributions"):
                     self.feature_contributions = ufp.take_rows(
                         self.feature_contributions, sort_idxs
+                    )
+                    self.feature_contributions = ufp.drop_index_if_pandas(
+                        self.feature_contributions
                     )
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
