@@ -1674,7 +1674,7 @@ class NixtlaClient:
             ax=ax,
         )
 
-# %% ../nbs/src/nixtla_client.ipynb 51
+# %% ../nbs/src/nixtla_client.ipynb 52
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
