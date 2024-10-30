@@ -15,11 +15,8 @@ from typing import (
     Annotated,
     Any,
     Callable,
-    Dict,
-    List,
     Literal,
     Optional,
-    Tuple,
     TypeVar,
     Union,
 )
@@ -254,8 +251,8 @@ def _tail(proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
 
 
 def _partition_series(
-    payload: Dict[str, Any], n_part: int, h: int
-) -> List[Dict[str, Any]]:
+    payload: dict[str, Any], n_part: int, h: int
+) -> list[dict[str, Any]]:
     parts = []
     series = payload.pop("series")
     n_series = len(series["sizes"])
@@ -289,13 +286,13 @@ def _maybe_add_date_features(
     df: DFType,
     X_df: Optional[DFType],
     features: Union[bool, Sequence[Union[str, Callable]]],
-    one_hot: Union[bool, List[str]],
+    one_hot: Union[bool, list[str]],
     freq: str,
     h: int,
     id_col: str,
     time_col: str,
     target_col: str,
-) -> Tuple[DFType, Optional[DFType]]:
+) -> tuple[DFType, Optional[DFType]]:
     if not features:
         return df, X_df
     if isinstance(features, list):
@@ -350,8 +347,8 @@ def _validate_exog(
     id_col: str,
     time_col: str,
     target_col: str,
-    hist_exog: Optional[List[str]],
-) -> Tuple[DFType, Optional[DFType]]:
+    hist_exog: Optional[list[str]],
+) -> tuple[DFType, Optional[DFType]]:
     exogs = [c for c in df.columns if c not in (id_col, time_col, target_col)]
     if hist_exog is None:
         hist_exog = []
@@ -410,9 +407,9 @@ def _validate_input_size(
 
 
 def _prepare_level_and_quantiles(
-    level: Optional[List[Union[int, float]]],
-    quantiles: Optional[List[float]],
-) -> Tuple[Optional[List[Union[int, float]]], Optional[List[float]]]:
+    level: Optional[list[Union[int, float]]],
+    quantiles: Optional[list[float]],
+) -> tuple[Optional[list[Union[int, float]]], Optional[list[float]]]:
     if level is not None and quantiles is not None:
         raise ValueError("You should provide `level` or `quantiles`, but not both.")
     if quantiles is None:
@@ -426,7 +423,7 @@ def _prepare_level_and_quantiles(
 
 def _maybe_convert_level_to_quantiles(
     df: DFType,
-    quantiles: Optional[List[float]],
+    quantiles: Optional[list[float]],
 ) -> DFType:
     if quantiles is None:
         return df
@@ -452,11 +449,11 @@ def _preprocess(
     h: int,
     freq: str,
     date_features: Union[bool, Sequence[Union[str, Callable]]],
-    date_features_to_one_hot: Union[bool, List[str]],
+    date_features_to_one_hot: Union[bool, list[str]],
     id_col: str,
     time_col: str,
     target_col: str,
-) -> Tuple[ufp.ProcessedDF, Optional[DFType], List[str], Optional[List[str]]]:
+) -> tuple[ufp.ProcessedDF, Optional[DFType], list[str], Optional[list[str]]]:
     df, X_df = _maybe_add_date_features(
         df=df,
         X_df=X_df,
@@ -500,7 +497,7 @@ def _forecast_payload_to_in_sample(payload):
 
 def _maybe_add_intervals(
     df: DFType,
-    intervals: Optional[Dict[str, list[float]]],
+    intervals: Optional[dict[str, list[float]]],
 ) -> DFType:
     if intervals is None:
         return df
@@ -517,7 +514,7 @@ def _maybe_drop_id(df: DFType, id_col: str, drop: bool) -> DFType:
 
 
 def _parse_in_sample_output(
-    in_sample_output: Dict[str, Union[list[float], Dict[str, list[float]]]],
+    in_sample_output: dict[str, Union[list[float], dict[str, list[float]]]],
     df: DataFrame,
     processed: ufp.ProcessedDF,
     id_col: str,
@@ -583,16 +580,16 @@ def _forecast_wrapper(
     id_col: str,
     time_col: str,
     target_col: str,
-    level: Optional[List[Union[int, float]]],
-    quantiles: Optional[List[float]],
+    level: Optional[list[Union[int, float]]],
+    quantiles: Optional[list[float]],
     finetune_steps: _NonNegativeInt,
     finetune_depth: _Finetune_Depth,
     finetune_loss: _Loss,
     clean_ex_first: bool,
     validate_api_key: bool,
     add_history: bool,
-    date_features: Union[bool, List[Union[str, Callable]]],
-    date_features_to_one_hot: Union[bool, List[str]],
+    date_features: Union[bool, list[Union[str, Callable]]],
+    date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
@@ -637,8 +634,8 @@ def _detect_anomalies_wrapper(
     level: Union[int, float],
     clean_ex_first: bool,
     validate_api_key: bool,
-    date_features: Union[bool, List[str]],
-    date_features_to_one_hot: Union[bool, List[str]],
+    date_features: Union[bool, list[str]],
+    date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
 ) -> pd.DataFrame:
@@ -666,8 +663,8 @@ def _cross_validation_wrapper(
     id_col: str,
     time_col: str,
     target_col: str,
-    level: Optional[List[Union[int, float]]],
-    quantiles: Optional[List[float]],
+    level: Optional[list[Union[int, float]]],
+    quantiles: Optional[list[float]],
     validate_api_key: bool,
     n_windows: _PositiveInt,
     step_size: Optional[_PositiveInt],
@@ -675,8 +672,8 @@ def _cross_validation_wrapper(
     finetune_depth: _Finetune_Depth,
     finetune_loss: _Loss,
     clean_ex_first: bool,
-    date_features: Union[bool, List[str]],
-    date_features_to_one_hot: Union[bool, List[str]],
+    date_features: Union[bool, list[str]],
+    date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
 ) -> pd.DataFrame:
@@ -709,8 +706,8 @@ def _get_schema(
     id_col: str,
     time_col: str,
     target_col: str,
-    level: Optional[Union[int, float, List[Union[int, float]]]],
-    quantiles: Optional[List[float]],
+    level: Optional[Union[int, float, list[Union[int, float]]]],
+    quantiles: Optional[list[float]],
 ) -> "triad.Schema":
     import fugue.api as fa
 
@@ -744,10 +741,10 @@ def _distributed_setup(
     id_col: str,
     time_col: str,
     target_col: str,
-    level: Optional[Union[int, float, List[Union[int, float]]]],
-    quantiles: Optional[List[float]],
+    level: Optional[Union[int, float, list[Union[int, float]]]],
+    quantiles: Optional[list[float]],
     num_partitions: Optional[int],
-) -> Tuple["triad.Schema", Dict[str, Any]]:
+) -> tuple["triad.Schema", dict[str, Any]]:
     from fugue.execution import infer_execution_engine
 
     if infer_execution_engine([df]) is None:
@@ -764,7 +761,7 @@ def _distributed_setup(
         level=level,
         quantiles=quantiles,
     )
-    partition_config: Dict[str, Any] = dict(by=id_col, algo="coarse")
+    partition_config: dict[str, Any] = dict(by=id_col, algo="coarse")
     if num_partitions is not None:
         partition_config["num"] = num_partitions
     return schema, partition_config
@@ -828,7 +825,7 @@ class NixtlaClient:
             retry_interval=retry_interval,
             max_wait_time=max_wait_time,
         )
-        self._model_params: Dict[Tuple[str, str], Tuple[int, int]] = {}
+        self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
         if self._is_azure:
             self.supported_models = ["azureai"]
@@ -836,9 +833,9 @@ class NixtlaClient:
             self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
 
     def _make_request(
-        self, client: httpx.Client, endpoint: str, payload: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        def ensure_contiguous_arrays(d: Dict[str, Any]) -> None:
+        self, client: httpx.Client, endpoint: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        def ensure_contiguous_arrays(d: dict[str, Any]) -> None:
             for k, v in d.items():
                 if isinstance(v, np.ndarray):
                     if np.issubdtype(v.dtype, np.floating):
@@ -880,8 +877,8 @@ class NixtlaClient:
         self,
         client: httpx.Client,
         endpoint: str,
-        payload: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         return self._retry_strategy(self._make_request)(
             client=client,
             endpoint=endpoint,
@@ -892,12 +889,12 @@ class NixtlaClient:
         self,
         client: httpx.Client,
         endpoint: str,
-        payloads: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        payloads: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         from tqdm.auto import tqdm
 
         num_partitions = len(payloads)
-        results: List[Dict[str, Any]] = [{} for _ in range(num_partitions)]
+        results: list[dict[str, Any]] = [{} for _ in range(num_partitions)]
         max_workers = min(10, num_partitions)
         with ThreadPoolExecutor(max_workers) as executor:
             future2pos = {
@@ -951,7 +948,7 @@ class NixtlaClient:
             model = "azureai"
         return model
 
-    def _get_model_params(self, model: _Model, freq: str) -> Tuple[int, int]:
+    def _get_model_params(self, model: _Model, freq: str) -> tuple[int, int]:
         key = (model, freq)
         if key not in self._model_params:
             logger.info("Querying model metadata...")
@@ -965,9 +962,9 @@ class NixtlaClient:
 
     def _maybe_assign_weights(
         self,
-        weights: Optional[Union[List[float], List[List[float]]]],
+        weights: Optional[Union[list[float], list[list[float]]]],
         df: DataFrame,
-        x_cols: List[str],
+        x_cols: list[str],
     ) -> None:
         if weights is None:
             return
@@ -981,10 +978,10 @@ class NixtlaClient:
     def _maybe_assign_feature_contributions(
         self,
         expected_contributions: bool,
-        resp: Dict[str, Any],
-        x_cols: List[str],
+        resp: dict[str, Any],
+        x_cols: list[str],
         out_df: DataFrame,
-        insample_feat_contributions: Optional[List[List[float]]],
+        insample_feat_contributions: Optional[list[list[float]]],
     ) -> None:
         if not expected_contributions:
             return
@@ -1017,7 +1014,7 @@ class NixtlaClient:
         target_col: str,
         model: _Model,
         validate_api_key: bool,
-    ) -> Tuple[DFType, Optional[DFType], bool]:
+    ) -> tuple[DFType, Optional[DFType], bool]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
         if model not in self.supported_models:
@@ -1070,16 +1067,16 @@ class NixtlaClient:
         time_col: str,
         target_col: str,
         X_df: Optional[DistributedDFType],
-        level: Optional[List[Union[int, float]]],
-        quantiles: Optional[List[float]],
+        level: Optional[list[Union[int, float]]],
+        quantiles: Optional[list[float]],
         finetune_steps: _NonNegativeInt,
         finetune_depth: _Finetune_Depth,
         finetune_loss: _Loss,
         clean_ex_first: bool,
         validate_api_key: bool,
         add_history: bool,
-        date_features: Union[bool, List[Union[str, Callable]]],
-        date_features_to_one_hot: Union[bool, List[str]],
+        date_features: Union[bool, list[Union[str, Callable]]],
+        date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         num_partitions: Optional[int],
         feature_contributions: bool,
@@ -1104,7 +1101,7 @@ class NixtlaClient:
             def format_X_df(
                 X_df: pd.DataFrame,
                 target_col: str,
-                df_cols: List[str],
+                df_cols: list[str],
             ) -> pd.DataFrame:
                 return X_df.assign(**{"_in_sample": False, target_col: 0.0})[df_cols]
 
@@ -1155,17 +1152,17 @@ class NixtlaClient:
         time_col: str = "ds",
         target_col: str = "y",
         X_df: Optional[AnyDFType] = None,
-        level: Optional[List[Union[int, float]]] = None,
-        quantiles: Optional[List[float]] = None,
+        level: Optional[list[Union[int, float]]] = None,
+        quantiles: Optional[list[float]] = None,
         finetune_steps: _NonNegativeInt = 0,
         finetune_depth: _Finetune_Depth = 1,
         finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
-        hist_exog_list: Optional[List[str]] = None,
+        hist_exog_list: Optional[list[str]] = None,
         validate_api_key: bool = False,
         add_history: bool = False,
-        date_features: Union[bool, List[Union[str, Callable]]] = False,
-        date_features_to_one_hot: Union[bool, List[str]] = False,
+        date_features: Union[bool, list[Union[str, Callable]]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
@@ -1199,9 +1196,9 @@ class NixtlaClient:
             Column that contains the target.
         X_df : pandas or polars DataFrame, optional (default=None)
             DataFrame with [`unique_id`, `ds`] columns and `df`'s future exogenous.
-        level : List[float], optional (default=None)
+        level : list[float], optional (default=None)
             Confidence levels between 0 and 100 for prediction intervals.
-        quantiles : List[float], optional (default=None)
+        quantiles : list[float], optional (default=None)
             Quantiles to forecast, list between (0, 1).
             `level` and `quantiles` should not be used simultaneously.
             The output dataframe will have the quantile columns
@@ -1445,8 +1442,8 @@ class NixtlaClient:
         level: Union[int, float],
         clean_ex_first: bool,
         validate_api_key: bool,
-        date_features: Union[bool, List[str]],
-        date_features_to_one_hot: Union[bool, List[str]],
+        date_features: Union[bool, list[str]],
+        date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         num_partitions: Optional[int],
     ) -> DistributedDFType:
@@ -1495,8 +1492,8 @@ class NixtlaClient:
         level: Union[int, float] = 99,
         clean_ex_first: bool = True,
         validate_api_key: bool = False,
-        date_features: Union[bool, List[str]] = False,
-        date_features_to_one_hot: Union[bool, List[str]] = False,
+        date_features: Union[bool, list[str]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
@@ -1650,8 +1647,8 @@ class NixtlaClient:
         id_col: str,
         time_col: str,
         target_col: str,
-        level: Optional[List[Union[int, float]]],
-        quantiles: Optional[List[float]],
+        level: Optional[list[Union[int, float]]],
+        quantiles: Optional[list[float]],
         validate_api_key: bool,
         n_windows: _PositiveInt,
         step_size: Optional[_PositiveInt],
@@ -1660,7 +1657,7 @@ class NixtlaClient:
         finetune_loss: _Loss,
         clean_ex_first: bool,
         date_features: Union[bool, Sequence[Union[str, Callable]]],
-        date_features_to_one_hot: Union[bool, List[str]],
+        date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         num_partitions: Optional[int],
     ) -> DistributedDFType:
@@ -1714,8 +1711,8 @@ class NixtlaClient:
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
-        level: Optional[List[Union[int, float]]] = None,
-        quantiles: Optional[List[float]] = None,
+        level: Optional[list[Union[int, float]]] = None,
+        quantiles: Optional[list[float]] = None,
         validate_api_key: bool = False,
         n_windows: _PositiveInt = 1,
         step_size: Optional[_PositiveInt] = None,
@@ -1723,8 +1720,8 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth = 1,
         finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
-        date_features: Union[bool, List[str]] = False,
-        date_features_to_one_hot: Union[bool, List[str]] = False,
+        date_features: Union[bool, list[str]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
@@ -1757,7 +1754,7 @@ class NixtlaClient:
             Column that contains the target.
         level : float (default=99)
             Confidence level between 0 and 100 for prediction intervals.
-        quantiles : List[float], optional (default=None)
+        quantiles : list[float], optional (default=None)
             Quantiles to forecast, list between (0, 1).
             `level` and `quantiles` should not be used simultaneously.
             The output dataframe will have the quantile columns
@@ -1943,15 +1940,15 @@ class NixtlaClient:
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
-        unique_ids: Union[Optional[List[str]], np.ndarray] = None,
+        unique_ids: Union[Optional[list[str]], np.ndarray] = None,
         plot_random: bool = True,
         max_ids: int = 8,
-        models: Optional[List[str]] = None,
-        level: Optional[List[Union[int, float]]] = None,
+        models: Optional[list[str]] = None,
+        level: Optional[list[Union[int, float]]] = None,
         max_insample_length: Optional[int] = None,
         plot_anomalies: bool = False,
         engine: Literal["matplotlib", "plotly", "plotly-resampler"] = "matplotlib",
-        resampler_kwargs: Optional[Dict] = None,
+        resampler_kwargs: Optional[dict] = None,
         ax: Optional[
             Union["plt.Axes", np.ndarray, "plotly.graph_objects.Figure"]
         ] = None,
@@ -1980,17 +1977,17 @@ class NixtlaClient:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
             Column that contains the target.
-        unique_ids : List[str], optional (default=None)
+        unique_ids : list[str], optional (default=None)
             Time Series to plot.
             If None, time series are selected randomly.
         plot_random : bool (default=True)
             Select time series to plot randomly.
         max_ids : int (default=8)
             Maximum number of ids to plot.
-        models : List[str], optional (default=None)
-            List of models to plot.
-        level : List[float], optional (default=None)
-            List of prediction intervals to plot if paseed.
+        models : list[str], optional (default=None)
+            list of models to plot.
+        level : list[float], optional (default=None)
+            list of prediction intervals to plot if paseed.
         max_insample_length : int, optional (default=None)
             Max number of train/insample observations to be plotted.
         plot_anomalies : bool (default=False)
