@@ -296,8 +296,6 @@ def _maybe_add_date_features(
     time_col: str,
     target_col: str,
 ) -> Tuple[DFType, Optional[DFType]]:
-    from collections.abc import Sequence
-
     if not features:
         return df, X_df
     if isinstance(features, list):
