@@ -41,11 +41,10 @@ setuptools.setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "fastcore",
+        "annotated-types",
         "httpx",
         "orjson",
         "pandas",
-        "pydantic",
         "tenacity",
         "tqdm",
         "utilsforecast>=0.2.3",
