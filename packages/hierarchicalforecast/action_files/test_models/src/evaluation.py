@@ -1,7 +1,6 @@
 import pickle
 import numpy as np
 import pandas as pd
-from itertools import product
 
 from hierarchicalforecast.evaluation import HierarchicalEvaluation
 
@@ -16,8 +15,8 @@ def mase(y, y_hat, y_insample, seasonality=4):
 
 
 def evaluate():
-    execution_times = pd.read_csv(f'data/execution_times.csv')
-    models = [f'{x[0]} ({x[1]:.2f} secs)' for x in execution_times.values]
+    execution_times = pd.read_csv('data/execution_times.csv')
+    models = [f"{x[0]} ({x[1]:.2f} secs)" for x in execution_times.values]
 
     Y_rec_df = pd.read_csv('data/Y_rec.csv')
     Y_test_df = pd.read_csv('data/Y_test.csv')
@@ -32,7 +31,7 @@ def evaluate():
 
     eval_tags = {}
     eval_tags['Total'] = tags['Country']
-    eval_tags['Purpose'] = tags['Country/Purpose']
+    # eval_tags['Purpose'] = tags['Country/Purpose']
     eval_tags['State'] = tags['Country/State']
     eval_tags['Regions'] = tags['Country/State/Region']
     eval_tags['Bottom'] = tags['Country/State/Region/Purpose']

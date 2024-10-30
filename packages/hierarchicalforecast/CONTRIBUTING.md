@@ -6,11 +6,14 @@
 * If you're unable to find an open issue addressing the problem, open a new one. Be sure to include a title and clear description, as much relevant information as possible, and a code sample or an executable test case demonstrating the expected behavior that is not occurring.
 * Be sure to add the complete error messages.
 
-#### Did you write a patch that fixes a bug?
+## Do you have a feature request?
 
-* Open a new GitHub pull request with the patch.
-* Ensure that your PR includes a test that fails without your patch, and pass with it.
-* Ensure the PR description clearly describes the problem and solution. Include the relevant issue number if applicable.
+* Ensure that it hasn't been yet implemented in the `main` branch of the repository and that there's not an Issue requesting it yet.
+* Open a new issue and make sure to describe it clearly, mention how it improves the project and why its useful.
+
+## Do you want to fix a bug or implement a feature?
+
+Bug fixes and features are added through pull requests (PRs).
 
 ## PR submission guidelines
 
@@ -30,7 +33,12 @@
 #### Set up a conda environment
 The repo comes with an `environment.yml` file which contains the libraries needed to run all the tests. In order to set up the environment you must have `conda` installed, we recommend [miniconda](https://docs.conda.io/en/latest/miniconda.html).
 
-Once you have `conda` go to the top level directory of the repository and run:
+Once you have `conda` go to the top level directory of the repository and run the following lines:
+```
+conda create -n hierarchicalforecast python=3.10
+conda activate hierarchicalforecast
+```
+Then, run one of the following commands:
 ```
 conda env update -f environment.yml
 ```

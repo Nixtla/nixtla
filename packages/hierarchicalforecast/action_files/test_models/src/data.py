@@ -35,9 +35,9 @@ def get_data():
     spec = [
         ['Country'],
         ['Country', 'State'], 
-        ['Country', 'Purpose'], 
+        # ['Country', 'Purpose'], 
         ['Country', 'State', 'Region'], 
-        ['Country', 'State', 'Purpose'], 
+        # ['Country', 'State', 'Purpose'], 
         ['Country', 'State', 'Region', 'Purpose']
     ]
 

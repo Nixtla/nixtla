@@ -26,14 +26,8 @@ website:
           contents:
           - examples/HierarchicalForecast-GluonTS.ipynb
           - examples/MLFrameworksExample.ipynb
-      - Methods
-      - section: API Reference
-        contents:
-        - core.ipynb
-        - methods.ipynb
-        - probabilistic_methods.ipynb
-        - evaluation.ipynb
-        - utils.ipynb
+      - section: "API Reference"
+        contents: src/*
       - section: Community
         contents:
           - Contributing

@@ -1,42 +1,40 @@
 version: 2.1
 jobs:
   nbdev-tests:
-    resource_class: large
+    resource_class: xlarge
     docker:
-      - image: mambaorg/micromamba:1.5-focal
+      - image: python:3.10-slim
     steps:
       - checkout
       - run:
           name: Install dependencies
           command: |
-            micromamba install -n base -c conda-forge -y python=3.10
-            micromamba update -n base -f environment.yml
+            pip install uv
+            uv venv --python 3.10
       - run:
           name: Run nbdev tests
           command: |
-            eval "$(micromamba shell hook --shell bash)"
-            micromamba activate base
-            pip install ".[dev]"
-            nbdev_test --do_print --timing --n_workers 0
+            source .venv/bin/activate           
+            uv pip install ".[dev]"
+            nbdev_test --do_print --timing
   test-model-performance:
     resource_class: large
     docker:
-      - image: mambaorg/micromamba:1.5-focal
+      - image: python:3.10-slim
     steps:
       - checkout
       - run:
           name: Install dependencies
           command: |
-            micromamba install -n base -c conda-forge -y python=3.10
-            micromamba update -n base -f environment.yml
+            pip install uv
+            uv venv --python 3.10
       - run:
           name: Run model performance tests
           command: |
-            eval "$(micromamba shell hook --shell bash)"
-            micromamba activate base
-            pip install ".[dev]"
+            source .venv/bin/activate           
+            uv pip install ".[dev]"
             cd ./action_files/test_models/
-            pip install -r requirements.txt
+            uv pip install -r requirements.txt
             python -m src.models
             python -m src.evaluation
             cd ../../
