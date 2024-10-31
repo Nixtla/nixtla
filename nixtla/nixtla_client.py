@@ -40,6 +40,7 @@ from tenacity import (
 )
 from utilsforecast.compat import DFType, DataFrame, pl_DataFrame
 from utilsforecast.feature_engineering import _add_time_features, time_features
+from utilsforecast.preprocessing import id_time_grid
 from utilsforecast.validation import ensure_time_dtype, validate_format
 
 if TYPE_CHECKING:
@@ -819,6 +820,7 @@ class NixtlaClient:
         target_col: str,
         model: str,
         validate_api_key: bool,
+        freq: Optional[str],
     ) -> Tuple[DFType, Optional[DFType], bool]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
@@ -846,7 +848,25 @@ class NixtlaClient:
             raise ValueError(
                 f"Target column ({target_col}) cannot contain missing values."
             )
-        return df, X_df, drop_id
+        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
+        expected_ids_times = id_time_grid(
+            df,
+            freq=freq,
+            start="per_serie",
+            end="per_serie",
+            id_col=id_col,
+            time_col=time_col,
+        )
+        if len(df) != len(expected_ids_times):
+            raise ValueError(
+                "Series contain missing or duplicate timestamps, or the timestamps "
+                "do not match the provided frequency.\n"
+                "Please make sure that all series have a single observation from the first "
+                "to the last timestamp and that the provided frequency matches the timestamps'.\n"
+                "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
+                "for an end to end example."
+            )
+        return df, X_df, drop_id, freq
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Returns True if your api_key is valid."""
@@ -997,7 +1017,7 @@ class NixtlaClient:
         self.__dict__.pop("feature_contributions", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, X_df, drop_id = self._run_validations(
+        df, X_df, drop_id, freq = self._run_validations(
             df=df,
             X_df=X_df,
             id_col=id_col,
@@ -1005,6 +1025,7 @@ class NixtlaClient:
             target_col=target_col,
             validate_api_key=validate_api_key,
             model=model,
+            freq=freq,
         )
         df, X_df = _validate_exog(
             df=df,
@@ -1015,7 +1036,6 @@ class NixtlaClient:
             hist_exog=hist_exog_list,
         )
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         standard_freq = _standardize_freq(freq)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if finetune_steps > 0 or level is not None or add_history:
@@ -1241,7 +1261,7 @@ class NixtlaClient:
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id = self._run_validations(
+        df, _, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -1249,8 +1269,8 @@ class NixtlaClient:
             target_col=target_col,
             validate_api_key=validate_api_key,
             model=model,
+            freq=freq,
         )
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         standard_freq = _standardize_freq(freq)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
 
@@ -1432,7 +1452,7 @@ class NixtlaClient:
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id = self._run_validations(
+        df, _, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -1440,8 +1460,8 @@ class NixtlaClient:
             target_col=target_col,
             validate_api_key=validate_api_key,
             model=model,
+            freq=freq,
         )
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         standard_freq = _standardize_freq(freq)
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
@@ -1654,7 +1674,7 @@ class NixtlaClient:
             ax=ax,
         )
 
-# %% ../nbs/src/nixtla_client.ipynb 51
+# %% ../nbs/src/nixtla_client.ipynb 52
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,

@@ -114,7 +114,6 @@
         {
           "group":"Special Topics",
           "pages":[
-            "docs/tutorials/irregular_timestamps.html",
             "docs/tutorials/bounded_forecasts.html",
             "docs/tutorials/hierarchical_forecasting.html", 
             "docs/tutorials/missing_values.html",
