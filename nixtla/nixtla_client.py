@@ -573,201 +573,6 @@ class ApiError(Exception):
         return f"status_code: {self.status_code}, body: {self.body}"
 
 # %% ../nbs/src/nixtla_client.ipynb 9
-def _forecast_wrapper(
-    df: pd.DataFrame,
-    client: "NixtlaClient",
-    h: _PositiveInt,
-    freq: Optional[str],
-    id_col: str,
-    time_col: str,
-    target_col: str,
-    level: Optional[list[Union[int, float]]],
-    quantiles: Optional[list[float]],
-    finetune_steps: _NonNegativeInt,
-    finetune_depth: _Finetune_Depth,
-    finetune_loss: _Loss,
-    clean_ex_first: bool,
-    validate_api_key: bool,
-    add_history: bool,
-    date_features: Union[bool, list[Union[str, Callable]]],
-    date_features_to_one_hot: Union[bool, list[str]],
-    model: _Model,
-    num_partitions: Optional[_PositiveInt],
-    feature_contributions: bool,
-) -> pd.DataFrame:
-    if "_in_sample" in df:
-        in_sample_mask = df["_in_sample"]
-        X_df = df.loc[~in_sample_mask].drop(columns=["_in_sample", target_col])
-        df = df.loc[in_sample_mask].drop(columns="_in_sample")
-    else:
-        X_df = None
-    return client.forecast(
-        df=df,
-        h=h,
-        freq=freq,
-        id_col=id_col,
-        time_col=time_col,
-        target_col=target_col,
-        X_df=X_df,
-        level=level,
-        quantiles=quantiles,
-        finetune_steps=finetune_steps,
-        finetune_depth=finetune_depth,
-        finetune_loss=finetune_loss,
-        clean_ex_first=clean_ex_first,
-        validate_api_key=validate_api_key,
-        add_history=add_history,
-        date_features=date_features,
-        date_features_to_one_hot=date_features_to_one_hot,
-        model=model,
-        num_partitions=num_partitions,
-        feature_contributions=feature_contributions,
-    )
-
-
-def _detect_anomalies_wrapper(
-    df: pd.DataFrame,
-    client: "NixtlaClient",
-    freq: Optional[str],
-    id_col: str,
-    time_col: str,
-    target_col: str,
-    level: Union[int, float],
-    clean_ex_first: bool,
-    validate_api_key: bool,
-    date_features: Union[bool, list[str]],
-    date_features_to_one_hot: Union[bool, list[str]],
-    model: _Model,
-    num_partitions: Optional[_PositiveInt],
-) -> pd.DataFrame:
-    return client.detect_anomalies(
-        df=df,
-        freq=freq,
-        id_col=id_col,
-        time_col=time_col,
-        target_col=target_col,
-        level=level,
-        clean_ex_first=clean_ex_first,
-        validate_api_key=validate_api_key,
-        date_features=date_features,
-        date_features_to_one_hot=date_features_to_one_hot,
-        model=model,
-        num_partitions=num_partitions,
-    )
-
-
-def _cross_validation_wrapper(
-    df: pd.DataFrame,
-    client: "NixtlaClient",
-    h: _PositiveInt,
-    freq: Optional[str],
-    id_col: str,
-    time_col: str,
-    target_col: str,
-    level: Optional[list[Union[int, float]]],
-    quantiles: Optional[list[float]],
-    validate_api_key: bool,
-    n_windows: _PositiveInt,
-    step_size: Optional[_PositiveInt],
-    finetune_steps: _NonNegativeInt,
-    finetune_depth: _Finetune_Depth,
-    finetune_loss: _Loss,
-    clean_ex_first: bool,
-    date_features: Union[bool, list[str]],
-    date_features_to_one_hot: Union[bool, list[str]],
-    model: _Model,
-    num_partitions: Optional[_PositiveInt],
-) -> pd.DataFrame:
-    return client.cross_validation(
-        df=df,
-        h=h,
-        freq=freq,
-        id_col=id_col,
-        time_col=time_col,
-        target_col=target_col,
-        level=level,
-        quantiles=quantiles,
-        validate_api_key=validate_api_key,
-        n_windows=n_windows,
-        step_size=step_size,
-        finetune_steps=finetune_steps,
-        finetune_depth=finetune_depth,
-        finetune_loss=finetune_loss,
-        clean_ex_first=clean_ex_first,
-        date_features=date_features,
-        date_features_to_one_hot=date_features_to_one_hot,
-        model=model,
-        num_partitions=num_partitions,
-    )
-
-
-def _get_schema(
-    df: "AnyDataFrame",
-    method: str,
-    id_col: str,
-    time_col: str,
-    target_col: str,
-    level: Optional[Union[int, float, list[Union[int, float]]]],
-    quantiles: Optional[list[float]],
-) -> "triad.Schema":
-    import fugue.api as fa
-
-    base_cols = [id_col, time_col]
-    if method != "forecast":
-        base_cols.append(target_col)
-    schema = fa.get_schema(df).extract(base_cols).copy()
-    schema.append("TimeGPT:double")
-    if method == "detect_anomalies":
-        schema.append("anomaly:bool")
-    elif method == "cross_validation":
-        schema.append(("cutoff", schema[time_col].type))
-    if level is not None and quantiles is not None:
-        raise ValueError("You should provide `level` or `quantiles` but not both.")
-    if level is not None:
-        if not isinstance(level, list):
-            level = [level]
-        level = sorted(level)
-        schema.append(",".join(f"TimeGPT-lo-{lv}:double" for lv in reversed(level)))
-        schema.append(",".join(f"TimeGPT-hi-{lv}:double" for lv in level))
-    if quantiles is not None:
-        quantiles = sorted(quantiles)
-        q_cols = [f"TimeGPT-q-{int(q * 100)}:double" for q in quantiles]
-        schema.append(",".join(q_cols))
-    return schema
-
-
-def _distributed_setup(
-    df: "AnyDataFrame",
-    method: str,
-    id_col: str,
-    time_col: str,
-    target_col: str,
-    level: Optional[Union[int, float, list[Union[int, float]]]],
-    quantiles: Optional[list[float]],
-    num_partitions: Optional[int],
-) -> tuple["triad.Schema", dict[str, Any]]:
-    from fugue.execution import infer_execution_engine
-
-    if infer_execution_engine([df]) is None:
-        raise ValueError(
-            f"Could not infer execution engine for type {type(df).__name__}. "
-            "Expected a spark or dask DataFrame or a ray Dataset."
-        )
-    schema = _get_schema(
-        df=df,
-        method=method,
-        id_col=id_col,
-        time_col=time_col,
-        target_col=target_col,
-        level=level,
-        quantiles=quantiles,
-    )
-    partition_config: dict[str, Any] = dict(by=id_col, algo="coarse")
-    if num_partitions is not None:
-        partition_config["num"] = num_partitions
-    return schema, partition_config
-
-# %% ../nbs/src/nixtla_client.ipynb 10
 class NixtlaClient:
 
     def __init__(
@@ -2069,3 +1874,198 @@ class NixtlaClient:
             target_col=target_col,
             ax=ax,
         )
+
+# %% ../nbs/src/nixtla_client.ipynb 10
+def _forecast_wrapper(
+    df: pd.DataFrame,
+    client: NixtlaClient,
+    h: _PositiveInt,
+    freq: Optional[str],
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    level: Optional[list[Union[int, float]]],
+    quantiles: Optional[list[float]],
+    finetune_steps: _NonNegativeInt,
+    finetune_depth: _Finetune_Depth,
+    finetune_loss: _Loss,
+    clean_ex_first: bool,
+    validate_api_key: bool,
+    add_history: bool,
+    date_features: Union[bool, list[Union[str, Callable]]],
+    date_features_to_one_hot: Union[bool, list[str]],
+    model: _Model,
+    num_partitions: Optional[_PositiveInt],
+    feature_contributions: bool,
+) -> pd.DataFrame:
+    if "_in_sample" in df:
+        in_sample_mask = df["_in_sample"]
+        X_df = df.loc[~in_sample_mask].drop(columns=["_in_sample", target_col])
+        df = df.loc[in_sample_mask].drop(columns="_in_sample")
+    else:
+        X_df = None
+    return client.forecast(
+        df=df,
+        h=h,
+        freq=freq,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        X_df=X_df,
+        level=level,
+        quantiles=quantiles,
+        finetune_steps=finetune_steps,
+        finetune_depth=finetune_depth,
+        finetune_loss=finetune_loss,
+        clean_ex_first=clean_ex_first,
+        validate_api_key=validate_api_key,
+        add_history=add_history,
+        date_features=date_features,
+        date_features_to_one_hot=date_features_to_one_hot,
+        model=model,
+        num_partitions=num_partitions,
+        feature_contributions=feature_contributions,
+    )
+
+
+def _detect_anomalies_wrapper(
+    df: pd.DataFrame,
+    client: NixtlaClient,
+    freq: Optional[str],
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    level: Union[int, float],
+    clean_ex_first: bool,
+    validate_api_key: bool,
+    date_features: Union[bool, list[str]],
+    date_features_to_one_hot: Union[bool, list[str]],
+    model: _Model,
+    num_partitions: Optional[_PositiveInt],
+) -> pd.DataFrame:
+    return client.detect_anomalies(
+        df=df,
+        freq=freq,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        level=level,
+        clean_ex_first=clean_ex_first,
+        validate_api_key=validate_api_key,
+        date_features=date_features,
+        date_features_to_one_hot=date_features_to_one_hot,
+        model=model,
+        num_partitions=num_partitions,
+    )
+
+
+def _cross_validation_wrapper(
+    df: pd.DataFrame,
+    client: NixtlaClient,
+    h: _PositiveInt,
+    freq: Optional[str],
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    level: Optional[list[Union[int, float]]],
+    quantiles: Optional[list[float]],
+    validate_api_key: bool,
+    n_windows: _PositiveInt,
+    step_size: Optional[_PositiveInt],
+    finetune_steps: _NonNegativeInt,
+    finetune_depth: _Finetune_Depth,
+    finetune_loss: _Loss,
+    clean_ex_first: bool,
+    date_features: Union[bool, list[str]],
+    date_features_to_one_hot: Union[bool, list[str]],
+    model: _Model,
+    num_partitions: Optional[_PositiveInt],
+) -> pd.DataFrame:
+    return client.cross_validation(
+        df=df,
+        h=h,
+        freq=freq,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        level=level,
+        quantiles=quantiles,
+        validate_api_key=validate_api_key,
+        n_windows=n_windows,
+        step_size=step_size,
+        finetune_steps=finetune_steps,
+        finetune_depth=finetune_depth,
+        finetune_loss=finetune_loss,
+        clean_ex_first=clean_ex_first,
+        date_features=date_features,
+        date_features_to_one_hot=date_features_to_one_hot,
+        model=model,
+        num_partitions=num_partitions,
+    )
+
+
+def _get_schema(
+    df: "AnyDataFrame",
+    method: str,
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    level: Optional[Union[int, float, list[Union[int, float]]]],
+    quantiles: Optional[list[float]],
+) -> "triad.Schema":
+    import fugue.api as fa
+
+    base_cols = [id_col, time_col]
+    if method != "forecast":
+        base_cols.append(target_col)
+    schema = fa.get_schema(df).extract(base_cols).copy()
+    schema.append("TimeGPT:double")
+    if method == "detect_anomalies":
+        schema.append("anomaly:bool")
+    elif method == "cross_validation":
+        schema.append(("cutoff", schema[time_col].type))
+    if level is not None and quantiles is not None:
+        raise ValueError("You should provide `level` or `quantiles` but not both.")
+    if level is not None:
+        if not isinstance(level, list):
+            level = [level]
+        level = sorted(level)
+        schema.append(",".join(f"TimeGPT-lo-{lv}:double" for lv in reversed(level)))
+        schema.append(",".join(f"TimeGPT-hi-{lv}:double" for lv in level))
+    if quantiles is not None:
+        quantiles = sorted(quantiles)
+        q_cols = [f"TimeGPT-q-{int(q * 100)}:double" for q in quantiles]
+        schema.append(",".join(q_cols))
+    return schema
+
+
+def _distributed_setup(
+    df: "AnyDataFrame",
+    method: str,
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    level: Optional[Union[int, float, list[Union[int, float]]]],
+    quantiles: Optional[list[float]],
+    num_partitions: Optional[int],
+) -> tuple["triad.Schema", dict[str, Any]]:
+    from fugue.execution import infer_execution_engine
+
+    if infer_execution_engine([df]) is None:
+        raise ValueError(
+            f"Could not infer execution engine for type {type(df).__name__}. "
+            "Expected a spark or dask DataFrame or a ray Dataset."
+        )
+    schema = _get_schema(
+        df=df,
+        method=method,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        level=level,
+        quantiles=quantiles,
+    )
+    partition_config: dict[str, Any] = dict(by=id_col, algo="coarse")
+    if num_partitions is not None:
+        partition_config["num"] = num_partitions
+    return schema, partition_config
