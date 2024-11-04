@@ -23,7 +23,7 @@ dev = [
     "tabulate",
 ]
 distributed = ["fugue[dask,ray,spark]>=0.8.7", "pandas<2.2", "ray<2.6.3"]
-plotting = ["utilsforecast[plotting]>=0.2.3"]
+plotting = ["utilsforecast[plotting]>=0.2.7"]
 date_extras = ["holidays"]
 
 setuptools.setup(
@@ -39,13 +39,12 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
-        "fastcore",
+        "annotated-types",
         "httpx",
         "orjson",
         "pandas",
-        "pydantic",
         "tenacity",
         "tqdm",
         "utilsforecast>=0.2.3",
