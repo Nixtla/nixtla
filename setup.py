@@ -28,7 +28,7 @@ date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtla",
-    version="0.6.2",
+    version="0.6.3",
     description="Python SDK for Nixtla API (TimeGPT)",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -47,7 +47,7 @@ setuptools.setup(
         "pandas",
         "tenacity",
         "tqdm",
-        "utilsforecast>=0.2.3",
+        "utilsforecast>=0.2.7",
     ],
     extras_require={
         "dev": dev + plotting + date_extras,
