@@ -9,6 +9,7 @@ title: Irregular timestamps
 ```python
 import pandas as pd
 from nixtla import NixtlaClient
+from utilsforecast.data import generate_series
 ```
 
 
@@ -29,14 +30,35 @@ nixtla_client = NixtlaClient(
 ```python
 # Read data
 # Dates for the weekends are missing
-df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/pltr.csv')
+df = pd.read_csv(
+    'https://datasets-nixtla.s3.amazonaws.com/pltr.csv',
+    usecols=['date', 'Close'],
+)
 
 # Forecast
-# We use B for the freq, as only business days are represented in the dataset
+# the frequency is inferred as B, as only business days are represented in the dataset
 forecast_df = nixtla_client.forecast(
-    df=df, 
-    h=14, 
+    df=df,
+    h=5,
+    time_col='date', 
+    target_col='Close',
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: B
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+```python
+# manually set the frequency
+forecast_df2 = nixtla_client.forecast(
+    df=df,
     freq='B',
+    h=5,
     time_col='date', 
     target_col='Close',
 )
@@ -45,10 +67,12 @@ forecast_df = nixtla_client.forecast(
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-WARNING:nixtla.nixtla_client:You did not provide X_df. Exogenous variables in df are ignored. To surpress this warning, please add X_df with exogenous variables: Open, High, Low, Adj Close, Volume, Dividends, Stock Splits
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+```python
+pd.testing.assert_frame_equal(forecast_df, forecast_df2)
 ```
 
 > 📘 Available models in Azure AI
@@ -64,8 +88,4 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 > By default, `timegpt-1` is used. Please see [this
 > tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
 > on how and when to use `timegpt-1-long-horizon`.
-
-For more details on handling datasets with irregular timesteps, check
-out our
-[tutorial](https://docs.nixtla.io/docs/tutorials-irregular_timestamps).
 

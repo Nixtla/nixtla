@@ -4,20 +4,23 @@ title: Forecasting Energy Demand
 ---
 
 
-This tutorial is based on the scenario used in
-[Skforecast](https://cienciadedatos.net/documentos/py29-forecasting-electricity-power-demand-python.html).
+This tutorial is based on an energy consumption forecasting scenario
+where we make a 4-day forecast of in-zone energy consumption.
 
-Here, we use the [Australian Electricity Demand
-dataset](https://zenodo.org/records/4659727). This dataset compiles the
-energy demand for five Australian cities at a half-hourly frequency.
+Here, we use a subset of the [PJM Hourly Energy Consumption
+dataset](https://www.pjm.com/), focusing on in-zone consumption, where
+electricity is both generated and consumed within the same transmission
+zone. The dataset consists of hourly data from October 1, 2023, to
+September 30, 2024, covering five representative areas to capture hourly
+energy demand patterns.
 
 In this experiment, we show that using TimeGPT delivers significant
 improvements over using a state-of-the-art deep learning model like
 N-HiTS in a just a few lines of code:
 
--   MAE of TimeGPT is **7.8% better** than N-HiTS
--   sMAPE of TimeGPT is **11.5% better** than N-HiTS
--   TimeGPT generated predictions in **7.7 seconds**, which is **88%
+-   MAE of TimeGPT is **18.6% better** than N-HiTS
+-   sMAPE of TimeGPT is **31.1% better** than N-HiTS
+-   TimeGPT generated predictions in **4.3 seconds**, which is **90%
     faster** than training and predicting with N-HiTS.
 
 The following tutorial explore all the steps in detail to reproduce
@@ -58,38 +61,11 @@ nixtla_client = NixtlaClient(
 
 ## Read the data
 
-Here, we define a helper function to help us read the `.tsf` file that
-contains our data. The dataset is available on
-[GitHub](https://github.com/Nixtla/transfer-learning-time-series/blob/main/datasets/australian_electricity_demand_dataset.tsf).
+Here, we load in the inbound energy transmission time series.
 
 ```python
-def read_tsf_from_url(url):
-    data = []
-    start_date = pd.to_datetime('2002-01-01 00:00:00')
-    
-    # Fetch the content from the URL
-    response = requests.get(url)
-    response.raise_for_status()
-
-    # Process each line of the file
-    for line in response.text.splitlines():
-        if line.startswith('T'):
-            parts = line.strip().split(':')
-            unique_id = parts[0] + '-' + parts[1]
-            values = list(map(float, parts[3].split(',')[:-1]))
-            
-            # Generate datetime index at half-hour intervals
-            periods = len(values)
-            date_range = pd.date_range(start=start_date, periods=periods, freq='30min')
-            
-            # Append to data list
-            for dt, value in zip(date_range, values):
-                data.append([unique_id, dt, value])
-
-    return pd.DataFrame(data, columns=['unique_id', 'ds', 'y'])
-
-url = 'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/australian_electricity_demand_dataset.tsf'
-df = read_tsf_from_url(url)
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/refs/heads/main/datasets/pjm_in_zone.csv')
+df['ds'] = pd.to_datetime(df['ds'])
 ```
 
 
@@ -97,18 +73,18 @@ df = read_tsf_from_url(url)
 df.groupby('unique_id').head(2)
 ```
 
-|        | unique_id | ds                  | y           |
-|--------|-----------|---------------------|-------------|
-| 0      | T1-NSW    | 2002-01-01 00:00:00 | 5714.045004 |
-| 1      | T1-NSW    | 2002-01-01 00:30:00 | 5360.189078 |
-| 230735 | T2-VIC    | 2002-01-01 00:00:00 | 3535.867064 |
-| 230736 | T2-VIC    | 2002-01-01 00:30:00 | 3383.499028 |
-| 461470 | T3-QUN    | 2002-01-01 00:00:00 | 3382.041342 |
-| 461471 | T3-QUN    | 2002-01-01 00:30:00 | 3288.315794 |
-| 693741 | T4-SA     | 2002-01-01 00:00:00 | 1191.078014 |
-| 693742 | T4-SA     | 2002-01-01 00:30:00 | 1219.589472 |
-| 924524 | T5-TAS    | 2002-01-01 00:00:00 | 315.915504  |
-| 924525 | T5-TAS    | 2002-01-01 00:30:00 | 306.245864  |
+|       | unique_id | ds                        | y         |
+|-------|-----------|---------------------------|-----------|
+| 0     | AP-AP     | 2023-10-01 04:00:00+00:00 | 4042.513  |
+| 1     | AP-AP     | 2023-10-01 05:00:00+00:00 | 3850.067  |
+| 8784  | DOM-DOM   | 2023-10-01 04:00:00+00:00 | 10732.435 |
+| 8785  | DOM-DOM   | 2023-10-01 05:00:00+00:00 | 10314.211 |
+| 17568 | JC-JC     | 2023-10-01 04:00:00+00:00 | 1825.101  |
+| 17569 | JC-JC     | 2023-10-01 05:00:00+00:00 | 1729.590  |
+| 26352 | PN-PN     | 2023-10-01 04:00:00+00:00 | 1454.666  |
+| 26353 | PN-PN     | 2023-10-01 05:00:00+00:00 | 1416.688  |
+| 35136 | RTO-RTO   | 2023-10-01 04:00:00+00:00 | 69139.393 |
+| 35137 | RTO-RTO   | 2023-10-01 05:00:00+00:00 | 66207.416 |
 
 Let’s plot our series to see what it looks like.
 
@@ -134,13 +110,13 @@ test set, so that we can evaluate the performance of TimeGPT against
 actual values.
 
 For this situation, we use a forecast horizon of 96, which represents
-two days, and we use an input sequence of 21 days, which is 1008 time
+four days, and we use an input sequence of 362 days, which is 8688 time
 steps.
 
 ```python
-test_df = df.groupby('unique_id').tail(96)                                                             # 96 = 2 days (96 * 0.5h *  1 day/24h )
+test_df = df.groupby('unique_id').tail(96)                                                             # 96 = 4 days (96 *  1 day/24h )
 
-input_df = df.groupby('unique_id').apply(lambda group: group.iloc[-1104:-96]).reset_index(drop=True)   # 1008 = 21 days (1008 *0.5h * 1 day/24h)
+input_df = df.groupby('unique_id').apply(lambda group: group.iloc[-1104:-96]).reset_index(drop=True)   # 1008 = 42 days (1008 * 1 day/24h)
 ```
 
 ### Forecasting
@@ -186,7 +162,7 @@ print(f"Time (TimeGPT): {timegpt_duration}")
 > tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
 > on how and when to use `timegpt-1-long-horizon`.
 
-TimeGPT was done in 7.7 seconds! We can now plot the predictions against
+TimeGPT was done in 4.3 seconds! We can now plot the predictions against
 the actual values of the test set.
 
 ```python
@@ -221,12 +197,12 @@ average_metrics
 
 ``` text
 metric
-mae      198.822477
-smape      0.041998
+mae      882.693979
+smape      0.019974
 Name: TimeGPT, dtype: float64
 ```
 
-We can see that TimeGPT achieves a MAE of 198.82 and a sMAPE of 4.2%.
+We can see that TimeGPT achieves a MAE of 882.6 and a sMAPE of 2%.
 
 Great! Now, let’s see if a data-specific model can do better.
 
@@ -246,11 +222,11 @@ from neuralforecast.models import NHITS
 The training set is different from the input DataFrame for TimeGPT, as
 we need more data to train a data-specific model.
 
-Note that the dataset is very large, so we use the last 400 days of the
+Note that the dataset is very large, so we use the last 362 days of the
 training set to fit our model.
 
 ```python
-train_df = df.groupby('unique_id').apply(lambda group: group.iloc[-9696:-96]).reset_index(drop=True)
+train_df = df.groupby('unique_id').apply(lambda group: group.iloc[:-96]).reset_index(drop=True)
 ```
 
 ### Forecasting with N-HiTS
@@ -262,7 +238,7 @@ horizon = 96
 
 models = [NHITS(h=horizon, input_size = 5*horizon, scaler_type='robust', batch_size=16, valid_batch_size=8)]
 
-nf = NeuralForecast(models=models, freq='30min')
+nf = NeuralForecast(models=models, freq='H')
 
 start = time.time()
 
@@ -276,7 +252,7 @@ nhits_duration = end - start
 print(f"Time (N-HiTS): {nhits_duration}")
 ```
 
-Great! Note that N-HiTS took 67 seconds to carry out the training and
+Great! Note that N-HiTS took 44 seconds to carry out the training and
 forecasting procedures. Now, let’s evaluate the performance of this
 model.
 
@@ -300,11 +276,11 @@ print(average_metrics)
 
 ## Conclusion
 
-TimeGPT achieves a MAE of 198.82 while N-HiTS achieves a MAE of 215.55,
-meaning there is a **7.8% improvement** in using TimeGPT versus our
-data-specific N-HiTS model. TimeGPT also improved the sMAPE by 11.5%.
+TimeGPT achieves a MAE of 882.6 while N-HiTS achieves a MAE of 1084.7,
+meaning there is a **18.6% improvement** in using TimeGPT versus our
+data-specific N-HiTS model. TimeGPT also improved the sMAPE by 31.1%.
 
-Plus, TimeGPT took 7.7 seconds to generate forecasts, while N-HiTS took
-67 seconds to fit and predict. TimeGPT is thus **88% faster** than using
+Plus, TimeGPT took 4.3 seconds to generate forecasts, while N-HiTS took
+44 seconds to fit and predict. TimeGPT is thus **90% faster** than using
 N-HiTS in this scenario.
 

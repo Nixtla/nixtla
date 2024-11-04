@@ -35,7 +35,9 @@ forecast_df = nixtla_client.forecast(
     h=24,
     id_col='unique_id',
     target_col='y',
-    time_col='ds'
+    time_col='ds',
+    # Add the columns of `df` that will be considered as historical
+    hist_exog_list=['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 )
 ```
 
@@ -69,8 +71,10 @@ df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-tim
 # Load the future value of exogenous variables over the forecast horizon
 future_ex_vars_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv')
 
-# We will only use 2 exogenous of future_ex_vars_df. The columns not included in future_ex_vars_df will be considered as historical exogenous variables, as the future values have not been supplied.
+# We will only use 2 exogenous of future_ex_vars_df
 future_ex_vars_df = future_ex_vars_df[["unique_id", "ds", "Exogenous1", "Exogenous2"]]
+# To pass historical exogenous variables, we need to add the list of columns
+# in the `hist_exog_list` as follows.
 
 # Forecast
 forecast_df = nixtla_client.forecast(
@@ -79,7 +83,9 @@ forecast_df = nixtla_client.forecast(
     h=24,
     id_col='unique_id',
     target_col='y',
-    time_col='ds'
+    time_col='ds',
+    # Add the columns of `df` that will be considered as historical
+    hist_exog_list=['day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 )
 ```
 

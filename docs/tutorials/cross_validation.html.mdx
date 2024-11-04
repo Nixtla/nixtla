@@ -58,7 +58,7 @@ nixtla_client = NixtlaClient(
 Let’s see an example, using the Peyton Manning dataset.
 
 ```python
-pm_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+pm_df = pd.read_csv('https://datasets-nixtla.s3.amazonaws.com/peyton-manning.csv')
 ```
 
 ## 3. Cross-validation
@@ -104,8 +104,6 @@ timegpt_cv_df = nixtla_client.cross_validation(
     pm_df, 
     h=7, 
     n_windows=5, 
-    time_col='timestamp', 
-    target_col='value', 
     freq='D',
 )
 timegpt_cv_df.head()
@@ -113,17 +111,19 @@ timegpt_cv_df.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
 
-|     | timestamp  | cutoff     | value    | TimeGPT  |
-|-----|------------|------------|----------|----------|
-| 0   | 2015-12-17 | 2015-12-16 | 7.591862 | 7.939553 |
-| 1   | 2015-12-18 | 2015-12-16 | 7.528869 | 7.887512 |
-| 2   | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 |
-| 3   | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 |
-| 4   | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 |
+|     | unique_id | ds         | cutoff     | y        | TimeGPT  |
+|-----|-----------|------------|------------|----------|----------|
+| 0   | 0         | 2015-12-17 | 2015-12-16 | 7.591862 | 7.939553 |
+| 1   | 0         | 2015-12-18 | 2015-12-16 | 7.528869 | 7.887512 |
+| 2   | 0         | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 |
+| 3   | 0         | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 |
+| 4   | 0         | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 |
 
 > 📘 Available models in Azure AI
 >
@@ -144,9 +144,7 @@ cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
     fig = nixtla_client.plot(
         pm_df.tail(100), 
-        timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'value']),
-        time_col='timestamp', 
-        target_col='value'
+        timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'y']),
     )
     display(fig)
 ```
@@ -171,8 +169,6 @@ timegpt_cv_df = nixtla_client.cross_validation(
     pm_df, 
     h=7, 
     n_windows=5, 
-    time_col='timestamp', 
-    target_col='value', 
     freq='D',
     level=[80, 90],
 )
@@ -181,17 +177,18 @@ timegpt_cv_df.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
 
-|  | timestamp | cutoff | value | TimeGPT | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
-|----|----|----|----|----|----|----|----|----|
-| 0 | 2015-12-17 | 2015-12-16 | 7.591862 | 7.939553 | 7.564151 | 7.675945 | 8.203161 | 8.314956 |
-| 1 | 2015-12-18 | 2015-12-16 | 7.528869 | 7.887512 | 7.567342 | 7.598298 | 8.176726 | 8.207681 |
-| 2 | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 | 7.146560 | 7.266829 | 8.266404 | 8.386674 |
-| 3 | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 | 7.493021 | 7.657075 | 8.205929 | 8.369982 |
-| 4 | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 | 7.017335 | 7.446677 | 9.178586 | 9.607928 |
+|  | unique_id | ds | cutoff | y | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
+|----|----|----|----|----|----|----|----|----|----|
+| 0 | 0 | 2015-12-17 | 2015-12-16 | 7.591862 | 7.939553 | 8.201465 | 8.314956 | 7.677642 | 7.564151 |
+| 1 | 0 | 2015-12-18 | 2015-12-16 | 7.528869 | 7.887512 | 8.175414 | 8.207470 | 7.599609 | 7.567553 |
+| 2 | 0 | 2015-12-19 | 2015-12-16 | 7.171657 | 7.766617 | 8.267363 | 8.386674 | 7.265871 | 7.146560 |
+| 3 | 0 | 2015-12-20 | 2015-12-16 | 7.891331 | 7.931502 | 8.205929 | 8.369983 | 7.657075 | 7.493020 |
+| 4 | 0 | 2015-12-21 | 2015-12-16 | 8.360071 | 8.312632 | 9.184893 | 9.625794 | 7.440371 | 6.999469 |
 
 > 📘 Available models in Azure AI
 >
@@ -212,9 +209,7 @@ cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
     fig = nixtla_client.plot(
         pm_df.tail(100), 
-        timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'value']),
-        time_col='timestamp', 
-        target_col='value',
+        timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'y']),
         level=[80, 90],
         models=['TimeGPT']
     )
@@ -244,38 +239,36 @@ predictions during cross-validation.
 timegpt_cv_df = nixtla_client.cross_validation(
     pm_df, 
     h=7, 
-    n_windows=5, 
-    time_col='timestamp', 
-    target_col='value', 
+    n_windows=5,  
     freq='D',
     level=[80, 90],
     date_features=['month'],
+    date_features_to_one_hot=True,
 )
 timegpt_cv_df.head()
 ```
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Using the following exogenous features: ['month_1.0', 'month_2.0', 'month_3.0', 'month_4.0', 'month_5.0', 'month_6.0', 'month_7.0', 'month_8.0', 'month_9.0', 'month_10.0', 'month_11.0', 'month_12.0']
 INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
 
-|  | timestamp | cutoff | value | TimeGPT | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
-|----|----|----|----|----|----|----|----|----|
-| 0 | 2015-12-17 | 2015-12-16 | 7.591862 | 7.931697 | 7.528752 | 7.634238 | 8.229156 | 8.334641 |
-| 1 | 2015-12-18 | 2015-12-16 | 7.528869 | 7.879933 | 7.258649 | 7.468433 | 8.291433 | 8.501217 |
-| 2 | 2015-12-19 | 2015-12-16 | 7.171657 | 7.759708 | 7.101670 | 7.269838 | 8.249578 | 8.417745 |
-| 3 | 2015-12-20 | 2015-12-16 | 7.891331 | 7.921784 | 6.970479 | 7.327653 | 8.515915 | 8.873088 |
-| 4 | 2015-12-21 | 2015-12-16 | 8.360071 | 8.302374 | 7.122366 | 7.640518 | 8.964230 | 9.482381 |
+|  | unique_id | ds | cutoff | y | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
+|----|----|----|----|----|----|----|----|----|----|
+| 0 | 0.0 | 2015-12-17 | 2015-12-16 | 7.591862 | 8.426320 | 8.721996 | 8.824101 | 8.130644 | 8.028540 |
+| 1 | 0.0 | 2015-12-18 | 2015-12-16 | 7.528869 | 8.049962 | 8.452083 | 8.658603 | 7.647842 | 7.441321 |
+| 2 | 0.0 | 2015-12-19 | 2015-12-16 | 7.171657 | 7.509098 | 7.984788 | 8.138017 | 7.033409 | 6.880180 |
+| 3 | 0.0 | 2015-12-20 | 2015-12-16 | 7.891331 | 7.739536 | 8.306914 | 8.641355 | 7.172158 | 6.837718 |
+| 4 | 0.0 | 2015-12-21 | 2015-12-16 | 8.360071 | 8.027471 | 8.722828 | 9.152306 | 7.332113 | 6.902636 |
 
 ```python
 cutoffs = timegpt_cv_df['cutoff'].unique()
 for cutoff in cutoffs:
     fig = nixtla_client.plot(
         pm_df.tail(100), 
-        timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'value']),
-        time_col='timestamp', 
-        target_col='value',
+        timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'y']),
         level=[80, 90],
         models=['TimeGPT']
     )
@@ -326,8 +319,10 @@ for cutoff in cutoffs:
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Inferred freq: h
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Using the following exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
 
@@ -378,8 +373,10 @@ for cutoff in cutoffs:
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Inferred freq: h
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Using the following exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
 ```
 

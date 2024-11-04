@@ -128,7 +128,7 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
 >
 > `fig.savefig('plot.png', bbox_inches='tight')`
 
-### Forecast a longer horizon into the future
+### Make forecasts
 
 Next, forecast the next 12 months using the SDK `forecast` method. Set
 the following parameters:
@@ -143,7 +143,7 @@ the following parameters:
 -   `target_col`: The variable to forecast.
 
 ```python
-timegen_fcst_df = nixtla_client.forecast(df=df, h=12, freq='MS', time_col='timestamp', target_col='value', model="azureai")
+timegen_fcst_df = nixtla_client.forecast(df=df, h=12, freq='MS', time_col='timestamp', target_col='value')
 timegen_fcst_df.head()
 ```
 
@@ -167,56 +167,4 @@ nixtla_client.plot(df, timegen_fcst_df, time_col='timestamp', target_col='value'
 ```
 
 ![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-9-output-1.png)
-
-You can also produce longer forecasts by increasing the horizon
-parameter and selecting the `timegpt-1-long-horizon` model. Use this
-model if you want to predict more than one seasonal period of your data.
-
-For example, let’s forecast the next 36 months:
-
-```python
-timegen_fcst_df = nixtla_client.forecast(df=df, h=36, time_col='timestamp', target_col='value', freq='MS', model='timegpt-1-long-horizon')
-timegen_fcst_df.head()
-```
-
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtla.nixtla_client:Restricting input...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-```
-
-|     | timestamp  | TimeGPT    |
-|-----|------------|------------|
-| 0   | 1961-01-01 | 436.843414 |
-| 1   | 1961-02-01 | 419.351532 |
-| 2   | 1961-03-01 | 458.943146 |
-| 3   | 1961-04-01 | 477.876068 |
-| 4   | 1961-05-01 | 505.656921 |
-
-```python
-nixtla_client.plot(df, timegen_fcst_df, time_col='timestamp', target_col='value')
-```
-
-![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-11-output-1.png)
-
-### Produce a shorter forecast
-
-You can also produce a shorter forecast. For this, we recommend using
-the default Azure TimeGEN-1 model, `azureai`.
-
-```python
-timegen_fcst_df = nixtla_client.forecast(df=df, h=6, time_col='timestamp', target_col='value', freq='MS', model="azureai")
-nixtla_client.plot(df, timegen_fcst_df, time_col='timestamp', target_col='value')
-```
-
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Restricting input...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-```
-
-![](/nixtla/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-12-output-2.png)
 

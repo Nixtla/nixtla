@@ -93,7 +93,7 @@ timegpt_fcst_ex_vars_df.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Querying model metadata...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Using future exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
@@ -102,11 +102,11 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 
 |  | unique_id | ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
 |----|----|----|----|----|----|----|----|
-| 0 | BE | 2016-12-31 00:00:00 | 74.540771 | 84.506861 | 89.003936 | 64.574681 | 60.077606 |
-| 1 | BE | 2016-12-31 01:00:00 | 43.344290 | 52.200879 | 57.771782 | 34.487701 | 28.916798 |
-| 2 | BE | 2016-12-31 02:00:00 | 44.429219 | 51.034622 | 57.623160 | 37.823817 | 31.235279 |
-| 3 | BE | 2016-12-31 03:00:00 | 38.094396 | 48.108948 | 51.528001 | 28.079844 | 24.660791 |
-| 4 | BE | 2016-12-31 04:00:00 | 37.389140 | 46.747685 | 52.186070 | 28.030595 | 22.592211 |
+| 0 | BE | 2016-12-31 00:00:00 | 74.540770 | 84.506860 | 89.003950 | 64.574684 | 60.077590 |
+| 1 | BE | 2016-12-31 01:00:00 | 43.344290 | 52.200882 | 57.771790 | 34.487700 | 28.916796 |
+| 2 | BE | 2016-12-31 02:00:00 | 44.429214 | 51.034620 | 57.623154 | 37.823810 | 31.235273 |
+| 3 | BE | 2016-12-31 03:00:00 | 38.094400 | 48.108950 | 51.528008 | 28.079847 | 24.660790 |
+| 4 | BE | 2016-12-31 04:00:00 | 37.389145 | 46.747680 | 52.186092 | 28.030607 | 22.592197 |
 
 > 📘 Available models in Azure AI
 >
@@ -148,10 +148,12 @@ important for this forecasting task, as they have the largest weight.
 
 In the example above, we just loaded the future exogenous variables.
 Often, these are not available because these variables are unknown. We
-can als make forecasts using only historic exogenous variables. This can
-be done simply by omitting the `X_df` parameter. In that case, the
-exogenous variables that are present in `df` will be considered as
-historic exogenous variables.
+can also make forecasts using only historic exogenous variables. This
+can be done by adding the `hist_exog_list` argument with the list of
+columns of `df` to be considered as historical. In that case, we can
+pass all extra columns available in `df` as historic exogenous variables
+using
+`hist_exog_list=['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']`.
 
 > **Important**
 >
@@ -160,16 +162,21 @@ historic exogenous variables.
 > variables in your forecast. It is recommended to make these
 > assumptions explicit by making use of future exogenous variables.
 
-Let’s call the `forecast` method, removing `X_df`:
+Let’s call the `forecast` method, adding `hist_exog_list`:
 
 ```python
-timegpt_fcst_hist_ex_vars_df = nixtla_client.forecast(df=df, h=24, level=[80, 90])
+timegpt_fcst_hist_ex_vars_df = nixtla_client.forecast(
+    df=df, 
+    h=24, 
+    level=[80, 90], 
+    hist_exog_list=['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6'],
+)
 timegpt_fcst_hist_ex_vars_df.head()
 ```
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Using historical exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
@@ -177,11 +184,11 @@ INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 
 |  | unique_id | ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
 |----|----|----|----|----|----|----|----|
-| 0 | BE | 2016-12-31 00:00:00 | 45.769382 | 55.735472 | 60.232546 | 35.803292 | 31.306217 |
-| 1 | BE | 2016-12-31 01:00:00 | 47.991004 | 56.847593 | 62.418496 | 39.134415 | 33.563512 |
-| 2 | BE | 2016-12-31 02:00:00 | 49.496135 | 56.101537 | 62.690075 | 42.890732 | 36.302195 |
-| 3 | BE | 2016-12-31 03:00:00 | 49.510808 | 59.525360 | 62.944413 | 39.496257 | 36.077203 |
-| 4 | BE | 2016-12-31 04:00:00 | 48.510558 | 57.869103 | 63.307488 | 39.152014 | 33.713629 |
+| 0 | BE | 2016-12-31 00:00:00 | 45.769290 | 55.735280 | 60.224750 | 35.803303 | 31.313833 |
+| 1 | BE | 2016-12-31 01:00:00 | 47.990700 | 56.851810 | 62.416267 | 39.129590 | 33.565132 |
+| 2 | BE | 2016-12-31 02:00:00 | 49.495724 | 56.101387 | 62.687990 | 42.890060 | 36.303460 |
+| 3 | BE | 2016-12-31 03:00:00 | 49.510230 | 59.525467 | 62.939160 | 39.494995 | 36.081303 |
+| 4 | BE | 2016-12-31 04:00:00 | 48.509483 | 57.864616 | 63.305355 | 39.154350 | 33.713610 |
 
 > 📘 Available models in Azure AI
 >
@@ -214,19 +221,21 @@ A third option is to use both historic and future exogenous variables.
 For example, we might not have available the future information for
 `Exogenous1` and `Exogenous2`. In this example, we drop these variables
 from our future exogenous dataframe (because we assume we do not know
-the future value of these variables).
+the future value of these variables), and add them to `hist_exog_list`
+to be considered as historical exogenous variables.
 
 ```python
-future_ex_vars_df_limited = future_ex_vars_df.drop(columns = ["Exogenous1", "Exogenous2"])
-timegpt_fcst_ex_vars_df_limited = nixtla_client.forecast(df=df, X_df=future_ex_vars_df_limited, h=24, level=[80, 90])
+hist_cols = ["Exogenous1", "Exogenous2"]
+future_ex_vars_df_limited = future_ex_vars_df.drop(columns=hist_cols)
+timegpt_fcst_ex_vars_df_limited = nixtla_client.forecast(df=df, X_df=future_ex_vars_df_limited, h=24, level=[80, 90], hist_exog_list=hist_cols)
 ```
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Using historical exogenous features: ['Exogenous2', 'Exogenous1']
 INFO:nixtla.nixtla_client:Using future exogenous features: ['day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
+INFO:nixtla.nixtla_client:Using historical exogenous features: ['Exogenous1', 'Exogenous2']
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
@@ -282,13 +291,13 @@ timegpt_fcst_ex2 = nixtla_client.forecast(df=df_exog2, h=24, target_col='Exogeno
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
@@ -338,16 +347,16 @@ X_df.head(10)
 
 |  | unique_id | ds | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
 |----|----|----|----|----|----|----|----|----|----|----|----|
-| 0 | BE | 2016-12-31 00:00:00 | 66282.507812 | 70861.390625 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 1 | BE | 2016-12-31 01:00:00 | 64465.335938 | 67851.718750 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 2 | BE | 2016-12-31 02:00:00 | 63257.125000 | 67246.546875 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 3 | BE | 2016-12-31 03:00:00 | 62059.343750 | 64027.210938 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 4 | BE | 2016-12-31 04:00:00 | 61247.132812 | 61523.867188 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 5 | BE | 2016-12-31 05:00:00 | 62052.453125 | 63053.929688 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 6 | BE | 2016-12-31 06:00:00 | 63457.507812 | 65199.175781 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 7 | BE | 2016-12-31 07:00:00 | 65388.433594 | 68285.367188 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 8 | BE | 2016-12-31 08:00:00 | 67406.664062 | 72037.671875 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| 9 | BE | 2016-12-31 09:00:00 | 68057.156250 | 72820.468750 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 0 | BE | 2016-12-31 00:00:00 | 66282.510 | 70861.390 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 1 | BE | 2016-12-31 01:00:00 | 64465.336 | 67851.720 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 2 | BE | 2016-12-31 02:00:00 | 63257.125 | 67246.550 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 3 | BE | 2016-12-31 03:00:00 | 62059.344 | 64027.210 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 4 | BE | 2016-12-31 04:00:00 | 61247.133 | 61523.867 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 5 | BE | 2016-12-31 05:00:00 | 62052.453 | 63053.930 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 6 | BE | 2016-12-31 06:00:00 | 63457.508 | 65199.170 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 7 | BE | 2016-12-31 07:00:00 | 65388.434 | 68285.375 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 8 | BE | 2016-12-31 08:00:00 | 67406.664 | 72037.670 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| 9 | BE | 2016-12-31 09:00:00 | 68057.160 | 72820.470 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
 
 Let’s compare it to our pre-loaded version:
 
@@ -382,19 +391,19 @@ timegpt_fcst_ex_vars_df_new.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Using future exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
-|  | unique_id | ds | TimeGPT | TimeGPT-lo-90 | TimeGPT-lo-80 | TimeGPT-hi-80 | TimeGPT-hi-90 |
+|  | unique_id | ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
 |----|----|----|----|----|----|----|----|
-| 0 | BE | 2016-12-31 00:00:00 | 46.578371 | 40.398307 | 41.808656 | 51.348086 | 52.758435 |
-| 1 | BE | 2016-12-31 01:00:00 | 37.258364 | 28.092805 | 30.929055 | 43.587673 | 46.423923 |
-| 2 | BE | 2016-12-31 02:00:00 | 41.779458 | 29.432284 | 35.379695 | 48.179221 | 54.126632 |
-| 3 | BE | 2016-12-31 03:00:00 | 37.822341 | 25.122863 | 31.484450 | 44.160232 | 50.521820 |
-| 4 | BE | 2016-12-31 04:00:00 | 37.389141 | 23.840454 | 28.535553 | 46.242729 | 50.937828 |
+| 0 | BE | 2016-12-31 00:00:00 | 46.578370 | 56.544460 | 61.041550 | 36.612278 | 32.115190 |
+| 1 | BE | 2016-12-31 01:00:00 | 37.258366 | 46.114956 | 51.685863 | 28.401775 | 22.830870 |
+| 2 | BE | 2016-12-31 02:00:00 | 41.779457 | 48.384860 | 54.973396 | 35.174053 | 28.585516 |
+| 3 | BE | 2016-12-31 03:00:00 | 37.822342 | 47.836895 | 51.255950 | 27.807790 | 24.388733 |
+| 4 | BE | 2016-12-31 04:00:00 | 37.389145 | 46.747680 | 52.186092 | 28.030607 | 22.592197 |
 
 > 📘 Available models in Azure AI
 >

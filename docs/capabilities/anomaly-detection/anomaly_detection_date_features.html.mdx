@@ -27,15 +27,15 @@ nixtla_client = NixtlaClient(
 
 ```python
 # Read the data
-df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+df = pd.read_csv('https://datasets-nixtla.s3.amazonaws.com/peyton-manning.csv')
 
 # Add date features for anomaly detection
 # Here, we use date features at the month and year levels
 anomalies_df_x = nixtla_client.detect_anomalies(
-    df, time_col='timestamp', 
-    target_col='value', 
+    df,
     freq='D', 
     date_features=['month', 'year'],
+    date_features_to_one_hot=True,
     level=99.99,
 )
 
@@ -46,8 +46,8 @@ nixtla_client.weights_x.plot.barh(x='features', y='weights')
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Using the following exogenous features: ['month_1.0', 'month_2.0', 'month_3.0', 'month_4.0', 'month_5.0', 'month_6.0', 'month_7.0', 'month_8.0', 'month_9.0', 'month_10.0', 'month_11.0', 'month_12.0', 'year_2007.0', 'year_2008.0', 'year_2009.0', 'year_2010.0', 'year_2011.0', 'year_2012.0', 'year_2013.0', 'year_2014.0', 'year_2015.0', 'year_2016.0']
 INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
-INFO:nixtla.nixtla_client:Using the following exogenous variables: month_1, month_2, month_3, month_4, month_5, month_6, month_7, month_8, month_9, month_10, month_11, month_12, year_2007, year_2008, year_2009, year_2010, year_2011, year_2012, year_2013, year_2014, year_2015, year_2016
 ```
 
 ![](/nixtla/docs/capabilities/anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-5-output-2.png)

@@ -27,23 +27,13 @@ nixtla_client = NixtlaClient(
 
 ```python
 # Read the dataset
-df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+df = pd.read_csv('https://datasets-nixtla.s3.amazonaws.com/peyton-manning.csv')
 
 # Detect anomalies
-anomalies_df = nixtla_client.detect_anomalies(
-    df, 
-    time_col='timestamp', 
-    target_col='value', 
-    freq='D',
-)
+anomalies_df = nixtla_client.detect_anomalies(df, freq='D')
 
 # Plot anomalies
-nixtla_client.plot(
-    df, 
-    anomalies_df,
-    time_col='timestamp', 
-    target_col='value'
-)
+nixtla_client.plot(df, anomalies_df)
 ```
 
 ``` text
