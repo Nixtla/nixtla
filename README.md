@@ -186,21 +186,7 @@ TimeGPT has been featured in many publications and has been recognized for its i
 
 
 ## 🔖 License
-TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute (check out the [Contributing](#contributing) section).
+TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
 
 ## 📞 Get in touch
 For any questions or feedback, please feel free to reach out to us at ops [at] nixtla.io.
-
-## Contributing
-
-### 🛠️ Create the Development Environment
-
-In order to contrinute to this repository, you will need to install the development environment. You can do so by running the following commands:
-
-
-```bash
-pip install uv
-uv venv --python 3.10
-source .venv/bin/activate
-uv pip install -Ue .[dev]
-```
