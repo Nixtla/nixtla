@@ -47,7 +47,7 @@ setuptools.setup(
         "pandas",
         "tenacity",
         "tqdm",
-        "utilsforecast>=0.2.3",
+        "utilsforecast>=0.2.7",
     ],
     extras_require={
         "dev": dev + plotting + date_extras,
