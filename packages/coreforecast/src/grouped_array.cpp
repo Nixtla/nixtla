@@ -576,6 +576,13 @@ public:
         out.mutable_data());
     return out;
   }
+
+  py::array_t<T> GreatestAutocovariance(int max_lag) {
+    py::array_t<T> out(NumGroups());
+    Reduce(seasonal::GreatestAutocovariance<T>, 1, out.mutable_data(), 0,
+           max_lag);
+    return out;
+  }
 };
 
 template <typename T> void bind_ga(py::module &m, const std::string &name) {
@@ -651,7 +658,9 @@ template <typename T> void bind_ga(py::module &m, const std::string &name) {
       .def("_diff", &GroupedArray<T>::Difference)
       .def("_diffs", &GroupedArray<T>::Differences)
       .def("_inv_diff", &GroupedArray<T>::InvertDifference)
-      .def("_inv_diffs", &GroupedArray<T>::InvertDifferences);
+      .def("_inv_diffs", &GroupedArray<T>::InvertDifferences)
+      .def("_greatest_autocovariance",
+           &GroupedArray<T>::GreatestAutocovariance);
 }
 
 void init_ga(py::module_ &m) {
