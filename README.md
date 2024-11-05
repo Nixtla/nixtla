@@ -186,7 +186,7 @@ TimeGPT has been featured in many publications and has been recognized for its i
 
 
 ## 🔖 License
-TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute.
+TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
 
 ## 📞 Get in touch
 For any questions or feedback, please feel free to reach out to us at ops [at] nixtla.io.
