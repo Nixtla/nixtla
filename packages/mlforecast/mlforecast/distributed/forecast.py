@@ -195,7 +195,7 @@ class DistributedMLForecast:
             train = part[train_mask]
             valid_keep_cols = part.columns
             if static_features is not None:
-                valid_keep_cols.drop(static_features)
+                valid_keep_cols = valid_keep_cols.drop(static_features)
             valid = part.loc[valid_mask, valid_keep_cols].merge(cutoffs, on=id_col)
         transformed = ts.fit_transform(
             train,
@@ -456,6 +456,8 @@ class DistributedMLForecast:
     ) -> Iterable[pd.DataFrame]:
         for serialized_ts, _, serialized_valid in items:
             valid = cloudpickle.loads(serialized_valid)
+            if valid is not None:
+                X_df = valid
             ts = cloudpickle.loads(serialized_ts)
             res = ts.predict(
                 models=models,
@@ -649,7 +651,11 @@ class DistributedMLForecast:
                 engine=self.engine,
             )
             results.append(fa.get_native_as_df(preds))
-        return fa.union(*results)
+        if len(results) == 1:
+            res = results[0]
+        else:
+            res = fa.union(*results)
+        return res
 
     @staticmethod
     def _save_ts(items: List[List[Any]], path: str) -> Iterable[pd.DataFrame]:
