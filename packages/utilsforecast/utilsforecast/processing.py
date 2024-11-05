@@ -389,7 +389,9 @@ def offset_times(
                 f"Cannot offset times with data type: '{times.dtype}' "
                 f"using a frequency of type: '{type(freq)}'."
             )
-        out = times + n * freq
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
+            out = times + n * freq
     elif isinstance(times, pl_Series) and isinstance(freq, int):
         out = times + n * freq
     elif isinstance(times, pl_Series) and isinstance(freq, str):
@@ -437,8 +439,10 @@ def time_ranges(
             if isinstance(freq, str):
                 freq = pd.tseries.frequencies.to_offset(freq)
             out = []
-            for i in range(periods):
-                out.append([starts + i * freq])
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
+                for i in range(periods):
+                    out.append([starts + i * freq])
             # pyarrow timestamps don't seem to work with offsets yet, keeping np.vstack
             out = np.vstack(out).ravel(order="F")
         else:
