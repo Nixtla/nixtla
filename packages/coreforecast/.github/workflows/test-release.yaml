@@ -18,7 +18,7 @@ jobs:
             [ubuntu-latest, manylinux_x86_64],
             [ubuntu-latest, manylinux_aarch64],
             [windows-latest, win_amd64],
-            [macos-12, macosx_x86_64],
+            [macos-13, macosx_x86_64],
             [macos-14, macosx_arm64],
           ]
     steps:
@@ -33,7 +33,7 @@ jobs:
           platforms: arm64
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@3b9817b1bf26186f03ab8277bab9b827ea5cc254 # v3.2.0
+        uses: astral-sh/setup-uv@2e657c127d5b1635d5a8e3fa40e0ac50a5bf6992 # v3.2.2
 
       - name: Build wheels
         uses: pypa/cibuildwheel@7940a4c0e76eb2030e473a5f864f291f63ee879b # v2.21.3
@@ -84,6 +84,6 @@ jobs:
           merge-multiple: true
 
       - name: Publish package to TestPyPI
-        uses: pypa/gh-action-pypi-publish@fb13cb306901256ace3dab689990e13a5550ffaa # v1.11.0
+        uses: pypa/gh-action-pypi-publish@15c56dba361d8335944d31a2ecd17d700fc7bcbc # v1.12.2
         with:
           repository-url: https://test.pypi.org/legacy/
