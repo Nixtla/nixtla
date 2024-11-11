@@ -242,6 +242,7 @@ class TimeSeries:
         target_col: str,
         static_features: Optional[List[str]] = None,
         keep_last_n: Optional[int] = None,
+        weight_col: Optional[str] = None,
     ) -> "TimeSeries":
         """Save the series values, ids and last dates."""
         validate_format(df, id_col, time_col, target_col)
@@ -251,6 +252,7 @@ class TimeSeries:
         self.id_col = id_col
         self.target_col = target_col
         self.time_col = time_col
+        self.weight_col = weight_col
         self.keep_last_n = keep_last_n
         self.static_features = static_features
         sorted_df = df[[id_col, time_col, target_col]]
@@ -298,9 +300,12 @@ class TimeSeries:
         if static_features is None:
             static_features = [c for c in df.columns if c not in [time_col, target_col]]
         elif id_col not in static_features:
-            static_features = [id_col] + static_features
+            static_features = [id_col, *static_features]
         else:  # static_features defined and contain id_col
             to_drop = [time_col, target_col]
+        if weight_col is not None:
+            to_drop.append(weight_col)
+            static_features = [f for f in static_features if f != weight_col]
         self.ga = ga
         series_starts = ga.indptr[:-1]
         series_ends = ga.indptr[1:] - 1
@@ -478,7 +483,11 @@ class TimeSeries:
 
         # assemble return
         if return_X_y:
-            X = df[self.features_order_]
+            if self.weight_col is not None:
+                x_cols = [self.weight_col, *self.features_order_]
+            else:
+                x_cols = self.features_order_
+            X = df[x_cols]
             if as_numpy:
                 X = ufp.to_numpy(X)
             return X, target
@@ -506,6 +515,7 @@ class TimeSeries:
         max_horizon: Optional[int] = None,
         return_X_y: bool = False,
         as_numpy: bool = False,
+        weight_col: Optional[str] = None,
     ) -> Union[DFType, Tuple[DFType, np.ndarray]]:
         """Add the features to `data` and save the required information for the predictions step.
 
@@ -522,6 +532,7 @@ class TimeSeries:
             target_col=target_col,
             static_features=static_features,
             keep_last_n=keep_last_n,
+            weight_col=weight_col,
         )
         return self._transform(
             df=data,
