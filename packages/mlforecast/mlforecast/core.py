@@ -432,6 +432,16 @@ class TimeSeries:
             self._dropped_series = None
 
         # once we've computed the features and target we can slice the series
+        update_samples = [
+            getattr(tfm, "update_samples", -1) for tfm in self.transforms.values()
+        ]
+        if (
+            self.keep_last_n is None
+            and update_samples
+            and all(samples > 0 for samples in update_samples)
+        ):
+            # user didn't set keep_last_n and we can infer it from the transforms
+            self.keep_last_n = max(update_samples)
         if self.keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
         del self._restore_idxs, self._sort_idxs

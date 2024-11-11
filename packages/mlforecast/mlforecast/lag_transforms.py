@@ -68,8 +68,17 @@ class _BaseLagTransform(BaseEstimator):
         )
         return out
 
+    @property
+    def _lag(self):
+        return self._core_tfm.lag - 1
+
+    @property
+    def update_samples(self) -> int:
+        return -1
+
 # %% ../nbs/lag_transforms.ipynb 6
 class Lag(_BaseLagTransform):
+
     def __init__(self, lag: int):
         self.lag = lag
         self._core_tfm = core_tfms.Lag(lag=lag)
@@ -82,6 +91,10 @@ class Lag(_BaseLagTransform):
 
     def __eq__(self, other):
         return isinstance(other, Lag) and self.lag == other.lag
+
+    @property
+    def update_samples(self) -> int:
+        return self.lag
 
 # %% ../nbs/lag_transforms.ipynb 7
 class _RollingBase(_BaseLagTransform):
@@ -99,6 +112,10 @@ class _RollingBase(_BaseLagTransform):
         """
         self.window_size = window_size
         self.min_samples = min_samples
+
+    @property
+    def update_samples(self) -> int:
+        return self._lag + self.window_size
 
 # %% ../nbs/lag_transforms.ipynb 8
 class RollingMean(_RollingBase): ...
@@ -149,6 +166,10 @@ class _Seasonal_RollingBase(_BaseLagTransform):
         self.window_size = window_size
         self.min_samples = min_samples
 
+    @property
+    def update_samples(self) -> int:
+        return self._lag + self.season_length * self.window_size
+
 # %% ../nbs/lag_transforms.ipynb 11
 class SeasonalRollingMean(_Seasonal_RollingBase): ...
 
@@ -183,6 +204,10 @@ class _ExpandingBase(_BaseLagTransform):
 
     def __init__(self): ...
 
+    @property
+    def update_samples(self) -> int:
+        return 1
+
 # %% ../nbs/lag_transforms.ipynb 14
 class ExpandingMean(_ExpandingBase): ...
 
@@ -200,6 +225,10 @@ class ExpandingQuantile(_ExpandingBase):
     def __init__(self, p: float):
         self.p = p
 
+    @property
+    def update_samples(self) -> int:
+        return -1
+
 # %% ../nbs/lag_transforms.ipynb 16
 class ExponentiallyWeightedMean(_BaseLagTransform):
     """Exponentially weighted average
@@ -211,6 +240,10 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
 
     def __init__(self, alpha: float):
         self.alpha = alpha
+
+    @property
+    def update_samples(self) -> int:
+        return 1
 
 # %% ../nbs/lag_transforms.ipynb 18
 class Offset(_BaseLagTransform):
@@ -231,8 +264,13 @@ class Offset(_BaseLagTransform):
         return self.tfm._get_name(lag + self.n)
 
     def _set_core_tfm(self, lag: int) -> "Offset":
-        self._core_tfm = clone(self.tfm)._set_core_tfm(lag + self.n)
+        self.tfm = clone(self.tfm)._set_core_tfm(lag + self.n)
+        self._core_tfm = self.tfm._core_tfm
         return self
+
+    @property
+    def update_samples(self) -> int:
+        return self.tfm.update_samples + self.n
 
 # %% ../nbs/lag_transforms.ipynb 20
 class Combine(_BaseLagTransform):
@@ -269,3 +307,7 @@ class Combine(_BaseLagTransform):
 
     def update(self, ga: CoreGroupedArray) -> np.ndarray:
         return self.operator(self.tfm1.update(ga), self.tfm2.update(ga))
+
+    @property
+    def update_samples(self):
+        return max(self.tfm1.update_samples, self.tfm2.update_samples)
