@@ -512,7 +512,12 @@ class AutoMLForecast:
         if loss is None:
 
             def loss(df, train_df):  # noqa: ARG001
-                return smape(df, models=["model"])["model"].mean()
+                return smape(
+                    df,
+                    models=["model"],
+                    id_col=id_col,
+                    target_col=target_col,
+                )["model"].mean()
 
         if study_kwargs is None:
             study_kwargs = {}
@@ -554,8 +559,14 @@ class AutoMLForecast:
             study.optimize(objective, n_trials=num_samples, **optimize_kwargs)
             self.results_[name] = study
             best_config = study.best_trial.user_attrs["config"]
-            best_config["mlf_fit_params"].pop("fitted", None)
-            best_config["mlf_fit_params"].pop("prediction_intervals", None)
+            for arg in (
+                "fitted",
+                "prediction_intervals",
+                "id_col",
+                "time_col",
+                "target_col",
+            ):
+                best_config["mlf_fit_params"].pop(arg, None)
             best_model = clone(auto_model.model)
             best_model.set_params(**best_config["model_params"])
             self.models_[name] = MLForecast(
@@ -567,6 +578,9 @@ class AutoMLForecast:
                 df,
                 fitted=fitted,
                 prediction_intervals=prediction_intervals,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
                 **best_config["mlf_fit_params"],
             )
         return self
