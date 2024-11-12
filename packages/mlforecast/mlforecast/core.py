@@ -402,16 +402,23 @@ class TimeSeries:
             target = target[self._restore_idxs]
 
         # determine rows to keep
+        target_nulls = np.isnan(target)
+        if target_nulls.ndim == 2:
+            # target nulls for each horizon are dropped in MLForecast.fit_models
+            # we just drop rows here for which all the target values are null
+            target_nulls = target_nulls.all(axis=1)
         if dropna:
             feature_nulls = np.full(df.shape[0], False)
             for feature_vals in features.values():
                 feature_nulls |= np.isnan(feature_vals)
-            target_nulls = np.isnan(target)
-            if target_nulls.ndim == 2:
-                # target nulls for each horizon are dropped in MLForecast.fit_models
-                # we just drop rows here for which all the target values are null
-                target_nulls = target_nulls.all(axis=1)
             keep_rows = ~(feature_nulls | target_nulls)
+        else:
+            # we always want to drop rows with nulls in the target
+            keep_rows = ~target_nulls
+
+        self._dropped_series: Optional[np.ndarray] = None
+        if not keep_rows.all():
+            # remove rows with nulls
             for k, v in features.items():
                 features[k] = v[keep_rows]
             target = target[keep_rows]
@@ -422,7 +429,7 @@ class TimeSeries:
                 last_idxs = self._sort_idxs[last_idxs]
             last_vals_nan = ~keep_rows[last_idxs]
             if last_vals_nan.any():
-                self._dropped_series: Optional[np.ndarray] = np.where(last_vals_nan)[0]
+                self._dropped_series = np.where(last_vals_nan)[0]
                 dropped_ids = reprlib.repr(list(self.uids[self._dropped_series]))
                 warnings.warn(
                     "The following series were dropped completely "
@@ -430,11 +437,9 @@ class TimeSeries:
                     "These series won't show up if you use `MLForecast.forecast_fitted_values()`.\n"
                     "You can set `dropna=False` or use transformations that require less samples to mitigate this"
                 )
-            else:
-                self._dropped_series = None
         elif isinstance(df, pd.DataFrame):
+            # we'll be assigning columns below, so we need to copy
             df = df.copy(deep=False)
-            self._dropped_series = None
 
         # once we've computed the features and target we can slice the series
         update_samples = [
