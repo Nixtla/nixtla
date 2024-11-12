@@ -377,7 +377,9 @@ class DistributedMLForecast:
         ]
         self.models_ = {}
         if SPARK_INSTALLED and isinstance(data, SparkDataFrame):
-            featurizer = VectorAssembler(inputCols=features, outputCol="features")
+            featurizer = VectorAssembler(
+                inputCols=features, outputCol="features", handleInvalid="keep"
+            )
             train_data = featurizer.transform(prep)[target_col, "features"]
             for name, model in self.models.items():
                 trained_model = model._pre_fit(target_col).fit(train_data)
