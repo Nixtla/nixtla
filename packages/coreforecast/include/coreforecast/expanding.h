@@ -34,9 +34,7 @@ inline void QuantileTransform(const T *data, int n, T *out, T p) {
 
 template <typename T>
 inline void QuantileUpdate(const T *data, int n, T *out, T p) {
-  T *buffer = new T[n];
-  std::copy(data, data + n, buffer);
-  *out = Quantile(buffer, p, n);
-  delete[] buffer;
+  std::vector<T> buffer(data, data + n);
+  *out = Quantile(buffer.data(), p, n);
 }
 } // namespace expanding

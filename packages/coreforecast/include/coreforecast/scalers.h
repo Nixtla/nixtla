@@ -42,28 +42,24 @@ inline void StandardScalerStats(const T *data, int n, T *stats) {
 
 template <typename T>
 inline void RobustScalerIqrStats(const T *data, int n, T *stats) {
-  T *buffer = new T[n];
-  std::copy(data, data + n, buffer);
-  T median = Quantile(buffer, static_cast<T>(0.5), n);
-  T q1 = Quantile(buffer, static_cast<T>(0.25), n);
-  T q3 = Quantile(buffer, static_cast<T>(0.75), n);
+  std::vector<T> buffer(data, data + n);
+  T median = Quantile(buffer.data(), static_cast<T>(0.5), n);
+  T q1 = Quantile(buffer.data(), static_cast<T>(0.25), n);
+  T q3 = Quantile(buffer.data(), static_cast<T>(0.75), n);
   stats[0] = median;
   stats[1] = q3 - q1;
-  delete[] buffer;
 }
 
 template <typename T>
 inline void RobustScalerMadStats(const T *data, int n, T *stats) {
-  T *buffer = new T[n];
-  std::copy(data, data + n, buffer);
-  const T median = Quantile(buffer, static_cast<T>(0.5), n);
+  std::vector<T> buffer(data, data + n);
+  const T median = Quantile(buffer.data(), static_cast<T>(0.5), n);
   for (int i = 0; i < n; ++i) {
     buffer[i] = std::abs(buffer[i] - median);
   }
-  T mad = Quantile(buffer, static_cast<T>(0.5), n);
+  T mad = Quantile(buffer.data(), static_cast<T>(0.5), n);
   stats[0] = median;
   stats[1] = mad;
-  delete[] buffer;
 }
 
 template <typename T>
@@ -166,23 +162,22 @@ inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
 }
 
 template <typename T> T BoxCoxLogLik(T lambda, const T *data, int n) {
-  T *logdata = new T[n];
-  std::transform(data, data + n, logdata, [](T x) { return std::log(x); });
+  std::vector<T> logdata(n);
+  std::transform(data, data + n, logdata.begin(),
+                 [](T x) { return std::log(x); });
   double var;
   if (lambda == 0.0) {
-    double mean = Mean(logdata, n);
-    var = Variance(logdata, n, mean);
+    double mean = Mean(logdata.data(), n);
+    var = Variance(logdata.data(), n, mean);
   } else {
-    T *transformed = new T[n];
-    std::transform(data, data + n, transformed, [lambda](T x) {
+    std::vector<T> transformed(n);
+    std::transform(data, data + n, transformed.begin(), [lambda](T x) {
       return std::exp(lambda * std::log(x)) / lambda;
     });
-    double mean = Mean(transformed, n);
-    var = Variance(transformed, n, mean);
-    delete[] transformed;
+    double mean = Mean(transformed.data(), n);
+    var = Variance(transformed.data(), n, mean);
   }
-  double sum_logdata = std::accumulate(logdata, logdata + n, 0.0);
-  delete[] logdata;
+  double sum_logdata = std::accumulate(logdata.begin(), logdata.end(), 0.0);
   return -static_cast<T>((lambda - 1) * sum_logdata - n / 2 * std::log(var));
 }
 

@@ -26,6 +26,10 @@ private:
 template <typename T, typename Accumulator, typename... Args>
 inline void Transform(const T *data, int n, T *out, int window_size,
                       int min_samples, Args &&...args) {
+  if (n < min_samples) {
+    std::fill(out, out + n, std::numeric_limits<T>::quiet_NaN());
+    return;
+  }
   Accumulator accumulator(window_size, std::forward<Args>(args)...);
   window_size = std::min(window_size, n);
   min_samples = std::min(min_samples, window_size);
@@ -207,22 +211,19 @@ inline void SeasonalTransform(Func RollingTfm, const T *data, int n, T *out,
                               int season_length, int window_size,
                               int min_samples, Args &&...args) {
   int buff_size = n / season_length + (n % season_length > 0);
-  T *season_data = new T[buff_size];
-  T *season_out = new T[buff_size];
-  std::fill_n(season_out, buff_size, std::numeric_limits<T>::quiet_NaN());
-  for (int i = 0; i < season_length; ++i) {
+  std::vector<T> season_data(buff_size);
+  std::vector<T> season_out(buff_size);
+  for (int i = 0; i < std::min(n, season_length); ++i) {
     int season_n = n / season_length + (i < n % season_length);
     for (int j = 0; j < season_n; ++j) {
       season_data[j] = data[i + j * season_length];
     }
-    RollingTfm(season_data, season_n, season_out, window_size, min_samples,
-               std::forward<Args>(args)...);
+    RollingTfm(season_data.data(), season_n, season_out.data(), window_size,
+               min_samples, std::forward<Args>(args)...);
     for (int j = 0; j < season_n; ++j) {
       out[i + j * season_length] = season_out[j];
     }
   }
-  delete[] season_data;
-  delete[] season_out;
 }
 
 template <typename T>
@@ -272,11 +273,10 @@ inline void Update(Func RollingTfm, const T *data, int n, T *out,
     return;
   }
   int n_samples = std::min(window_size, n);
-  T *buffer = new T[n_samples];
-  RollingTfm(data + n - n_samples, n_samples, buffer, window_size, min_samples,
-             std::forward<Args>(args)...);
+  std::vector<T> buffer(n_samples);
+  RollingTfm(data + n - n_samples, n_samples, buffer.data(), window_size,
+             min_samples, std::forward<Args>(args)...);
   *out = buffer[n_samples - 1];
-  delete[] buffer;
 }
 
 template <typename T>
@@ -317,13 +317,12 @@ inline void SeasonalUpdate(Func RollingUpdate, const T *data, int n, T *out,
     return;
   }
   int n_samples = std::min(window_size, season_n);
-  T *season_data = new T[n_samples];
+  std::vector<T> season_data(n_samples);
   for (int i = 0; i < n_samples; ++i) {
     season_data[i] = data[n - 1 - (n_samples - 1 - i) * season_length];
   }
-  RollingUpdate(season_data, n_samples, out, window_size, min_samples,
+  RollingUpdate(season_data.data(), n_samples, out, window_size, min_samples,
                 std::forward<Args>(args)...);
-  delete[] season_data;
 }
 
 template <typename T>
