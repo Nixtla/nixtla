@@ -136,20 +136,13 @@ We encourage users to explore this [literature review](https://otexts.com/fpp3/h
 ## 🙏 How to cite
 If you enjoy or benefit from using these Python implementations, a citation to this [hierarchical forecasting reference paper](https://arxiv.org/abs/2207.03517) will be greatly appreciated.
 ```bibtex
-@article{olivares2022hierarchicalforecast,
-    author    = {Kin G. Olivares and
-                 Federico Garza and 
-                 David Luo and 
-                 Cristian Challú and
-                 Max Mergenthaler and
-                 Souhaib Ben Taieb and
-                 Shanika L. Wickramasuriya and
-                 Artur Dubrawski},
-    title     = {{HierarchicalForecast}: A Reference Framework for Hierarchical Forecasting in Python},
-    journal   = {Work in progress paper, submitted to Journal of Machine Learning Research.},
-    volume    = {abs/2207.03517},
-    year      = {2022},
-    url       = {https://arxiv.org/abs/2207.03517},
-    archivePrefix = {arXiv}
+@article{olivares2024hierarchicalforecastreferenceframeworkhierarchical,
+      title={HierarchicalForecast: A Reference Framework for Hierarchical Forecasting in Python}, 
+      author={Kin G. Olivares and Azul Garza and David Luo and Cristian Challú and Max Mergenthaler and Souhaib Ben Taieb and Shanika L. Wickramasuriya and Artur Dubrawski},
+      year={2024},
+      eprint={2207.03517},
+      archivePrefix={arXiv},
+      primaryClass={stat.ML},
+      url={https://arxiv.org/abs/2207.03517}, 
 }
 ```
