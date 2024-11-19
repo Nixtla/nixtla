@@ -4,8 +4,6 @@
 __all__ = ['CountryHolidays', 'SpecialDates']
 
 # %% ../nbs/src/date_features.ipynb 4
-from typing import Dict, List
-
 import pandas as pd
 
 # %% ../nbs/src/date_features.ipynb 6
@@ -33,7 +31,7 @@ def _get_holidays_df(dates, categories, holiday_extractor, supported_categories)
 class CountryHolidays:
     """Given a list of countries, returns a dataframe with holidays for each country."""
 
-    def __init__(self, countries: List[str]):
+    def __init__(self, countries: list[str]):
         self.countries = countries
 
     def __call__(self, dates: pd.DatetimeIndex):
@@ -56,7 +54,7 @@ class CountryHolidays:
 class SpecialDates:
     """Given a dictionary of categories and dates, returns a dataframe with the special dates."""
 
-    def __init__(self, special_dates: Dict[str, List[str]]):
+    def __init__(self, special_dates: dict[str, list[str]]):
         self.special_dates = special_dates
 
     def __call__(self, dates: pd.DatetimeIndex):

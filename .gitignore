@@ -30,3 +30,6 @@ data
 *.rda
 nbs/_extensions
 !nbs/assets/*
+
+# VSCode
+*.code-workspace

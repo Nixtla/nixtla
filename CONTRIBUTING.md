@@ -35,7 +35,14 @@ Bug fixes and features are added through pull requests (PRs).
 #### Set up an environment
 Create a virtual environment to install the library's dependencies. We recommend [astral's uv](https://github.com/astral-sh/uv).
 Once you've created the virtual environment you should activate it and then install the library in editable mode along with its
-development dependencies with the following command: `uv pip install -e ".[dev]"`
+development dependencies.
+
+```bash
+pip install uv
+uv venv --python 3.10
+source .venv/bin/activate
+uv pip install -Ue .[dev]
+```
 
 #### Set Up TimeGPT token
 This library uses `python-dotenv` for development. To set up your TimeGPT token, add the following lines to your `.env` file:
