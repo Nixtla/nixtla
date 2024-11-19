@@ -100,6 +100,7 @@ _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = Literal["azureai", "timegpt-1", "timegpt-1-long-horizon"]
 _Finetune_Depth = Literal[1, 2, 3, 4, 5]
+_Threshold_Method = Literal["univariate", "multivariate", "historical"]
 
 _date_features_by_freq = {
     # Daily frequencies
@@ -502,6 +503,9 @@ def _maybe_add_intervals(
 ) -> DFType:
     if intervals is None:
         return df
+    first_key = next(iter(intervals), None)
+    if first_key is None or intervals[first_key] is None:
+        return df
     intervals_df = type(df)(
         {f"TimeGPT-{k}": intervals[k] for k in sorted(intervals.keys())}
     )
@@ -521,6 +525,7 @@ def _parse_in_sample_output(
     id_col: str,
     time_col: str,
     target_col: str,
+    detection_size: Optional[int],
 ) -> DataFrame:
     times = df[time_col].to_numpy()
     targets = df[target_col].to_numpy()
@@ -538,6 +543,8 @@ def _parse_in_sample_output(
             "TimeGPT": in_sample_output["mean"],
         }
     )
+    if detection_size is not None:
+        out = out.groupby(id_col).tail(detection_size).reset_index(drop=True)
     return _maybe_add_intervals(out, in_sample_output["intervals"])  # type: ignore
 
 
@@ -1228,6 +1235,7 @@ class NixtlaClient:
                 id_col=id_col,
                 time_col=time_col,
                 target_col=target_col,
+                detection_size=None,
             )
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
@@ -1260,6 +1268,9 @@ class NixtlaClient:
     def _distributed_detect_anomalies(
         self,
         df: DistributedDFType,
+        h: _PositiveInt,
+        detection_size: _PositiveInt,
+        threshold_method: _Threshold_Method,
         freq: Optional[str],
         id_col: str,
         time_col: str,
@@ -1290,6 +1301,9 @@ class NixtlaClient:
             schema=schema,
             params=dict(
                 client=self,
+                h=h,
+                detection_size=detection_size,
+                threshold_method=threshold_method,
                 freq=freq,
                 id_col=id_col,
                 time_col=time_col,
@@ -1310,6 +1324,9 @@ class NixtlaClient:
     def detect_anomalies(
         self,
         df: AnyDFType,
+        h: _PositiveInt,
+        detection_size: _PositiveInt,
+        threshold_method: _Threshold_Method = "univariate",
         freq: Optional[str] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
@@ -1338,6 +1355,15 @@ class NixtlaClient:
             - id_col:
                 Column name in `df` that identifies unique time series. Each unique value in this column
                 corresponds to a unique time series.
+        h : int
+            Forecast horizon.
+        detection_size: int
+            The length of the sequence where anomalies will be detected starting from the end of the dataset.
+        threshold_method: str (default='univariate')
+            The method used to calculate the intervals for anomaly detection.
+            Use `univariate` to flag anomalies independently for each series in the dataset.
+            Use `multivariate` to have a global threshold across all series in the dataset. For this method, all series
+            must have the same length.
         freq : str
             Frequency of the data. By default, the freq will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
@@ -1381,6 +1407,9 @@ class NixtlaClient:
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_detect_anomalies(
                 df=df,
+                h=h,
+                detection_size=detection_size,
+                threshold_method=threshold_method,
                 freq=freq,
                 id_col=id_col,
                 time_col=time_col,
@@ -1434,6 +1463,9 @@ class NixtlaClient:
                 "sizes": np.diff(processed.indptr),
                 "X": X,
             },
+            "h": h,
+            "detection_size": detection_size,
+            "threshold_method": threshold_method,
             "model": model,
             "freq": standard_freq,
             "clean_ex_first": clean_ex_first,
@@ -1458,10 +1490,11 @@ class NixtlaClient:
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
+            detection_size=detection_size,
         )
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
+        out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         return out
 
     def _distributed_cross_validation(
