@@ -445,6 +445,7 @@ class AutoMLForecast:
         h: int,
         num_samples: int,
         step_size: Optional[int] = None,
+        input_size: Optional[int] = None,
         refit: Union[bool, int] = False,
         loss: Optional[Callable[[DataFrame, DataFrame], float]] = None,
         id_col: str = "unique_id",
@@ -470,6 +471,8 @@ class AutoMLForecast:
             Number of trials to run
         step_size : int, optional (default=None)
             Step size between each cross validation window. If None it will be equal to `h`.
+        input_size : int, optional (default=None)
+            Maximum training samples per serie in each window. If None, will use an expanding window.
         refit : bool or int (default=False)
             Retrain model for each cross validation window.
             If False, the models are trained at the beginning and then used to predict each window.
@@ -550,6 +553,7 @@ class AutoMLForecast:
                 n_windows=n_windows,
                 h=h,
                 step_size=step_size,
+                input_size=input_size,
                 refit=refit,
                 id_col=id_col,
                 time_col=time_col,
