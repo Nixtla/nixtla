@@ -57,6 +57,7 @@ for best practices.**
 - [m4](https://www.kaggle.com/code/lemuz90/m4-competition)
 - [m4-cv](https://www.kaggle.com/code/lemuz90/m4-competition-cv)
 - [favorita](https://www.kaggle.com/code/lemuz90/mlforecast-favorita)
+- [VN1](https://colab.research.google.com/drive/1UdhCAk49k6HgMezG-U_1ETnAB5pYvZk9)
 
 ## Why?
 

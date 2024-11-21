@@ -86,21 +86,22 @@ class Differences(_BaseGroupedArrayTargetTransform):
         self.differences = list(differences)
 
     def fit_transform(self, ga: GroupedArray) -> GroupedArray:
-        self.fitted_: List[GroupedArray] = []
+        self.fitted_: List[np.ndarray] = []
+        self.fitted_indptr_: Optional[np.ndarray] = None
         original_sizes = np.diff(ga.indptr)
         total_diffs = sum(self.differences)
         small_series = original_sizes < total_diffs
         if small_series.any():
-            raise _ShortSeriesException(np.arange(ga.n_groups)[small_series])
+            raise _ShortSeriesException(np.where(small_series)[0])
         self.scalers_ = []
         core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
         for d in self.differences:
             if self.store_fitted:
                 # these are saved in order to be able to perform a correct
                 # inverse transform when trying to retrieve the fitted values.
-                self.fitted_.append(
-                    GroupedArray(core_ga.data.copy(), core_ga.indptr.copy())
-                )
+                self.fitted_.append(core_ga.data.copy())
+                if self.fitted_indptr_ is None:
+                    self.fitted_indptr_ = core_ga.indptr.copy()
             scaler = core_scalers.Difference(d)
             transformed = scaler.fit_transform(core_ga)
             self.scalers_.append(scaler)
@@ -122,14 +123,34 @@ class Differences(_BaseGroupedArrayTargetTransform):
         return GroupedArray(transformed, ga.indptr)
 
     def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
-        ga = copy.copy(ga)
+        if self.fitted_[0].size < ga.data.size:
+            raise ValueError("fitted differences are smaller than provided target.")
+        transformed = ga.data
         for d, fitted in zip(reversed(self.differences), reversed(self.fitted_)):
-            fitted.restore_fitted_difference(ga.data, ga.indptr, d)
-        return ga
+            fitted_ga = CoreGroupedArray(fitted, self.fitted_indptr_)
+            adds = fitted_ga._lag(d)
+            if adds.size > ga.data.size:
+                adds = CoreGroupedArray(adds, self.fitted_indptr_)._tails(ga.indptr)
+            transformed = transformed + adds
+        return GroupedArray(transformed, ga.indptr)
 
     def take(self, idxs: np.ndarray) -> "Differences":
         out = Differences(self.differences)
-        out.fitted_ = [ga.take(idxs) for ga in self.fitted_]
+        if self.fitted_indptr_ is None:
+            out.fitted_ = []
+            out.fitted_indptr_ = None
+        else:
+            out.fitted_ = [
+                np.hstack(
+                    [
+                        data[self.fitted_indptr_[i] : self.fitted_indptr_[i + 1]]
+                        for i in idxs
+                    ]
+                )
+                for data in self.fitted_
+            ]
+            sizes = np.diff(self.fitted_indptr_)[idxs]
+            out.fitted_indptr_ = np.append(0, sizes.cumsum())
         out.scalers_ = [scaler.take(idxs) for scaler in self.scalers_]
         return out
 
@@ -140,10 +161,13 @@ class Differences(_BaseGroupedArrayTargetTransform):
         diffs = first_scaler.differences
         out = Differences(diffs)
         out.fitted_ = []
-        for i in range(len(scalers[0].fitted_)):
-            data = np.hstack([sc.fitted_[i].data for sc in scalers])
-            sizes = np.hstack([np.diff(sc.fitted_[i].indptr) for sc in scalers])
-            out.fitted_.append(GroupedArray(data, np.append(0, sizes.cumsum())))
+        if first_scaler.fitted_indptr_ is None:
+            out.fitted_indptr_ = None
+        else:
+            for i in range(len(scalers[0].fitted_)):
+                out.fitted_.append(np.hstack([sc.fitted_[i] for sc in scalers]))
+            sizes = np.hstack([np.diff(sc.fitted_indptr_) for sc in scalers])
+            out.fitted_indptr_ = np.append(0, sizes.cumsum())
         out.scalers_ = [
             core_scaler.stack([sc.scalers_[i] for sc in scalers])
             for i in range(len(diffs))

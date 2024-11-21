@@ -154,19 +154,28 @@ def _parse_transforms(
         namer = _build_transform_name
     for lag in lags:
         transforms[f"lag{lag}"] = Lag(lag)
+    has_fns = False
     for lag in lag_transforms.keys():
         for tfm in lag_transforms[lag]:
             if isinstance(tfm, _BaseLagTransform):
                 tfm_name = namer(tfm, lag)
                 transforms[tfm_name] = clone(tfm)._set_core_tfm(lag)
             else:
+                has_fns = True
                 tfm, *args = _as_tuple(tfm)
                 assert callable(tfm)
                 tfm_name = namer(tfm, lag, *args)
                 transforms[tfm_name] = (lag, tfm, *args)
+    if has_fns:
+        warnings.warn(
+            "The `window_ops` package (and thus `numba`) will no longer be "
+            "a dependency in a future version.\n"
+            "Please make sure to add it to your requirements to ensure compatibility.",
+            category=FutureWarning,
+        )
     return transforms
 
-# %% ../nbs/core.ipynb 21
+# %% ../nbs/core.ipynb 22
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 

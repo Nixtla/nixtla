@@ -3,18 +3,18 @@
 # %% auto 0
 __all__ = ['GroupedArray']
 
-# %% ../nbs/grouped_array.ipynb 1
+# %% ../nbs/grouped_array.ipynb 2
 import concurrent.futures
 from typing import Any, Dict, Mapping, Tuple, Union
 
-from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
 import numpy as np
+from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
 from utilsforecast.compat import njit
 
 from .compat import shift_array
 from .lag_transforms import _BaseLagTransform
 
-# %% ../nbs/grouped_array.ipynb 2
+# %% ../nbs/grouped_array.ipynb 3
 @njit(nogil=True)
 def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
     """Shifts every group in `data` by `lag` and computes `func(shifted, *args)`.
@@ -33,66 +33,6 @@ def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarra
             lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
             out[indptr[i] : indptr[i + 1]] = func(lagged, *args)
     return out
-
-
-@njit
-def _restore_fitted_difference(diffs_data, diffs_indptr, data, indptr, d):
-    n_series = len(indptr) - 1
-    for i in range(n_series):
-        serie = data[indptr[i] : indptr[i + 1]]
-        diffs_size = diffs_indptr[i + 1] - diffs_indptr[i]
-        dropped_rows = diffs_size - serie.size
-        start_idx = max(0, d - dropped_rows)
-        for j in range(start_idx, serie.size):
-            serie[j] += diffs_data[diffs_indptr[i + 1] - serie.size - d + j]
-
-
-@njit
-def _expand_target(data, indptr, max_horizon):
-    out = np.empty((data.size, max_horizon), dtype=data.dtype)
-    n_series = len(indptr) - 1
-    n = 0
-    for i in range(n_series):
-        serie = data[indptr[i] : indptr[i + 1]]
-        for j in range(serie.size):
-            upper = min(serie.size - j, max_horizon)
-            for k in range(upper):
-                out[n, k] = serie[j + k]
-            for k in range(upper, max_horizon):
-                out[n, k] = np.nan
-            n += 1
-    return out
-
-
-@njit
-def _append_several(
-    data: np.ndarray,
-    indptr: np.ndarray,
-    new_sizes: np.ndarray,
-    new_values: np.ndarray,
-    new_groups: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    new_data = np.empty(data.size + new_values.size, dtype=data.dtype)
-    new_indptr = np.empty(new_sizes.size + 1, dtype=indptr.dtype)
-    new_indptr[0] = 0
-    old_indptr_idx = 0
-    new_vals_idx = 0
-    for i, is_new in enumerate(new_groups):
-        new_size = new_sizes[i]
-        if is_new:
-            old_size = 0
-        else:
-            prev_slice = slice(indptr[old_indptr_idx], indptr[old_indptr_idx + 1])
-            old_indptr_idx += 1
-            old_size = prev_slice.stop - prev_slice.start
-            new_size += old_size
-            new_data[new_indptr[i] : new_indptr[i] + old_size] = data[prev_slice]
-        new_indptr[i + 1] = new_indptr[i] + new_size
-        new_data[new_indptr[i] + old_size : new_indptr[i + 1]] = new_values[
-            new_vals_idx : new_vals_idx + new_sizes[i]
-        ]
-        new_vals_idx += new_sizes[i]
-    return new_data, new_indptr
 
 # %% ../nbs/grouped_array.ipynb 4
 class GroupedArray:
@@ -175,21 +115,22 @@ class GroupedArray:
                 core_tfms[name] = tfm
             else:
                 numba_tfms[name] = tfm
-        with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
-            for tfm_name, (lag, tfm, *args) in numba_tfms.items():
-                future = executor.submit(
-                    _transform_series,
-                    self.data,
-                    self.indptr,
-                    updates_only,
-                    lag - offset,
-                    tfm,
-                    *args,
-                )
-                future_to_result[future] = tfm_name
-            for future in concurrent.futures.as_completed(future_to_result):
-                tfm_name = future_to_result[future]
-                results[tfm_name] = future.result()
+        if numba_tfms:
+            with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
+                for tfm_name, (lag, tfm, *args) in numba_tfms.items():
+                    future = executor.submit(
+                        _transform_series,
+                        self.data,
+                        self.indptr,
+                        updates_only,
+                        lag - offset,
+                        tfm,
+                        *args,
+                    )
+                    future_to_result[future] = tfm_name
+                for future in concurrent.futures.as_completed(future_to_result):
+                    tfm_name = future_to_result[future]
+                    results[tfm_name] = future.result()
         if core_tfms:
             core_ga = CoreGroupedArray(self.data, self.indptr, num_threads)
             for name, tfm in core_tfms.items():
@@ -199,21 +140,16 @@ class GroupedArray:
                     results[name] = tfm.transform(core_ga)
         return results
 
-    def restore_fitted_difference(
-        self, series_data: np.ndarray, series_indptr: np.ndarray, d: int
-    ) -> None:
-        if len(self.indptr) != len(series_indptr):
-            raise ValueError("Found different number of groups in fitted differences.")
-        _restore_fitted_difference(
-            self.data,
-            self.indptr,
-            series_data,
-            series_indptr,
-            d,
-        )
-
     def expand_target(self, max_horizon: int) -> np.ndarray:
-        return _expand_target(self.data, self.indptr, max_horizon)
+        out = np.full_like(
+            self.data, np.nan, shape=(self.data.size, max_horizon), order="F"
+        )
+        for j in range(max_horizon):
+            for i in range(self.n_groups):
+                out[self.indptr[i] : self.indptr[i + 1] - j, j] = self.data[
+                    self.indptr[i] + j : self.indptr[i + 1]
+                ]
+        return out
 
     def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
         """Takes `idx` from each group in the array."""
@@ -240,9 +176,30 @@ class GroupedArray:
     def append_several(
         self, new_sizes: np.ndarray, new_values: np.ndarray, new_groups: np.ndarray
     ) -> "GroupedArray":
-        new_data, new_indptr = _append_several(
-            self.data, self.indptr, new_sizes, new_values, new_groups
-        )
+        new_data = np.empty(self.data.size + new_values.size, dtype=self.data.dtype)
+        new_indptr = np.empty(new_sizes.size + 1, dtype=self.indptr.dtype)
+        new_indptr[0] = 0
+        old_indptr_idx = 0
+        new_vals_idx = 0
+        for i, is_new in enumerate(new_groups):
+            new_size = new_sizes[i]
+            if is_new:
+                old_size = 0
+            else:
+                prev_slice = slice(
+                    self.indptr[old_indptr_idx], self.indptr[old_indptr_idx + 1]
+                )
+                old_indptr_idx += 1
+                old_size = prev_slice.stop - prev_slice.start
+                new_size += old_size
+                new_data[new_indptr[i] : new_indptr[i] + old_size] = self.data[
+                    prev_slice
+                ]
+            new_indptr[i + 1] = new_indptr[i] + new_size
+            new_data[new_indptr[i] + old_size : new_indptr[i + 1]] = new_values[
+                new_vals_idx : new_vals_idx + new_sizes[i]
+            ]
+            new_vals_idx += new_sizes[i]
         return GroupedArray(new_data, new_indptr)
 
     def __repr__(self) -> str:
