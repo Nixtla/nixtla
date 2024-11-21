@@ -23,12 +23,12 @@ dev = [
     "tabulate",
 ]
 distributed = ["fugue[dask,ray,spark]>=0.8.7", "pandas<2.2", "ray<2.6.3"]
-plotting = ["utilsforecast[plotting]>=0.2.3"]
+plotting = ["utilsforecast[plotting]>=0.2.7"]
 date_extras = ["holidays"]
 
 setuptools.setup(
     name="nixtla",
-    version="0.6.1",
+    version="0.6.3",
     description="Python SDK for Nixtla API (TimeGPT)",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -39,16 +39,15 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
-        "fastcore",
+        "annotated-types",
         "httpx",
         "orjson",
         "pandas",
-        "pydantic",
         "tenacity",
         "tqdm",
-        "utilsforecast>=0.2.3",
+        "utilsforecast>=0.2.7",
     ],
     extras_require={
         "dev": dev + plotting + date_extras,

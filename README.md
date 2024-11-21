@@ -70,7 +70,7 @@ nixtla_client.plot(df, fcst_df, level=[80, 90])
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
 
 # 2. Read Data # Wikipedia visits of NFL Star (
-df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/peyton_manning.csv')
+df = pd.read_csv('https://datasets-nixtla.s3.amazonaws.com/peyton-manning.csv')
 
 
 # 3. Detect Anomalies
@@ -186,7 +186,7 @@ TimeGPT has been featured in many publications and has been recognized for its i
 
 
 ## 🔖 License
-TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute.
+TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
 
 ## 📞 Get in touch
 For any questions or feedback, please feel free to reach out to us at ops [at] nixtla.io.
