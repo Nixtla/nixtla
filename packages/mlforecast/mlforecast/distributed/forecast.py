@@ -38,6 +38,7 @@ try:
 except ModuleNotFoundError:
     RAY_INSTALLED = False
 from sklearn.base import clone
+from triad import Schema
 
 from mlforecast.core import (
     DateFeature,
@@ -455,31 +456,43 @@ class DistributedMLForecast:
         before_predict_callback=None,
         after_predict_callback=None,
         X_df=None,
+        ids=None,
+        schema=None,
     ) -> Iterable[pd.DataFrame]:
         for serialized_ts, _, serialized_valid in items:
             valid = cloudpickle.loads(serialized_valid)
             if valid is not None:
                 X_df = valid
             ts = cloudpickle.loads(serialized_ts)
+            if ids is not None:
+                ids = ts.uids.intersection(ids).tolist()
+                if not ids:
+                    yield pd.DataFrame(
+                        {
+                            field.name: pd.Series(dtype=field.type.to_pandas_dtype())
+                            for field in schema.values()
+                        }
+                    )
+                    return
             res = ts.predict(
                 models=models,
                 horizon=horizon,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
                 X_df=X_df,
+                ids=ids,
             )
             if valid is not None:
                 res = res.merge(valid, how="left")
             yield res
 
-    def _get_predict_schema(self) -> str:
-        model_names = self.models.keys()
-        models_schema = ",".join(f"{model_name}:double" for model_name in model_names)
-        schema = (
-            f"{self._base_ts.id_col}:string,{self._base_ts.time_col}:datetime,"
-            + models_schema
-        )
-        return schema
+    def _get_predict_schema(self) -> Schema:
+        ids_schema = [
+            (self._base_ts.id_col, "string"),
+            (self._base_ts.time_col, "datetime"),
+        ]
+        models_schema = [(model, "double") for model in self.models.keys()]
+        return Schema(ids_schema + models_schema)
 
     def predict(
         self,
@@ -488,6 +501,7 @@ class DistributedMLForecast:
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[pd.DataFrame] = None,
         new_df: Optional[fugue.AnyDataFrame] = None,
+        ids: Optional[List[str]] = None,
     ) -> fugue.AnyDataFrame:
         """Compute the predictions for the next `horizon` steps.
 
@@ -509,6 +523,8 @@ class DistributedMLForecast:
             Series data of new observations for which forecasts are to be generated.
                 This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
                 If `new_df` is not None, the method will generate forecasts for the new observations.
+        ids : list of str, optional (default=None)
+            List with subset of ids seen during training for which the forecasts should be computed.
 
         Returns
         -------
@@ -540,6 +556,8 @@ class DistributedMLForecast:
                 "before_predict_callback": before_predict_callback,
                 "after_predict_callback": after_predict_callback,
                 "X_df": X_df,
+                "ids": ids,
+                "schema": schema,
             },
             schema=schema,
             engine=self.engine,
@@ -636,9 +654,8 @@ class DistributedMLForecast:
                     keep_last_n=keep_last_n,
                     window_info=window_info,
                 )
-            schema = (
-                self._get_predict_schema()
-                + f",cutoff:datetime,{self._base_ts.target_col}:double"
+            schema = self._get_predict_schema() + Schema(
+                ("cutoff", "datetime"), (self._base_ts.target_col, "double")
             )
             preds = fa.transform(
                 partition_results,
