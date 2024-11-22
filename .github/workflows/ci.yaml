@@ -81,5 +81,9 @@ jobs:
       - name: Install pip requirements
         run: pip install uv && uv pip install --system ".[dev]"
 
+      - name: Install OpenMP
+        if: startsWith(matrix.os, 'macos')
+        run: brew install libomp
+
       - name: Run tests
         run: nbdev_test --timing --do_print --n_workers 0 --skip_file_re "computing_at_scale|distributed"
