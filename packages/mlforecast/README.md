@@ -50,6 +50,10 @@ guide](https://nixtla.github.io/mlforecast/docs/getting-started/quick_start_loca
 walkthrough](https://nixtla.github.io/mlforecast/docs/getting-started/end_to_end_walkthrough.html)
 for best practices.**
 
+### Videos
+
+- [Overview](https://www.youtube.com/live/EnhyJx8l2LE)
+
 ### Sample notebooks
 
 - [m5](https://www.kaggle.com/code/lemuz90/m5-mlforecast-eval)
