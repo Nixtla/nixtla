@@ -51,7 +51,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev]"
 
       - name: Run tests
-        run: nbdev_test --do_print --timing --flags 'datasets matplotlib polars pyarrow scipy'
+        run: ./action_files/nbdev_test --do_print --timing --flags 'datasets matplotlib polars pyarrow scipy'
 
   minimal-tests:
     runs-on: ${{ matrix.os }}
@@ -74,4 +74,4 @@ jobs:
 
       - name: Run tests
         shell: bash
-        run: nbdev_test --do_print --timing --skip_file_re 'plotting'
+        run: ./action_files/nbdev_test --do_print --timing --skip_file_re 'plotting'
