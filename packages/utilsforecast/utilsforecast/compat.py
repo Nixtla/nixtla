@@ -61,7 +61,7 @@ except ImportError:
         return new_dec
 
     @_doublewrap
-    def njit(f):
+    def njit(f, *_args, **_kwargs):
         @wraps(f)
         def wrapper(*args, **kwargs):
             warnings.warn(
