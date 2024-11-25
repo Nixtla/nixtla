@@ -79,7 +79,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install pip requirements
-        run: pip install uv && uv pip install --system ".[dev]" && pip install matplotlib
+        run: pip install uv && uv pip install --system ".[dev]"
 
       - name: Install OpenMP
         if: startsWith(matrix.os, 'macos')
