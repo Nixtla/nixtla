@@ -1472,7 +1472,7 @@ class NixtlaClient:
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         return out
 
-    def _distributed_detect_anomalies_online(
+    def _distributed_detect_anomalies_realtime(
         self,
         df: DistributedDFType,
         h: _PositiveInt,
@@ -1504,10 +1504,13 @@ class NixtlaClient:
         )
         result_df = fa.transform(
             df,
-            using=_detect_anomalies_wrapper,
+            using=_detect_anomalies_realtime_wrapper,
             schema=schema,
             params=dict(
                 client=self,
+                h=h,
+                detection_size=detection_size,
+                threshold_method=threshold_method,
                 freq=freq,
                 id_col=id_col,
                 time_col=time_col,
@@ -1525,7 +1528,7 @@ class NixtlaClient:
         )
         return fa.get_native_as_df(result_df)
 
-    def detect_anomalies_online(
+    def detect_anomalies_realtime(
         self,
         df: AnyDFType,
         h: _PositiveInt,
@@ -1543,7 +1546,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
-        """Online anomaly detection in your time series using TimeGPT.
+        """Real-time anomaly detection in your time series using TimeGPT.
 
         Parameters
         ----------
@@ -1609,8 +1612,11 @@ class NixtlaClient:
             DataFrame with anomalies flagged by TimeGPT.
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            return self._distributed_detect_anomalies_online(
+            return self._distributed_detect_anomalies_realtime(
                 df=df,
+                h=h,
+                detection_size=detection_size,
+                threshold_method=threshold_method,
                 freq=freq,
                 id_col=id_col,
                 time_col=time_col,
@@ -1657,11 +1663,16 @@ class NixtlaClient:
         else:
             X = None
 
+        sizes = np.diff(processed.indptr)
+        if not np.any((sizes - detection_size) > 5 * detection_size):
+            logger.info(
+                "Detection size is large. Using the entire series to compute the anomaly threshold..."
+            )
         logger.info("Calling Online Anomaly Detector Endpoint...")
         payload = {
             "series": {
                 "y": processed.data[:, 0],
-                "sizes": np.diff(processed.indptr),
+                "sizes": sizes,
                 "X": X,
             },
             "h": h,
@@ -2179,6 +2190,43 @@ def _detect_anomalies_wrapper(
 ) -> pd.DataFrame:
     return client.detect_anomalies(
         df=df,
+        freq=freq,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        level=level,
+        clean_ex_first=clean_ex_first,
+        validate_api_key=validate_api_key,
+        date_features=date_features,
+        date_features_to_one_hot=date_features_to_one_hot,
+        model=model,
+        num_partitions=num_partitions,
+    )
+
+
+def _detect_anomalies_realtime_wrapper(
+    df: pd.DataFrame,
+    client: NixtlaClient,
+    h: _PositiveInt,
+    detection_size: _PositiveInt,
+    threshold_method: _Threshold_Method,
+    freq: Optional[str],
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    level: Union[int, float],
+    clean_ex_first: bool,
+    validate_api_key: bool,
+    date_features: Union[bool, list[str]],
+    date_features_to_one_hot: Union[bool, list[str]],
+    model: _Model,
+    num_partitions: Optional[_PositiveInt],
+) -> pd.DataFrame:
+    return client.detect_anomalies_realtime(
+        df=df,
+        h=h,
+        detection_size=detection_size,
+        threshold_method=threshold_method,
         freq=freq,
         id_col=id_col,
         time_col=time_col,
