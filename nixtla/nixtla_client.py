@@ -100,7 +100,7 @@ _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = Literal["azureai", "timegpt-1", "timegpt-1-long-horizon"]
 _Finetune_Depth = Literal[1, 2, 3, 4, 5]
-_Threshold_Method = Literal["univariate", "multivariate", "historical"]
+_Threshold_Method = Literal["univariate", "multivariate"]
 
 _date_features_by_freq = {
     # Daily frequencies
@@ -525,7 +525,7 @@ def _parse_in_sample_output(
     id_col: str,
     time_col: str,
     target_col: str,
-    detection_size: Optional[int],
+    detection_size: int,
 ) -> DataFrame:
     times = df[time_col].to_numpy()
     targets = df[target_col].to_numpy()
@@ -1268,6 +1268,213 @@ class NixtlaClient:
     def _distributed_detect_anomalies(
         self,
         df: DistributedDFType,
+        freq: Optional[str],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        level: Union[int, float],
+        clean_ex_first: bool,
+        validate_api_key: bool,
+        date_features: Union[bool, list[str]],
+        date_features_to_one_hot: Union[bool, list[str]],
+        model: _Model,
+        num_partitions: Optional[int],
+    ) -> DistributedDFType:
+        import fugue.api as fa
+
+        schema, partition_config = _distributed_setup(
+            df=df,
+            method="detect_anomalies",
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            level=level,
+            quantiles=None,
+            num_partitions=num_partitions,
+        )
+        result_df = fa.transform(
+            df,
+            using=_detect_anomalies_wrapper,
+            schema=schema,
+            params=dict(
+                client=self,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                level=level,
+                clean_ex_first=clean_ex_first,
+                validate_api_key=validate_api_key,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
+                num_partitions=None,
+            ),
+            partition=partition_config,
+            as_fugue=True,
+        )
+        return fa.get_native_as_df(result_df)
+
+    def detect_anomalies(
+        self,
+        df: AnyDFType,
+        freq: Optional[str] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Union[int, float] = 99,
+        clean_ex_first: bool = True,
+        validate_api_key: bool = False,
+        date_features: Union[bool, list[str]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
+        model: _Model = "timegpt-1",
+        num_partitions: Optional[_PositiveInt] = None,
+    ) -> AnyDFType:
+        """Detect anomalies in your time series using TimeGPT.
+
+        Parameters
+        ----------
+        df : pandas or polars DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        freq : str
+            Frequency of the data. By default, the freq will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        level : float (default=99)
+            Confidence level between 0 and 100 for detecting the anomalies.
+        clean_ex_first : bool (default=True)
+            Clean exogenous signal before making forecasts
+            using TimeGPT.
+        validate_api_key : bool (default=False)
+            If True, validates api_key before sending requests.
+        date_features : bool or list of str or callable, optional (default=False)
+            Features computed from the dates.
+            Can be pandas date attributes or functions that will take the dates as input.
+            If True automatically adds most used date features for the
+            frequency of `df`.
+        date_features_to_one_hot : bool or list of str (default=False)
+            Apply one-hot encoding to these date features.
+            If `date_features=True`, then all date features are
+            one-hot encoded by default.
+        model : str (default='timegpt-1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
+        num_partitions : int (default=None)
+            Number of partitions to use.
+            If None, the number of partitions will be equal
+            to the available parallel resources in distributed environments.
+
+        Returns
+        -------
+        pandas, polars, dask or spark DataFrame or ray Dataset.
+            DataFrame with anomalies flagged by TimeGPT.
+        """
+        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+            return self._distributed_detect_anomalies(
+                df=df,
+                freq=freq,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                level=level,
+                clean_ex_first=clean_ex_first,
+                validate_api_key=validate_api_key,
+                date_features=date_features,
+                date_features_to_one_hot=date_features_to_one_hot,
+                model=model,
+                num_partitions=num_partitions,
+            )
+        self.__dict__.pop("weights_x", None)
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
+        df, _, drop_id, freq = self._run_validations(
+            df=df,
+            X_df=None,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=validate_api_key,
+            model=model,
+            freq=freq,
+        )
+        standard_freq = _standardize_freq(freq)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
+
+        logger.info("Preprocessing dataframes...")
+        processed, _, x_cols, _ = _preprocess(
+            df=df,
+            X_df=None,
+            h=0,
+            freq=standard_freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        if processed.data.shape[1] > 1:
+            X = processed.data[:, 1:].T
+            logger.info(f"Using the following exogenous features: {x_cols}")
+        else:
+            X = None
+
+        logger.info("Calling Anomaly Detector Endpoint...")
+        payload = {
+            "series": {
+                "y": processed.data[:, 0],
+                "sizes": np.diff(processed.indptr),
+                "X": X,
+            },
+            "model": model,
+            "freq": standard_freq,
+            "clean_ex_first": clean_ex_first,
+            "level": level,
+        }
+        with httpx.Client(**self._client_kwargs) as client:
+            if num_partitions is None:
+                resp = self._make_request_with_retries(
+                    client, "v2/anomaly_detection", payload
+                )
+            else:
+                payloads = _partition_series(payload, num_partitions, h=0)
+                resp = self._make_partitioned_requests(
+                    client, "v2/anomaly_detection", payloads
+                )
+
+        # assemble result
+        out = _parse_in_sample_output(
+            in_sample_output=resp,
+            df=df,
+            processed=processed,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            detection_size=None,
+        )
+        out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
+        out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
+        return out
+
+    def _distributed_detect_anomalies_online(
+        self,
+        df: DistributedDFType,
         h: _PositiveInt,
         detection_size: _PositiveInt,
         threshold_method: _Threshold_Method,
@@ -1301,9 +1508,6 @@ class NixtlaClient:
             schema=schema,
             params=dict(
                 client=self,
-                h=h,
-                detection_size=detection_size,
-                threshold_method=threshold_method,
                 freq=freq,
                 id_col=id_col,
                 time_col=time_col,
@@ -1321,7 +1525,7 @@ class NixtlaClient:
         )
         return fa.get_native_as_df(result_df)
 
-    def detect_anomalies(
+    def detect_anomalies_online(
         self,
         df: AnyDFType,
         h: _PositiveInt,
@@ -1339,7 +1543,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
-        """Detect anomalies in your time series using TimeGPT.
+        """Online anomaly detection in your time series using TimeGPT.
 
         Parameters
         ----------
@@ -1405,11 +1609,8 @@ class NixtlaClient:
             DataFrame with anomalies flagged by TimeGPT.
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            return self._distributed_detect_anomalies(
+            return self._distributed_detect_anomalies_online(
                 df=df,
-                h=h,
-                detection_size=detection_size,
-                threshold_method=threshold_method,
                 freq=freq,
                 id_col=id_col,
                 time_col=time_col,
@@ -1456,7 +1657,7 @@ class NixtlaClient:
         else:
             X = None
 
-        logger.info("Calling Anomaly Detector Endpoint...")
+        logger.info("Calling Online Anomaly Detector Endpoint...")
         payload = {
             "series": {
                 "y": processed.data[:, 0],
@@ -1474,12 +1675,12 @@ class NixtlaClient:
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
-                    client, "v2/anomaly_detection", payload
+                    client, "v2/online_anomaly_detection", payload
                 )
             else:
                 payloads = _partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
-                    client, "v2/anomaly_detection", payloads
+                    client, "v2/online_anomaly_detection", payloads
                 )
 
         # assemble result
