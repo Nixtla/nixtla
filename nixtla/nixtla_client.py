@@ -729,6 +729,8 @@ class NixtlaClient:
                     for res, offset in zip(results, offsets)
                 ]
             )
+        if "anomaly_score" in first_res:
+            resp["anomaly_score"] = np.hstack([res["anomaly_score"] for res in results])
         if first_res["intervals"] is None:
             resp["intervals"] = None
         else:
@@ -1493,7 +1495,7 @@ class NixtlaClient:
 
         schema, partition_config = _distributed_setup(
             df=df,
-            method="detect_anomalies",
+            method="detect_anomalies_realtime",
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -2250,6 +2252,10 @@ def _detect_anomalies_realtime_wrapper(
     target_col: str,
     level: Union[int, float],
     clean_ex_first: bool,
+    step_size: _PositiveInt,
+    finetune_steps: _NonNegativeInt,
+    finetune_depth: _Finetune_Depth,
+    finetune_loss: _Loss,
     validate_api_key: bool,
     date_features: Union[bool, list[str]],
     date_features_to_one_hot: Union[bool, list[str]],
@@ -2267,6 +2273,10 @@ def _detect_anomalies_realtime_wrapper(
         target_col=target_col,
         level=level,
         clean_ex_first=clean_ex_first,
+        step_size=step_size,
+        finetune_steps=finetune_steps,
+        finetune_depth=finetune_depth,
+        finetune_loss=finetune_loss,
         validate_api_key=validate_api_key,
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
@@ -2338,6 +2348,9 @@ def _get_schema(
     schema.append("TimeGPT:double")
     if method == "detect_anomalies":
         schema.append("anomaly:bool")
+    if method == "detect_anomalies_realtime":
+        schema.append("anomaly:bool")
+        schema.append("anomaly_score:double")
     elif method == "cross_validation":
         schema.append(("cutoff", schema[time_col].type))
     if level is not None and quantiles is not None:
