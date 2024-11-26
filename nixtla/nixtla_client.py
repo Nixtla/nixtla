@@ -525,7 +525,6 @@ def _parse_in_sample_output(
     id_col: str,
     time_col: str,
     target_col: str,
-    detection_size: int,
 ) -> DataFrame:
     times = df[time_col].to_numpy()
     targets = df[target_col].to_numpy()
@@ -543,8 +542,6 @@ def _parse_in_sample_output(
             "TimeGPT": in_sample_output["mean"],
         }
     )
-    if detection_size is not None:
-        out = out.groupby(id_col).tail(detection_size).reset_index(drop=True)
     return _maybe_add_intervals(out, in_sample_output["intervals"])  # type: ignore
 
 
@@ -1235,7 +1232,6 @@ class NixtlaClient:
                 id_col=id_col,
                 time_col=time_col,
                 target_col=target_col,
-                detection_size=None,
             )
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
@@ -1466,7 +1462,6 @@ class NixtlaClient:
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-            detection_size=None,
         )
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
@@ -1484,6 +1479,10 @@ class NixtlaClient:
         target_col: str,
         level: Union[int, float],
         clean_ex_first: bool,
+        step_size: Optional[_PositiveInt],
+        finetune_steps: _NonNegativeInt,
+        finetune_depth: _Finetune_Depth,
+        finetune_loss: _Loss,
         validate_api_key: bool,
         date_features: Union[bool, list[str]],
         date_features_to_one_hot: Union[bool, list[str]],
@@ -1517,6 +1516,10 @@ class NixtlaClient:
                 target_col=target_col,
                 level=level,
                 clean_ex_first=clean_ex_first,
+                step_size=step_size,
+                finetune_steps=finetune_steps,
+                finetune_loss=finetune_loss,
+                finetune_depth=finetune_depth,
                 validate_api_key=validate_api_key,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
@@ -1540,6 +1543,10 @@ class NixtlaClient:
         target_col: str = "y",
         level: Union[int, float] = 99,
         clean_ex_first: bool = True,
+        step_size: Optional[_PositiveInt] = None,
+        finetune_steps: _NonNegativeInt = 0,
+        finetune_depth: _Finetune_Depth = 1,
+        finetune_loss: _Loss = "default",
         validate_api_key: bool = False,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
@@ -1623,6 +1630,10 @@ class NixtlaClient:
                 target_col=target_col,
                 level=level,
                 clean_ex_first=clean_ex_first,
+                step_size=step_size,
+                finetune_steps=finetune_steps,
+                finetune_depth=finetune_depth,
+                finetune_loss=finetune_loss,
                 validate_api_key=validate_api_key,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
@@ -1657,12 +1668,23 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        if isinstance(df, pd.DataFrame):
+            # in pandas<2.2 to_numpy can lead to an object array if
+            # the type is a pandas nullable type, e.g. pd.Float64Dtype
+            # we thus use the dtype's type as the target dtype
+            target_dtype = df.dtypes[target_col].type
+            targets = df[target_col].to_numpy(dtype=target_dtype)
+        else:
+            targets = df[target_col].to_numpy()
+        times = df[time_col].to_numpy()
+        if processed.sort_idxs is not None:
+            targets = targets[processed.sort_idxs]
+            times = times[processed.sort_idxs]
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T
             logger.info(f"Using the following exogenous features: {x_cols}")
         else:
             X = None
-
         sizes = np.diff(processed.indptr)
         if not np.any((sizes - detection_size) > 5 * detection_size):
             logger.info(
@@ -1682,6 +1704,10 @@ class NixtlaClient:
             "freq": standard_freq,
             "clean_ex_first": clean_ex_first,
             "level": level,
+            "step_size": step_size,
+            "finetune_steps": finetune_steps,
+            "finetune_loss": finetune_loss,
+            "finetune_depth": finetune_depth,
         }
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -1695,19 +1721,27 @@ class NixtlaClient:
                 )
 
         # assemble result
-        out = _parse_in_sample_output(
-            in_sample_output=resp,
-            df=df,
-            processed=processed,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            detection_size=detection_size,
+        idxs = np.array(resp["idxs"], dtype=np.int64)
+        sizes = np.array(resp["sizes"], dtype=np.int64)
+        out = type(df)(
+            {
+                id_col: ufp.repeat(processed.uids, sizes),
+                time_col: times[idxs],
+                target_col: targets[idxs],
+            }
+        )
+        out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
+        out_aggregated = (
+            out.groupby(["unique_id", "ds"])["TimeGPT"].median().reset_index()
+        )
+        out = (
+            out_aggregated.groupby("unique_id")
+            .tail(detection_size)
+            .reset_index(drop=True)
         )
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
-        out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-        return out
+        return _maybe_add_intervals(out, resp["intervals"])
 
     def _distributed_cross_validation(
         self,
