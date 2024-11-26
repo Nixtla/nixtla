@@ -1734,7 +1734,9 @@ class NixtlaClient:
         )
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out_aggregated = (
-            out.groupby(["unique_id", "ds"])["TimeGPT"].median().reset_index()
+            out.groupby(["unique_id", "ds"])
+            .agg({"TimeGPT": "median", "y": "first"})
+            .reset_index()
         )
         out = (
             out_aggregated.groupby("unique_id")
