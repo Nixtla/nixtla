@@ -21,7 +21,6 @@ dev = [
     "setuptools<70",
     "statsforecast",
     "tabulate",
-    "nixtla"
 ]
 distributed = ["fugue[dask,ray,spark]>=0.8.7", "pandas<2.2", "ray<2.6.3"]
 plotting = ["utilsforecast[plotting]>=0.2.7"]
