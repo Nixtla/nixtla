@@ -31,7 +31,7 @@ from .validation import validate_format
 def _filter_series(df, id_col, time_col, uids, models=None, max_insample_length=None):
     out_cols = [id_col, time_col]
     if models is not None:
-        models_pat = r"|".join(models).replace("(", "\(").replace(")", "\)")
+        models_pat = r"|".join(models).replace(r"(", r"\(").replace(r")", r"\)")
         interval_cols = [
             c for c in df.columns if re.search(rf"^({models_pat})-(?:lo|hi)-\d+", c)
         ]

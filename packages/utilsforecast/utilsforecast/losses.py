@@ -545,7 +545,7 @@ def mqloss(
     difference between predicted quantiles and observed values.
 
     The limit behavior of MQL allows to measure the accuracy
-    of a full predictive distribution $\mathbf{\hat{F}}_{\\tau}$ with
+    of a full predictive distribution with
     the continuous ranked probability score (CRPS). This can be achieved
     through a numerical integration technique, that discretizes the quantiles
     and treats the CRPS integral with a left Riemann approximation, averaging over
