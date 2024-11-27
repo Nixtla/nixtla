@@ -94,7 +94,8 @@
           "group":"Fine-tuning",
           "pages":[
             "docs/tutorials/finetuning.html",
-            "docs/tutorials/loss_function_finetuning.html"
+            "docs/tutorials/loss_function_finetuning.html",
+            "docs/tutorials/finetune_depth_finetuning.html"
           ]
         },
         {
