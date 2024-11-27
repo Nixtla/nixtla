@@ -216,22 +216,16 @@ def _maybe_infer_freq(
 
 def _standardize_freq(freq: _Freq, processed: ufp.ProcessedDF) -> str:
     if isinstance(freq, str):
+        # polars uses 'mo' for months, all other strings are compatible with pandas
         freq = freq.replace("mo", "MS")
+    elif isinstance(freq, pd.offsets.BaseOffset):
+        freq = freq.freqstr
+    elif isinstance(freq, int):
+        freq = "MS"
     else:
-        from coreforecast.grouped_array import GroupedArray
-
-        ga = GroupedArray(processed.data[:, 0], processed.indptr)
-        series_season_lengths = ga._greatest_autocovariance(54).astype("uint8")
-        season_lengths, counts = np.unique(series_season_lengths, return_counts=True)
-        season_length = season_lengths[np.argmax(counts)].item()
-        if season_length <= 7:
-            freq = "D"
-        elif season_length <= 12:
-            freq = "M"
-        elif season_length <= 24:
-            freq = "H"
-        else:
-            freq = "W"
+        raise ValueError(
+            f"`freq` must be a string, int or pandas offset, got {type(freq).__name__}"
+        )
     return freq
 
 

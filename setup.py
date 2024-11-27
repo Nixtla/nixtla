@@ -42,7 +42,6 @@ setuptools.setup(
     python_requires=">=3.9",
     install_requires=[
         "annotated-types",
-        "coreforecast>=0.0.14",
         "httpx",
         "orjson",
         "pandas",
