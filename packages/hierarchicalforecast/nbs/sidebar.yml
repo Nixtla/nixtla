@@ -8,6 +8,7 @@ website:
         contents: 
         - examples/Installation.ipynb
         - examples/TourismSmall.ipynb
+        - examples/TourismSmallPolars.ipynb
         - examples/Introduction.ipynb
       - section: Tutorials
         contents:

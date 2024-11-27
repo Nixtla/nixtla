@@ -33,6 +33,7 @@
       "pages": [
         "examples/installation.html",
         "examples/tourismsmall.html",
+        "examples/tourismsmallpolars.html",
         "examples/introduction.html"
       ]
     },

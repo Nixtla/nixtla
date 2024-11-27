@@ -1,9 +1,11 @@
+import os
 import pickle
 import numpy as np
 import pandas as pd
 
 from hierarchicalforecast.evaluation import HierarchicalEvaluation
 
+os.environ['NIXTLA_ID_AS_COL'] = '1'
 
 def rmse(y, y_hat):
     return np.mean(np.sqrt(np.mean((y-y_hat)**2, axis=1)))
@@ -22,16 +24,11 @@ def evaluate():
     Y_test_df = pd.read_csv('data/Y_test.csv')
     Y_train_df = pd.read_csv('data/Y_train.csv')
 
-    Y_rec_df = Y_rec_df.set_index('unique_id')
-    Y_test_df = Y_test_df.set_index('unique_id')
-    Y_train_df = Y_train_df.set_index('unique_id')
-
     with open('data/tags.pickle', 'rb') as handle:
         tags = pickle.load(handle)
 
     eval_tags = {}
     eval_tags['Total'] = tags['Country']
-    # eval_tags['Purpose'] = tags['Country/Purpose']
     eval_tags['State'] = tags['Country/State']
     eval_tags['Regions'] = tags['Country/State/Region']
     eval_tags['Bottom'] = tags['Country/State/Region/Purpose']
@@ -42,10 +39,10 @@ def evaluate():
             Y_hat_df=Y_rec_df, Y_test_df=Y_test_df,
             tags=eval_tags, Y_df=Y_train_df
     )
-    evaluation = evaluation.drop('Overall')
+    evaluation = evaluation.query("level != 'Overall'").set_index(['level', 'metric'])
 
     evaluation.columns = ['Base'] + models
-    evaluation = evaluation.applymap('{:.2f}'.format)
+    evaluation = evaluation.map('{:.2f}'.format)
     return evaluation
 
 

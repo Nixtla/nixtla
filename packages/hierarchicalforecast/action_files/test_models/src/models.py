@@ -1,5 +1,7 @@
 import os
 
+os.environ['NIXTLA_ID_AS_COL'] = '1'
+
 import fire
 import pandas as pd
 
@@ -37,14 +39,11 @@ def main():
                    OptimalCombination(method='ols'),
                    OptimalCombination(method='wls_struct'),
                    ERM(method='closed'),
-                #    ERM(method='reg'), # This is so insanely slow that we don't run it
-                #    ERM(method='reg_bu'), # This is so insanely slow that we don't run it
     ]
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
     Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df,
                                Y_df=Y_fitted_df, S=S_df, tags=tags)
 
-    Y_rec_df = Y_rec_df.reset_index()
     execution_times = pd.Series(hrec.execution_times).reset_index()
 
     if not os.path.exists('./data'):

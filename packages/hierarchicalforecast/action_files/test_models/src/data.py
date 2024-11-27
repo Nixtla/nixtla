@@ -3,7 +3,9 @@ import fire
 import pickle
 import pandas as pd
 
-from statsforecast.models import ETS
+os.environ['NIXTLA_ID_AS_COL'] = '1'
+
+from statsforecast.models import AutoETS
 from statsforecast.core import StatsForecast
 
 from hierarchicalforecast.utils import aggregate
@@ -35,31 +37,21 @@ def get_data():
     spec = [
         ['Country'],
         ['Country', 'State'], 
-        # ['Country', 'Purpose'], 
         ['Country', 'State', 'Region'], 
-        # ['Country', 'State', 'Purpose'], 
         ['Country', 'State', 'Region', 'Purpose']
     ]
 
     Y_df, S_df, tags = aggregate(Y_df, spec)
-    Y_df = Y_df.reset_index()
 
     # Train/Test Splits
     Y_test_df = Y_df.groupby('unique_id').tail(8)
     Y_train_df = Y_df.drop(Y_test_df.index)
 
-    Y_test_df = Y_test_df.set_index('unique_id')
-    Y_train_df = Y_train_df.set_index('unique_id')
-
-    sf = StatsForecast(df=Y_train_df,
-                       models=[ETS(season_length=4, model='ZZA')],
+    sf = StatsForecast(models=[AutoETS(season_length=4, model='ZZA')],
                        freq='QS', n_jobs=-1)
-    Y_hat_df = sf.forecast(h=8, fitted=True)
+    Y_hat_df = sf.forecast(df=Y_train_df, h=8, fitted=True)
     Y_fitted_df = sf.forecast_fitted_values()
     
-    Y_test_df = Y_test_df.reset_index()
-    Y_train_df = Y_train_df.reset_index()
-
     # Save Data
     if not os.path.exists('./data'):
         os.makedirs('./data')

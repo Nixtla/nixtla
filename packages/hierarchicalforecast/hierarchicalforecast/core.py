@@ -4,84 +4,97 @@
 __all__ = ['HierarchicalReconciliation']
 
 # %% ../nbs/src/core.ipynb 4
-import re
-import gc
-import time
 import copy
+import re
+import reprlib
+import time
+
 from .methods import HReconciler
 from inspect import signature
+from narwhals.typing import Frame, FrameT
 from scipy.stats import norm
 from scipy import sparse
 from typing import Dict, List, Optional
-import warnings
 
+import narwhals as nw
 import numpy as np
-import pandas as pd
 
-# %% ../nbs/src/core.ipynb 6
+# %% ../nbs/src/core.ipynb 7
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
 
     # Take default parameter out of names
-    args_to_remove = ['insample', 'num_threads']
-    if not func_params.get('nonnegative', False):
-        args_to_remove.append('nonnegative')
+    args_to_remove = ["insample", "num_threads"]
+    if not func_params.get("nonnegative", False):
+        args_to_remove.append("nonnegative")
 
-    if fn_name == 'MinTrace' and \
-        func_params['method']=='mint_shrink':
-        if func_params['mint_shr_ridge'] == 2e-8:
-            args_to_remove += ['mint_shr_ridge']
+    if fn_name == "MinTrace" and func_params["method"] == "mint_shrink":
+        if func_params["mint_shr_ridge"] == 2e-8:
+            args_to_remove.append("mint_shr_ridge")
 
-    func_params = [f'{name}-{value}' for name, value in func_params.items() if name not in args_to_remove]
+    func_params = [
+        f"{name}-{value}"
+        for name, value in func_params.items()
+        if name not in args_to_remove
+    ]
     if func_params:
-        fn_name += '_' + '_'.join(func_params)
+        fn_name += "_" + "_".join(func_params)
     return fn_name
 
-# %% ../nbs/src/core.ipynb 10
-def _reverse_engineer_sigmah(Y_hat_df, y_hat, model_name):
+# %% ../nbs/src/core.ipynb 11
+def _reverse_engineer_sigmah(
+    Y_hat_df: Frame,
+    y_hat: np.ndarray,
+    model_name: str,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+    target_col: str = "y",
+) -> np.ndarray:
     """
     This function assumes that the model creates prediction intervals
     under a normality with the following the Equation:
     $\hat{y}_{t+h} + c \hat{sigma}_{h}$
 
-    In the future, we might deprecate this function in favor of a 
+    In the future, we might deprecate this function in favor of a
     direct usage of an estimated $\hat{sigma}_{h}$
     """
 
-    drop_cols = ['ds']
-    if 'y' in Y_hat_df.columns:
-        drop_cols.append('y')
-    if model_name+'-median' in Y_hat_df.columns:
-        drop_cols.append(model_name+'-median')
-    model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
-    pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name)]
+    drop_cols = [time_col]
+    if target_col in Y_hat_df.columns:
+        drop_cols.append(target_col)
+    if model_name + "-median" in Y_hat_df.columns:
+        drop_cols.append(model_name + "-median")
+    model_names = [c for c in Y_hat_df.columns if c not in drop_cols]
+    pi_model_names = [name for name in model_names if ("-lo" in name or "-hi" in name)]
     pi_model_name = [pi_name for pi_name in pi_model_names if model_name in pi_name]
     pi = len(pi_model_name) > 0
 
-    n_series = len(Y_hat_df.index.unique())
+    n_series = Y_hat_df[id_col].n_unique()
 
     if not pi:
-        raise Exception(f'Please include `{model_name}` prediction intervals in `Y_hat_df`')
+        raise ValueError(
+            f"Please include `{model_name}` prediction intervals in `Y_hat_df`"
+        )
 
     pi_col = pi_model_name[0]
-    sign = -1 if 'lo' in pi_col else 1
-    level_col = re.findall('[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+', pi_col)
-    level_col = float(level_col[-1])
+    sign = -1 if "lo" in pi_col else 1
+    level_cols = re.findall("[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+", pi_col)
+    level_col = float(level_cols[-1])
     z = norm.ppf(0.5 + level_col / 200)
-    sigmah = Y_hat_df[pi_col].values.reshape(n_series,-1)
+    sigmah = Y_hat_df[pi_col].to_numpy().reshape(n_series, -1)
     sigmah = sign * (sigmah - y_hat) / z
 
     return sigmah
 
-# %% ../nbs/src/core.ipynb 11
+# %% ../nbs/src/core.ipynb 12
 class HierarchicalReconciliation:
     """Hierarchical Reconciliation Class.
 
-    The `core.HierarchicalReconciliation` class allows you to efficiently fit multiple 
-    HierarchicaForecast methods for a collection of time series and base predictions stored in 
+    The `core.HierarchicalReconciliation` class allows you to efficiently fit multiple
+    HierarchicaForecast methods for a collection of time series and base predictions stored in
     pandas DataFrames. The `Y_df` dataframe identifies series and datestamps with the unique_id and ds columns while the
-    y column denotes the target time series variable. The `Y_h` dataframe stores the base predictions, 
+    y column denotes the target time series variable. The `Y_h` dataframe stores the base predictions,
     example ([AutoARIMA](https://nixtla.github.io/statsforecast/models.html#autoarima), [ETS](https://nixtla.github.io/statsforecast/models.html#autoets), etc.).
 
     **Parameters:**<br>
@@ -90,170 +103,285 @@ class HierarchicalReconciliation:
     **References:**<br>
     [Rob J. Hyndman and George Athanasopoulos (2018). \"Forecasting principles and practice, Hierarchical and Grouped Series\".](https://otexts.com/fpp3/hierarchical.html)
     """
-    def __init__(self,
-                 reconcilers: List[HReconciler]):
+
+    def __init__(self, reconcilers: List[HReconciler]):
         self.reconcilers = reconcilers
-        self.orig_reconcilers = copy.deepcopy(reconcilers) # TODO: elegant solution
+        self.orig_reconcilers = copy.deepcopy(reconcilers)  # TODO: elegant solution
         self.insample = any([method.insample for method in reconcilers])
-    
-    def _prepare_fit(self,
-                     Y_hat_df: pd.DataFrame,
-                     S_df: pd.DataFrame,
-                     Y_df: Optional[pd.DataFrame],
-                     tags: Dict[str, np.ndarray],
-                     level: Optional[List[int]] = None,
-                     intervals_method: str = 'normality',
-                     sort_df: bool = True):
+
+    def _prepare_fit(
+        self,
+        Y_hat_nw: Frame,
+        S_nw: Frame,
+        Y_nw: Optional[Frame],
+        tags: Dict[str, np.ndarray],
+        level: Optional[List[int]] = None,
+        intervals_method: str = "normality",
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+    ) -> tuple[FrameT, FrameT, FrameT, List[str]]:
         """
         Performs preliminary wrangling and protections
         """
-        #-------------------------------- Match Y_hat/Y/S index order --------------------------------#
-        if sort_df:
-            Y_hat_df = Y_hat_df.reset_index()
-            Y_hat_df.unique_id = Y_hat_df.unique_id.astype('category')
-            Y_hat_df.unique_id = Y_hat_df.unique_id.cat.set_categories(S_df.index)
-            Y_hat_df = Y_hat_df.sort_values(by=['unique_id', 'ds'])
-            Y_hat_df = Y_hat_df.set_index('unique_id')
+        Y_hat_nw_cols = Y_hat_nw.columns
+        S_nw_cols = S_nw.columns
 
-            if Y_df is not None:
-                Y_df = Y_df.reset_index()
-                Y_df.unique_id = Y_df.unique_id.astype('category')
-                Y_df.unique_id = Y_df.unique_id.cat.set_categories(S_df.index)
-                Y_df = Y_df.sort_values(by=['unique_id', 'ds'])
-                Y_df = Y_df.set_index('unique_id')
+        # -------------------------------- Match Y_hat/Y/S index order --------------------------------#
+        # TODO: This is now a bit slow as we always sort.
+        S_nw = S_nw.with_columns(**{f"{id_col}_id": np.arange(len(S_nw))})
 
-            S_df.index = pd.CategoricalIndex(S_df.index, categories=S_df.index)
+        Y_hat_nw = Y_hat_nw.join(S_nw[[id_col, f"{id_col}_id"]], on=id_col, how="left")
+        Y_hat_nw = Y_hat_nw.sort(by=[f"{id_col}_id", time_col])
+        Y_hat_nw = Y_hat_nw[Y_hat_nw_cols]
 
-        #----------------------------------- Check Input's Validity ----------------------------------#
+        if Y_nw is not None:
+            Y_nw_cols = Y_nw.columns
+            Y_nw = Y_nw.join(S_nw[[id_col, f"{id_col}_id"]], on=id_col, how="left")
+            Y_nw = Y_nw.sort(by=[f"{id_col}_id", time_col])
+            Y_nw = Y_nw[Y_nw_cols]
+
+        S_nw = S_nw[S_nw_cols]
+
+        # ----------------------------------- Check Input's Validity ----------------------------------#
+
         # Check input's validity
-        if intervals_method not in ['normality', 'bootstrap', 'permbu']:
-            raise ValueError(f'Unkwon interval method: {intervals_method}')
+        if intervals_method not in ["normality", "bootstrap", "permbu"]:
+            raise ValueError(f"Unknown interval method: {intervals_method}")
 
-        if self.insample or (intervals_method in ['bootstrap', 'permbu']):
-            if Y_df is None:
-                raise Exception('you need to pass `Y_df`')
-        
+        # TODO: this logic should be method specific
+        if self.insample or (intervals_method in ["bootstrap", "permbu"]):
+            if Y_nw is None:
+                raise Exception("You need to provide `Y_df`.")
+
         # Protect level list
-        if (level is not None):
-            level_outside_domain = np.any((np.array(level) < 0)|(np.array(level) >= 100 ))
-            if level_outside_domain and (intervals_method in ['normality', 'permbu']):
-                raise Exception('Level outside domain, send `level` list in [0,100)')
+        if level is not None:
+            level_outside_domain = not all(0 <= x < 100 for x in level)
+            if level_outside_domain and (intervals_method in ["normality", "permbu"]):
+                raise ValueError(
+                    "Level must be a list containing floating values in the interval [0, 100)."
+                )
 
         # Declare output names
-        drop_cols = ['ds', 'y'] if 'y' in Y_hat_df.columns else ['ds']
-        model_names = Y_hat_df.drop(columns=drop_cols, axis=1).columns.to_list()
+        model_names = [
+            col for col in Y_hat_nw.columns if col not in [id_col, time_col, target_col]
+        ]
 
         # Ensure numeric columns
-        if not len(Y_hat_df[model_names].select_dtypes(include='number').columns) == len(Y_hat_df[model_names].columns):
-            raise Exception('`Y_hat_df`s columns contain non numeric types')
-            
-        #Ensure no null values
-        if Y_hat_df[model_names].isnull().values.any():
-            raise Exception('`Y_hat_df` contains null values')
-        
-        pi_model_names = [name for name in model_names if ('-lo' in name or '-hi' in name or '-median' in name)]
-        model_names = [name for name in model_names if name not in pi_model_names]
-        
-        # TODO: Complete y_hat_insample protection
-        if intervals_method in ['bootstrap', 'permbu'] and Y_df is not None:
-            if not (set(model_names) <= set(Y_df.columns)):
-                raise Exception('Check `Y_hat_df`s models are included in `Y_df` columns')
+        for model in model_names:
+            if not Y_hat_nw.schema[model].is_numeric():
+                raise ValueError(
+                    f"Column `{model}` in `Y_hat_df` contains non-numeric values. Make sure no column in `Y_hat_df` contains non-numeric values."
+                )
+            if Y_hat_nw[model].is_null().any():
+                raise ValueError(
+                    f"Column `{model}` in `Y_hat_df` contains null values. Make sure no column in `Y_hat_df` contains null values."
+                )
 
-        uids = Y_hat_df.index.unique()
+        # TODO: Complete y_hat_insample protection
+        model_names = [
+            name
+            for name in model_names
+            if not ("-lo" in name or "-hi" in name or "-median" in name)
+        ]
+        if intervals_method in ["bootstrap", "permbu"] and Y_nw is not None:
+            missing_models = set(model_names) - set(Y_nw.columns)
+            if len(missing_models) > 0:
+                raise ValueError(
+                    f"Check `Y_df` columns, {reprlib.repr(missing_models)} must be in `Y_df` columns."
+                )
+
+        # Assert S is an identity matrix at the bottom
+        S_nw_cols.remove(id_col)
+        if not np.allclose(S_nw[S_nw_cols][-len(S_nw_cols) :], np.eye(len(S_nw_cols))):
+            raise ValueError(
+                f"The bottom {S_nw.shape[1]}x{S_nw.shape[1]} part of S must be an identity matrix."
+            )
 
         # Check Y_hat_df\S_df series difference
-        S_diff  = len(S_df.index.difference(uids))
-        Y_hat_diff = len(Y_hat_df.index.difference(S_df.index.unique()))
-        if S_diff > 0 or Y_hat_diff > 0:
-            raise Exception(f'Check `S_df`, `Y_hat_df` series difference, S\Y_hat={S_diff}, Y_hat\S={Y_hat_diff}')
+        # TODO: this logic should be method specific
+        S_diff = set(S_nw[id_col]) - set(Y_hat_nw[id_col])
+        Y_hat_diff = set(Y_hat_nw[id_col]) - set(S_nw[id_col])
+        if S_diff:
+            raise ValueError(
+                f"There are unique_ids in S_df that are not in Y_hat_df: {reprlib.repr(S_diff)}"
+            )
+        if Y_hat_diff:
+            raise ValueError(
+                f"There are unique_ids in Y_hat_df that are not in S_df: {reprlib.repr(Y_hat_diff)}"
+            )
 
-        if Y_df is not None:
-            # Check Y_hat_df\Y_df series difference
-            Y_diff  = len(Y_df.index.difference(uids))
-            Y_hat_diff = len(Y_hat_df.index.difference(Y_df.index.unique()))
-            if Y_diff > 0 or Y_hat_diff > 0:
-                raise Exception(f'Check `Y_hat_df`, `Y_df` series difference, Y_hat\Y={Y_hat_diff}, Y\Y_hat={Y_diff}')
+        if Y_nw is not None:
+            Y_diff = set(Y_nw[id_col]) - set(Y_hat_nw[id_col])
+            Y_hat_diff = set(Y_hat_nw[id_col]) - set(Y_nw[id_col])
+            if Y_diff:
+                raise ValueError(
+                    f"There are unique_ids in Y_df that are not in Y_hat_df: {reprlib.repr(Y_diff)}"
+                )
+            if Y_hat_diff:
+                raise ValueError(
+                    f"There are unique_ids in Y_hat_df that are not in Y_df: {reprlib.repr(Y_hat_diff)}"
+                )
 
-        # Same Y_hat_df/S_df/Y_df's unique_id order to prevent errors
-        S_df = S_df.loc[uids]
+        # Same Y_hat_df/S_df/Y_df's unique_ids. Order is guaranteed by sorting.
+        # TODO: this logic should be method specific
+        unique_ids = Y_hat_nw[id_col].unique().to_numpy()
+        S_nw = S_nw.filter(nw.col(id_col).is_in(unique_ids))
 
-        return Y_hat_df, S_df, Y_df, model_names
+        return Y_hat_nw, S_nw, Y_nw, model_names
 
-    def reconcile(self, 
-                  Y_hat_df: pd.DataFrame,
-                  S: pd.DataFrame,
-                  tags: Dict[str, np.ndarray],
-                  Y_df: Optional[pd.DataFrame] = None,
-                  level: Optional[List[int]] = None,
-                  intervals_method: str = 'normality',
-                  num_samples: int = -1,
-                  seed: int = 0,
-                  sort_df: bool = True,
-                  is_balanced: bool = False,
-        ):
+    def _prepare_Y(
+        self,
+        Y_nw: Frame,
+        S_nw: Frame,
+        is_balanced: bool = True,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+    ) -> np.ndarray:
+        """
+        Prepare Y data.
+        """
+        if is_balanced:
+            Y = Y_nw[target_col].to_numpy().reshape(len(S_nw), -1)
+        else:
+            Y_pivot = Y_nw.pivot(
+                on=time_col, index=id_col, values=target_col, sort_columns=True
+            ).sort(by=id_col)
+            Y_pivot_cols_ex_id_col = Y_pivot.columns
+            Y_pivot_cols_ex_id_col.remove(id_col)
+
+            # TODO: check if this is the best way to do it - it's reasonably fast to ensure Y_pivot has same order as S_nw
+            pos_in_Y = np.searchsorted(
+                Y_pivot[id_col].to_numpy(), S_nw[id_col].to_numpy()
+            )
+            Y_pivot = Y_pivot.select(nw.col(Y_pivot_cols_ex_id_col))
+            Y_pivot = Y_pivot[pos_in_Y]
+            Y = Y_pivot.to_numpy()
+
+        # TODO: the result is a Fortran contiguous array, see if we can avoid the below copy (I don't think so)
+        Y = np.ascontiguousarray(Y, dtype=np.float64)
+        return Y
+
+    def reconcile(
+        self,
+        Y_hat_df: Frame,
+        S: Frame,
+        tags: Dict[str, np.ndarray],
+        Y_df: Optional[Frame] = None,
+        level: Optional[List[int]] = None,
+        intervals_method: str = "normality",
+        num_samples: int = -1,
+        seed: int = 0,
+        is_balanced: bool = False,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+    ) -> FrameT:
         """Hierarchical Reconciliation Method.
 
-        The `reconcile` method is analogous to SKLearn `fit_predict` method, it 
+        The `reconcile` method is analogous to SKLearn `fit_predict` method, it
         applies different reconciliation techniques instantiated in the `reconcilers` list.
 
-        Most reconciliation methods can be described by the following convenient 
+        Most reconciliation methods can be described by the following convenient
         linear algebra notation:
 
         $$\\tilde{\mathbf{y}}_{[a,b],\\tau} = \mathbf{S}_{[a,b][b]} \mathbf{P}_{[b][a,b]} \hat{\mathbf{y}}_{[a,b],\\tau}$$
 
         where $a, b$ represent the aggregate and bottom levels, $\mathbf{S}_{[a,b][b]}$ contains
-        the hierarchical aggregation constraints, and $\mathbf{P}_{[b][a,b]}$ varies across 
-        reconciliation methods. The reconciled predictions are $\\tilde{\mathbf{y}}_{[a,b],\\tau}$, and the 
+        the hierarchical aggregation constraints, and $\mathbf{P}_{[b][a,b]}$ varies across
+        reconciliation methods. The reconciled predictions are $\\tilde{\mathbf{y}}_{[a,b],\\tau}$, and the
         base predictions $\hat{\mathbf{y}}_{[a,b],\\tau}$.
 
         **Parameters:**<br>
-        `Y_hat_df`: pd.DataFrame, base forecasts with columns `ds` and models to reconcile indexed by `unique_id`.<br>
-        `Y_df`: pd.DataFrame, training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.<br>
+        `Y_hat_df`: DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.<br>
+        `Y_df`: DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`.<br>
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
-        `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
+        `S`: DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: positive float list [0,100), confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
         `seed`: int=0, random seed for numpy generator's replicability.<br>
-        `sort_df` : bool (default=True), if True, sort `df` by [`unique_id`,`ds`].<br>
         `is_balanced`: bool=False, wether `Y_df` is balanced, set it to True to speed things up if `Y_df` is balanced.<br>
+        `id_col` : str='unique_id', column that identifies each serie.<br>
+        `time_col` : str='ds', column that identifies each timestep, its values can be timestamps or integers.<br>
+        `target_col` : str='y', column that contains the target.<br>
 
         **Returns:**<br>
-        `Y_tilde_df`: pd.DataFrame, with reconciled predictions.
+        `Y_tilde_df`: DataFrame, with reconciled predictions.
         """
+        # To Narwhals
+        Y_hat_nw = nw.from_native(Y_hat_df)
+        S_nw = nw.from_native(S)
+        if Y_df is not None:
+            Y_nw = nw.from_native(Y_df)
+        else:
+            Y_nw = None
+
         # Check input's validity and sort dataframes
-        Y_hat_df, S_df, Y_df, self.model_names = \
-                    self._prepare_fit(Y_hat_df=Y_hat_df,
-                                      S_df=S,
-                                      Y_df=Y_df,
-                                      tags=tags,
-                                      level=level,
-                                      intervals_method=intervals_method,
-                                      sort_df=sort_df)
+        Y_hat_nw, S_nw, Y_nw, self.model_names = self._prepare_fit(
+            Y_hat_nw=Y_hat_nw,
+            S_nw=S_nw,
+            Y_nw=Y_nw,
+            tags=tags,
+            level=level,
+            intervals_method=intervals_method,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
 
         # Initialize reconciler arguments
         reconciler_args = dict(
-            idx_bottom=S_df.index.get_indexer(S.columns),
-            tags={key: S_df.index.get_indexer(val) for key, val in tags.items()}
+            idx_bottom=np.arange(len(S_nw))[-S_nw.shape[1] :],
+            tags={
+                key: S_nw.with_columns(nw.col(id_col).is_in(val).alias("in_cols"))[
+                    "in_cols"
+                ]
+                .to_numpy()
+                .nonzero()[0]
+                for key, val in tags.items()
+            },
         )
 
         any_sparse = any([method.is_sparse_method for method in self.reconcilers])
+        S_nw_cols_ex_id_col = S_nw.columns
+        S_nw_cols_ex_id_col.remove(id_col)
         if any_sparse:
+            if not nw.dependencies.is_pandas_dataframe(
+                Y_hat_df
+            ) or not nw.dependencies.is_pandas_dataframe(S):
+                raise ValueError(
+                    "You have one or more sparse reconciliation methods. Please convert `S` and `Y_hat_df` to a pandas DataFrame."
+                )
             try:
-                S_for_sparse = sparse.csr_matrix(S_df.sparse.to_coo())
+                S_for_sparse = sparse.csr_matrix(
+                    S_nw.select(nw.col(S_nw_cols_ex_id_col)).to_native().sparse.to_coo()
+                )
             except AttributeError:
-                warnings.warn('Using dense S matrix for sparse reconciliation method.')
-                S_for_sparse = S_df.values.astype(np.float64, copy=False)
+                S_for_sparse = sparse.csr_matrix(
+                    S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                    .to_numpy()
+                    .astype(np.float64, copy=False)
+                )
 
-        if Y_df is not None:
-            if is_balanced:
-                y_insample = Y_df['y'].values.reshape(len(S_df), -1).astype(np.float64, copy=False)
-            else:
-                y_insample = Y_df.pivot(columns='ds', values='y').loc[S_df.index].values.astype(np.float64, copy=False)
-            reconciler_args['y_insample'] = y_insample
+        if Y_nw is not None:
+            if any_sparse and not nw.dependencies.is_pandas_dataframe(Y_df):
+                raise ValueError(
+                    "You have one or more sparse reconciliation methods. Please convert `Y_df` to a pandas DataFrame."
+                )
+            y_insample = self._prepare_Y(
+                Y_nw=Y_nw,
+                S_nw=S_nw,
+                is_balanced=is_balanced,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+            )
+            reconciler_args["y_insample"] = y_insample
 
-        Y_tilde_df= Y_hat_df.copy()
+        Y_tilde_nw = nw.maybe_reset_index(Y_hat_nw.clone())
         self.execution_times = {}
         self.level_names = {}
         self.sample_names = {}
@@ -263,139 +391,180 @@ class HierarchicalReconciliation:
             if reconciler.is_sparse_method:
                 reconciler_args["S"] = S_for_sparse
             else:
-                reconciler_args["S"] = S_df.values.astype(np.float64, copy=False)
+                reconciler_args["S"] = (
+                    S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                    .to_numpy()
+                    .astype(np.float64, copy=False)
+                )
 
-            has_fitted = 'y_hat_insample' in signature(reconciler.fit_predict).parameters
-            has_level = 'level' in signature(reconciler.fit_predict).parameters
+            has_fitted = (
+                "y_hat_insample" in signature(reconciler.fit_predict).parameters
+            )
+            has_level = "level" in signature(reconciler.fit_predict).parameters
 
             for model_name in self.model_names:
                 start = time.time()
-                recmodel_name = f'{model_name}/{reconcile_fn_name}'
-                y_hat = Y_hat_df[model_name].values.reshape(len(S_df), -1).astype(np.float64, copy=False)
-                reconciler_args['y_hat'] = y_hat
+                recmodel_name = f"{model_name}/{reconcile_fn_name}"
 
-                if (self.insample and has_fitted) or intervals_method in ['bootstrap', 'permbu']:
-                    if is_balanced:
-                        y_hat_insample = Y_df[model_name].values.reshape(len(S_df), -1).astype(np.float64, copy=False)
-                    else:
-                        y_hat_insample = Y_df.pivot(columns='ds', values=model_name).loc[S_df.index].values.astype(np.float64, copy=False)
-                    reconciler_args['y_hat_insample'] = y_hat_insample
+                # TODO: the below should be method specific
+                y_hat = self._prepare_Y(
+                    Y_nw=Y_hat_nw[[id_col, time_col, model_name]],
+                    S_nw=S_nw,
+                    is_balanced=True,
+                    id_col=id_col,
+                    time_col=time_col,
+                    target_col=model_name,
+                )
+                reconciler_args["y_hat"] = y_hat
+
+                if (self.insample and has_fitted) or intervals_method in [
+                    "bootstrap",
+                    "permbu",
+                ]:
+                    y_hat_insample = self._prepare_Y(
+                        Y_nw=Y_nw[[id_col, time_col, model_name]],
+                        S_nw=S_nw,
+                        is_balanced=is_balanced,
+                        id_col=id_col,
+                        time_col=time_col,
+                        target_col=model_name,
+                    )
+                    reconciler_args["y_hat_insample"] = y_hat_insample
 
                 if has_level and (level is not None):
-                    if intervals_method in ['normality', 'permbu']:
-                        sigmah = _reverse_engineer_sigmah(Y_hat_df=Y_hat_df,
-                                    y_hat=y_hat, model_name=model_name)
-                        reconciler_args['sigmah'] = sigmah
+                    if intervals_method in ["normality", "permbu"]:
+                        sigmah = _reverse_engineer_sigmah(
+                            Y_hat_df=Y_hat_nw, y_hat=y_hat, model_name=model_name
+                        )
+                        reconciler_args["sigmah"] = sigmah
 
-                    reconciler_args['intervals_method'] = intervals_method
-                    reconciler_args['num_samples'] = 200 # TODO: solve duplicated num_samples
-                    reconciler_args['seed'] = seed
+                    reconciler_args["intervals_method"] = intervals_method
+                    reconciler_args["num_samples"] = (
+                        200  # TODO: solve duplicated num_samples
+                    )
+                    reconciler_args["seed"] = seed
 
                 # Mean and Probabilistic reconciliation
-                kwargs_ls = [key for key in signature(reconciler.fit_predict).parameters if key in reconciler_args.keys()]
+                kwargs_ls = [
+                    key
+                    for key in signature(reconciler.fit_predict).parameters
+                    if key in reconciler_args.keys()
+                ]
                 kwargs = {key: reconciler_args[key] for key in kwargs_ls}
-                
+
                 if (level is not None) and (num_samples > 0):
                     # Store reconciler's memory to generate samples
                     reconciler = reconciler.fit(**kwargs)
-                    fcsts_model = reconciler.predict(S=reconciler_args['S'], 
-                                                     y_hat=reconciler_args['y_hat'], level=level)
+                    fcsts_model = reconciler.predict(
+                        S=reconciler_args["S"],
+                        y_hat=reconciler_args["y_hat"],
+                        level=level,
+                    )
                 else:
                     # Memory efficient reconciler's fit_predict
                     fcsts_model = reconciler(**kwargs, level=level)
 
                 # Parse final outputs
-                Y_tilde_df[recmodel_name] = fcsts_model['mean'].flatten()
-                if intervals_method in ['bootstrap', 'normality', 'permbu'] and level is not None:
+                Y_tilde_nw = Y_tilde_nw.with_columns(
+                    **{recmodel_name: fcsts_model["mean"].flatten()}
+                )
+
+                if (
+                    intervals_method in ["bootstrap", "normality", "permbu"]
+                    and level is not None
+                ):
                     level.sort()
-                    lo_names = [f'{recmodel_name}-lo-{lv}' for lv in reversed(level)]
-                    hi_names = [f'{recmodel_name}-hi-{lv}' for lv in level]
+                    lo_names = [f"{recmodel_name}-lo-{lv}" for lv in reversed(level)]
+                    hi_names = [f"{recmodel_name}-hi-{lv}" for lv in level]
                     self.level_names[recmodel_name] = lo_names + hi_names
-                    sorted_quantiles = np.reshape(fcsts_model['quantiles'], (len(Y_tilde_df),-1))
-                    intervals_df = pd.DataFrame(sorted_quantiles, index=Y_tilde_df.index,
-                                                columns=self.level_names[recmodel_name])
-                    Y_tilde_df= pd.concat([Y_tilde_df, intervals_df], axis=1)
+                    sorted_quantiles = np.reshape(
+                        fcsts_model["quantiles"], (len(Y_tilde_nw), -1)
+                    )
+                    y_tilde = dict(
+                        zip(self.level_names[recmodel_name], sorted_quantiles.T)
+                    )
+                    Y_tilde_nw = Y_tilde_nw.with_columns(**y_tilde)
 
                     if num_samples > 0:
                         samples = reconciler.sample(num_samples=num_samples)
-                        self.sample_names[recmodel_name] = [f'{recmodel_name}-sample-{i}' for i in range(num_samples)]
-                        samples = np.reshape(samples, (len(Y_tilde_df),-1))
-                        samples_df = pd.DataFrame(samples, index=Y_tilde_df.index,
-                                                  columns=self.sample_names[recmodel_name])
-                        Y_tilde_df= pd.concat([Y_tilde_df, samples_df], axis=1)
-
-                    del sorted_quantiles
-                    del intervals_df
-                if self.insample and has_fitted:
-                    del y_hat_insample
-                gc.collect()
+                        self.sample_names[recmodel_name] = [
+                            f"{recmodel_name}-sample-{i}" for i in range(num_samples)
+                        ]
+                        samples = np.reshape(samples, (len(Y_tilde_nw), -1))
+                        y_tilde = dict(zip(self.sample_names[recmodel_name], samples.T))
+                        Y_tilde_nw = Y_tilde_nw.with_columns(**y_tilde)
 
                 end = time.time()
-                self.execution_times[f'{model_name}/{reconcile_fn_name}'] = (end - start)
+                self.execution_times[f"{model_name}/{reconcile_fn_name}"] = end - start
+
+        Y_tilde_df = Y_tilde_nw.to_native()
 
         return Y_tilde_df
 
-    def bootstrap_reconcile(self,
-                            Y_hat_df: pd.DataFrame,
-                            S_df: pd.DataFrame,
-                            tags: Dict[str, np.ndarray],
-                            Y_df: Optional[pd.DataFrame] = None,
-                            level: Optional[List[int]] = None,
-                            intervals_method: str = 'normality',
-                            num_samples: int = -1,
-                            num_seeds: int = 1,
-                            sort_df: bool = True):
+    def bootstrap_reconcile(
+        self,
+        Y_hat_df: Frame,
+        S_df: Frame,
+        tags: Dict[str, np.ndarray],
+        Y_df: Optional[Frame] = None,
+        level: Optional[List[int]] = None,
+        intervals_method: str = "normality",
+        num_samples: int = -1,
+        num_seeds: int = 1,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+    ) -> FrameT:
         """Bootstraped Hierarchical Reconciliation Method.
 
-        Applies N times, based on different random seeds, the `reconcile` method 
-        for the different reconciliation techniques instantiated in the `reconcilers` list. 
+        Applies N times, based on different random seeds, the `reconcile` method
+        for the different reconciliation techniques instantiated in the `reconcilers` list.
 
         **Parameters:**<br>
-        `Y_hat_df`: pd.DataFrame, base forecasts with columns `ds` and models to reconcile indexed by `unique_id`.<br>
-        `Y_df`: pd.DataFrame, training set of base time series with columns `['ds', 'y']` indexed by `unique_id`.<br>
+        `Y_hat_df`: DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.<br>
+        `Y_df`: DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`.<br>
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
-        `S`: pd.DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
+        `S`: DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: positive float list [0,100), confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
         `num_seeds`: int=1, random seed for numpy generator's replicability.<br>
-        `sort_df` : bool (default=True), if True, sort `df` by [`unique_id`,`ds`].<br>
+        `id_col` : str='unique_id', column that identifies each serie.<br>
+        `time_col` : str='ds', column that identifies each timestep, its values can be timestamps or integers.<br>
+        `target_col` : str='y', column that contains the target.<br>
 
         **Returns:**<br>
-        `Y_bootstrap_df`: pd.DataFrame, with bootstraped reconciled predictions.
+        `Y_bootstrap_df`: DataFrame, with bootstraped reconciled predictions.
         """
-
-        # Check input's validity and sort dataframes
-        Y_hat_df, S_df, Y_df, self.model_names = \
-                    self._prepare_fit(Y_hat_df=Y_hat_df,
-                                      S_df=S_df,
-                                      Y_df=Y_df,
-                                      tags=tags,
-                                      intervals_method=intervals_method,
-                                      sort_df=sort_df)
-
         # Bootstrap reconciled predictions
         Y_tilde_list = []
         for seed in range(num_seeds):
-            Y_tilde_df = self.reconcile(Y_hat_df=Y_hat_df,
-                                        S=S_df,
-                                        tags=tags,
-                                        Y_df=Y_df,
-                                        level=level,
-                                        intervals_method=intervals_method,
-                                        num_samples=num_samples,
-                                        seed=seed,
-                                        sort_df=False)
-            Y_tilde_df['seed'] = seed
-            # TODO: fix broken recmodel_names
-            if seed==0:
-                first_columns = Y_tilde_df.columns
-            Y_tilde_df.columns = first_columns
-            Y_tilde_list.append(Y_tilde_df)
+            Y_tilde_df = self.reconcile(
+                Y_hat_df=Y_hat_df,
+                S=S_df,
+                tags=tags,
+                Y_df=Y_df,
+                level=level,
+                intervals_method=intervals_method,
+                num_samples=num_samples,
+                seed=seed,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+            )
+            Y_tilde_nw = nw.from_native(Y_tilde_df)
+            Y_tilde_nw = Y_tilde_nw.with_columns(nw.lit(seed).alias("seed"))
 
-        Y_bootstrap_df = pd.concat(Y_tilde_list, axis=0)
-        del Y_tilde_list
-        gc.collect()
+            # TODO: fix broken recmodel_names
+            if seed == 0:
+                first_columns = Y_tilde_nw.columns
+            Y_tilde_nw = Y_tilde_nw.rename(
+                {col: first_columns[i] for i, col in enumerate(first_columns)}
+            )
+            Y_tilde_list.append(Y_tilde_nw)
+
+        Y_bootstrap_nw = nw.concat(Y_tilde_list, how="vertical")
+        Y_bootstrap_df = Y_bootstrap_nw.to_native()
 
         return Y_bootstrap_df

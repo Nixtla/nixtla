@@ -16,7 +16,13 @@ from quadprog import solve_qp
 from scipy import sparse
 
 # %% ../nbs/src/methods.ipynb 4
-from .utils import is_strictly_hierarchical, _ma_cov, _shrunk_covariance_schaferstrimmer_no_nans, _shrunk_covariance_schaferstrimmer_with_nans, _lasso
+from hierarchicalforecast.utils import (
+    is_strictly_hierarchical,
+    _ma_cov,
+    _shrunk_covariance_schaferstrimmer_no_nans,
+    _shrunk_covariance_schaferstrimmer_with_nans,
+    _lasso,
+)
 from .probabilistic_methods import Normality, Bootstrap, PERMBU
 
 # %% ../nbs/src/methods.ipynb 6
@@ -27,65 +33,76 @@ class HReconciler:
     P = None
     sampler = None
 
-    def _get_sampler(self,
-                     intervals_method,
-                     S, P, y_hat,
-                     y_insample, y_hat_insample,
-                     W, sigmah, num_samples, seed, tags):
-        if intervals_method == 'normality':
-            sampler = Normality(
-                        S=S, P=P,
-                        y_hat=y_hat,
-                        W=W, sigmah=sigmah,
-                        seed=seed)
-        elif intervals_method == 'permbu':
+    def _get_sampler(
+        self,
+        intervals_method,
+        S,
+        P,
+        y_hat,
+        y_insample,
+        y_hat_insample,
+        W,
+        sigmah,
+        num_samples,
+        seed,
+        tags,
+    ):
+        if intervals_method == "normality":
+            sampler = Normality(S=S, P=P, y_hat=y_hat, W=W, sigmah=sigmah, seed=seed)
+        elif intervals_method == "permbu":
             sampler = PERMBU(
-                        S=S, P=P,
-                        y_hat = (S @ (P @ y_hat)),
-                        tags=tags,
-                        y_insample=y_insample, 
-                        y_hat_insample=y_hat_insample,
-                        sigmah=sigmah,
-                        num_samples=num_samples,
-                        seed=seed)
-        elif intervals_method == 'bootstrap':
+                S=S,
+                P=P,
+                y_hat=(S @ (P @ y_hat)),
+                tags=tags,
+                y_insample=y_insample,
+                y_hat_insample=y_hat_insample,
+                sigmah=sigmah,
+                num_samples=num_samples,
+                seed=seed,
+            )
+        elif intervals_method == "bootstrap":
             sampler = Bootstrap(
-                        S=S, P=P, 
-                        y_hat=y_hat,
-                        y_insample=y_insample,
-                        y_hat_insample=y_hat_insample,
-                        num_samples=num_samples,
-                        seed=seed)
+                S=S,
+                P=P,
+                y_hat=y_hat,
+                y_insample=y_insample,
+                y_hat_insample=y_hat_insample,
+                num_samples=num_samples,
+                seed=seed,
+            )
         else:
             sampler = None
-        return sampler    
+        return sampler
 
-    def _reconcile(self,
-                   S: np.ndarray,
-                   P: np.ndarray,
-                   y_hat: np.ndarray,
-                   SP: np.ndarray = None,
-                   level: Optional[List[int]] = None,
-                   sampler: Optional[Union[Normality, PERMBU, Bootstrap]] = None):
+    def _reconcile(
+        self,
+        S: np.ndarray,
+        P: np.ndarray,
+        y_hat: np.ndarray,
+        SP: np.ndarray = None,
+        level: Optional[List[int]] = None,
+        sampler: Optional[Union[Normality, PERMBU, Bootstrap]] = None,
+    ):
 
         # Mean reconciliation
-        res = {'mean': (S @ (P @ y_hat))}
+        res = {"mean": (S @ (P @ y_hat))}
 
         # Probabilistic reconciliation
         if (level is not None) and (sampler is not None):
             # Update results dictionary within
             # Vectorized quantiles
             quantiles = np.concatenate(
-                [[(100 - lv) / 200, ((100 - lv) / 200) + lv / 100] for lv in level])
+                [[(100 - lv) / 200, ((100 - lv) / 200) + lv / 100] for lv in level]
+            )
             quantiles = np.sort(quantiles)
             res = sampler.get_prediction_quantiles(res, quantiles)
 
         return res
 
-    def predict(self,
-                S: np.ndarray,
-                y_hat: np.ndarray,
-                level: Optional[List[int]] = None):
+    def predict(
+        self, S: np.ndarray, y_hat: np.ndarray, level: Optional[List[int]] = None
+    ):
         """Predict using reconciler.
 
         Predict using fitted mean and probabilistic reconcilers.
@@ -100,12 +117,12 @@ class HReconciler:
         """
         if not self.fitted:
             raise Exception("This model instance is not fitted yet, Call fit method.")
-   
-        return self._reconcile(S=S, P=self.P, y_hat=y_hat,
-                               sampler=self.sampler, level=level)
 
-    def sample(self,
-               num_samples: int):
+        return self._reconcile(
+            S=S, P=self.P, y_hat=y_hat, sampler=self.sampler, level=level
+        )
+
+    def sample(self, num_samples: int):
         """Sample probabilistic coherent distribution.
 
         Generates n samples from a probabilistic coherent distribution.
@@ -122,29 +139,27 @@ class HReconciler:
         if not self.fitted:
             raise Exception("This model instance is not fitted yet, Call fit method.")
         if self.sampler is None:
-            raise Exception("This model instance does not have sampler. Call fit with `intervals_method`.")
+            raise Exception(
+                "This model instance does not have sampler. Call fit with `intervals_method`."
+            )
 
         samples = self.sampler.get_samples(num_samples=num_samples)
         return samples
-    
-    def fit(self,
-        *args,
-        **kwargs):
+
+    def fit(self, *args, **kwargs):
 
         raise NotImplementedError("This method is not implemented yet.")
-    
-    def fit_predict(self,
-        *args,
-        **kwargs):
 
-        raise NotImplementedError("This method is not implemented yet.")  
+    def fit_predict(self, *args, **kwargs):
 
-    __call__ = fit_predict      
+        raise NotImplementedError("This method is not implemented yet.")
+
+    __call__ = fit_predict
 
 # %% ../nbs/src/methods.ipynb 8
 class BottomUp(HReconciler):
     """Bottom Up Reconciliation Class.
-    The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for 
+    The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for
     the first time by Orcutt in 1968.
     The corresponding hierarchical \"projection\" matrix is defined as:
     $$\mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]$$
@@ -153,9 +168,10 @@ class BottomUp(HReconciler):
     None
 
     **References:**<br>
-    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American 
+    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American
     Economic Review, 58 , 773(787)](http://www.jstor.org/stable/1815532).
     """
+
     insample = False
 
     def _get_PW_matrices(self, S, idx_bottom):
@@ -167,17 +183,19 @@ class BottomUp(HReconciler):
             W = np.eye(n_hiers, dtype=np.float64)
         return P, W
 
-    def fit(self,
-            S: np.ndarray,
-            y_hat: np.ndarray,
-            idx_bottom: np.ndarray,
-            y_insample: Optional[np.ndarray] = None,
-            y_hat_insample: Optional[np.ndarray] = None,
-            sigmah: Optional[np.ndarray] = None,
-            intervals_method: Optional[str] = None,
-            num_samples: Optional[int] = None,
-            seed: Optional[int] = None,            
-            tags: Optional[Dict[str, np.ndarray]] = None):
+    def fit(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        idx_bottom: np.ndarray,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+    ):
         """Bottom Up Fit Method.
 
         **Parameters:**<br>
@@ -193,32 +211,36 @@ class BottomUp(HReconciler):
         """
         self.intervals_method = intervals_method
         self.P, self.W = self._get_PW_matrices(S=S, idx_bottom=idx_bottom)
-        self.sampler = self._get_sampler(S=S,
-                                         P=self.P,
-                                         W=self.W,
-                                         y_hat=y_hat,
-                                         y_insample=y_insample,
-                                         y_hat_insample=y_hat_insample,
-                                         sigmah=sigmah, 
-                                         intervals_method=intervals_method,
-                                         num_samples=num_samples,
-                                         seed=seed,
-                                         tags=tags)
+        self.sampler = self._get_sampler(
+            S=S,
+            P=self.P,
+            W=self.W,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+        )
         self.fitted = True
         return self
 
-    def fit_predict(self,
-                    S: np.ndarray,
-                    y_hat: np.ndarray,
-                    idx_bottom: np.ndarray,
-                    y_insample: Optional[np.ndarray] = None,
-                    y_hat_insample: Optional[np.ndarray] = None,
-                    sigmah: Optional[np.ndarray] = None,
-                    level: Optional[List[int]] = None,
-                    intervals_method: Optional[str] = None,
-                    num_samples: Optional[int] = None,
-                    seed: Optional[int] = None,
-                    tags: Optional[Dict[str, np.ndarray]] = None):
+    def fit_predict(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        idx_bottom: np.ndarray,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+    ):
         """BottomUp Reconciliation Method.
 
         **Parameters:**<br>
@@ -233,18 +255,22 @@ class BottomUp(HReconciler):
         `y_tilde`: Reconciliated y_hat using the Bottom Up approach.
         """
         # Fit creates P, W and sampler attributes
-        self.fit(S=S,
-                 y_hat=y_hat,
-                 y_insample=y_insample,
-                 y_hat_insample=y_hat_insample,
-                 sigmah=sigmah,
-                 intervals_method=intervals_method, 
-                 num_samples=num_samples,
-                 seed=seed,
-                 tags=tags, idx_bottom=idx_bottom)
+        self.fit(
+            S=S,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+            idx_bottom=idx_bottom,
+        )
 
-        return self._reconcile(S=S, P=self.P, y_hat=y_hat,
-                               sampler=self.sampler, level=level)
+        return self._reconcile(
+            S=S, P=self.P, y_hat=y_hat, sampler=self.sampler, level=level
+        )
 
     __call__ = fit_predict
 
@@ -260,6 +286,7 @@ class BottomUpSparse(BottomUp):
 
     See the parent class for more details.
     """
+
     is_sparse_method = True
 
     def _get_PW_matrices(self, S, idx_bottom):
@@ -294,10 +321,13 @@ def _get_child_nodes(
     return nodes
 
 # %% ../nbs/src/methods.ipynb 28
-def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
-                                tags: Dict[str, np.ndarray],
-                                nodes: Dict[str, Dict[int, np.ndarray]],
-                                idx_top: int):
+def _reconcile_fcst_proportions(
+    S: np.ndarray,
+    y_hat: np.ndarray,
+    tags: Dict[str, np.ndarray],
+    nodes: Dict[str, Dict[int, np.ndarray]],
+    idx_top: int,
+):
     reconciled = np.zeros_like(y_hat)
     reconciled[idx_top] = y_hat[idx_top]
     level_names = list(tags.keys())
@@ -314,8 +344,8 @@ def _reconcile_fcst_proportions(S: np.ndarray, y_hat: np.ndarray,
 class TopDown(HReconciler):
     """Top Down Reconciliation Class.
 
-    The Top Down hierarchical reconciliation method, distributes the total aggregate predictions and decomposes 
-    it down the hierarchy using proportions $\mathbf{p}_{\mathrm{[b]}}$ that can be actual historical values 
+    The Top Down hierarchical reconciliation method, distributes the total aggregate predictions and decomposes
+    it down the hierarchy using proportions $\mathbf{p}_{\mathrm{[b]}}$ that can be actual historical values
     or estimated.
 
     $$\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]$$
@@ -323,23 +353,24 @@ class TopDown(HReconciler):
     `method`: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.<br>
 
     **References:**<br>
-    - [CW. Gross (1990). \"Disaggregation methods to expedite product line forecasting\". Journal of Forecasting, 9 , 233–254. 
+    - [CW. Gross (1990). \"Disaggregation methods to expedite product line forecasting\". Journal of Forecasting, 9 , 233–254.
     doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).<br>
-    - [G. Fliedner (1999). \"An investigation of aggregate variable time series forecast strategies with specific subaggregate 
-    time series statistical correlation\". Computers and Operations Research, 26 , 1133–1149. 
+    - [G. Fliedner (1999). \"An investigation of aggregate variable time series forecast strategies with specific subaggregate
+    time series statistical correlation\". Computers and Operations Research, 26 , 1133–1149.
     doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
     """
-    def __init__(self, 
-                 method: str):
-        self.method = method
-        self.insample = method in ['average_proportions', 'proportion_averages']
 
-    def _get_PW_matrices(self,
-                         S: np.ndarray,
-                         y_hat: np.ndarray,
-                         y_insample: np.ndarray,
-                         tags: Optional[Dict[str, np.ndarray]] = None,
-                         ):
+    def __init__(self, method: str):
+        self.method = method
+        self.insample = method in ["average_proportions", "proportion_averages"]
+
+    def _get_PW_matrices(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        y_insample: np.ndarray,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+    ):
 
         n_hiers, n_bottom = S.shape
 
@@ -355,35 +386,39 @@ class TopDown(HReconciler):
             y_btm = y_insample[idx_bottom]
         else:
             idx_top = 0
-            y_btm = y_insample[(n_hiers - n_bottom):]
+            y_btm = y_insample[(n_hiers - n_bottom) :]
 
         y_top = y_insample[idx_top]
 
-        if self.method == 'average_proportions':
+        if self.method == "average_proportions":
             prop = np.mean(y_btm / y_top, axis=1)
-        elif self.method == 'proportion_averages':
+        elif self.method == "proportion_averages":
             prop = np.mean(y_btm, axis=1) / np.mean(y_top)
-        elif self.method == 'forecast_proportions':
-            raise Exception(f'Fit method not implemented for {self.method} yet')
+        elif self.method == "forecast_proportions":
+            raise Exception(f"Fit method not implemented for {self.method} yet")
         else:
-            raise Exception(f'Unknown method {self.method}')
+            raise Exception(f"Unknown method {self.method}")
 
-        P = np.zeros_like(S, np.float64).T #float 64 if prop is too small, happens with wiki2
+        P = np.zeros_like(
+            S, np.float64
+        ).T  # float 64 if prop is too small, happens with wiki2
         P[:, idx_top] = prop
         W = np.eye(n_hiers, dtype=np.float64)
         return P, W
 
-    def fit(self, 
-            S,
-            y_hat,
-            y_insample: np.ndarray,
-            y_hat_insample: Optional[np.ndarray] = None,
-            sigmah: Optional[np.ndarray] = None,
-            intervals_method: Optional[str] = None,
-            num_samples: Optional[int] = None,
-            seed: Optional[int] = None,            
-            tags: Optional[Dict[str, np.ndarray]] = None,
-            idx_bottom: Optional[np.ndarray] = None):
+    def fit(
+        self,
+        S,
+        y_hat,
+        y_insample: np.ndarray,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+        idx_bottom: Optional[np.ndarray] = None,
+    ):
         """TopDown Fit Method.
 
         **Parameters:**<br>
@@ -400,34 +435,39 @@ class TopDown(HReconciler):
         `self`: object, fitted reconciler.
         """
         self.intervals_method = intervals_method
-        self.P, self.W = self._get_PW_matrices(S=S, y_hat=y_hat, 
-                                               tags=tags, y_insample=y_insample)
-        self.sampler = self._get_sampler(S=S,
-                                         P=self.P,
-                                         W=self.W,
-                                         y_hat=y_hat,
-                                         y_insample=y_insample,
-                                         y_hat_insample=y_hat_insample,
-                                         sigmah=sigmah, 
-                                         intervals_method=intervals_method,
-                                         num_samples=num_samples,
-                                         seed=seed,
-                                         tags=tags)
+        self.P, self.W = self._get_PW_matrices(
+            S=S, y_hat=y_hat, tags=tags, y_insample=y_insample
+        )
+        self.sampler = self._get_sampler(
+            S=S,
+            P=self.P,
+            W=self.W,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+        )
         self.fitted = True
         return self
 
-    def fit_predict(self,
-                    S: np.ndarray,
-                    y_hat: np.ndarray,
-                    tags: Dict[str, np.ndarray],
-                    idx_bottom: np.ndarray = None,
-                    y_insample: Optional[np.ndarray] = None,
-                    y_hat_insample: Optional[np.ndarray] = None,
-                    sigmah: Optional[np.ndarray] = None,
-                    level: Optional[List[int]] = None,
-                    intervals_method: Optional[str] = None,
-                    num_samples: Optional[int] = None,
-                    seed: Optional[int] = None):
+    def fit_predict(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        tags: Dict[str, np.ndarray],
+        idx_bottom: np.ndarray = None,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+    ):
         """Top Down Reconciliation Method.
 
         **Parameters:**<br>
@@ -443,32 +483,43 @@ class TopDown(HReconciler):
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Top Down approach.
         """
-        if self.method == 'forecast_proportions':
+        if self.method == "forecast_proportions":
             idx_top = int(S.sum(axis=1).argmax())
             levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
             if level is not None:
-                warnings.warn('Prediction intervals not implement for `forecast_proportions`')
+                warnings.warn(
+                    "Prediction intervals not implement for `forecast_proportions`"
+                )
             nodes = _get_child_nodes(S=S, tags=levels_)
-            reconciled = [_reconcile_fcst_proportions(S=S, y_hat=y_hat_[:, None], 
-                                                      tags=levels_, 
-                                                      nodes=nodes,
-                                                      idx_top=idx_top) \
-                          for y_hat_ in y_hat.T]
+            reconciled = [
+                _reconcile_fcst_proportions(
+                    S=S,
+                    y_hat=y_hat_[:, None],
+                    tags=levels_,
+                    nodes=nodes,
+                    idx_top=idx_top,
+                )
+                for y_hat_ in y_hat.T
+            ]
             reconciled = np.hstack(reconciled)
-            return {'mean': reconciled}
+            return {"mean": reconciled}
         else:
             # Fit creates P, W and sampler attributes
-            self.fit(S=S,
-                     y_hat=y_hat,
-                     y_insample=y_insample,
-                     y_hat_insample=y_hat_insample,
-                     sigmah=sigmah,
-                     intervals_method=intervals_method,
-                     num_samples=num_samples,
-                     seed=seed,
-                     tags=tags, idx_bottom=idx_bottom)
-            return self._reconcile(S=S, P=self.P, y_hat=y_hat,
-                                   level=level, sampler=self.sampler)
+            self.fit(
+                S=S,
+                y_hat=y_hat,
+                y_insample=y_insample,
+                y_hat_insample=y_hat_insample,
+                sigmah=sigmah,
+                intervals_method=intervals_method,
+                num_samples=num_samples,
+                seed=seed,
+                tags=tags,
+                idx_bottom=idx_bottom,
+            )
+            return self._reconcile(
+                S=S, P=self.P, y_hat=y_hat, level=level, sampler=self.sampler
+            )
 
     __call__ = fit_predict
 
@@ -538,8 +589,8 @@ class TopDownSparse(TopDown):
 class MiddleOut(HReconciler):
     """Middle Out Reconciliation Class.
 
-    This method is only available for **strictly hierarchical structures**. It anchors the base predictions 
-    in a middle level. The levels above the base predictions use the Bottom-Up approach, while the levels 
+    This method is only available for **strictly hierarchical structures**. It anchors the base predictions
+    in a middle level. The levels above the base predictions use the Bottom-Up approach, while the levels
     below use a Top-Down.
 
     **Parameters:**<br>
@@ -548,33 +599,37 @@ class MiddleOut(HReconciler):
 
     **References:**<br>
     - [Hyndman, R.J., & Athanasopoulos, G. (2021). \"Forecasting: principles and practice, 3rd edition:
-    Chapter 11: Forecasting hierarchical and grouped series.\". OTexts: Melbourne, Australia. OTexts.com/fpp3 
+    Chapter 11: Forecasting hierarchical and grouped series.\". OTexts: Melbourne, Australia. OTexts.com/fpp3
     Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
 
     """
-    def __init__(self, 
-                 middle_level: str,
-                 top_down_method: str):
+
+    def __init__(self, middle_level: str, top_down_method: str):
         self.middle_level = middle_level
-        self.top_down_method = top_down_method 
-        self.insample = top_down_method in ['average_proportions', 'proportion_averages']
+        self.top_down_method = top_down_method
+        self.insample = top_down_method in [
+            "average_proportions",
+            "proportion_averages",
+        ]
 
     def _get_PW_matrices(self, **kwargs):
-        raise Exception('Not implemented')
+        raise Exception("Not implemented")
 
     def fit(self, **kwargs):
-        raise Exception('Not implemented')
+        raise Exception("Not implemented")
 
     def predict(self, **kwargs):
-        raise Exception('Not implemented')
+        raise Exception("Not implemented")
 
-    def fit_predict(self, 
-                    S: np.ndarray,
-                    y_hat: np.ndarray,
-                    tags: Dict[str, np.ndarray],
-                    y_insample: Optional[np.ndarray] = None,
-                    level: Optional[List[int]] = None,
-                    intervals_method: Optional[str] = None):
+    def fit_predict(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        tags: Dict[str, np.ndarray],
+        y_insample: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        intervals_method: Optional[str] = None,
+    ):
         """Middle Out Reconciliation Method.
 
         **Parameters:**<br>
@@ -587,9 +642,11 @@ class MiddleOut(HReconciler):
         `y_tilde`: Reconciliated y_hat using the Middle Out approach.
         """
         if not is_strictly_hierarchical(S, tags):
-            raise ValueError('Middle out reconciliation requires strictly hierarchical structures.')
+            raise ValueError(
+                "Middle out reconciliation requires strictly hierarchical structures."
+            )
         if self.middle_level not in tags.keys():
-            raise ValueError('You have to provide a `middle_level` in `tags`.')
+            raise ValueError("You have to provide a `middle_level` in `tags`.")
 
         levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
         reconciled = np.full_like(y_hat, fill_value=np.nan)
@@ -601,15 +658,15 @@ class MiddleOut(HReconciler):
             if node == self.middle_level:
                 break
         idxs_bu = np.hstack(idxs_bu)
-        #bottom up forecasts
+        # bottom up forecasts
         bu = BottomUp().fit_predict(
-            S=np.fliplr(np.unique(S[idxs_bu], axis=1)), 
-            y_hat=y_hat[idxs_bu], 
-            idx_bottom=np.arange(len(idxs_bu))[-len(cut_nodes):]
+            S=np.fliplr(np.unique(S[idxs_bu], axis=1)),
+            y_hat=y_hat[idxs_bu],
+            idx_bottom=np.arange(len(idxs_bu))[-len(cut_nodes) :],
         )
-        reconciled[idxs_bu] = bu['mean']
+        reconciled[idxs_bu] = bu["mean"]
 
-        #top down
+        # top down
         child_nodes = _get_child_nodes(S, levels_)
         # parents contains each node in the middle out level
         # as key. The values of each node are the levels that
@@ -632,7 +689,7 @@ class MiddleOut(HReconciler):
         for node, levels_node in parents.items():
             idxs_node = np.hstack(list(levels_node.values()))
             S_node = S[idxs_node]
-            S_node = S_node[:,~np.all(S_node == 0, axis=0)]
+            S_node = S_node[:, ~np.all(S_node == 0, axis=0)]
             counter = 0
             levels_node_ = deepcopy(levels_node)
             for lv_name, idxs_level in levels_node_.items():
@@ -640,13 +697,13 @@ class MiddleOut(HReconciler):
                 levels_node_[lv_name] = np.arange(counter, idxs_len + counter)
                 counter += idxs_len
             td = TopDown(self.top_down_method).fit_predict(
-                S=S_node, 
-                y_hat=y_hat[idxs_node], 
-                y_insample=y_insample[idxs_node] if y_insample is not None else None, 
-                tags=levels_node_, 
+                S=S_node,
+                y_hat=y_hat[idxs_node],
+                y_insample=y_insample[idxs_node] if y_insample is not None else None,
+                tags=levels_node_,
             )
-            reconciled[idxs_node] = td['mean']
-        return {'mean': reconciled}
+            reconciled[idxs_node] = td["mean"]
+        return {"mean": reconciled}
 
     __call__ = fit_predict
 
@@ -745,9 +802,9 @@ class MiddleOutSparse(MiddleOut):
 class MinTrace(HReconciler):
     """MinTrace Reconciliation Class.
 
-    This reconciliation algorithm proposed by Wickramasuriya et al. depends on a generalized least squares estimator 
-    and an estimator of the covariance matrix of the coherency errors $\mathbf{W}_{h}$. The Min Trace algorithm 
-    minimizes the squared errors for the coherent forecasts under an unbiasedness assumption; the solution has a 
+    This reconciliation algorithm proposed by Wickramasuriya et al. depends on a generalized least squares estimator
+    and an estimator of the covariance matrix of the coherency errors $\mathbf{W}_{h}$. The Min Trace algorithm
+    minimizes the squared errors for the coherent forecasts under an unbiasedness assumption; the solution has a
     closed form.<br>
 
     $$
@@ -763,49 +820,62 @@ class MinTrace(HReconciler):
 
     **References:**<br>
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
-    hierarchical and grouped time series through trace minimization\". Journal of the American Statistical Association, 
+    hierarchical and grouped time series through trace minimization\". Journal of the American Statistical Association,
     114 , 804–819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
     - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). \"Optimal non-negative
     forecast reconciliation". Stat Comput 30, 1167–1182,
     https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
-    def __init__(self, 
-                 method: str,
-                 nonnegative: bool = False,
-                 mint_shr_ridge: Optional[float] = 2e-8,
-                 num_threads: int = 1):
+
+    def __init__(
+        self,
+        method: str,
+        nonnegative: bool = False,
+        mint_shr_ridge: Optional[float] = 2e-8,
+        num_threads: int = 1,
+    ):
         self.method = method
         self.nonnegative = nonnegative
-        self.insample = method in ['wls_var', 'mint_cov', 'mint_shrink']
-        if method == 'mint_shrink':
+        self.insample = method in ["wls_var", "mint_cov", "mint_shrink"]
+        if method == "mint_shrink":
             self.mint_shr_ridge = mint_shr_ridge
         self.num_threads = num_threads
         if not self.nonnegative and self.num_threads > 1:
-            warnings.warn('`num_threads` is only used when `nonnegative=True`')
+            warnings.warn("`num_threads` is only used when `nonnegative=True`")
 
-    def _get_PW_matrices(self, 
-                  S: np.ndarray,
-                  y_hat: np.ndarray,
-                  y_insample: Optional[np.ndarray] = None,
-                  y_hat_insample: Optional[np.ndarray] = None,
-                  idx_bottom: Optional[List[int]] = None,):
+    def _get_PW_matrices(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        idx_bottom: Optional[List[int]] = None,
+    ):
         # shape residuals_insample (n_hiers, obs)
-        res_methods = ['wls_var', 'mint_cov', 'mint_shrink']
+        res_methods = ["wls_var", "mint_cov", "mint_shrink"]
         if self.method in res_methods and y_insample is None and y_hat_insample is None:
-            raise ValueError(f"For methods {', '.join(res_methods)} you need to pass residuals")
+            raise ValueError(
+                f"For methods {', '.join(res_methods)} you need to pass residuals"
+            )
         n_hiers, n_bottom = S.shape
         n_aggs = n_hiers - n_bottom
         # Construct J and U.T
-        J = np.concatenate((np.zeros((n_bottom, n_aggs), dtype=np.float64), S[n_aggs:]), axis=1)
+        J = np.concatenate(
+            (np.zeros((n_bottom, n_aggs), dtype=np.float64), S[n_aggs:]), axis=1
+        )
         Ut = np.concatenate((np.eye(n_aggs, dtype=np.float64), -S[:n_aggs]), axis=1)
-        if self.method == 'ols':
+        if self.method == "ols":
             W = np.eye(n_hiers)
             UtW = Ut
-        elif self.method == 'wls_struct':
+        elif self.method == "wls_struct":
             Wdiag = np.sum(S, axis=1, dtype=np.float64)
             UtW = Ut * Wdiag
             W = np.diag(Wdiag)
-        elif self.method in res_methods and y_insample is not None and y_hat_insample is not None:         
+        elif (
+            self.method in res_methods
+            and y_insample is not None
+            and y_hat_insample is not None
+        ):
             # Residuals with shape (obs, n_hiers)
             residuals = (y_insample - y_hat_insample).T
             n, _ = residuals.shape
@@ -814,15 +884,20 @@ class MinTrace(HReconciler):
             residuals_sum = np.sum(residuals, axis=0)
             zero_residual_prc = np.abs(residuals_sum) < 1e-4
             zero_residual_prc = np.mean(zero_residual_prc)
-            if zero_residual_prc > .98:
-                raise Exception(f'Insample residuals close to 0, zero_residual_prc={zero_residual_prc}. Check `Y_df`')
+            if zero_residual_prc > 0.98:
+                raise Exception(
+                    f"Insample residuals close to 0, zero_residual_prc={zero_residual_prc}. Check `Y_df`"
+                )
 
-            if self.method == 'wls_var':
-                Wdiag = np.nansum(residuals**2, axis=0, dtype=np.float64) / residuals.shape[0]
+            if self.method == "wls_var":
+                Wdiag = (
+                    np.nansum(residuals**2, axis=0, dtype=np.float64)
+                    / residuals.shape[0]
+                )
                 Wdiag += np.full(n_hiers, 2e-8, dtype=np.float64)
                 W = np.diag(Wdiag)
                 UtW = Ut * Wdiag
-            elif self.method == 'mint_cov':
+            elif self.method == "mint_cov":
                 # Compute nans
                 nan_mask = np.isnan(residuals.T)
                 if np.any(nan_mask):
@@ -831,40 +906,57 @@ class MinTrace(HReconciler):
                     W = np.cov(residuals.T)
 
                 UtW = Ut @ W
-            elif self.method == 'mint_shrink':
+            elif self.method == "mint_shrink":
                 # Compute nans
                 nan_mask = np.isnan(residuals.T)
                 # Compute shrunk empirical covariance
                 if np.any(nan_mask):
-                    W = _shrunk_covariance_schaferstrimmer_with_nans(residuals.T, ~nan_mask, self.mint_shr_ridge)
+                    W = _shrunk_covariance_schaferstrimmer_with_nans(
+                        residuals.T, ~nan_mask, self.mint_shr_ridge
+                    )
                 else:
-                    W = _shrunk_covariance_schaferstrimmer_no_nans(residuals.T, self.mint_shr_ridge)
-                
+                    W = _shrunk_covariance_schaferstrimmer_no_nans(
+                        residuals.T, self.mint_shr_ridge
+                    )
+
                 UtW = Ut @ W
         else:
-            raise ValueError(f'Unknown reconciliation method {self.method}')
+            raise ValueError(f"Unknown reconciliation method {self.method}")
 
         try:
-            P = (J - np.linalg.solve(UtW[:, n_aggs:] @ Ut.T[n_aggs:] + UtW[:, :n_aggs], UtW[:, n_aggs:] @ J.T[n_aggs:]).T @ Ut)
+            P = (
+                J
+                - np.linalg.solve(
+                    UtW[:, n_aggs:] @ Ut.T[n_aggs:] + UtW[:, :n_aggs],
+                    UtW[:, n_aggs:] @ J.T[n_aggs:],
+                ).T
+                @ Ut
+            )
         except np.linalg.LinAlgError:
             if self.method == "mint_shrink":
-                raise Exception(f"min_trace ({self.method}) is ill-conditioned. Increase the value of parameter 'mint_shr_ridge' or use another reconciliation method.")            
+                raise Exception(
+                    f"min_trace ({self.method}) is ill-conditioned. Increase the value of parameter 'mint_shr_ridge' or use another reconciliation method."
+                )
             else:
-                raise Exception(f'min_trace ({self.method}) is ill-conditioned. Please use another reconciliation method.')
+                raise Exception(
+                    f"min_trace ({self.method}) is ill-conditioned. Please use another reconciliation method."
+                )
 
         return P, W
 
-    def fit(self,
-            S,
-            y_hat,
-            y_insample: Optional[np.ndarray] = None,
-            y_hat_insample: Optional[np.ndarray] = None,
-            sigmah: Optional[np.ndarray] = None,
-            intervals_method: Optional[str] = None,
-            num_samples: Optional[int] = None,
-            seed: Optional[int] = None,            
-            tags: Optional[Dict[str, np.ndarray]] = None,
-            idx_bottom: Optional[np.ndarray] = None):
+    def fit(
+        self,
+        S,
+        y_hat,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+        idx_bottom: Optional[np.ndarray] = None,
+    ):
         """MinTrace Fit Method.
 
         **Parameters:**<br>
@@ -881,18 +973,22 @@ class MinTrace(HReconciler):
         `self`: object, fitted reconciler.
         """
         self.y_hat = y_hat
-        self.P, self.W = self._get_PW_matrices(S=S, y_hat=y_hat, 
-                                               y_insample=y_insample, y_hat_insample=y_hat_insample,
-                                               idx_bottom=idx_bottom)
+        self.P, self.W = self._get_PW_matrices(
+            S=S,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            idx_bottom=idx_bottom,
+        )
 
         if self.nonnegative:
             _, n_bottom = S.shape
             W_inv = np.linalg.pinv(self.W)
             negatives = y_hat < 0
             if negatives.any():
-                warnings.warn('Replacing negative forecasts with zero.')
+                warnings.warn("Replacing negative forecasts with zero.")
                 y_hat = np.copy(y_hat)
-                y_hat[negatives] = 0.
+                y_hat[negatives] = 0.0
             # Quadratic progamming formulation
             # here we are solving the quadratic programming problem
             # formulated in the origial paper
@@ -905,56 +1001,67 @@ class MinTrace(HReconciler):
             try:
                 _ = np.linalg.cholesky(G)
             except np.linalg.LinAlgError:
-                raise Exception(f"min_trace ({self.method}) is ill-conditioned. Try setting nonnegative=False or use another reconciliation method.")            
+                raise Exception(
+                    f"min_trace ({self.method}) is ill-conditioned. Try setting nonnegative=False or use another reconciliation method."
+                )
             C = np.eye(n_bottom)
             b = np.zeros(n_bottom)
             # the quadratic programming problem
             # returns the forecasts of the bottom series
             if self.num_threads == 1:
-                bottom_fcts = np.apply_along_axis(lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0], 
-                                                  axis=0, arr=y_hat)
+                bottom_fcts = np.apply_along_axis(
+                    lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0],
+                    axis=0,
+                    arr=y_hat,
+                )
             else:
                 futures = []
                 with ThreadPoolExecutor(self.num_threads) as executor:
                     for j in range(y_hat.shape[1]):
-                        future = executor.submit(solve_qp, G=G, a=a @ y_hat[:, j], C=C, b=b)
+                        future = executor.submit(
+                            solve_qp, G=G, a=a @ y_hat[:, j], C=C, b=b
+                        )
                         futures.append(future)
                     bottom_fcts = np.hstack([f.result()[0][:, None] for f in futures])
             if not np.all(bottom_fcts > -1e-8):
-                raise Exception('nonnegative optimization failed')
+                raise Exception("nonnegative optimization failed")
             # remove negative values close to zero
             bottom_fcts = np.clip(np.float32(bottom_fcts), a_min=0, a_max=None)
-            self.y_hat = S @ bottom_fcts # Hack
+            self.y_hat = S @ bottom_fcts  # Hack
 
             # Overwrite P, W and sampler attributes with BottomUp's
-            self.P, self.W = BottomUp()._get_PW_matrices(S=S, idx_bottom=idx_bottom)            
+            self.P, self.W = BottomUp()._get_PW_matrices(S=S, idx_bottom=idx_bottom)
 
-        self.sampler = self._get_sampler(S=S,
-                                         P=self.P,
-                                         W=self.W,
-                                         y_hat=y_hat,
-                                         y_insample=y_insample,
-                                         y_hat_insample=y_hat_insample,
-                                         sigmah=sigmah, 
-                                         intervals_method=intervals_method,
-                                         num_samples=num_samples,
-                                         seed=seed,
-                                         tags=tags)
+        self.sampler = self._get_sampler(
+            S=S,
+            P=self.P,
+            W=self.W,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+        )
         self.fitted = True
         return self
 
-    def fit_predict(self,
-                    S: np.ndarray,
-                    y_hat: np.ndarray,
-                    idx_bottom: np.ndarray = None,
-                    y_insample: Optional[np.ndarray] = None,
-                    y_hat_insample: Optional[np.ndarray] = None,
-                    sigmah: Optional[np.ndarray] = None,
-                    level: Optional[List[int]] = None,
-                    intervals_method: Optional[str] = None,
-                    num_samples: Optional[int] = None,
-                    seed: Optional[int] = None,                    
-                    tags: Optional[Dict[str, np.ndarray]] = None):
+    def fit_predict(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        idx_bottom: np.ndarray = None,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+    ):
         """MinTrace Reconciliation Method.
 
         **Parameters:**<br>
@@ -970,24 +1077,30 @@ class MinTrace(HReconciler):
         `y_tilde`: Reconciliated y_hat using the MinTrace approach.
         """
         if self.nonnegative:
-            if (level is not None) and intervals_method in ['bootstrap', 'permbu']:
-                raise Exception('nonnegative reconciliation is not compatible with bootstrap forecasts')
+            if (level is not None) and intervals_method in ["bootstrap", "permbu"]:
+                raise Exception(
+                    "nonnegative reconciliation is not compatible with bootstrap forecasts"
+                )
             if idx_bottom is None:
-                raise Exception('idx_bottom needed for nonnegative reconciliation')
+                raise Exception("idx_bottom needed for nonnegative reconciliation")
 
         # Fit creates P, W and sampler attributes
-        self.fit(S=S,
-                 y_hat=y_hat,
-                 y_insample=y_insample,
-                 y_hat_insample=y_hat_insample,
-                 sigmah=sigmah,
-                 intervals_method=intervals_method,
-                 num_samples=num_samples,
-                 seed=seed,
-                 tags=tags, idx_bottom=idx_bottom)
+        self.fit(
+            S=S,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+            idx_bottom=idx_bottom,
+        )
 
-        return self._reconcile(S=S, P=self.P, y_hat=self.y_hat,
-                               level=level, sampler=self.sampler)
+        return self._reconcile(
+            S=S, P=self.P, y_hat=self.y_hat, level=level, sampler=self.sampler
+        )
 
     __call__ = fit_predict
 
@@ -1008,6 +1121,7 @@ class MinTraceSparse(MinTrace):
     P matrix, the method is NOT guaranteed to give identical results to the non-sparse
     version.
     """
+
     is_sparse_method = True
 
     def _get_PW_matrices(
@@ -1039,7 +1153,11 @@ class MinTraceSparse(MinTrace):
             W_diag = np.ones(n_hiers)
         elif self.method == "wls_struct":
             W_diag = S @ np.ones((n_bottom,))
-        elif self.method == "wls_var" and y_insample is not None and y_hat_insample is not None:
+        elif (
+            self.method == "wls_var"
+            and y_insample is not None
+            and y_hat_insample is not None
+        ):
             # Residuals with shape (obs, n_hiers)
             residuals = (y_insample - y_hat_insample).T
             n, _ = residuals.shape
@@ -1096,17 +1214,19 @@ class MinTraceSparse(MinTrace):
 
         return P, W
 
-    def fit(self,
-            S: sparse.csr_matrix,
-            y_hat: np.ndarray,
-            y_insample: Optional[np.ndarray] = None,
-            y_hat_insample: Optional[np.ndarray] = None,
-            sigmah: Optional[np.ndarray] = None,
-            intervals_method: Optional[str] = None,
-            num_samples: Optional[int] = None,
-            seed: Optional[int] = None,            
-            tags: Optional[Dict[str, np.ndarray]] = None,
-            idx_bottom: Optional[np.ndarray] = None):
+    def fit(
+        self,
+        S: sparse.csr_matrix,
+        y_hat: np.ndarray,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+        idx_bottom: Optional[np.ndarray] = None,
+    ):
         # Clip the base forecasts if required to align them with their use in practice.
         if self.nonnegative:
             self.y_hat = np.clip(y_hat, 0, None)
@@ -1114,19 +1234,19 @@ class MinTraceSparse(MinTrace):
             self.y_hat = y_hat
         # Get the reconciliation matrices.
         self.P, self.W = self._get_PW_matrices(
-            S=S, 
-            y_hat=self.y_hat, 
-            y_insample=y_insample, 
-            y_hat_insample=y_hat_insample, 
+            S=S,
+            y_hat=self.y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
             idx_bottom=idx_bottom,
         )
 
         if self.nonnegative:
             # Get the number of leaf nodes.
             _, n_bottom = S.shape
-            # Although it is now sufficient to ensure that all of the entries in P are 
-            # positive, as it is implemented as a linear operator for the iterative 
-            # method to solve the sparse linear system, we need to reconcile to find 
+            # Although it is now sufficient to ensure that all of the entries in P are
+            # positive, as it is implemented as a linear operator for the iterative
+            # method to solve the sparse linear system, we need to reconcile to find
             # if any of the coherent bottom level point forecasts are negative.
             y_tilde = self._reconcile(
                 S=S, P=self.P, y_hat=self.y_hat, level=None, sampler=None
@@ -1135,13 +1255,13 @@ class MinTraceSparse(MinTrace):
             if np.any(y_tilde < 0):
                 # Clip the negative forecasts.
                 y_tilde = np.clip(y_tilde, 0, None)
-                # Force non-negative coherence by overwriting the base forecasts with 
+                # Force non-negative coherence by overwriting the base forecasts with
                 # the aggregated, clipped bottom level forecasts.
                 self.y_hat = S @ y_tilde
-                # Overwrite the attributes for the P and W matrices with those for 
-                # bottom-up reconciliation to force projection onto the non-negative 
+                # Overwrite the attributes for the P and W matrices with those for
+                # bottom-up reconciliation to force projection onto the non-negative
                 # coherent subspace.
-                self.P, self.W = BottomUpSparse()._get_PW_matrices(S=S, idx_bottom=None)  
+                self.P, self.W = BottomUpSparse()._get_PW_matrices(S=S, idx_bottom=None)
 
         # Get the sampler for probabilistic reconciliation.
         self.sampler = self._get_sampler(
@@ -1165,11 +1285,11 @@ class MinTraceSparse(MinTrace):
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
-    This reconciliation algorithm was proposed by Hyndman et al. 2011, the method uses generalized least squares 
-    estimator using the coherency errors covariance matrix. Consider the covariance of the base forecast 
+    This reconciliation algorithm was proposed by Hyndman et al. 2011, the method uses generalized least squares
+    estimator using the coherency errors covariance matrix. Consider the covariance of the base forecast
     $\\textrm{Var}(\epsilon_{h}) = \Sigma_{h}$, the $\mathbf{P}$ matrix of this method is defined by:
     $$ \mathbf{P} = \\left(\mathbf{S}^{\intercal}\Sigma_{h}^{\dagger}\mathbf{S}\\right)^{-1}\mathbf{S}^{\intercal}\Sigma^{\dagger}_{h}$$
-    where $\Sigma_{h}^{\dagger}$ denotes the variance pseudo-inverse. The method was later proven equivalent to 
+    where $\Sigma_{h}^{\dagger}$ denotes the variance pseudo-inverse. The method was later proven equivalent to
     `MinTrace` variants.
 
     **Parameters:**<br>
@@ -1177,22 +1297,24 @@ class OptimalCombination(MinTrace):
     `nonnegative`: bool, reconciled forecasts should be nonnegative?<br>
 
     **References:**<br>
-    - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang (2010). \"Optimal Combination Forecasts for 
+    - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang (2010). \"Optimal Combination Forecasts for
     Hierarchical Time Series\".](https://robjhyndman.com/papers/Hierarchical6.pdf).<br>
-    - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman (2010). \"Optimal Combination Forecasts for 
+    - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman (2010). \"Optimal Combination Forecasts for
     Hierarchical Time Series\".](https://robjhyndman.com/papers/MinT.pdf).
     - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). \"Optimal non-negative
-    forecast reconciliation". Stat Comput 30, 1167–1182, 
+    forecast reconciliation". Stat Comput 30, 1167–1182,
     https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
-    def __init__(self,
-                 method: str,
-                 nonnegative: bool = False,
-                 num_threads: int = 1):
-        comb_methods = ['ols', 'wls_struct']
+
+    def __init__(self, method: str, nonnegative: bool = False, num_threads: int = 1):
+        comb_methods = ["ols", "wls_struct"]
         if method not in comb_methods:
-            raise ValueError(f"Optimal Combination class does not support method: \"{method}\"")
-        super().__init__(method=method, nonnegative=nonnegative, num_threads=num_threads)
+            raise ValueError(
+                f'Optimal Combination class does not support method: "{method}"'
+            )
+        super().__init__(
+            method=method, nonnegative=nonnegative, num_threads=num_threads
+        )
         self.insample = False
 
 # %% ../nbs/src/methods.ipynb 86
@@ -1202,11 +1324,11 @@ class ERM(HReconciler):
     The Empirical Risk Minimization reconciliation strategy relaxes the unbiasedness assumptions from
     previous reconciliation methods like MinT and optimizes square errors between the reconciled predictions
     and the validation data to obtain an optimal reconciliation matrix P.
-    
+
     The exact solution for $\mathbf{P}$ (`method='closed'`) follows the expression:
     $$\mathbf{P}^{*} = \\left(\mathbf{S}^{\intercal}\mathbf{S}\\right)^{-1}\mathbf{Y}^{\intercal}\hat{\mathbf{Y}}\\left(\hat{\mathbf{Y}}\hat{\mathbf{Y}}\\right)^{-1}$$
 
-    The alternative Lasso regularized $\mathbf{P}$ solution (`method='reg_bu'`) is useful when the observations 
+    The alternative Lasso regularized $\mathbf{P}$ solution (`method='reg_bu'`) is useful when the observations
     of validation data is limited or the exact solution has low numerical stability.
     $$\mathbf{P}^{*} = \\text{argmin}_{\mathbf{P}} ||\mathbf{Y}-\mathbf{S} \mathbf{P} \hat{Y} ||^{2}_{2} + \lambda ||\mathbf{P}-\mathbf{P}_{\\text{BU}}||_{1}$$
 
@@ -1215,83 +1337,86 @@ class ERM(HReconciler):
     `lambda_reg`: float, l1 regularizer for `reg` and `reg_bu`.<br>
 
     **References:**<br>
-    - [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without 
-    unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge 
+    - [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without
+    unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge
     Discovery & Data Mining KDD '19 (p. 1337-1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).<br>
     """
-    def __init__(self,
-                 method: str,
-                 lambda_reg: float = 1e-2):
+
+    def __init__(self, method: str, lambda_reg: float = 1e-2):
         self.method = method
         self.lambda_reg = lambda_reg
         self.insample = True
 
-    def _get_PW_matrices(self, 
-                  S: np.ndarray,
-                  y_hat: np.ndarray,
-                  y_insample: np.ndarray,
-                  y_hat_insample: np.ndarray,
-                  idx_bottom: np.ndarray):
+    def _get_PW_matrices(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        y_insample: np.ndarray,
+        y_hat_insample: np.ndarray,
+        idx_bottom: np.ndarray,
+    ):
         n_hiers, n_bottom = S.shape
         # y_hat_insample shape (n_hiers, obs)
         # remove obs with nan values
         nan_idx = np.isnan(y_hat_insample).any(axis=0)
         y_insample = y_insample[:, ~nan_idx]
         y_hat_insample = y_hat_insample[:, ~nan_idx]
-        #only using h validation steps to avoid 
-        #computational burden
-        #print(y_hat.shape)
+        # only using h validation steps to avoid
+        # computational burden
+        # print(y_hat.shape)
         h = min(y_hat.shape[1], y_hat_insample.shape[1])
-        y_hat_insample = y_hat_insample[:, -h:] # shape (h, n_hiers)
+        y_hat_insample = y_hat_insample[:, -h:]  # shape (h, n_hiers)
         y_insample = y_insample[:, -h:]
-        if self.method == 'closed':
+        if self.method == "closed":
             B = np.linalg.inv(S.T @ S) @ S.T @ y_insample
             B = B.T
             P = np.linalg.pinv(y_hat_insample.T) @ B
             P = P.T
-        elif self.method == 'reg':
+        elif self.method == "reg":
             X = np.kron(S, y_hat_insample.T)
             z = y_hat_insample.reshape(-1)
 
             if self.lambda_reg is None:
                 lambda_reg = np.max(np.abs(X.T.dot(z)))
             else:
-                lambda_reg = self.lambda_reg            
+                lambda_reg = self.lambda_reg
 
             beta = _lasso(X, z, lambda_reg, max_iters=1000, tol=1e-4)
             P = beta.reshape(S.shape).T
-        elif self.method == 'reg_bu':
+        elif self.method == "reg_bu":
             X = np.kron(S, y_hat_insample.T)
             Pbu = np.zeros_like(S)
             Pbu[idx_bottom] = S[idx_bottom]
             z = y_hat_insample.reshape(-1) - X @ Pbu.reshape(-1)
-             
+
             if self.lambda_reg is None:
                 lambda_reg = np.max(np.abs(X.T.dot(z)))
             else:
-                lambda_reg = self.lambda_reg             
+                lambda_reg = self.lambda_reg
 
             beta = _lasso(X, z, lambda_reg, max_iters=1000, tol=1e-4)
             P = beta + Pbu.reshape(-1)
-            P = P.reshape(S.shape).T            
+            P = P.reshape(S.shape).T
         else:
-            raise ValueError(f'Unknown reconciliation method {self.method}')
+            raise ValueError(f"Unknown reconciliation method {self.method}")
 
         W = np.eye(n_hiers, dtype=np.float64)
 
         return P, W
 
-    def fit(self,
-            S,
-            y_hat,
-            y_insample,
-            y_hat_insample,
-            sigmah: Optional[np.ndarray] = None,
-            intervals_method: Optional[str] = None,
-            num_samples: Optional[int] = None,
-            seed: Optional[int] = None,
-            tags: Optional[Dict[str, np.ndarray]] = None,
-            idx_bottom: Optional[np.ndarray] = None):
+    def fit(
+        self,
+        S,
+        y_hat,
+        y_insample,
+        y_hat_insample,
+        sigmah: Optional[np.ndarray] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+        idx_bottom: Optional[np.ndarray] = None,
+    ):
         """ERM Fit Method.
 
         **Parameters:**<br>
@@ -1307,37 +1432,43 @@ class ERM(HReconciler):
         **Returns:**<br>
         `self`: object, fitted reconciler.
         """
-        self.P, self.W = self._get_PW_matrices(S=S,
-                                               y_hat=y_hat,
-                                               y_insample=y_insample,
-                                               y_hat_insample=y_hat_insample,
-                                               idx_bottom=idx_bottom)                                               
-        self.sampler = self._get_sampler(S=S,
-                                         P=self.P,
-                                         W=self.W,
-                                         y_hat=y_hat,
-                                         y_insample=y_insample,
-                                         y_hat_insample=y_hat_insample,
-                                         sigmah=sigmah, 
-                                         intervals_method=intervals_method,
-                                         num_samples=num_samples,
-                                         seed=seed,
-                                         tags=tags)
+        self.P, self.W = self._get_PW_matrices(
+            S=S,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            idx_bottom=idx_bottom,
+        )
+        self.sampler = self._get_sampler(
+            S=S,
+            P=self.P,
+            W=self.W,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+        )
         self.fitted = True
         return self
 
-    def fit_predict(self,
-                    S: np.ndarray,
-                    y_hat: np.ndarray,
-                    idx_bottom: np.ndarray = None,
-                    y_insample: Optional[np.ndarray] = None,
-                    y_hat_insample: Optional[np.ndarray] = None,
-                    sigmah: Optional[np.ndarray] = None,
-                    level: Optional[List[int]] = None,
-                    intervals_method: Optional[str] = None,
-                    num_samples: Optional[int] = None,
-                    seed: Optional[int] = None,
-                    tags: Optional[Dict[str, np.ndarray]] = None):
+    def fit_predict(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        idx_bottom: np.ndarray = None,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+        tags: Optional[Dict[str, np.ndarray]] = None,
+    ):
         """ERM Reconciliation Method.
 
         **Parameters:**<br>
@@ -1353,17 +1484,21 @@ class ERM(HReconciler):
         `y_tilde`: Reconciliated y_hat using the ERM approach.
         """
         # Fit creates P, W and sampler attributes
-        self.fit(S=S,
-                 y_hat=y_hat,
-                 y_insample=y_insample,
-                 y_hat_insample=y_hat_insample,
-                 sigmah=sigmah,
-                 intervals_method=intervals_method,
-                 num_samples=num_samples,
-                 seed=seed,
-                 tags=tags, idx_bottom=idx_bottom)
+        self.fit(
+            S=S,
+            y_hat=y_hat,
+            y_insample=y_insample,
+            y_hat_insample=y_hat_insample,
+            sigmah=sigmah,
+            intervals_method=intervals_method,
+            num_samples=num_samples,
+            seed=seed,
+            tags=tags,
+            idx_bottom=idx_bottom,
+        )
 
-        return self._reconcile(S=S, P=self.P, y_hat=y_hat,
-                               level=level, sampler=self.sampler)
+        return self._reconcile(
+            S=S, P=self.P, y_hat=y_hat, level=level, sampler=self.sampler
+        )
 
     __call__ = fit_predict
