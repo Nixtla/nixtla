@@ -146,9 +146,10 @@ class GroupedArray:
         )
         for j in range(max_horizon):
             for i in range(self.n_groups):
-                out[self.indptr[i] : self.indptr[i + 1] - j, j] = self.data[
-                    self.indptr[i] + j : self.indptr[i + 1]
-                ]
+                if self.indptr[i + 1] - self.indptr[i] > j:
+                    out[self.indptr[i] : self.indptr[i + 1] - j, j] = self.data[
+                        self.indptr[i] + j : self.indptr[i + 1]
+                    ]
         return out
 
     def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
