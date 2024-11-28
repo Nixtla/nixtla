@@ -1752,6 +1752,10 @@ class NixtlaClient:
         out = out_aggregated.groupby(id_col).tail(detection_size).reset_index(drop=True)
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
+        if resp["accumulated_anomaly_score"] is not None:
+            out = ufp.assign_columns(
+                out, "accumulated_anomaly_score", resp["accumulated_anomaly_score"]
+            )
         return _maybe_add_intervals(out, resp["intervals"])
 
     def _distributed_cross_validation(
