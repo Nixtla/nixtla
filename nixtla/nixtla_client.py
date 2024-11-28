@@ -741,13 +741,6 @@ class NixtlaClient:
             )
         if "anomaly_score" in first_res:
             resp["anomaly_score"] = np.hstack([res["anomaly_score"] for res in results])
-        if (
-            "accumulated_anomaly_score" in first_res
-            and first_res["accumulated_anomaly_score"] is not None
-        ):
-            resp["accumulated_anomaly_score"] = np.hstack(
-                [res["accumulated_anomaly_score"] for res in results]
-            )
         if first_res["intervals"] is None:
             resp["intervals"] = None
         else:
@@ -1662,6 +1655,16 @@ class NixtlaClient:
                 model=model,
                 num_partitions=num_partitions,
             )
+        if (
+            threshold_method == "multivariate"
+            and num_partitions is not None
+            and num_partitions > 1
+        ):
+            raise ValueError(
+                "Cannot use more than 1 partition for multivariate anomaly detection. "
+                "Either set threshold_method to univariate "
+                "or set num_partitions to 1 or None."
+            )
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -1676,7 +1679,6 @@ class NixtlaClient:
             freq=freq,
         )
         standard_freq = _standardize_freq(freq)
-        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
 
         logger.info("Preprocessing dataframes...")
         processed, _, x_cols, _ = _preprocess(
