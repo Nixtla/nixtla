@@ -66,7 +66,7 @@ def generate_series(
         Number of series for synthetic panel.
     freq : str (default='D')
         Frequency of the data (pandas alias).
-        Seasonalities are implemented for 'H', 'D' and 'M'.
+        Seasonalities are implemented for hourly, daily and monthly.
     min_length : int (default=50)
         Minimum length of synthetic panel's series.
     max_length : int (default=500)
@@ -74,7 +74,7 @@ def generate_series(
     n_static_features : int (default=0)
         Number of static exogenous variables for synthetic panel's series.
     equal_ends : bool (default=False)
-        Series should end in the same date stamp `ds`.
+        Series should end in the same timestamp.
     with_trend : bool (default=False)
         Series should have a (positive) trend.
     static_as_categorical : bool (default=True)
@@ -99,9 +99,14 @@ def generate_series(
         raise ValueError(
             f"{engine} is not a correct engine; available options: {available_engines}"
         )
-    seasonalities = {"H": 24, "D": 7, "M": 12}
-    season = seasonalities.get(freq, 1)
+    seasonalities = {
+        pd.offsets.Hour(): 24,
+        pd.offsets.Day(): 7,
+        pd.offsets.MonthBegin(): 12,
+        pd.offsets.MonthEnd(): 12,
+    }
     freq = pd.tseries.frequencies.to_offset(freq)
+    season = seasonalities.get(freq, 1)
 
     rng = np.random.RandomState(seed)
     series_lengths = rng.randint(min_length, max_length + 1, n_series)
