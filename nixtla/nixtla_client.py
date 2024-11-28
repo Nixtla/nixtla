@@ -741,6 +741,13 @@ class NixtlaClient:
             )
         if "anomaly_score" in first_res:
             resp["anomaly_score"] = np.hstack([res["anomaly_score"] for res in results])
+        if (
+            "accumulated_anomaly_score" in first_res
+            and first_res["accumulated_anomaly_score"] is not None
+        ):
+            resp["accumulated_anomaly_score"] = np.hstack(
+                [res["accumulated_anomaly_score"] for res in results]
+            )
         if first_res["intervals"] is None:
             resp["intervals"] = None
         else:
@@ -1752,7 +1759,7 @@ class NixtlaClient:
         out = out_aggregated.groupby(id_col).tail(detection_size).reset_index(drop=True)
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
-        if resp["accumulated_anomaly_score"] is not None:
+        if threshold_method == "multivariate":
             out = ufp.assign_columns(
                 out, "accumulated_anomaly_score", resp["accumulated_anomaly_score"]
             )
@@ -2394,6 +2401,7 @@ def _get_schema(
     if method == "detect_anomalies_realtime":
         schema.append("anomaly:bool")
         schema.append("anomaly_score:double")
+        schema.append("accumulated_anomaly_score:double")
     elif method == "cross_validation":
         schema.append(("cutoff", schema[time_col].type))
     if level is not None and quantiles is not None:
