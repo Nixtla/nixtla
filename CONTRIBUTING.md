@@ -51,7 +51,7 @@ This library uses `python-dotenv` for development. To set up your TimeGPT token,
 TIMEGPT_TOKEN=<your token>
 ```
 
-Please write to `ops@nixtla.io` if you're insterested in contributing to this project to get access to your TimeGPT token.
+Please write to `support@nixtla.io` if you're insterested in contributing to this project to get access to your TimeGPT token.
 
 #### Install git hooks
 Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
