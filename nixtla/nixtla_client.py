@@ -354,7 +354,8 @@ def _validate_exog(
     target_col: str,
     hist_exog: Optional[list[str]],
 ) -> tuple[DFType, Optional[DFType]]:
-    exogs = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+    base_cols = {id_col, time_col, target_col}
+    exogs = [c for c in df.columns if c not in base_cols]
     if hist_exog is None:
         hist_exog = []
     if X_df is None:
@@ -371,7 +372,7 @@ def _validate_exog(
         return df, None
 
     # exogs in df that weren't declared as historic nor future
-    futr_exog = [c for c in X_df.columns if c not in (id_col, time_col)]
+    futr_exog = [c for c in X_df.columns if c not in base_cols]
     declared_exogs = {*hist_exog, *futr_exog}
     ignored_exogs = [c for c in exogs if c not in declared_exogs]
     if ignored_exogs:
@@ -388,6 +389,15 @@ def _validate_exog(
             "The following exogenous features are present in `X_df` "
             f"but not in `df`: {missing_futr}."
         )
+
+    # features are provided through X_df but declared as historic
+    futr_and_hist = set(futr_exog) & set(hist_exog)
+    if futr_and_hist:
+        warnings.warn(
+            "The following features were declared as historic but found in `X_df`: "
+            f"{futr_and_hist}, they will be considered as historic."
+        )
+        futr_exog = [f for f in futr_exog if f not in hist_exog]
 
     # Make sure df and X_df are in right order
     df = df[[id_col, time_col, target_col, *futr_exog, *hist_exog]]
@@ -472,7 +482,7 @@ def _preprocess(
     processed = ufp.process_df(
         df=df, id_col=id_col, time_col=time_col, target_col=target_col
     )
-    if X_df is not None:
+    if X_df is not None and X_df.shape[1] > 2:
         X_df = ensure_time_dtype(X_df, time_col=time_col)
         processed_X = ufp.process_df(
             df=X_df,
@@ -916,6 +926,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth,
         finetune_loss: _Loss,
         clean_ex_first: bool,
+        hist_exog_list: Optional[list[str]],
         validate_api_key: bool,
         add_history: bool,
         date_features: Union[bool, list[Union[str, Callable]]],
@@ -973,6 +984,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
@@ -1108,6 +1120,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
@@ -1176,7 +1189,7 @@ class NixtlaClient:
             X = processed.data[:, 1:].T
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")
-            if hist_exog_list is not None:
+            if hist_exog_list:
                 logger.info(f"Using historical exogenous features: {hist_exog_list}")
         else:
             X = None
@@ -1499,6 +1512,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth,
         finetune_loss: _Loss,
         clean_ex_first: bool,
+        hist_exog_list: Optional[list[str]],
         date_features: Union[bool, Sequence[Union[str, Callable]]],
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
@@ -1508,7 +1522,7 @@ class NixtlaClient:
 
         schema, partition_config = _distributed_setup(
             df=df,
-            method="forecast",
+            method="cross_validation",
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -1536,6 +1550,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1563,6 +1578,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth = 1,
         finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
+        hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
@@ -1619,8 +1635,9 @@ class NixtlaClient:
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts
-            using TimeGPT.
+            Clean exogenous signal before making forecasts using TimeGPT.
+        hist_exog_list : list of str, optional (default=None)
+            Column names of the historical exogenous features.
         date_features : bool or list of str or callable, optional (default=False)
             Features computed from the dates.
             Can be pandas date attributes or functions that will take the dates as input.
@@ -1662,6 +1679,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1725,9 +1743,29 @@ class NixtlaClient:
             targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T
-            logger.info(f"Using the following exogenous features: {x_cols}")
+            if hist_exog_list is None:
+                hist_exog = None
+                futr_exog = x_cols
+            else:
+                missing_hist = set(hist_exog_list) - set(x_cols)
+                if missing_hist:
+                    raise ValueError(
+                        "The following exogenous features were declared as historic "
+                        f"but were not found in `df`: {missing_hist}."
+                    )
+                futr_exog = [c for c in x_cols if c not in hist_exog_list]
+                # match the forecast method order [future, historic]
+                fcst_features_order = futr_exog + hist_exog_list
+                x_idxs = [x_cols.index(c) for c in fcst_features_order]
+                X = X[x_idxs]
+                hist_exog = [fcst_features_order.index(c) for c in hist_exog_list]
+            if futr_exog:
+                logger.info(f"Using future exogenous features: {futr_exog}")
+            if hist_exog_list:
+                logger.info(f"Using historical exogenous features: {hist_exog_list}")
         else:
             X = None
+            hist_exog = None
 
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
@@ -1742,6 +1780,7 @@ class NixtlaClient:
             "step_size": step_size,
             "freq": standard_freq,
             "clean_ex_first": clean_ex_first,
+            "hist_exog": hist_exog,
             "level": level,
             "finetune_steps": finetune_steps,
             "finetune_depth": finetune_depth,
@@ -1908,6 +1947,7 @@ def _forecast_wrapper(
     finetune_depth: _Finetune_Depth,
     finetune_loss: _Loss,
     clean_ex_first: bool,
+    hist_exog_list: Optional[list[str]],
     validate_api_key: bool,
     add_history: bool,
     date_features: Union[bool, list[Union[str, Callable]]],
@@ -1936,6 +1976,7 @@ def _forecast_wrapper(
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
         clean_ex_first=clean_ex_first,
+        hist_exog_list=hist_exog_list,
         validate_api_key=validate_api_key,
         add_history=add_history,
         date_features=date_features,
@@ -1994,6 +2035,7 @@ def _cross_validation_wrapper(
     finetune_depth: _Finetune_Depth,
     finetune_loss: _Loss,
     clean_ex_first: bool,
+    hist_exog_list: Optional[list[str]],
     date_features: Union[bool, list[str]],
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
@@ -2015,6 +2057,7 @@ def _cross_validation_wrapper(
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
         clean_ex_first=clean_ex_first,
+        hist_exog_list=hist_exog_list,
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
