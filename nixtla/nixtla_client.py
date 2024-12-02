@@ -911,6 +911,16 @@ class NixtlaClient:
             "message", ""
         ) == "success" or "Forecasting! :)" in validation.get("detail", "")
 
+    def usage(self) -> dict[str, dict[str, int]]:
+        if self._is_azure:
+            raise NotImplementedError("usage is not implemented for Azure deployments")
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = client.get("/usage")
+            body = resp.json()
+        if resp.status_code != 200:
+            raise ApiError(status_code=resp.status_code, body=body)
+        return body
+
     def _distributed_forecast(
         self,
         df: DistributedDFType,
