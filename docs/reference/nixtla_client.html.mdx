@@ -84,7 +84,8 @@ title: SDK Reference
 
 > ``` text
 >  NixtlaClient.forecast (df:~AnyDFType, h:typing.Annotated[int,Gt(gt=0)],
->                         freq:Optional[str]=None, id_col:str='unique_id',
+>                         freq:Union[str,int,pandas._libs.tslibs.offsets.Bas
+>                         eOffset,NoneType]=None, id_col:str='unique_id',
 >                         time_col:str='ds', target_col:str='y',
 >                         X_df:Optional[~AnyDFType]=None,
 >                         level:Optional[list[Union[int,float]]]=None,
@@ -110,7 +111,7 @@ title: SDK Reference
 |------|------------------|-------------------------|-------------------------|
 | df | AnyDFType |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
 | h | Annotated |  | Forecast horizon. |
-| freq | Optional | None | Frequency of the data. By default, the freq will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
+| freq | Union | None | Frequency of the timestamps. If `None`, it will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
 | id_col | str | unique_id | Column that identifies each serie. |
 | time_col | str | ds | Column that identifies each timestep, its values can be timestamps or integers. |
 | target_col | str | y | Column that contains the target. |
@@ -137,8 +138,9 @@ title: SDK Reference
 
 > ``` text
 >  NixtlaClient.cross_validation (df:~AnyDFType,
->                                 h:typing.Annotated[int,Gt(gt=0)],
->                                 freq:Optional[str]=None,
+>                                 h:typing.Annotated[int,Gt(gt=0)], freq:Uni
+>                                 on[str,int,pandas._libs.tslibs.offsets.Bas
+>                                 eOffset,NoneType]=None,
 >                                 id_col:str='unique_id', time_col:str='ds',
 >                                 target_col:str='y', level:Optional[list[Un
 >                                 ion[int,float]]]=None,
@@ -151,6 +153,7 @@ title: SDK Reference
 >                                 inetune_loss:Literal['default','mae','mse'
 >                                 ,'rmse','mape','smape']='default',
 >                                 clean_ex_first:bool=True,
+>                                 hist_exog_list:Optional[list[str]]=None,
 >                                 date_features:Union[bool,list[str]]=False,
 >                                 date_features_to_one_hot:Union[bool,list[s
 >                                 tr]]=False, model:Literal['azureai','timeg
@@ -165,7 +168,7 @@ title: SDK Reference
 |------|------------------|-------------------------|-------------------------|
 | df | AnyDFType |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
 | h | Annotated |  | Forecast horizon. |
-| freq | Optional | None | Frequency of the data. By default, the freq will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
+| freq | Union | None | Frequency of the timestamps. If `None`, it will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
 | id_col | str | unique_id | Column that identifies each serie. |
 | time_col | str | ds | Column that identifies each timestep, its values can be timestamps or integers. |
 | target_col | str | y | Column that contains the target. |
@@ -177,7 +180,8 @@ title: SDK Reference
 | finetune_steps | Annotated | 0 | Number of steps used to finetune TimeGPT in the<br/>new data. |
 | finetune_depth | Literal | 1 |  |
 | finetune_loss | Literal | default | Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. |
-| clean_ex_first | bool | True | Clean exogenous signal before making forecasts<br/>using TimeGPT. |
+| clean_ex_first | bool | True | Clean exogenous signal before making forecasts using TimeGPT. |
+| hist_exog_list | Optional | None | Column names of the historical exogenous features. |
 | date_features | Union | False | Features computed from the dates.<br/>Can be pandas date attributes or functions that will take the dates as input.<br/>If True automatically adds most used date features for the<br/>frequency of `df`. |
 | date_features_to_one_hot | Union | False | Apply one-hot encoding to these date features.<br/>If `date_features=True`, then all date features are<br/>one-hot encoded by default. |
 | model | Literal | timegpt-1 | Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.<br/>We recommend using `timegpt-1-long-horizon` for forecasting<br/>if you want to predict more than one seasonal<br/>period given the frequency of your data. |
@@ -189,7 +193,9 @@ title: SDK Reference
 ## NixtlaClient.detect_anomalies
 
 > ``` text
->  NixtlaClient.detect_anomalies (df:~AnyDFType, freq:Optional[str]=None,
+>  NixtlaClient.detect_anomalies (df:~AnyDFType,
+>                                 freq:Union[str,int,pandas._libs.tslibs.off
+>                                 sets.BaseOffset,NoneType]=None,
 >                                 id_col:str='unique_id', time_col:str='ds',
 >                                 target_col:str='y',
 >                                 level:Union[int,float]=99,
@@ -208,7 +214,7 @@ title: SDK Reference
 |  | **Type** | **Default** | **Details** |
 |------|------------------|-------------------------|-------------------------|
 | df | AnyDFType |  | The DataFrame on which the function will operate. Expected to contain at least the following columns:<br/>- time_col:<br/> Column name in `df` that contains the time indices of the time series. This is typically a datetime<br/> column with regular intervals, e.g., hourly, daily, monthly data points.<br/>- target_col:<br/> Column name in `df` that contains the target variable of the time series, i.e., the variable we<br/> wish to predict or analyze.<br/>Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:<br/>- id_col:<br/> Column name in `df` that identifies unique time series. Each unique value in this column<br/> corresponds to a unique time series. |
-| freq | Optional | None | Frequency of the data. By default, the freq will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
+| freq | Union | None | Frequency of the timestamps. If `None`, it will be inferred automatically.<br/>See [pandas’ available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). |
 | id_col | str | unique_id | Column that identifies each serie. |
 | time_col | str | ds | Column that identifies each timestep, its values can be timestamps or integers. |
 | target_col | str | y | Column that contains the target. |

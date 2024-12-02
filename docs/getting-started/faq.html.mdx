@@ -107,15 +107,19 @@ True
 
 What if my API key isn’t validating?
 
-If when you validate your API key, it returns
+If when you validate your API key, it returns `False`
 
-`False`
-
--   Check that your API key is active in your dashboard
-
--   Consider any firewalls your organization might have. There may be
-    restricted access. If so, you can whitelist our endpoints.  
-    https://dashboard.nixtla.io/api and https://api.nixtla.io/
+-   If you are targeting an Azure endpoint, getting `False` from the
+    `NixtlaClient.validate_api_key` method is expected. You can skip
+    this step when taregting an Azure endpoint and proceed diretly to
+    forecasting instead.
+-   If you are not taregting an Azure endpoint, then you should check
+    the following:
+    -   Check that your API key is active in your dashboard by visiting
+        https://dashboard.nixtla.io/
+    -   Consider any firewalls your organization might have. There may
+        be restricted access. If so, you can whitelist our endpoint
+        https://api.nixtla.io/
 
 ## Features and Capabilities
 
@@ -294,15 +298,16 @@ submit your data, whether using the Python SDK or the API.
 How does pricing work?
 
 `TimeGPT` has a flat fee pricing structure with subscription. See our
-[Pricing page](https://docs.nixtla.io/docs/getting-started-pricing) for
-information and find a plan for your needs. We have a subscription plan
-to meet your needs. You can cancel anytime.
+[Pricing
+page](https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing)
+for information and find a plan for your needs. We have a subscription
+plan to meet your needs. You can cancel anytime.
 
 [Start for Free](https://dashboard.nixtla.io/)  
 \*No credit card needed. Free plan available.
 
 For pricing of TimeGEN-1 on Azure, see the [pricing
-page](https://docs.nixtla.io/docs/getting-started-pricing#azure-timegen-pricing).
+page](https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing#azure-timegen-pricing).
 
 Are there free options or discounts?
 
