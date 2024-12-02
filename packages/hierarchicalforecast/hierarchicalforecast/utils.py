@@ -15,7 +15,7 @@ import pandas as pd
 from narwhals.typing import Frame, FrameT
 from numba import njit, prange
 from sklearn.preprocessing import OneHotEncoder
-from typing import Dict, List, Optional, Iterable, Union, Sequence
+from typing import Optional, Union, Sequence
 
 # %% ../nbs/src/utils.ipynb 6
 # Global variables
@@ -44,7 +44,7 @@ class CodeTimer:
             )
 
 # %% ../nbs/src/utils.ipynb 8
-def is_strictly_hierarchical(S: np.ndarray, tags: Dict[str, np.ndarray]):
+def is_strictly_hierarchical(S: np.ndarray, tags: dict[str, np.ndarray]) -> bool:
     # main idea:
     # if S represents a strictly hierarchical structure
     # the number of paths before the bottom level
@@ -60,25 +60,10 @@ def is_strictly_hierarchical(S: np.ndarray, tags: Dict[str, np.ndarray]):
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/src/utils.ipynb 9
-def cov2corr(cov, return_std=False):
-    """convert covariance matrix to correlation matrix
-    **Parameters:**<br>
-    `cov`: array_like, 2d covariance matrix.<br>
-    `return_std`: bool=False, if True returned std.<br>
-    **Returns:**<br>
-    `corr`: ndarray (subclass) correlation matrix
-    """
-    cov = np.asanyarray(cov)
-    std_ = np.sqrt(np.diag(cov))
-    corr = cov / np.outer(std_, std_)
-    if return_std:
-        return corr, std_
-    else:
-        return corr
-
-# %% ../nbs/src/utils.ipynb 11
-def _to_upper_hierarchy(bottom_split, bottom_values, upper_key):
+# %% ../nbs/src/utils.ipynb 10
+def _to_upper_hierarchy(
+    bottom_split: list[str], bottom_values: str, upper_key: str
+) -> list[str]:
     upper_split = upper_key.split("/")
     upper_idxs = [bottom_split.index(i) for i in upper_split]
 
@@ -88,15 +73,15 @@ def _to_upper_hierarchy(bottom_split, bottom_values, upper_key):
 
     return [join_upper(val) for val in bottom_values]
 
-# %% ../nbs/src/utils.ipynb 14
+# %% ../nbs/src/utils.ipynb 11
 def aggregate(
     df: Frame,
-    spec: List[List[str]],
-    exog_vars: Optional[Dict[str, Union[str, List[str]]]] = None,
+    spec: list[list[str]],
+    exog_vars: Optional[dict[str, Union[str, list[str]]]] = None,
     sparse_s: bool = False,
     id_col: str = "unique_id",
     time_col: str = "ds",
-    target_cols: List[str] = ["y"],
+    target_cols: list[str] = ["y"],
 ) -> tuple[FrameT, FrameT, dict]:
     """Utils Aggregation Function.
     Aggregates bottom level series contained in the DataFrame `df` according
@@ -107,7 +92,7 @@ def aggregate(
     df : DataFrame
         Dataframe with columns `[time_col, *target_cols]`, columns to aggregate and optionally exog_vars.
     spec : list of list of str
-        List of levels. Each element of the list should contain a list of columns of `df` to aggregate.
+        list of levels. Each element of the list should contain a list of columns of `df` to aggregate.
     exog_vars: dictionary of string keys & values that can either be a list of strings or a single string
         keys correspond to column names and the values represent the aggregation(s) that will be applied to each column. Accepted values are those from Pandas or Polars aggregation Functions, check the respective docs for guidance
     is_balanced : bool (default=False)
@@ -119,7 +104,7 @@ def aggregate(
     time_col : str (default='ds')
         Column that identifies each timestep, its values can be timestamps or integers.
     target_cols : (default=['y'])
-        List of columns that contains the targets to aggregate.
+        list of columns that contains the targets to aggregate.
 
     Returns
     -------
@@ -139,16 +124,18 @@ def aggregate(
         raise ValueError("Sparse output is only supported for Pandas DataFrames.")
 
     for col in df_nw.columns:
-        assert (
-            not df_nw[col].is_null().any()
-        ), f"Column {col} contains null values. Make sure no column in the DataFrame contains null values."
+        if df_nw[col].is_null().any():
+            raise ValueError(
+                f"Column {col} contains null values. Make sure no column in the DataFrame contains null values."
+            )
 
     # Check whether all columns in the spec are in the df
     aggregation_cols_in_spec = list(
         dict.fromkeys([col for cols in spec for col in cols])
     )
     for col in aggregation_cols_in_spec:
-        assert col in df_nw.columns, f"Column {col} in spec not present in df"
+        if col not in df_nw.columns:
+            raise ValueError(f"Column {col} in spec not present in df")
 
     # Prepare the aggregation dictionary
     agg_dict = dict(
@@ -234,9 +221,13 @@ def aggregate(
     S_dum = encoder.fit_transform(S)
 
     if not sparse_s:
-        S_nw = nw.from_dict({id_col: category_list}, native_namespace=native_namespace)
-        S_dict = dict(zip(tags[level_name], S_dum))
-        S_nw = S_nw.with_columns(**S_dict)
+        S_nw = nw.from_dict(
+            {
+                **{id_col: category_list},
+                **dict(zip(tags[level_name], S_dum)),
+            },
+            native_namespace=native_namespace,
+        )
         S_nw = nw.maybe_reset_index(S_nw)
         S_df = S_nw.to_native()
     else:
@@ -247,7 +238,7 @@ def aggregate(
 
     return Y_df, S_df, tags
 
-# %% ../nbs/src/utils.ipynb 30
+# %% ../nbs/src/utils.ipynb 25
 class HierarchicalPlot:
     """Hierarchical Plot
 
@@ -265,7 +256,7 @@ class HierarchicalPlot:
     def __init__(
         self,
         S: Frame,
-        tags: Dict[str, np.ndarray],
+        tags: dict[str, np.ndarray],
         S_id_col: str = "unique_id",
     ):
 
@@ -290,8 +281,8 @@ class HierarchicalPlot:
         self,
         series: str,
         Y_df: Frame,
-        models: Optional[List[str]] = None,
-        level: Optional[List[int]] = None,
+        models: Optional[list[str]] = None,
+        level: Optional[list[int]] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -302,7 +293,7 @@ class HierarchicalPlot:
         `series`: str, string identifying the `'unique_id'` any-level series to plot.<br>
         `Y_df`: DataFrame, hierarchically structured series ($\mathbf{y}_{[a,b]}$).
                 It contains columns `['unique_id', 'ds', 'y']`, it may have `'models'`.<br>
-        `models`: List[str], string identifying filtering model columns.<br>
+        `models`: list[str], string identifying filtering model columns.<br>
         `level`: float list 0-100, confidence levels for prediction intervals available in `Y_df`.<br>
         `id_col` : str='unique_id', column that identifies each serie.<br>
         `time_col` : str='ds', column that identifies each timestep, its values can be timestamps or integers.<br>
@@ -369,8 +360,8 @@ class HierarchicalPlot:
         self,
         bottom_series: str,
         Y_df: Frame,
-        models: Optional[List[str]] = None,
-        level: Optional[List[int]] = None,
+        models: Optional[list[str]] = None,
+        level: Optional[list[int]] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -381,7 +372,7 @@ class HierarchicalPlot:
         `bottom_series`: str, string identifying the `'unique_id'` bottom-level series to plot.<br>
         `Y_df`: DataFrame, hierarchically structured series ($\mathbf{y}_{[a,b]}$).
                 It contains columns ['unique_id', 'ds', 'y'] and models. <br>
-        `models`: List[str], string identifying filtering model columns.<br>
+        `models`: list[str], string identifying filtering model columns.<br>
         `level`: float list 0-100, confidence levels for prediction intervals available in `Y_df`.<br>
         `id_col` : str='unique_id', column that identifies each serie.<br>
         `time_col` : str='ds', column that identifies each timestep, its values can be timestamps or integers.<br>
@@ -464,7 +455,7 @@ class HierarchicalPlot:
     def plot_hierarchical_predictions_gap(
         self,
         Y_df: Frame,
-        models: Optional[List[str]] = None,
+        models: Optional[list[str]] = None,
         xlabel: Optional[str] = None,
         ylabel: Optional[str] = None,
         id_col: str = "unique_id",
@@ -476,7 +467,7 @@ class HierarchicalPlot:
         **Parameters:**<br>
         `Y_df`: DataFrame, hierarchically structured series ($\mathbf{y}_{[a,b]}$).
                 It contains columns ['unique_id', 'ds', 'y'] and models. <br>
-        `models`: List[str], string identifying filtering model columns. <br>
+        `models`: list[str], string identifying filtering model columns. <br>
         `xlabel`: str, string for the plot's x axis label.<br>
         `ylabel`: str, string for the plot's y axis label.<br>
         `id_col` : str='unique_id', column that identifies each serie.<br>
@@ -532,9 +523,9 @@ class HierarchicalPlot:
         plt.grid()
         plt.show()
 
-# %% ../nbs/src/utils.ipynb 51
+# %% ../nbs/src/utils.ipynb 46
 # convert levels to output quantile names
-def level_to_outputs(level: Iterable[int]):
+def level_to_outputs(level: list[int]) -> tuple[list[float], list[str]]:
     """Converts list of levels into output names matching StatsForecast and NeuralForecast methods.
 
     **Parameters:**<br>
@@ -558,7 +549,7 @@ def level_to_outputs(level: Iterable[int]):
 
 
 # convert quantiles to output quantile names
-def quantiles_to_outputs(quantiles: Iterable[float]):
+def quantiles_to_outputs(quantiles: list[float]) -> tuple[list[float], list[str]]:
     """Converts list of quantiles into output names matching StatsForecast and NeuralForecast methods.
 
     **Parameters:**<br>
@@ -577,51 +568,61 @@ def quantiles_to_outputs(quantiles: Iterable[float]):
             output_names.append("-median")
     return quantiles, output_names
 
-# %% ../nbs/src/utils.ipynb 52
+# %% ../nbs/src/utils.ipynb 47
 # given input array of sample forecasts and inptut quantiles/levels,
 # output a Pandas Dataframe with columns of quantile predictions
 def samples_to_quantiles_df(
     samples: np.ndarray,
     unique_ids: Sequence[str],
-    dates: List[str],
-    quantiles: Optional[List[float]] = None,
-    level: Optional[List[int]] = None,
-    model_name: Optional[str] = "model",
+    dates: list[str],
+    quantiles: Optional[list[float]] = None,
+    level: Optional[list[int]] = None,
+    model_name: str = "model",
     id_col: str = "unique_id",
     time_col: str = "ds",
-):
+    backend: str = "pandas",
+) -> tuple[list[float], FrameT]:
     """Transform Random Samples into HierarchicalForecast input.
     Auxiliary function to create compatible HierarchicalForecast input `Y_hat_df` dataframe.
 
     **Parameters:**<br>
     `samples`: numpy array. Samples from forecast distribution of shape [n_series, n_samples, horizon].<br>
     `unique_ids`: string list. Unique identifiers for each time series.<br>
-    `dates`: datetime list. List of forecast dates.<br>
+    `dates`: datetime list. list of forecast dates.<br>
     `quantiles`: float list in [0., 1.]. Alternative to level, quantiles to estimate from y distribution.<br>
     `level`: int list in [0,100]. Probability levels for prediction intervals.<br>
     `model_name`: string. Name of forecasting model.<br>
     `id_col` : str='unique_id', column that identifies each serie.<br>
     `time_col` : str='ds', column that identifies each timestep, its values can be timestamps or integers.<br>
+    `backend` : str='pandas', backend to use for the output dataframe, either 'pandas' or 'polars'.<br>
 
     **Returns:**<br>
     `quantiles`: float list in [0., 1.]. quantiles to estimate from y distribution .<br>
-    `Y_hat_df`: pd.DataFrame. With base quantile forecasts with columns ds and models to reconcile indexed by unique_id.
+    `Y_hat_df`: DataFrame. With base quantile forecasts with columns ds and models to reconcile indexed by unique_id.
     """
 
     # Get the shape of the array
     n_series, n_samples, horizon = samples.shape
 
-    assert n_series == len(unique_ids)
-    assert horizon == len(dates)
-    assert (quantiles is not None) ^ (
-        level is not None
-    )  # check exactly one of quantiles/levels has been input
+    if n_series != len(unique_ids):
+        raise ValueError(
+            f"Number of unique_ids ({len(unique_ids)}) must match the number of series ({n_series})."
+        )
+    if horizon != len(dates):
+        raise ValueError(
+            f"Number of dates ({len(dates)}) must match third dimension of samples array ({horizon})."
+        )
+    if not ((quantiles is None) ^ (level is None)):
+        raise ValueError("Either quantiles or level must be provided, but not both.")
+
+    namespace = sys.modules.get(backend, None)
+    if namespace is None:
+        raise ValueError(f"DataFrame backend {backend} not installed.")
 
     # create initial dictionary
     forecasts_mean = np.mean(samples, axis=1).flatten()
     unique_ids = np.repeat(unique_ids, horizon)
     ds = np.tile(dates, n_series)
-    data = pd.DataFrame({id_col: unique_ids, time_col: ds, model_name: forecasts_mean})
 
     # create quantiles and quantile names
     if level is not None:
@@ -642,11 +643,17 @@ def samples_to_quantiles_df(
     )  # [Q,H,N] -> [N,H,Q]
     forecasts_quantiles = forecasts_quantiles.reshape(-1, len(_quantiles))
 
-    df = pd.DataFrame(data=forecasts_quantiles, columns=col_names)
+    df_nw = nw.from_dict(
+        {
+            **{id_col: unique_ids, time_col: ds, model_name: forecasts_mean},
+            **dict(zip(col_names, forecasts_quantiles.T)),
+        },
+        native_namespace=namespace,
+    )
 
-    return _quantiles, pd.concat([data, df], axis=1).set_index(id_col)
+    return _quantiles, df_nw.to_native()
 
-# %% ../nbs/src/utils.ipynb 59
+# %% ../nbs/src/utils.ipynb 55
 # Masked empirical covariance matrix
 @njit(
     "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool, 2, 'C'))",
@@ -685,7 +692,7 @@ def _ma_cov(residuals: np.ndarray, not_nan_mask: np.ndarray):
 
     return W
 
-# %% ../nbs/src/utils.ipynb 60
+# %% ../nbs/src/utils.ipynb 56
 # Shrunk covariance matrix using the Schafer-Strimmer method
 
 
@@ -836,7 +843,7 @@ def _shrunk_covariance_schaferstrimmer_with_nans(
 
     return W
 
-# %% ../nbs/src/utils.ipynb 62
+# %% ../nbs/src/utils.ipynb 58
 # Lasso cyclic coordinate descent
 @njit(
     "Array(float64, 1, 'C')(Array(float64, 2, 'C'), Array(float64, 1, 'C'), float64, int64, float64)",

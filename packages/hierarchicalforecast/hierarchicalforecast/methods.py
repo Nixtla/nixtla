@@ -9,7 +9,7 @@ import warnings
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 from quadprog import solve_qp
@@ -81,7 +81,7 @@ class HReconciler:
         P: np.ndarray,
         y_hat: np.ndarray,
         SP: np.ndarray = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         sampler: Optional[Union[Normality, PERMBU, Bootstrap]] = None,
     ):
 
@@ -101,7 +101,7 @@ class HReconciler:
         return res
 
     def predict(
-        self, S: np.ndarray, y_hat: np.ndarray, level: Optional[List[int]] = None
+        self, S: np.ndarray, y_hat: np.ndarray, level: Optional[list[int]] = None
     ):
         """Predict using reconciler.
 
@@ -194,7 +194,7 @@ class BottomUp(HReconciler):
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
     ):
         """Bottom Up Fit Method.
 
@@ -235,11 +235,11 @@ class BottomUp(HReconciler):
         y_insample: Optional[np.ndarray] = None,
         y_hat_insample: Optional[np.ndarray] = None,
         sigmah: Optional[np.ndarray] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
     ):
         """BottomUp Reconciliation Method.
 
@@ -300,7 +300,7 @@ class BottomUpSparse(BottomUp):
 
 # %% ../nbs/src/methods.ipynb 27
 def _get_child_nodes(
-    S: Union[np.ndarray, sparse.csr_matrix], tags: Dict[str, np.ndarray]
+    S: Union[np.ndarray, sparse.csr_matrix], tags: dict[str, np.ndarray]
 ):
     if isinstance(S, sparse.spmatrix):
         S = S.toarray()
@@ -324,8 +324,8 @@ def _get_child_nodes(
 def _reconcile_fcst_proportions(
     S: np.ndarray,
     y_hat: np.ndarray,
-    tags: Dict[str, np.ndarray],
-    nodes: Dict[str, Dict[int, np.ndarray]],
+    tags: dict[str, np.ndarray],
+    nodes: dict[str, dict[int, np.ndarray]],
     idx_top: int,
 ):
     reconciled = np.zeros_like(y_hat)
@@ -369,7 +369,7 @@ class TopDown(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         y_insample: np.ndarray,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
     ):
 
         n_hiers, n_bottom = S.shape
@@ -416,7 +416,7 @@ class TopDown(HReconciler):
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
         idx_bottom: Optional[np.ndarray] = None,
     ):
         """TopDown Fit Method.
@@ -458,12 +458,12 @@ class TopDown(HReconciler):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        tags: Dict[str, np.ndarray],
+        tags: dict[str, np.ndarray],
         idx_bottom: np.ndarray = None,
         y_insample: Optional[np.ndarray] = None,
         y_hat_insample: Optional[np.ndarray] = None,
         sigmah: Optional[np.ndarray] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
@@ -540,7 +540,7 @@ class TopDownSparse(TopDown):
         S: sparse.csr_matrix,
         y_hat: np.ndarray,
         y_insample: np.ndarray,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
     ):
         # Check if the data structure is strictly hierarchical.
         if tags is not None and not is_strictly_hierarchical(S, tags):
@@ -625,9 +625,9 @@ class MiddleOut(HReconciler):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        tags: Dict[str, np.ndarray],
+        tags: dict[str, np.ndarray],
         y_insample: Optional[np.ndarray] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: Optional[str] = None,
     ):
         """Middle Out Reconciliation Method.
@@ -727,11 +727,11 @@ class MiddleOutSparse(MiddleOut):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        tags: Dict[str, np.ndarray],
+        tags: dict[str, np.ndarray],
         y_insample: Optional[np.ndarray] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: Optional[str] = None,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         # Check if the data structure is strictly hierarchical.
         if not is_strictly_hierarchical(S, tags):
             raise ValueError(
@@ -849,7 +849,7 @@ class MinTrace(HReconciler):
         y_hat: np.ndarray,
         y_insample: Optional[np.ndarray] = None,
         y_hat_insample: Optional[np.ndarray] = None,
-        idx_bottom: Optional[List[int]] = None,
+        idx_bottom: Optional[list[int]] = None,
     ):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
@@ -954,7 +954,7 @@ class MinTrace(HReconciler):
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
         idx_bottom: Optional[np.ndarray] = None,
     ):
         """MinTrace Fit Method.
@@ -1056,11 +1056,11 @@ class MinTrace(HReconciler):
         y_insample: Optional[np.ndarray] = None,
         y_hat_insample: Optional[np.ndarray] = None,
         sigmah: Optional[np.ndarray] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
     ):
         """MinTrace Reconciliation Method.
 
@@ -1130,7 +1130,7 @@ class MinTraceSparse(MinTrace):
         y_hat: np.ndarray,
         y_insample: Optional[np.ndarray] = None,
         y_hat_insample: Optional[np.ndarray] = None,
-        idx_bottom: Optional[List[int]] = None,
+        idx_bottom: Optional[list[int]] = None,
     ):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
@@ -1224,7 +1224,7 @@ class MinTraceSparse(MinTrace):
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
         idx_bottom: Optional[np.ndarray] = None,
     ):
         # Clip the base forecasts if required to align them with their use in practice.
@@ -1414,7 +1414,7 @@ class ERM(HReconciler):
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
         idx_bottom: Optional[np.ndarray] = None,
     ):
         """ERM Fit Method.
@@ -1463,11 +1463,11 @@ class ERM(HReconciler):
         y_insample: Optional[np.ndarray] = None,
         y_hat_insample: Optional[np.ndarray] = None,
         sigmah: Optional[np.ndarray] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: Optional[str] = None,
         num_samples: Optional[int] = None,
         seed: Optional[int] = None,
-        tags: Optional[Dict[str, np.ndarray]] = None,
+        tags: Optional[dict[str, np.ndarray]] = None,
     ):
         """ERM Reconciliation Method.
 

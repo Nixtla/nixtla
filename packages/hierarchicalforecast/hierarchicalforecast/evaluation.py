@@ -10,7 +10,7 @@ import numpy as np
 from inspect import signature
 from narwhals.typing import Frame, FrameT
 from scipy.stats import multivariate_normal
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Optional, Union
 
 # %% ../nbs/src/evaluation.ipynb 7
 def _metric_protections(
@@ -349,14 +349,14 @@ class HierarchicalEvaluation:
     **References:**<br>
     """
 
-    def __init__(self, evaluators: List[Callable]):
+    def __init__(self, evaluators: list[Callable]):
         self.evaluators = evaluators
 
     def evaluate(
         self,
         Y_hat_df: Frame,
         Y_test_df: Frame,
-        tags: Dict[str, np.ndarray],
+        tags: dict[str, np.ndarray],
         Y_df: Optional[Frame] = None,
         benchmark: Optional[str] = None,
         id_col: str = "unique_id",
@@ -458,16 +458,16 @@ class HierarchicalEvaluation:
                     evaluation_index_np[i_level * len(fn_names) + i_fn, 1] = fn_name
 
         evaluation_np = evaluation_np.reshape(-1, len(model_names))
-        evaluation_index_dict = {
-            "level": evaluation_index_np[:, 0],
-            "metric": evaluation_index_np[:, 1],
-        }
-        evaluation_index_nw = nw.from_dict(
-            evaluation_index_dict, native_namespace=native_namespace
+        evaluation_nw = nw.from_dict(
+            {
+                **{
+                    "level": evaluation_index_np[:, 0],
+                    "metric": evaluation_index_np[:, 1],
+                },
+                **dict(zip(model_names, evaluation_np.T)),
+            },
+            native_namespace=native_namespace,
         )
-        evaluation_dict = dict(zip(model_names, evaluation_np.T))
-        evaluation_nw = evaluation_index_nw.with_columns(**evaluation_dict)
-        evaluation_nw = evaluation_nw[["level", "metric"] + model_names]
 
         evaluation = evaluation_nw.to_native()
 

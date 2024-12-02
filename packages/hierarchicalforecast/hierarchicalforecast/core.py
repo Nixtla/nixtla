@@ -14,7 +14,7 @@ from inspect import signature
 from narwhals.typing import Frame, FrameT
 from scipy.stats import norm
 from scipy import sparse
-from typing import Dict, List, Optional
+from typing import Optional
 
 import narwhals as nw
 import numpy as np
@@ -104,7 +104,7 @@ class HierarchicalReconciliation:
     [Rob J. Hyndman and George Athanasopoulos (2018). \"Forecasting principles and practice, Hierarchical and Grouped Series\".](https://otexts.com/fpp3/hierarchical.html)
     """
 
-    def __init__(self, reconcilers: List[HReconciler]):
+    def __init__(self, reconcilers: list[HReconciler]):
         self.reconcilers = reconcilers
         self.orig_reconcilers = copy.deepcopy(reconcilers)  # TODO: elegant solution
         self.insample = any([method.insample for method in reconcilers])
@@ -114,13 +114,13 @@ class HierarchicalReconciliation:
         Y_hat_nw: Frame,
         S_nw: Frame,
         Y_nw: Optional[Frame],
-        tags: Dict[str, np.ndarray],
-        level: Optional[List[int]] = None,
+        tags: dict[str, np.ndarray],
+        level: Optional[list[int]] = None,
         intervals_method: str = "normality",
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
-    ) -> tuple[FrameT, FrameT, FrameT, List[str]]:
+    ) -> tuple[FrameT, FrameT, FrameT, list[str]]:
         """
         Performs preliminary wrangling and protections
         """
@@ -267,9 +267,9 @@ class HierarchicalReconciliation:
         self,
         Y_hat_df: Frame,
         S: Frame,
-        tags: Dict[str, np.ndarray],
+        tags: dict[str, np.ndarray],
         Y_df: Optional[Frame] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: str = "normality",
         num_samples: int = -1,
         seed: int = 0,
@@ -505,9 +505,9 @@ class HierarchicalReconciliation:
         self,
         Y_hat_df: Frame,
         S_df: Frame,
-        tags: Dict[str, np.ndarray],
+        tags: dict[str, np.ndarray],
         Y_df: Optional[Frame] = None,
-        level: Optional[List[int]] = None,
+        level: Optional[list[int]] = None,
         intervals_method: str = "normality",
         num_samples: int = -1,
         num_seeds: int = 1,
