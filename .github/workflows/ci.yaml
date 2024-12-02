@@ -13,8 +13,8 @@ concurrency:
 env:
   NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
   NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
-  NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_DEV_API_KEY }}
-  NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+  NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
+  NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
   API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
 
 jobs:
