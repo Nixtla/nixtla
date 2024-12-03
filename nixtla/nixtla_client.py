@@ -1530,6 +1530,7 @@ class NixtlaClient:
         date_features: Union[bool, list[str]],
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
+        refit: bool,
         num_partitions: Optional[int],
     ) -> DistributedDFType:
         import fugue.api as fa
@@ -1567,6 +1568,7 @@ class NixtlaClient:
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
+                refit=refit,
                 num_partitions=None,
             ),
             partition=partition_config,
@@ -1594,6 +1596,7 @@ class NixtlaClient:
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
+        refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
         """Real-time anomaly detection in your time series using TimeGPT.
@@ -1681,6 +1684,7 @@ class NixtlaClient:
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
+                refit=refit,
                 num_partitions=num_partitions,
             )
         if (
@@ -1706,20 +1710,19 @@ class NixtlaClient:
             model=model,
             freq=freq,
         )
-        standard_freq = _standardize_freq(freq)
-
         logger.info("Preprocessing dataframes...")
         processed, _, x_cols, _ = _preprocess(
             df=df,
             X_df=None,
             h=0,
-            freq=standard_freq,
+            freq=freq,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
+        standard_freq = _standardize_freq(freq, processed)
         if isinstance(df, pd.DataFrame):
             # in pandas<2.2 to_numpy can lead to an object array if
             # the type is a pandas nullable type, e.g. pd.Float64Dtype
@@ -1760,6 +1763,7 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_loss": finetune_loss,
             "finetune_depth": finetune_depth,
+            "refit": refit,
         }
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -2338,6 +2342,7 @@ def _detect_anomalies_realtime_wrapper(
     date_features: Union[bool, list[str]],
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
+    refit: bool,
     num_partitions: Optional[_PositiveInt],
 ) -> pd.DataFrame:
     return client.detect_anomalies_realtime(
@@ -2359,6 +2364,7 @@ def _detect_anomalies_realtime_wrapper(
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
+        refit=refit,
         num_partitions=num_partitions,
     )
 
