@@ -100,6 +100,8 @@ _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = Literal["azureai", "timegpt-1", "timegpt-1-long-horizon"]
 _Finetune_Depth = Literal[1, 2, 3, 4, 5]
+_Freq = Union[str, int, pd.offsets.BaseOffset]
+_FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 
 _date_features_by_freq = {
     # Daily frequencies
@@ -184,11 +186,11 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
 
 def _maybe_infer_freq(
     df: DataFrame,
-    freq: Optional[str],
+    freq: Optional[_FreqType],
     id_col: str,
     time_col: str,
-) -> str:
-    if freq is not None and freq not in ["W", "M", "Q", "Y", "A"]:
+) -> _FreqType:
+    if freq is not None:
         return freq
     if isinstance(df, pl_DataFrame):
         raise ValueError(
@@ -208,21 +210,23 @@ def _maybe_infer_freq(
             "to inconsistent intervals. Please check your data for missing, "
             "duplicated or irregular timestamps"
         )
-    if freq is not None:
-        # check we have the same base frequency
-        # except when we have yearly frequency (A, and Y means the same)
-        if (freq[0] != inferred_freq[0] and freq[0] not in ("A", "Y")) or (
-            freq[0] in ("A", "Y") and inferred_freq[0] not in ("A", "Y")
-        ):
-            raise RuntimeError(
-                f"Failed to infer special date, inferred freq {inferred_freq}"
-            )
     logger.info(f"Inferred freq: {inferred_freq}")
     return inferred_freq
 
 
-def _standardize_freq(freq: str) -> str:
-    return freq.replace("mo", "MS")
+def _standardize_freq(freq: _Freq, processed: ufp.ProcessedDF) -> str:
+    if isinstance(freq, str):
+        # polars uses 'mo' for months, all other strings are compatible with pandas
+        freq = freq.replace("mo", "MS")
+    elif isinstance(freq, pd.offsets.BaseOffset):
+        freq = freq.freqstr
+    elif isinstance(freq, int):
+        freq = "MS"
+    else:
+        raise ValueError(
+            f"`freq` must be a string, int or pandas offset, got {type(freq).__name__}"
+        )
+    return freq
 
 
 def _array_tails(
@@ -288,13 +292,13 @@ def _maybe_add_date_features(
     X_df: Optional[DFType],
     features: Union[bool, Sequence[Union[str, Callable]]],
     one_hot: Union[bool, list[str]],
-    freq: str,
+    freq: _Freq,
     h: int,
     id_col: str,
     time_col: str,
     target_col: str,
 ) -> tuple[DFType, Optional[DFType]]:
-    if not features:
+    if not features or not isinstance(freq, str):
         return df, X_df
     if isinstance(features, list):
         date_features: Sequence[Union[str, Callable]] = features
@@ -350,7 +354,8 @@ def _validate_exog(
     target_col: str,
     hist_exog: Optional[list[str]],
 ) -> tuple[DFType, Optional[DFType]]:
-    exogs = [c for c in df.columns if c not in (id_col, time_col, target_col)]
+    base_cols = {id_col, time_col, target_col}
+    exogs = [c for c in df.columns if c not in base_cols]
     if hist_exog is None:
         hist_exog = []
     if X_df is None:
@@ -367,7 +372,7 @@ def _validate_exog(
         return df, None
 
     # exogs in df that weren't declared as historic nor future
-    futr_exog = [c for c in X_df.columns if c not in (id_col, time_col)]
+    futr_exog = [c for c in X_df.columns if c not in base_cols]
     declared_exogs = {*hist_exog, *futr_exog}
     ignored_exogs = [c for c in exogs if c not in declared_exogs]
     if ignored_exogs:
@@ -385,6 +390,15 @@ def _validate_exog(
             f"but not in `df`: {missing_futr}."
         )
 
+    # features are provided through X_df but declared as historic
+    futr_and_hist = set(futr_exog) & set(hist_exog)
+    if futr_and_hist:
+        warnings.warn(
+            "The following features were declared as historic but found in `X_df`: "
+            f"{futr_and_hist}, they will be considered as historic."
+        )
+        futr_exog = [f for f in futr_exog if f not in hist_exog]
+
     # Make sure df and X_df are in right order
     df = df[[id_col, time_col, target_col, *futr_exog, *hist_exog]]
     X_df = X_df[[id_col, time_col, *futr_exog]]
@@ -393,12 +407,11 @@ def _validate_exog(
 
 
 def _validate_input_size(
-    df: DataFrame,
-    id_col: str,
+    processed: ufp.ProcessedDF,
     model_input_size: int,
     model_horizon: int,
 ) -> None:
-    min_size = ufp.counts_by_id(df, id_col)["counts"].min()
+    min_size = np.diff(processed.indptr).min().item()
     if min_size < model_input_size + model_horizon:
         raise ValueError(
             "Some series are too short. "
@@ -469,7 +482,7 @@ def _preprocess(
     processed = ufp.process_df(
         df=df, id_col=id_col, time_col=time_col, target_col=target_col
     )
-    if X_df is not None:
+    if X_df is not None and X_df.shape[1] > 2:
         X_df = ensure_time_dtype(X_df, time_col=time_col)
         processed_X = ufp.process_df(
             df=X_df,
@@ -820,8 +833,8 @@ class NixtlaClient:
         target_col: str,
         model: _Model,
         validate_api_key: bool,
-        freq: Optional[str],
-    ) -> tuple[DFType, Optional[DFType], bool, str]:
+        freq: Optional[_FreqType],
+    ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email ops@nixtla.io")
         if model not in self.supported_models:
@@ -849,15 +862,30 @@ class NixtlaClient:
                 f"Target column ({target_col}) cannot contain missing values."
             )
         freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
-        expected_ids_times = id_time_grid(
-            df,
-            freq=freq,
-            start="per_serie",
-            end="per_serie",
-            id_col=id_col,
-            time_col=time_col,
-        )
-        if len(df) != len(expected_ids_times):
+        if isinstance(freq, (str, int)):
+            expected_ids_times = id_time_grid(
+                df,
+                freq=freq,
+                start="per_serie",
+                end="per_serie",
+                id_col=id_col,
+                time_col=time_col,
+            )
+            freq_ok = len(df) == len(expected_ids_times)
+        elif isinstance(freq, pd.offsets.BaseOffset):
+            times_by_id = df.groupby(id_col, observed=True)[time_col].agg(
+                ["min", "max", "size"]
+            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
+                expected_ends = times_by_id["min"] + freq * (times_by_id["size"] - 1)
+            freq_ok = (expected_ends == times_by_id["max"]).all()
+        else:
+            raise ValueError(
+                "`freq` should be a string, integer or pandas offset, "
+                f"got {type(freq).__name__}."
+            )
+        if not freq_ok:
             raise ValueError(
                 "Series contain missing or duplicate timestamps, or the timestamps "
                 "do not match the provided frequency.\n"
@@ -883,11 +911,21 @@ class NixtlaClient:
             "message", ""
         ) == "success" or "Forecasting! :)" in validation.get("detail", "")
 
+    def usage(self) -> dict[str, dict[str, int]]:
+        if self._is_azure:
+            raise NotImplementedError("usage is not implemented for Azure deployments")
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = client.get("/usage")
+            body = resp.json()
+        if resp.status_code != 200:
+            raise ApiError(status_code=resp.status_code, body=body)
+        return body
+
     def _distributed_forecast(
         self,
         df: DistributedDFType,
         h: _PositiveInt,
-        freq: Optional[str],
+        freq: Optional[_Freq],
         id_col: str,
         time_col: str,
         target_col: str,
@@ -898,6 +936,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth,
         finetune_loss: _Loss,
         clean_ex_first: bool,
+        hist_exog_list: Optional[list[str]],
         validate_api_key: bool,
         add_history: bool,
         date_features: Union[bool, list[Union[str, Callable]]],
@@ -955,6 +994,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
@@ -972,7 +1012,7 @@ class NixtlaClient:
         self,
         df: AnyDFType,
         h: _PositiveInt,
-        freq: Optional[str] = None,
+        freq: Optional[_Freq] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -1010,8 +1050,8 @@ class NixtlaClient:
                 corresponds to a unique time series.
         h : int
             Forecast horizon.
-        freq : str
-            Frequency of the data. By default, the freq will be inferred automatically.
+        freq : str, int or pandas offset, optional (default=None).
+            Frequency of the timestamps. If `None`, it will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
             Column that identifies each serie.
@@ -1090,6 +1130,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
@@ -1121,29 +1162,29 @@ class NixtlaClient:
             hist_exog=hist_exog_list,
         )
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
-        standard_freq = _standardize_freq(freq)
-        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
-        if finetune_steps > 0 or level is not None or add_history:
-            _validate_input_size(df, id_col, model_input_size, model_horizon)
-        if h > model_horizon:
-            logger.warning(
-                'The specified horizon "h" exceeds the model horizon. '
-                "This may lead to less accurate forecasts. "
-                "Please consider using a smaller horizon."
-            )
 
         logger.info("Preprocessing dataframes...")
         processed, X_future, x_cols, futr_cols = _preprocess(
             df=df,
             X_df=X_df,
             h=h,
-            freq=standard_freq,
+            freq=freq,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
+        standard_freq = _standardize_freq(freq, processed)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
+        if finetune_steps > 0 or level is not None or add_history:
+            _validate_input_size(processed, model_input_size, model_horizon)
+        if h > model_horizon:
+            logger.warning(
+                'The specified horizon "h" exceeds the model horizon, '
+                "this may lead to less accurate forecasts. "
+                "Please consider using a smaller horizon."
+            )
         restrict_input = finetune_steps == 0 and not x_cols and not add_history
         if restrict_input:
             logger.info("Restricting input...")
@@ -1158,7 +1199,7 @@ class NixtlaClient:
             X = processed.data[:, 1:].T
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")
-            if hist_exog_list is not None:
+            if hist_exog_list:
                 logger.info(f"Using historical exogenous features: {hist_exog_list}")
         else:
             X = None
@@ -1260,7 +1301,7 @@ class NixtlaClient:
     def _distributed_detect_anomalies(
         self,
         df: DistributedDFType,
-        freq: Optional[str],
+        freq: Optional[_Freq],
         id_col: str,
         time_col: str,
         target_col: str,
@@ -1310,7 +1351,7 @@ class NixtlaClient:
     def detect_anomalies(
         self,
         df: AnyDFType,
-        freq: Optional[str] = None,
+        freq: Optional[_Freq] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -1338,8 +1379,8 @@ class NixtlaClient:
             - id_col:
                 Column name in `df` that identifies unique time series. Each unique value in this column
                 corresponds to a unique time series.
-        freq : str
-            Frequency of the data. By default, the freq will be inferred automatically.
+        freq : str, int or pandas offset, optional (default=None).
+            Frequency of the timestamps. If `None`, it will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
             Column that identifies each serie.
@@ -1406,21 +1447,21 @@ class NixtlaClient:
             model=model,
             freq=freq,
         )
-        standard_freq = _standardize_freq(freq)
-        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
 
         logger.info("Preprocessing dataframes...")
         processed, _, x_cols, _ = _preprocess(
             df=df,
             X_df=None,
             h=0,
-            freq=standard_freq,
+            freq=freq,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
+        standard_freq = _standardize_freq(freq, processed)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T
             logger.info(f"Using the following exogenous features: {x_cols}")
@@ -1468,7 +1509,7 @@ class NixtlaClient:
         self,
         df: DistributedDFType,
         h: _PositiveInt,
-        freq: Optional[str],
+        freq: Optional[_Freq],
         id_col: str,
         time_col: str,
         target_col: str,
@@ -1481,6 +1522,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth,
         finetune_loss: _Loss,
         clean_ex_first: bool,
+        hist_exog_list: Optional[list[str]],
         date_features: Union[bool, Sequence[Union[str, Callable]]],
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
@@ -1490,7 +1532,7 @@ class NixtlaClient:
 
         schema, partition_config = _distributed_setup(
             df=df,
-            method="forecast",
+            method="cross_validation",
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -1518,6 +1560,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1532,7 +1575,7 @@ class NixtlaClient:
         self,
         df: AnyDFType,
         h: _PositiveInt,
-        freq: Optional[str] = None,
+        freq: Optional[_Freq] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -1545,6 +1588,7 @@ class NixtlaClient:
         finetune_depth: _Finetune_Depth = 1,
         finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
+        hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
@@ -1568,8 +1612,8 @@ class NixtlaClient:
                 corresponds to a unique time series.
         h : int
             Forecast horizon.
-        freq : str
-            Frequency of the data. By default, the freq will be inferred automatically.
+        freq : str, int or pandas offset, optional (default=None).
+            Frequency of the timestamps. If `None`, it will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
             Column that identifies each serie.
@@ -1601,8 +1645,9 @@ class NixtlaClient:
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
         clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts
-            using TimeGPT.
+            Clean exogenous signal before making forecasts using TimeGPT.
+        hist_exog_list : list of str, optional (default=None)
+            Column names of the historical exogenous features.
         date_features : bool or list of str or callable, optional (default=False)
             Features computed from the dates.
             Can be pandas date attributes or functions that will take the dates as input.
@@ -1644,6 +1689,7 @@ class NixtlaClient:
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
                 clean_ex_first=clean_ex_first,
+                hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1661,9 +1707,7 @@ class NixtlaClient:
             model=model,
             freq=freq,
         )
-        standard_freq = _standardize_freq(freq)
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
-        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if step_size is None:
             step_size = h
 
@@ -1672,13 +1716,15 @@ class NixtlaClient:
             df=df,
             X_df=None,
             h=0,
-            freq=standard_freq,
+            freq=freq,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
+        standard_freq = _standardize_freq(freq, processed)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if isinstance(df, pd.DataFrame):
             # in pandas<2.2 to_numpy can lead to an object array if
             # the type is a pandas nullable type, e.g. pd.Float64Dtype
@@ -1707,9 +1753,29 @@ class NixtlaClient:
             targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
         if processed.data.shape[1] > 1:
             X = processed.data[:, 1:].T
-            logger.info(f"Using the following exogenous features: {x_cols}")
+            if hist_exog_list is None:
+                hist_exog = None
+                futr_exog = x_cols
+            else:
+                missing_hist = set(hist_exog_list) - set(x_cols)
+                if missing_hist:
+                    raise ValueError(
+                        "The following exogenous features were declared as historic "
+                        f"but were not found in `df`: {missing_hist}."
+                    )
+                futr_exog = [c for c in x_cols if c not in hist_exog_list]
+                # match the forecast method order [future, historic]
+                fcst_features_order = futr_exog + hist_exog_list
+                x_idxs = [x_cols.index(c) for c in fcst_features_order]
+                X = X[x_idxs]
+                hist_exog = [fcst_features_order.index(c) for c in hist_exog_list]
+            if futr_exog:
+                logger.info(f"Using future exogenous features: {futr_exog}")
+            if hist_exog_list:
+                logger.info(f"Using historical exogenous features: {hist_exog_list}")
         else:
             X = None
+            hist_exog = None
 
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
@@ -1724,6 +1790,7 @@ class NixtlaClient:
             "step_size": step_size,
             "freq": standard_freq,
             "clean_ex_first": clean_ex_first,
+            "hist_exog": hist_exog,
             "level": level,
             "finetune_steps": finetune_steps,
             "finetune_depth": finetune_depth,
@@ -1880,7 +1947,7 @@ def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
     h: _PositiveInt,
-    freq: Optional[str],
+    freq: Optional[_Freq],
     id_col: str,
     time_col: str,
     target_col: str,
@@ -1890,6 +1957,7 @@ def _forecast_wrapper(
     finetune_depth: _Finetune_Depth,
     finetune_loss: _Loss,
     clean_ex_first: bool,
+    hist_exog_list: Optional[list[str]],
     validate_api_key: bool,
     add_history: bool,
     date_features: Union[bool, list[Union[str, Callable]]],
@@ -1918,6 +1986,7 @@ def _forecast_wrapper(
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
         clean_ex_first=clean_ex_first,
+        hist_exog_list=hist_exog_list,
         validate_api_key=validate_api_key,
         add_history=add_history,
         date_features=date_features,
@@ -1931,7 +2000,7 @@ def _forecast_wrapper(
 def _detect_anomalies_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
-    freq: Optional[str],
+    freq: Optional[_Freq],
     id_col: str,
     time_col: str,
     target_col: str,
@@ -1963,7 +2032,7 @@ def _cross_validation_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
     h: _PositiveInt,
-    freq: Optional[str],
+    freq: Optional[_Freq],
     id_col: str,
     time_col: str,
     target_col: str,
@@ -1976,6 +2045,7 @@ def _cross_validation_wrapper(
     finetune_depth: _Finetune_Depth,
     finetune_loss: _Loss,
     clean_ex_first: bool,
+    hist_exog_list: Optional[list[str]],
     date_features: Union[bool, list[str]],
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
@@ -1997,6 +2067,7 @@ def _cross_validation_wrapper(
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
         clean_ex_first=clean_ex_first,
+        hist_exog_list=hist_exog_list,
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,

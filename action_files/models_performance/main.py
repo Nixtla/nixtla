@@ -184,7 +184,7 @@ class Experiment:
                 h=self.h,
                 n_windows=self.n_windows,
                 step_size=self.h,
-            ).reset_index()
+            )
             total_time = time() - init_time
             cv_model_df = cv_model_df.rename(
                 columns={value: key for key, value in renamer.items()}
