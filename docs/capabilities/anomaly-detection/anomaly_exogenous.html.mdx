@@ -43,10 +43,11 @@ nixtla_client.weights_x.plot.barh(x='features', y='weights')
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Using the following exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
-INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
 ```
 
 ![](/nixtla/docs/capabilities/anomaly-detection/02_anomaly_exogenous_files/figure-markdown_strict/cell-5-output-2.png)

@@ -66,7 +66,7 @@ nixtla_client = NixtlaClient(
 In this example on SHAP values, we will use exogenous variables (also
 known as covariates) to improve the accuracy of electricity market
 forecasts. We’ll work with a well-known dataset called `EPF`, which is
-publicly accessible [here](https://github.com/jeslago/epftoolbox).
+publicly accessible [here](https://zenodo.org/records/4624805).
 
 This dataset includes data from five different electricity markets, each
 with unique price dynamics, such as varying frequencies and occurrences
@@ -75,31 +75,30 @@ are influenced by exogenous factors, each dataset also contains two
 additional time series: day-ahead forecasts of two significant exogenous
 factors specific to each market.
 
-For simplicity, we will focus on the Nord Pool electricity market (NP ),
-which corresponds to the Nordic countries’ exchange. This dataset
-includes hourly prices (`y`), day-ahead forecasts of load
-(`Exogenous1`), and wind generation (`Exogenous2`). It also includes
-one-hot encoding to indicate whether a specific date is a specific day
-of the week. Eg.: Monday (`day_0 = 1`), a Tuesday (`day_1 = 1`), and so
-on.
+For simplicity, we will focus on the Belgian electricity market (BE).
+This dataset includes hourly prices (`y`), day-ahead forecasts of load
+(`Exogenous1`), and electricity generation (`Exogenous2`). It also
+includes one-hot encoding to indicate whether a specific date is a
+specific day of the week. Eg.: Monday (`day_0 = 1`), a Tuesday
+(`day_1 = 1`), and so on.
 
 If your data depends on exogenous factors or covariates such as prices,
 discounts, special holidays, weather, etc., you can follow a similar
 structure.
 
 ```python
+market = "BE"
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
-df = df.query('unique_id == "NP"')
 df.head()
 ```
 
 |  | unique_id | ds | y | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
 |----|----|----|----|----|----|----|----|----|----|----|----|----|
-| 5040 | NP | 2018-10-15 00:00:00 | 2.17 | 34078.0 | 1791.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 5041 | NP | 2018-10-15 01:00:00 | 4.03 | 33469.0 | 1489.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 5042 | NP | 2018-10-15 02:00:00 | 4.88 | 33313.0 | 1233.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 5043 | NP | 2018-10-15 03:00:00 | 10.47 | 33535.0 | 1035.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 5044 | NP | 2018-10-15 04:00:00 | 17.51 | 34267.0 | 854.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| 0 | BE | 2011-01-09 00:00:00 | 32.54 | 63000.0 | 63065.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 1 | BE | 2011-01-09 01:00:00 | 21.55 | 58800.0 | 62715.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 2 | BE | 2011-01-09 02:00:00 | 15.71 | 58500.0 | 61952.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 3 | BE | 2011-01-09 03:00:00 | 10.58 | 54300.0 | 59262.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 4 | BE | 2011-01-09 04:00:00 | 10.32 | 51900.0 | 56883.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
 
 ## 3. Forecasting electricity prices using exogenous variables
 
@@ -125,17 +124,16 @@ In this case, we want to predict 24 steps ahead, therefore each
 
 ```python
 future_ex_vars_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv')
-future_ex_vars_df = future_ex_vars_df.query('unique_id == "NP"')
 future_ex_vars_df.head()
 ```
 
 |  | unique_id | ds | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
 |----|----|----|----|----|----|----|----|----|----|----|----|
-| 72 | NP | 2018-12-24 00:00:00 | 49119.0 | 461.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 73 | NP | 2018-12-24 01:00:00 | 48115.0 | 484.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 74 | NP | 2018-12-24 02:00:00 | 47727.0 | 497.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 75 | NP | 2018-12-24 03:00:00 | 47673.0 | 509.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| 76 | NP | 2018-12-24 04:00:00 | 47848.0 | 510.0 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| 0 | BE | 2016-12-31 00:00:00 | 70318.0 | 64108.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 1 | BE | 2016-12-31 01:00:00 | 67898.0 | 62492.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 2 | BE | 2016-12-31 02:00:00 | 68379.0 | 61571.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 3 | BE | 2016-12-31 03:00:00 | 64972.0 | 60381.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 4 | BE | 2016-12-31 04:00:00 | 62900.0 | 60298.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
 
 Let’s call the `forecast` method, adding this information. To access the
 SHAP values, we also need to specify `feature_contributions=True` in the
@@ -152,20 +150,20 @@ timegpt_fcst_ex_vars_df.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Querying model metadata...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Using the following exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
+INFO:nixtla.nixtla_client:Using future exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 |  | unique_id | ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
 |----|----|----|----|----|----|----|----|
-| 0 | NP | 2018-12-24 00:00:00 | 50.981989 | 52.728327 | 53.216042 | 49.235651 | 48.747936 |
-| 1 | NP | 2018-12-24 01:00:00 | 51.055580 | 52.811099 | 53.512205 | 49.300060 | 48.598954 |
-| 2 | NP | 2018-12-24 02:00:00 | 50.088422 | 51.780883 | 52.976762 | 48.395962 | 47.200082 |
-| 3 | NP | 2018-12-24 03:00:00 | 49.411024 | 51.441344 | 52.756716 | 47.380704 | 46.065332 |
-| 4 | NP | 2018-12-24 04:00:00 | 49.270679 | 51.309494 | 51.811496 | 47.231863 | 46.729862 |
+| 0 | BE | 2016-12-31 00:00:00 | 46.036026 | 54.296190 | 57.903230 | 37.775864 | 34.168823 |
+| 1 | BE | 2016-12-31 01:00:00 | 39.669830 | 47.451150 | 51.088530 | 31.888512 | 28.251130 |
+| 2 | BE | 2016-12-31 02:00:00 | 42.782482 | 50.666080 | 53.985588 | 34.898884 | 31.579376 |
+| 3 | BE | 2016-12-31 03:00:00 | 33.456486 | 41.924340 | 45.633470 | 24.988634 | 21.279505 |
+| 4 | BE | 2016-12-31 04:00:00 | 33.013190 | 42.022102 | 45.891556 | 24.004282 | 20.134827 |
 
 ## 4. Extract SHAP values
 
@@ -177,16 +175,17 @@ each step in the horizon.
 
 ```python
 shap_df = nixtla_client.feature_contributions
+shap_df = shap_df.query("unique_id == @market")
 shap_df.head()
 ```
 
 |  | unique_id | ds | TimeGPT | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 | base_value |
 |----|----|----|----|----|----|----|----|----|----|----|----|----|----|
-| 0 | NP | 2018-12-24 00:00:00 | 50.981989 | -0.263536 | 2.837252 | -0.650399 | -0.031493 | -0.009930 | -0.052363 | 0.065249 | 0.024908 | 0.003811 | 49.058489 |
-| 1 | NP | 2018-12-24 01:00:00 | 51.055580 | -0.728780 | 2.979878 | -0.394336 | -0.024114 | -0.002384 | -0.074530 | 0.060947 | 0.011700 | 0.005597 | 49.221602 |
-| 2 | NP | 2018-12-24 02:00:00 | 50.088422 | -1.650111 | 2.759695 | -0.353382 | -0.018440 | 0.026398 | -0.080132 | 0.045982 | 0.011485 | 0.003172 | 49.343755 |
-| 3 | NP | 2018-12-24 03:00:00 | 49.411024 | -1.555851 | 2.465833 | -0.470166 | -0.018440 | 0.026398 | -0.080132 | 0.045982 | 0.012374 | 0.003172 | 48.981852 |
-| 4 | NP | 2018-12-24 04:00:00 | 49.270679 | -1.555851 | 2.465833 | -0.470166 | -0.018440 | 0.026398 | -0.080132 | 0.045982 | 0.012374 | 0.003172 | 48.841507 |
+| 0 | BE | 2016-12-31 00:00:00 | 46.036026 | 27.686302 | -10.114356 | -0.110779 | 0.008743 | 0.010075 | -0.083016 | 0.149803 | -3.387345 | 0.633118 | 31.243480 |
+| 1 | BE | 2016-12-31 01:00:00 | 39.669830 | 17.382830 | -6.381124 | -0.189463 | -0.047664 | -0.007513 | -0.145481 | 0.176912 | -4.135220 | 0.727788 | 32.288765 |
+| 2 | BE | 2016-12-31 02:00:00 | 42.782482 | 20.109810 | -5.255701 | -0.117510 | -0.038272 | -0.000664 | -0.142888 | 0.187600 | -4.028637 | 0.684348 | 31.384396 |
+| 3 | BE | 2016-12-31 03:00:00 | 33.456486 | 11.841421 | -5.703259 | -0.085908 | -0.037913 | -0.022507 | -0.057077 | 0.047851 | -3.946337 | 0.774264 | 30.645950 |
+| 4 | BE | 2016-12-31 04:00:00 | 33.013190 | 9.895565 | -6.216626 | -0.041840 | -0.039579 | -0.022507 | -0.040812 | 0.024252 | -4.164020 | 0.755784 | 32.862972 |
 
 In the Dataframe above, we can see that we have the SHAP values at every
 forecasting step, as well as the prediction from TimeGPT and the base
@@ -220,7 +219,7 @@ shap_obj = shap.Explanation(values=shap_values, base_values=base_values, feature
 
 # Plot the bar plot for SHAP values
 shap.plots.bar(shap_obj, max_display=len(features), show=False)
-plt.title(f'SHAP values for NP')
+plt.title(f'SHAP values for {market}')
 plt.show()
 ```
 
@@ -232,11 +231,8 @@ entire horizon.
 Here, we see that `Exogenous1` is the most important feature, as it has
 the largest average contribution. Remember that it designates the
 expected energy demand, so we can see that this variable has a large
-impact on the final prediction. On the other hand, `day_6` is the least
-imortant feature, since it has the lowest value.
-
-Note that all values are positive, meaning that on average, every
-feature tends to increase the value of the predictions.
+impact on the final prediction. On the other hand, `day_2` is the least
+important feature, since it has the lowest value.
 
 ### 5.2 Waterfall plot
 
@@ -245,7 +241,7 @@ impact of features at a single prediction step. The code below selects a
 specific date. Of course, this can be modified for any series or date.
 
 ```python
-selected_ds = '2018-12-24 00:00:00'
+selected_ds = shap_df['ds'].min()
 
 filtered_df = shap_df[shap_df['ds'] == selected_ds]
 
@@ -256,7 +252,7 @@ features = shap_columns
 shap_obj = shap.Explanation(values=shap_values, base_values=base_value, feature_names=features)
 
 shap.plots.waterfall(shap_obj, show=False)
-plt.title(f'Waterfall Plot: NP, date: {selected_ds}')
+plt.title(f'Waterfall Plot: {market}, date: {selected_ds}')
 plt.show()
 ```
 
@@ -271,18 +267,23 @@ The x-axis represents the value of our series. At the bottom, we see
 exogenous features were unknown).
 
 Then, we see how each feature has impacted the final forecast. Features
-like `day_6`, `day_1`, `day_3`, `Exogenous1`, and `day_0` all push the
-forecast to the left (smaller value). On the other hand, `day_5`,
-`day_4` and `Exogenous2` push it to the right (larger value).
+like `day_3`, `day_0`, `day_5`, `Exogenous2` all push the forecast to
+the left (smaller value). On the other hand, `day_1`, `day_2`, `day_4`,
+`day_6` and `Exogenous1` push it to the right (larger value).
 
-At the top right, we see `f(x)` which is the final output of the model
-after considering the imapct of the exogenous features. Notice that this
-value corresponds to the final prediction from TimeGPT. Hence, we see
-that `Exogenous2` has a large positive value, which ultimately led to
-the final forecast being larger than the base value. This makes sense,
-because this variable is the expected energy production. If more energy
-is expected to be produced, it makes sense that the actual energy
-produced is larger.
+Let’s think about this for a moment. In the introduction, we stated that
+`Exogenous1` represents electricity load, whereas `Exogenous2`
+represents electricity generation. \* `Exogenous1`, the electricity
+load, adds positively to the overall prediction. This seems reasonable:
+if we expect a higher demand, we might expect the price to go up. \*
+`Exogenous2`, on the other hand, adds negatively to the overall
+prediction. This seems reasonable too: if there’s a higher electricity
+generation, we expect the price to be lower. Hence, a negative
+contribution to the forecast for `Exogenous2`.
+
+At the top right, we see f(x) which is the final output of the model
+after considering the impact of the exogenous features. Notice that this
+value corresponds to the final prediction from TimeGPT.
 
 ### 5.3 Heatmap
 
@@ -315,12 +316,12 @@ First, notice that the ordering is the same as in the bar plot, where
 
 Then, the color of the heatmap indiciates if the feature tends to
 increase of decrease the final prediction at each forecasting step. For
-example, `Exogenous1` tends to increase the predictions of the first
-10h, but the impact is reversed afterwards.
+example, `Exogenous1` always increases predictions across all 24 hours
+in the forecast horizon.
 
-We also see that `day_6`, `day_5`, `day_2`, `day_4` and `day_1` do not
-have a very large impact at any forecasting step, indicating that they
-barely impacting the final prediction.
+We also see that all days except `day_5` do not have a very large impact
+at any forecasting step, indicating that they barely impacting the final
+prediction.
 
 Ultimately, the `feature_contributions` attribute gives you access to
 all the necessary information to explain the impact of exogenous

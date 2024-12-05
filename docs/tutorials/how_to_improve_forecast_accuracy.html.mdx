@@ -15,11 +15,11 @@ your api_key in the code snippet below.
 | Steps | Description | MAE | MAE Improvement (%) | RMSE | RMSE Improvement (%) |
 |------|----------------------|------|----------------|------|-----------------|
 | 0 | Zero-Shot TimeGPT | 18.5 | N/A | 20.0 | N/A |
-| 1 | Add Fine-Tuning Steps | 12.0 | 35.14% | 13.3 | 33.5% |
-| 2 | Adjust Fine-Tuning Loss | 9.2 | 50.27% | 12.0 | 40.0% |
-| 3 | Fine-tune more parameters | 9.1 | 50.81% | 11.4 | 43.0% |
-| 4 | Add Exogenous Variables | 10.1 | 45.41% | 11.4 | 43.0% |
-| 5 | Switch to Long-Horizon Model | 6.4 | 65.38% | 7.7 | 61.50% |
+| 1 | Add Fine-Tuning Steps | 6.6 | 64% | 8.3 | 59% |
+| 2 | Adjust Fine-Tuning Loss | 6.7 | 64% | 8.3 | 59% |
+| 3 | Fine-tune more parameters | 7.2 | 61% | 9.0 | 55% |
+| 4 | Add Exogenous Variables | 6.3 | 66% | 7.3 | 64% |
+| 5 | Switch to Long-Horizon Model | 6.4 | 65% | 7.7 | 62% |
 
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/22_how_to_improve_forecast_accuracy.ipynb)
 
@@ -65,7 +65,7 @@ df_train.shape, df_test.shape
 ```
 
 ``` text
-((1632, 12), (48, 12))
+((52344, 12), (48, 12))
 ```
 
 ```python
@@ -93,10 +93,10 @@ fcst_timegpt = nixtla_client.forecast(df = df_train[['unique_id','ds','y']],
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Querying model metadata...
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon, this may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
@@ -135,8 +135,8 @@ number of fine-tuning steps. The fine-tuning process adjusts the weights
 within the TimeGPT model, allowing it to better fit your customized
 data. This adjustment enables TimeGPT to learn the nuances of your time
 series more effectively, leading to more accurate forecasts. With 30
-fine-tuning steps, we observe that the MAE decreases to 12 and the RMSE
-drops to 13.2.
+fine-tuning steps, we observe that the MAE decreases to 6.6 and the RMSE
+drops to 8.3.
 
 ```python
 fcst_finetune_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
@@ -147,9 +147,9 @@ fcst_finetune_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon, this may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
@@ -162,10 +162,10 @@ evaluation = evaluate(
 evaluation
 ```
 
-|     | unique_id | metric | TimeGPT   |
-|-----|-----------|--------|-----------|
-| 0   | DE        | mae    | 11.450266 |
-| 1   | DE        | rmse   | 12.634852 |
+|     | unique_id | metric | TimeGPT  |
+|-----|-----------|--------|----------|
+| 0   | DE        | mae    | 6.646164 |
+| 1   | DE        | rmse   | 8.309217 |
 
 ```python
 plot_series(df_sub[-200:], forecasts_df= fcst_finetune_df, level = [90])
@@ -178,8 +178,8 @@ plot_series(df_sub[-200:], forecasts_df= fcst_finetune_df, level = [90])
 The second way to further reduce forecast error is to adjust the loss
 function used during fine-tuning. You can specify your customized loss
 function using the `finetune_loss` parameter. By modifying the loss
-function, we observe that the MAE decreases to 10 and the RMSE reduces
-to 11.4.
+function, we observe that the MAE decreases to 6.7 and the RMSE reduces
+to 8.3.
 
 ```python
 fcst_finetune_mae_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
@@ -191,9 +191,9 @@ fcst_finetune_mae_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon, this may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
@@ -206,10 +206,10 @@ evaluation = evaluate(
 evaluation
 ```
 
-|     | unique_id | metric | TimeGPT   |
-|-----|-----------|--------|-----------|
-| 0   | DE        | mae    | 9.636473  |
-| 1   | DE        | rmse   | 10.948288 |
+|     | unique_id | metric | TimeGPT  |
+|-----|-----------|--------|----------|
+| 0   | DE        | mae    | 6.709114 |
+| 1   | DE        | rmse   | 8.256791 |
 
 ```python
 plot_series(df_sub[-200:], forecasts_df= fcst_finetune_mae_df, level = [90])
@@ -235,9 +235,9 @@ fcst_finetune_depth_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: H
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon, this may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
@@ -252,8 +252,8 @@ evaluation
 
 |     | unique_id | metric | TimeGPT  |
 |-----|-----------|--------|----------|
-| 0   | DE        | mae    | 9.05529  |
-| 1   | DE        | rmse   | 11.41665 |
+| 0   | DE        | mae    | 7.207715 |
+| 1   | DE        | rmse   | 8.980350 |
 
 ```python
 plot_series(df_sub[-200:], forecasts_df= fcst_finetune_depth_df, level = [90])
@@ -275,8 +275,8 @@ values available for these variables during the forecast period, include
 them using the X_df parameter. Otherwise, you can omit this parameter
 and still see improvements using only historical values. In the example
 below, we incorporate 8 historical exogenous variables along with their
-values during the test period, which reduces the MAE and RMSE to 9.2 and
-11.9, respectively.
+values during the test period, which reduces the MAE and RMSE to 6.3 and
+7.3, respectively.
 
 ```python
 df_train.head()
@@ -284,11 +284,11 @@ df_train.head()
 
 |  | unique_id | ds | y | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
 |----|----|----|----|----|----|----|----|----|----|----|----|----|
-| 1680 | DE | 2017-10-22 00:00:00 | 19.10 | 587.25 | 16972.75 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
-| 1681 | DE | 2017-10-22 01:00:00 | 19.03 | 623.00 | 16254.50 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
-| 1682 | DE | 2017-10-22 02:00:00 | 16.90 | 650.00 | 15940.25 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
-| 1683 | DE | 2017-10-22 03:00:00 | 12.98 | 687.25 | 15959.50 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
-| 1684 | DE | 2017-10-22 04:00:00 | 9.24 | 717.25 | 16071.50 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 52392 | DE | 2012-01-09 00:00:00 | 34.97 | 16382.00 | 3569.5275 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| 52393 | DE | 2012-01-09 01:00:00 | 33.43 | 15410.50 | 3315.2750 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| 52394 | DE | 2012-01-09 02:00:00 | 32.74 | 15595.00 | 3107.3075 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| 52395 | DE | 2012-01-09 03:00:00 | 32.46 | 16521.00 | 2944.6200 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| 52396 | DE | 2012-01-09 04:00:00 | 32.50 | 17700.75 | 2897.1500 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
 
 ```python
 future_ex_vars_df = df_test.drop(columns = ['y'])
@@ -297,11 +297,11 @@ future_ex_vars_df.head()
 
 |  | unique_id | ds | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
 |----|----|----|----|----|----|----|----|----|----|----|----|
-| 3312 | DE | 2017-12-29 00:00:00 | 917.50 | 17347.00 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
-| 3313 | DE | 2017-12-29 01:00:00 | 925.75 | 16587.25 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
-| 3314 | DE | 2017-12-29 02:00:00 | 930.75 | 16396.00 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
-| 3315 | DE | 2017-12-29 03:00:00 | 933.50 | 16481.25 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
-| 3316 | DE | 2017-12-29 04:00:00 | 927.50 | 16827.75 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
+| 104736 | DE | 2017-12-29 00:00:00 | 17347.00 | 24577.92650 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
+| 104737 | DE | 2017-12-29 01:00:00 | 16587.25 | 24554.31950 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
+| 104738 | DE | 2017-12-29 02:00:00 | 16396.00 | 24651.45475 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
+| 104739 | DE | 2017-12-29 03:00:00 | 16481.25 | 24666.04300 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
+| 104740 | DE | 2017-12-29 04:00:00 | 16827.75 | 24403.33350 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 | 0.0 |
 
 ```python
 fcst_ex_vars_df = nixtla_client.forecast(df=df_train,
@@ -313,8 +313,8 @@ fcst_ex_vars_df = nixtla_client.forecast(df=df_train,
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Inferred freq: h
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon, this may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Using future exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
@@ -328,10 +328,10 @@ evaluation = evaluate(
 evaluation
 ```
 
-|     | unique_id | metric | TimeGPT   |
-|-----|-----------|--------|-----------|
-| 0   | DE        | mae    | 9.165934  |
-| 1   | DE        | rmse   | 11.900955 |
+|     | unique_id | metric | TimeGPT  |
+|-----|-----------|--------|----------|
+| 0   | DE        | mae    | 6.269535 |
+| 1   | DE        | rmse   | 7.260725 |
 
 ```python
 plot_series(df_sub[-200:], forecasts_df= fcst_ex_vars_df, level = [90])
@@ -350,7 +350,7 @@ results. You can specify this model by using the model parameter.
 In the electricity price time series used here, one cycle is 24 steps
 (representing one day). Since we’re forecasting two days (48 steps) into
 the future, using timegpt-1-long-horizon significantly improves the
-forecasting accuracy, reducing the MAE to 5.7 and RMSE to 7.0.
+forecasting accuracy, reducing the MAE to 6.4 and RMSE to 7.7.
 
 ```python
 fcst_long_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
@@ -362,8 +362,8 @@ fcst_long_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Inferred freq: h
-INFO:nixtla.nixtla_client:Querying model metadata...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
@@ -413,9 +413,9 @@ below.
 | Steps | Description | MAE | MAE Improvement (%) | RMSE | RMSE Improvement (%) |
 |------|----------------------|------|----------------|------|-----------------|
 | 0 | Zero-Shot TimeGPT | 18.5 | N/A | 20.0 | N/A |
-| 1 | Add Fine-Tuning Steps | 12.0 | 35.14% | 13.3 | 33.5% |
-| 2 | Adjust Fine-Tuning Loss | 9.2 | 50.27% | 12.0 | 40.0% |
-| 3 | Fine-tune more parameters | 9.1 | 50.81% | 11.4 | 43.0% |
-| 4 | Add Exogenous Variables | 10.1 | 45.41% | 11.4 | 43.0% |
-| 5 | Switch to Long-Horizon Model | 6.4 | 65.38% | 7.7 | 61.50% |
+| 1 | Add Fine-Tuning Steps | 6.6 | 64% | 8.3 | 59% |
+| 2 | Adjust Fine-Tuning Loss | 6.7 | 64% | 8.3 | 59% |
+| 3 | Fine-tune more parameters | 7.2 | 61% | 9.0 | 55% |
+| 4 | Add Exogenous Variables | 6.3 | 66% | 7.3 | 64% |
+| 5 | Switch to Long-Horizon Model | 6.4 | 65% | 7.7 | 62% |
 

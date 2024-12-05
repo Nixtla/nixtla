@@ -71,18 +71,20 @@ fcst.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
-|     | timestamp  | TimeGPT    |
-|-----|------------|------------|
-| 0   | 1961-01-01 | 437.837921 |
-| 1   | 1961-02-01 | 426.062714 |
-| 2   | 1961-03-01 | 463.116547 |
-| 3   | 1961-04-01 | 478.244507 |
-| 4   | 1961-05-01 | 505.646484 |
+|     | timestamp  | TimeGPT   |
+|-----|------------|-----------|
+| 0   | 1961-01-01 | 437.83792 |
+| 1   | 1961-02-01 | 426.06270 |
+| 2   | 1961-03-01 | 463.11655 |
+| 3   | 1961-04-01 | 478.24450 |
+| 4   | 1961-05-01 | 505.64648 |
 
 In this example, the `NixtlaClient` is infereing the frequency, but you
 can explicitly specify it with the `freq` argument.
@@ -125,18 +127,20 @@ fcst.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 |     | unique_id | ds                  | TimeGPT   |
 |-----|-----------|---------------------|-----------|
-| 0   | BE        | 2016-12-31 00:00:00 | 45.190453 |
-| 1   | BE        | 2016-12-31 01:00:00 | 43.244446 |
-| 2   | BE        | 2016-12-31 02:00:00 | 41.958389 |
-| 3   | BE        | 2016-12-31 03:00:00 | 39.796486 |
-| 4   | BE        | 2016-12-31 04:00:00 | 39.204536 |
+| 0   | BE        | 2016-12-31 00:00:00 | 45.191200 |
+| 1   | BE        | 2016-12-31 01:00:00 | 43.245210 |
+| 2   | BE        | 2016-12-31 02:00:00 | 41.959000 |
+| 3   | BE        | 2016-12-31 03:00:00 | 39.797043 |
+| 4   | BE        | 2016-12-31 04:00:00 | 39.205093 |
 
 When working with a large number of time series, consider using a
 [distributed computing
@@ -159,11 +163,11 @@ df.head()
 
 |  | unique_id | ds | y | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
 |----|----|----|----|----|----|----|----|----|----|----|----|----|
-| 0 | BE | 2016-10-22 00:00:00 | 70.00 | 49593.0 | 57253.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 1 | BE | 2016-10-22 01:00:00 | 37.10 | 46073.0 | 51887.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 2 | BE | 2016-10-22 02:00:00 | 37.10 | 44927.0 | 51896.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 3 | BE | 2016-10-22 03:00:00 | 44.75 | 44483.0 | 48428.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 4 | BE | 2016-10-22 04:00:00 | 37.10 | 44338.0 | 46721.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 0 | BE | 2011-01-09 00:00:00 | 32.54 | 63000.0 | 63065.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 1 | BE | 2011-01-09 01:00:00 | 21.55 | 58800.0 | 62715.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 2 | BE | 2011-01-09 02:00:00 | 15.71 | 58500.0 | 61952.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 3 | BE | 2011-01-09 03:00:00 | 10.58 | 54300.0 | 59262.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| 4 | BE | 2011-01-09 04:00:00 | 10.32 | 51900.0 | 56883.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
 
 When using exogenous variables, you also need to provide its future
 values.
@@ -175,11 +179,11 @@ future_ex_vars_df.head()
 
 |  | unique_id | ds | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
 |----|----|----|----|----|----|----|----|----|----|----|----|
-| 0 | BE | 2016-12-31 00:00:00 | 64108.0 | 70318.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 1 | BE | 2016-12-31 01:00:00 | 62492.0 | 67898.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 2 | BE | 2016-12-31 02:00:00 | 61571.0 | 68379.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 3 | BE | 2016-12-31 03:00:00 | 60381.0 | 64972.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| 4 | BE | 2016-12-31 04:00:00 | 60298.0 | 62900.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 0 | BE | 2016-12-31 00:00:00 | 70318.0 | 64108.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 1 | BE | 2016-12-31 01:00:00 | 67898.0 | 62492.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 2 | BE | 2016-12-31 02:00:00 | 68379.0 | 61571.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 3 | BE | 2016-12-31 03:00:00 | 64972.0 | 60381.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| 4 | BE | 2016-12-31 04:00:00 | 62900.0 | 60298.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
 
 ```python
 fcst = nixtla_client.forecast(df=df, X_df=future_ex_vars_df, h=24)
@@ -188,19 +192,19 @@ fcst.head()
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: h
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Inferred freq: H
-INFO:nixtla.nixtla_client:Using the following exogenous variables: Exogenous1, Exogenous2, day_0, day_1, day_2, day_3, day_4, day_5, day_6
+INFO:nixtla.nixtla_client:Using future exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
 
 |     | unique_id | ds                  | TimeGPT   |
 |-----|-----------|---------------------|-----------|
-| 0   | BE        | 2016-12-31 00:00:00 | 74.540773 |
-| 1   | BE        | 2016-12-31 01:00:00 | 43.344289 |
-| 2   | BE        | 2016-12-31 02:00:00 | 44.429220 |
-| 3   | BE        | 2016-12-31 03:00:00 | 38.094395 |
-| 4   | BE        | 2016-12-31 04:00:00 | 37.389141 |
+| 0   | BE        | 2016-12-31 00:00:00 | 46.036015 |
+| 1   | BE        | 2016-12-31 01:00:00 | 39.670720 |
+| 2   | BE        | 2016-12-31 02:00:00 | 42.782120 |
+| 3   | BE        | 2016-12-31 03:00:00 | 33.456580 |
+| 4   | BE        | 2016-12-31 04:00:00 | 33.013958 |
 
 To learn more about how to use exogenous variables with `TimeGPT`,
 consult the [Exogenous
