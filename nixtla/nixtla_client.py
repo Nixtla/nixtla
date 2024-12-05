@@ -2437,7 +2437,6 @@ def _get_schema(
     if method == "detect_anomalies_realtime":
         schema.append("anomaly:bool")
         schema.append("anomaly_score:double")
-        # schema.append('accumulated_anomaly_score:double')
     elif method == "cross_validation":
         schema.append(("cutoff", schema[time_col].type))
     if level is not None and quantiles is not None:
