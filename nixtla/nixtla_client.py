@@ -28,6 +28,7 @@ import numpy as np
 import orjson
 import pandas as pd
 import utilsforecast.processing as ufp
+import zstandard as zstd
 from tenacity import (
     RetryCallState,
     retry,
@@ -652,7 +653,11 @@ class NixtlaClient:
             self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
 
     def _make_request(
-        self, client: httpx.Client, endpoint: str, payload: dict[str, Any]
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        payload: dict[str, Any],
+        multithreaded_compress: bool,
     ) -> dict[str, Any]:
         def ensure_contiguous_arrays(d: dict[str, Any]) -> None:
             for k, v in d.items():
@@ -673,12 +678,17 @@ class NixtlaClient:
 
         ensure_contiguous_arrays(payload)
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
-        content_size_mb = len(content) / (1024 * 1024)
+        content_size_mb = len(content) / 2**20
         if content_size_mb > 200:
             raise ValueError(
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
             )
-        resp = client.post(url=endpoint, content=content)
+        headers = {}
+        if content_size_mb > 10:
+            threads = -1 if multithreaded_compress else 0
+            content = zstd.ZstdCompressor(level=1, threads=threads).compress(content)
+            headers["content-encoding"] = "zstd"
+        resp = client.post(url=endpoint, content=content, headers=headers)
         try:
             resp_body = orjson.loads(resp.content)
         except orjson.JSONDecodeError:
@@ -697,11 +707,13 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         payload: dict[str, Any],
+        multithreaded_compress: bool = True,
     ) -> dict[str, Any]:
         return self._retry_strategy(self._make_request)(
             client=client,
             endpoint=endpoint,
             payload=payload,
+            multithreaded_compress=multithreaded_compress,
         )
 
     def _make_partitioned_requests(
@@ -718,7 +730,11 @@ class NixtlaClient:
         with ThreadPoolExecutor(max_workers) as executor:
             future2pos = {
                 executor.submit(
-                    self._make_request_with_retries, client, endpoint, payload
+                    self._make_request_with_retries,
+                    client=client,
+                    endpoint=endpoint,
+                    payload=payload,
+                    multithreaded_compress=False,
                 ): i
                 for i, payload in enumerate(payloads)
             }

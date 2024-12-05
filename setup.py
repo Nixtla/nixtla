@@ -48,6 +48,7 @@ setuptools.setup(
         "tenacity",
         "tqdm",
         "utilsforecast>=0.2.8",
+        "zstandard",
     ],
     extras_require={
         "dev": dev + plotting + date_extras,
