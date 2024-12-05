@@ -42,13 +42,12 @@ setuptools.setup(
     python_requires=">=3.9",
     install_requires=[
         "annotated-types",
-        "httpx",
+        "httpx[zstd]",
         "orjson",
         "pandas",
         "tenacity",
         "tqdm",
         "utilsforecast>=0.2.8",
-        "zstandard",
     ],
     extras_require={
         "dev": dev + plotting + date_extras,
