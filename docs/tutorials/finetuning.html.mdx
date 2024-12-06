@@ -106,101 +106,15 @@ nixtla_client.plot(
 
 ![](/nixtla/docs/tutorials/06_finetuning_files/figure-markdown_strict/cell-7-output-1.png)
 
-### 3.1 Control the level of fine-tuning with `finetune_depth`
-
-It is also possible to control the depth of fine-tuning with the
-`finetune_depth` parameter.
-
-`finetune_depth` takes values among `[1, 2, 3, 4, 5]`. By default, it is
-set to 1, which means that a small set of the model’s parameters are
-being adjusted, whereas a value of 5 fine-tunes the maximum amount of
-parameters. Increasing `finetune_depth` also increases the time to
-generate predictions.
-
-Let’s run a small experiment to see how `finetune_depth` impacts the
-performance.
-
-```python
-train = df[:-24]
-test = df[-24:]
-```
-
-
-```python
-depths = [1, 2, 3, 4, 5]
-
-test = test.copy()
-
-for depth in depths:
-    preds_df = nixtla_client.forecast(
-    df=train, 
-    h=24, 
-    finetune_steps=5,
-    finetune_depth=depth,
-    time_col='timestamp', 
-    target_col='value')
-
-    preds = preds_df['TimeGPT'].values
-
-    test.loc[:,f'TimeGPT_depth{depth}'] = preds
-```
-
-``` text
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: MS
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
-INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
-```
-
-```python
-test['unique_id'] = 0
-
-evaluation = evaluate(test, metrics=[mae, mse], time_col="timestamp", target_col="value")
-evaluation
-```
-
-|  | unique_id | metric | TimeGPT_depth1 | TimeGPT_depth2 | TimeGPT_depth3 | TimeGPT_depth4 | TimeGPT_depth5 |
-|----|----|----|----|----|----|----|----|
-| 0 | 0 | mae | 22.805146 | 17.929682 | 21.320125 | 24.944233 | 28.735563 |
-| 1 | 0 | mse | 683.303778 | 462.133945 | 678.182747 | 1003.023709 | 1119.906759 |
-
-As you can see, increasing the depth of fine-tuning can improve the
-performance of the model, but it can make it worse too due to
-overfitting.
-
-Thus, keep in mind that fine-tuning can be a bit of trial and error. You
-might need to adjust the number of `finetune_steps` and the level of
-`finetune_depth` based on your specific needs and the complexity of your
-data. Usually, a higher `finetune_depth` works better for large
-datasets. In this specific tutorial, since we were forecasting a single
-series with a very short dataset, increasing the depth led to
-overfitting.
+Keep in mind that fine-tuning can be a bit of trial and error. You might
+need to adjust the number of `finetune_steps` based on your specific
+needs and the complexity of your data. Usually, a larger value of
+`finetune_steps` works better for large datasets.
 
 It’s recommended to monitor the model’s performance during fine-tuning
-and adjust as needed. Be aware that more `finetune_steps` and a larger
-value of `finetune_depth` may lead to longer training times and could
-potentially lead to overfitting if not managed properly.
+and adjust as needed. Be aware that more `finetune_steps` may lead to
+longer training times and could potentially lead to overfitting if not
+managed properly.
 
 Remember, fine-tuning is a powerful feature, but it should be used
 thoughtfully and carefully.
@@ -209,4 +123,8 @@ For a detailed guide on using a specific loss function for fine-tuning,
 check out the [Fine-tuning with a specific loss
 function](https://docs.nixtla.io/docs/tutorials-fine_tuning_with_a_specific_loss_function)
 tutorial.
+
+Read also our detailed tutorial on [controlling the level of
+fine-tuning](https://docs.nixtla.io/docs/tutorials-finetune_depth_finetuning)
+using `finetune_depth`.
 
