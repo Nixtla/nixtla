@@ -494,7 +494,6 @@ d = { 'settings': { 'branch': 'main',
                                   'mlforecast.utils._ShortSeriesException': ('utils.html#_shortseriesexception', 'mlforecast/utils.py'),
                                   'mlforecast.utils._ShortSeriesException.__init__': ( 'utils.html#_shortseriesexception.__init__',
                                                                                        'mlforecast/utils.py'),
-                                  'mlforecast.utils._ensure_shallow_copy': ('utils.html#_ensure_shallow_copy', 'mlforecast/utils.py'),
                                   'mlforecast.utils.generate_daily_series': ('utils.html#generate_daily_series', 'mlforecast/utils.py'),
                                   'mlforecast.utils.generate_prices_for_series': ( 'utils.html#generate_prices_for_series',
                                                                                    'mlforecast/utils.py')}}}

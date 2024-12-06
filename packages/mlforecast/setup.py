@@ -22,7 +22,7 @@ licenses = {
 }
 statuses = [ '1 - Planning', '2 - Pre-Alpha', '3 - Alpha',
     '4 - Beta', '5 - Production/Stable', '6 - Mature', '7 - Inactive' ]
-py_versions = '3.9 3.10 3.11 3.12'.split()
+py_versions = '3.9 3.10 3.11 3.12 3.13'.split()
 
 requirements = cfg['requirements'].split()
 dask_requirements = cfg['dask_requirements'].split()
@@ -62,7 +62,6 @@ setuptools.setup(
         'dask': dask_requirements,
         'ray': ray_requirements,
         'spark': spark_requirements,
-        'lag_transforms': [],
         'aws': aws_requirements,
         'azure': azure_requirements,
         'gcp': gcp_requirements,

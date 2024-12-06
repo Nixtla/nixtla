@@ -6,13 +6,8 @@ __all__ = ['transform_exog']
 # %% ../nbs/feature_engineering.ipynb 3
 from typing import Optional
 
-from utilsforecast.compat import DataFrame
-from utilsforecast.processing import (
-    drop_index_if_pandas,
-    horizontal_concat,
-    process_df,
-    take_rows,
-)
+import utilsforecast.processing as ufp
+from utilsforecast.compat import DFType
 from utilsforecast.validation import validate_format
 
 from .core import _parse_transforms, Lags, LagTransforms
@@ -20,13 +15,13 @@ from .grouped_array import GroupedArray
 
 # %% ../nbs/feature_engineering.ipynb 4
 def transform_exog(
-    df: DataFrame,
+    df: DFType,
     lags: Optional[Lags] = None,
     lag_transforms: Optional[LagTransforms] = None,
     id_col: str = "unique_id",
     time_col: str = "ds",
     num_threads: int = 1,
-) -> DataFrame:
+) -> DFType:
     """Compute lag features for dynamic exogenous regressors.
 
     Parameters
@@ -60,11 +55,11 @@ def transform_exog(
     # this is just a dummy target because process_df requires one
     target_col = targets[0]
     validate_format(df, id_col, time_col, target_col)
-    _, _, data, indptr, sort_idxs = process_df(df, id_col, time_col, target_col)
+    processed = ufp.process_df(df, id_col, time_col, target_col)
     results = {}
     cols = []
     for j, target in enumerate(targets):
-        ga = GroupedArray(data[:, j], indptr)
+        ga = GroupedArray(processed.data[:, j], processed.indptr)
         named_tfms = {f"{target}_{k}": v for k, v in tfms.items()}
         if num_threads == 1 or len(named_tfms) == 1:
             computed_tfms = ga.apply_transforms(
@@ -76,9 +71,9 @@ def transform_exog(
             )
         results.update(computed_tfms)
         cols.extend(list(named_tfms.keys()))
-    if sort_idxs is not None:
-        base_df = take_rows(df, sort_idxs)
+    if processed.sort_idxs is not None:
+        base_df = ufp.take_rows(df, processed.sort_idxs)
     else:
         base_df = df
-    base_df = drop_index_if_pandas(base_df)
-    return horizontal_concat([base_df, type(df)(results)[cols]])
+    base_df = ufp.drop_index_if_pandas(base_df)
+    return ufp.horizontal_concat([base_df, type(df)(results)[cols]])

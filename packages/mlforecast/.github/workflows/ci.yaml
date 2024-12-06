@@ -32,10 +32,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install the library
-        run: pip install uv && uv pip install --system ".[all]"
+        run: pip install uv && uv pip install --system ".[all]" "numba>=0.60" shap window-ops
 
       - name: Run all tests
-        run: nbdev_test --n_workers 0 --do_print --timing --skip_file_re 'electricity' --flags 'polars'
+        run: nbdev_test --n_workers 0 --do_print --timing --skip_file_re 'electricity' --flags 'polars shap window_ops'
 
   run-local-tests:
     runs-on: ${{ matrix.os }}
@@ -44,7 +44,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-13, macos-14, windows-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - name: Clone repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -76,7 +76,7 @@ jobs:
           python-version: "3.10"
 
       - name: Install forecast notebook dependencies
-        run: pip install uv && uv pip install --system . datasetsforecast lightgbm matplotlib nbdev xgboost
+        run: pip install uv && uv pip install --system . lightgbm matplotlib nbdev pyarrow xgboost
 
       - name: Run forecast notebook
         run: nbdev_test --path nbs/forecast.ipynb

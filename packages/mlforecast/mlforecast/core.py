@@ -46,7 +46,7 @@ from mlforecast.target_transforms import (
     _BaseGroupedArrayTargetTransform,
     BaseTargetTransform,
 )
-from .utils import _ShortSeriesException, _ensure_shallow_copy
+from .utils import _ShortSeriesException
 
 # %% ../nbs/core.ipynb 10
 date_features_dtypes = {
@@ -154,28 +154,19 @@ def _parse_transforms(
         namer = _build_transform_name
     for lag in lags:
         transforms[f"lag{lag}"] = Lag(lag)
-    has_fns = False
     for lag in lag_transforms.keys():
         for tfm in lag_transforms[lag]:
             if isinstance(tfm, _BaseLagTransform):
                 tfm_name = namer(tfm, lag)
                 transforms[tfm_name] = clone(tfm)._set_core_tfm(lag)
             else:
-                has_fns = True
                 tfm, *args = _as_tuple(tfm)
                 assert callable(tfm)
                 tfm_name = namer(tfm, lag, *args)
                 transforms[tfm_name] = (lag, tfm, *args)
-    if has_fns:
-        warnings.warn(
-            "The `window_ops` package (and thus `numba`) will no longer be "
-            "a dependency in a future version.\n"
-            "Please make sure to add it to your requirements to ensure compatibility.",
-            category=FutureWarning,
-        )
     return transforms
 
-# %% ../nbs/core.ipynb 22
+# %% ../nbs/core.ipynb 21
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
 
@@ -512,8 +503,7 @@ class TimeSeries:
             target_names = [f"{self.target_col}{i}" for i in range(max_horizon)]
             df = ufp.assign_columns(df, target_names, target)
         else:
-            if isinstance(df, pd.DataFrame):
-                df = _ensure_shallow_copy(df)
+            df = ufp.copy_if_pandas(df, deep=False)
             df = ufp.assign_columns(df, self.target_col, target)
         return df
 

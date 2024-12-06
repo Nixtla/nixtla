@@ -23,17 +23,25 @@ except ImportError:
 
 
 try:
-    from window_ops.shift import shift_array
-except ImportError:
-
-    def shift_array(*_args, **_kwargs):  # noqa: ARG002
-        raise Exception
-
-
-try:
     from xgboost import XGBRegressor
 except ImportError:
 
     class XGBRegressor:
         def __init__(self, *args, **kwargs):  # noqa: ARG002
             raise ImportError("Please install xgboost to use this model.")
+
+
+try:
+    from window_ops.shift import shift_array
+except ImportError:
+    import numpy as np
+    from utilsforecast.compat import njit
+
+    @njit
+    def shift_array(x, offset):
+        if offset >= x.size or offset < 0:
+            return np.full_like(x, np.nan)
+        out = np.empty_like(x)
+        out[:offset] = np.nan
+        out[offset:] = x[:-offset]
+        return out
