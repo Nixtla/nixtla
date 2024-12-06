@@ -27,7 +27,7 @@ py_versions = '3.9 3.10 3.11 3.12 3.13'.split()
 requirements = cfg['requirements'].split()
 distributed_requirements = cfg['distributed_requirements'].split()
 plotting_requirements = cfg['plotting_requirements'].split()
-date_extra_requirements = cfg['date_requirements'].split()
+date_extra_requirements = cfg['date_extra_requirements'].split()
 dev_requirements = cfg['dev_requirements'].split()
 dev_requirements.extend(plotting_requirements)
 dev_requirements.extend(date_extra_requirements)
@@ -51,7 +51,7 @@ setuptools.setup(
         "dev": dev_requirements,
         "distributed": distributed_requirements,
         "plotting": plotting_requirements,
-        "date_extras": date_requirements,
+        "date_extras": date_extra_requirements,
     },
     dependency_links = cfg.get('dep_links','').split(),
     python_requires  = '>=' + cfg['min_python'],
