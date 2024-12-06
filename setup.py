@@ -1,58 +1,62 @@
+from pkg_resources import parse_version
+from configparser import ConfigParser
 import setuptools
+assert parse_version(setuptools.__version__)>=parse_version('36.2')
 
-with open("README.md", "r", encoding="utf8") as fh:
-    long_description = fh.read()
+# note: all settings are in settings.ini; edit there, not here
+config = ConfigParser(delimiters=['='])
+config.read('settings.ini')
+cfg = config['DEFAULT']
 
-dev = [
-    "black",
-    "datasetsforecast",
-    "fire",
-    "hierarchicalforecast",
-    "jupyterlab",
-    "nbdev",
-    "neuralforecast",
-    "numpy<2",
-    "plotly",
-    "polars",
-    "pre-commit",
-    "pyreadr",
-    "python-dotenv",
-    "pyyaml",
-    "setuptools<70",
-    "statsforecast",
-    "tabulate",
-]
-distributed = ["fugue[dask,ray,spark]>=0.8.7", "pandas<2.2", "ray<2.6.3"]
-plotting = ["utilsforecast[plotting]"]
-date_extras = ["holidays"]
+cfg_keys = 'version description keywords author author_email'.split()
+expected = cfg_keys + "lib_name user branch license status min_python audience language".split()
+for o in expected: assert o in cfg, "missing expected setting: {}".format(o)
+setup_cfg = {o:cfg[o] for o in cfg_keys}
+
+licenses = {
+    'apache2': ('Apache Software License 2.0','OSI Approved :: Apache Software License'),
+    'mit': ('MIT License', 'OSI Approved :: MIT License'),
+    'gpl2': ('GNU General Public License v2', 'OSI Approved :: GNU General Public License v2 (GPLv2)'),
+    'gpl3': ('GNU General Public License v3', 'OSI Approved :: GNU General Public License v3 (GPLv3)'),
+    'bsd3': ('BSD License', 'OSI Approved :: BSD License'),
+}
+statuses = [ '1 - Planning', '2 - Pre-Alpha', '3 - Alpha',
+    '4 - Beta', '5 - Production/Stable', '6 - Mature', '7 - Inactive' ]
+py_versions = '3.9 3.10 3.11 3.12 3.13'.split()
+
+requirements = cfg['requirements'].split()
+distributed_requirements = cfg['distributed_requirements'].split()
+dev_requirements = cfg['dev_requirements'].split()
+plotting_requirements = cfg['plotting_requirements'].split()
+date_requirements = cfg['date_requirements'].split()
+min_python = cfg['min_python']
+lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
 
 setuptools.setup(
-    name="nixtla",
-    version="0.6.4",
-    description="Python SDK for Nixtla API (TimeGPT)",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url="https://github.com/Nixtla/nixtla",
-    packages=setuptools.find_packages(exclude=["action_files"]),
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
-    python_requires=">=3.9",
-    install_requires=[
-        "annotated-types",
-        "httpx[zstd]",
-        "orjson",
-        "pandas",
-        "tenacity",
-        "tqdm",
-        "utilsforecast>=0.2.8",
-    ],
-    extras_require={
-        "dev": dev + plotting + date_extras,
-        "distributed": distributed,
-        "plotting": plotting,
-        "date_extras": date_extras,
+    name = cfg['lib_name'],
+    license = lic[0],
+    classifiers = [
+        'Development Status :: ' + statuses[int(cfg['status'])],
+        'Intended Audience :: ' + cfg['audience'].title(),
+        'Natural Language :: ' + cfg['language'].title(),
+    ] + ['Programming Language :: Python :: '+o for o in py_versions[py_versions.index(min_python):]] + (['License :: ' + lic[1] ] if lic[1] else []),
+    url = cfg['git_url'],
+    packages = setuptools.find_packages(exclude=['action_files']),
+    include_package_data = True,
+    install_requires = requirements,
+    extras_require = {
+        "dev": dev_requirements,
+        "distributed": distributed_requirements,
+        "plotting": plotting_requirements,
+        "date_extras": date_requirements,
     },
-)
+    dependency_links = cfg.get('dep_links','').split(),
+    python_requires  = '>=' + cfg['min_python'],
+    long_description = open('README.md', encoding='utf-8').read(),
+    long_description_content_type = 'text/markdown',
+    zip_safe = False,
+    entry_points = {
+        'console_scripts': cfg.get('console_scripts','').split(),
+        'nbdev': [f'{cfg.get("lib_path")}={cfg.get("lib_path")}._modidx:d']
+    },
+    **setup_cfg)
