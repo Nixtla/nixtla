@@ -1537,6 +1537,7 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt,
         finetune_depth: _Finetune_Depth,
         finetune_loss: _Loss,
+        refit: bool,
         clean_ex_first: bool,
         hist_exog_list: Optional[list[str]],
         date_features: Union[bool, Sequence[Union[str, Callable]]],
@@ -1575,6 +1576,7 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
+                refit=refit,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
                 date_features=date_features,
@@ -1603,6 +1605,7 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt = 0,
         finetune_depth: _Finetune_Depth = 1,
         finetune_loss: _Loss = "default",
+        refit: bool = True,
         clean_ex_first: bool = True,
         hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
@@ -1655,11 +1658,14 @@ class NixtlaClient:
         finetune_steps : int (default=0)
             Number of steps used to finetune TimeGPT in the
             new data.
-        finetune_depth: int (default=1)
+        finetune_depth : int (default=1)
             The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
             and 5 means that the entire model is finetuned.
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
+        refit : bool (default=True)
+            Fine-tune the model in each window. If `False`, only fine-tunes on the first window.
+            Only used if `finetune_steps` > 0.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts using TimeGPT.
         hist_exog_list : list of str, optional (default=None)
@@ -1704,6 +1710,7 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
+                refit=refit,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
                 date_features=date_features,
@@ -1811,6 +1818,7 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_depth": finetune_depth,
             "finetune_loss": finetune_loss,
+            "refit": refit,
         }
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -2060,6 +2068,7 @@ def _cross_validation_wrapper(
     finetune_steps: _NonNegativeInt,
     finetune_depth: _Finetune_Depth,
     finetune_loss: _Loss,
+    refit: bool,
     clean_ex_first: bool,
     hist_exog_list: Optional[list[str]],
     date_features: Union[bool, list[str]],
@@ -2082,6 +2091,7 @@ def _cross_validation_wrapper(
         finetune_steps=finetune_steps,
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
+        refit=refit,
         clean_ex_first=clean_ex_first,
         hist_exog_list=hist_exog_list,
         date_features=date_features,
