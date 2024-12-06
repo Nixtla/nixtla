@@ -26,9 +26,12 @@ py_versions = '3.9 3.10 3.11 3.12 3.13'.split()
 
 requirements = cfg['requirements'].split()
 distributed_requirements = cfg['distributed_requirements'].split()
-dev_requirements = cfg['dev_requirements'].split()
 plotting_requirements = cfg['plotting_requirements'].split()
-date_requirements = cfg['date_requirements'].split()
+date_extra_requirements = cfg['date_requirements'].split()
+dev_requirements = cfg['dev_requirements'].split()
+dev_requirements.extend(plotting_requirements)
+dev_requirements.extend(date_extra_requirements)
+
 min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
 
