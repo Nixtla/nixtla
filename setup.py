@@ -42,8 +42,7 @@ setuptools.setup(
     python_requires=">=3.9",
     install_requires=[
         "annotated-types",
-        "coreforecast>=0.0.14",
-        "httpx",
+        "httpx[zstd]",
         "orjson",
         "pandas",
         "tenacity",
