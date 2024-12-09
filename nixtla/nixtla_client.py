@@ -1787,10 +1787,6 @@ class NixtlaClient:
             }
         )
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
-        out_aggregated = out.groupby([id_col, time_col], as_index=False).agg(
-            {"TimeGPT": "median", target_col: "first"}
-        )
-        out = out_aggregated.groupby(id_col).tail(detection_size).reset_index(drop=True)
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
         if threshold_method == "multivariate":
