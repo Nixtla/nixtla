@@ -40,7 +40,7 @@ uv pip install -r requirements.txt
 python -m src.utils.download_data
 ```
 
-If you're interested in replicating the results, write us at `ops@nixtla.io` to give you access to the data.
+If you're interested in replicating the results, write us at `support@nixtla.io` to give you access to the data.
 
 5. Filter the datasets to prevent AzureML from crashing
 
