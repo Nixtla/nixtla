@@ -54,6 +54,6 @@ jobs:
           git push https://${{ secrets.TOKEN_GITHUB }}@github.com/${{ github.repository }} HEAD:readme_docs
 
       - name: Deploy to readme com
-        uses: readmeio/rdme@51a80867c45de15e2b41af0c4bd5bbc61b932804 # 8.6.6
+        uses: readmeio/rdme@2bc7462f73ff674569bd1eb2007150b544375551 # 9.0.0
         with:
           rdme: docs ./nbs/_docs/docs/ --key=${{ secrets.README_API_KEY }} --version=${{ env.readme_version }}
