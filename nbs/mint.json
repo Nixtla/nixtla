@@ -55,12 +55,20 @@
           ]
         },
         {
-          "group": "Anomaly Detection",
+          "group": "Historical Anomaly Detection",
           "pages": [
-            "docs/capabilities/anomaly-detection/quickstart.html",
-            "docs/capabilities/anomaly-detection/anomaly_exogenous.html",
-            "docs/capabilities/anomaly-detection/anomaly_detection_date_features.html",
-            "docs/capabilities/anomaly-detection/confidence_levels.html"
+            "docs/capabilities/historical-anomaly-detection/quickstart.html",
+            "docs/capabilities/historical-anomaly-detection/anomaly_exogenous.html",
+            "docs/capabilities/historical-anomaly-detection/anomaly_detection_date_features.html",
+            "docs/capabilities/historical-anomaly-detection/confidence_levels.html"
+          ]
+        },
+        {
+          "group": "Realtime Anomaly Detection",
+          "pages": [
+            "docs/capabilities/realtime-anomaly-detection/quickstart.html",
+            "docs/capabilities/realtime-anomaly-detection/improve_detection_accuracy.html",
+            "docs/capabilities/realtime-anomaly-detection/univariate_vs_multivariate_anomaly_detection.html"
           ]
         }
       ]
