@@ -29,6 +29,7 @@ import orjson
 import pandas as pd
 import utilsforecast.processing as ufp
 import zstandard as zstd
+from pydantic import BaseModel
 from tenacity import (
     RetryCallState,
     retry,
@@ -105,7 +106,7 @@ _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 
 
-class _FinetunedModel:
+class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
     id: str
     created_at: str
     base_model_id: str
@@ -962,7 +963,7 @@ class NixtlaClient:
         output_model_id: Optional[str] = None,
         finetuned_model_id: Optional[str] = None,
         model: _Model = "timegpt-1",
-    ):
+    ) -> str:
         """Fine-tune TimeGPT to your series.
 
         Parameters
@@ -1011,6 +1012,8 @@ class NixtlaClient:
         str
             ID of the fine-tuned model
         """
+        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("Can only fine-tune on pandas or polars dataframes.")
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
         df, X_df, drop_id, freq = self._run_validations(
@@ -1057,13 +1060,19 @@ class NixtlaClient:
             resp = self._make_request_with_retries(client, "v2/finetune", payload)
         return resp["finetuned_model_id"]
 
-    def finetuned_models(self) -> list[_FinetunedModel]:
+    def finetuned_models(self) -> list[FinetunedModel]:
+        """List fine-tuned models
+
+        Returns
+        -------
+        list of FinetunedModel
+            List of available fine-tuned models."""
         with httpx.Client(**self._client_kwargs) as client:
             resp = client.get("/v2/finetuned_models")
             body = resp.json()
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=body)
-        return body["finetuned_models"]
+        return [FinetunedModel(**m) for m in body["finetuned_models"]]
 
     def _distributed_forecast(
         self,
