@@ -989,9 +989,8 @@ class NixtlaClient:
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
             Column that contains the target.
-        finetune_steps : int (default=0)
-            Number of steps used to finetune learning TimeGPT in the
-            new data.
+        finetune_steps : int (default=10)
+            Number of steps used to finetune learning TimeGPT in the new data.
         finetune_depth: int (default=1)
             The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
             and 5 means that the entire model is finetuned.
