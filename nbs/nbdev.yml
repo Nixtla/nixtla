@@ -4,6 +4,6 @@ project:
 website:
   title: "nixtla"
   site-url: "https://Nixtla.github.io/nixtla/"
-  description: "Time series forecasting suite using TimeGPT"
+  description: "Python SDK for Nixtla API (TimeGPT)"
   repo-branch: main
   repo-url: "https://github.com/Nixtla/nixtla/"
