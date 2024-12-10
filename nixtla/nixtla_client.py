@@ -1615,7 +1615,8 @@ class NixtlaClient:
         refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
-        """Real-time anomaly detection in your time series using TimeGPT.
+        """
+        Real-time anomaly detection in your time series using TimeGPT.
 
         Parameters
         ----------
@@ -1627,57 +1628,64 @@ class NixtlaClient:
             - target_col:
                 Column name in `df` that contains the target variable of the time series, i.e., the variable we
                 wish to predict or analyze.
-            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
             - id_col:
                 Column name in `df` that identifies unique time series. Each unique value in this column
                 corresponds to a unique time series.
         h : int
             Forecast horizon.
-        detection_size: int
+        detection_size : int
             The length of the sequence where anomalies will be detected starting from the end of the dataset.
-        threshold_method: str (default='univariate')
+        threshold_method : str, optional (default='univariate')
             The method used to calculate the intervals for anomaly detection.
             Use `univariate` to flag anomalies independently for each series in the dataset.
             Use `multivariate` to have a global threshold across all series in the dataset. For this method, all series
             must have the same length.
-        freq : str
+        freq : str, optional
             Frequency of the data. By default, the freq will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-        id_col : str (default='unique_id')
-            Column that identifies each serie.
-        time_col : str (default='ds')
+        id_col : str, optional (default='unique_id')
+            Column that identifies each series.
+        time_col : str, optional (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
-        target_col : str (default='y')
+        target_col : str, optional (default='y')
             Column that contains the target.
-        level : float (default=99)
+        level : float, optional (default=99)
             Confidence level between 0 and 100 for detecting the anomalies.
-        clean_ex_first : bool (default=True)
-            Clean exogenous signal before making forecasts
-            using TimeGPT.
-        validate_api_key : bool (default=False)
+        clean_ex_first : bool, optional (default=True)
+            Clean exogenous signal before making forecasts using TimeGPT.
+        step_size : int, optional (default=None)
+            Step size between each cross validation window. If None it will be equal to `h`.
+        finetune_steps : int (default=0)
+            Number of steps used to finetune TimeGPT in the
+            new data.
+        finetune_depth : int (default=1)
+            The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
+            and 5 means that the entire model is finetuned.
+        finetune_loss : str (default='default')
+            Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
+        validate_api_key : bool, optional (default=False)
             If True, validates api_key before sending requests.
-        date_features : bool or list of str or callable, optional (default=False)
+        date_features : bool or list of str, optional (default=False)
             Features computed from the dates.
             Can be pandas date attributes or functions that will take the dates as input.
-            If True automatically adds most used date features for the
-            frequency of `df`.
-        date_features_to_one_hot : bool or list of str (default=False)
+            If True, automatically adds most used date features for the frequency of `df`.
+        date_features_to_one_hot : bool or list of str, optional (default=False)
             Apply one-hot encoding to these date features.
-            If `date_features=True`, then all date features are
-            one-hot encoded by default.
-        model : str (default='timegpt-1')
+            If `date_features=True`, then all date features are one-hot encoded by default.
+        model : str, optional (default='timegpt-1')
             Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
-            We recommend using `timegpt-1-long-horizon` for forecasting
-            if you want to predict more than one seasonal
+            We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal
             period given the frequency of your data.
-        num_partitions : int (default=None)
+        refit : bool, optional (default=False)
+            Fine-tune the model in each window. If False, only fine-tunes on the first window.
+            Only used if finetune_steps > 0.e
+        num_partitions : int, optional (default=None)
             Number of partitions to use.
-            If None, the number of partitions will be equal
-            to the available parallel resources in distributed environments.
+            If None, the number of partitions will be equal to the available parallel resources in distributed environments.
 
         Returns
         -------
-        pandas, polars, dask or spark DataFrame or ray Dataset.
+        pandas, polars, dask or spark DataFrame or ray Dataset
             DataFrame with anomalies flagged by TimeGPT.
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
