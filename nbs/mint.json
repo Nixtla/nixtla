@@ -67,7 +67,7 @@
           "group": "Realtime Anomaly Detection",
           "pages": [
             "docs/capabilities/realtime-anomaly-detection/quickstart.html",
-            "docs/capabilities/realtime-anomaly-detection/improve_detection_accuracy.html",
+            "docs/capabilities/realtime-anomaly-detection/adjusting_detection_accuracy_process.html",
             "docs/capabilities/realtime-anomaly-detection/univariate_vs_multivariate_anomaly_detection.html"
           ]
         }
