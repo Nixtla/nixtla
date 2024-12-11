@@ -1,3 +1,6 @@
+from time import time
+
+
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
@@ -19,6 +22,7 @@ def read_and_prepare_data(file_path: str, value_name: str = "y") -> pd.DataFrame
 
 
 def get_train_data() -> pd.DataFrame:
+    """Reads all train data and returns it in long format with columns `unique_id`, `ds`, `y`"""
     train_list = [read_and_prepare_data(f"./data/phase_{i}_sales.csv") for i in [0, 1]]
     train_df = pd.concat(train_list).reset_index(drop=True)
     train_df = train_df.sort_values(by=["unique_id", "ds"])
@@ -34,6 +38,7 @@ def get_train_data() -> pd.DataFrame:
 
 
 def get_competition_forecasts() -> pd.DataFrame:
+    """Reads all competition forecasts and returns it in long format with columns `unique_id`, `ds`, `y`"""
     fcst_df: pd.DataFrame | None = None
     for place in ["1st", "2nd", "3rd"]:
         fcst_df_place = read_and_prepare_data(
@@ -51,6 +56,7 @@ def get_competition_forecasts() -> pd.DataFrame:
 
 
 def vn1_competition_evaluation(forecasts: pd.DataFrame) -> pd.DataFrame:
+    """Computes competition evaluation scores"""
     actual = read_and_prepare_data("./data/phase_2_sales.csv")
     res = actual[["unique_id", "ds", "y"]].merge(
         forecasts, on=["unique_id", "ds"], how="left"
@@ -71,9 +77,12 @@ def vn1_competition_evaluation(forecasts: pd.DataFrame) -> pd.DataFrame:
 
 
 def main():
+    """Complete pipeline"""
     train_df = get_train_data()
     client = NixtlaClient()
-    fcst_df = client.forecast(train_df, h=13, model="timegpt-1")
+    init = time()
+    fcst_df = client.forecast(train_df, h=13, model="timegpt-1-long-horizon")
+    print(f"TimeGPT time: {time() - init}")
     fcst_df_comp = get_competition_forecasts()
     fcst_df = fcst_df.merge(fcst_df_comp, on=["unique_id", "ds"], how="left")
     eval_df = vn1_competition_evaluation(fcst_df)
