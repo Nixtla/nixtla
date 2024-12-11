@@ -40,7 +40,7 @@ def get_train_data() -> pd.DataFrame:
 def get_competition_forecasts() -> pd.DataFrame:
     """Reads all competition forecasts and returns it in long format with columns `unique_id`, `ds`, `y`"""
     fcst_df: pd.DataFrame | None = None
-    for place in ["1st", "2nd", "3rd"]:
+    for place in ["1st", "2nd", "3rd", "4th", "5th"]:
         fcst_df_place = read_and_prepare_data(
             f"./data/solution_{place}_place.csv", place
         )
