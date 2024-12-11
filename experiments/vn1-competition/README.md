@@ -84,6 +84,14 @@ make download_data
 python -m src.main
 ```
 
+5. **Tests**
+
+We made sure that the results are comparable by comparing the results against the [official competition results](https://www.datasource.ai/en/home/data-science-competitions-for-startups/phase-2-vn1-forecasting-accuracy-challenge/leaderboard). You can run the tests using:
+
+```bash
+pytest
+```
+
 ---
 
 ## **References**
