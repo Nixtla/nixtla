@@ -77,13 +77,15 @@ from statsforecast.models import AutoARIMA, Naive
 
 #obtain hierarchical reconciliation methods and evaluation
 from hierarchicalforecast.core import HierarchicalReconciliation
-from hierarchicalforecast.evaluation import HierarchicalEvaluation
+from hierarchicalforecast.evaluation import evaluate
 from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
+from utilsforecast.losses import mse
 
 
 # Load TourismSmall dataset
 Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
 Y_df['ds'] = pd.to_datetime(Y_df['ds'])
+S = S.reset_index(names="unique_id")
 
 #split train/test sets
 Y_test_df  = Y_df.groupby('unique_id').tail(4)
@@ -111,12 +113,12 @@ Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_train_df,
 Assumes you have a test dataframe.
 
 ```python
-def mse(y, y_hat):
-    return np.mean((y-y_hat)**2)
-
-evaluator = HierarchicalEvaluation(evaluators=[mse])
-evaluator.evaluate(Y_hat_df=Y_rec_df, Y_test_df=Y_test_df.set_index('unique_id'),
-                   tags=tags, benchmark='Naive')
+df = Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds'])
+evaluation = evaluate(df = df,
+                      tags = tags,
+                      train_df = Y_train_df,
+                      metrics = [mse],
+                      benchmark = "Naive")
 ```
 
 ## 📖 Documentation (WIP)

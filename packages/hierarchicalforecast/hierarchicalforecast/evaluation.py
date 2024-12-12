@@ -6,6 +6,8 @@ __all__ = ['rel_mse', 'msse', 'scaled_crps', 'energy_score', 'log_score', 'Hiera
 # %% ../nbs/src/evaluation.ipynb 3
 import narwhals as nw
 import numpy as np
+import utilsforecast.evaluation as ufe
+import warnings
 
 from inspect import signature
 from narwhals.typing import Frame, FrameT
@@ -13,6 +15,13 @@ from scipy.stats import multivariate_normal
 from typing import Callable, Optional, Union
 
 # %% ../nbs/src/evaluation.ipynb 7
+def _loss_deprecation_notice(loss):
+    warnings.warn(
+        f"This loss function ({loss}) will be deprecated in future releases. Please use the `utilsforecast.losses` function instead.",
+        FutureWarning,
+    )
+
+# %% ../nbs/src/evaluation.ipynb 8
 def _metric_protections(
     y: np.ndarray, y_hat: np.ndarray, weights: Optional[np.ndarray]
 ) -> None:
@@ -49,6 +58,7 @@ def mse(
     **Returns:**<br>
     `mse`: numpy array, (single value).
     """
+    _loss_deprecation_notice("mse")
     _metric_protections(y, y_hat, weights)
 
     delta_y = np.square(y - y_hat)
@@ -99,6 +109,7 @@ def mqloss(
     [Roger Koenker and Gilbert Bassett, Jr., "Regression Quantiles".](https://www.jstor.org/stable/1913643)<br>
     [James E. Matheson and Robert L. Winkler, "Scoring Rules for Continuous Probability Distributions".](https://www.jstor.org/stable/2629907)
     """
+    _loss_deprecation_notice("mqloss")
     if weights is None:
         weights = np.ones(y.shape)
     if np.sum(quantiles > 1) > 0 or np.sum(quantiles < 0) > 0:
@@ -119,7 +130,7 @@ def mqloss(
 
     return mqloss
 
-# %% ../nbs/src/evaluation.ipynb 9
+# %% ../nbs/src/evaluation.ipynb 10
 def rel_mse(y, y_hat, y_train, mask=None):
     """Relative Mean Squared Error
 
@@ -147,6 +158,7 @@ def rel_mse(y, y_hat, y_train, mask=None):
        "Probabilistic Hierarchical Forecasting with Deep Poisson Mixtures.
        Submitted to the International Journal Forecasting, Working paper available at arxiv.](https://arxiv.org/pdf/2110.13179.pdf)
     """
+    _loss_deprecation_notice("rel_mse")
     if mask is None:
         mask = np.ones_like(y)
     n_series, horizon = y.shape
@@ -186,6 +198,7 @@ def msse(y, y_hat, y_train, mask=None):
        "Another look at measures of forecast accuracy",
        International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)<br>
     """
+    _loss_deprecation_notice("msse")
     if mask is None:
         mask = np.ones_like(y)
     n_series, horizon = y.shape
@@ -198,7 +211,7 @@ def msse(y, y_hat, y_train, mask=None):
     loss = loss / (norm + eps)
     return loss
 
-# %% ../nbs/src/evaluation.ipynb 15
+# %% ../nbs/src/evaluation.ipynb 14
 def scaled_crps(y, y_hat, quantiles):
     """Scaled Continues Ranked Probability Score
 
@@ -235,13 +248,14 @@ def scaled_crps(y, y_hat, quantiles):
     \"End-to-End Learning of Coherent Probabilistic Forecasts for Hierarchical Time Series\".
     Proceedings of the 38th International Conference on Machine Learning (ICML).](https://proceedings.mlr.press/v139/rangapuram21a.html)
     """
+    _loss_deprecation_notice("scaled_crps")
     eps = np.finfo(float).eps
     norm = np.sum(np.abs(y))
     loss = mqloss(y=y, y_hat=y_hat, quantiles=quantiles)
     loss = 2 * loss * np.sum(np.ones(y.shape)) / (norm + eps)
     return loss
 
-# %% ../nbs/src/evaluation.ipynb 18
+# %% ../nbs/src/evaluation.ipynb 16
 def energy_score(y, y_sample1, y_sample2, beta=2):
     """Energy Score
 
@@ -275,6 +289,7 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
     \"Probabilistic forecast reconciliation: Properties, evaluation and score optimisation\".
     European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
     """
+    _loss_deprecation_notice("energy_score")
     if beta > 2 or beta < 0:
         raise Exception("beta needs to be between 0 and 2.")
 
@@ -287,7 +302,7 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
     score = np.mean(term2 - 0.5 * term1)
     return score
 
-# %% ../nbs/src/evaluation.ipynb 20
+# %% ../nbs/src/evaluation.ipynb 17
 def log_score(y, y_hat, cov, allow_singular=True):
     """Log Score.
 
@@ -323,6 +338,7 @@ def log_score(y, y_hat, cov, allow_singular=True):
     **Returns:**<br>
     `score`: float.
     """
+    _loss_deprecation_notice("log_score")
     scores = [
         multivariate_normal.pdf(
             x=y[:, h], mean=y_hat[:, h], cov=cov[:, :, h], allow_singular=allow_singular
@@ -332,7 +348,7 @@ def log_score(y, y_hat, cov, allow_singular=True):
     score = np.mean(scores)
     return score
 
-# %% ../nbs/src/evaluation.ipynb 24
+# %% ../nbs/src/evaluation.ipynb 19
 class HierarchicalEvaluation:
     """Hierarchical Evaluation Class.
 
@@ -351,6 +367,10 @@ class HierarchicalEvaluation:
 
     def __init__(self, evaluators: list[Callable]):
         self.evaluators = evaluators
+        warnings.warn(
+            "This class (HierarchicalEvaluation) will be deprecated in future releases. Please use the `hierarchicalforecast.evaluate` function instead.",
+            FutureWarning,
+        )
 
     def evaluate(
         self,
@@ -472,3 +492,106 @@ class HierarchicalEvaluation:
         evaluation = evaluation_nw.to_native()
 
         return evaluation
+
+# %% ../nbs/src/evaluation.ipynb 20
+def evaluate(
+    df: FrameT,
+    metrics: list[Callable],
+    tags: dict[str, np.ndarray],
+    models: Optional[list[str]] = None,
+    train_df: Optional[FrameT] = None,
+    level: Optional[list[int]] = None,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+    target_col: str = "y",
+    agg_fn: Optional[str] = "mean",
+    benchmark: Optional[str] = None,
+) -> FrameT:
+    """Evaluate hierarchical forecast using different metrics.
+
+    Parameters
+    ----------
+    df : pandas, polars, dask or spark DataFrame.
+        Forecasts to evaluate.
+        Must have `id_col`, `time_col`, `target_col` and models' predictions.
+    metrics : list of callable
+        Functions with arguments `df`, `models`, `id_col`, `target_col` and optionally `train_df`.
+    tags : dict
+        Each key is a level in the hierarchy and its value contains tags associated to that level.
+    models : list of str, optional (default=None)
+        Names of the models to evaluate.
+        If `None` will use every column in the dataframe after removing id, time and target.
+    train_df : pandas, polars, dask or spark DataFrame, optional (default=None)
+        Training set. Used to evaluate metrics such as `mase`.
+    level : list of int, optional (default=None)
+        Prediction interval levels. Used to compute losses that rely on quantiles.
+    id_col : str (default='unique_id')
+        Column that identifies each serie.
+    time_col : str (default='ds')
+        Column that identifies each timestep, its values can be timestamps or integers.
+    target_col : str (default='y')
+        Column that contains the target.
+    agg_fn : str, optional (default="mean")
+        Statistic to compute on the scores by id to reduce them to a single number.
+    benchmark : str, optional (default=None)
+        If passed, evaluators are scaled by the error of this benchmark model.
+
+    Returns
+    -------
+    pandas, polars DataFrame
+        Metrics with one row per (id, metric) combination and one column per model.
+        If `agg_fn` is not `None`, there is only one row per metric.
+    """
+    # Check benchmark in columns
+    if benchmark is not None:
+        if benchmark not in df.columns:
+            raise ValueError(f"Benchmark model '{benchmark}' not found in df")
+        model_cols = None
+
+    df_nw = nw.from_native(df)
+    if train_df is not None:
+        train_nw = nw.from_native(train_df)
+    tag_scores = []
+    tags_ = {**tags, "Overall": np.concatenate(list(tags.values()))}
+
+    eps = np.finfo(np.float32).eps
+
+    for tag, tag_ids in tags_.items():
+        df_tag = df_nw.filter(nw.col(id_col).is_in(tag_ids)).to_native()
+        if train_df is not None:
+            train_nw_tag = train_nw.filter(nw.col(id_col).is_in(tag_ids)).to_native()
+        else:
+            train_nw_tag = None
+
+        df_score = ufe.evaluate(
+            df=df_tag,
+            metrics=metrics,
+            models=models,
+            train_df=train_nw_tag,
+            level=level,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            agg_fn=agg_fn,
+        )
+        df_score_nw = nw.from_native(df_score)
+        if benchmark is not None:
+            if model_cols is None:
+                model_cols = [
+                    c for c in df_score_nw.columns if c not in [id_col, "metric"]
+                ]
+            # NB: the below assumes benchmark loss is always positive, which is a reasonable assumption
+            df_score_nw = df_score_nw.with_columns(
+                nw.col(model_cols) / nw.col(benchmark).clip(eps)
+            )
+            df_score_nw = df_score_nw.with_columns(nw.col("metric") + "-scaled")
+
+        df_score_nw = df_score_nw.select(nw.lit(tag).alias("level"), nw.all())
+        tag_scores.append(df_score_nw)
+
+    tag_scores_nw = nw.concat(tag_scores)
+    tag_scores_nw = nw.maybe_reset_index(tag_scores_nw)
+
+    df_eval = tag_scores_nw.to_native()
+
+    return df_eval
