@@ -38,6 +38,7 @@ This study considers time series from multiple datasets provided during the comp
 
 This study contrasts TimeGPT's zero-shot forecasts against the top 1st, 2nd, and 3rd models submitted to the competition. Our evaluation method follows the official rules and metrics of the VN1 competition.
 
+An R version of this study is also available via `nixtlar`, a CRAN package that provides an interface to Nixtla's TimeGPT. 
 ---
 
 ## **Results**
@@ -92,6 +93,8 @@ We made sure that the results are comparable by comparing the results against th
 pytest
 ```
 
+6. **R results:**
+For the R version of this study using `nixtlar`, run the `main.R` script. Make sure the `functions.R` script is in the same directory.
 ---
 
 ## **References**
