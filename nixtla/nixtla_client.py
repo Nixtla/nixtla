@@ -592,8 +592,8 @@ def _extract_target_array(df, target_col) -> np.ndarray:
 def _process_exog_features(
     processed_data: np.ndarray,
     x_cols: list[str],
-    hist_exog_list: list[str] | None = None,
-    logger: logging.Logger | None = None,
+    hist_exog_list: Optional[list[str]] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> tuple[np.ndarray | None, list[int] | None]:
     X = None
     hist_exog = None
