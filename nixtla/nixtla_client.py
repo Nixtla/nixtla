@@ -100,10 +100,10 @@ _PositiveInt = Annotated[int, annotated_types.Gt(0)]
 _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = Literal["azureai", "timegpt-1", "timegpt-1-long-horizon"]
-_Finetune_Depth = Literal[1, 2, 3, 4, 5]
+_FinetuneDepth = Literal[1, 2, 3, 4, 5]
 _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
-_Threshold_Method = Literal["univariate", "multivariate"]
+_ThresholdMethod = Literal["univariate", "multivariate"]
 
 _date_features_by_freq = {
     # Daily frequencies
@@ -576,6 +576,51 @@ def _restrict_input_samples(level, input_size, model_horizon, h) -> int:
         new_input_size = input_size
     return new_input_size
 
+
+def _extract_target_array(df, target_col) -> np.ndarray:
+    # in pandas<2.2 to_numpy can lead to an object array if
+    # the type is a pandas nullable type, e.g. pd.Float64Dtype
+    # we thus use the dtype's type as the target dtype
+    if isinstance(df, pd.DataFrame):
+        target_dtype = df.dtypes[target_col].type
+        targets = df[target_col].to_numpy(dtype=target_dtype)
+    else:
+        targets = df[target_col].to_numpy()
+    return targets
+
+
+def _process_exog_features(
+    processed_data: np.ndarray,
+    x_cols: list[str],
+    hist_exog_list: list[str] | None = None,
+    logger: logging.Logger | None = None,
+) -> tuple[np.ndarray | None, list[int] | None]:
+    X = None
+    hist_exog = None
+    if processed_data.shape[1] > 1:
+        X = processed_data[:, 1:].T
+        if hist_exog_list is None:
+            futr_exog = x_cols
+        else:
+            missing_hist: set[str] = set(hist_exog_list) - set(x_cols)
+            if missing_hist:
+                raise ValueError(
+                    "The following exogenous features were declared as historic "
+                    f"but were not found in `df`: {missing_hist}."
+                )
+            futr_exog = [c for c in x_cols if c not in hist_exog_list]
+            # match the forecast method order [future, historic]
+            fcst_features_order = futr_exog + hist_exog_list
+            x_idxs = [x_cols.index(c) for c in fcst_features_order]
+            X = X[x_idxs]
+            hist_exog = [fcst_features_order.index(c) for c in hist_exog_list]
+        if futr_exog and logger:
+            logger.info(f"Using future exogenous features: {futr_exog}")
+        if hist_exog_list and logger:
+            logger.info(f"Using historical exogenous features: {hist_exog_list}")
+
+    return X, hist_exog
+
 # %% ../nbs/src/nixtla_client.ipynb 8
 class ApiError(Exception):
     status_code: Optional[int]
@@ -955,7 +1000,7 @@ class NixtlaClient:
         level: Optional[list[Union[int, float]]],
         quantiles: Optional[list[float]],
         finetune_steps: _NonNegativeInt,
-        finetune_depth: _Finetune_Depth,
+        finetune_depth: _FinetuneDepth,
         finetune_loss: _Loss,
         clean_ex_first: bool,
         hist_exog_list: Optional[list[str]],
@@ -1042,7 +1087,7 @@ class NixtlaClient:
         level: Optional[list[Union[int, float]]] = None,
         quantiles: Optional[list[float]] = None,
         finetune_steps: _NonNegativeInt = 0,
-        finetune_depth: _Finetune_Depth = 1,
+        finetune_depth: _FinetuneDepth = 1,
         finetune_loss: _Loss = "default",
         clean_ex_first: bool = True,
         hist_exog_list: Optional[list[str]] = None,
@@ -1524,14 +1569,15 @@ class NixtlaClient:
         )
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
+        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
         return out
 
-    def _distributed_detect_anomalies_realtime(
+    def _distributed_detect_anomalies_online(
         self,
         df: DistributedDFType,
         h: _PositiveInt,
         detection_size: _PositiveInt,
-        threshold_method: _Threshold_Method,
+        threshold_method: _ThresholdMethod,
         freq: Optional[_Freq],
         id_col: str,
         time_col: str,
@@ -1540,20 +1586,21 @@ class NixtlaClient:
         clean_ex_first: bool,
         step_size: Optional[_PositiveInt],
         finetune_steps: _NonNegativeInt,
-        finetune_depth: _Finetune_Depth,
+        finetune_depth: _FinetuneDepth,
         finetune_loss: _Loss,
-        validate_api_key: bool,
+        hist_exog_list: Optional[list[str]],
         date_features: Union[bool, list[str]],
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         refit: bool,
+        validate_api_key: bool,
         num_partitions: Optional[int],
     ) -> DistributedDFType:
         import fugue.api as fa
 
         schema, partition_config = _distributed_setup(
             df=df,
-            method="detect_anomalies_realtime",
+            method="detect_anomalies_online",
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -1563,7 +1610,7 @@ class NixtlaClient:
         )
         result_df = fa.transform(
             df,
-            using=_detect_anomalies_realtime_wrapper,
+            using=_detect_anomalies_online_wrapper,
             schema=schema,
             params=dict(
                 client=self,
@@ -1580,11 +1627,12 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 finetune_depth=finetune_depth,
-                validate_api_key=validate_api_key,
+                hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 refit=refit,
+                validate_api_key=validate_api_key,
                 num_partitions=None,
             ),
             partition=partition_config,
@@ -1592,12 +1640,12 @@ class NixtlaClient:
         )
         return fa.get_native_as_df(result_df)
 
-    def detect_anomalies_realtime(
+    def detect_anomalies_online(
         self,
         df: AnyDFType,
         h: _PositiveInt,
         detection_size: _PositiveInt,
-        threshold_method: _Threshold_Method = "univariate",
+        threshold_method: _ThresholdMethod = "univariate",
         freq: Optional[_Freq] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
@@ -1606,17 +1654,18 @@ class NixtlaClient:
         clean_ex_first: bool = True,
         step_size: Optional[_PositiveInt] = None,
         finetune_steps: _NonNegativeInt = 0,
-        finetune_depth: _Finetune_Depth = 1,
+        finetune_depth: _FinetuneDepth = 1,
         finetune_loss: _Loss = "default",
-        validate_api_key: bool = False,
+        hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         refit: bool = False,
+        validate_api_key: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
         """
-        Real-time anomaly detection in your time series using TimeGPT.
+        Online anomaly detection in your time series using TimeGPT.
 
         Parameters
         ----------
@@ -1663,8 +1712,8 @@ class NixtlaClient:
             and 5 means that the entire model is finetuned.
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
-        validate_api_key : bool, optional (default=False)
-            If True, validates api_key before sending requests.
+        hist_exog_list : list of str, optional (default=None)
+            Column names of the historical exogenous features.
         date_features : bool or list of str, optional (default=False)
             Features computed from the dates.
             Can be pandas date attributes or functions that will take the dates as input.
@@ -1689,7 +1738,7 @@ class NixtlaClient:
             DataFrame with anomalies flagged by TimeGPT.
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            return self._distributed_detect_anomalies_realtime(
+            return self._distributed_detect_anomalies_online(
                 df=df,
                 h=h,
                 detection_size=detection_size,
@@ -1704,11 +1753,12 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
-                validate_api_key=validate_api_key,
+                hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 refit=refit,
+                validate_api_key=validate_api_key,
                 num_partitions=num_partitions,
             )
         if (
@@ -1719,7 +1769,7 @@ class NixtlaClient:
             raise ValueError(
                 "Cannot use more than 1 partition for multivariate anomaly detection. "
                 "Either set threshold_method to univariate "
-                "or set num_partitions to 1 or None."
+                "or set num_partitions to None."
             )
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
@@ -1747,26 +1797,17 @@ class NixtlaClient:
             target_col=target_col,
         )
         standard_freq = _standardize_freq(freq, processed)
-        if isinstance(df, pd.DataFrame):
-            # in pandas<2.2 to_numpy can lead to an object array if
-            # the type is a pandas nullable type, e.g. pd.Float64Dtype
-            # we thus use the dtype's type as the target dtype
-            target_dtype = df.dtypes[target_col].type
-            targets = df[target_col].to_numpy(dtype=target_dtype)
-        else:
-            targets = df[target_col].to_numpy()
+        targets = _extract_target_array(df, target_col)
         times = df[time_col].to_numpy()
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
-        if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].T
-            logger.info(f"Using the following exogenous features: {x_cols}")
-        else:
-            X = None
+        X, hist_exog = _process_exog_features(
+            processed.data, x_cols, hist_exog_list, logger
+        )
         sizes = np.diff(processed.indptr)
-        if not np.any((sizes - detection_size) > 5 * detection_size):
-            logger.info(
+        if np.all(sizes <= 6 * detection_size):
+            logger.warn(
                 "Detection size is large. Using the entire series to compute the anomaly threshold..."
             )
         logger.info("Calling Online Anomaly Detector Endpoint...")
@@ -1788,6 +1829,7 @@ class NixtlaClient:
             "finetune_loss": finetune_loss,
             "finetune_depth": finetune_depth,
             "refit": refit,
+            "hist_exog": hist_exog,
         }
         with httpx.Client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -1833,7 +1875,7 @@ class NixtlaClient:
         n_windows: _PositiveInt,
         step_size: Optional[_PositiveInt],
         finetune_steps: _NonNegativeInt,
-        finetune_depth: _Finetune_Depth,
+        finetune_depth: _FinetuneDepth,
         finetune_loss: _Loss,
         refit: bool,
         clean_ex_first: bool,
@@ -1901,7 +1943,7 @@ class NixtlaClient:
         n_windows: _PositiveInt = 1,
         step_size: Optional[_PositiveInt] = None,
         finetune_steps: _NonNegativeInt = 0,
-        finetune_depth: _Finetune_Depth = 1,
+        finetune_depth: _FinetuneDepth = 1,
         finetune_loss: _Loss = "default",
         refit: bool = True,
         clean_ex_first: bool = True,
@@ -2046,14 +2088,7 @@ class NixtlaClient:
         )
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
-        if isinstance(df, pd.DataFrame):
-            # in pandas<2.2 to_numpy can lead to an object array if
-            # the type is a pandas nullable type, e.g. pd.Float64Dtype
-            # we thus use the dtype's type as the target dtype
-            target_dtype = df.dtypes[target_col].type
-            targets = df[target_col].to_numpy(dtype=target_dtype)
-        else:
-            targets = df[target_col].to_numpy()
+        targets = _extract_target_array(df, target_col)
         times = df[time_col].to_numpy()
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
@@ -2072,31 +2107,9 @@ class NixtlaClient:
             processed = _tail(processed, new_input_size)
             times = _array_tails(times, orig_indptr, np.diff(processed.indptr))
             targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
-        if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].T
-            if hist_exog_list is None:
-                hist_exog = None
-                futr_exog = x_cols
-            else:
-                missing_hist = set(hist_exog_list) - set(x_cols)
-                if missing_hist:
-                    raise ValueError(
-                        "The following exogenous features were declared as historic "
-                        f"but were not found in `df`: {missing_hist}."
-                    )
-                futr_exog = [c for c in x_cols if c not in hist_exog_list]
-                # match the forecast method order [future, historic]
-                fcst_features_order = futr_exog + hist_exog_list
-                x_idxs = [x_cols.index(c) for c in fcst_features_order]
-                X = X[x_idxs]
-                hist_exog = [fcst_features_order.index(c) for c in hist_exog_list]
-            if futr_exog:
-                logger.info(f"Using future exogenous features: {futr_exog}")
-            if hist_exog_list:
-                logger.info(f"Using historical exogenous features: {hist_exog_list}")
-        else:
-            X = None
-            hist_exog = None
+        X, hist_exog = _process_exog_features(
+            processed.data, x_cols, hist_exog_list, logger
+        )
 
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
@@ -2276,7 +2289,7 @@ def _forecast_wrapper(
     level: Optional[list[Union[int, float]]],
     quantiles: Optional[list[float]],
     finetune_steps: _NonNegativeInt,
-    finetune_depth: _Finetune_Depth,
+    finetune_depth: _FinetuneDepth,
     finetune_loss: _Loss,
     clean_ex_first: bool,
     hist_exog_list: Optional[list[str]],
@@ -2350,12 +2363,12 @@ def _detect_anomalies_wrapper(
     )
 
 
-def _detect_anomalies_realtime_wrapper(
+def _detect_anomalies_online_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
     h: _PositiveInt,
     detection_size: _PositiveInt,
-    threshold_method: _Threshold_Method,
+    threshold_method: _ThresholdMethod,
     freq: Optional[_Freq],
     id_col: str,
     time_col: str,
@@ -2364,16 +2377,16 @@ def _detect_anomalies_realtime_wrapper(
     clean_ex_first: bool,
     step_size: _PositiveInt,
     finetune_steps: _NonNegativeInt,
-    finetune_depth: _Finetune_Depth,
+    finetune_depth: _FinetuneDepth,
     finetune_loss: _Loss,
-    validate_api_key: bool,
+    hist_exog_list: Optional[list[str]],
     date_features: Union[bool, list[str]],
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     refit: bool,
     num_partitions: Optional[_PositiveInt],
 ) -> pd.DataFrame:
-    return client.detect_anomalies_realtime(
+    return client.detect_anomalies_online(
         df=df,
         h=h,
         detection_size=detection_size,
@@ -2388,7 +2401,7 @@ def _detect_anomalies_realtime_wrapper(
         finetune_steps=finetune_steps,
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
-        validate_api_key=validate_api_key,
+        hist_exog_list=hist_exog_list,
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
@@ -2411,7 +2424,7 @@ def _cross_validation_wrapper(
     n_windows: _PositiveInt,
     step_size: Optional[_PositiveInt],
     finetune_steps: _NonNegativeInt,
-    finetune_depth: _Finetune_Depth,
+    finetune_depth: _FinetuneDepth,
     finetune_loss: _Loss,
     refit: bool,
     clean_ex_first: bool,
@@ -2464,7 +2477,7 @@ def _get_schema(
     schema.append("TimeGPT:double")
     if method == "detect_anomalies":
         schema.append("anomaly:bool")
-    if method == "detect_anomalies_realtime":
+    if method == "detect_anomalies_online":
         schema.append("anomaly:bool")
         schema.append("anomaly_score:double")
     elif method == "cross_validation":
