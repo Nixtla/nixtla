@@ -594,7 +594,7 @@ def _process_exog_features(
     x_cols: list[str],
     hist_exog_list: Optional[list[str]] = None,
     logger: Optional[logging.Logger] = None,
-) -> tuple[np.ndarray | None, list[int] | None]:
+) -> tuple[Optional[np.ndarray], Optional[list[int]]]:
     X = None
     hist_exog = None
     if processed_data.shape[1] > 1:
