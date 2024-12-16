@@ -13,8 +13,8 @@ concurrency:
 env:
   NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
   NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
-  NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_DEV_API_KEY }}
-  NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+  NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
+  NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
   API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
 
 jobs:
@@ -83,3 +83,26 @@ jobs:
 
       - name: Run tests
         run: nbdev_test --timing --do_print --n_workers 0 --skip_file_re "computing_at_scale|distributed"
+
+  run-minimal-tests:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, macos-14, ubuntu-latest, windows-latest]
+        python-version: ["3.9", "3.13"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # 5.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install pip requirements
+        run: pip install uv && uv pip install --system . matplotlib nbdev python-dotenv
+
+      - name: Run tests
+        run: nbdev_test --n_workers 0 --path nbs/docs/getting-started/2_quickstart.ipynb
