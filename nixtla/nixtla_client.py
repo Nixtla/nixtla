@@ -1593,7 +1593,6 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         refit: bool,
-        validate_api_key: bool,
         num_partitions: Optional[int],
     ) -> DistributedDFType:
         import fugue.api as fa
@@ -1632,7 +1631,6 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 refit=refit,
-                validate_api_key=validate_api_key,
                 num_partitions=None,
             ),
             partition=partition_config,
@@ -1661,7 +1659,6 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         refit: bool = False,
-        validate_api_key: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
     ) -> AnyDFType:
         """
@@ -1758,7 +1755,6 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 refit=refit,
-                validate_api_key=validate_api_key,
                 num_partitions=num_partitions,
             )
         if (
@@ -1780,7 +1776,7 @@ class NixtlaClient:
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-            validate_api_key=validate_api_key,
+            validate_api_key=False,
             model=model,
             freq=freq,
         )
