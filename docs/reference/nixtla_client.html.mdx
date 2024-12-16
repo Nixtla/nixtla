@@ -6,6 +6,10 @@ title: SDK Reference
 
 ------------------------------------------------------------------------
 
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
 ## NixtlaClient
 
 > ``` text
@@ -27,6 +31,10 @@ title: SDK Reference
 
 ------------------------------------------------------------------------
 
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
 ## NixtlaClient.validate_api_key
 
 > ``` text
@@ -36,6 +44,10 @@ title: SDK Reference
 *Returns True if your api_key is valid.*
 
 ------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 ## NixtlaClient.plot
 
@@ -79,6 +91,10 @@ title: SDK Reference
 | ax | Union | None | Object where plots will be added. |
 
 ------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 ## NixtlaClient.forecast
 
@@ -134,6 +150,10 @@ title: SDK Reference
 
 ------------------------------------------------------------------------
 
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
 ## NixtlaClient.cross_validation
 
 > ``` text
@@ -152,7 +172,7 @@ title: SDK Reference
 >                                 =0, finetune_depth:Literal[1,2,3,4,5]=1, f
 >                                 inetune_loss:Literal['default','mae','mse'
 >                                 ,'rmse','mape','smape']='default',
->                                 clean_ex_first:bool=True,
+>                                 refit:bool=True, clean_ex_first:bool=True,
 >                                 hist_exog_list:Optional[list[str]]=None,
 >                                 date_features:Union[bool,list[str]]=False,
 >                                 date_features_to_one_hot:Union[bool,list[s
@@ -178,8 +198,9 @@ title: SDK Reference
 | n_windows | Annotated | 1 | Number of windows to evaluate. |
 | step_size | Optional | None | Step size between each cross validation window. If None it will be equal to `h`. |
 | finetune_steps | Annotated | 0 | Number of steps used to finetune TimeGPT in the<br/>new data. |
-| finetune_depth | Literal | 1 |  |
+| finetune_depth | Literal | 1 | The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,<br/>and 5 means that the entire model is finetuned. |
 | finetune_loss | Literal | default | Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. |
+| refit | bool | True | Fine-tune the model in each window. If `False`, only fine-tunes on the first window.<br/>Only used if `finetune_steps` \> 0. |
 | clean_ex_first | bool | True | Clean exogenous signal before making forecasts using TimeGPT. |
 | hist_exog_list | Optional | None | Column names of the historical exogenous features. |
 | date_features | Union | False | Features computed from the dates.<br/>Can be pandas date attributes or functions that will take the dates as input.<br/>If True automatically adds most used date features for the<br/>frequency of `df`. |
@@ -189,6 +210,10 @@ title: SDK Reference
 | **Returns** | **AnyDFType** |  | **DataFrame with cross validation forecasts.** |
 
 ------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 ## NixtlaClient.detect_anomalies
 

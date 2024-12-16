@@ -71,7 +71,7 @@ Y_df.head(10)
 ```
 
 ``` text
-C:\Users\ospra\AppData\Local\Temp\ipykernel_28980\3753786659.py:6: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+C:\Users\ospra\AppData\Local\Temp\ipykernel_16668\3753786659.py:6: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
   Y_df['ds'] = pd.to_datetime(Y_df['ds'])
 ```
 
@@ -119,7 +119,6 @@ from hierarchicalforecast.utils import aggregate
 
 ```python
 Y_df, S_df, tags = aggregate(Y_df, spec)
-Y_df = Y_df.reset_index()
 
 Y_df.head(10)
 ```
@@ -159,6 +158,7 @@ timegpt_fcst = nixtla_client.forecast(df=Y_train_df, h=8, freq='QS', add_history
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 INFO:nixtla.nixtla_client:Calling Historical Forecast Endpoint...
 ```
@@ -219,10 +219,28 @@ hrec = HierarchicalReconciliation(reconcilers=reconcilers)
 
 Y_df_with_insample_fcsts = Y_df.copy()
 Y_df_with_insample_fcsts = timegpt_fcst_insample.merge(Y_df_with_insample_fcsts)
-Y_df_with_insample_fcsts = Y_df_with_insample_fcsts.set_index('unique_id')
 
-Y_rec_df = hrec.reconcile(Y_hat_df=timegpt_fcst_outsample.set_index('unique_id'), Y_df=Y_df_with_insample_fcsts, S=S_df, tags=tags)
+Y_rec_df = hrec.reconcile(Y_hat_df=timegpt_fcst_outsample, Y_df=Y_df_with_insample_fcsts, S=S_df, tags=tags)
 ```
+
+
+```python
+Y_rec_df
+```
+
+|  | unique_id | ds | TimeGPT | TimeGPT/MinTrace_method-ols | TimeGPT/MinTrace_method-mint_shrink |
+|----|----|----|----|----|----|
+| 0 | Australia | 2016-01-01 | 24967.19100 | 25044.408634 | 25394.406211 |
+| 1 | Australia | 2016-04-01 | 24528.88300 | 24503.089810 | 24327.212355 |
+| 2 | Australia | 2016-07-01 | 24221.77500 | 24083.107812 | 23813.826553 |
+| 3 | Australia | 2016-10-01 | 24559.44000 | 24548.038797 | 24174.894203 |
+| 4 | Australia | 2017-01-01 | 25570.33800 | 25669.248281 | 25560.277473 |
+| ... | ... | ... | ... | ... | ... |
+| 3395 | Australia/Western Australia/Experience Perth/V... | 2016-10-01 | 427.81146 | 435.423617 | 434.047102 |
+| 3396 | Australia/Western Australia/Experience Perth/V... | 2017-01-01 | 450.71786 | 453.434056 | 459.954598 |
+| 3397 | Australia/Western Australia/Experience Perth/V... | 2017-04-01 | 452.17923 | 460.197847 | 470.009789 |
+| 3398 | Australia/Western Australia/Experience Perth/V... | 2017-07-01 | 450.68683 | 463.034888 | 482.645932 |
+| 3399 | Australia/Western Australia/Experience Perth/V... | 2017-10-01 | 443.31050 | 451.754435 | 474.403379 |
 
 Again, we plot some of the forecasts. We can see a few, mostly minor
 differences in the forecasts.
@@ -230,43 +248,40 @@ differences in the forecasts.
 ```python
 nixtla_client.plot(
     Y_df, 
-    Y_rec_df.reset_index(), 
+    Y_rec_df, 
     max_insample_length=4 * 12, 
     unique_ids=['Australia', 'Australia/Queensland','Australia/Queensland/Brisbane', 'Australia/Queensland/Brisbane/Holiday']
 )
 ```
 
-![](/nixtla/docs/tutorials/14_hierarchical_forecasting_files/figure-markdown_strict/cell-15-output-1.png)
+![](/nixtla/docs/tutorials/14_hierarchical_forecasting_files/figure-markdown_strict/cell-16-output-1.png)
 
 Let’s numerically verify the forecasts to the situation where we don’t
 apply a post-processing step. We can use `HierarchicalEvaluation` for
 this.
 
 ```python
-from hierarchicalforecast.evaluation import HierarchicalEvaluation
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import rmse
 ```
 
 
 ```python
-def rmse(y, y_hat):
-    return np.mean(np.sqrt(np.mean((y-y_hat)**2, axis=1)))
-
 eval_tags = {}
 eval_tags['Total'] = tags['Country']
 eval_tags['Purpose'] = tags['Country/Purpose']
 eval_tags['State'] = tags['Country/State']
 eval_tags['Regions'] = tags['Country/State/Region']
 eval_tags['Bottom'] = tags['Country/State/Region/Purpose']
-eval_tags['All'] = np.concatenate(list(tags.values()))
 
-evaluator = HierarchicalEvaluation(evaluators=[rmse])
-evaluation = evaluator.evaluate(
-        Y_hat_df=Y_rec_df.rename(columns={'y': 'TimeGPT'}), Y_test_df=Y_test_df.set_index('unique_id'),
-        tags=eval_tags, Y_df=Y_train_df.set_index('unique_id')
-)
-evaluation = evaluation.drop(labels='Overall', level='level')
-evaluation.columns = ['Base', 'MinTrace(ols)', 'MinTrace(mint_shrink)']
-evaluation = evaluation.map('{:.2f}'.format)
+evaluation = evaluate(
+        df=Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds']),
+        tags=eval_tags, 
+        train_df=Y_train_df,
+        metrics=[rmse],
+)       
+numeric_cols = evaluation.select_dtypes(np.number).columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format)
 ```
 
 
@@ -274,15 +289,14 @@ evaluation = evaluation.map('{:.2f}'.format)
 evaluation
 ```
 
-|         |        | Base    | MinTrace(ols) | MinTrace(mint_shrink) |
-|---------|--------|---------|---------------|-----------------------|
-| level   | metric |         |               |                       |
-| Total   | rmse   | 1433.14 | 1436.12       | 1639.77               |
-| Purpose | rmse   | 482.10  | 475.65        | 511.14                |
-| State   | rmse   | 275.86  | 278.39        | 295.03                |
-| Regions | rmse   | 49.40   | 47.91         | 48.10                 |
-| Bottom  | rmse   | 19.32   | 19.11         | 18.87                 |
-| All     | rmse   | 43.00   | 42.50         | 43.54                 |
+|  | level | metric | TimeGPT | TimeGPT/MinTrace_method-ols | TimeGPT/MinTrace_method-mint_shrink |
+|----|----|----|----|----|----|
+| 0 | Total | rmse | 1433.07 | 1436.07 | 1627.43 |
+| 1 | Purpose | rmse | 482.09 | 475.64 | 507.50 |
+| 2 | State | rmse | 275.85 | 278.39 | 294.28 |
+| 3 | Regions | rmse | 49.40 | 47.91 | 47.99 |
+| 4 | Bottom | rmse | 19.32 | 19.11 | 18.86 |
+| 5 | Overall | rmse | 38.66 | 38.21 | 39.16 |
 
 We made a small improvement in overall RMSE by reconciling the forecasts
 with `MinTrace(ols)`, and made them slightly worse using

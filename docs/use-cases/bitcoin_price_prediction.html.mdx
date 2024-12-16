@@ -87,7 +87,8 @@ df.rename(columns={'Date': 'ds', 'Close': 'y'}, inplace=True)
 ## 2. Get Started with TimeGPT
 
 To get started with `TimeGPT`, you need to instantiate the
-`NixtlaClient` class. For this, you will need a Nixtla API key.
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class. For this, you will need a Nixtla API key.
 
 ```python
 from nixtla import NixtlaClient
@@ -116,8 +117,9 @@ tutorial.
 ## 3. Visualize the Data
 
 Before attempting any forecasting, it is good practice to visualize the
-data we want to predict. The `NixtlaClient` class includes a `plot`
-method for this purpose.
+data we want to predict. The
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class includes a `plot` method for this purpose.
 
 The `plot` method has an `engine` argument that allows you to choose
 between different plotting libraries. Default is `matplotlib`, but you
@@ -138,12 +140,16 @@ nixtla_client.plot(df, time_col='name of your time column', target_col='name of 
 ```
 
 This is necessary not only for the `plot` method but for all methods
-from the `NixtlaClient` class.
+from the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class.
 
 ## 4. Forecast with TimeGPT
 
 Now we are ready to generate predictions with TimeGPT. To do this, we
-will use the `forecast` method from the `NixtlaClient` class.
+will use the `forecast` method from the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class.
 
 The `forecast` method requires the following arguments:
 
@@ -266,11 +272,12 @@ nixtla_client.plot(df, forecast, level=level)
 
 Given the volatility of the price of Bitcoin, it can be useful to try to
 identify anomalies in the data. `TimeGPT` can be used for this by
-calling the `detect_anomalies` method from the `NixtlaClient` class.
-This method evaluates each observation against its context within the
-series, using statistical measures to determine its likelihood of being
-an anomaly. By default, it identifies anomalies based on a 99 percent
-prediction interval. To change this, you can specify the `level`
+calling the `detect_anomalies` method from the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class. This method evaluates each observation against its context within
+the series, using statistical measures to determine its likelihood of
+being an anomaly. By default, it identifies anomalies based on a 99
+percent prediction interval. To change this, you can specify the `level`
 argument.
 
 ```python

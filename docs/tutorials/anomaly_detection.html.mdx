@@ -9,7 +9,8 @@ title: Anomaly detection
 ## Import packages
 
 First, we import the required packages for this tutorial and create an
-instance of `NixtlaClient`.
+instance of
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient).
 
 ```python
 import pandas as pd
@@ -98,7 +99,8 @@ As you can see, 0 is assigned to “normal” values, as they fall inside
 the confidence interval. A label of 1 is then assigned to abnormal
 points.
 
-We can also plot the anomalies using `NixtlaClient`.
+We can also plot the anomalies using
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient).
 
 ```python
 nixtla_client.plot(df, anomalies_df)

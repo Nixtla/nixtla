@@ -91,7 +91,9 @@ How can I check the status of my API key?
 If you want to check the status of your API key, you can use the
 [`validate_api_key`
 method](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-validate-api-key)
-of the `NixtlaClient` class.
+of the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class.
 
 `nixtla_client = NixtlaClient(     api_key = 'my_api_key_provided_by_nixtla' )`
 
@@ -107,19 +109,32 @@ True
 
 What if my API key isn’t validating?
 
-If when you validate your API key, it returns `False`
+When you validate your API key and it returns `False`:
 
 -   If you are targeting an Azure endpoint, getting `False` from the
-    `NixtlaClient.validate_api_key` method is expected. You can skip
-    this step when taregting an Azure endpoint and proceed diretly to
-    forecasting instead.
+    [`NixtlaClient.validate_api_key`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient.validate_api_key)
+    method is expected. You can skip this step when taregting an Azure
+    endpoint and proceed diretly to forecasting instead.
 -   If you are not taregting an Azure endpoint, then you should check
     the following:
+    -   Make sure you are using the latest version of the SDK (Python or
+        R).
     -   Check that your API key is active in your dashboard by visiting
         https://dashboard.nixtla.io/
     -   Consider any firewalls your organization might have. There may
         be restricted access. If so, you can whitelist our endpoint
-        https://api.nixtla.io/
+        https://api.nixtla.io/.
+        -   To use Nixtla’s API, you need to let your system know that
+            our endpoint is ok, so it will let you access it.
+            Whitelisting the endpoint isn’t something that Nixtla can do
+            on our side. It’s something that needs to be done on the
+            user’s system. This is a bit of an [overview on
+            whitelisting](https://www.csoonline.com/article/569493/whitelisting-explained-how-it-works-and-where-it-fits-in-a-security-program.html).
+        -   If you work in an organization, please work with an IT team.
+            They’re likely the ones setting the security and you can
+            talk with them to get it addressed. If you run your own
+            systems, then it’s something you should be able to update,
+            depending on the system you’re using.
 
 ## Features and Capabilities
 
@@ -233,7 +248,9 @@ tutorial.
 
 How can I plot the TimeGPT forecast?
 
-The `NixtlaClient` class has a [`plot`
+The
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class has a [`plot`
 method](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-validate-token)
 that can be used to visualize the forecast. This method only works in
 interactive environments such as Jupyter notebooks and it doesn’t work
@@ -266,7 +283,9 @@ specific dataset, starting from the pre-trained paramaters. The updated
 model then produces the forecasts. You can control the number of
 training iterations and the loss function for fine-tuning with the
 `finetune_steps` and the `finetune_loss` parameters in the `forecast`
-method from the `NixtlaClient` class, respectively.
+method from the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class, respectively.
 
 For a comprehensive guide on how to apply fine-tuning, please refer to
 the [fine-tuning](https://docs.nixtla.io/docs/tutorials-fine_tuning) and
@@ -351,39 +370,61 @@ your usage effectively.
 What counts as an API call?
 
 An API call is a request made to TimeGPT to perform an action like
-forecasting or detecting anomalies, or to fetch the model’s metadata.
+forecasting or detecting anomalies. API Usage is as follows:
 
-For example, if we forecast monthly data using the `timegpt-1` model,
-then the first time doing this results in 2 API calls: we - API call #1:
-fetch the model’s metadata - API call #2: perform the forecast action.
-Calling the forecast method again, with the same frequency and model
-counts only as 1 API call.
+### Forecasting:
 
-However, if we forecast on another frequency, or using the
-`timegpt-1-long-horizon` model, then 2 API calls are made, because new
-metadata must be fetched on top of running the forecast.
+1.  When not requesting historical forecasts (`add_history=False`)
+    -   If you do not set `num_partitions`, all calls to perform
+        [forecasting](https://docs.nixtla.io/docs/getting-started-timegpt_quickstart),
+        [finetuning](https://docs.nixtla.io/docs/tutorials-fine_tuning),
+        or
+        [cross-validation](https://docs.nixtla.io/docs/tutorials-cross_validation)
+        increase the usage by 1. Note that addition of [exogenous
+        variables](https://docs.nixtla.io/docs/tutorials-exogenous_variables),
+        requesting [uncertainity
+        quantification](https://docs.nixtla.io/docs/tutorials-uncertainty_quantification)
+        or forecasting [multiple
+        series](https://docs.nixtla.io/docs/tutorials-multiple_series_forecasting)
+        does not increase the usage further.
+    -   If the API call requires to send more than 200MB of data, the
+        API will return an error and will require you to use the
+        `num_partitions` parameter in order to partition your request.
+        Every partition will count as an API call, hence the usage will
+        increase by the value you set for `num_partitions` (e.g. for
+        num_partitions=2, the usage will increase by 2). If you set
+        `num_partitions`, all calls to perform forecasting, finetuning,
+        or cross-validation increase the usage by num_partitions.
+2.  When requesting [in-sample
+    predictions](https://docs.nixtla.io/docs/tutorials-historical_forecast)
+    (`add_history=True`), the usage from #1 above is multipled by 2.
 
-We can also get historical forecasts using the `add_history=True`
-parameter in the `forecast` method. This leads to 2 API calls.
-
-Then, if the API call requires to send more than 200MB of data, the API
-will return an error and will require you to use the `num_partitions`
-parameter in order to partition your request. Every partition will count
-as an API call, thus for 2 partitions there will be 2 API calls.
-
-If we perform
-[cross-validation](https://docs.nixtla.io/docs/tutorials-cross_validation),
-no matter the number of windows, it always counts as 1 API call.
-
-**Examples** 1. A user, for the first time, uses TimeGPT to forecast
-daily data, using the `timegpt-1` model. How many API calls are made?
-(*Ans*: 2) 2. The same user as above calls the `cross_validation` method
-on the same dataset, using the same model. How many API calls are made
-(*Ans*: 1) 3. That user now decides to forecast on a longer horizon, so
+**Examples** 1. A user uses TimeGPT to forecast daily data, using the
+`timegpt-1` model. How many API calls are made? (*Ans*: 1) 2. A user
+calls the `cross_validation` method on a dataset. How many API calls are
+made (*Ans*: 1) 3. A user decides to forecast on a longer horizon, so
 they use the `timegpt-1-long-horizon` model. How many API calls are made
-(*Ans*: 2) 4. The user now gets a very large dataset, with a daily
-frequency, and they must set `num_partitions=4` when forecasting. How
-many API calls are made (*Ans*: 4)
+(*Ans*: 1) 4. A user needs to get the in-sample predicitons when
+forecasting using `add_history=True`. How many API calls are made
+(*Ans*: 2) 5. A user has a very large dataset, with a daily frequency,
+and they must set `num_partitions=4` when forecasting. How many API
+calls are made (*Ans*: 4) 6. A user has to set `num_partitions=4` and is
+also interesed in getting the in-sample predicitons (`add_history=True`)
+when forecasting. How many API calls are made (*Ans*: 8)
+
+### Anomaly Detection:
+
+1.  If you do not set `num_partitions`, all calls to perform [anomaly
+    detection](https://docs.nixtla.io/docs/capabilities-anomaly-detection-quickstart)
+    increase the usage by 1. Note that addition of [exogenous
+    variables](https://docs.nixtla.io/docs/capabilities-anomaly-detection-add_exogenous_variables)
+    does not increase the usage further.
+2.  If the API call requires to send more than 200MB of data, the API
+    will return an error and will require you to use the
+    `num_partitions` parameter in order to partition your request. Every
+    partition will count as an API call, hence the usage will increase
+    by the value you set for `num_partitions` (e.g. for
+    num_partitions=2, the usage will increase by 2).
 
 How does billing work?
 
@@ -446,8 +487,9 @@ request has exceeded the allowable processing time. This is a common
 issue when working with large datasets. To fix this, consider increasing
 the `num_partitions` parameter in the [`forecast`
 method](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-forecast)
-of the `NixtlaClient` class, or use a distributed backend if not already
-in use.
+of the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class, or use a distributed backend if not already in use.
 
 ## Additional Support
 
@@ -455,7 +497,8 @@ If you have any more questions or need support, please reach out by:
 
 -   Opening an [issue](https://github.com/Nixtla/nixtla/issues) on
     GitHub for technical questions or bugs.
--   Sending an email to ops@nixtla.io for general inquiries or support.
+-   Sending an email to <support@nixtla.io> for general inquiries or
+    support.
 -   Joining our
     [Slack](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-2ebtgjbip-QMSnvm6ED1NF5vi4xj_13Q)
     community to connect with our team and the forecasting community.

@@ -93,9 +93,10 @@ train_df_gaps = train_df[mask]
 
 ## Get Started with TimeGPT
 
-Before proceeding, we will instantiate the `NixtlaClient` class, which
-provides access to all the methods from `TimeGPT`. To do this, you will
-need a Nixtla API key.
+Before proceeding, we will instantiate the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class, which provides access to all the methods from `TimeGPT`. To do
+this, you will need a Nixtla API key.
 
 ```python
 from nixtla import NixtlaClient
@@ -123,9 +124,10 @@ tutorial.
 ## Visualize Data
 
 We can visualize the data using the `plot` method from the
-`NixtlaClient` class. This method has an `engine` argument that allows
-you to choose between different plotting libraries. Default is
-`matplotlib`, but you can also use `plotly` for interactive plots.
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
+class. This method has an `engine` argument that allows you to choose
+between different plotting libraries. Default is `matplotlib`, but you
+can also use `plotly` for interactive plots.
 
 ```python
 nixtla_client.plot(train_df_gaps)
@@ -211,7 +213,8 @@ dtype: int64
 
 ## Forecast with TimeGPT
 
-We are now ready to use the `forecast` method from the `NixtlaClient`
+We are now ready to use the `forecast` method from the
+[`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient)
 class. This method requires the following arguments:
 
 -   `df`: The DataFrame containing the time series data
