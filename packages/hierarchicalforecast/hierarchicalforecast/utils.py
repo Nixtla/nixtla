@@ -656,14 +656,13 @@ def samples_to_quantiles_df(
 # %% ../nbs/src/utils.ipynb 55
 # Masked empirical covariance matrix
 @njit(
-    "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool, 2, 'C'))",
+    "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool_, 2, 'C'))",
     nogil=NUMBA_NOGIL,
     cache=NUMBA_CACHE,
     parallel=NUMBA_PARALLEL,
     fastmath=NUMBA_FASTMATH,
     error_model="numpy",
 )
-# @njit(nogil=NOGIL, cache=CACHE, parallel=True, fastmath=True, error_model="numpy")
 def _ma_cov(residuals: np.ndarray, not_nan_mask: np.ndarray):
     """Masked empirical covariance matrix.
 
@@ -764,7 +763,7 @@ def _shrunk_covariance_schaferstrimmer_no_nans(
 
 
 @njit(
-    "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool, 2, 'C'), float64)",
+    "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool_, 2, 'C'), float64)",
     nogil=NUMBA_NOGIL,
     cache=NUMBA_CACHE,
     parallel=NUMBA_PARALLEL,
