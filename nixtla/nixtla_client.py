@@ -4,6 +4,7 @@
 __all__ = ['ApiError', 'NixtlaClient']
 
 # %% ../nbs/src/nixtla_client.ipynb 3
+import datetime
 import logging
 import math
 import os
@@ -108,7 +109,8 @@ _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 
 class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
     id: str
-    created_at: str
+    created_at: datetime.datetime
+    created_by: str
     base_model_id: str
     steps: int
     depth: int
@@ -941,6 +943,12 @@ class NixtlaClient:
         ) == "success" or "Forecasting! :)" in validation.get("detail", "")
 
     def usage(self) -> dict[str, dict[str, int]]:
+        """Query consumed requests and limits
+
+        Returns
+        -------
+        dict
+            Consumed requests and limits by minute and month."""
         if self._is_azure:
             raise NotImplementedError("usage is not implemented for Azure deployments")
         with httpx.Client(**self._client_kwargs) as client:
@@ -991,7 +999,7 @@ class NixtlaClient:
             Column that contains the target.
         finetune_steps : int (default=10)
             Number of steps used to finetune learning TimeGPT in the new data.
-        finetune_depth: int (default=1)
+        finetune_depth : int (default=1)
             The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
             and 5 means that the entire model is finetuned.
         finetune_loss : str (default='default')
@@ -1072,6 +1080,25 @@ class NixtlaClient:
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=body)
         return [FinetunedModel(**m) for m in body["finetuned_models"]]
+
+    def delete_finetuned_model(self, finetuned_model_id: str) -> bool:
+        """Delete a previously fine-tuned model
+
+        Parameters
+        ----------
+        finetuned_model_id : str
+            ID of the fine-tuned model to be deleted.
+
+        Returns
+        -------
+        bool
+            Whether delete was successful."""
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = client.delete(
+                f"/v2/finetuned_models/{finetuned_model_id}",
+                headers={"accept-encoding": "identity"},
+            )
+        return resp.status_code == 204
 
     def _distributed_forecast(
         self,
@@ -1228,7 +1255,7 @@ class NixtlaClient:
         finetune_steps : int (default=0)
             Number of steps used to finetune learning TimeGPT in the
             new data.
-        finetune_depth: int (default=1)
+        finetune_depth : int (default=1)
             The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
             and 5 means that the entire model is finetuned.
         finetune_loss : str (default='default')
