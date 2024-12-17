@@ -903,7 +903,7 @@ class NixtlaClient:
         freq: Optional[_FreqType],
     ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
-            raise Exception("API Key not valid, please email ops@nixtla.io")
+            raise Exception("API Key not valid, please email support@nixtla.io")
         if model not in self.supported_models:
             raise ValueError(
                 f"unsupported model: {model}. supported models: {self.supported_models}"
