@@ -42,16 +42,20 @@ pip install uv
 uv venv --python 3.10
 source .venv/bin/activate
 uv pip install -Ue .[dev]
+
+# If you plan to contribute to documentation, you will also need to install the
+# distributed dependencies in addition to the dev dependencies
+uv pip install -Ue .[dev,distributed]
 ```
 
-#### Set Up TimeGPT token
-This library uses `python-dotenv` for development. To set up your TimeGPT token, add the following lines to your `.env` file:
+#### Set Up Nixtla API Key
+This library uses `python-dotenv` for development. To set up your Nixtla API key, add the following lines to your `.env` file:
 
 ```
-TIMEGPT_TOKEN=<your token>
+NIXTLA_API_KEY=<your token>
 ```
 
-Please write to `ops@nixtla.io` if you're insterested in contributing to this project to get access to your TimeGPT token.
+* NOTE: You can get your Nixtla API key by logging into [Nixtla Dashboard](https://dashboard.nixtla.io/) where you can get few API calls for free. If you need more API calls for development purpose, please write to `support@nixtla.io`.
 
 #### Install git hooks
 Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
