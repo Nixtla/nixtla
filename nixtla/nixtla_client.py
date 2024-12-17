@@ -182,7 +182,7 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
             httpx.WriteError,
             httpx.WriteTimeout,
         )
-        retriable_codes = [408, 409, 429, 502, 503, 504]
+        retriable_codes = [404, 408, 409, 429, 502, 503, 504]
         return isinstance(exc, retriable_exceptions) or (
             isinstance(exc, ApiError) and exc.status_code in retriable_codes
         )
