@@ -42,16 +42,20 @@ pip install uv
 uv venv --python 3.10
 source .venv/bin/activate
 uv pip install -Ue .[dev]
+
+# If you plan to contribute to documentation, you will also need to install the
+# distributed dependencies in addition to the dev dependencies
+uv pip install -Ue .[dev,distributed]
 ```
 
-#### Set Up TimeGPT token
-This library uses `python-dotenv` for development. To set up your TimeGPT token, add the following lines to your `.env` file:
+#### Set Up Nixtla API Key
+This library uses `python-dotenv` for development. To set up your Nixtla API key, add the following lines to your `.env` file:
 
 ```
-TIMEGPT_TOKEN=<your token>
+NIXTLA_API_KEY=<your token>
 ```
 
-Please write to `support@nixtla.io` if you're insterested in contributing to this project to get access to your TimeGPT token.
+* NOTE: You can get your Nixtla API key by logging into [Nixtla Dashboard](https://dashboard.nixtla.io/) where you can get few API calls for free. If you need more API calls for development purpose, please write to `support@nixtla.io`.
 
 #### Install git hooks
 Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
@@ -81,9 +85,9 @@ Docs are automatically created from the notebooks in the `nbs` folder.
 
 ### Modifying an existing doc
 1. Find the relevant notebook.
-2. Make your changes. 
+2. Make your changes.
     * Do not rename the document.
-    * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`. 
+    * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`.
 3. Run all cells.
 4. Run `nbdev_preview`.
 5. Clean the notebook metadata using `nbdev_clean --fname nbs/docs/[path_to_notebook.ipynb]`.
@@ -93,7 +97,7 @@ Docs are automatically created from the notebooks in the `nbs` folder.
 
 ### Creating a new document
 1. Copy an existing jupyter notebook in a folder where you want to create a new document. This should be a subfolder of `nbs/docs`.
-2. Rename the document using the following format: `[document_number]_document_title_in_lower_case.ipynb` (for example: `01_quickstart.ipynb`), incrementing the document number from the current highest number within the folder and retaining the leading zero. 
+2. Rename the document using the following format: `[document_number]_document_title_in_lower_case.ipynb` (for example: `01_quickstart.ipynb`), incrementing the document number from the current highest number within the folder and retaining the leading zero.
 3. The first header (title) is ideally the same as the notebook name (without the document number). This is because in Readme.com the first header (title) is used to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` of a document in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`. Thus, it is advised to keep the document name and header the same.
 4. Work on your new document. Pay attention to:
     * The Google Colab link;
@@ -110,15 +114,15 @@ When the PR is approved, the documentation will not be visible directly. It will
     2. The `Deploy to readme dot com` workflow on branch `main`. Use the `Run workflow` button on the right and choose the `main` branch.
     * After both workflows have completed (should take max. 10 minutes), check the [docs](https://docs.nixtla.io/) to see if your changes have been reflected.
 
-It could be that on our Readme.com [docs](https://docs.nixtla.io/), the newly created document is not in the correct (sub)folder. 
+It could be that on our Readme.com [docs](https://docs.nixtla.io/), the newly created document is not in the correct (sub)folder.
 1. Go to the `Log In` (top right corner), log in with your Nixtla account.
 2. Go to the Admin Dashboard (top right, under user-name)
 3. On the left, go to `Guides`. You now see an overview of the documentation and the structure.
-4. Simply drag and drop the document that is in the incorrect (sub)folder to the correct (sub)folder. The document will from hereon remain in the correct (sub)folder, even if you update its contents. 
+4. Simply drag and drop the document that is in the incorrect (sub)folder to the correct (sub)folder. The document will from hereon remain in the correct (sub)folder, even if you update its contents.
 
 Make sure to check that our [Mintlify docs](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html) also work as expected, and your change is reflected there too. Mintlify is commonly somewhat slower syncing the docs, so it could a bit more time to reflect the change.
 
 ### Do's and don'ts
 * Don't rename documents! The filename is used statically in various files to properly index the file in the correct (sub)folder. If you rename, you're effectively creating a new document. Follow the correct procedure for creating a new document (above), and check every other document (yes, every single one) in our documentation whether there's a link now breaking to the doc you renamed.
 * Check the changes / new document online in both [Readme.com](https://docs.nixtla.io/) and [Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html).
-* Screwed up? You can hide a document in Readme.com in the Admin console, under `Guides`. Make sure to unhide it again after you've fixed your misstakes. 
+* Screwed up? You can hide a document in Readme.com in the Admin console, under `Guides`. Make sure to unhide it again after you've fixed your misstakes.
