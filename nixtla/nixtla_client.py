@@ -4,6 +4,7 @@
 __all__ = ['ApiError', 'NixtlaClient']
 
 # %% ../nbs/src/nixtla_client.ipynb 3
+import datetime
 import logging
 import math
 import os
@@ -29,6 +30,7 @@ import orjson
 import pandas as pd
 import utilsforecast.processing as ufp
 import zstandard as zstd
+from pydantic import BaseModel
 from tenacity import (
     RetryCallState,
     retry,
@@ -104,6 +106,19 @@ _FinetuneDepth = Literal[1, 2, 3, 4, 5]
 _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 _ThresholdMethod = Literal["univariate", "multivariate"]
+
+
+class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
+    id: str
+    created_at: datetime.datetime
+    created_by: str
+    base_model_id: str
+    steps: int
+    depth: int
+    loss: _Loss
+    model: _Model
+    freq: str
+
 
 _date_features_by_freq = {
     # Daily frequencies
@@ -979,6 +994,12 @@ class NixtlaClient:
         ) == "success" or "Forecasting! :)" in validation.get("detail", "")
 
     def usage(self) -> dict[str, dict[str, int]]:
+        """Query consumed requests and limits
+
+        Returns
+        -------
+        dict
+            Consumed requests and limits by minute and month."""
         if self._is_azure:
             raise NotImplementedError("usage is not implemented for Azure deployments")
         with httpx.Client(**self._client_kwargs) as client:
@@ -987,6 +1008,148 @@ class NixtlaClient:
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=body)
         return body
+
+    def finetune(
+        self,
+        df: DataFrame,
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        finetune_steps: _NonNegativeInt = 10,
+        finetune_depth: _FinetuneDepth = 1,
+        finetune_loss: _Loss = "default",
+        output_model_id: Optional[str] = None,
+        finetuned_model_id: Optional[str] = None,
+        model: _Model = "timegpt-1",
+    ) -> str:
+        """Fine-tune TimeGPT to your series.
+
+        Parameters
+        ----------
+        df : pandas or polars DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        freq : str, int or pandas offset, optional (default=None).
+            Frequency of the timestamps. If `None`, it will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each serie.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+        target_col : str (default='y')
+            Column that contains the target.
+        finetune_steps : int (default=10)
+            Number of steps used to finetune learning TimeGPT in the new data.
+        finetune_depth : int (default=1)
+            The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
+            and 5 means that the entire model is finetuned.
+        finetune_loss : str (default='default')
+            Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
+        output_model_id : str, optional(default=None)
+            ID to assign to the fine-tuned model. If `None`, an UUID is used.
+        finetuned_model_id : str, optional(default=None)
+            ID of previously fine-tuned model to use as base.
+        model : str (default='timegpt-1')
+            Model to use as a string. Options are: `timegpt-1`, and `timegpt-1-long-horizon`.
+            We recommend using `timegpt-1-long-horizon` for forecasting
+            if you want to predict more than one seasonal
+            period given the frequency of your data.
+
+        Returns
+        -------
+        str
+            ID of the fine-tuned model
+        """
+        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("Can only fine-tune on pandas or polars dataframes.")
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
+        df, X_df, drop_id, freq = self._run_validations(
+            df=df,
+            X_df=None,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=False,
+            model=model,
+            freq=freq,
+        )
+
+        logger.info("Preprocessing dataframes...")
+        processed, *_ = _preprocess(
+            df=df,
+            X_df=None,
+            h=0,
+            freq=freq,
+            date_features=False,
+            date_features_to_one_hot=False,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        standard_freq = _standardize_freq(freq, processed)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
+        _validate_input_size(processed, model_input_size, model_horizon)
+        logger.info("Calling Fine-tune Endpoint...")
+        payload = {
+            "series": {
+                "y": processed.data[:, 0],
+                "sizes": np.diff(processed.indptr),
+            },
+            "model": model,
+            "freq": standard_freq,
+            "finetune_steps": finetune_steps,
+            "finetune_depth": finetune_depth,
+            "finetune_loss": finetune_loss,
+            "output_model_id": output_model_id,
+            "finetuned_model_id": finetuned_model_id,
+        }
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = self._make_request_with_retries(client, "v2/finetune", payload)
+        return resp["finetuned_model_id"]
+
+    def finetuned_models(self) -> list[FinetunedModel]:
+        """List fine-tuned models
+
+        Returns
+        -------
+        list of FinetunedModel
+            List of available fine-tuned models."""
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = client.get("/v2/finetuned_models")
+            body = resp.json()
+        if resp.status_code != 200:
+            raise ApiError(status_code=resp.status_code, body=body)
+        return [FinetunedModel(**m) for m in body["finetuned_models"]]
+
+    def delete_finetuned_model(self, finetuned_model_id: str) -> bool:
+        """Delete a previously fine-tuned model
+
+        Parameters
+        ----------
+        finetuned_model_id : str
+            ID of the fine-tuned model to be deleted.
+
+        Returns
+        -------
+        bool
+            Whether delete was successful."""
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = client.delete(
+                f"/v2/finetuned_models/{finetuned_model_id}",
+                headers={"accept-encoding": "identity"},
+            )
+        return resp.status_code == 204
 
     def _distributed_forecast(
         self,
@@ -1002,6 +1165,7 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt,
         finetune_depth: _FinetuneDepth,
         finetune_loss: _Loss,
+        finetuned_model_id: Optional[str],
         clean_ex_first: bool,
         hist_exog_list: Optional[list[str]],
         validate_api_key: bool,
@@ -1060,6 +1224,7 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
+                finetuned_model_id=finetuned_model_id,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
                 validate_api_key=validate_api_key,
@@ -1089,6 +1254,7 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt = 0,
         finetune_depth: _FinetuneDepth = 1,
         finetune_loss: _Loss = "default",
+        finetuned_model_id: Optional[str] = None,
         clean_ex_first: bool = True,
         hist_exog_list: Optional[list[str]] = None,
         validate_api_key: bool = False,
@@ -1140,11 +1306,13 @@ class NixtlaClient:
         finetune_steps : int (default=0)
             Number of steps used to finetune learning TimeGPT in the
             new data.
-        finetune_depth: int (default=1)
+        finetune_depth : int (default=1)
             The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning,
             and 5 means that the entire model is finetuned.
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
+        finetuned_model_id : str, optional(default=None)
+            ID of previously fine-tuned model to use.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts using TimeGPT.
         hist_exog_list : list of str, optional (default=None)
@@ -1196,6 +1364,7 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
+                finetuned_model_id=finetuned_model_id,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
                 validate_api_key=validate_api_key,
@@ -1287,6 +1456,7 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_depth": finetune_depth,
             "finetune_loss": finetune_loss,
+            "finetuned_model_id": finetuned_model_id,
             "feature_contributions": feature_contributions and X is not None,
         }
         with httpx.Client(**self._client_kwargs) as client:
@@ -1373,6 +1543,7 @@ class NixtlaClient:
         time_col: str,
         target_col: str,
         level: Union[int, float],
+        finetuned_model_id: Optional[str],
         clean_ex_first: bool,
         validate_api_key: bool,
         date_features: Union[bool, list[str]],
@@ -1403,6 +1574,7 @@ class NixtlaClient:
                 time_col=time_col,
                 target_col=target_col,
                 level=level,
+                finetuned_model_id=finetuned_model_id,
                 clean_ex_first=clean_ex_first,
                 validate_api_key=validate_api_key,
                 date_features=date_features,
@@ -1423,6 +1595,7 @@ class NixtlaClient:
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
+        finetuned_model_id: Optional[str] = None,
         clean_ex_first: bool = True,
         validate_api_key: bool = False,
         date_features: Union[bool, list[str]] = False,
@@ -1457,6 +1630,8 @@ class NixtlaClient:
             Column that contains the target.
         level : float (default=99)
             Confidence level between 0 and 100 for detecting the anomalies.
+        finetuned_model_id : str, optional(default=None)
+            ID of previously fine-tuned model to use.
         clean_ex_first : bool (default=True)
             Clean exogenous signal before making forecasts
             using TimeGPT.
@@ -1494,6 +1669,7 @@ class NixtlaClient:
                 time_col=time_col,
                 target_col=target_col,
                 level=level,
+                finetuned_model_id=finetuned_model_id,
                 clean_ex_first=clean_ex_first,
                 validate_api_key=validate_api_key,
                 date_features=date_features,
@@ -1544,6 +1720,7 @@ class NixtlaClient:
             },
             "model": model,
             "freq": standard_freq,
+            "finetuned_model_id": finetuned_model_id,
             "clean_ex_first": clean_ex_first,
             "level": level,
         }
@@ -1873,6 +2050,7 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt,
         finetune_depth: _FinetuneDepth,
         finetune_loss: _Loss,
+        finetuned_model_id: Optional[str],
         refit: bool,
         clean_ex_first: bool,
         hist_exog_list: Optional[list[str]],
@@ -1912,6 +2090,7 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
+                finetuned_model_id=finetuned_model_id,
                 refit=refit,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
@@ -1941,6 +2120,7 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt = 0,
         finetune_depth: _FinetuneDepth = 1,
         finetune_loss: _Loss = "default",
+        finetuned_model_id: Optional[str] = None,
         refit: bool = True,
         clean_ex_first: bool = True,
         hist_exog_list: Optional[list[str]] = None,
@@ -1999,6 +2179,8 @@ class NixtlaClient:
             and 5 means that the entire model is finetuned.
         finetune_loss : str (default='default')
             Loss function to use for finetuning. Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
+        finetuned_model_id : str, optional(default=None)
+            ID of previously fine-tuned model to use.
         refit : bool (default=True)
             Fine-tune the model in each window. If `False`, only fine-tunes on the first window.
             Only used if `finetune_steps` > 0.
@@ -2046,6 +2228,7 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
+                finetuned_model_id=finetuned_model_id,
                 refit=refit,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
@@ -2125,6 +2308,7 @@ class NixtlaClient:
             "finetune_steps": finetune_steps,
             "finetune_depth": finetune_depth,
             "finetune_loss": finetune_loss,
+            "finetuned_model_id": finetuned_model_id,
             "refit": refit,
         }
         with httpx.Client(**self._client_kwargs) as client:
@@ -2287,6 +2471,7 @@ def _forecast_wrapper(
     finetune_steps: _NonNegativeInt,
     finetune_depth: _FinetuneDepth,
     finetune_loss: _Loss,
+    finetuned_model_id: Optional[str],
     clean_ex_first: bool,
     hist_exog_list: Optional[list[str]],
     validate_api_key: bool,
@@ -2316,6 +2501,7 @@ def _forecast_wrapper(
         finetune_steps=finetune_steps,
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
+        finetuned_model_id=finetuned_model_id,
         clean_ex_first=clean_ex_first,
         hist_exog_list=hist_exog_list,
         validate_api_key=validate_api_key,
@@ -2336,6 +2522,7 @@ def _detect_anomalies_wrapper(
     time_col: str,
     target_col: str,
     level: Union[int, float],
+    finetuned_model_id: Optional[str],
     clean_ex_first: bool,
     validate_api_key: bool,
     date_features: Union[bool, list[str]],
@@ -2350,6 +2537,7 @@ def _detect_anomalies_wrapper(
         time_col=time_col,
         target_col=target_col,
         level=level,
+        finetuned_model_id=finetuned_model_id,
         clean_ex_first=clean_ex_first,
         validate_api_key=validate_api_key,
         date_features=date_features,
@@ -2422,6 +2610,7 @@ def _cross_validation_wrapper(
     finetune_steps: _NonNegativeInt,
     finetune_depth: _FinetuneDepth,
     finetune_loss: _Loss,
+    finetuned_model_id: Optional[str],
     refit: bool,
     clean_ex_first: bool,
     hist_exog_list: Optional[list[str]],
@@ -2445,6 +2634,7 @@ def _cross_validation_wrapper(
         finetune_steps=finetune_steps,
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
+        finetuned_model_id=finetuned_model_id,
         refit=refit,
         clean_ex_first=clean_ex_first,
         hist_exog_list=hist_exog_list,
