@@ -1,4 +1,4 @@
-# TimeGPT Achieves 2nd Position with Zero-Shot Forecasting in the VN1 Forecasting Accuracy Challenge
+# Score 2nd place in the VN1 Challenge with a few lines of code in under 10 seconds using TimeGPT
 
 We present a fully reproducible experiment demonstrating that Nixtla's **TimeGPT** can achieve the **2nd position** in the [VN1 Forecasting Accuracy Challenge](https://www.datasource.ai/en/home/data-science-competitions-for-startups/phase-2-vn1-forecasting-accuracy-challenge/description) with **zero-shot forecasting**. This result was achieved using the zero-shot capabilities of the foundation model, as most of the code focuses on **data cleaning and preprocessing**, not model training or parameter tuning.
 
