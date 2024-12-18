@@ -592,7 +592,7 @@ def _restrict_input_samples(level, input_size, model_horizon, h) -> int:
     return new_input_size
 
 
-def _extract_target_array(df, target_col) -> np.ndarray:
+def _extract_target_array(df: DataFrame, target_col: str) -> np.ndarray:
     # in pandas<2.2 to_numpy can lead to an object array if
     # the type is a pandas nullable type, e.g. pd.Float64Dtype
     # we thus use the dtype's type as the target dtype
@@ -608,8 +608,7 @@ def _process_exog_features(
     processed_data: np.ndarray,
     x_cols: list[str],
     hist_exog_list: Optional[list[str]] = None,
-    logger: Optional[logging.Logger] = None,
-):
+) -> tuple[Optional[np.ndarray], Optional[list[int]]]:
     X = None
     hist_exog = None
     if processed_data.shape[1] > 1:
@@ -1975,9 +1974,7 @@ class NixtlaClient:
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
-        X, hist_exog = _process_exog_features(
-            processed.data, x_cols, hist_exog_list, logger
-        )
+        X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
         sizes = np.diff(processed.indptr)
         if np.all(sizes <= 6 * detection_size):
             logger.warn(
@@ -2286,9 +2283,7 @@ class NixtlaClient:
             processed = _tail(processed, new_input_size)
             times = _array_tails(times, orig_indptr, np.diff(processed.indptr))
             targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
-        X, hist_exog = _process_exog_features(
-            processed.data, x_cols, hist_exog_list, logger
-        )
+        X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
 
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
