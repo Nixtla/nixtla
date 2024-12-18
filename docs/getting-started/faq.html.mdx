@@ -399,18 +399,23 @@ forecasting or detecting anomalies. API Usage is as follows:
     predictions](https://docs.nixtla.io/docs/tutorials-historical_forecast)
     (`add_history=True`), the usage from #1 above is multipled by 2.
 
-**Examples** 1. A user uses TimeGPT to forecast daily data, using the
-`timegpt-1` model. How many API calls are made? (*Ans*: 1) 2. A user
-calls the `cross_validation` method on a dataset. How many API calls are
-made (*Ans*: 1) 3. A user decides to forecast on a longer horizon, so
-they use the `timegpt-1-long-horizon` model. How many API calls are made
-(*Ans*: 1) 4. A user needs to get the in-sample predicitons when
-forecasting using `add_history=True`. How many API calls are made
-(*Ans*: 2) 5. A user has a very large dataset, with a daily frequency,
-and they must set `num_partitions=4` when forecasting. How many API
-calls are made (*Ans*: 4) 6. A user has to set `num_partitions=4` and is
-also interesed in getting the in-sample predicitons (`add_history=True`)
-when forecasting. How many API calls are made (*Ans*: 8)
+**Examples**
+
+1.  A user uses TimeGPT to forecast daily data, using the `timegpt-1`
+    model. How many API calls are made? (*Ans*: 1)
+2.  A user calls the `cross_validation` method on a dataset. How many
+    API calls are made (*Ans*: 1)
+3.  A user decides to forecast on a longer horizon, so they use the
+    `timegpt-1-long-horizon` model. How many API calls are made (*Ans*:
+    1)
+4.  A user needs to get the in-sample predicitons when forecasting using
+    `add_history=True`. How many API calls are made (*Ans*: 2)
+5.  A user has a very large dataset, with a daily frequency, and they
+    must set `num_partitions=4` when forecasting. How many API calls are
+    made (*Ans*: 4)
+6.  A user has to set `num_partitions=4` and is also interesed in
+    getting the in-sample predicitons (`add_history=True`) when
+    forecasting. How many API calls are made (*Ans*: 8)
 
 ### Anomaly Detection:
 
