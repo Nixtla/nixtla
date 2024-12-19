@@ -928,19 +928,28 @@ class NixtlaClient:
         return df, X_df, drop_id, freq
 
     def validate_api_key(self, log: bool = True) -> bool:
-        """Returns True if your api_key is valid."""
-        try:
-            with httpx.Client(**self._client_kwargs) as client:
-                validation = self._make_request_with_retries(
-                    client, "validate_token", {}
-                )
-        except:
-            validation = {}
-        if "support" in validation and log:
-            logger.info(f'Happy Forecasting! :), {validation["support"]}')
-        return validation.get(
-            "message", ""
-        ) == "success" or "Forecasting! :)" in validation.get("detail", "")
+        """Check API key status.
+
+        Parameters
+        ----------
+        log : bool (default=True)
+            Show the endpoint's response.
+
+        Returns
+        -------
+        bool
+            Whether API key is valid."""
+        if self._is_azure:
+            raise NotImplementedError(
+                "validate_api_key is not implemented for Azure deployments, "
+                "you can try using the forecasting methods directly."
+            )
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = client.get("/validate_api_key")
+            body = resp.json()
+        if log:
+            logger.info(body["detail"])
+        return resp.status_code == 200
 
     def usage(self) -> dict[str, dict[str, int]]:
         """Query consumed requests and limits
