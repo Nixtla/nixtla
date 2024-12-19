@@ -804,9 +804,19 @@ class NixtlaClient:
             logger.info("Querying model metadata...")
             payload = {"model": model, "freq": freq}
             with httpx.Client(**self._client_kwargs) as client:
-                params = self._make_request_with_retries(
-                    client, "model_params", payload
-                )["detail"]
+                if self._is_azure:
+                    resp_body = self._make_request(
+                        client=client,
+                        endpoint="model_params",
+                        payload=payload,
+                        multithreaded_compress=False,
+                    )
+                else:
+                    resp = client.get("/model_params", params=payload)
+                    resp_body = resp.json()
+                    if resp.status_code != 200:
+                        raise ApiError(status_code=resp.status_code, body=resp_body)
+            params = resp_body["detail"]
             self._model_params[key] = (params["input_size"], params["horizon"])
         return self._model_params[key]
 
