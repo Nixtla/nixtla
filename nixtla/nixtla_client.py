@@ -731,6 +731,18 @@ class NixtlaClient:
             multithreaded_compress=multithreaded_compress,
         )
 
+    def _get_request(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        params: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        resp = client.get(endpoint, params=params)
+        resp_body = resp.json()
+        if resp.status_code != 200:
+            raise ApiError(status_code=resp.status_code, body=resp_body)
+        return resp_body
+
     def _make_partitioned_requests(
         self,
         client: httpx.Client,
@@ -805,17 +817,13 @@ class NixtlaClient:
             payload = {"model": model, "freq": freq}
             with httpx.Client(**self._client_kwargs) as client:
                 if self._is_azure:
-                    resp_body = self._make_request(
-                        client=client,
-                        endpoint="model_params",
-                        payload=payload,
-                        multithreaded_compress=False,
+                    resp_body = self._make_request_with_retries(
+                        client, "model_params", payload
                     )
                 else:
-                    resp = client.get("/model_params", params=payload)
-                    resp_body = resp.json()
-                    if resp.status_code != 200:
-                        raise ApiError(status_code=resp.status_code, body=resp_body)
+                    resp_body = self._retry_strategy(self._get_request)(
+                        client, "/model_params", payload
+                    )
             params = resp_body["detail"]
             self._model_params[key] = (params["input_size"], params["horizon"])
         return self._model_params[key]
@@ -971,11 +979,7 @@ class NixtlaClient:
         if self._is_azure:
             raise NotImplementedError("usage is not implemented for Azure deployments")
         with httpx.Client(**self._client_kwargs) as client:
-            resp = client.get("/usage")
-            body = resp.json()
-        if resp.status_code != 200:
-            raise ApiError(status_code=resp.status_code, body=body)
-        return body
+            return self._get_request(client, "/usage")
 
     def finetune(
         self,
