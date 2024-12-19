@@ -1098,11 +1098,8 @@ class NixtlaClient:
         list of FinetunedModel
             List of available fine-tuned models."""
         with httpx.Client(**self._client_kwargs) as client:
-            resp = client.get("/v2/finetuned_models")
-            body = resp.json()
-        if resp.status_code != 200:
-            raise ApiError(status_code=resp.status_code, body=body)
-        return [FinetunedModel(**m) for m in body["finetuned_models"]]
+            resp_body = self._get_request(client, "/v2/finetuned_models")
+        return [FinetunedModel(**m) for m in resp_body["finetuned_models"]]
 
     def delete_finetuned_model(self, finetuned_model_id: str) -> bool:
         """Delete a previously fine-tuned model
