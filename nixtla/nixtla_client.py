@@ -779,6 +779,18 @@ class NixtlaClient:
             multithreaded_compress=multithreaded_compress,
         )
 
+    def _get_request(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        params: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        resp = client.get(endpoint, params=params)
+        resp_body = resp.json()
+        if resp.status_code != 200:
+            raise ApiError(status_code=resp.status_code, body=resp_body)
+        return resp_body
+
     def _make_partitioned_requests(
         self,
         client: httpx.Client,
@@ -854,9 +866,15 @@ class NixtlaClient:
             logger.info("Querying model metadata...")
             payload = {"model": model, "freq": freq}
             with httpx.Client(**self._client_kwargs) as client:
-                params = self._make_request_with_retries(
-                    client, "model_params", payload
-                )["detail"]
+                if self._is_azure:
+                    resp_body = self._make_request_with_retries(
+                        client, "model_params", payload
+                    )
+                else:
+                    resp_body = self._retry_strategy(self._get_request)(
+                        client, "/model_params", payload
+                    )
+            params = resp_body["detail"]
             self._model_params[key] = (params["input_size"], params["horizon"])
         return self._model_params[key]
 
@@ -978,19 +996,28 @@ class NixtlaClient:
         return df, X_df, drop_id, freq
 
     def validate_api_key(self, log: bool = True) -> bool:
-        """Returns True if your api_key is valid."""
-        try:
-            with httpx.Client(**self._client_kwargs) as client:
-                validation = self._make_request_with_retries(
-                    client, "validate_token", {}
-                )
-        except:
-            validation = {}
-        if "support" in validation and log:
-            logger.info(f'Happy Forecasting! :), {validation["support"]}')
-        return validation.get(
-            "message", ""
-        ) == "success" or "Forecasting! :)" in validation.get("detail", "")
+        """Check API key status.
+
+        Parameters
+        ----------
+        log : bool (default=True)
+            Show the endpoint's response.
+
+        Returns
+        -------
+        bool
+            Whether API key is valid."""
+        if self._is_azure:
+            raise NotImplementedError(
+                "validate_api_key is not implemented for Azure deployments, "
+                "you can try using the forecasting methods directly."
+            )
+        with httpx.Client(**self._client_kwargs) as client:
+            resp = client.get("/validate_api_key")
+            body = resp.json()
+        if log:
+            logger.info(body["detail"])
+        return resp.status_code == 200
 
     def usage(self) -> dict[str, dict[str, int]]:
         """Query consumed requests and limits
@@ -1002,11 +1029,7 @@ class NixtlaClient:
         if self._is_azure:
             raise NotImplementedError("usage is not implemented for Azure deployments")
         with httpx.Client(**self._client_kwargs) as client:
-            resp = client.get("/usage")
-            body = resp.json()
-        if resp.status_code != 200:
-            raise ApiError(status_code=resp.status_code, body=body)
-        return body
+            return self._get_request(client, "/usage")
 
     def finetune(
         self,
@@ -1125,11 +1148,8 @@ class NixtlaClient:
         list of FinetunedModel
             List of available fine-tuned models."""
         with httpx.Client(**self._client_kwargs) as client:
-            resp = client.get("/v2/finetuned_models")
-            body = resp.json()
-        if resp.status_code != 200:
-            raise ApiError(status_code=resp.status_code, body=body)
-        return [FinetunedModel(**m) for m in body["finetuned_models"]]
+            resp_body = self._get_request(client, "/v2/finetuned_models")
+        return [FinetunedModel(**m) for m in resp_body["finetuned_models"]]
 
     def delete_finetuned_model(self, finetuned_model_id: str) -> bool:
         """Delete a previously fine-tuned model
