@@ -20,6 +20,7 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    overload,
 )
 
 import annotated_types
@@ -1076,8 +1077,22 @@ class NixtlaClient:
             resp = self._make_request_with_retries(client, "v2/finetune", payload)
         return resp["finetuned_model_id"]
 
-    def finetuned_models(self) -> list[FinetunedModel]:
+    @overload
+    def finetuned_models(self, as_df: Literal[False]) -> list[FinetunedModel]: ...
+
+    @overload
+    def finetuned_models(self, as_df: Literal[True]) -> pd.DataFrame: ...
+
+    def finetuned_models(
+        self,
+        as_df: bool = False,
+    ) -> Union[list[FinetunedModel], pd.DataFrame]:
         """List fine-tuned models
+
+        Parameters
+        ----------
+        as_df : bool
+            Return the fine-tuned models as a pandas dataframe
 
         Returns
         -------
@@ -1088,7 +1103,10 @@ class NixtlaClient:
             body = resp.json()
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=body)
-        return [FinetunedModel(**m) for m in body["finetuned_models"]]
+        models = [FinetunedModel(**m) for m in body["finetuned_models"]]
+        if as_df:
+            models = pd.DataFrame([m.model_dump() for m in models])
+        return models
 
     def delete_finetuned_model(self, finetuned_model_id: str) -> bool:
         """Delete a previously fine-tuned model
