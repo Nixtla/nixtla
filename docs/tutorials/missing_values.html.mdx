@@ -32,7 +32,7 @@ This work is based on skforecast’s [Forecasting Time Series with Missing
 Values](https://cienciadedatos.net/documentos/py46-forecasting-time-series-missing-values)
 tutorial.
 
-[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/19_missing_values.ipynb)
+[![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/15_missing_values.ipynb)
 
 ## Load Data
 
@@ -188,6 +188,47 @@ Number of rows before filling gaps: 2851
 Number of rows after filling gaps: 2929
 ```
 
+> NOTE:
+>
+> In this tutorial, the data contains only one time series. However,
+> TimeGPT supports passing multiple series to the model. In this case,
+> none of the time series can have missing values from their individual
+> earliest timestamp until their individual lastest timestamp. If these
+> individual time series have missing values, the user must decide how
+> to fill these gaps for the individual time series. The
+> [`fill_gaps`](https://nixtlaverse.nixtla.io/utilsforecast/preprocessing.html#fill-gaps)
+> function provides a couple of additional arguments to assist with this
+> (refer to the documentation for complete details), namely `start` and
+> `end`
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/utilsforecast/blob/main/utilsforecast/preprocessing.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+### fill_gaps
+
+> ``` text
+>  fill_gaps (df:~DFType, freq:Union[str,int],
+>             start:Union[str,int,datetime.date,datetime.datetime]='per_seri
+>             e',
+>             end:Union[str,int,datetime.date,datetime.datetime]='global',
+>             id_col:str='unique_id', time_col:str='ds')
+> ```
+
+*Enforce start and end datetimes for dataframe.*
+
+|  | **Type** | **Default** | **Details** |
+|------|------------------|-------------------------|-------------------------|
+| df | DFType |  | Input data |
+| freq | Union |  | Series’ frequency |
+| start | Union | per_serie | Initial timestamp for the series.<br/> \* ‘per_serie’ uses each serie’s first timestamp<br/> \* ‘global’ uses the first timestamp seen in the data<br/> \* Can also be a specific timestamp or integer, e.g. ‘2000-01-01’, 2000 or datetime(2000, 1, 1) |
+| end | Union | global | Initial timestamp for the series.<br/> \* ‘per_serie’ uses each serie’s last timestamp<br/> \* ‘global’ uses the last timestamp seen in the data<br/> \* Can also be a specific timestamp or integer, e.g. ‘2000-01-01’, 2000 or datetime(2000, 1, 1) |
+| id_col | str | unique_id | Column that identifies each serie. |
+| time_col | str | ds | Column that identifies each timestamp. |
+| **Returns** | **DFType** |  | **Dataframe with gaps filled.** |
+
 Now we need to decide how to fill the missing values in the target
 column. In this tutorial, we will use interpolation, but it is important
 to consider the specific context of your data when selecting a filling
@@ -234,9 +275,10 @@ fcst = nixtla_client.forecast(train_df_complete, h=len(test_df), model='timegpt-
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Inferred freq: D
-WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon, this may lead to less accurate forecasts. Please consider using a smaller horizon.
 INFO:nixtla.nixtla_client:Restricting input...
 INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
 ```
@@ -262,7 +304,7 @@ test set.
 nixtla_client.plot(test_df, fcst)
 ```
 
-![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-16-output-1.png)
+![](/nixtla/docs/tutorials/15_missing_values_files/figure-markdown_strict/cell-17-output-1.png)
 
 Next, we will use the `evaluate` function from `utilsforecast` to
 compute the Mean Average Error (MAE) of the TimeGPT forecast. Before
@@ -289,13 +331,13 @@ result = test_df.merge(fcst, on=['ds', 'unique_id'], how='left')
 result.head()
 ```
 
-|     | unique_id | ds         | y     | TimeGPT      |
-|-----|-----------|------------|-------|--------------|
-| 0   | id1       | 2022-06-30 | 13468 | 13357.357422 |
-| 1   | id1       | 2022-07-01 | 12932 | 12390.051758 |
-| 2   | id1       | 2022-07-02 | 9918  | 9778.649414  |
-| 3   | id1       | 2022-07-03 | 8967  | 8846.636719  |
-| 4   | id1       | 2022-07-04 | 12869 | 11589.071289 |
+|     | unique_id | ds         | y     | TimeGPT   |
+|-----|-----------|------------|-------|-----------|
+| 0   | id1       | 2022-06-30 | 13468 | 13357.357 |
+| 1   | id1       | 2022-07-01 | 12932 | 12390.052 |
+| 2   | id1       | 2022-07-02 | 9918  | 9778.649  |
+| 3   | id1       | 2022-07-03 | 8967  | 8846.637  |
+| 4   | id1       | 2022-07-04 | 12869 | 11589.071 |
 
 ```python
 evaluate(result, metrics=[mae])
@@ -303,7 +345,7 @@ evaluate(result, metrics=[mae])
 
 |     | unique_id | metric | TimeGPT     |
 |-----|-----------|--------|-------------|
-| 0   | id1       | mae    | 1824.693076 |
+| 0   | id1       | mae    | 1824.693059 |
 
 ## Important Considerations
 

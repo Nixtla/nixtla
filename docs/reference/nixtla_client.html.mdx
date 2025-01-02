@@ -41,7 +41,12 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 >  NixtlaClient.validate_api_key (log:bool=True)
 > ```
 
-*Returns True if your api_key is valid.*
+*Check API key status.*
+
+|             | **Type** | **Default** | **Details**                   |
+|-------------|----------|-------------|-------------------------------|
+| log         | bool     | True        | Show the endpoint’s response. |
+| **Returns** | **bool** |             | **Whether API key is valid.** |
 
 ------------------------------------------------------------------------
 
@@ -276,10 +281,15 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 ## NixtlaClient.finetuned_models
 
 > ``` text
->  NixtlaClient.finetuned_models ()
+>  NixtlaClient.finetuned_models (as_df:bool=False)
 > ```
 
 *List fine-tuned models*
+
+|  | **Type** | **Default** | **Details** |
+|------|------------------|-------------------------|-------------------------|
+| as_df | bool | False | Return the fine-tuned models as a pandas dataframe |
+| **Returns** | **Union** |  | **List of available fine-tuned models.** |
 
 ------------------------------------------------------------------------
 
