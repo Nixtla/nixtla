@@ -703,6 +703,7 @@ class TimeSeries:
         result = df_constructor({self.id_col: uids, self.time_col: dates})
         for name, model in models.items():
             with self._backup():
+                self._predict_setup()
                 new_x = self._get_features_for_next_step(X_df)
                 if before_predict_callback is not None:
                     new_x = before_predict_callback(new_x)
@@ -789,10 +790,16 @@ class TimeSeries:
                     raise ValueError(
                         f"The following features were provided through `X_df` but were considered as static during fit: {common}.\n"
                         "Please re-run the fit step using the `static_features` argument to indicate which features are static. "
-                        "If all your features are dynamic please pass an empty list (static_features=[])."
+                        "If all your features are dynamic please provide an empty list (static_features=[])."
                     )
                 starts = ufp.offset_times(self.last_dates, self.freq, 1)
-                ends = ufp.offset_times(self.last_dates, self.freq, horizon)
+                if getattr(self, "max_horizon", None) is None:
+                    ends = ufp.offset_times(self.last_dates, self.freq, horizon)
+                    expected_rows_X = len(self.uids) * horizon
+                else:
+                    # direct approach uses only the immediate next timestamp
+                    ends = starts
+                    expected_rows_X = len(self.uids)
                 dates_validation = type(X_df)(
                     {
                         self.id_col: self.uids,
@@ -803,7 +810,7 @@ class TimeSeries:
                 X_df = ufp.join(X_df, dates_validation, on=self.id_col)
                 mask = ufp.between(X_df[self.time_col], X_df["_start"], X_df["_end"])
                 X_df = ufp.filter_with_mask(X_df, mask)
-                if X_df.shape[0] != len(self.uids) * horizon:
+                if X_df.shape[0] != expected_rows_X:
                     msg = (
                         "Found missing inputs in X_df. "
                         "It should have one row per id and time for the complete forecasting horizon.\n"
