@@ -45,9 +45,8 @@ template <typename T> void NumDiffs(const T *x, indptr_t n, T *out, int max_d) {
   constexpr T threshold = 0.463; // alpha = 0.05
   int d = 0;
   int n_lags = std::floor(3 * std::sqrt(n) / 13);
-  bool do_diff = KPSS(x, n, n_lags) > threshold;
-  std::vector<T> x_vec(n);
-  std::copy(x, x + n, x_vec.begin());
+  std::vector<T> x_vec(x, x + n);
+  bool do_diff = KPSS(x_vec.begin(), x_vec.end(), n_lags) > threshold;
   std::vector<T> diff_x(n);
   while (do_diff && d < max_d) {
     ++d;
@@ -59,7 +58,7 @@ template <typename T> void NumDiffs(const T *x, indptr_t n, T *out, int max_d) {
     std::copy(diff_x.begin(), diff_x.end(), x_vec.begin());
     if (n > d) {
       // we've taken d differences, so we have d NaNs
-      do_diff = KPSS(x_vec.data() + d, n - d, n_lags) > threshold;
+      do_diff = KPSS(x_vec.begin() + d, x_vec.end(), n_lags) > threshold;
     } else {
       do_diff = false;
     }
@@ -81,8 +80,7 @@ void NumSeasDiffs(const T *x, indptr_t n, T *out, int period, int max_d) {
   constexpr T threshold = 0.64;
   int d = 0;
   bool do_diff = seasonal::SeasHeuristic(x, n, period) > threshold;
-  std::vector<T> x_vec(n);
-  std::copy(x, x + n, x_vec.begin());
+  std::vector<T> x_vec(x, x + n);
   std::vector<T> diff_x(n);
   while (do_diff && d < max_d) {
     ++d;

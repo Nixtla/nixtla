@@ -185,12 +185,12 @@ public:
   void Update(T x) { skip_list_.insert(x); }
   T Update(T x, int n) {
     skip_list_.insert(x);
-    return SortedQuantile(skip_list_, p_, n);
+    return stats::SortedQuantile(skip_list_, p_, n);
   }
   T Update(T new_x, T old_x) {
     skip_list_.remove(old_x);
     skip_list_.insert(new_x);
-    return SortedQuantile(skip_list_, p_, window_size_);
+    return stats::SortedQuantile(skip_list_, p_, window_size_);
   }
 
 private:

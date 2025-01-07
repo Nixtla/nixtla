@@ -3,6 +3,8 @@
 #include "brent.h"
 #include "stats.h"
 
+#include <Eigen/Dense>
+
 #include <algorithm>
 #include <numeric>
 #include <vector>
@@ -20,22 +22,17 @@ inline T CommonScalerInverseTransform(T data, T offset, T scale) {
 
 template <typename T>
 inline void MinMaxScalerStats(const T *data, int n, T *stats) {
-  T min = std::numeric_limits<T>::infinity();
-  T max = -std::numeric_limits<T>::infinity();
-  for (int i = 0; i < n; ++i) {
-    if (data[i] < min)
-      min = data[i];
-    if (data[i] > max)
-      max = data[i];
-  }
+  auto [min, max] = std::ranges::minmax(std::ranges::subrange(data, data + n));
   stats[0] = min;
   stats[1] = max - min;
 }
 
 template <typename T>
 inline void StandardScalerStats(const T *data, int n, T *stats) {
-  double mean = Mean(data, n);
-  double std = StandardDeviation(data, n, mean);
+  const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(data, n);
+  auto double_v = v.template cast<double>().array();
+  double mean = double_v.mean();
+  double std = std::sqrt((double_v - mean).square().mean());
   stats[0] = static_cast<T>(mean);
   stats[1] = static_cast<T>(std);
 }
@@ -43,9 +40,9 @@ inline void StandardScalerStats(const T *data, int n, T *stats) {
 template <typename T>
 inline void RobustScalerIqrStats(const T *data, int n, T *stats) {
   std::vector<T> buffer(data, data + n);
-  T median = Quantile(buffer.data(), static_cast<T>(0.5), n);
-  T q1 = Quantile(buffer.data(), static_cast<T>(0.25), n);
-  T q3 = Quantile(buffer.data(), static_cast<T>(0.75), n);
+  const T q1 = stats::Quantile(buffer.begin(), buffer.end(), T{0.25});
+  const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
+  const T q3 = stats::Quantile(buffer.begin(), buffer.end(), T{0.75});
   stats[0] = median;
   stats[1] = q3 - q1;
 }
@@ -53,11 +50,10 @@ inline void RobustScalerIqrStats(const T *data, int n, T *stats) {
 template <typename T>
 inline void RobustScalerMadStats(const T *data, int n, T *stats) {
   std::vector<T> buffer(data, data + n);
-  const T median = Quantile(buffer.data(), static_cast<T>(0.5), n);
-  for (int i = 0; i < n; ++i) {
-    buffer[i] = std::abs(buffer[i] - median);
-  }
-  T mad = Quantile(buffer.data(), static_cast<T>(0.5), n);
+  const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
+  std::transform(buffer.begin(), buffer.end(), buffer.begin(),
+                 [median](auto x) { return std::abs(x - median); });
+  const T mad = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
   stats[0] = median;
   stats[1] = mad;
 }
@@ -65,34 +61,38 @@ inline void RobustScalerMadStats(const T *data, int n, T *stats) {
 template <typename T>
 T BoxCox_GuerreroCV(T lambda, const std::vector<T> &x_mean,
                     const std::vector<T> &x_std) {
-  auto x_rat = std::vector<T>(x_std.size());
-  int start_idx = 0;
-  for (size_t i = 0; i < x_rat.size(); ++i) {
-    if (std::isnan(x_std[i])) {
+  auto start_idx = size_t{0};
+  for (const auto &x : x_std) {
+    if (std::isnan(x)) {
       start_idx++;
-      continue;
+    } else {
+      break;
     }
-    x_rat[i] = x_std[i] / std::exp((1.0 - lambda) * std::log(x_mean[i]));
   }
-  double mean = Mean(x_rat.data() + start_idx, x_rat.size() - start_idx);
-  double std = StandardDeviation(x_rat.data() + start_idx,
-                                 x_rat.size() - start_idx, mean, 1);
-  if (std::isnan(std)) {
+  if (x_std.size() - start_idx < 2) {
     return std::numeric_limits<T>::max();
   }
-  return std / mean;
+  const Eigen::Map<const Eigen::VectorX<T>> mean_vec(x_mean.data() + start_idx,
+                                                     x_mean.size() - start_idx);
+  const Eigen::Map<const Eigen::VectorX<T>> std_vec(x_std.data() + start_idx,
+                                                    x_std.size() - start_idx);
+  auto x_rat =
+      std_vec.array() / (mean_vec.array().log() * (1.0 - lambda)).exp();
+  double mean = x_rat.mean();
+  double std = (x_rat.array() - mean).square().sum() / (x_rat.size() - 1);
+  return static_cast<T>(std / mean);
 }
 
 template <typename T>
 void BoxCoxLambdaGuerrero(const T *x, int n, T *out, int period, T lower,
                           T upper) {
   if (n <= 2 * period) {
-    *out = static_cast<T>(1.0);
+    *out = T{1.0};
     return;
   }
   for (int i = 0; i < n; ++i) {
     if (x[i] <= 0.0) {
-      lower = std::max(lower, static_cast<T>(0.0));
+      lower = std::max(lower, T{0.0});
       break;
     }
   }
@@ -162,23 +162,19 @@ inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
 }
 
 template <typename T> T BoxCoxLogLik(T lambda, const T *data, int n) {
-  std::vector<T> logdata(n);
-  std::transform(data, data + n, logdata.begin(),
-                 [](T x) { return std::log(x); });
+  const Eigen::Map<const Eigen::VectorX<T>> v(data, n);
+  const auto logdata = v.array().log().template cast<double>();
   double var;
   if (lambda == 0.0) {
-    double mean = Mean(logdata.data(), n);
-    var = Variance(logdata.data(), n, mean);
+    double mean = logdata.array().mean();
+    var = (logdata.array() - mean).square().mean();
   } else {
-    std::vector<T> transformed(n);
-    std::transform(data, data + n, transformed.begin(), [lambda](T x) {
-      return std::exp(lambda * std::log(x)) / lambda;
-    });
-    double mean = Mean(transformed.data(), n);
-    var = Variance(transformed.data(), n, mean);
+    auto transformed = (v.array().log() * lambda).exp() / lambda;
+    double mean = transformed.mean();
+    var = (transformed - mean).square().mean();
   }
-  double sum_logdata = std::accumulate(logdata.begin(), logdata.end(), 0.0);
-  return -static_cast<T>((lambda - 1) * sum_logdata - n / 2 * std::log(var));
+  return -static_cast<T>((lambda - 1) * logdata.sum() -
+                         n / 2.0 * std::log(var));
 }
 
 template <typename T>

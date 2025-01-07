@@ -1,8 +1,9 @@
 #pragma once
 
 #include "common.h"
-#include "stats.h"
 #include "stl.hpp"
+
+#include <Eigen/Dense>
 
 #include <cmath>
 
@@ -47,23 +48,23 @@ template <typename T> T SeasHeuristic(const T *x, size_t n, size_t period) {
 
 template <typename T>
 void GreatestAutocovariance(const T *x, size_t n, T *out, size_t max_lag) {
-  auto resids = std::make_unique<T[]>(n);
-  Difference(x, n, resids.get(), 1);
-  indptr_t start = FirstNotNaN(resids.get(), n);
+  Eigen::VectorX<T> resids(n);
+  Difference(x, n, resids.data(), 1);
+  indptr_t start = FirstNotNaN(resids.data(), n);
   if (start == n) {
-    *out = static_cast<T>(0.0);
+    *out = T{0};
     return;
   }
-  max_lag = std::min(max_lag, n - start - 1);
-  T max_cov = -std::numeric_limits<T>::infinity();
-  size_t lag = 0;
+  n -= static_cast<size_t>(start);
+  resids = resids.tail(n).eval();
+  max_lag = std::min(max_lag, n - 1);
+  std::pair<T, size_t> result{-std::numeric_limits<T>::infinity(), 0};
   for (size_t i = 2; i < max_lag + 1; ++i) {
-    T cov = Dot(resids.get() + start, resids.get() + start + i, n - start - i);
-    if (cov > max_cov) {
-      max_cov = cov;
-      lag = i;
+    T cov = resids.head(n - i).dot(resids.tail(n - i));
+    if (cov > result.first) {
+      result = {cov, i};
     }
   }
-  *out = static_cast<T>(lag);
+  *out = static_cast<T>(result.second);
 }
 } // namespace seasonal

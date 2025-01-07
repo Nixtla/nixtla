@@ -4,3 +4,6 @@
 [submodule "external_libs/skiplist"]
 	path = external_libs/skiplist
 	url = https://github.com/paulross/skiplist.git
+[submodule "external_libs/eigen"]
+	path = external_libs/eigen
+	url = https://gitlab.com/libeigen/eigen
