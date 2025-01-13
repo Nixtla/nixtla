@@ -75,11 +75,11 @@ INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 
 |     | unique_id | ds         | y         | TimeGPT  | TimeGPT-hi-99 | TimeGPT-lo-99 | anomaly |
 |-----|-----------|------------|-----------|----------|---------------|---------------|---------|
-| 0   | 0         | 2008-01-10 | 8.281724  | 8.224194 | 9.503593      | 6.944794      | False   |
-| 1   | 0         | 2008-01-11 | 8.292799  | 8.151521 | 9.430921      | 6.872121      | False   |
-| 2   | 0         | 2008-01-12 | 8.199189  | 8.127249 | 9.406649      | 6.847849      | False   |
-| 3   | 0         | 2008-01-13 | 9.996522  | 8.917255 | 10.196655     | 7.637855      | False   |
-| 4   | 0         | 2008-01-14 | 10.127071 | 9.002296 | 10.281695     | 7.722896      | False   |
+| 0   | 0         | 2008-01-10 | 8.281724  | 8.224187 | 9.503586      | 6.944788      | False   |
+| 1   | 0         | 2008-01-11 | 8.292799  | 8.151533 | 9.430932      | 6.872135      | False   |
+| 2   | 0         | 2008-01-12 | 8.199189  | 8.127243 | 9.406642      | 6.847845      | False   |
+| 3   | 0         | 2008-01-13 | 9.996522  | 8.917259 | 10.196658     | 7.637861      | False   |
+| 4   | 0         | 2008-01-14 | 10.127071 | 9.002326 | 10.281725     | 7.722928      | False   |
 
 > 📘 Available models in Azure AI
 >
@@ -95,9 +95,9 @@ INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 > tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
 > on how and when to use `timegpt-1-long-horizon`.
 
-As you can see, 0 is assigned to “normal” values, as they fall inside
-the confidence interval. A label of 1 is then assigned to abnormal
-points.
+As you can see, `False` is assigned to “normal” values, as they fall
+inside the confidence interval. A label of `True` is then assigned to
+abnormal points.
 
 We can also plot the anomalies using
 [`NixtlaClient`](https://Nixtla.github.io/nixtla/src/nixtla_client.html#nixtlaclient).
@@ -112,7 +112,7 @@ nixtla_client.plot(df, anomalies_df)
 
 Previously, we performed anomaly detection without using any exogenous
 features. Now, it is possible to create features specifically for this
-scnenario to inform the model in its task of anomaly detection.
+scenario to inform the model in its task of anomaly detection.
 
 Here, we create date features that can be used by the model.
 
@@ -138,11 +138,11 @@ INFO:nixtla.nixtla_client:Using the following exogenous features: ['month_1.0', 
 INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
-Then, we can plot the weights of each feature to understand its impact
-on anomaly detection.
+Then, we can plot the detected anomalies where the model now used
+additional information from exogenous features.
 
 ```python
-nixtla_client.weights_x.plot.barh(x='features', y='weights')
+nixtla_client.plot(df, anomalies_df_x)
 ```
 
 ![](/nixtla/docs/tutorials/20_anomaly_detection_files/figure-markdown_strict/cell-10-output-1.png)

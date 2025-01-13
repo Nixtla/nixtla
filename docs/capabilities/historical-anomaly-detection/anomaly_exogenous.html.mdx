@@ -34,23 +34,30 @@ df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-tim
 anomalies_df = nixtla_client.detect_anomalies(
     df=df,
     time_col='ds',
-    target_col='y'
+    target_col='y',
 )
 
-# Plot weight of exgeonous features
-nixtla_client.weights_x.plot.barh(x='features', y='weights')
+# Plot anomalies
+nixtla_client.plot(df, anomalies_df)
 ```
 
 ``` text
 INFO:nixtla.nixtla_client:Validating inputs...
-INFO:nixtla.nixtla_client:Inferred freq: h
+INFO:nixtla.nixtla_client:Inferred freq: H
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
 INFO:nixtla.nixtla_client:Querying model metadata...
 INFO:nixtla.nixtla_client:Using the following exogenous features: ['Exogenous1', 'Exogenous2', 'day_0', 'day_1', 'day_2', 'day_3', 'day_4', 'day_5', 'day_6']
 INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
 ```
 
-![](/nixtla/docs/capabilities/anomaly-detection/02_anomaly_exogenous_files/figure-markdown_strict/cell-5-output-2.png)
+![](/nixtla/docs/capabilities/historical-anomaly-detection/02_anomaly_exogenous_files/figure-markdown_strict/cell-5-output-2.png)
+
+```python
+# Plot weights of date features
+nixtla_client.weights_x.plot.barh(x='features', y='weights')
+```
+
+![](/nixtla/docs/capabilities/historical-anomaly-detection/02_anomaly_exogenous_files/figure-markdown_strict/cell-6-output-1.png)
 
 > 📘 Available models in Azure AI
 >
