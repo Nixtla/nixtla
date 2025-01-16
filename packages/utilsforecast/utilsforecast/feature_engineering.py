@@ -212,7 +212,7 @@ def _compute_time_feature(
         if isinstance(times, pd.DatetimeIndex):
             if feature in ("week", "weekofyear"):
                 times = times.isocalendar()
-            feat_vals = getattr(times, feature)
+            feat_vals = getattr(times, feature).to_numpy()
         else:
             feat_vals = getattr(times.dt, feature)()
     return feat_name, feat_vals
@@ -228,7 +228,7 @@ def _add_time_features(
     if isinstance(df, pd.DataFrame):
         times = pd.Index(unique_times)
         time2pos = {time: i for i, time in enumerate(times)}
-        restore_idxs = df[time_col].map(time2pos)
+        restore_idxs = df[time_col].map(time2pos).to_numpy()
         for feature in features:
             name, vals = _compute_time_feature(times, feature)
             df[name] = vals[restore_idxs]
