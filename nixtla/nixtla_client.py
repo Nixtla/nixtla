@@ -723,22 +723,28 @@ class NixtlaClient:
         payload: dict[str, Any],
         multithreaded_compress: bool,
     ) -> dict[str, Any]:
+        def ensure_contiguous(arr: np.ndarray) -> np.ndarray:
+            if isinstance(arr, np.ndarray):
+                if np.issubdtype(arr.dtype, np.floating):
+                    arr = np.nan_to_num(
+                        np.ascontiguousarray(arr, dtype=np.float32),
+                        nan=np.nan,
+                        posinf=np.finfo(np.float32).max,
+                        neginf=np.finfo(np.float32).min,
+                        copy=False,
+                    )
+                else:
+                    arr = np.ascontiguousarray(arr)
+            return arr
+
         def ensure_contiguous_arrays(d: dict[str, Any]) -> None:
             for k, v in d.items():
                 if isinstance(v, np.ndarray):
-                    if np.issubdtype(v.dtype, np.floating):
-                        v_cont = np.ascontiguousarray(v, dtype=np.float32)
-                        d[k] = np.nan_to_num(
-                            v_cont,
-                            nan=np.nan,
-                            posinf=np.finfo(np.float32).max,
-                            neginf=np.finfo(np.float32).min,
-                            copy=False,
-                        )
-                    else:
-                        d[k] = np.ascontiguousarray(v)
+                    d[k] = ensure_contiguous(v)
                 elif isinstance(v, dict):
                     ensure_contiguous_arrays(v)
+                elif isinstance(v, list):
+                    d[k] = [ensure_contiguous(x) for x in v]
 
         ensure_contiguous_arrays(payload)
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
