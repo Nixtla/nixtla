@@ -723,20 +723,27 @@ class NixtlaClient:
         payload: dict[str, Any],
         multithreaded_compress: bool,
     ) -> dict[str, Any]:
+        def ensure_contiguous_if_array(x):
+            if not isinstance(x, np.ndarray):
+                return x
+            if np.issubdtype(x.dtype, np.floating):
+                x = np.nan_to_num(
+                    np.ascontiguousarray(x, dtype=np.float32),
+                    nan=np.nan,
+                    posinf=np.finfo(np.float32).max,
+                    neginf=np.finfo(np.float32).min,
+                    copy=False,
+                )
+            else:
+                x = np.ascontiguousarray(x)
+            return x
+
         def ensure_contiguous_arrays(d: dict[str, Any]) -> None:
             for k, v in d.items():
                 if isinstance(v, np.ndarray):
-                    if np.issubdtype(v.dtype, np.floating):
-                        v_cont = np.ascontiguousarray(v, dtype=np.float32)
-                        d[k] = np.nan_to_num(
-                            v_cont,
-                            nan=np.nan,
-                            posinf=np.finfo(np.float32).max,
-                            neginf=np.finfo(np.float32).min,
-                            copy=False,
-                        )
-                    else:
-                        d[k] = np.ascontiguousarray(v)
+                    d[k] = ensure_contiguous_if_array(v)
+                elif isinstance(v, list):
+                    d[k] = [ensure_contiguous_if_array(x) for x in v]
                 elif isinstance(v, dict):
                     ensure_contiguous_arrays(v)
 
