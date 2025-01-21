@@ -8,6 +8,8 @@
 
 We introduce the `online_anomaly_detection` method, which allows you to define a `detection_size` on which to look for anomalies.
 
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.6).*
+
 ## 0.6.5
 
 ### 🚀 Feature Enhancements
@@ -23,6 +25,8 @@ All requests above 1MB are now automatically compressed using [zstd](https://git
 #### refit argument in cross_validation
 
 It's now possible to fine-tune the model only on the first window when performing `cross_validation` by setting `refit=False`. This will dramatically decrease the time it takes to run cross validation with fine-tuning.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.5).*
 
 ## 0.6.4
 
@@ -40,6 +44,8 @@ You can now programatically get the number of calls you've made to our API as we
 
 The `cross_validation` method now supports the `hist_exog_list` parameter, which allows you to define historical exogenous features.
 
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.4).*
+
 ## 0.6.2
 
 ### 🚀 Feature Enhancements
@@ -47,6 +53,8 @@ The `cross_validation` method now supports the `hist_exog_list` parameter, which
 #### Finetune depth
 
 You can now specify the depth of the fine-tuning process by setting `finetune_depth` in the `forecast` and `cross_validation` methods.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.2).*
 
 ## 0.6.0
 
@@ -68,6 +76,8 @@ It's now possible to define historical exogenous features in the `forecast` meth
 
 You can now get the contributions of your exogenous features to the forecast by setting `feature_contributions=True` in the `forecast` method.
 
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.0).*
+
 ## 0.5.0
 
 ### 🚀 Feature Enhancements
@@ -75,6 +85,8 @@ You can now get the contributions of your exogenous features to the forecast by 
 #### Cross Validation endpoint
 
 The `cross_validation` method used to make one API call per window, now the method makes a single API call.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.5.0).*
 
 ## 0.4.0
 
@@ -92,6 +104,8 @@ The `cross_validation` method used to make one API call per window, now the meth
   ```python
   from nixtla import NixtlaClient
   ```
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.4.0).*
 
 ## 0.3.0
 
