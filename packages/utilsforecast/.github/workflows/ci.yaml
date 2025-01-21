@@ -27,7 +27,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install the library
-        run: pip install uv && uv pip install --system ".[dev]" fugue[dask,spark]>=0.8.1
+        run: pip install uv && uv pip install --system ".[dev]" fugue[dask,spark]>=0.8.1 "dask<=2024.12.1"
 
       - name: Run tests
         run: nbdev_test --do_print --timing --flags 'datasets distributed matplotlib polars pyarrow scipy'
