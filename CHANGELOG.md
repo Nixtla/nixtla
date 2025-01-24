@@ -1,5 +1,112 @@
 # Changelog
 
+## 0.6.6
+
+### 🚀 Feature Enhancements
+
+#### Online anomaly detection
+
+We introduce the `online_anomaly_detection` method, which allows you to define a `detection_size` on which to look for anomalies.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.6).*
+
+## 0.6.5
+
+### 🚀 Feature Enhancements
+
+#### Persisting fine-tuned models
+
+You can now run an isolated fine-tuning process, save the model and use it afterwards in all of our methods, i.e. `forecast`, `cross_validation` and `detect_anomalies`.
+
+#### zstd compression
+
+All requests above 1MB are now automatically compressed using [zstd](https://github.com/facebook/zstd), which will help when sending large amounts of data, as well as users with slow connections.
+
+#### refit argument in cross_validation
+
+It's now possible to fine-tune the model only on the first window when performing `cross_validation` by setting `refit=False`. This will dramatically decrease the time it takes to run cross validation with fine-tuning.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.5).*
+
+## 0.6.4
+
+### 🚀 Feature Enhancements
+
+#### Integer and custom pandas frequencies
+
+It's now possible to provide integer timestamps and an integer frequency as well as non-standard timestamps and custom pandas frequencies like [CustomBusinessHour](https://pandas.pydata.org/docs/reference/api/pandas.tseries.offsets.CustomBusinessHour.html)
+
+#### Usage method
+
+You can now programatically get the number of calls you've made to our API as well as your limits by calling the `usage` method.
+
+#### Historic exogenous in cross validation
+
+The `cross_validation` method now supports the `hist_exog_list` parameter, which allows you to define historical exogenous features.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.4).*
+
+## 0.6.2
+
+### 🚀 Feature Enhancements
+
+#### Finetune depth
+
+You can now specify the depth of the fine-tuning process by setting `finetune_depth` in the `forecast` and `cross_validation` methods.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.2).*
+
+## 0.6.0
+
+### 🚀 Feature Enhancements
+
+#### V2 API endpoints
+
+The client now makes requests to the the V2 API endpoints, which have a lower latency.
+
+#### orjson serialization
+
+We now use [orjson](https://github.com/ijl/orjson) to serialize the payloads, which provides a performance improvement, especially when using exogenous features.
+
+#### Historical exogenous features
+
+It's now possible to define historical exogenous features in the `forecast` method by providing the feature names through `hist_exog_list`.
+
+#### Feature contributions
+
+You can now get the contributions of your exogenous features to the forecast by setting `feature_contributions=True` in the `forecast` method.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.6.0).*
+
+## 0.5.0
+
+### 🚀 Feature Enhancements
+
+#### Cross Validation endpoint
+
+The `cross_validation` method used to make one API call per window, now the method makes a single API call.
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.5.0).*
+
+## 0.4.0
+
+### 🔄 Changes & Deprecations
+
+- **Deprecation of `nixtlats`package:**
+  The `nixtlats` package has been deprecated in favor of the new `nixtla` package. Please make sure to install the `nixtla` package and update your imports like the following:
+
+  **Before:**
+  ```python
+  from nixtlats import NixtlaClient
+  ```
+
+  **After:**
+  ```python
+  from nixtla import NixtlaClient
+  ```
+
+*See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.4.0).*
+
 ## 0.3.0
 
 ### 🔄 Changes & Deprecations
@@ -187,7 +294,7 @@ cv_df = timegpt.cross_validation(df, h=35, n_windows=5, step_size=5)
 
 This will generate 5 distinct forecast sets, each with a horizon of 35, stepping through your data every 5 timestamps.
 
-### 🔁 Retry Behavior for Robust API Calls 
+### 🔁 Retry Behavior for Robust API Calls
 
 The new retry mechanism allows the making of more robust API calls (preventing them from crashing with large-scale tasks).
 
@@ -209,11 +316,8 @@ timegpt = TimeGPT()
 ```
 For more information visit our [FAQS](https://docs.nixtla.io/docs/faqs#setting-up-your-authentication-token-for-nixtla-sdk) section.
 
-### 📘 Introducing the FAQ Section 
+### 📘 Introducing the FAQ Section
 
 Questions? We've got answers! Our new [FAQ section](https://docs.nixtla.io/docs/faqs) tackles the most common inquiries, from integrating exogenous variables to configuring authorization tokens and understanding long-horizon forecasts.
 
 *See full changelog [here](https://github.com/Nixtla/nixtla/releases/v0.1.18).*
-
-
-
