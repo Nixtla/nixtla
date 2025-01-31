@@ -81,7 +81,6 @@ from hierarchicalforecast.evaluation import evaluate
 from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
 from utilsforecast.losses import mse
 
-
 # Load TourismSmall dataset
 Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
 Y_df['ds'] = pd.to_datetime(Y_df['ds'])
@@ -92,10 +91,9 @@ Y_test_df  = Y_df.groupby('unique_id').tail(4)
 Y_train_df = Y_df.drop(Y_test_df.index)
 
 # Compute base auto-ARIMA predictions
-fcst = StatsForecast(df=Y_train_df,
-                     models=[AutoARIMA(season_length=4), Naive()],
-                     freq='Q', n_jobs=-1)
-Y_hat_df = fcst.forecast(h=4)
+fcst = StatsForecast(models=[AutoARIMA(season_length=4), Naive()],
+                     freq='QE', n_jobs=-1)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=4)
 
 # Reconcile the base predictions
 reconcilers = [
@@ -116,7 +114,6 @@ Assumes you have a test dataframe.
 df = Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds'])
 evaluation = evaluate(df = df,
                       tags = tags,
-                      train_df = Y_train_df,
                       metrics = [mse],
                       benchmark = "Naive")
 ```

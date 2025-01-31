@@ -1,7 +1,3 @@
-import os
-
-os.environ['NIXTLA_ID_AS_COL'] = '1'
-
 import numpy as np
 import pandas as pd
 import pytest

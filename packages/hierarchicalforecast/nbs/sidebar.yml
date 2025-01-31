@@ -25,7 +25,6 @@ website:
           - examples/TourismLarge-Evaluation.ipynb
         - section: ML Forecast Reconciliation
           contents:
-          - examples/HierarchicalForecast-GluonTS.ipynb
           - examples/MLFrameworksExample.ipynb
       - section: "API Reference"
         contents: src/*

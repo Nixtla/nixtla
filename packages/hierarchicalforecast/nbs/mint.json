@@ -63,11 +63,11 @@
     {
       "group": "API Reference",
       "pages": [
-        "core.html",
-        "methods.html",
-        "probabilistic_methods.html",
-        "evaluation.html",
-        "utils.html"
+        "src/core.html",
+        "src/methods.html",
+        "src/probabilistic_methods.html",
+        "src/evaluation.html",
+        "src/utils.html"
       ]
     }
   ]

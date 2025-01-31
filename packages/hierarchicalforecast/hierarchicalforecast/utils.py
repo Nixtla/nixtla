@@ -17,14 +17,14 @@ from numba import njit, prange
 from sklearn.preprocessing import OneHotEncoder
 from typing import Optional, Union, Sequence
 
-# %% ../nbs/src/utils.ipynb 6
+# %% ../nbs/src/utils.ipynb 5
 # Global variables
 NUMBA_NOGIL = True
 NUMBA_CACHE = True
 NUMBA_PARALLEL = True
 NUMBA_FASTMATH = True
 
-# %% ../nbs/src/utils.ipynb 7
+# %% ../nbs/src/utils.ipynb 6
 class CodeTimer:
     def __init__(self, name=None, verbose=True):
         self.name = " '" + name + "'" if name else ""
@@ -43,7 +43,7 @@ class CodeTimer:
                 + " seconds"
             )
 
-# %% ../nbs/src/utils.ipynb 8
+# %% ../nbs/src/utils.ipynb 7
 def is_strictly_hierarchical(S: np.ndarray, tags: dict[str, np.ndarray]) -> bool:
     # main idea:
     # if S represents a strictly hierarchical structure
@@ -60,7 +60,7 @@ def is_strictly_hierarchical(S: np.ndarray, tags: dict[str, np.ndarray]) -> bool
     nodes = levels_.popitem()[1].size
     return paths == nodes
 
-# %% ../nbs/src/utils.ipynb 10
+# %% ../nbs/src/utils.ipynb 9
 def _to_upper_hierarchy(
     bottom_split: list[str], bottom_values: str, upper_key: str
 ) -> list[str]:
@@ -73,7 +73,7 @@ def _to_upper_hierarchy(
 
     return [join_upper(val) for val in bottom_values]
 
-# %% ../nbs/src/utils.ipynb 11
+# %% ../nbs/src/utils.ipynb 10
 def aggregate(
     df: Frame,
     spec: list[list[str]],
@@ -238,7 +238,7 @@ def aggregate(
 
     return Y_df, S_df, tags
 
-# %% ../nbs/src/utils.ipynb 25
+# %% ../nbs/src/utils.ipynb 24
 class HierarchicalPlot:
     """Hierarchical Plot
 
@@ -523,7 +523,7 @@ class HierarchicalPlot:
         plt.grid()
         plt.show()
 
-# %% ../nbs/src/utils.ipynb 46
+# %% ../nbs/src/utils.ipynb 45
 # convert levels to output quantile names
 def level_to_outputs(level: list[int]) -> tuple[list[float], list[str]]:
     """Converts list of levels into output names matching StatsForecast and NeuralForecast methods.
@@ -568,7 +568,7 @@ def quantiles_to_outputs(quantiles: list[float]) -> tuple[list[float], list[str]
             output_names.append("-median")
     return quantiles, output_names
 
-# %% ../nbs/src/utils.ipynb 47
+# %% ../nbs/src/utils.ipynb 46
 # given input array of sample forecasts and inptut quantiles/levels,
 # output a Pandas Dataframe with columns of quantile predictions
 def samples_to_quantiles_df(
@@ -653,7 +653,7 @@ def samples_to_quantiles_df(
 
     return _quantiles, df_nw.to_native()
 
-# %% ../nbs/src/utils.ipynb 55
+# %% ../nbs/src/utils.ipynb 53
 # Masked empirical covariance matrix
 @njit(
     "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool_, 2, 'C'))",
@@ -691,7 +691,7 @@ def _ma_cov(residuals: np.ndarray, not_nan_mask: np.ndarray):
 
     return W
 
-# %% ../nbs/src/utils.ipynb 56
+# %% ../nbs/src/utils.ipynb 54
 # Shrunk covariance matrix using the Schafer-Strimmer method
 
 
@@ -842,7 +842,7 @@ def _shrunk_covariance_schaferstrimmer_with_nans(
 
     return W
 
-# %% ../nbs/src/utils.ipynb 58
+# %% ../nbs/src/utils.ipynb 56
 # Lasso cyclic coordinate descent
 @njit(
     "Array(float64, 1, 'C')(Array(float64, 2, 'C'), Array(float64, 1, 'C'), float64, int64, float64)",

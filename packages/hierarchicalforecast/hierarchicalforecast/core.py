@@ -19,7 +19,7 @@ from typing import Optional
 import narwhals as nw
 import numpy as np
 
-# %% ../nbs/src/core.ipynb 7
+# %% ../nbs/src/core.ipynb 6
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     func_params = fn.__dict__
@@ -42,7 +42,7 @@ def _build_fn_name(fn) -> str:
         fn_name += "_" + "_".join(func_params)
     return fn_name
 
-# %% ../nbs/src/core.ipynb 11
+# %% ../nbs/src/core.ipynb 10
 def _reverse_engineer_sigmah(
     Y_hat_df: Frame,
     y_hat: np.ndarray,
@@ -87,7 +87,7 @@ def _reverse_engineer_sigmah(
 
     return sigmah
 
-# %% ../nbs/src/core.ipynb 12
+# %% ../nbs/src/core.ipynb 11
 class HierarchicalReconciliation:
     """Hierarchical Reconciliation Class.
 
