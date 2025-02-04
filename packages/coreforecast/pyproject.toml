@@ -47,7 +47,6 @@ wheel.packages = ["python/coreforecast"]
 archs = "all"
 build-verbosity = 3
 test-extras = "dev"
-test-skip = "*linux_aarch64"
 
 [tool.pyright]
 venvPath = "."
