@@ -330,8 +330,11 @@ class GlobalSklearnTransformer(BaseTargetTransform):
         cols_to_transform = [
             c for c in df.columns if c not in (self.id_col, self.time_col)
         ]
-        transformed = self.transformer_.inverse_transform(
-            df[cols_to_transform].to_numpy()
+        transformed = np.hstack(
+            [
+                self.transformer_.inverse_transform(df[[col]].to_numpy())
+                for col in cols_to_transform
+            ]
         )
         return ufp.assign_columns(df, cols_to_transform, transformed)
 
