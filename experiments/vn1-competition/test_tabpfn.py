@@ -115,7 +115,6 @@ def main():
         fcst_df.to_csv(CURRENT_PATH.joinpath("tabpfn_preds.csv"), index=False, header=True)
     else:
         fcst_df = pd.read_csv(tabpfn_results, parse_dates=['ds'])
-        fcst_df.rename(columns={'y': 'tabpfn'}, inplace=True)
     fcst_df_comp = get_competition_forecasts()
     fcst_df = fcst_df.merge(fcst_df_comp, on=["unique_id", "ds"], how="left")
     eval_df = vn1_competition_evaluation(fcst_df)
