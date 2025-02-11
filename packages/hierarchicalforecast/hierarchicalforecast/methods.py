@@ -7,23 +7,24 @@ __all__ = ['BottomUp', 'BottomUpSparse', 'TopDown', 'TopDownSparse', 'MiddleOut'
 # %% ../nbs/src/methods.ipynb 3
 import warnings
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from typing import Optional, Union
 
+import clarabel
 import numpy as np
 from quadprog import solve_qp
 from scipy import sparse
 
 # %% ../nbs/src/methods.ipynb 4
+from .probabilistic_methods import PERMBU, Bootstrap, Normality
 from hierarchicalforecast.utils import (
-    is_strictly_hierarchical,
+    _lasso,
     _ma_cov,
     _shrunk_covariance_schaferstrimmer_no_nans,
     _shrunk_covariance_schaferstrimmer_with_nans,
-    _lasso,
+    is_strictly_hierarchical,
 )
-from .probabilistic_methods import Normality, Bootstrap, PERMBU
 
 # %% ../nbs/src/methods.ipynb 6
 class HReconciler:
@@ -1112,21 +1113,37 @@ class MinTrace(HReconciler):
 class MinTraceSparse(MinTrace):
     """MinTraceSparse Reconciliation Class.
 
-    This is the implementation of a subset of MinTrace features using the sparse
-    matrix approach. It works much more efficient on datasets with many time series.
+    This is the implementation of OLS and WLS estimators using sparse matrices. It is not guaranteed
+    to give identical results to the non-sparse version, but works much more efficiently on data sets
+    with many time series.<br>
 
-    See the parent class for more details.
+    See the parent class for more details.<br>
 
-    Currently supported:
-    * Methods using diagonal W matrix, i.e. "ols", "wls_struct", "wls_var",
-    * The standard MinT version (non-negative is not supported).
-
-    Note: due to the numerical instability of the matrix inversion when creating the
-    P matrix, the method is NOT guaranteed to give identical results to the non-sparse
-    version.
+    **Parameters:**<br>
+    `method`: str, one of `ols`, `wls_struct`, or `wls_var`.<br>
+    `nonnegative`: bool, return non-negative reconciled forecasts.<br>
+    `num_threads`: int, number of threads to execute non-negative quadratic programming calls.<br>
+    `qp`: bool, implement non-negativity constraint with a quadratic programming approach. Setting
+    this to True generally gives better results, but at the expense of higher cost to compute. <br>
     """
 
     is_sparse_method = True
+
+    def __init__(
+        self,
+        method: str,
+        nonnegative: bool = False,
+        num_threads: int = 1,
+        qp: bool = True,
+    ) -> None:
+        if method not in ["ols", "wls_struct", "wls_var"]:
+            raise NotImplementedError(
+                "GLS is not currently supported for MinTraceSparse."
+            )
+        # Call the parent constructor.
+        super().__init__(method, nonnegative, num_threads=num_threads)
+        # Assign the attributes specific to the sparse class.
+        self.qp = qp
 
     def _get_PW_matrices(
         self,
@@ -1182,7 +1199,7 @@ class MinTraceSparse(MinTrace):
             # masked_res = np.ma.array(residuals, mask=np.isnan(residuals))
             # covm = np.ma.cov(masked_res, rowvar=False, allow_masked=True).data
 
-            W_diag = np.var(residuals, axis=0, ddof=1)
+            W_diag = np.nanvar(residuals, axis=0, ddof=1)
         else:
             raise ValueError(f"Unknown reconciliation method {self.method}")
 
@@ -1230,42 +1247,163 @@ class MinTraceSparse(MinTrace):
         seed: Optional[int] = None,
         tags: Optional[dict[str, np.ndarray]] = None,
         idx_bottom: Optional[np.ndarray] = None,
-    ):
-        # Clip the base forecasts if required to align them with their use in practice.
+    ) -> "MinTraceSparse":
         if self.nonnegative:
+            # Clip the base forecasts to align them with their use in practice.
             self.y_hat = np.clip(y_hat, 0, None)
-        else:
-            self.y_hat = y_hat
-        # Get the reconciliation matrices.
-        self.P, self.W = self._get_PW_matrices(
-            S=S,
-            y_hat=self.y_hat,
-            y_insample=y_insample,
-            y_hat_insample=y_hat_insample,
-            idx_bottom=idx_bottom,
-        )
+            # Get the number of nodes, leaf nodes, and parent nodes.
+            n, n_b = S.shape
+            n_a = n - n_b
+            # Find the optimal non-negative forecasts.
+            if self.qp:
+                # Get the diagonal weight matrix, i.e., precision matrix, for
+                # the problem.
+                if self.method == "ols":
+                    W = sparse.eye(n, format="csc")
+                elif self.method == "wls_struct":
+                    W = sparse.csc_matrix(
+                        (
+                            (1.0 / S.sum(axis=1)).A1,
+                            np.arange(n, dtype=np.min_scalar_type(n - 1)),
+                            np.arange(n + 1, dtype=np.min_scalar_type(n)),
+                        )
+                    )
+                elif self.method == "wls_var":
+                    # Check that we have the in-sample values.
+                    if y_insample is None or y_hat_insample is None:
+                        raise ValueError(
+                            "`y_insample` and `y_hat_insample` are required to calculate residuals."
+                        )
+                    # Add a small jitter to the variance to improve the condition
+                    # of the variance matrix.
+                    W = sparse.csc_matrix(
+                        (
+                            1.0
+                            / (
+                                np.nanvar(y_insample - y_hat_insample, 1, ddof=1) + 2e-8
+                            ),
+                            np.arange(n, dtype=np.min_scalar_type(n - 1)),
+                            np.arange(n + 1, dtype=np.min_scalar_type(n)),
+                        )
+                    )
+                # Get the linear constraints matrix by vertically stacking the
+                # (n_a x n) constraint matrix in the zero-constrained
+                # represenation, which has the set of all reconciled forecasts
+                # in its null space, and a horizontally stacked (n_b x n_a)
+                # zero matrix and a negated (n_b x n_b) identity matrix.
+                A = sparse.vstack(
+                    (
+                        sparse.hstack(
+                            (sparse.eye(n_a, format="csc"), -S[:n_a, :].tocsc())
+                        ),
+                        -sparse.eye(n_b, n, n_a, format="csc"),
+                    )
+                )
+                # Get the linear constraints vector.
+                b = np.zeros(n)
+                # Get the composition of convex cones to solve the problem.
+                cones = [clarabel.ZeroConeT(n_a), clarabel.NonnegativeConeT(n_b)]
+                # Set up the settings for the solver.
+                settings = clarabel.DefaultSettings()
+                settings.verbose = False
 
-        if self.nonnegative:
-            # Get the number of leaf nodes.
-            _, n_bottom = S.shape
-            # Although it is now sufficient to ensure that all of the entries in P are
-            # positive, as it is implemented as a linear operator for the iterative
-            # method to solve the sparse linear system, we need to reconcile to find
-            # if any of the coherent bottom level point forecasts are negative.
-            y_tilde = self._reconcile(
-                S=S, P=self.P, y_hat=self.y_hat, level=None, sampler=None
-            )["mean"][-n_bottom:]
-            # Find if any of the forecasts are negative.
-            if np.any(y_tilde < 0):
-                # Clip the negative forecasts.
-                y_tilde = np.clip(y_tilde, 0, None)
-                # Force non-negative coherence by overwriting the base forecasts with
-                # the aggregated, clipped bottom level forecasts.
-                self.y_hat = S @ y_tilde
-                # Overwrite the attributes for the P and W matrices with those for
-                # bottom-up reconciliation to force projection onto the non-negative
-                # coherent subspace.
+                def solve_clarabel(
+                    y: np.ndarray,
+                    P: sparse.csc_matrix,
+                    A: sparse.csc_matrix,
+                    b: np.ndarray,
+                    cones: list,
+                    settings: clarabel.DefaultSettings,
+                    n_b: int,
+                ) -> tuple[bool, Optional[np.ndarray]]:
+                    # Get the linear coefficients, i.e., the cost vector.
+                    q = P @ -y
+                    # Set up the Clarabel solver.
+                    solver = clarabel.DefaultSolver(P, q, A, b, cones, settings)
+                    # Solve the problem.
+                    solution = solver.solve()
+                    # Resolve the solver exit status.
+                    if status := solution.status == clarabel.SolverStatus.Solved:
+                        # Return the slice of the primal solution that
+                        # represents the optimal non-negative reconciled
+                        # bottom level forecasts.
+                        return status, solution.x[-n_b:]
+                    else:
+                        # As the solver failed, discard the empty primal
+                        # solution.
+                        return status, None
+
+                with ThreadPoolExecutor(self.num_threads) as executor:
+                    # Dispatch the jobs.
+                    futures = [
+                        executor.submit(
+                            solve_clarabel, y, W, A, b, cones, settings, n_b
+                        )
+                        for y in self.y_hat.transpose()
+                    ]
+                    # Yield the futures as they complete.
+                    for future in as_completed(futures):
+                        # Return the exit status of the solver and the primal
+                        # solution.
+                        status, x = future.result()
+                        # Check that the problem is successfully solved and the
+                        # primal solution is within tolerance.
+                        if not (status and np.min(x) > -1e-8):
+                            raise Exception("Non-negative optimisation failed.")
+
+                # Extract the optimal non-negative reconciled bottom level
+                # forecasts.
+                x = np.vstack([future.result()[1] for future in futures]).transpose()
+                # Clip the negative forecasts within tolerance.
+                x = np.clip(x, 0, None)
+                # Aggregate the clipped bottom level forecasts and overwrite
+                # the base forecasts with the solution.
+                self.y_hat = S @ x
+                # Overwrite the attributes for the P and W matrices with those
+                # for bottom-up reconciliation to force projection onto the
+                # non-negative coherent subspace.
                 self.P, self.W = BottomUpSparse()._get_PW_matrices(S=S, idx_bottom=None)
+            else:
+                # Get the reconciliation matrices.
+                self.P, self.W = self._get_PW_matrices(
+                    S=S,
+                    y_hat=self.y_hat,
+                    y_insample=y_insample,
+                    y_hat_insample=y_hat_insample,
+                    idx_bottom=idx_bottom,
+                )
+                # Although it is now sufficient to ensure that all of the
+                # entries in P are positive, as it is implemented as a linear
+                # operator for the iterative method to solve the sparse linear
+                # system, we need to reconcile to find if any of the coherent
+                # bottom level point forecasts are negative.
+                y_tilde = self._reconcile(
+                    S=S, P=self.P, y_hat=self.y_hat, level=None, sampler=None
+                )["mean"][-n_b:, :]
+                # Find if any of the forecasts are negative.
+                if np.any(y_tilde < 0):
+                    # Clip the negative forecasts.
+                    y_tilde = np.clip(y_tilde, 0, None)
+                    # Force non-negative coherence by overwriting the base
+                    # forecasts with the aggregated, clipped bottom level
+                    # forecasts.
+                    self.y_hat = S @ y_tilde
+                    # Overwrite the attributes for the P and W matrices with
+                    # those for bottom-up reconciliation to force projection
+                    # onto the non-negative coherent subspace.
+                    self.P, self.W = BottomUpSparse()._get_PW_matrices(
+                        S=S, idx_bottom=None
+                    )
+        else:
+            # Get the reconciliation matrices.
+            self.y_hat = y_hat
+            self.P, self.W = self._get_PW_matrices(
+                S=S,
+                y_hat=self.y_hat,
+                y_insample=y_insample,
+                y_hat_insample=y_hat_insample,
+                idx_bottom=idx_bottom,
+            )
 
         # Get the sampler for probabilistic reconciliation.
         self.sampler = self._get_sampler(

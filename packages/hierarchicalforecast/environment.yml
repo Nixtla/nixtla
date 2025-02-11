@@ -8,6 +8,7 @@ dependencies:
   - pandas
   - scikit-learn
   - quadprog
+  - clarabel
   - matplotlib
   - tqdm
   - pip
