@@ -41,6 +41,8 @@ except ImportError:
     def shift_array(x, offset):
         if offset >= x.size or offset < 0:
             return np.full_like(x, np.nan)
+        if offset == 0:
+            return x.copy()
         out = np.empty_like(x)
         out[:offset] = np.nan
         out[offset:] = x[:-offset]
