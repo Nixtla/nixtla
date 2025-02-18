@@ -140,7 +140,7 @@ class HReconciler:
         if not self.fitted:
             raise Exception("This model instance is not fitted yet, Call fit method.")
         if self.sampler is None:
-            raise Exception(
+            raise ValueError(
                 "This model instance does not have sampler. Call fit with `intervals_method`."
             )
 
@@ -203,8 +203,12 @@ class BottomUp(HReconciler):
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `y_insample`: In-sample values of size (`base`, `horizon`).<br>
+        `y_hat_insample`: In-sample forecast values of size (`base`, `horizon`).<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
         `**sampler_kwargs`: Coherent sampler instantiation arguments.<br>
 
         **Returns:**<br>
@@ -248,8 +252,13 @@ class BottomUp(HReconciler):
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `y_insample`: In-sample values of size (`base`, `insample_size`).<br>
+        `y_hat_insample`: In-sample forecast values of size (`base`, `insample_size`).<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
         `**sampler_kwargs`: Coherent sampler instantiation arguments.<br>
 
         **Returns:**<br>
@@ -400,9 +409,11 @@ class TopDown(HReconciler):
         elif self.method == "proportion_averages":
             prop = np.mean(y_btm, axis=1) / np.mean(y_top)
         elif self.method == "forecast_proportions":
-            raise Exception(f"Fit method not implemented for {self.method} yet")
+            raise NotImplementedError(
+                f"Fit method not implemented for {self.method} yet"
+            )
         else:
-            raise Exception(f"Unknown method {self.method}")
+            raise ValueError(f"Unknown method {self.method}")
 
         P = np.zeros_like(
             S, np.float64
@@ -429,12 +440,14 @@ class TopDown(HReconciler):
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
-        `tags`: Each key is a level and each value its `S` indices.<br>
         `y_insample`: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
+        `y_hat_insample`: Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
+        `interval_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `**sampler_kwargs`: Coherent sampler instantiation arguments.<br>
 
         **Returns:**<br>
         `self`: object, fitted reconciler.
@@ -479,11 +492,14 @@ class TopDown(HReconciler):
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `tags`: Each key is a level and each value its `S` indices.<br>
-        `y_insample`: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
+        `y_hat_insample`: Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `**sampler_kwargs`: Coherent sampler instantiation arguments.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Top Down approach.
@@ -492,8 +508,8 @@ class TopDown(HReconciler):
             idx_top = int(S.sum(axis=1).argmax())
             levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
             if level is not None:
-                warnings.warn(
-                    "Prediction intervals not implement for `forecast_proportions`"
+                raise ValueError(
+                    "Prediction intervals not implemented for `forecast_proportions`"
                 )
             nodes = _get_child_nodes(S=S, tags=levels_)
             reconciled = [
@@ -566,9 +582,9 @@ class TopDownSparse(TopDown):
         elif self.method == "proportion_averages":
             prop = np.mean(y_btm, 1) / np.mean(y_top)
         elif self.method == "forecast_proportions":
-            raise Exception(f"Fit method not yet implemented for {self.method}.")
+            raise ValueError(f"Fit method not yet implemented for {self.method}.")
         else:
-            raise Exception(f"{self.method} is an unknown disaggregation method.")
+            raise ValueError(f"{self.method} is an unknown disaggregation method.")
 
         # Instantiate and allocate the "projection" matrix to distribute the
         # disaggregated base forecast of the top node to the bottom nodes.
@@ -618,13 +634,13 @@ class MiddleOut(HReconciler):
         ]
 
     def _get_PW_matrices(self, **kwargs):
-        raise Exception("Not implemented")
+        raise NotImplementedError("Not implemented")
 
     def fit(self, **kwargs):
-        raise Exception("Not implemented")
+        raise NotImplementedError("Not implemented")
 
     def predict(self, **kwargs):
-        raise Exception("Not implemented")
+        raise NotImplementedError("Not implemented")
 
     def fit_predict(
         self,
@@ -642,10 +658,17 @@ class MiddleOut(HReconciler):
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `tags`: Each key is a level and each value its `S` indices.<br>
         `y_insample`: Insample values of size (`base`, `insample_size`). Only used for `forecast_proportions`<br>
+        `level`: Not supported. <br>
+        `intervals_method`: Not supported.<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the Middle Out approach.
         """
+        if level is not None or intervals_method is not None:
+            raise NotImplementedError(
+                "Prediction intervals are not implemented for `MiddleOut`"
+            )
+
         if not is_strictly_hierarchical(S, tags):
             raise ValueError(
                 "Middle out reconciliation requires strictly hierarchical structures."
@@ -737,6 +760,22 @@ class MiddleOutSparse(MiddleOut):
         level: Optional[list[int]] = None,
         intervals_method: Optional[str] = None,
     ) -> dict[str, np.ndarray]:
+        """Middle Out Sparse Reconciliation Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Only used for `forecast_proportions`<br>
+        `level`: deprecated. <br>
+        `intervals_method`: deprecated.<br>
+
+        **Returns:**<br>
+        `y_tilde`: Reconciliated y_hat using the Middle Out Sparse approach.
+        """
+        if level is not None or intervals_method is not None:
+            raise ValueError("Prediction intervals not implemented for `MiddleOut`")
+
         # Check if the data structure is strictly hierarchical.
         if not is_strictly_hierarchical(S, tags):
             raise ValueError(
@@ -858,9 +897,11 @@ class MinTrace(HReconciler):
     ):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
-        if self.method in res_methods and y_insample is None and y_hat_insample is None:
+        if self.method in res_methods and (
+            y_insample is None or y_hat_insample is None
+        ):
             raise ValueError(
-                f"For methods {', '.join(res_methods)} you need to pass residuals"
+                f"Check `Y_df`. For method `{self.method}` you need to pass insample predictions and insample values."
             )
         n_hiers, n_bottom = S.shape
         n_aggs = n_hiers - n_bottom
@@ -967,12 +1008,14 @@ class MinTrace(HReconciler):
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink".<br>
+        `y_hat_insample`: Insample forecast values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink"<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
         `tags`: Each key is a level and each value its `S` indices.<br>
-        `y_insample`: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `**sampler_kwargs`: Coherent sampler instantiation arguments.<br>
 
         **Returns:**<br>
         `self`: object, fitted reconciler.
@@ -1072,22 +1115,28 @@ class MinTrace(HReconciler):
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `y_insample`: Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
         `y_hat_insample`: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`<br>
-        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `sampler`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the MinTrace approach.
         """
         if self.nonnegative:
             if (level is not None) and intervals_method in ["bootstrap", "permbu"]:
-                raise Exception(
-                    "nonnegative reconciliation is not compatible with bootstrap forecasts"
+                raise ValueError(
+                    "nonnegative reconciliation is not compatible with bootstrap or permbu forecasts"
                 )
             if idx_bottom is None:
-                raise Exception("idx_bottom needed for nonnegative reconciliation")
+                raise ValueError(
+                    "`idx_bottom` cannot be None with nonnegative reconciliation"
+                )
 
         # Fit creates P, W and sampler attributes
         self.fit(
@@ -1138,7 +1187,7 @@ class MinTraceSparse(MinTrace):
     ) -> None:
         if method not in ["ols", "wls_struct", "wls_var"]:
             raise NotImplementedError(
-                "GLS is not currently supported for MinTraceSparse."
+                f"`{method}` is not supported for MinTraceSparse. Choose from `ols`, `wls_struct`, or `wls_var`."
             )
         # Call the parent constructor.
         super().__init__(method, nonnegative, num_threads=num_threads)
@@ -1155,18 +1204,14 @@ class MinTraceSparse(MinTrace):
     ):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
-        diag_only_methods = ["ols", "wls_struct", "wls_var"]
-
-        if self.method not in diag_only_methods:
-            raise NotImplementedError(
-                "Only the methods with diagonal W are supported as sparse operations"
-            )
 
         S = sparse.csr_matrix(S)
 
-        if self.method in res_methods and y_insample is None and y_hat_insample is None:
+        if self.method in res_methods and (
+            y_insample is None or y_hat_insample is None
+        ):
             raise ValueError(
-                f"For methods {', '.join(res_methods)} you need to pass residuals"
+                f"Check `Y_df`. For method `{self.method}` you need to pass insample predictions and insample values."
             )
         n_hiers, n_bottom = S.shape
 
@@ -1248,6 +1293,23 @@ class MinTraceSparse(MinTrace):
         tags: Optional[dict[str, np.ndarray]] = None,
         idx_bottom: Optional[np.ndarray] = None,
     ) -> "MinTraceSparse":
+        """MinTraceSparse Fit Method.
+
+        **Parameters:**<br>
+        `S`: Summing matrix of size (`base`, `bottom`).<br>
+        `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `y_insample`: Insample values of size (`base`, `insample_size`). Only used with "wls_var".<br>
+        `y_hat_insample`: Insample forecast values of size (`base`, `insample_size`). Only used with "wls_var"<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+
+        **Returns:**<br>
+        `self`: object, fitted reconciler.
+        """
         if self.nonnegative:
             # Clip the base forecasts to align them with their use in practice.
             self.y_hat = np.clip(y_hat, 0, None)
@@ -1499,6 +1561,10 @@ class ERM(HReconciler):
     ):
         n_hiers, n_bottom = S.shape
         # y_hat_insample shape (n_hiers, obs)
+        if y_insample is None or y_hat_insample is None:
+            raise ValueError(
+                "Check `Y_df`. For method `ERM` you need to pass insample predictions and insample values."
+            )
         # remove obs with nan values
         nan_idx = np.isnan(y_hat_insample).any(axis=0)
         y_insample = y_insample[:, ~nan_idx]
@@ -1566,10 +1632,12 @@ class ERM(HReconciler):
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
         `y_insample`: Train values of size (`base`, `insample_size`).<br>
         `y_hat_insample`: Insample train predictions of size (`base`, `insample_size`).<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
         `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
-        `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
-        `**sampler_kwargs`: Coherent sampler instantiation arguments.<br>
 
         **Returns:**<br>
         `self`: object, fitted reconciler.
@@ -1616,11 +1684,15 @@ class ERM(HReconciler):
         **Parameters:**<br>
         `S`: Summing matrix of size (`base`, `bottom`).<br>
         `y_hat`: Forecast values of size (`base`, `horizon`).<br>
+        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
         `y_insample`: Train values of size (`base`, `insample_size`).<br>
         `y_hat_insample`: Insample train predictions of size (`base`, `insample_size`).<br>
-        `idx_bottom`: Indices corresponding to the bottom level of `S`, size (`bottom`).<br>
+        `sigmah`: Estimated standard deviation of the conditional marginal distribution.<br>
         `level`: float list 0-100, confidence levels for prediction intervals.<br>
-        `intervals_method`: Sampler for prediction intevals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `intervals_method`: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
+        `num_samples`: Number of samples for probabilistic coherent distribution.<br>
+        `seed`: Seed for reproducibility.<br>
+        `tags`: Each key is a level and each value its `S` indices.<br>
 
         **Returns:**<br>
         `y_tilde`: Reconciliated y_hat using the ERM approach.

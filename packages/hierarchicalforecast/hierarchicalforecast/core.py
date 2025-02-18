@@ -107,7 +107,6 @@ class HierarchicalReconciliation:
     def __init__(self, reconcilers: list[HReconciler]):
         self.reconcilers = reconcilers
         self.orig_reconcilers = copy.deepcopy(reconcilers)  # TODO: elegant solution
-        self.insample = any([method.insample for method in reconcilers])
 
     def _prepare_fit(
         self,
@@ -149,10 +148,15 @@ class HierarchicalReconciliation:
         if intervals_method not in ["normality", "bootstrap", "permbu"]:
             raise ValueError(f"Unknown interval method: {intervals_method}")
 
-        # TODO: this logic should be method specific
-        if self.insample or (intervals_method in ["bootstrap", "permbu"]):
-            if Y_nw is None:
-                raise Exception("You need to provide `Y_df`.")
+        if Y_nw is None:
+            for reconciler in self.orig_reconcilers:
+                if reconciler.insample:
+                    reconciler_name = _build_fn_name(reconciler)
+                    raise ValueError(
+                        f"You need to provide `Y_df` for reconciler {reconciler_name}"
+                    )
+            if intervals_method in ["bootstrap", "permbu"]:
+                raise ValueError("You need to provide `Y_df`.")
 
         # Protect level list
         if level is not None:
@@ -397,18 +401,15 @@ class HierarchicalReconciliation:
                     .astype(np.float64, copy=False)
                 )
 
-            has_fitted = (
-                "y_hat_insample" in signature(reconciler.fit_predict).parameters
-            )
-            has_level = "level" in signature(reconciler.fit_predict).parameters
-
             for model_name in self.model_names:
                 start = time.time()
                 recmodel_name = f"{model_name}/{reconcile_fn_name}"
 
+                model_cols = [id_col, time_col, model_name]
+
                 # TODO: the below should be method specific
                 y_hat = self._prepare_Y(
-                    Y_nw=Y_hat_nw[[id_col, time_col, model_name]],
+                    Y_nw=Y_hat_nw[model_cols],
                     S_nw=S_nw,
                     is_balanced=True,
                     id_col=id_col,
@@ -417,12 +418,9 @@ class HierarchicalReconciliation:
                 )
                 reconciler_args["y_hat"] = y_hat
 
-                if (self.insample and has_fitted) or intervals_method in [
-                    "bootstrap",
-                    "permbu",
-                ]:
+                if Y_nw is not None and model_name in Y_nw.columns:
                     y_hat_insample = self._prepare_Y(
-                        Y_nw=Y_nw[[id_col, time_col, model_name]],
+                        Y_nw=Y_nw[model_cols],
                         S_nw=S_nw,
                         is_balanced=is_balanced,
                         id_col=id_col,
@@ -431,7 +429,7 @@ class HierarchicalReconciliation:
                     )
                     reconciler_args["y_hat_insample"] = y_hat_insample
 
-                if has_level and (level is not None):
+                if level is not None:
                     if intervals_method in ["normality", "permbu"]:
                         sigmah = _reverse_engineer_sigmah(
                             Y_hat_df=Y_hat_nw, y_hat=y_hat, model_name=model_name
