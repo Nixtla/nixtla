@@ -1516,7 +1516,7 @@ class ERM(HReconciler):
             P = P.T
         elif self.method == "reg":
             X = np.kron(S, y_hat_insample.T)
-            z = y_hat_insample.reshape(-1)
+            z = y_insample.reshape(-1)
 
             if self.lambda_reg is None:
                 lambda_reg = np.max(np.abs(X.T.dot(z)))
@@ -1529,7 +1529,7 @@ class ERM(HReconciler):
             X = np.kron(S, y_hat_insample.T)
             Pbu = np.zeros_like(S)
             Pbu[idx_bottom] = S[idx_bottom]
-            z = y_hat_insample.reshape(-1) - X @ Pbu.reshape(-1)
+            z = y_insample.reshape(-1) - X @ Pbu.reshape(-1)
 
             if self.lambda_reg is None:
                 lambda_reg = np.max(np.abs(X.T.dot(z)))
