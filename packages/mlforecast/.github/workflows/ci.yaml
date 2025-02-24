@@ -94,7 +94,7 @@ jobs:
         run: pip install uv && uv pip install --system . pytest-codspeed pytest-xdist
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@1015f4f828ff74b7a950909897fe581d6ba868cc # 3.3.1
+        uses: CodSpeedHQ/action@63ae6025a0ffee97d7736a37c9192dbd6ed4e75f # 3.4.0
         with:
           token: ${{ secrets.CODESPEED_TOKEN }}
           run: pytest tests/test_pipeline.py --codspeed -n 2
