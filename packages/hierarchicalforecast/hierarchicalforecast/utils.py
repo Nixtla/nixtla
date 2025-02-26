@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import narwhals as nw
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from narwhals.typing import Frame, FrameT
 from numba import njit, prange
@@ -44,6 +45,45 @@ class CodeTimer:
             )
 
 # %% ../nbs/src/utils.ipynb 7
+def _construct_adjacency_matrix(
+    S: sparse.csr_matrix, tags: dict[str, np.ndarray]
+) -> sparse.csr_matrix:
+    """Construct a disaggregation adjacency matrix.
+
+    Parameters
+    ----------
+    S : sparse.csr_matrix
+        A summing matrix for hierarchical or grouped time series.
+    tags : dict[str, np.ndarray]
+        A mapping of level name to node indices.
+
+    Returns
+    -------
+    sparse.csr_matrix
+        The disaggregation adjacency matrix for the structure.
+
+    """
+    # Get the nodes in each level.
+    l = list(tags.values())
+    # Get the number of aggregation nodes.
+    n_a = S.shape[0] - S.shape[1]
+    # Copy and cast the summing matrix to bool.
+    S = S.astype(bool)
+    # Precompute the transpose of the boolean summing matrix.
+    S_T = S.T
+    # Find the affinity, i.e., connectivity, between nodes in successive
+    # levels, construct a sparse block diagonal matrix from these blocks, and
+    # return the truncated disaggregation adjacency matrix.
+    return sparse.hstack(
+        (
+            sparse.csr_matrix((n_a, 1), dtype=bool),
+            sparse.block_diag(
+                [S[l[i]] * S_T[:, l[i + 1]] for i in range(len(l) - 1)], "csr"
+            ),
+        )
+    )
+
+# %% ../nbs/src/utils.ipynb 8
 def is_strictly_hierarchical(S: np.ndarray, tags: dict[str, np.ndarray]) -> bool:
     # main idea:
     # if S represents a strictly hierarchical structure
@@ -61,6 +101,26 @@ def is_strictly_hierarchical(S: np.ndarray, tags: dict[str, np.ndarray]) -> bool
     return paths == nodes
 
 # %% ../nbs/src/utils.ipynb 9
+def _is_strictly_hierarchical(A: sparse.csr_matrix) -> bool:
+    """Check if a disaggregation structure is strictly hierarchical.
+
+    The nodes in a strictly hierarchical disaggregation structure, except for
+    the root node, should have exactly one incoming edge.
+
+    Parameters
+    ----------
+    A: sparse.csr_matrix
+        A disaggregation adjacency matrix.
+
+    Returns
+    -------
+    bool
+        `True` if strictly hierarchical, otherwise `False`.
+
+    """
+    return np.all(A.sum(axis=0).A1[1:] == 1)
+
+# %% ../nbs/src/utils.ipynb 11
 def _to_upper_hierarchy(
     bottom_split: list[str], bottom_values: str, upper_key: str
 ) -> list[str]:
@@ -73,7 +133,7 @@ def _to_upper_hierarchy(
 
     return [join_upper(val) for val in bottom_values]
 
-# %% ../nbs/src/utils.ipynb 10
+# %% ../nbs/src/utils.ipynb 12
 def aggregate(
     df: Frame,
     spec: list[list[str]],
@@ -238,7 +298,7 @@ def aggregate(
 
     return Y_df, S_df, tags
 
-# %% ../nbs/src/utils.ipynb 24
+# %% ../nbs/src/utils.ipynb 26
 class HierarchicalPlot:
     """Hierarchical Plot
 
@@ -523,7 +583,7 @@ class HierarchicalPlot:
         plt.grid()
         plt.show()
 
-# %% ../nbs/src/utils.ipynb 45
+# %% ../nbs/src/utils.ipynb 47
 # convert levels to output quantile names
 def level_to_outputs(level: list[int]) -> tuple[list[float], list[str]]:
     """Converts list of levels into output names matching StatsForecast and NeuralForecast methods.
@@ -568,7 +628,7 @@ def quantiles_to_outputs(quantiles: list[float]) -> tuple[list[float], list[str]
             output_names.append("-median")
     return quantiles, output_names
 
-# %% ../nbs/src/utils.ipynb 46
+# %% ../nbs/src/utils.ipynb 48
 # given input array of sample forecasts and inptut quantiles/levels,
 # output a Pandas Dataframe with columns of quantile predictions
 def samples_to_quantiles_df(
@@ -653,7 +713,7 @@ def samples_to_quantiles_df(
 
     return _quantiles, df_nw.to_native()
 
-# %% ../nbs/src/utils.ipynb 53
+# %% ../nbs/src/utils.ipynb 55
 # Masked empirical covariance matrix
 @njit(
     "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool_, 2, 'C'))",
@@ -691,7 +751,7 @@ def _ma_cov(residuals: np.ndarray, not_nan_mask: np.ndarray):
 
     return W
 
-# %% ../nbs/src/utils.ipynb 54
+# %% ../nbs/src/utils.ipynb 56
 # Shrunk covariance matrix using the Schafer-Strimmer method
 
 
@@ -842,7 +902,7 @@ def _shrunk_covariance_schaferstrimmer_with_nans(
 
     return W
 
-# %% ../nbs/src/utils.ipynb 56
+# %% ../nbs/src/utils.ipynb 58
 # Lasso cyclic coordinate descent
 @njit(
     "Array(float64, 1, 'C')(Array(float64, 2, 'C'), Array(float64, 1, 'C'), float64, int64, float64)",
