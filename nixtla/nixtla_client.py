@@ -5,6 +5,7 @@ __all__ = ['ApiError', 'NixtlaClient']
 
 # %% ../nbs/src/nixtla_client.ipynb 4
 import datetime
+from enum import Enum
 import logging
 import math
 import os
@@ -42,7 +43,7 @@ from tenacity import (
 )
 from utilsforecast.compat import DFType, DataFrame, pl_DataFrame
 from utilsforecast.feature_engineering import _add_time_features, time_features
-from utilsforecast.preprocessing import id_time_grid
+from utilsforecast.preprocessing import fill_gaps, id_time_grid
 from utilsforecast.validation import ensure_time_dtype, validate_format
 
 if TYPE_CHECKING:
@@ -433,7 +434,7 @@ def _validate_input_size(
     if min_size < model_input_size + model_horizon:
         raise ValueError(
             "Some series are too short. "
-            "Please make sure that each serie contains "
+            "Please make sure that each series contains "
             f"at least {model_input_size + model_horizon} observations."
         )
 
@@ -636,7 +637,77 @@ def _process_exog_features(
 
     return X, hist_exog
 
-# %% ../nbs/src/nixtla_client.ipynb 10
+# %% ../nbs/src/nixtla_client.ipynb 11
+class AuditDataSeverity(Enum):
+    """Enum class to indicate audit data severity levels"""
+
+    FAIL = "Fail"  # Indicates a critical issue that requires immediate attention
+    CASE_SPECIFIC = "Case Specific"  # Indicates an issue that may be acceptable in specific contexts
+    PASS = "Pass"  # Indicates that the data is acceptable
+
+# %% ../nbs/src/nixtla_client.ipynb 13
+def _audit_duplicate_rows(
+    df: AnyDFType,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+) -> tuple[AuditDataSeverity, AnyDFType]:
+    if isinstance(df, pd.DataFrame):
+        duplicates = df.duplicated(subset=[id_col, time_col], keep=False)
+        if duplicates.any():
+            return AuditDataSeverity.FAIL, df[duplicates]
+        return AuditDataSeverity.PASS, pd.DataFrame()
+    else:
+        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
+
+# %% ../nbs/src/nixtla_client.ipynb 16
+def _audit_missing_dates(
+    df: AnyDFType,
+    freq: _Freq,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+) -> tuple[AuditDataSeverity, AnyDFType]:
+    if isinstance(df, pd.DataFrame):
+        # Fill gaps in data
+        # Convert time_col to datetime if it's string/object type
+        df = ensure_time_dtype(df, time_col=time_col)
+        df_complete = fill_gaps(df, freq=freq, id_col=id_col, time_col=time_col)
+
+        # Find missing dates by comparing df_complete with df
+        df_missing = pd.merge(
+            df_complete, df, on=[id_col, time_col], how="outer", indicator=True
+        )
+        df_missing = df_missing.query("_merge == 'left_only'")[[id_col, time_col]]
+        if len(df_missing) > 0:
+            return AuditDataSeverity.FAIL, df_missing
+        return AuditDataSeverity.PASS, pd.DataFrame()
+    else:
+        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
+
+# %% ../nbs/src/nixtla_client.ipynb 18
+def _audit_categorical_variables(
+    df: AnyDFType,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+) -> tuple[AuditDataSeverity, AnyDFType]:
+    if isinstance(df, pd.DataFrame):
+        # Check categorical variables in df except id_col and time_col
+        categorical_cols = [
+            col
+            for col in df.columns
+            if col not in [id_col, time_col]
+            and (
+                isinstance(df[col].dtype, pd.CategoricalDtype)
+                or pd.api.types.is_string_dtype(df[col])
+            )
+        ]
+
+        if categorical_cols:
+            return AuditDataSeverity.FAIL, df[categorical_cols]
+        return AuditDataSeverity.PASS, pd.DataFrame()
+    else:
+        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
+
+# %% ../nbs/src/nixtla_client.ipynb 20
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
@@ -650,7 +721,7 @@ class ApiError(Exception):
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
 
-# %% ../nbs/src/nixtla_client.ipynb 12
+# %% ../nbs/src/nixtla_client.ipynb 22
 class NixtlaClient:
 
     def __init__(
@@ -1073,7 +1144,7 @@ class NixtlaClient:
             Frequency of the timestamps. If `None`, it will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
-            Column that identifies each serie.
+            Column that identifies each series.
         time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
@@ -1331,7 +1402,7 @@ class NixtlaClient:
             Frequency of the timestamps. If `None`, it will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
-            Column that identifies each serie.
+            Column that identifies each series.
         time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
@@ -1667,7 +1738,7 @@ class NixtlaClient:
             Frequency of the timestamps. If `None`, it will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
-            Column that identifies each serie.
+            Column that identifies each series.
         time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
@@ -2193,7 +2264,7 @@ class NixtlaClient:
             Frequency of the timestamps. If `None`, it will be inferred automatically.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
         id_col : str (default='unique_id')
-            Column that identifies each serie.
+            Column that identifies each series.
         time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
@@ -2419,7 +2490,7 @@ class NixtlaClient:
         forecasts_df : pandas or polars DataFrame, optional (default=None)
             DataFrame with columns [`unique_id`, `ds`] and models.
         id_col : str (default='unique_id')
-            Column that identifies each serie.
+            Column that identifies each series.
         time_col : str (default='ds')
             Column that identifies each timestep, its values can be timestamps or integers.
         target_col : str (default='y')
@@ -2497,7 +2568,82 @@ class NixtlaClient:
             ax=ax,
         )
 
-# %% ../nbs/src/nixtla_client.ipynb 14
+    @staticmethod
+    def audit_data(
+        df: AnyDFType,
+        freq: _Freq,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+    ) -> tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]:
+        """Audit data quality.
+
+        Parameters
+        ----------
+        df : pandas or polars DataFrame
+            The DataFrame on which the function will operate. Expected to contain at least the following columns:
+            - time_col:
+                Column name in `df` that contains the time indices of the time series. This is typically a datetime
+                column with regular intervals, e.g., hourly, daily, monthly data points.
+            - target_col:
+                Column name in `df` that contains the target variable of the time series, i.e., the variable we
+                wish to predict or analyze.
+            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
+            - id_col:
+                Column name in `df` that identifies unique time series. Each unique value in this column
+                corresponds to a unique time series.
+        freq : str, int or pandas offset.
+            Frequency of the timestamps. If `None`, it will be inferred automatically.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str (default='unique_id')
+            Column that identifies each series.
+        time_col : str (default='ds')
+            Column that identifies each timestep, its values can be timestamps or integers.
+
+        Returns
+        -------
+        tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]
+            Tuple containing:
+            - bool: True if all tests pass, False otherwise
+            - dict: Dictionary mapping test IDs to error DataFrames for failed
+                    tests or None if the test could not be performed.
+            - dict: Dictionary mapping test IDs to error DataFrames for
+                    case-specific tests.
+
+            Test IDs:
+            - D001: Test for duplicate rows
+            - D002: Test for missing dates
+            - F001: Test for presence of categorical feature columns
+        """
+        df = ensure_time_dtype(df, time_col=time_col)
+
+        logger.info("Running data quality tests...")
+        pass_D001, error_df_D001 = _audit_duplicate_rows(df, id_col, time_col)
+        pass_D002, error_df_D002 = AuditDataSeverity.CASE_SPECIFIC, None
+        if pass_D001 != AuditDataSeverity.FAIL:
+            # If data has duplicate rows, missing dates can not be added by fill_gaps.
+            # Duplicate rows issue needs to be resolved first.
+            pass_D002, error_df_D002 = _audit_missing_dates(df, freq, id_col, time_col)
+        pass_F001, error_df_F001 = _audit_categorical_variables(df, id_col, time_col)
+
+        fail_dict, case_specific_dict = {}, {}
+        test_ids = ["D001", "D002", "F001"]
+        pass_vals = [pass_D001, pass_D002, pass_F001]
+        error_dfs = [error_df_D001, error_df_D002, error_df_F001]
+        all_pass = True
+
+        for test_id, pass_val, error_df in zip(test_ids, pass_vals, error_dfs):
+            # Only include errors for failed or case specific tests
+            if pass_val == AuditDataSeverity.FAIL:
+                all_pass = False
+                fail_dict[test_id] = error_df
+
+            if pass_val == AuditDataSeverity.CASE_SPECIFIC:
+                all_pass = False
+                case_specific_dict[test_id] = error_df
+
+        return all_pass, fail_dict, case_specific_dict
+
+# %% ../nbs/src/nixtla_client.ipynb 24
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
