@@ -3,7 +3,7 @@
 # %% auto 0
 __all__ = ['ApiError', 'NixtlaClient']
 
-# %% ../nbs/src/nixtla_client.ipynb 3
+# %% ../nbs/src/nixtla_client.ipynb 4
 import datetime
 import logging
 import math
@@ -79,7 +79,7 @@ if TYPE_CHECKING:
     except ModuleNotFoundError:
         pass
 
-# %% ../nbs/src/nixtla_client.ipynb 4
+# %% ../nbs/src/nixtla_client.ipynb 5
 AnyDFType = TypeVar(
     "AnyDFType",
     "DaskDataFrame",
@@ -98,7 +98,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
-# %% ../nbs/src/nixtla_client.ipynb 7
+# %% ../nbs/src/nixtla_client.ipynb 9
 _PositiveInt = Annotated[int, annotated_types.Gt(0)]
 _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
@@ -636,7 +636,7 @@ def _process_exog_features(
 
     return X, hist_exog
 
-# %% ../nbs/src/nixtla_client.ipynb 8
+# %% ../nbs/src/nixtla_client.ipynb 10
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
@@ -650,7 +650,7 @@ class ApiError(Exception):
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
 
-# %% ../nbs/src/nixtla_client.ipynb 9
+# %% ../nbs/src/nixtla_client.ipynb 12
 class NixtlaClient:
 
     def __init__(
@@ -2497,7 +2497,7 @@ class NixtlaClient:
             ax=ax,
         )
 
-# %% ../nbs/src/nixtla_client.ipynb 10
+# %% ../nbs/src/nixtla_client.ipynb 14
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
