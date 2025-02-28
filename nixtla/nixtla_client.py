@@ -2580,24 +2580,15 @@ class NixtlaClient:
         Parameters
         ----------
         df : pandas or polars DataFrame
-            The DataFrame on which the function will operate. Expected to contain at least the following columns:
-            - time_col:
-                Column name in `df` that contains the time indices of the time series. This is typically a datetime
-                column with regular intervals, e.g., hourly, daily, monthly data points.
-            - target_col:
-                Column name in `df` that contains the target variable of the time series, i.e., the variable we
-                wish to predict or analyze.
-            Additionally, you can pass multiple time series (stacked in the dataframe) considering an additional column:
-            - id_col:
-                Column name in `df` that identifies unique time series. Each unique value in this column
-                corresponds to a unique time series.
+            The dataframe to be audited.
         freq : str, int or pandas offset.
-            Frequency of the timestamps. If `None`, it will be inferred automatically.
+            Frequency of the timestamps. Must be specified.
             See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-        id_col : str (default='unique_id')
-            Column that identifies each series.
-        time_col : str (default='ds')
-            Column that identifies each timestep, its values can be timestamps or integers.
+        id_col : str
+            Column that identifies each series, by default 'unique_id'
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or
+            integers, by default 'ds'
 
         Returns
         -------
@@ -2642,6 +2633,111 @@ class NixtlaClient:
                 case_specific_dict[test_id] = error_df
 
         return all_pass, fail_dict, case_specific_dict
+
+    def clean_data(
+        self,
+        df: AnyDFType,
+        fail_dict: dict[str, DataFrame],
+        case_specific_dict: dict[str, DataFrame],
+        agg_dict: dict[str, str | Callable],
+        freq: _Freq,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        start: Union[str, int, datetime.date, datetime.datetime] = "per_serie",
+        end: Union[str, int, datetime.date, datetime.datetime] = "global",
+    ) -> tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]:
+        """Clean the data. This should be run after running `audit_data`.
+
+        Parameters
+        ----------
+        df : AnyDFType
+            The dataframe to be cleaned
+        fail_dict : dict[str, DataFrame]
+            The failure dictionary from the audit_data method
+        case_specific_dict : dict[str, DataFrame]
+            The case specific dictionary from the audit_data method
+        agg_dict : dict[str, str  |  Callable]
+            The aggregation methods to when there are duplicate rows (D001).
+        freq : str, int or pandas offset.
+            Frequency of the timestamps. Must be specified.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str
+            Column that identifies each series, by default 'unique_id'
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or
+            integers, by default 'ds'
+        start : Union[str, int, datetime.date, datetime.datetime], optional
+            Initial timestamp for the series.
+                * 'per_serie' uses each series first timestamp
+                * 'global' uses the first timestamp seen in the data
+                * Can also be a specific timestamp or integer,
+                e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
+            , by default "per_serie"
+        end : Union[str, int, datetime.date, datetime.datetime], optional
+            Initial timestamp for the series.
+                * 'per_serie' uses each series last timestamp
+                * 'global' uses the last timestamp seen in the data
+                * Can also be a specific timestamp or integer,
+                e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
+            , by default "global"
+
+        Returns
+        -------
+        tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]
+            Tuple containing:
+            - AnyDFType: The cleaned dataframe
+            - The three outputs from audit_data that are run at the end of cleansing.
+        Raises
+        ------
+        ValueError
+            Any exceptions during the cleaning process.
+        """
+        df = ensure_time_dtype(df, time_col=time_col)
+        logger.info("Running data cleansing...")
+
+        if fail_dict:
+            if "D001" in fail_dict:
+                try:
+                    logger.info("Cleaning duplicate rows...")
+
+                    # Get all columns except id_col and time_col
+                    other_cols = [
+                        col for col in df.columns if col not in [id_col, time_col]
+                    ]
+
+                    # Verify all columns have aggregation rules
+                    missing_cols = [col for col in other_cols if col not in agg_dict]
+                    if missing_cols:
+                        raise ValueError(
+                            f"Missing aggregation rules for columns: {missing_cols}. "
+                            "Please provide aggregation rules for all columns in agg_dict."
+                        )
+                    df = df.groupby([id_col, time_col], as_index=False).agg(agg_dict)
+                except Exception as e:
+                    raise ValueError(f"Error cleaning duplicate rows D001: {e}")
+            if "D002" in fail_dict:
+                try:
+                    logger.info("Filling missing dates...")
+                    df = fill_gaps(
+                        df=df,
+                        freq=freq,
+                        start=start,
+                        end=end,
+                        id_col=id_col,
+                        time_col=time_col,
+                    )
+                except Exception as e:
+                    raise ValueError(f"Error filling missing dates D002: {e}")
+
+        if case_specific_dict:
+            pass  # TODO: Needs to be implemented
+
+        # Run data quality checks on the cleaned data
+        all_pass, error_dfs, case_specific_dfs = self.audit_data(
+            df=df, freq=freq, id_col=id_col, time_col=time_col
+        )
+
+        return df, all_pass, error_dfs, case_specific_dfs
 
 # %% ../nbs/src/nixtla_client.ipynb 24
 def _forecast_wrapper(
