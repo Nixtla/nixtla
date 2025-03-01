@@ -683,7 +683,7 @@ def _audit_missing_dates(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 18
+# %% ../nbs/src/nixtla_client.ipynb 19
 def _audit_categorical_variables(
     df: AnyDFType,
     id_col: str = "unique_id",
@@ -707,7 +707,7 @@ def _audit_categorical_variables(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 21
+# %% ../nbs/src/nixtla_client.ipynb 22
 def _audit_leading_zeros(
     df: AnyDFType,
     id_col: str = "unique_id",
@@ -725,7 +725,7 @@ def _audit_leading_zeros(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 24
+# %% ../nbs/src/nixtla_client.ipynb 25
 def _audit_negative_values(
     df: AnyDFType,
     target_col: str = "y",
@@ -738,7 +738,7 @@ def _audit_negative_values(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 26
+# %% ../nbs/src/nixtla_client.ipynb 27
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
@@ -752,7 +752,7 @@ class ApiError(Exception):
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
 
-# %% ../nbs/src/nixtla_client.ipynb 28
+# %% ../nbs/src/nixtla_client.ipynb 29
 class NixtlaClient:
 
     def __init__(
@@ -2770,7 +2770,7 @@ class NixtlaClient:
 
         return df, all_pass, error_dfs, case_specific_dfs
 
-# %% ../nbs/src/nixtla_client.ipynb 30
+# %% ../nbs/src/nixtla_client.ipynb 31
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
