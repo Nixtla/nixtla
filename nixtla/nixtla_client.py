@@ -707,7 +707,38 @@ def _audit_categorical_variables(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 20
+# %% ../nbs/src/nixtla_client.ipynb 21
+def _audit_leading_zeros(
+    df: AnyDFType,
+    id_col: str = "unique_id",
+    target_col: str = "y",
+) -> tuple[AuditDataSeverity, AnyDFType]:
+    if isinstance(df, pd.DataFrame):
+        first_index = df.groupby(id_col).apply(lambda x: x.index[0])
+        first_non_zero_index = df.groupby(id_col).apply(
+            lambda x: x[target_col].ne(0).idxmax()
+        )
+        leading_zeros = first_index.index[first_index != first_non_zero_index]
+        if len(leading_zeros) > 0:
+            return AuditDataSeverity.CASE_SPECIFIC, leading_zeros
+        return AuditDataSeverity.PASS, pd.DataFrame()
+    else:
+        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
+
+# %% ../nbs/src/nixtla_client.ipynb 24
+def _audit_negative_values(
+    df: AnyDFType,
+    target_col: str = "y",
+) -> tuple[AuditDataSeverity, AnyDFType]:
+    if isinstance(df, pd.DataFrame):
+        negative_values = df.loc[df[target_col] < 0]
+        if len(negative_values) > 0:
+            return AuditDataSeverity.CASE_SPECIFIC, negative_values
+        return AuditDataSeverity.PASS, pd.DataFrame()
+    else:
+        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
+
+# %% ../nbs/src/nixtla_client.ipynb 26
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
@@ -721,7 +752,7 @@ class ApiError(Exception):
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
 
-# %% ../nbs/src/nixtla_client.ipynb 22
+# %% ../nbs/src/nixtla_client.ipynb 28
 class NixtlaClient:
 
     def __init__(
@@ -2739,7 +2770,7 @@ class NixtlaClient:
 
         return df, all_pass, error_dfs, case_specific_dfs
 
-# %% ../nbs/src/nixtla_client.ipynb 24
+# %% ../nbs/src/nixtla_client.ipynb 30
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
