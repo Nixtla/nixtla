@@ -613,6 +613,80 @@ class TopDownSparse(TopDown):
 
         return P, W
 
+    def fit_predict(
+        self,
+        S: sparse.csr_matrix,
+        y_hat: np.ndarray,
+        tags: dict[str, np.ndarray],
+        idx_bottom: np.ndarray = None,
+        y_insample: Optional[np.ndarray] = None,
+        y_hat_insample: Optional[np.ndarray] = None,
+        sigmah: Optional[np.ndarray] = None,
+        level: Optional[list[int]] = None,
+        intervals_method: Optional[str] = None,
+        num_samples: Optional[int] = None,
+        seed: Optional[int] = None,
+    ) -> dict[str, np.ndarray]:
+        if self.method == "forecast_proportions":
+            # Check if probabilistic reconciliation is required.
+            if level is not None:
+                raise NotImplementedError(
+                    "Prediction intervals are not implemented for `forecast_proportions`."
+                )
+            # Construct the adjacency matrix.
+            A = _construct_adjacency_matrix(S, tags)
+            # Avoid a redundant check during middle-out reconciliation.
+            if not self.is_strictly_hierarchical:
+                # Check if the data structure is strictly hierarchical.
+                if tags is not None and not _is_strictly_hierarchical(A):
+                    raise ValueError(
+                        "Top-down reconciliation requires strictly hierarchical structures."
+                    )
+            # As we may have zero sibling sums, replace any zeroes with eps.
+            y_hat[y_hat == 0.0] = np.finfo(np.float64).eps
+            # Calculate the relative proportions for each node.
+            with np.errstate(divide="ignore"):
+                P = y_hat / ((A.T @ A) @ y_hat)
+            # Set the relative proportion of the root node.
+            P[P == np.inf] = 1.0
+            # Precompute the transpose of the summing matrix.
+            S_T = S.T
+            # Propagate the relative proportions for the nodes along each leaf
+            # node's disaggregation pathway, convert the resultant sparse
+            # matrix to a LIL matrix for an efficient dense conversion, stack
+            # the lists, calculate the row-wise product to get the forecast
+            # proportions, and use these to reconcile the forecasts.
+            y_tilde = np.array(
+                [
+                    S
+                    @ (
+                        np.prod(np.vstack(S_T.multiply(P[:, i]).tolil().data), 1)
+                        * y_hat[0, i]
+                    )
+                    for i in range(y_hat.shape[1])
+                ]
+            ).T
+            return {"mean": y_tilde}
+        else:
+            # Fit creates the P, W, and sampler attributes.
+            self.fit(
+                S=S,
+                y_hat=y_hat,
+                y_insample=y_insample,
+                y_hat_insample=y_hat_insample,
+                sigmah=sigmah,
+                intervals_method=intervals_method,
+                num_samples=num_samples,
+                seed=seed,
+                tags=tags,
+                idx_bottom=idx_bottom,
+            )
+            return self._reconcile(
+                S=S, P=self.P, y_hat=y_hat, level=level, sampler=self.sampler
+            )
+
+    __call__ = fit_predict
+
 # %% ../nbs/src/methods.ipynb 47
 class MiddleOut(HReconciler):
     """Middle Out Reconciliation Class.

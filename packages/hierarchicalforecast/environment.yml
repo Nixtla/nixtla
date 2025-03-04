@@ -2,7 +2,6 @@ name: hierarchicalforecast
 channels:
   - conda-forge
 dependencies:
-  - jupyterlab
   - numpy
   - numba
   - pandas
@@ -10,7 +9,7 @@ dependencies:
   - quadprog
   - clarabel
   - matplotlib
-  - tqdm
   - pip
   - pip:
     - nbdev
+    - ipython<=8.32.0
