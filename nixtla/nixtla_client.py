@@ -665,12 +665,16 @@ def _audit_missing_dates(
     freq: _Freq,
     id_col: str = "unique_id",
     time_col: str = "ds",
+    start: Union[str, int, datetime.date, datetime.datetime] = "per_serie",
+    end: Union[str, int, datetime.date, datetime.datetime] = "global",
 ) -> tuple[AuditDataSeverity, AnyDFType]:
     if isinstance(df, pd.DataFrame):
         # Fill gaps in data
         # Convert time_col to datetime if it's string/object type
         df = ensure_time_dtype(df, time_col=time_col)
-        df_complete = fill_gaps(df, freq=freq, id_col=id_col, time_col=time_col)
+        df_complete = fill_gaps(
+            df, freq=freq, id_col=id_col, time_col=time_col, start=start, end=end
+        )
 
         # Find missing dates by comparing df_complete with df
         df_missing = pd.merge(
@@ -2628,8 +2632,12 @@ class NixtlaClient:
         freq: _Freq,
         id_col: str = "unique_id",
         time_col: str = "ds",
+        target_col: str = "y",
+        start: Union[str, int, datetime.date, datetime.datetime] = "per_serie",
+        end: Union[str, int, datetime.date, datetime.datetime] = "global",
     ) -> tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]:
         """Audit data quality.
+
         Parameters
         ----------
         df : pandas or polars DataFrame
@@ -2642,80 +2650,8 @@ class NixtlaClient:
         time_col : str
             Column that identifies each timestep, its values can be timestamps or
             integers, by default 'ds'
-        Returns
-        -------
-        tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]
-            Tuple containing:
-            - bool: True if all tests pass, False otherwise
-            - dict: Dictionary mapping test IDs to error DataFrames for failed
-                    tests or None if the test could not be performed.
-            - dict: Dictionary mapping test IDs to error DataFrames for
-                    case-specific tests.
-            Test IDs:
-            - D001: Test for duplicate rows
-            - D002: Test for missing dates
-            - F001: Test for presence of categorical feature columns
-        """
-        df = ensure_time_dtype(df, time_col=time_col)
-
-        logger.info("Running data quality tests...")
-        pass_D001, error_df_D001 = _audit_duplicate_rows(df, id_col, time_col)
-        pass_D002, error_df_D002 = AuditDataSeverity.CASE_SPECIFIC, None
-        if pass_D001 != AuditDataSeverity.FAIL:
-            # If data has duplicate rows, missing dates can not be added by fill_gaps.
-            # Duplicate rows issue needs to be resolved first.
-            pass_D002, error_df_D002 = _audit_missing_dates(df, freq, id_col, time_col)
-        pass_F001, error_df_F001 = _audit_categorical_variables(df, id_col, time_col)
-
-        fail_dict, case_specific_dict = {}, {}
-        test_ids = ["D001", "D002", "F001"]
-        pass_vals = [pass_D001, pass_D002, pass_F001]
-        error_dfs = [error_df_D001, error_df_D002, error_df_F001]
-        all_pass = True
-
-        for test_id, pass_val, error_df in zip(test_ids, pass_vals, error_dfs):
-            # Only include errors for failed or case specific tests
-            if pass_val == AuditDataSeverity.FAIL:
-                all_pass = False
-                fail_dict[test_id] = error_df
-
-            if pass_val == AuditDataSeverity.CASE_SPECIFIC:
-                all_pass = False
-                case_specific_dict[test_id] = error_df
-
-        return all_pass, fail_dict, case_specific_dict
-
-    def clean_data(
-        self,
-        df: AnyDFType,
-        fail_dict: dict[str, DataFrame],
-        case_specific_dict: dict[str, DataFrame],
-        agg_dict: dict[str, str | Callable],
-        freq: _Freq,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        start: Union[str, int, datetime.date, datetime.datetime] = "per_serie",
-        end: Union[str, int, datetime.date, datetime.datetime] = "global",
-    ) -> tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]:
-        """Clean the data. This should be run after running `audit_data`.
-        Parameters
-        ----------
-        df : AnyDFType
-            The dataframe to be cleaned
-        fail_dict : dict[str, DataFrame]
-            The failure dictionary from the audit_data method
-        case_specific_dict : dict[str, DataFrame]
-            The case specific dictionary from the audit_data method
-        agg_dict : dict[str, str  |  Callable]
-            The aggregation methods to when there are duplicate rows (D001).
-        freq : str, int or pandas offset.
-            Frequency of the timestamps. Must be specified.
-            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-        id_col : str
-            Column that identifies each series, by default 'unique_id'
-        time_col : str
-            Column that identifies each timestep, its values can be timestamps or
-            integers, by default 'ds'
+        target_col : str
+            Column that contains the target, by default 'y'
         start : Union[str, int, datetime.date, datetime.datetime], optional
             Initial timestamp for the series.
                 * 'per_serie' uses each series first timestamp
@@ -2730,12 +2666,117 @@ class NixtlaClient:
                 * Can also be a specific timestamp or integer,
                 e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
             , by default "global"
+
+        Returns
+        -------
+        tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]
+            Tuple containing:
+            - bool: True if all tests pass, False otherwise
+            - dict: Dictionary mapping test IDs to error DataFrames for failed
+                    tests or None if the test could not be performed.
+            - dict: Dictionary mapping test IDs to error DataFrames for
+                    case-specific tests.
+
+            Test IDs:
+            - D001: Test for duplicate rows
+            - D002: Test for missing dates
+            - F001: Test for presence of categorical feature columns
+            - V001: Test for negative values
+            - V002: Test for leading zeros
+
+        """
+        df = ensure_time_dtype(df, time_col=time_col)
+
+        logger.info("Running data quality tests...")
+        pass_D001, error_df_D001 = _audit_duplicate_rows(df, id_col, time_col)
+        pass_D002, error_df_D002 = AuditDataSeverity.FAIL, None
+        if pass_D001 != AuditDataSeverity.FAIL:
+            # If data has duplicate rows, missing dates can not be added by fill_gaps.
+            # Duplicate rows issue needs to be resolved first.
+            pass_D002, error_df_D002 = _audit_missing_dates(
+                df, freq, id_col, time_col, start, end
+            )
+        pass_F001, error_df_F001 = _audit_categorical_variables(df, id_col, time_col)
+        pass_V001, error_df_V001 = _audit_negative_values(df, target_col)
+        pass_V002, error_df_V002 = _audit_leading_zeros(df, id_col, target_col)
+
+        fail_dict, case_specific_dict = {}, {}
+        test_ids = ["D001", "D002", "F001", "V001", "V002"]
+        pass_vals = [pass_D001, pass_D002, pass_F001, pass_V001, pass_V002]
+        error_dfs = [
+            error_df_D001,
+            error_df_D002,
+            error_df_F001,
+            error_df_V001,
+            error_df_V002,
+        ]
+        all_pass = True
+
+        for test_id, pass_val, error_df in zip(test_ids, pass_vals, error_dfs):
+            # Only include errors for failed or case specific tests
+            if pass_val == AuditDataSeverity.FAIL:
+                all_pass = False
+                if error_df is not None:
+                    logger.warning(
+                        f"Failure {test_id} detected with critical severity."
+                    )
+                else:
+                    logger.warning(f"Test {test_id} could not be performed.")
+                fail_dict[test_id] = error_df
+
+            if pass_val == AuditDataSeverity.CASE_SPECIFIC:
+                all_pass = False
+                logger.warning(
+                    f"Failure {test_id} detected which could cause issue depending on the use case."
+                )
+                case_specific_dict[test_id] = error_df
+
+        if all_pass:
+            logger.info("All checks passed...")
+        return all_pass, fail_dict, case_specific_dict
+
+    def clean_data(
+        self,
+        df: AnyDFType,
+        fail_dict: dict[str, DataFrame],
+        case_specific_dict: dict[str, DataFrame],
+        freq: _Freq,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        agg_dict: Optional[dict[str, Union[str, Callable]]] = None,
+    ) -> tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]:
+        """Clean the data. This should be run after running `audit_data`.
+
+        Parameters
+        ----------
+        df : AnyDFType
+            The dataframe to be cleaned
+        fail_dict : dict[str, DataFrame]
+            The failure dictionary from the audit_data method
+        case_specific_dict : dict[str, DataFrame]
+            The case specific dictionary from the audit_data method
+        freq : str, int or pandas offset.
+            Frequency of the timestamps. Must be specified.
+            See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+        id_col : str
+            Column that identifies each series, by default 'unique_id'
+        time_col : str
+            Column that identifies each timestep, its values can be timestamps or
+            integers, by default 'ds'
+        target_col : str
+            Column that contains the target, by default 'y'
+        agg_dict : Optional[dict[str, Union[str, Callable]]], optional
+            The aggregation methods to use when there are duplicate rows (D001),
+            by default None
+
         Returns
         -------
         tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]
             Tuple containing:
             - AnyDFType: The cleaned dataframe
             - The three outputs from audit_data that are run at the end of cleansing.
+
         Raises
         ------
         ValueError
@@ -2747,7 +2788,12 @@ class NixtlaClient:
         if fail_dict:
             if "D001" in fail_dict:
                 try:
-                    logger.info("Cleaning duplicate rows...")
+                    logger.info("Fixing D001: Cleaning duplicate rows...")
+
+                    if agg_dict is None:
+                        raise ValueError(
+                            "agg_dict must be provided to resolve D001 failure."
+                        )
 
                     # Get all columns except id_col and time_col
                     other_cols = [
@@ -2758,7 +2804,7 @@ class NixtlaClient:
                     missing_cols = [col for col in other_cols if col not in agg_dict]
                     if missing_cols:
                         raise ValueError(
-                            f"Missing aggregation rules for columns: {missing_cols}. "
+                            f"D001: Missing aggregation rules for columns: {missing_cols}. "
                             "Please provide aggregation rules for all columns in agg_dict."
                         )
                     df = df.groupby([id_col, time_col], as_index=False).agg(agg_dict)
@@ -2766,20 +2812,41 @@ class NixtlaClient:
                     raise ValueError(f"Error cleaning duplicate rows D001: {e}")
             if "D002" in fail_dict:
                 try:
-                    logger.info("Filling missing dates...")
-                    df = fill_gaps(
-                        df=df,
-                        freq=freq,
-                        start=start,
-                        end=end,
-                        id_col=id_col,
-                        time_col=time_col,
-                    )
+                    missing = fail_dict.get("D002")
+                    if missing is None:
+                        logger.warning(
+                            "D002: Missing dates could not be checked by audit_data. "
+                            "Hence not filling missing dates..."
+                        )
+                    else:
+                        logger.info("Fixing D002: Filling missing dates...")
+                        df = pd.concat([df, fail_dict.get("D002")])
                 except Exception as e:
                     raise ValueError(f"Error filling missing dates D002: {e}")
 
         if case_specific_dict:
-            pass  # TODO: Needs to be implemented
+            if "V001" in case_specific_dict:
+                try:
+                    logger.info("Fixing V001: Removing negative values...")
+                    df.loc[df[target_col] < 0, target_col] = 0
+                except Exception as e:
+                    raise ValueError(f"Error removing negative values V001: {e}")
+
+            if "V002" in case_specific_dict:
+                try:
+                    logger.info("Fixing V002: Removing leading zeros...")
+                    leading_zeros_df = case_specific_dict["V002"]
+                    leading_zeros_dict = leading_zeros_df.set_index(id_col)[
+                        "first_nonzero_index"
+                    ].to_dict()
+                    df = df.groupby(id_col, group_keys=False).apply(
+                        lambda group: group.loc[
+                            group.index
+                            >= leading_zeros_dict.get(group.name, group.index[0])
+                        ]
+                    )
+                except Exception as e:
+                    raise ValueError(f"Error removing leading zeros V002: {e}")
 
         # Run data quality checks on the cleaned data
         all_pass, error_dfs, case_specific_dfs = self.audit_data(
@@ -2788,7 +2855,7 @@ class NixtlaClient:
 
         return df, all_pass, error_dfs, case_specific_dfs
 
-# %% ../nbs/src/nixtla_client.ipynb 33
+# %% ../nbs/src/nixtla_client.ipynb 31
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
