@@ -407,15 +407,23 @@ class TopDown(HReconciler):
         y_top = y_insample[idx_top]
 
         if self.method == "average_proportions":
-            prop = np.mean(y_btm / y_top, axis=1)
+            prop = np.nanmean(y_btm / y_top, axis=1)
         elif self.method == "proportion_averages":
-            prop = np.mean(y_btm, axis=1) / np.mean(y_top)
+            prop = np.nanmean(y_btm, axis=1) / np.nanmean(y_top)
         elif self.method == "forecast_proportions":
             raise NotImplementedError(
                 f"Fit method not implemented for {self.method} yet"
             )
         else:
             raise ValueError(f"Unknown method {self.method}")
+
+        if np.isnan(y_btm).any() or np.isnan(y_top).any():
+            warnings.warn(
+                """
+                Warning: There are NaN values in one or more levels of Y_df.
+                This may lead to unexpected behavior when computing average proportions and proportion averages.
+                """
+            )
 
         P = np.zeros_like(
             S, np.float64
@@ -687,7 +695,7 @@ class TopDownSparse(TopDown):
 
     __call__ = fit_predict
 
-# %% ../nbs/src/methods.ipynb 47
+# %% ../nbs/src/methods.ipynb 49
 class MiddleOut(HReconciler):
     """Middle Out Reconciliation Class.
 
@@ -816,7 +824,7 @@ class MiddleOut(HReconciler):
 
     __call__ = fit_predict
 
-# %% ../nbs/src/methods.ipynb 53
+# %% ../nbs/src/methods.ipynb 55
 class MiddleOutSparse(MiddleOut):
     """MiddleOutSparse Reconciliation Class.
 
@@ -918,7 +926,7 @@ class MiddleOutSparse(MiddleOut):
 
     __call__ = fit_predict
 
-# %% ../nbs/src/methods.ipynb 63
+# %% ../nbs/src/methods.ipynb 65
 class MinTrace(HReconciler):
     """MinTrace Reconciliation Class.
 
@@ -1234,7 +1242,7 @@ class MinTrace(HReconciler):
 
     __call__ = fit_predict
 
-# %% ../nbs/src/methods.ipynb 69
+# %% ../nbs/src/methods.ipynb 71
 class MinTraceSparse(MinTrace):
     """MinTraceSparse Reconciliation Class.
 
@@ -1561,7 +1569,7 @@ class MinTraceSparse(MinTrace):
         self.fitted = True
         return self
 
-# %% ../nbs/src/methods.ipynb 80
+# %% ../nbs/src/methods.ipynb 82
 class OptimalCombination(MinTrace):
     """Optimal Combination Reconciliation Class.
 
@@ -1597,7 +1605,7 @@ class OptimalCombination(MinTrace):
         )
         self.insample = False
 
-# %% ../nbs/src/methods.ipynb 88
+# %% ../nbs/src/methods.ipynb 90
 class ERM(HReconciler):
     """Optimal Combination Reconciliation Class.
 
