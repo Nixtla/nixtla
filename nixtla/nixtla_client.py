@@ -709,18 +709,23 @@ def _audit_categorical_variables(
 
 # %% ../nbs/src/nixtla_client.ipynb 22
 def _audit_leading_zeros(
-    df: AnyDFType,
+    df: pd.DataFrame,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> tuple[AuditDataSeverity, AnyDFType]:
+) -> tuple[AuditDataSeverity, pd.DataFrame]:
     if isinstance(df, pd.DataFrame):
-        first_index = df.groupby(id_col).apply(lambda x: x.index[0])
-        first_non_zero_index = df.groupby(id_col).apply(
-            lambda x: x[target_col].ne(0).idxmax()
+        group_info = df.groupby(id_col).agg(
+            first_index=(target_col, lambda s: s.index[0]),
+            first_nonzero_index=(
+                target_col,
+                lambda s: s.ne(0).idxmax() if s.ne(0).any() else s.index[0],
+            ),
         )
-        leading_zeros = first_index.index[first_index != first_non_zero_index]
-        if len(leading_zeros) > 0:
-            return AuditDataSeverity.CASE_SPECIFIC, leading_zeros
+        leading_zeros_df = group_info[
+            group_info["first_index"] != group_info["first_nonzero_index"]
+        ].reset_index()
+        if len(leading_zeros_df) > 0:
+            return AuditDataSeverity.CASE_SPECIFIC, leading_zeros_df
         return AuditDataSeverity.PASS, pd.DataFrame()
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
@@ -2607,7 +2612,6 @@ class NixtlaClient:
         time_col: str = "ds",
     ) -> tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]:
         """Audit data quality.
-
         Parameters
         ----------
         df : pandas or polars DataFrame
@@ -2620,7 +2624,6 @@ class NixtlaClient:
         time_col : str
             Column that identifies each timestep, its values can be timestamps or
             integers, by default 'ds'
-
         Returns
         -------
         tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]
@@ -2630,7 +2633,6 @@ class NixtlaClient:
                     tests or None if the test could not be performed.
             - dict: Dictionary mapping test IDs to error DataFrames for
                     case-specific tests.
-
             Test IDs:
             - D001: Test for duplicate rows
             - D002: Test for missing dates
@@ -2678,7 +2680,6 @@ class NixtlaClient:
         end: Union[str, int, datetime.date, datetime.datetime] = "global",
     ) -> tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]:
         """Clean the data. This should be run after running `audit_data`.
-
         Parameters
         ----------
         df : AnyDFType
@@ -2711,7 +2712,6 @@ class NixtlaClient:
                 * Can also be a specific timestamp or integer,
                 e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
             , by default "global"
-
         Returns
         -------
         tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]
@@ -2770,7 +2770,7 @@ class NixtlaClient:
 
         return df, all_pass, error_dfs, case_specific_dfs
 
-# %% ../nbs/src/nixtla_client.ipynb 31
+# %% ../nbs/src/nixtla_client.ipynb 33
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
