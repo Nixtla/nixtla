@@ -102,7 +102,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install pip requirements
-        run: pip install uv && uv pip install --system . matplotlib nbdev python-dotenv
+        run: pip install uv && uv pip install --system . ipython<=8.32.0 matplotlib nbdev python-dotenv
 
       - name: Run tests
         run: nbdev_test --n_workers 0 --path nbs/docs/getting-started/2_quickstart.ipynb
