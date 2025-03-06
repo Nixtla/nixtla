@@ -85,14 +85,14 @@ class Normality:
         **Returns:**<br>
         `samples`: Coherent samples of size (`base`, `horizon`, `num_samples`).
         """
-        state = np.random.RandomState(self.seed)
+        rng = np.random.default_rng(self.seed)
         n_series, n_horizon = self.y_hat.shape
         samples = np.empty(shape=(num_samples, n_series, n_horizon))
         for t in range(n_horizon):
             with warnings.catch_warnings():
                 # Avoid 'RuntimeWarning: covariance is not positive-semidefinite.'
                 # By definition the multivariate distribution is not full-rank
-                partial_samples = state.multivariate_normal(
+                partial_samples = rng.multivariate_normal(
                     mean=self.SP @ self.y_hat[:, t],
                     cov=self.cov_rec[t],
                     size=num_samples,
@@ -194,8 +194,8 @@ class Bootstrap:
         # removing nas from residuals
         residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
         sample_idx = np.arange(residuals.shape[1] - h)
-        state = np.random.RandomState(self.seed)
-        samples_idx = state.choice(sample_idx, size=num_samples)
+        rng = np.random.default_rng(self.seed)
+        samples_idx = rng.choice(sample_idx, size=num_samples)
         samples = [self.y_hat + residuals[:, idx : (idx + h)] for idx in samples_idx]
         SP = self.S @ self.P
         samples = np.apply_along_axis(
@@ -382,21 +382,21 @@ class PERMBU:
             num_samples = residuals.shape[1]
 
         # Expand residuals to match num_samples [(a,b),T] -> [(a,b),num_samples]
+        rng = np.random.default_rng(self.seed)
         if num_samples > residuals.shape[1]:
-            residuals_idxs = np.random.choice(residuals.shape[1], size=num_samples)
+            residuals_idxs = rng.choice(residuals.shape[1], size=num_samples)
         else:
-            residuals_idxs = np.random.choice(
+            residuals_idxs = rng.choice(
                 residuals.shape[1], size=num_samples, replace=False
             )
         residuals = residuals[:, residuals_idxs]
         rank_permutations = self._obtain_ranks(residuals)
 
-        state = np.random.RandomState(self.seed)
         n_series, n_horizon = self.y_hat.shape
 
         base_samples = np.array(
             [
-                state.normal(loc=m, scale=s, size=num_samples)
+                rng.normal(loc=m, scale=s, size=num_samples)
                 for m, s in zip(self.y_hat.flatten(), self.sigmah.flatten())
             ]
         )
@@ -432,7 +432,7 @@ class PERMBU:
             parent_samples = np.einsum("ab,bhs->ahs", Agg, children_samples)
             random_permutation = np.array(
                 [
-                    np.random.permutation(np.arange(num_samples))
+                    rng.permutation(np.arange(num_samples))
                     for serie in range(len(parent_samples))
                 ]
             )
