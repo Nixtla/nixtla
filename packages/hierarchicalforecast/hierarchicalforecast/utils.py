@@ -64,7 +64,7 @@ def _construct_adjacency_matrix(
 
     """
     # Get the nodes in each level.
-    l = list(tags.values())
+    l = sorted(tags.values(), key=lambda x: len(x))
     # Get the number of aggregation nodes.
     n_a = S.shape[0] - S.shape[1]
     # Copy and cast the summing matrix to bool.
