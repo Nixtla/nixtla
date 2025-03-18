@@ -695,15 +695,11 @@ def _audit_categorical_variables(
 ) -> tuple[AuditDataSeverity, AnyDFType]:
     if isinstance(df, pd.DataFrame):
         # Check categorical variables in df except id_col and time_col
-        categorical_cols = [
-            col
-            for col in df.columns
-            if col not in [id_col, time_col]
-            and (
-                isinstance(df[col].dtype, pd.CategoricalDtype)
-                or pd.api.types.is_string_dtype(df[col])
-            )
-        ]
+        categorical_cols = (
+            df.select_dtypes(include=["category", "object"])
+            .columns.drop([id_col, time_col], errors="ignore")
+            .tolist()
+        )
 
         if categorical_cols:
             return AuditDataSeverity.FAIL, df[categorical_cols]
