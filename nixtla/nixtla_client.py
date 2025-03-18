@@ -711,8 +711,10 @@ def _audit_categorical_variables(
 def _audit_leading_zeros(
     df: pd.DataFrame,
     id_col: str = "unique_id",
+    time_col: str = "ds",
     target_col: str = "y",
 ) -> tuple[AuditDataSeverity, pd.DataFrame]:
+    df = ufp.ensure_sorted(df, id_col, time_col)
     if isinstance(df, pd.DataFrame):
         group_info = df.groupby(id_col).agg(
             first_index=(target_col, lambda s: s.index[0]),
@@ -730,7 +732,7 @@ def _audit_leading_zeros(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 25
+# %% ../nbs/src/nixtla_client.ipynb 26
 def _audit_negative_values(
     df: AnyDFType,
     target_col: str = "y",
@@ -743,7 +745,7 @@ def _audit_negative_values(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 27
+# %% ../nbs/src/nixtla_client.ipynb 28
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
@@ -757,7 +759,7 @@ class ApiError(Exception):
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
 
-# %% ../nbs/src/nixtla_client.ipynb 29
+# %% ../nbs/src/nixtla_client.ipynb 30
 class NixtlaClient:
 
     def __init__(
@@ -2854,7 +2856,7 @@ class NixtlaClient:
 
         return df, all_pass, error_dfs, case_specific_dfs
 
-# %% ../nbs/src/nixtla_client.ipynb 31
+# %% ../nbs/src/nixtla_client.ipynb 32
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
