@@ -2660,7 +2660,7 @@ class NixtlaClient:
                 e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
             , by default "per_serie"
         end : Union[str, int, datetime.date, datetime.datetime], optional
-            Initial timestamp for the series.
+            Final timestamp for the series.
                 * 'per_serie' uses each series last timestamp
                 * 'global' uses the last timestamp seen in the data
                 * Can also be a specific timestamp or integer,
