@@ -2744,6 +2744,7 @@ class NixtlaClient:
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
+        clean_case_specific: bool = False,
         agg_dict: Optional[dict[str, Union[str, Callable]]] = None,
     ) -> tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]:
         """Clean the data. This should be run after running `audit_data`.
@@ -2766,6 +2767,8 @@ class NixtlaClient:
             integers, by default 'ds'
         target_col : str
             Column that contains the target, by default 'y'
+        clean_case_specific : bool, optional
+            If True, clean case specific issues, by default False
         agg_dict : Optional[dict[str, Union[str, Callable]]], optional
             The aggregation methods to use when there are duplicate rows (D001),
             by default None
@@ -2824,7 +2827,7 @@ class NixtlaClient:
                 except Exception as e:
                     raise ValueError(f"Error filling missing dates D002: {e}")
 
-        if case_specific_dict:
+        if case_specific_dict and clean_case_specific:
             if "V001" in case_specific_dict:
                 try:
                     logger.info("Fixing V001: Removing negative values...")
