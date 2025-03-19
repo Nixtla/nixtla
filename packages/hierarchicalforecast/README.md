@@ -11,12 +11,11 @@
 [![conda-nixtla](https://img.shields.io/conda/vn/conda-forge/hierarchicalforecast?color=seagreen&label=conda)](https://anaconda.org/conda-forge/hierarchicalforecast)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE)
     
-**HierarchicalForecast** offers a collection of reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`. And Probabilistic coherent predictions including `Normality`, `Bootstrap`, and `PERMBU`.
+**HierarchicalForecast** offers a collection of cross-sectional and temporal reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`, as well as probabilistic coherent prediction methods such as `Normality`, `Bootstrap`, and `PERMBU`.
 </div>
 
 ## 📚 Intro
-A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include categories, brands, or geographical groupings. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers different reconciliation methods that render coherent forecasts across hierachies. 
-Until recent, this methods were mainly avaiable in the R ecosystem. This Python-based framework aims to bridge the gap between statistical modeling and Machine Learning in the time series field.
+A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include cross-sectional aggregations such as categories, brands, or geographical groupings, or temporal aggregations such as weeks, months or years. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers different reconciliation methods that render coherent forecasts across cross-sectional and temporal hierachies. 
 
 ## 🎊 Features 
 
@@ -31,6 +30,8 @@ Until recent, this methods were mainly avaiable in the R ecosystem. This Python-
     - `Normality`: Uses MinTrace variance-covariance closed form matrix under a normality assumption.
     - `Bootstrap`: Generates distribution of hierarchically reconciled predictions using Gamakumara's bootstrap approach.
     - `PERMBU`: Reconciles independent sample predictions by reinjecting multivariate dependence with estimated rank permutation copulas, and performing a Bottom-Up aggregation.
+* Temporal reconciliation methods:
+    - All reconciliation methods (except for the insample methods) are available to use with temporal hierarchies too.
 
 Missing something? Please open an issue here or write us in [![Slack](https://img.shields.io/badge/Slack-4A154B?&logo=slack&logoColor=white)](https://join.slack.com/t/nixtlaworkspace/shared_invite/zt-135dssye9-fWTzMpv2WBthq8NK0Yvu6A)
 
@@ -119,14 +120,14 @@ evaluation = evaluate(df = df,
 ```
 
 ## 📖 Documentation (WIP)
-Here is a link to the [documentation](https://nixtla.github.io/hierarchicalforecast/).
+Here is a link to the [documentation](https://nixtlaverse.nixtla.io/hierarchicalforecast/index.html).
 
 ## 📃 License
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/Nixtla/neuralforecast/blob/main/LICENSE) file for details.
 
 ## 🏟 HTS projects
 In the R ecosystem, we recommend checking out [fable](http://fable.tidyverts.org/), and the now-retired [hts](https://github.com/earowang/hts).
-In Python we want to acknowledge the following libraries [hiere2e](https://github.com/rshyamsundar/gluonts-hierarchical-ICML-2021), [sktime](https://github.com/sktime/sktime-tutorial-pydata-berlin-2022), [darts](https://github.com/unit8co/darts), [pyhts](https://github.com/AngelPone/pyhts), [scikit-hts](https://github.com/carlomazzaferro/scikit-hts).
+In Python we want to acknowledge the following libraries [hiere2e](https://github.com/rshyamsundar/gluonts-hierarchical-ICML-2021), [hierts](https://github.com/elephaint/hierts), [sktime](https://github.com/sktime/sktime-tutorial-pydata-berlin-2022), [darts](https://github.com/unit8co/darts), [pyhts](https://github.com/AngelPone/pyhts), [scikit-hts](https://github.com/carlomazzaferro/scikit-hts).
 
 ## 📚 References and Acknowledgements
 This work is highly influenced by the fantastic work of previous contributors and other scholars who previously proposed the reconciliation methods presented here. We want to highlight the work of Rob Hyndman, George Athanasopoulos, Shanika L. Wickramasuriya, Souhaib Ben Taieb, and Bonsoo Koo. For a full reference link, please visit the Reference section of this [paper](https://arxiv.org/pdf/2207.03517.pdf).
