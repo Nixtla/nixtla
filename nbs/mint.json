@@ -127,6 +127,7 @@
           "pages":[
             "docs/tutorials/bounded_forecasts.html",
             "docs/tutorials/hierarchical_forecasting.html", 
+            "docs/tutorials/temporalhierarchical.html",
             "docs/tutorials/missing_values.html",
             "docs/tutorials/how_to_improve_forecast_accuracy.html"
           ]
