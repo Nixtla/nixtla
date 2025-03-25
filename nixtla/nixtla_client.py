@@ -45,6 +45,7 @@ from utilsforecast.compat import DFType, DataFrame, pl_DataFrame
 from utilsforecast.feature_engineering import _add_time_features, time_features
 from utilsforecast.preprocessing import fill_gaps, id_time_grid
 from utilsforecast.validation import ensure_time_dtype, validate_format
+from utilsforecast.processing import ensure_sorted
 
 if TYPE_CHECKING:
     try:
@@ -711,10 +712,8 @@ def _audit_categorical_variables(
 def _audit_leading_zeros(
     df: pd.DataFrame,
     id_col: str = "unique_id",
-    time_col: str = "ds",
     target_col: str = "y",
 ) -> tuple[AuditDataSeverity, pd.DataFrame]:
-    df = ufp.ensure_sorted(df, id_col, time_col)
     if isinstance(df, pd.DataFrame):
         group_info = df.groupby(id_col).agg(
             first_index=(target_col, lambda s: s.index[0]),
@@ -732,7 +731,7 @@ def _audit_leading_zeros(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 26
+# %% ../nbs/src/nixtla_client.ipynb 25
 def _audit_negative_values(
     df: AnyDFType,
     target_col: str = "y",
@@ -745,7 +744,7 @@ def _audit_negative_values(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 28
+# %% ../nbs/src/nixtla_client.ipynb 27
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
@@ -759,7 +758,7 @@ class ApiError(Exception):
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
 
-# %% ../nbs/src/nixtla_client.ipynb 30
+# %% ../nbs/src/nixtla_client.ipynb 29
 class NixtlaClient:
 
     def __init__(
@@ -2684,6 +2683,7 @@ class NixtlaClient:
 
         """
         df = ensure_time_dtype(df, time_col=time_col)
+        df = ensure_sorted(df, id_col=id_col, time_col=time_col)
 
         logger.info("Running data quality tests...")
         pass_D001, error_df_D001 = _audit_duplicate_rows(df, id_col, time_col)
@@ -2856,7 +2856,7 @@ class NixtlaClient:
 
         return df, all_pass, error_dfs, case_specific_dfs
 
-# %% ../nbs/src/nixtla_client.ipynb 32
+# %% ../nbs/src/nixtla_client.ipynb 31
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
