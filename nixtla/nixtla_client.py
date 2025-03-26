@@ -767,7 +767,7 @@ class NixtlaClient:
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        timeout: int = 60,
+        timeout: Optional[int] = 60,
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 6 * 60,
