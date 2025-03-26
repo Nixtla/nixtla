@@ -1176,6 +1176,24 @@ class NixtlaClient:
             models = pd.DataFrame([m.model_dump() for m in models])
         return models
 
+    def finetuned_model(self, finetuned_model_id: str) -> FinetunedModel:
+        """Get fine-tuned model metadata
+
+        Parameters
+        ----------
+        finetuned_model_id : str
+            ID of the fine-tuned model to get metadata from.
+
+        Returns
+        -------
+        FinetunedModel
+            Fine-tuned model metadata."""
+        with httpx.Client(**self._client_kwargs) as client:
+            resp_body = self._get_request(
+                client, f"/v2/finetuned_models/{finetuned_model_id}"
+            )
+        return FinetunedModel(**resp_body)
+
     def delete_finetuned_model(self, finetuned_model_id: str) -> bool:
         """Delete a previously fine-tuned model
 
