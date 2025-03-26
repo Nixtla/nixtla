@@ -712,8 +712,10 @@ def _audit_categorical_variables(
 def _audit_leading_zeros(
     df: pd.DataFrame,
     id_col: str = "unique_id",
+    time_col: str = "ds",
     target_col: str = "y",
 ) -> tuple[AuditDataSeverity, pd.DataFrame]:
+    df = ensure_sorted(df, id_col=id_col, time_col=time_col)
     if isinstance(df, pd.DataFrame):
         group_info = df.groupby(id_col).agg(
             first_index=(target_col, lambda s: s.index[0]),
@@ -2683,7 +2685,6 @@ class NixtlaClient:
 
         """
         df = ensure_time_dtype(df, time_col=time_col)
-        df = ensure_sorted(df, id_col=id_col, time_col=time_col)
 
         logger.info("Running data quality tests...")
         pass_D001, error_df_D001 = _audit_duplicate_rows(df, id_col, time_col)
@@ -2696,7 +2697,9 @@ class NixtlaClient:
             )
         pass_F001, error_df_F001 = _audit_categorical_variables(df, id_col, time_col)
         pass_V001, error_df_V001 = _audit_negative_values(df, target_col)
-        pass_V002, error_df_V002 = _audit_leading_zeros(df, id_col, target_col)
+        pass_V002, error_df_V002 = _audit_leading_zeros(
+            df, id_col, time_col, target_col
+        )
 
         fail_dict, case_specific_dict = {}, {}
         test_ids = ["D001", "D002", "F001", "V001", "V002"]
