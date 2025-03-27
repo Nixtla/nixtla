@@ -153,3 +153,6 @@ checklink/cookies.txt
 *.csv
 *.parquet
 nbs/_extensions
+
+# VSCode
+*.code-workspace
