@@ -77,7 +77,7 @@ nbdev_export
 If you're working on the local interface you can just use `nbdev_test --n_workers 1 --do_print --timing`.
 
 ### Cleaning notebooks
-Since the notebooks output cells can vary from run to run (even if they produce the same outputs) the notebooks are cleaned before committing them. Please make sure to run `nbdev_clean ` before committing your changes.
+Since the notebooks output cells can vary from run to run (even if they produce the same outputs) the notebooks are cleaned before committing them. Please make sure to run `nbdev_clean` before committing your changes.
 
 ## Do you want to contribute to the documentation?
 
