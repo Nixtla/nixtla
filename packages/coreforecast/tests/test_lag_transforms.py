@@ -70,6 +70,30 @@ def data():
     return 10 * np.random.rand(indptr[-1])
 
 
+def test_lag():
+    ga = GroupedArray(np.array([1, 2, 3, 10, 11]), np.array([0, 3, 5]))
+
+    lag2 = lag_tf.Lag(2)
+    np.testing.assert_allclose(
+        lag2.transform(ga),
+        np.array([np.nan, np.nan, 1, np.nan, np.nan]),
+    )
+    np.testing.assert_allclose(
+        lag2.update(ga),
+        np.array([2, 10]),
+    )
+
+    lag3 = lag_tf.Lag(3)
+    np.testing.assert_allclose(
+        lag3.transform(ga),
+        np.array([np.nan, np.nan, np.nan, np.nan, np.nan]),
+    )
+    np.testing.assert_allclose(
+        lag3.update(ga),
+        np.array([1, np.nan]),
+    )
+
+
 @pytest.mark.parametrize("comb", list(lag_tfms_map.keys()))
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_correctness(data, comb, dtype):

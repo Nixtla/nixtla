@@ -5,7 +5,7 @@
 namespace grouped_array_functions {
 template <typename T>
 inline void IndexFromEnd(const T *data, int n, T *out, int k) {
-  if (k > n) {
+  if (k >= n) {
     *out = std::numeric_limits<T>::quiet_NaN();
   } else {
     *out = data[n - 1 - k];
