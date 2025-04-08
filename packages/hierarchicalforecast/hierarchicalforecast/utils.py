@@ -376,7 +376,7 @@ def aggregate_temporal(
     df : DataFrame
         Dataframe with columns `[time_col, target_cols]` and columns to aggregate.
     spec : dict
-        Dictionary of temporal levels. Each key should be a string with the value representing the number of bottom-level timesteps contained in the aggregation. For example, for monthly data, a spec for a temporal aggregation for yearly and monthly aggregations could be: spec = {"year": 12, "month": 1}.
+        Dictionary of temporal levels. Each key should be a string with the value representing the number of bottom-level timesteps contained in the aggregation.
     exog_vars: dictionary of string keys & values that can either be a list of strings or a single string
         keys correspond to column names and the values represent the aggregation(s) that will be applied to each column. Accepted values are those from Pandas or Polars aggregation Functions, check the respective docs for guidance
     sparse_s : bool (default=False)
