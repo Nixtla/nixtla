@@ -149,9 +149,9 @@ class HierarchicalReconciliation:
                     f"Temporal reconciliation is not supported for intervals_method=`{intervals_method}`."
                 )
 
-            missing_cols_temporal = set(
-                [id_col, time_col, target_col, id_time_col]
-            ) - set(Y_hat_nw_cols)
+            missing_cols_temporal = set([id_col, time_col, id_time_col]) - set(
+                Y_hat_nw_cols
+            )
             if missing_cols_temporal:
                 raise ValueError(
                     f"Check `Y_hat_df` columns, for temporal reconciliation {reprlib.repr(missing_cols_temporal)} must be in `Y_hat_df` columns."
