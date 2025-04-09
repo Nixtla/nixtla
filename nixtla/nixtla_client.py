@@ -978,12 +978,15 @@ class NixtlaClient:
             model = "azureai"
         return model
 
+    def _make_client(self, **kwargs):
+        return httpx.Client(**kwargs)
+
     def _get_model_params(self, model: _Model, freq: str) -> tuple[int, int]:
         key = (model, freq)
         if key not in self._model_params:
             logger.info("Querying model metadata...")
             payload = {"model": model, "freq": freq}
-            with httpx.Client(**self._client_kwargs) as client:
+            with self._make_client(**self._client_kwargs) as client:
                 if self._is_azure:
                     resp_body = self._make_request_with_retries(
                         client, "model_params", payload
@@ -1130,7 +1133,7 @@ class NixtlaClient:
                 "validate_api_key is not implemented for Azure deployments, "
                 "you can try using the forecasting methods directly."
             )
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             resp = client.get("/validate_api_key")
             body = resp.json()
         if log:
@@ -1146,7 +1149,7 @@ class NixtlaClient:
             Consumed requests and limits by minute and month."""
         if self._is_azure:
             raise NotImplementedError("usage is not implemented for Azure deployments")
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             return self._get_request(client, "/usage")
 
     def finetune(
@@ -1254,7 +1257,7 @@ class NixtlaClient:
             "output_model_id": output_model_id,
             "finetuned_model_id": finetuned_model_id,
         }
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             resp = self._make_request_with_retries(client, "v2/finetune", payload)
         return resp["finetuned_model_id"]
 
@@ -1279,7 +1282,7 @@ class NixtlaClient:
         -------
         list of FinetunedModel
             List of available fine-tuned models."""
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             resp_body = self._get_request(client, "/v2/finetuned_models")
         models = [FinetunedModel(**m) for m in resp_body["finetuned_models"]]
         if as_df:
@@ -1298,7 +1301,7 @@ class NixtlaClient:
         -------
         FinetunedModel
             Fine-tuned model metadata."""
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             resp_body = self._get_request(
                 client, f"/v2/finetuned_models/{finetuned_model_id}"
             )
@@ -1316,7 +1319,7 @@ class NixtlaClient:
         -------
         bool
             Whether delete was successful."""
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             resp = client.delete(
                 f"/v2/finetuned_models/{finetuned_model_id}",
                 headers={"accept-encoding": "identity"},
@@ -1631,7 +1634,7 @@ class NixtlaClient:
             "finetuned_model_id": finetuned_model_id,
             "feature_contributions": feature_contributions and X is not None,
         }
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             insample_feat_contributions = None
             if num_partitions is None:
                 resp = self._make_request_with_retries(client, "v2/forecast", payload)
@@ -1896,7 +1899,7 @@ class NixtlaClient:
             "clean_ex_first": clean_ex_first,
             "level": level,
         }
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
                     client, "v2/anomaly_detection", payload
@@ -2174,7 +2177,7 @@ class NixtlaClient:
             "refit": refit,
             "hist_exog": hist_exog,
         }
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
                     client, "v2/online_anomaly_detection", payload
@@ -2479,7 +2482,7 @@ class NixtlaClient:
             "finetuned_model_id": finetuned_model_id,
             "refit": refit,
         }
-        with httpx.Client(**self._client_kwargs) as client:
+        with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
                     client, "v2/cross_validation", payload
