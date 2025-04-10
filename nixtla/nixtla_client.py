@@ -978,7 +978,7 @@ class NixtlaClient:
             model = "azureai"
         return model
 
-    def _make_client(self, **kwargs):
+    def _make_client(self, **kwargs: Any) -> httpx.Client:
         return httpx.Client(**kwargs)
 
     def _get_model_params(self, model: _Model, freq: str) -> tuple[int, int]:
