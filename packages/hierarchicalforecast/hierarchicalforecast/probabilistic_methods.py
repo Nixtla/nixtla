@@ -64,14 +64,14 @@ class Normality:
 
         # Base Normality Errors assume independence/diagonal covariance
         # TODO: replace bilinearity with elementwise row multiplication
-        std_ = np.sqrt(np.diag(self.W))
+        std_ = np.sqrt(self.W.diagonal())
         R1 = self.W / np.outer(std_, std_)
         Wh = [np.diag(sigma) @ R1 @ np.diag(sigma).T for sigma in self.sigmah.T]
 
         # Reconciled covariances across forecast horizon
         self.cov_rec = [(self.SP @ W @ self.SP.T) for W in Wh]
         self.sigmah_rec = np.hstack(
-            [np.sqrt(np.diag(cov))[:, None] for cov in self.cov_rec]
+            [np.sqrt(cov.diagonal())[:, None] for cov in self.cov_rec]
         )
 
     def get_samples(self, num_samples: int):

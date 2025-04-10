@@ -3,8 +3,6 @@ import fire
 import pickle
 import pandas as pd
 
-os.environ['NIXTLA_ID_AS_COL'] = '1'
-
 from statsforecast.models import AutoETS
 from statsforecast.core import StatsForecast
 

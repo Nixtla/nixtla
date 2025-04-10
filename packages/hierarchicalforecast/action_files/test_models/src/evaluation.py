@@ -1,11 +1,8 @@
-import os
 import pickle
 import numpy as np
 import pandas as pd
 
 from hierarchicalforecast.evaluation import HierarchicalEvaluation
-
-os.environ['NIXTLA_ID_AS_COL'] = '1'
 
 def rmse(y, y_hat):
     return np.mean(np.sqrt(np.mean((y-y_hat)**2, axis=1)))

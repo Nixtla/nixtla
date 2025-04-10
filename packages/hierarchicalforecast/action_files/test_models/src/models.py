@@ -1,7 +1,4 @@
 import os
-
-os.environ['NIXTLA_ID_AS_COL'] = '1'
-
 import fire
 import pandas as pd
 
@@ -22,6 +19,8 @@ def main():
 
     reconcilers = [BottomUp(),
                    BottomUpSparse(),
+                   TopDown(method="forecast_proportions"),
+                   TopDownSparse(method="forecast_proportions"),
                    TopDown(method="average_proportions"),
                    TopDownSparse(method="average_proportions"),
                    TopDown(method="proportion_averages"),

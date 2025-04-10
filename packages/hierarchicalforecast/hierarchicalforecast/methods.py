@@ -338,22 +338,25 @@ def _reconcile_fcst_proportions(
     y_hat: np.ndarray,
     tags: dict[str, np.ndarray],
     nodes: dict[str, dict[int, np.ndarray]],
-    idx_top: int,
+    idxs_top: np.ndarray,
 ):
     reconciled = np.zeros_like(y_hat)
-    reconciled[idx_top] = y_hat[idx_top]
     level_names = list(tags.keys())
-    for i_level, level in enumerate(level_names[:-1]):
-        nodes_level = nodes[level]
-        for idx_parent, idx_childs in nodes_level.items():
-            fcst_parent = reconciled[idx_parent]
-            childs_sum = y_hat[idx_childs].sum()
-            for idx_child in idx_childs:
-                if np.abs(childs_sum) < 1e-8:
-                    n_children = len(idx_childs)
-                    reconciled[idx_child] = fcst_parent / n_children
-                else:
-                    reconciled[idx_child] = y_hat[idx_child] * fcst_parent / childs_sum
+    for idx_top in idxs_top:
+        reconciled[idx_top] = y_hat[idx_top]
+        for i_level, level in enumerate(level_names[:-1]):
+            nodes_level = nodes[level]
+            for idx_parent, idx_childs in nodes_level.items():
+                fcst_parent = reconciled[idx_parent]
+                childs_sum = y_hat[idx_childs].sum()
+                for idx_child in idx_childs:
+                    if np.abs(childs_sum) < 1e-8:
+                        n_children = len(idx_childs)
+                        reconciled[idx_child] = fcst_parent / n_children
+                    else:
+                        reconciled[idx_child] = (
+                            y_hat[idx_child] * fcst_parent / childs_sum
+                        )
     return reconciled
 
 # %% ../nbs/src/methods.ipynb 30
@@ -377,6 +380,14 @@ class TopDown(HReconciler):
     """
 
     def __init__(self, method: str):
+        if method not in [
+            "forecast_proportions",
+            "average_proportions",
+            "proportion_averages",
+        ]:
+            raise ValueError(
+                f"Unknown method `{method}`. Choose from `forecast_proportions`, `average_proportions`, `proportion_averages`."
+            )
         self.method = method
         self.insample = method in ["average_proportions", "proportion_averages"]
 
@@ -515,7 +526,12 @@ class TopDown(HReconciler):
         `y_tilde`: Reconciliated y_hat using the Top Down approach.
         """
         if self.method == "forecast_proportions":
-            idx_top = int(S.sum(axis=1).argmax())
+            S_sum = np.sum(S, axis=1)
+            if S.shape[1] > 1:
+                S_max_idxs = np.argsort(S_sum)[::-1]
+                idxs_top = S_max_idxs[np.cumsum(S_sum[S_max_idxs]) <= S.shape[1]]
+            else:
+                idxs_top = np.array([np.argmax(S_sum)])
             levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
             if level is not None:
                 raise ValueError(
@@ -528,7 +544,7 @@ class TopDown(HReconciler):
                     y_hat=y_hat_[:, None],
                     tags=levels_,
                     nodes=nodes,
-                    idx_top=idx_top,
+                    idxs_top=idxs_top,
                 )
                 for y_hat_ in y_hat.T
             ]
@@ -715,6 +731,14 @@ class MiddleOut(HReconciler):
     """
 
     def __init__(self, middle_level: str, top_down_method: str):
+        if top_down_method not in [
+            "forecast_proportions",
+            "average_proportions",
+            "proportion_averages",
+        ]:
+            raise ValueError(
+                f"Unknown top_down_method `{top_down_method}`. Choose from `forecast_proportions`, `average_proportions`, `proportion_averages`."
+            )
         self.middle_level = middle_level
         self.top_down_method = top_down_method
         self.insample = top_down_method in [
@@ -962,6 +986,10 @@ class MinTrace(HReconciler):
         mint_shr_ridge: Optional[float] = 2e-8,
         num_threads: int = 1,
     ):
+        if method not in ["ols", "wls_struct", "wls_var", "mint_cov", "mint_shrink"]:
+            raise ValueError(
+                f"Unknown method `{method}`. Choose from `ols`, `wls_struct`, `wls_var`, `mint_cov`, `mint_shrink`."
+            )
         self.method = method
         self.nonnegative = nonnegative
         self.insample = method in ["wls_var", "mint_cov", "mint_shrink"]
@@ -1270,8 +1298,8 @@ class MinTraceSparse(MinTrace):
         qp: bool = True,
     ) -> None:
         if method not in ["ols", "wls_struct", "wls_var"]:
-            raise NotImplementedError(
-                f"`{method}` is not supported for MinTraceSparse. Choose from `ols`, `wls_struct`, or `wls_var`."
+            raise ValueError(
+                f"Unknown method `{method}`. Choose from `ols`, `wls_struct`, or `wls_var`."
             )
         # Call the parent constructor.
         super().__init__(method, nonnegative, num_threads=num_threads)
@@ -1595,10 +1623,9 @@ class OptimalCombination(MinTrace):
     """
 
     def __init__(self, method: str, nonnegative: bool = False, num_threads: int = 1):
-        comb_methods = ["ols", "wls_struct"]
-        if method not in comb_methods:
+        if method not in ["ols", "wls_struct"]:
             raise ValueError(
-                f'Optimal Combination class does not support method: "{method}"'
+                f"Unknown method `{method}`. Choose from `ols`, `wls_struct`."
             )
         super().__init__(
             method=method, nonnegative=nonnegative, num_threads=num_threads
@@ -1631,6 +1658,10 @@ class ERM(HReconciler):
     """
 
     def __init__(self, method: str, lambda_reg: float = 1e-2):
+        if method not in ["closed", "reg", "reg_bu"]:
+            raise ValueError(
+                f"Unknown method `{method}`. Choose from `closed`, `reg`, `reg_bu`."
+            )
         self.method = method
         self.lambda_reg = lambda_reg
         self.insample = True

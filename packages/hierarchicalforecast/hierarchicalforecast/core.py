@@ -9,7 +9,7 @@ import re
 import reprlib
 import time
 
-from .methods import HReconciler
+from .methods import HReconciler, TopDownSparse, MiddleOutSparse
 from inspect import signature
 from narwhals.typing import Frame, FrameT
 from scipy.stats import norm
@@ -439,6 +439,11 @@ class HierarchicalReconciliation:
         self.sample_names = {}
         for reconciler, name_copy in zip(self.reconcilers, self.orig_reconcilers):
             reconcile_fn_name = _build_fn_name(name_copy)
+
+            if isinstance(reconciler, (MiddleOutSparse, TopDownSparse)) and temporal:
+                raise NotImplementedError(
+                    f"Reconciler `{reconcile_fn_name}` is not yet supported for temporal reconciliation."
+                )
 
             if reconciler.is_sparse_method:
                 reconciler_args["S"] = S_for_sparse

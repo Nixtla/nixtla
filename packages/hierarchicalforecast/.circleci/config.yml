@@ -41,9 +41,33 @@ jobs:
       - store_artifacts:
           path: ./action_files/test_models/data/evaluation.csv
           destination: evaluation.csv
-
+  test-model-performance-temporal:
+    resource_class: large
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            pip install uv
+            uv venv --python 3.10
+      - run:
+          name: Run model performance tests
+          command: |
+            source .venv/bin/activate           
+            uv pip install ".[dev]"
+            cd ./action_files/test_models/
+            uv pip install -r requirements.txt
+            python -m src.models_temporal
+            python -m src.evaluation_temporal
+            cd ../../
+      - store_artifacts:
+          path: ./action_files/test_models/data/evaluation.csv
+          destination: evaluation.csv
 workflows:
   sample:
     jobs:
       - nbdev-tests
       - test-model-performance
+      - test-model-performance-temporal
