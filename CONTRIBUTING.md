@@ -104,6 +104,7 @@ Docs are automatically created from the notebooks in the `nbs` folder.
     * The Google Colab link;
     * How images should be linked;
     * How the `IN_COLAB` variable is used to distinguish when the notebook is used locally vs in Google Colab.
+    * When referring to an emailadres, use a code block, i.e. `support@nixtla.io`. Don't use a link block - this will fail on Mintlify.
 6. Add the document to `nbs/mint.json` under the correct group with the following name `document_title_in_lower_case.html`.
 7. Follow steps 3 - 8 under `Modifying an existing doc`.
 
