@@ -432,7 +432,7 @@ def _validate_input_size(
     model_horizon: int,
 ) -> None:
     min_size = np.diff(processed.indptr).min().item()
-    if min_size < model_input_size + model_horizon:
+    if min_size < model_horizon + 1:
         raise ValueError(
             "Some series are too short. "
             "Please make sure that each series contains "
