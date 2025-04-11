@@ -81,7 +81,7 @@ def _construct_adjacency_matrix(
     # return the truncated disaggregation adjacency matrix.
     return sparse.hstack(
         (
-            sparse.csr_matrix((n_a, 1), dtype=bool),
+            sparse.csr_matrix((n_a, len(l[0])), dtype=bool),
             sparse.block_diag(
                 [S[l[i]] * S_T[:, l[i + 1]] for i in range(len(l) - 1)], "csr"
             ),
@@ -106,16 +106,20 @@ def is_strictly_hierarchical(S: np.ndarray, tags: dict[str, np.ndarray]) -> bool
     return paths == nodes
 
 # %% ../nbs/src/utils.ipynb 9
-def _is_strictly_hierarchical(A: sparse.csr_matrix) -> bool:
+def _is_strictly_hierarchical(
+    A: sparse.csr_matrix, tags: dict[str, np.ndarray]
+) -> bool:
     """Check if a disaggregation structure is strictly hierarchical.
 
     The nodes in a strictly hierarchical disaggregation structure, except for
-    the root node, should have exactly one incoming edge.
+    the root node(s), should have exactly one incoming edge.
 
     Parameters
     ----------
     A: sparse.csr_matrix
         A disaggregation adjacency matrix.
+    tags : dict[str, np.ndarray]
+        A mapping of level name to node indices.
 
     Returns
     -------
@@ -123,7 +127,7 @@ def _is_strictly_hierarchical(A: sparse.csr_matrix) -> bool:
         `True` if strictly hierarchical, otherwise `False`.
 
     """
-    return np.all(A.sum(axis=0).A1[1:] == 1)
+    return np.all(A.sum(axis=0).A1[len(next(iter(tags.values()))) :] == 1)
 
 # %% ../nbs/src/utils.ipynb 11
 def _to_upper_hierarchy(

@@ -594,7 +594,7 @@ class TopDownSparse(TopDown):
         if not self.is_strictly_hierarchical:
             # Check if the data structure is strictly hierarchical.
             if tags is not None and not _is_strictly_hierarchical(
-                _construct_adjacency_matrix(S, tags)
+                _construct_adjacency_matrix(S, tags), tags
             ):
                 raise ValueError(
                     "Top-down reconciliation requires strictly hierarchical structures."
@@ -662,7 +662,7 @@ class TopDownSparse(TopDown):
             # Avoid a redundant check during middle-out reconciliation.
             if not self.is_strictly_hierarchical:
                 # Check if the data structure is strictly hierarchical.
-                if tags is not None and not _is_strictly_hierarchical(A):
+                if tags is not None and not _is_strictly_hierarchical(A, tags):
                     raise ValueError(
                         "Top-down reconciliation requires strictly hierarchical structures."
                     )
@@ -671,8 +671,10 @@ class TopDownSparse(TopDown):
             # Calculate the relative proportions for each node.
             with np.errstate(divide="ignore"):
                 P = y_hat / ((A.T @ A) @ y_hat)
-            # Set the relative proportion of the root node.
-            P[P == np.inf] = 1.0
+            # Get the number of root nodes.
+            n = len(next(iter(tags.values())))
+            # Set the relative proportion(s) of the root node(s).
+            P[:n, :] = 1.0
             # Precompute the transpose of the summing matrix.
             S_T = S.T
             # Propagate the relative proportions for the nodes along each leaf
@@ -684,8 +686,12 @@ class TopDownSparse(TopDown):
                 [
                     S
                     @ (
-                        np.prod(np.vstack(S_T.multiply(P[:, i]).tolil().data), 1)
-                        * y_hat[0, i]
+                        S_T[:, :n].multiply(
+                            np.prod(
+                                np.vstack(S_T.multiply(P[:, i]).tolil().data), 1
+                            ).reshape(-1, 1)
+                        )
+                        @ y_hat[:n, i]
                     )
                     for i in range(y_hat.shape[1])
                 ]
@@ -883,7 +889,7 @@ class MiddleOutSparse(MiddleOut):
             raise KeyError(f"{self.middle_level} is not a key in `tags`.")
         # Check if the data structure is strictly hierarchical.
         if not _is_strictly_hierarchical(
-            _construct_adjacency_matrix(sparse.csr_matrix(S), tags)
+            _construct_adjacency_matrix(sparse.csr_matrix(S), tags), tags
         ):
             raise ValueError(
                 "Middle-out reconciliation requires strictly hierarchical structures."
