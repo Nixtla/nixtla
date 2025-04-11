@@ -86,18 +86,6 @@ ray_cluster = Cluster(
 ray.init(address=ray_cluster.address, ignore_reinit_error=True)
 ```
 
-``` text
-2025-04-11 15:12:08,285 WARNING cluster_utils.py:157 -- Ray cluster mode is currently experimental and untested on Windows. If you are using it and running into issues please file a report at https://github.com/ray-project/ray/issues.
-2025-04-11 15:12:11,310 INFO worker.py:1634 -- Connecting to existing Ray cluster at address: 127.0.0.1:62575...
-2025-04-11 15:12:11,330 INFO worker.py:1810 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265 
-```
-
-|                     |                                             |
-|:--------------------|:--------------------------------------------|
-| **Python version:** | **3.10.16**                                 |
-| **Ray version:**    | **2.39.0**                                  |
-| **Dashboard:**      | **<a href="http://127.0.0.1:8265"           
-                       target="_blank">http://127.0.0.1:8265</a>**  |
 
 ```python
 ray_df = ray.data.from_pandas(df)
