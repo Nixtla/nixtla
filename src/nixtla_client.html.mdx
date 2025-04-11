@@ -4,10 +4,26 @@ title: Nixtla Client
 ---
 
 
+## Imports
+
+## Utilities
+
+### Audit Data
+
+#### Audit Duplicate Rows
+
+#### Audit Missing Dates
+
+#### Audit Categorical Variables
+
+#### Audit Leading Zeros
+
+#### Audit Negative Values
+
 ------------------------------------------------------------------------
 
 <a
-href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#L640"
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#L750"
 target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 ### ApiError
@@ -18,18 +34,20 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 *Common base class for all non-exit exceptions.*
 
+## Client
+
 ------------------------------------------------------------------------
 
 <a
-href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#L654"
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#L764"
 target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 ### NixtlaClient
 
 > ``` text
 >  NixtlaClient (api_key:Optional[str]=None, base_url:Optional[str]=None,
->                timeout:int=60, max_retries:int=6, retry_interval:int=10,
->                max_wait_time:int=360)
+>                timeout:Optional[int]=60, max_retries:int=6,
+>                retry_interval:int=10, max_wait_time:int=360)
 > ```
 
 *Client to interact with the Nixtla API.*
@@ -38,18 +56,48 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 |------|------------------|-------------------------|-------------------------|
 | api_key | Optional | None | The authorization api_key interacts with the Nixtla API.<br/>If not provided, will use the NIXTLA_API_KEY environment variable. |
 | base_url | Optional | None | Custom base_url.<br/>If not provided, will use the NIXTLA_BASE_URL environment variable. |
-| timeout | int | 60 | Request timeout in seconds. Set this to `None` to disable it. |
-| max_retries | int | 6 | The maximum number of attempts to make when calling the API before giving up. <br/>It defines how many times the client will retry the API call if it fails. <br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total |
-| retry_interval | int | 10 | The interval in seconds between consecutive retry attempts. <br/>This is the waiting period before the client tries to call the API again after a failed attempt. <br/>Default value is 10 seconds, meaning the client waits for 10 seconds between retries. |
-| max_wait_time | int | 360 | The maximum total time in seconds that the client will spend on all retry attempts before giving up. <br/>This sets an upper limit on the cumulative waiting time for all retry attempts. <br/>If this time is exceeded, the client will stop retrying and raise an exception. <br/>Default value is 360 seconds, meaning the client will cease retrying if the total time <br/>spent on retries exceeds 360 seconds. <br/>The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to <br/>catch these errors, use max_wait_time \>\> 60. |
+| timeout | Optional | 60 | Request timeout in seconds. Set this to `None` to disable it. |
+| max_retries | int | 6 | The maximum number of attempts to make when calling the API before giving up.<br/>It defines how many times the client will retry the API call if it fails.<br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total |
+| retry_interval | int | 10 | The interval in seconds between consecutive retry attempts.<br/>This is the waiting period before the client tries to call the API again after a failed attempt.<br/>Default value is 10 seconds, meaning the client waits for 10 seconds between retries. |
+| max_wait_time | int | 360 | The maximum total time in seconds that the client will spend on all retry attempts before giving up.<br/>This sets an upper limit on the cumulative waiting time for all retry attempts.<br/>If this time is exceeded, the client will stop retrying and raise an exception.<br/>Default value is 360 seconds, meaning the client will cease retrying if the total time<br/>spent on retries exceeds 360 seconds.<br/>The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to<br/>catch these errors, use max_wait_time \>\> 60. |
+
+## Wrappers
+
+## Tests
+
+### Data Quality
+
+```python
+common_kwargs = {
+    "freq": "D",
+    "id_col": 'unique_id',
+    "time_col": 'ds'
+}
+```
+
+#### All Pass
+
+#### Duplicate rows
+
+#### Missing dates
+
+#### Duplicate rows and missing dates
+
+#### Categorical Columns
+
+#### Negative Values
+
+#### Leading zeros
+
+### Anomaly Detection
 
 Now you can start to make forecasts! Let’s import an example:
 
-## Distributed
+### Distributed
 
-### Spark
+#### Spark
 
-### Dask
+#### Dask
 
-### Ray
+#### Ray
 
