@@ -127,3 +127,19 @@ Make sure to check that our [Mintlify docs](https://nixtlaverse.nixtla.io/nixtla
 * Don't rename documents! The filename is used statically in various files to properly index the file in the correct (sub)folder. If you rename, you're effectively creating a new document. Follow the correct procedure for creating a new document (above), and check every other document (yes, every single one) in our documentation whether there's a link now breaking to the doc you renamed.
 * Check the changes / new document online in both [Readme.com](https://docs.nixtla.io/) and [Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html).
 * Screwed up? You can hide a document in Readme.com in the Admin console, under `Guides`. Make sure to unhide it again after you've fixed your misstakes.
+
+### Debugging errors on Nixtlaverse
+We have two documentation systems:
+* [Nixtlaverse via Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html)
+* [Readme.com](https://docs.nixtla.io/)
+
+Mintlify is used to build to Nixtlaverse docs. The process is as follows:
+1. The PR with the new or changed doc is merged.
+2. The action [build_docs](https://github.com/Nixtla/docs/tree/docs/nixtla/docs) runs automatically. This will generate the documentation files.
+3. The documentation files are generated as html.mdx files and transferred onto [the Nixtla docs repository under the docs branch](https://github.com/Nixtla/docs/tree/docs/nixtla/docs). You can check that the generated source files contain all the changes you made. If the changes are not present, it could be that Mintlify encountered an error. This should be apparent from the commit or you can check the Mintlify dashboard to check for an error (see next step).
+4. You can check the status of the update of the documentation files [in the Mintlify dashboard](https://dashboard.mintlify.com/nixtla/nixtla). If errors occur, you will see them here.
+
+Readme.com is used to build the [docs.nixtla.io](https://docs.nixtla.io/) documentation. If you encounter an error, for example:
+* The doc hasn't been published: check this guide under `Publishing documentation` and repeat the steps mentioned there.
+* The doc is in the wrong place: check this guide under `Publishing documentation` and repeat the steps mentioned there.
+* There's a failure on how it is displaying things: this could be a parsing error. For example, you used an incorrect image tag. Look at how other docs in our repo handle that type of element and copy the same syntax.
