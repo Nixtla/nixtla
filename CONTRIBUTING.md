@@ -128,7 +128,7 @@ Make sure to check that our [Mintlify docs](https://nixtlaverse.nixtla.io/nixtla
 * Check the changes / new document online in both [Readme.com](https://docs.nixtla.io/) and [Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html).
 * Screwed up? You can hide a document in Readme.com in the Admin console, under `Guides`. Make sure to unhide it again after you've fixed your misstakes.
 
-### Debugging errors on Nixtlaverse
+### Debugging errors on our docs
 We have two documentation systems:
 * [Nixtlaverse via Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html)
 * [Readme.com](https://docs.nixtla.io/)
@@ -142,4 +142,4 @@ Mintlify is used to build to Nixtlaverse docs. The process is as follows:
 Readme.com is used to build the [docs.nixtla.io](https://docs.nixtla.io/) documentation. If you encounter an error, for example:
 * The doc hasn't been published: check this guide under `Publishing documentation` and repeat the steps mentioned there.
 * The doc is in the wrong place: check this guide under `Publishing documentation` and repeat the steps mentioned there.
-* There's a failure on how it is displaying things: this could be a parsing error. For example, you used an incorrect image tag. Look at how other docs in our repo handle that type of element and copy the same syntax.
+* There's a failure on how it is displaying things: this could be a parsing error. For example, you used an incorrect image tag. Look at how other docs in our repo handle that type of element and copy the same syntax. Go to the Admin panel of readme.com and inspect the source of the document.
