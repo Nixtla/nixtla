@@ -4,6 +4,27 @@ title: Irregular timestamps
 ---
 
 
+When working with time series data, it is important to specify its
+frequency correctly, as this can significantly impact forecasting
+results. TimeGPT is designed to automatically infer the frequency of
+your timestamps. For commonly used frequencies, such as hourly, daily,
+or monthly, TimeGPT reliably infers the frequency automatically, so no
+additional input is required.
+
+However, for irregular frequencies, where observations are not recorded
+at consistent or regular intervals, such as the days the U.S. stock
+market is open, it is necessary to specify the frequency directly.
+
+TimeGPT requires that your data does not contain missing values, as this
+is not currently supported. In other words, the irregularity of the data
+should stem from the nature of the recorded phenomenon, not from missing
+observations. If your data contains missing values, please refer to our
+[tutorial on missing
+dates](https://docs.nixtla.io/docs/tutorials-missing_values).
+
+In this tutorial, we will show you how to handle irregular and custom
+frequencies in TimeGPT.
+
 [![](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/11_irregular_timestamps.ipynb)
 
 ## 1. Import packages

@@ -1,8 +1,103 @@
 ---
-description: 📘 Access token required
 output-file: excel_addin.html
 title: TimeGPT Excel Add-in (Beta)
 ---
 
 
+## Installation
+
+Head to the [TimeGTP excel add-in page in Microsoft
+Appsource](https://appsource.microsoft.com/en-us/product/office/WA200006429?tab=Overview)
+and click on “Get it now”
+
+## Usage
+
+> 📘 Access token required
+>
+> The TimeGPT Excel Add-in requires an access token. Get your API Key on
+> the [Nixtla Dashboard](http://dashboard.nixtla.io).
+
+## Support
+
+If you have questions or need support, please email <support@nixtla.io>.
+
+## How-to
+
+### Settings
+
+If this is your first time using Excel add-ins, find information on how
+to add Excel add-ins with your version of Excel. In the Office Add-ins
+Store, you’ll search for “TimeGPT”.
+
+Once you have installed the TimeGPT add-in, the add-in comes up in a
+sidebar task pane. \* Read through the Welcome screen. \* Click on the
+**‘Get Started’** button. \* The API URL is already set to:
+https://api.nixtla.io. \* Copy your API key from [Nixtla
+Dashboard](http://dashboard.nixtla.io). Paste it into the box that say
+**API Key, Bearer**. \* Click the gray arrow next to that box on the
+right. \* You’ll get to a screen with options for ‘Forecast’ and
+‘Anomaly Detection’.
+
+To access the settings later, click the gear icon in the top left.
+
+### Data Requirements
+
+-   Put your dates in one column and your values in another.
+-   Ensure your date format is recognized as a valid date by excel.
+-   Ensure your values are recognized as valid number by excel.
+-   All data inputs must exist in the same worksheet. The add-in does
+    not support forecasting using multiple worksheets.
+-   Do not include headers
+
+Example:
+
+| dates         | values |
+|:--------------|:-------|
+| 12/1/16 0:00  | 72     |
+| 12/1/16 1:00  | 65.8   |
+| 12/1/16 2:00  | 59.99  |
+| 12/1/16 3:00  | 50.69  |
+| 12/1/16 4:00  | 52.58  |
+| 12/1/16 5:00  | 65.05  |
+| 12/1/16 6:00  | 80.4   |
+| 12/1/16 7:00  | 200    |
+| 12/1/16 8:00  | 200.63 |
+| 12/1/16 9:00  | 155.47 |
+| 12/1/16 10:00 | 150.91 |
+
+#### Forecasting
+
+Once you’ve configured your token and formatted your input data then
+you’re all ready to forecast!
+
+With the add-in open, configure the forecasting settings by selecting
+the column for each input.
+
+-   **Frequency** - The frequency of the data (hourly / daily / weekly /
+    monthly)
+
+-   **Horizon** - The forecasting horizon. This represents the number of
+    time steps into the future that the forecast should predict.
+
+-   **Dates Range** - The column and range of the timeseries timestamps.
+    Must not include header data, and should be formatted as a range,
+    e.g. A2:A145.
+
+-   **Values Range** - The column and range of the timeseries values for
+    each point in time. Must not include header data, and should be
+    formatted as a range, e.g. B2:B145.
+
+When you’re ready, click **Make Prediction** to generate the predicted
+values. The add-in will generate a plot and append the forecasted data
+to the end of the column of your existing data and highlight them in
+green. So, scroll to the end of your data to see the predicted values.
+
+#### Anomaly Detection
+
+The requirements are the same as for the forecasting functionality, so
+if you already tried it you are ready to run the anomaly detection one.
+Go to the main page in the add-in and select “Anomaly Detection”, then
+choose your dates and values cell ranges and click on submit. We’ll run
+the model and mark the anomalies cells in yellow while adding a third
+column for expected values with a green background.
 

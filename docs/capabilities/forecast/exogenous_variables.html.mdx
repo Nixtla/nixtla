@@ -4,6 +4,13 @@ title: Add exogenous variables
 ---
 
 
+To model with exogenous features, you have two options: 1. Use
+historical exogenous variables: include these variables in the DataFrame
+you pass to the `forecast` method 2. Use future exogenous variables:
+include these variables in the DataFrame you pass to the `forecast`
+method and provide the future values of these exogenous features over
+the forecast horizon using the `X_df` parameter.
+
 ```python
 import pandas as pd
 from nixtla import NixtlaClient

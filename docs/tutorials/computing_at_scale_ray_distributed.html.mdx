@@ -87,21 +87,29 @@ ray.init(address=ray_cluster.address, ignore_reinit_error=True)
 ```
 
 ``` text
-2024-05-10 11:09:17,240 WARNING cluster_utils.py:157 -- Ray cluster mode is currently experimental and untested on Windows. If you are using it and running into issues please file a report at https://github.com/ray-project/ray/issues.
-2024-05-10 11:09:19,076 INFO worker.py:1564 -- Connecting to existing Ray cluster at address: 127.0.0.1:63694...
-2024-05-10 11:09:19,092 INFO worker.py:1740 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265 
+2025-04-11 15:12:08,285 WARNING cluster_utils.py:157 -- Ray cluster mode is currently experimental and untested on Windows. If you are using it and running into issues please file a report at https://github.com/ray-project/ray/issues.
+2025-04-11 15:12:11,310 INFO worker.py:1634 -- Connecting to existing Ray cluster at address: 127.0.0.1:62575...
+2025-04-11 15:12:11,330 INFO worker.py:1810 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265 
 ```
 
 |                     |                                             |
 |:--------------------|:--------------------------------------------|
-| **Python version:** | **3.10.14**                                 |
-| **Ray version:**    | **2.20.0**                                  |
+| **Python version:** | **3.10.16**                                 |
+| **Ray version:**    | **2.39.0**                                  |
 | **Dashboard:**      | **<a href="http://127.0.0.1:8265"           
                        target="_blank">http://127.0.0.1:8265</a>**  |
 
 ```python
 ray_df = ray.data.from_pandas(df)
 ray_df
+```
+
+``` text
+MaterializedDataset(
+   num_blocks=1,
+   num_rows=6720,
+   schema={unique_id: object, ds: datetime64[ns], y: float64}
+)
 ```
 
 ## 4. Use TimeGPT on Ray
@@ -138,6 +146,18 @@ class such as
 [`forecast`](https://docs.nixtla.io/docs/reference-sdk_reference#nixtlaclientforecast)
 or
 [`cross_validation`](https://docs.nixtla.io/docs/reference-sdk_reference#nixtlaclientcross_validation).
+
+```python
+ray_df
+```
+
+``` text
+MaterializedDataset(
+   num_blocks=1,
+   num_rows=6720,
+   schema={unique_id: object, ds: datetime64[ns], y: float64}
+)
+```
 
 ```python
 fcst_df = nixtla_client.forecast(ray_df, h=12)
