@@ -432,7 +432,7 @@ def _validate_input_size(
     model_horizon: int,
 ) -> None:
     min_size = np.diff(processed.indptr).min().item()
-    if min_size < model_horizon + 1:
+    if min_size < model_input_size + model_horizon:
         raise ValueError(
             "Some series are too short. "
             "Please make sure that each series contains "
@@ -1588,7 +1588,7 @@ class NixtlaClient:
         )
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
-        if finetune_steps > 0 or level is not None or add_history:
+        if finetune_steps > 0 or add_history:
             _validate_input_size(processed, model_input_size, model_horizon)
         if h > model_horizon:
             logger.warning(
