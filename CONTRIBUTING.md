@@ -87,7 +87,7 @@ Docs are automatically created from the notebooks in the `nbs` folder.
 1. Find the relevant notebook.
 2. Make your changes.
     * Do not rename the document.
-    * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`.
+    * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-subscription_plans_and_pricing`.
 3. Run all cells.
 4. Run `nbdev_preview`.
 5. Clean the notebook metadata using `nbdev_clean --fname nbs/docs/[path_to_notebook.ipynb]`.
@@ -98,13 +98,14 @@ Docs are automatically created from the notebooks in the `nbs` folder.
 ### Creating a new document
 1. Copy an existing jupyter notebook in a folder where you want to create a new document. This should be a subfolder of `nbs/docs`.
 2. Rename the document using the following format: `[document_number]_document_title_in_lower_case.ipynb` (for example: `01_quickstart.ipynb`), incrementing the document number from the current highest number within the folder and retaining the leading zero.
-3. The first header (title) is ideally the same as the notebook name (without the document number). This is because in Readme.com the first header (title) is used to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` of a document in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`. Thus, it is advised to keep the document name and header the same.
-4. Work on your new document. Pay attention to:
+3. The first header (title) is ideally the same as the notebook name (without the document number). This is because in Readme.com the first header (title) is used to create the filename. For example, a first header of `Subscription Plans and Pricing` of a document in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-subscription_plans_and_pricing`. Thus, it is advised to keep the document name and header the same. 
+4. The header should be in a separate Markdown cell. Don't start the body of the document in the same markdown cell as the title. It won't be displayed on our Mintlify (Nixtlaverse)docs.
+5. Work on your new document. Pay attention to:
     * The Google Colab link;
     * How images should be linked;
     * How the `IN_COLAB` variable is used to distinguish when the notebook is used locally vs in Google Colab.
-5. Add the document to `nbs/mint.json` under the correct group with the following name `document_title_in_lower_case.html`.
-6. Follow steps 3 - 8 under `Modifying an existing doc`.
+6. Add the document to `nbs/mint.json` under the correct group with the following name `document_title_in_lower_case.html`.
+7. Follow steps 3 - 8 under `Modifying an existing doc`.
 
 ### Publishing documentation
 When the PR is approved, the documentation will not be visible directly. It will be visible:
