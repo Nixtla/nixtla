@@ -169,6 +169,12 @@ class HierarchicalReconciliation:
                     f"Check `S_df` columns, {reprlib.repr(id_col)} must be in `S_df` columns."
                 )
 
+        # Check if Y_hat_df has the right shape
+        if len(Y_hat_nw.group_by(id_col).agg(nw.len()).unique(subset="len")) != 1:
+            raise ValueError(
+                "Check `Y_hat_df`, there are missing timestamps. All series should have the same number of predictions."
+            )
+
         # -------------------------------- Match Y_hat/Y/S index order --------------------------------#
         # TODO: This is now a bit slow as we always sort.
         S_nw = S_nw.with_columns(**{f"{id_col}_id": np.arange(len(S_nw))})
