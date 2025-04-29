@@ -6,7 +6,6 @@ __all__ = ['ApiError', 'NixtlaClient']
 # %% ../nbs/src/nixtla_client.ipynb 4
 import datetime
 from enum import Enum
-from functools import cache
 import logging
 import math
 import os
@@ -641,7 +640,6 @@ def _process_exog_features(
     return X, hist_exog
 
 
-@cache
 def _model_in_list(model: str, model_list: tuple[Any]) -> bool:
     for m in model_list:
         if isinstance(m, str):
