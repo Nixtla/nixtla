@@ -379,6 +379,8 @@ class TopDown(HReconciler):
     doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
     """
 
+    is_strictly_hierarchical = False
+
     def __init__(self, method: str):
         if method not in [
             "forecast_proportions",
@@ -526,6 +528,12 @@ class TopDown(HReconciler):
         `y_tilde`: Reconciliated y_hat using the Top Down approach.
         """
         if self.method == "forecast_proportions":
+            if not self.is_strictly_hierarchical:
+                # Check if the data structure is strictly hierarchical.
+                if tags is not None and not is_strictly_hierarchical(S, tags):
+                    raise ValueError(
+                        "Top-down reconciliation requires strictly hierarchical structures."
+                    )
             S_sum = np.sum(S, axis=1)
             if S.shape[1] > 1:
                 S_max_idxs = np.argsort(S_sum)[::-1]
@@ -833,6 +841,9 @@ class MiddleOut(HReconciler):
                         complete_idxs_child.append(idxs_child)
                 parents[idx_middle_out][lv_child] = np.hstack(complete_idxs_child)
 
+        cls_top_down = TopDown(self.top_down_method)
+        cls_top_down.is_strictly_hierarchical = True
+
         for node, levels_node in parents.items():
             idxs_node = np.hstack(list(levels_node.values()))
             S_node = S[idxs_node]
@@ -843,7 +854,7 @@ class MiddleOut(HReconciler):
                 idxs_len = len(idxs_level)
                 levels_node_[lv_name] = np.arange(counter, idxs_len + counter)
                 counter += idxs_len
-            td = TopDown(self.top_down_method).fit_predict(
+            td = cls_top_down.fit_predict(
                 S=S_node,
                 y_hat=y_hat[idxs_node],
                 y_insample=y_insample[idxs_node] if y_insample is not None else None,
@@ -1640,7 +1651,7 @@ class OptimalCombination(MinTrace):
 
 # %% ../nbs/src/methods.ipynb 90
 class ERM(HReconciler):
-    """Optimal Combination Reconciliation Class.
+    """Empirical Risk Minimization Reconciliation Class.
 
     The Empirical Risk Minimization reconciliation strategy relaxes the unbiasedness assumptions from
     previous reconciliation methods like MinT and optimizes square errors between the reconciled predictions
