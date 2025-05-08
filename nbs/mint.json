@@ -129,7 +129,8 @@
             "docs/tutorials/hierarchical_forecasting.html", 
             "docs/tutorials/temporalhierarchical.html",
             "docs/tutorials/missing_values.html",
-            "docs/tutorials/how_to_improve_forecast_accuracy.html"
+            "docs/tutorials/how_to_improve_forecast_accuracy.html",
+            "docs/tutorials/audit_clean.html"
           ]
         },
         {
