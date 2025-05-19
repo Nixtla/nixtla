@@ -60,12 +60,8 @@ NIXTLA_API_KEY=<your token>
 #### Install git hooks
 Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
 ```
-nbdev_install_hooks
 pre-commit install
 ```
-
-### Preview Changes
-You can preview changes in your local browser before pushing by using the `nbdev_preview`.
 
 ### Building the library
 The library is built using the notebooks contained in the `nbs` folder. If you want to make any changes to the library you have to find the relevant notebook, make your changes and then call:
