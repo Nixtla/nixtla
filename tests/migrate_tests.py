@@ -28,8 +28,8 @@ for cell in notebook_content['cells']:
         test_functions.append(cell_text)
         new_cells.append(cell)
 
-# Write the test functions to a new Python file
-with open('/home/nixtla/tests/test_cases.py', 'w') as f:
+# Write the test functions to a new Python file (draft)
+with open('/home/nixtla/tests/test_cases.py.txt', 'w') as f:
     f.write('\n\n'.join(test_functions))
 
 # Update the notebook with the new cells
