@@ -1,5 +1,19 @@
+import os
 import pandas as pd
 import pytest
+import uuid
+
+from utilsforecast.data import generate_series
+from types import SimpleNamespace
+
+# try this global scope for test, ortherwise consider function scope
+@pytest.fixture
+def custom_client():
+    from nixtla.nixtla_client import NixtlaClient
+    return NixtlaClient(
+        base_url=os.environ['NIXTLA_BASE_URL_CUSTOM'],
+        api_key=os.environ['NIXTLA_API_KEY_CUSTOM'],
+    )
 
 @pytest.fixture
 def df_no_duplicates():
@@ -79,3 +93,49 @@ def df_negative_values():
         'ds': pd.date_range('2025-01-01', periods=8),
         'y': [0, -1, 2, -1, -2, 0, 1, 2]
     })
+
+# @pytest.fixture
+# def h():
+#     return 5
+
+# @pytest.fixture
+# def series():
+#     return generate_series(10, equal_ends=True)
+
+# @pytest.fixture
+# def train_end(series, h):
+#     return series['ds'].max() - h * pd.offsets.Day()
+
+# @pytest.fixture
+# def train_mask(series, train_end):
+#     return series['ds'] <= train_end
+
+# @pytest.fixture
+# def train(series, train_mask):
+#     return series[train_mask]
+
+# @pytest.fixture
+# def valid(series, train_mask):
+#     return series[~train_mask]
+
+# @pytest.fixture
+# def model_id1():
+#     return str(uuid.uuid4())
+
+
+@pytest.fixture
+def ts_data_set1():
+    h = 5
+    series = generate_series(10, equal_ends=True)
+    train_end = series['ds'].max() - h * pd.offsets.Day()
+    train_mask = series['ds'] <= train_end
+    train = series[train_mask]
+    valid = series[~train_mask]
+    model_id1 = str(uuid.uuid4())
+
+    return SimpleNamespace(
+        h=h,
+        train=train,
+        valid=valid,
+        model_id1=model_id1,
+    )
