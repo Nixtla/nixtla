@@ -1,4 +1,3 @@
-import pandas as pd
 import re
 import pytest
 from nixtla.nixtla_client import _model_in_list
