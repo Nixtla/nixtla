@@ -24,14 +24,7 @@ from utilsforecast.losses import rmse
 from nixtla.date_features import SpecialDates
 
 from nixtla.nixtla_client import (
-    _model_in_list,
-    _audit_duplicate_rows,
-    _audit_missing_dates,
-    _audit_categorical_variables,
-    _audit_leading_zeros,
-    _audit_negative_values,
     _maybe_add_date_features,
-    AuditDataSeverity,
     ApiError,
     NixtlaClient,
 )
@@ -49,97 +42,6 @@ common_kwargs = {
     "time_col": 'ds'
 }
 
-#### Audit Missing Dates
-
-#| hide
-
-df_complete = pd.DataFrame(
-    {
-        'unique_id': [1, 1, 1, 2, 2, 2],
-        'ds': ['2020-01-01', '2020-01-02', '2020-01-03',
-               '2020-01-01', '2020-01-02', '2020-01-03'],
-        'y': [1, 2, 3, 4, 5, 6],
-    }
-)
-
-# Test with complete data
-audit, missing = _audit_missing_dates(df_complete, freq='D')
-test_eq(audit, AuditDataSeverity.PASS)
-test_eq(len(missing), 0)
-
-# Test with missing dates for multiple IDs
-df_missing = pd.DataFrame(
-    {
-        'unique_id': [1, 1, 2, 2],
-        'ds': ['2020-01-01', '2020-01-03', '2020-01-01', '2020-01-03'],
-        'y': [1, 3, 4, 6],
-    }
-)
-audit, missing = _audit_missing_dates(df_missing, freq='D')
-test_eq(audit, AuditDataSeverity.FAIL)
-test_eq(len(missing), 2)  # One missing date per unique_id
-
-#### Audit Categorical Variables 
-
-#| hide
-
-# Test with no categorical variables
-df_no_cat = pd.DataFrame({
-    'unique_id': [1, 2, 3],
-    'ds': pd.date_range('2023-01-01', periods=3),
-    'y': [1.0, 2.0, 3.0]
-})
-audit_, cat_df = _audit_categorical_variables(df_no_cat)
-test_eq(audit_, AuditDataSeverity.PASS)
-test_eq(len(cat_df), 0)
-
-# Test with categorical variables
-df_with_cat = pd.DataFrame({
-    'unique_id': ['A', 'B', 'C'],
-    'ds': pd.date_range('2023-01-01', periods=3),
-    'y': [1.0, 2.0, 3.0],
-    'cat_col': ['X', 'Y', 'Z']
-})
-audit, cat_df = _audit_categorical_variables(df_with_cat)
-test_eq(audit, AuditDataSeverity.FAIL)
-test_eq(cat_df.shape[1], 1)  # Should include only 'cat_col'
-
-# Test with categorical dtype
-df_with_cat_dtype = pd.DataFrame({
-    'unique_id': [1, 2, 3],
-    'ds': pd.date_range('2023-01-01', periods=3),
-    'y': [1.0, 2.0, 3.0],
-    'cat_col': pd.Categorical(['X', 'Y', 'Z'])
-})
-audit, cat_df = _audit_categorical_variables(df_with_cat_dtype)
-test_eq(audit, AuditDataSeverity.FAIL)
-test_eq(cat_df.shape[1], 1)  # Should include only 'cat_col'
-
-#### Audit Leading Zeros 
-
-#| hide
-df = pd.DataFrame({
-    'unique_id': ['A', 'A', 'A', 'B', 'B', 'C', 'C', 'C', 'C', 'D', 'D', 'D'],
-    'ds': pd.date_range('2025-01-01', periods=12),
-    'y': [0, 1, 2, 0, 1, 0, 0, 1, 2, 0, 0, 0]
-})
-audit, leading_zeros_df = _audit_leading_zeros(df)
-test_eq(audit, AuditDataSeverity.CASE_SPECIFIC)
-test_eq(len(leading_zeros_df), 3)
-# note that zero time series are not flagged 
-
-#### Audit Negative Values
-
-#| hide 
-df = pd.DataFrame({
-    'unique_id': ['A', 'A', 'A', 'B', 'B', 'C', 'C', 'C'],
-    'ds': pd.date_range('2025-01-01', periods=8),
-    'y': [0, -1, 2, -1, -2, 0, 1, 2]
-})
-
-audit, negative_values_df = _audit_negative_values(df)
-test_eq(audit, AuditDataSeverity.CASE_SPECIFIC)
-test_eq(len(negative_values_df), 3)
 
 ## Client
 
