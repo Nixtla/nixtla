@@ -29,7 +29,7 @@ for cell in notebook_content['cells']:
         new_cells.append(cell)
 
 # Write the test functions to a new Python file (draft)
-with open('/home/nixtla/tests/test_cases.py.txt', 'w') as f:
+with open('/home/nixtla/nixtla_tests/cases_to_migrate.py.txt', 'w') as f:
     f.write('\n\n'.join(test_functions))
 
 # Update the notebook with the new cells
