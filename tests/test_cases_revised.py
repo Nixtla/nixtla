@@ -49,7 +49,19 @@ common_kwargs = {
 
 ## Tests
 
-
+#| hide
+@contextmanager
+def delete_env_var(key):
+    original_value = os.environ.get(key)
+    rm = False
+    if key in os.environ:
+        del os.environ[key]
+        rm = True
+    try:
+        yield
+    finally:
+        if rm:
+            os.environ[key] = original_value
 # test api_key fail
 with delete_env_var('NIXTLA_API_KEY'), delete_env_var('TIMEGPT_TOKEN'):
     test_fail(
