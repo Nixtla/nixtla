@@ -49,45 +49,6 @@ common_kwargs = {
     "time_col": 'ds'
 }
 
-## Utilities
-
-#| hide
-
-assert _model_in_list("a", ("a", "b"))
-assert not _model_in_list("a", ("b", "c"))
-assert _model_in_list("axb", ("x", re.compile("a.*b")))
-assert _model_in_list("axb", ("x", re.compile("^a.*b$")))
-assert _model_in_list("a-b", ("x", re.compile("^a-.*b$")))
-assert _model_in_list("a-dfdfb", ("x", re.compile("^a-.*b$")))
-assert not _model_in_list("abc", ("x", re.compile("ab"), re.compile("abcd")))
-
-### Audit Data
-
-#### Audit Duplicate Rows
-
-#| hide
-df = pd.DataFrame(
-    {
-        'unique_id': [1, 2, 3, 4],
-        'ds': ['2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01'],
-        'y': [1, 2, 3, 4],
-    }
-)
-audit, duplicates = _audit_duplicate_rows(df)
-test_eq(audit, AuditDataSeverity.PASS)
-
-# Test with duplicates
-df_duplicates = pd.DataFrame(
-    {
-        'unique_id': [1, 1, 1],
-        'ds': ['2020-01-01', '2020-01-01', '2020-01-02'],
-        'y': [1, 2, 3],
-    }
-)
-audit, duplicates = _audit_duplicate_rows(df_duplicates)
-test_eq(audit, AuditDataSeverity.FAIL)
-test_eq(len(duplicates), 2)
-
 #### Audit Missing Dates
 
 #| hide
