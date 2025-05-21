@@ -68,22 +68,6 @@ valid = series[~train_mask]
 model_id1 = str(uuid.uuid4())
 
 
-#| hide
-# cv with fine-tuned model
-cv_base = custom_client.cross_validation(series, n_windows=2, h=h)
-cv_finetune = custom_client.cross_validation(series, n_windows=2, h=h, finetuned_model_id=model_id1)
-all_fcsts = fcst_base.assign(ten_rounds=fcst1['TimeGPT'], twenty_rounds=fcst2['TimeGPT'])
-cv_rmse = evaluate(
-    cv_base.merge(
-        cv_finetune,
-        on=['unique_id', 'ds', 'cutoff', 'y'],
-        suffixes=('_base', '_finetune')
-    ).drop(columns='cutoff'),
-    metrics=[rmse],
-    agg_fn='mean',
-).loc[0]
-# error was reduced over 40% by finetuning
-assert 1 - cv_rmse['TimeGPT_finetune'] / cv_rmse['TimeGPT_base'] > 0.4
 
 #| hide
 # delete finetuned model
