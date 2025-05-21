@@ -94,7 +94,7 @@ def df_negative_values():
         'y': [0, -1, 2, -1, -2, 0, 1, 2]
     })
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ts_data_set1():
     h = 5
     series = generate_series(10, equal_ends=True)
@@ -106,6 +106,7 @@ def ts_data_set1():
 
     return SimpleNamespace(
         h=h,
+        series=series,
         train=train,
         valid=valid,
         model_id1=model_id1,

@@ -4,12 +4,7 @@ from utilsforecast.evaluation import evaluate
 from utilsforecast.losses import rmse
 
 
-@pytest.mark.serial
 class TestTimeSeriesDataSet1():
-    forecast_base = None
-    forecast1 = None
-    forecast2 = None
-
     def test_finetuning_and_forecasting(self, custom_client, ts_data_set1):
         # Finetune the model
         finetune_resp = custom_client.finetune(ts_data_set1.train, output_model_id=ts_data_set1.model_id1)
@@ -17,10 +12,10 @@ class TestTimeSeriesDataSet1():
         model_id2 = custom_client.finetune(ts_data_set1.train, finetuned_model_id=ts_data_set1.model_id1)
 
         # Forecast with fine-tuned models
-        self.forecast_base = custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h)
-        self.forecast1 = custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h, finetuned_model_id=ts_data_set1.model_id1)
-        self.forecast2 = custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h, finetuned_model_id=model_id2)
-        all_fcsts = self.forecast_base.assign(ten_rounds=self.forecast1['TimeGPT'], twenty_rounds=self.forecast2['TimeGPT'])
+        forecast_base = custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h)
+        forecast1 = custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h, finetuned_model_id=ts_data_set1.model_id1)
+        forecast2 = custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h, finetuned_model_id=model_id2)
+        all_fcsts = forecast_base.assign(ten_rounds=forecast1['TimeGPT'], twenty_rounds=forecast2['TimeGPT'])
         fcst_rmse = evaluate(
             all_fcsts.merge(ts_data_set1.valid),
             metrics=[rmse],
@@ -35,3 +30,21 @@ class TestTimeSeriesDataSet1():
         with pytest.raises(ApiError) as excinfo:
             custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h, finetuned_model_id='unexisting')
         assert getattr(excinfo.value, "status_code", None) == 404
+
+    def test_cv_with_finetuned_model(self, custom_client, ts_data_set1):
+        cv_base = custom_client.cross_validation(ts_data_set1.series, n_windows=2, h=ts_data_set1.h)
+        cv_finetune = custom_client.cross_validation(ts_data_set1.series, n_windows=2, h=ts_data_set1.h, finetuned_model_id=ts_data_set1.model_id1)
+        merged = cv_base.merge(
+            cv_finetune,
+            on=['unique_id', 'ds', 'cutoff', 'y'],
+            suffixes=('_base', '_finetune')
+        ).drop(columns='cutoff')
+        cv_rmse = evaluate(
+            merged,
+            metrics=[rmse],
+            agg_fn='mean',
+        ).loc[0]
+        # error was reduced over 40% by finetuning
+        assert 1 - cv_rmse['TimeGPT_finetune'] / cv_rmse['TimeGPT_base'] > 0.4
+
+        custom_client.delete_finetuned_model(ts_data_set1.model_id1)

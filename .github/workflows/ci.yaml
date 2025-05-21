@@ -59,7 +59,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: pytest --cov=nixtla nixtla_tests
+        run: pytest --cov=nixtla -n 2 --dist loadscope nixtla_tests
 
   run-local-tests:
     runs-on: ${{ matrix.os }}
@@ -82,7 +82,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev]"
 
       - name: Run tests
-        run: pytest --cov=nixtla nixtla_tests
+        run: pytest --cov=nixtla -n 2 --dist loadscope nixtla_tests
 
   run-minimal-tests:
     runs-on: ${{ matrix.os }}
