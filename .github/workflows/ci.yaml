@@ -59,7 +59,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: nbdev_test --timing --do_print --n_workers 0 --flags 'distributed'
+        run: pytest --cov=nixtla nixtla_tests
 
   run-local-tests:
     runs-on: ${{ matrix.os }}
@@ -82,7 +82,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev]"
 
       - name: Run tests
-        run: nbdev_test --timing --do_print --n_workers 0 --skip_file_re "computing_at_scale|distributed"
+        run: pytest --cov=nixtla nixtla_tests
 
   run-minimal-tests:
     runs-on: ${{ matrix.os }}
