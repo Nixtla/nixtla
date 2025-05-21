@@ -94,35 +94,6 @@ def df_negative_values():
         'y': [0, -1, 2, -1, -2, 0, 1, 2]
     })
 
-# @pytest.fixture
-# def h():
-#     return 5
-
-# @pytest.fixture
-# def series():
-#     return generate_series(10, equal_ends=True)
-
-# @pytest.fixture
-# def train_end(series, h):
-#     return series['ds'].max() - h * pd.offsets.Day()
-
-# @pytest.fixture
-# def train_mask(series, train_end):
-#     return series['ds'] <= train_end
-
-# @pytest.fixture
-# def train(series, train_mask):
-#     return series[train_mask]
-
-# @pytest.fixture
-# def valid(series, train_mask):
-#     return series[~train_mask]
-
-# @pytest.fixture
-# def model_id1():
-#     return str(uuid.uuid4())
-
-
 @pytest.fixture
 def ts_data_set1():
     h = 5
