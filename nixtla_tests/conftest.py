@@ -153,3 +153,21 @@ def df_with_duplicates_and_missing_dates():
         'ds': ['2023-01-01', '2023-01-01', '2023-01-02', '2023-01-02', '2023-01-03'],
         'y': [1, 2, 3, 4, 5]
     })
+
+@pytest.fixture
+def df_with_cat_columns():
+    return pd.DataFrame({
+        'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2', 'id2'],
+        'ds': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03'],
+        'y': [1, 2, 3, 4, 5, 6],
+        'cat_col1': ['A', 'B', 'C', 'D', 'E', 'F'],
+        'cat_col2': pd.Categorical(['X', 'Y', 'Z', 'X', 'Y', 'Z'])
+    })
+
+@pytest.fixture
+def df_negative_vals():
+    return pd.DataFrame({
+        'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2', 'id2'],
+        'ds': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03'],
+        'y': [-1, 0, 1, 2, -3, -4]
+    })
