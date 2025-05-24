@@ -68,11 +68,6 @@ valid = series[~train_mask]
 model_id1 = str(uuid.uuid4())
 
 
-
-#| hide
-# delete finetuned model
-custom_client.delete_finetuned_model(model_id1)
-
 ### Data Quality
 
 #### All Pass
