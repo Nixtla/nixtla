@@ -111,3 +111,27 @@ def ts_data_set1():
         valid=valid,
         model_id1=model_id1,
     )
+
+@pytest.fixture
+def common_kwargs():
+    return {
+        "freq": "D",
+        "id_col": 'unique_id',
+        "time_col": 'ds'
+    }
+
+@pytest.fixture
+def df_ok():
+    return pd.DataFrame({
+        'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2', 'id2'],
+        'ds': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03'],
+        'y': [1, 2, 3, 4, 5, 6]
+    })
+
+@pytest.fixture
+def df_with_duplicates():
+    return pd.DataFrame({
+        'unique_id': ['id1', 'id1', 'id1', 'id2'],
+        'ds': ['2023-01-01', '2023-01-01', '2023-01-02', '2023-01-02'],
+        'y': [1, 2, 3, 4]
+    })
