@@ -47,6 +47,8 @@ common_kwargs = {
 ## Wrappers
 
 ## Tests
+# add this back to avoid undefined error
+nixtla_client = NixtlaClient()
 
 #| hide
 # custom client
@@ -68,93 +70,7 @@ valid = series[~train_mask]
 model_id1 = str(uuid.uuid4())
 
 
-### Data Quality
- 
-#### Missing dates
-
-#| hide
-
-# Audit Data
-df_with_missing_dates = pd.DataFrame({
-    'unique_id': ['id1', 'id1', 'id2', 'id2'],
-    'ds': ['2023-01-01', '2023-01-03', '2023-01-01', '2023-01-03'],
-    'y': [1, 3, 4, 6]
-})
-
-all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
-    df=df_with_missing_dates,
-    **common_kwargs
-)
-assert not all_pass
-assert len(case_specific_dfs) == 0
-assert len(fail_dfs) == 1
-assert 'D002' in fail_dfs
-assert len(fail_dfs['D002']) == 2  # Two missing dates should returned
-
-# Clean Data
-cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
-    df=df_with_missing_dates,
-    fail_dict=fail_dfs, case_specific_dict=case_specific_dfs,
-    agg_dict={'y': 'sum'},
-    **common_kwargs
-)
-assert all_pass
-assert len(fail_dfs) == 0
-assert len(case_specific_dfs) == 0
-assert len(cleaned_df) == 6  # Two missing rows added.
-assert pd.to_datetime("2023-01-02") in cleaned_df['ds'].values
-
-#### Duplicate rows and missing dates
-
-#| hide
-
-# Audit Data
-# Global end on 2023-01-03 which is missing for id1
-df_with_duplicates = pd.DataFrame({
-    'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2'],
-    'ds': ['2023-01-01', '2023-01-01', '2023-01-02', '2023-01-02', '2023-01-03'],
-    'y': [1, 2, 3, 4, 5]
-})
-
-all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
-    df=df_with_duplicates,
-    **common_kwargs
-)
-assert not all_pass
-assert len(case_specific_dfs) == 0
-assert len(fail_dfs) == 2
-assert 'D001' in fail_dfs
-assert len(fail_dfs['D001']) == 2  # The two duplicate rows should be returned
-assert 'D002' in fail_dfs
-assert fail_dfs["D002"] is None ## D002 can not be run with duplicates
-
-
-# Clean Data (pass 1 will clear the duplicates)
-cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
-    df=df_with_duplicates,
-    fail_dict=fail_dfs, case_specific_dict=case_specific_dfs,
-    agg_dict={'y': 'sum'}, **common_kwargs
-)
-assert not all_pass
-assert len(fail_dfs) == 1
-# Since duplicates have been removed, D002 has been run now.
-assert 'D002' in fail_dfs
-assert len(fail_dfs["D002"]) == 1
-assert len(case_specific_dfs) == 0
-assert len(cleaned_df) == 4  # Two duplicates rows consolidated into one.
-
-
-# Clean Data (pass 2 will clear the missing dates)
-cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
-    df=cleaned_df,
-    fail_dict=fail_dfs, case_specific_dict=case_specific_dfs,
-    **common_kwargs
-)
-assert all_pass
-assert len(fail_dfs) == 0
-assert len(case_specific_dfs) == 0
-# Two duplicates rows consolidated into one plus one missing row added.
-assert len(cleaned_df) == 5
+### Data Quality 
 
 #### Categorical Columns
 

@@ -135,3 +135,21 @@ def df_with_duplicates():
         'ds': ['2023-01-01', '2023-01-01', '2023-01-02', '2023-01-02'],
         'y': [1, 2, 3, 4]
     })
+
+
+@pytest.fixture
+def df_with_missing_dates():
+    return pd.DataFrame({
+        'unique_id': ['id1', 'id1', 'id2', 'id2'],
+        'ds': ['2023-01-01', '2023-01-03', '2023-01-01', '2023-01-03'],
+        'y': [1, 3, 4, 6]
+    })
+
+@pytest.fixture
+# Global end on 2023-01-03 which is missing for id1
+def df_with_duplicates_and_missing_dates():
+    return pd.DataFrame({
+        'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2'],
+        'ds': ['2023-01-01', '2023-01-01', '2023-01-02', '2023-01-02', '2023-01-03'],
+        'y': [1, 2, 3, 4, 5]
+    })
