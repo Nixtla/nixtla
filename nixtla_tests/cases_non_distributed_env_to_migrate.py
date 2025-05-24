@@ -72,58 +72,6 @@ model_id1 = str(uuid.uuid4())
 
 ### Data Quality 
 
-#### Leading zeros 
-
-#| hide
-
-# Audit Data
-df_leading_zeros = pd.DataFrame({
-    'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2', 'id2', 'id3', 'id3', 'id3'],
-    'ds': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03'],
-    'y': [0, 1, 2, 0, 1, 2, 0, 0, 0]
-})
-
-all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
-    df=df_leading_zeros,
-    **common_kwargs
-)
-
-assert not all_pass
-assert len(fail_dfs) == 0
-assert len(case_specific_dfs) == 1
-assert 'V002' in case_specific_dfs
-assert case_specific_dfs['V002'].shape[0] == 2  # should return ids with leading zeros
-
-
-# Clean Data (without cleaning the case specific issue)
-cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
-    df=df_leading_zeros,
-    fail_dict=fail_dfs,
-    case_specific_dict=case_specific_dfs,
-    # clean_case_specific=False,  # Default
-    **common_kwargs
-)
-
-assert not all_pass
-assert len(fail_dfs) == 0
-assert len(case_specific_dfs) == 1
-assert 'V002' in case_specific_dfs
-assert case_specific_dfs['V002'].shape[0] == 2  # should return ids with leading zeros
-
-# Clean Data (clean case specific)
-cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
-    df=df_leading_zeros,
-    fail_dict=fail_dfs,
-    case_specific_dict=case_specific_dfs,
-    clean_case_specific=True,
-    **common_kwargs
-)
-
-assert all_pass
-assert len(fail_dfs) == 0
-assert len(case_specific_dfs) == 0
-assert len(cleaned_df) == 7  # all leading zeros removed, zero series unchanged
-
 ### Anomaly Detection
 
 #| hide
