@@ -201,3 +201,49 @@ def test_clean_data_with_negative_vals_cleaning_case_specific(custom_client, df_
     assert all_pass
     assert len(fail_dfs) == 0
     assert len(case_specific_dfs) == 0
+
+def test_audit_data_leading_zeros(custom_client, common_kwargs, df_leading_zeros):
+    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+        df=df_leading_zeros,
+        **common_kwargs
+    )
+    assert not all_pass
+    assert len(fail_dfs) == 0
+    assert len(case_specific_dfs) == 1
+    assert 'V002' in case_specific_dfs
+    assert case_specific_dfs['V002'].shape[0] == 2  # should return ids with leading zeros
+
+def test_clean_data_leading_zeroes_without_cleaning_case_specific(custom_client, common_kwargs, df_leading_zeros):
+    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+        df=df_leading_zeros,
+        **common_kwargs
+    )
+    _, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+        df=df_leading_zeros,
+        fail_dict=fail_dfs,
+        case_specific_dict=case_specific_dfs,
+        # clean_case_specific=False,  # Default
+        **common_kwargs
+    )
+    assert not all_pass
+    assert len(fail_dfs) == 0
+    assert len(case_specific_dfs) == 1
+    assert 'V002' in case_specific_dfs
+    assert case_specific_dfs['V002'].shape[0] == 2  # should return ids with leading zeros
+
+def test_clean_data_with_cleaning_case_specific(custom_client, common_kwargs, df_leading_zeros):
+    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+        df=df_leading_zeros,
+        **common_kwargs
+    )
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+        df=df_leading_zeros,
+        fail_dict=fail_dfs,
+        case_specific_dict=case_specific_dfs,
+        clean_case_specific=True,
+        **common_kwargs
+    )
+    assert all_pass
+    assert len(fail_dfs) == 0
+    assert len(case_specific_dfs) == 0
+    assert len(cleaned_df) == 7  # all leading zeros removed, zero series unchanged
