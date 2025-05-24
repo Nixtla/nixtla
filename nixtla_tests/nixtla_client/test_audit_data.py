@@ -129,3 +129,75 @@ def test_clean_data_with_duplicates_and_missing_dates(custom_client, df_with_dup
     assert len(case_specific_dfs) == 0
     # Two duplicates rows consolidated into one plus one missing row added.
     assert len(cleaned_df) == 5
+
+def test_audit_data_with_cat_columns(custom_client, df_with_cat_columns, common_kwargs):
+    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+        df=df_with_cat_columns,
+        **common_kwargs
+    )
+    assert not all_pass
+    assert len(case_specific_dfs) == 0
+    assert len(fail_dfs) == 1
+    assert 'F001' in fail_dfs
+    assert fail_dfs['F001'].shape[1] == 2  # Should return both categorical columns
+
+def test_audit_data_with_negative_vals(custom_client, df_negative_vals, common_kwargs):
+    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+        df=df_negative_vals,
+        **common_kwargs
+    )
+    assert not all_pass
+    assert len(fail_dfs) == 0
+    assert len(case_specific_dfs) == 1
+    assert 'V001' in case_specific_dfs
+    assert case_specific_dfs['V001'].shape[0] == 3  # should return all negative values
+
+def test_clean_data_with_negative_vals_without_cleaning_case_specific(custom_client, df_negative_vals, common_kwargs):
+    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+        df=df_negative_vals,
+        **common_kwargs
+    )
+    _, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+        df=df_negative_vals,
+        fail_dict=fail_dfs,
+        case_specific_dict=case_specific_dfs,
+        # clean_case_specific=False, # Default
+        **common_kwargs
+    )
+    assert not all_pass
+    assert len(fail_dfs) == 0
+    assert len(case_specific_dfs) == 1
+    assert 'V001' in case_specific_dfs
+    assert case_specific_dfs['V001'].shape[0] == 3  # should return all negative values
+
+def test_clean_data_with_negative_vals_cleaning_case_specific(custom_client, df_negative_vals, common_kwargs):
+    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+        df=df_negative_vals,
+        **common_kwargs
+    )
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+        df=df_negative_vals,
+        fail_dict=fail_dfs,
+        case_specific_dict=case_specific_dfs,
+        clean_case_specific=True,
+        **common_kwargs
+    )
+    assert not all_pass
+    assert len(fail_dfs) == 0
+    assert len(case_specific_dfs) == 1
+    assert 'V002' in case_specific_dfs
+    assert case_specific_dfs['V002'].shape[0] == 1 # should return leading zeros
+
+    # test second pass
+    # Clean Data, second pass (removes leading zeros)
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+        df=cleaned_df,
+        fail_dict=fail_dfs,
+        case_specific_dict=case_specific_dfs,
+        clean_case_specific=True,
+        **common_kwargs
+    )
+
+    assert all_pass
+    assert len(fail_dfs) == 0
+    assert len(case_specific_dfs) == 0
