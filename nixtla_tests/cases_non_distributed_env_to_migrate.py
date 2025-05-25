@@ -70,35 +70,7 @@ valid = series[~train_mask]
 model_id1 = str(uuid.uuid4())
 
 
-### Data Quality 
-
-### Anomaly Detection
-
-#| hide
-# anomaly detection with fine-tuned model
-train_anomalies = train.copy()
-anomaly_date = train_end - 2 * pd.offsets.Day()
-train_anomalies.loc[train['ds'] == anomaly_date, 'y'] *= 2
-anomaly_base = custom_client.detect_anomalies(train_anomalies)
-anomaly_finetune = custom_client.detect_anomalies(train_anomalies, finetuned_model_id=model_id2)
-detected_anomalies_base = anomaly_base.set_index('ds').loc[anomaly_date, 'anomaly'].sum()
-detected_anomalies_finetune = anomaly_finetune.set_index('ds').loc[anomaly_date, 'anomaly'].sum()
-assert detected_anomalies_base < detected_anomalies_finetune
-
-#| hide
-# list finetuned models
-models = custom_client.finetuned_models()
-ids = {m.id for m in models}
-assert model_id1 not in ids and model_id2 in ids
-
-#| hide
-# get single model
-single_model = custom_client.finetuned_model(model_id2)
-assert single_model.id == model_id2
-assert single_model.base_model_id == model_id1
-
-# non existing not found returns an error
-test_fail(lambda: custom_client.finetuned_model('hi'), contains='Model not found')    
+### Data Quality
 
 #| hide
 # test compression
