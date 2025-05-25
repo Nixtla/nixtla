@@ -108,55 +108,6 @@ assert len(content) < 2**20
 assert len(zstd.ZstdDecompressor().decompress(content)) > 2**20
 
 #| hide
-# historic exog in cv
-freq = 'D'
-h = 5
-series = generate_series(2, freq=freq)
-series_with_features, _ = fourier(series, freq=freq, season_length=7, k=2)
-splits = ufp.backtest_splits(
-    df=series_with_features,
-    n_windows=1,
-    h=h,
-    id_col='unique_id',
-    time_col='ds',
-    freq=freq,
-)
-_, train, valid = next(splits)
-x_cols = train.columns.drop(['unique_id', 'ds', 'y']).tolist()
-for hist_exog_list in [None, [], [x_cols[2], x_cols[1]], x_cols]:
-    cv_res = nixtla_client.cross_validation(
-        series_with_features,
-        n_windows=1,
-        h=h,
-        freq=freq,
-        hist_exog_list=hist_exog_list,
-    )
-    fcst_res = nixtla_client.forecast(
-        train,
-        h=h,
-        freq=freq,
-        hist_exog_list=hist_exog_list,
-        X_df=valid,
-    )
-    np.testing.assert_allclose(
-        cv_res['TimeGPT'], fcst_res['TimeGPT'], atol=1e-4, rtol=1e-3
-    )
-
-#| hide
-# different hist exog, different results
-for X_df in (None, valid):
-    res1 = nixtla_client.forecast(train, h=h, X_df=X_df, freq=freq, hist_exog_list=x_cols[:2])
-    res2 = nixtla_client.forecast(train, h=h, X_df=X_df, freq=freq, hist_exog_list=x_cols[2:])
-    np.testing.assert_raises(
-        AssertionError,
-        np.testing.assert_allclose,
-        res1['TimeGPT'],
-        res2['TimeGPT'],
-        atol=1e-4,
-        rtol=1e-3,
-    )
-
-#| hide
 # custom freq
 client = NixtlaClient()
 custom_business_hours = pd.tseries.offsets.CustomBusinessHour(
