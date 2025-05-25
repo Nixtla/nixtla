@@ -108,42 +108,6 @@ assert len(content) < 2**20
 assert len(zstd.ZstdDecompressor().decompress(content)) > 2**20
 
 #| hide
-# custom freq
-client = NixtlaClient()
-custom_business_hours = pd.tseries.offsets.CustomBusinessHour(
-    start='09:00',
-    end='16:00',
-    holidays=[
-        '2022-12-25',  # Christmas
-        '2022-01-01',   # New Year's Day
-    ]
-)
-series = pd.DataFrame({
-    'unique_id': 1,
-    'ds': pd.date_range(start='2000-01-03 09', freq=custom_business_hours, periods=200),
-    'y': np.arange(200) % 7,
-})
-series = pd.concat([series.assign(unique_id=i) for i in range(10)]).reset_index(drop=True)
-client.detect_anomalies(df=series, freq=custom_business_hours, level=90)
-client.cross_validation(df=series, freq=custom_business_hours, h=7)
-fcst = client.forecast(df=series, freq=custom_business_hours, h=7)
-assert sorted(fcst['ds'].dt.hour.unique().tolist()) == list(range(9, 16))
-assert [(model, freq.lower()) for (model, freq) in client._model_params.keys()] == [('timegpt-1', 'cbh')]
-
-#| hide
-# integer freq
-client = NixtlaClient()
-series = generate_series(5, freq='H', min_length=200)
-series['ds'] = series.groupby('unique_id', observed=True)['ds'].cumcount()
-client.detect_anomalies(df=series, level=90, freq=1)
-client.cross_validation(df=series, h=7, freq=1)
-fcst = client.forecast(df=series, h=7, freq=1)
-train_ends = series.groupby('unique_id', observed=True)['ds'].max()
-fcst_ends = fcst.groupby('unique_id', observed=True)['ds'].max()
-pd.testing.assert_series_equal(fcst_ends, train_ends + 7)
-assert list(client._model_params.keys()) == [('timegpt-1', 'MS')]
-
-#| hide
 # test input_size
 test_eq(
     nixtla_client._get_model_params(model='timegpt-1', freq='D'),
