@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import pandas as pd
 import pytest
 import utilsforecast.processing as ufp
@@ -8,7 +9,8 @@ from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier
 from types import SimpleNamespace
 
-@pytest.fixture(scope="session")
+# note that scope="session" will result in failed test
+@pytest.fixture()
 def nixtla_test_client():
     return NixtlaClient()
 
@@ -217,3 +219,30 @@ def cv_series_with_features():
     _, train, valid = next(splits)
     x_cols = train.columns.drop(['unique_id', 'ds', 'y']).tolist()
     return series_with_features, train, valid, x_cols, h, freq
+
+@pytest.fixture
+def custom_business_hours():
+    return pd.tseries.offsets.CustomBusinessHour(
+        start='09:00',
+        end='16:00',
+        holidays=[
+            '2022-12-25',  # Christmas
+            '2022-01-01',   # New Year's Day
+        ]
+    )
+
+@pytest.fixture
+def business_hours_series(custom_business_hours):
+    series = pd.DataFrame({
+        'unique_id': 1,
+        'ds': pd.date_range(start='2000-01-03 09', freq=custom_business_hours, periods=200),
+        'y': np.arange(200) % 7,
+    })
+    series = pd.concat([series.assign(unique_id=i) for i in range(10)]).reset_index(drop=True)
+    return series
+
+@pytest.fixture
+def integer_freq_series():
+    series = generate_series(5, freq='H', min_length=200)
+    series['ds'] = series.groupby('unique_id', observed=True)['ds'].cumcount()
+    return series
