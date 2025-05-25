@@ -129,7 +129,7 @@ def df_ok():
     })
 
 @pytest.fixture
-def df_with_duplicates():
+def df_with_duplicates_set2():
     return pd.DataFrame({
         'unique_id': ['id1', 'id1', 'id1', 'id2'],
         'ds': ['2023-01-01', '2023-01-01', '2023-01-02', '2023-01-02'],
@@ -173,7 +173,7 @@ def df_negative_vals():
     })
 
 @pytest.fixture
-def df_leading_zeros():
+def df_leading_zeros_set2():
     return pd.DataFrame({
         'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2', 'id2', 'id3', 'id3', 'id3'],
         'ds': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03'],
