@@ -1,5 +1,6 @@
 import os
 import pytest
+import pandas as pd
 
 from nixtla_tests.helpers.client_helper import delete_env_var
 from nixtla.nixtla_client import NixtlaClient
@@ -24,3 +25,9 @@ def test_custom_client_success():
     # assert the usage endpoint
     usage = custom_client.usage()
     assert sorted(usage.keys()) == ['minute', 'month']
+
+def test_forecast_with_wrong_api_key():
+    with pytest.raises(Exception) as excinfo:
+        NixtlaClient(api_key='transphobic').forecast(df=pd.DataFrame(), h=None, validate_api_key=True),
+
+        assert 'nixtla' in str(excinfo.value)

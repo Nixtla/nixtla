@@ -144,12 +144,6 @@ pd.testing.assert_series_equal(fcst_ends, train_ends + 7)
 assert list(client._model_params.keys()) == [('timegpt-1', 'MS')]
 
 #| hide
-test_fail(
-    lambda: NixtlaClient(api_key='transphobic').forecast(df=pd.DataFrame(), h=None, validate_api_key=True),
-    contains='nixtla'
-)
-
-#| hide
 # test input_size
 test_eq(
     nixtla_client._get_model_params(model='timegpt-1', freq='D'),
