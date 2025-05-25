@@ -108,27 +108,6 @@ assert len(content) < 2**20
 assert len(zstd.ZstdDecompressor().decompress(content)) > 2**20
 
 #| hide
-# missing times
-series = generate_series(2, min_length=100, freq='5min')
-with_gaps = series.sample(frac=0.5, random_state=0)
-expected_msg = 'missing or duplicate timestamps, or the timestamps do not match'
-# gaps
-test_fail(
-    lambda: nixtla_client.forecast(df=with_gaps, h=1, freq='5min'),
-    contains=expected_msg,
-)
-# duplicates
-test_fail(
-    lambda: nixtla_client.forecast(df=pd.concat([series, series]), h=1, freq='5min'),
-    contains=expected_msg,
-)
-# wrong freq
-test_fail(
-    lambda: nixtla_client.forecast(df=series, h=1, freq='1min'),
-    contains=expected_msg,
-)
-
-#| hide
 # historic exog in cv
 freq = 'D'
 h = 5

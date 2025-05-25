@@ -2,16 +2,26 @@ import os
 import pandas as pd
 import pytest
 
+from nixtla.nixtla_client import NixtlaClient
 from utilsforecast.data import generate_series
 from types import SimpleNamespace
 
 @pytest.fixture(scope="session")
+def nixtla_test_client():
+    return NixtlaClient()
+
+@pytest.fixture(scope="session")
 def custom_client():
-    from nixtla.nixtla_client import NixtlaClient
     return NixtlaClient(
         base_url=os.environ['NIXTLA_BASE_URL_CUSTOM'],
         api_key=os.environ['NIXTLA_API_KEY_CUSTOM'],
     )
+
+@pytest.fixture
+def series_with_gaps():
+    series = generate_series(2, min_length=100, freq='5min')
+    with_gaps = series.sample(frac=0.5, random_state=0)
+    return series, with_gaps
 
 @pytest.fixture
 def df_no_duplicates():
