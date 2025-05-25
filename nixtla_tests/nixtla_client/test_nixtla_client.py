@@ -70,7 +70,6 @@ def test_custom_business_hours(nixtla_test_client, business_hours_series, custom
     assert sorted(fcst['ds'].dt.hour.unique().tolist()) == list(range(9, 16))
     assert [(model, freq.lower()) for (model, freq) in nixtla_test_client._model_params.keys()] == [('timegpt-1', 'cbh')]
 
-
 def test_integer_freq(nixtla_test_client, integer_freq_series):
     nixtla_test_client.detect_anomalies(df=integer_freq_series, level=90, freq=1)
     nixtla_test_client.cross_validation(df=integer_freq_series, h=7, freq=1)
@@ -79,3 +78,15 @@ def test_integer_freq(nixtla_test_client, integer_freq_series):
     fcst_ends = fcst.groupby('unique_id', observed=True)['ds'].max()
     pd.testing.assert_series_equal(fcst_ends, train_ends + 7)
     assert list(nixtla_test_client._model_params.keys()) == [('timegpt-1', 'MS')]
+
+def test_forecast_date_features_multiple_series_and_different_ends(nixtla_test_client, two_short_series):
+    h = 12
+    fcst_test_series = nixtla_test_client.forecast(two_short_series, h=h, date_features=['dayofweek'])
+    uids = two_short_series['unique_id']
+    for uid in uids:
+        expected = pd.date_range(
+            periods=h + 1,
+            start=two_short_series.query('unique_id == @uid')['ds'].max()
+        )[1:].tolist()
+        actual = fcst_test_series.query('unique_id == @uid')['ds'].tolist()
+        assert actual == expected

@@ -246,3 +246,7 @@ def integer_freq_series():
     series = generate_series(5, freq='H', min_length=200)
     series['ds'] = series.groupby('unique_id', observed=True)['ds'].cumcount()
     return series
+
+@pytest.fixture
+def two_short_series():
+    return generate_series(n_series=2, min_length=5, max_length=20)
