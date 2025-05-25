@@ -1,9 +1,11 @@
 import os
 import pandas as pd
 import pytest
+import utilsforecast.processing as ufp
 
 from nixtla.nixtla_client import NixtlaClient
 from utilsforecast.data import generate_series
+from utilsforecast.feature_engineering import fourier
 from types import SimpleNamespace
 
 @pytest.fixture(scope="session")
@@ -197,3 +199,21 @@ def df_leading_zeros_set2():
         'ds': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02', '2023-01-03'],
         'y': [0, 1, 2, 0, 1, 2, 0, 0, 0]
     })
+
+@pytest.fixture
+def cv_series_with_features():
+    freq = 'D'
+    h = 5
+    series = generate_series(2, freq=freq)
+    series_with_features, _ = fourier(series, freq=freq, season_length=7, k=2)
+    splits = ufp.backtest_splits(
+        df=series_with_features,
+        n_windows=1,
+        h=h,
+        id_col='unique_id',
+        time_col='ds',
+        freq=freq,
+    )
+    _, train, valid = next(splits)
+    x_cols = train.columns.drop(['unique_id', 'ds', 'y']).tolist()
+    return series_with_features, train, valid, x_cols, h, freq
