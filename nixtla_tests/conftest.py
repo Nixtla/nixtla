@@ -1,13 +1,11 @@
 import os
 import pandas as pd
 import pytest
-import uuid
 
 from utilsforecast.data import generate_series
 from types import SimpleNamespace
 
-# try this global scope for test, ortherwise consider function scope
-@pytest.fixture
+@pytest.fixture(scope="session")
 def custom_client():
     from nixtla.nixtla_client import NixtlaClient
     return NixtlaClient(
@@ -102,14 +100,24 @@ def ts_data_set1():
     train_mask = series['ds'] <= train_end
     train = series[train_mask]
     valid = series[~train_mask]
-    model_id1 = str(uuid.uuid4())
 
     return SimpleNamespace(
         h=h,
         series=series,
         train=train,
+        train_end=train_end,
         valid=valid,
-        model_id1=model_id1,
+    )
+
+@pytest.fixture(scope="module")
+def ts_anomaly_data(ts_data_set1):
+    train_anomalies = ts_data_set1.train.copy()
+    anomaly_date = ts_data_set1.train_end - 2 * pd.offsets.Day()
+    train_anomalies.loc[train_anomalies['ds'] == anomaly_date, 'y'] *= 2
+
+    return SimpleNamespace(
+        train_anomalies=train_anomalies,
+        anomaly_date=anomaly_date,
     )
 
 @pytest.fixture
