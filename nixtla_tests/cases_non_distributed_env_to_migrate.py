@@ -108,17 +108,6 @@ assert len(content) < 2**20
 assert len(zstd.ZstdDecompressor().decompress(content)) > 2**20
 
 #| hide
-# test input_size
-test_eq(
-    nixtla_client._get_model_params(model='timegpt-1', freq='D'),
-    (28, 7),
-)
-test_eq(
-    custom_client._get_model_params(model='timegpt-1', freq='D'),
-    (28, 7),
-)
-
-#| hide
 df = pd.read_csv(
     'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv',
     parse_dates=['timestamp'],
