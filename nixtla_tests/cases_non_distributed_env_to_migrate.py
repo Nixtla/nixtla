@@ -115,19 +115,6 @@ df = pd.read_csv(
 df.head()
 
 #| hide
-# test date_features with multiple series
-# and different ends
-test_series = generate_series(n_series=2, min_length=5, max_length=20)
-h = 12
-fcst_test_series = nixtla_client.forecast(test_series, h=12, date_features=['dayofweek'])
-uids = test_series['unique_id']
-for uid in uids:
-    test_eq(
-        fcst_test_series.query('unique_id == @uid')['ds'].tolist(),
-        pd.date_range(periods=h + 1, start=test_series.query('unique_id == @uid')['ds'].max())[1:].tolist(),
-    )
-
-#| hide
 # cv refit
 cv_kwargs = dict(
     df=df,
