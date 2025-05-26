@@ -81,62 +81,6 @@ df = pd.read_csv(
 df.head()
 
 #| hide
-# cv refit
-cv_kwargs = dict(
-    df=df,
-    n_windows=2,
-    h=12,
-    freq='MS',
-    time_col='timestamp',
-    target_col='value',
-    finetune_steps=2,
-)
-res_refit = nixtla_client.cross_validation(refit=True, **cv_kwargs)
-res_no_refit = nixtla_client.cross_validation(refit=False, **cv_kwargs)
-np.testing.assert_allclose(res_refit['value'], res_no_refit['value'])
-np.testing.assert_raises(
-    AssertionError,
-    np.testing.assert_allclose,
-    res_refit['TimeGPT'],
-    res_no_refit['TimeGPT'],
-    atol=1e-4,
-    rtol=1e-3,
-)
-
-#| hide
-# test quantiles
-test_fail(
-    lambda: nixtla_client.forecast(
-        df=df, 
-        h=12, 
-        time_col='timestamp', 
-        target_col='value', 
-        level=[80], 
-        quantiles=[0.2, 0.3]
-    ),
-    contains='not both'
-)
-test_qls = list(np.arange(0.1, 1, 0.1))
-exp_q_cols = [f"TimeGPT-q-{int(100 * q)}" for q in test_qls]
-def test_method_qls(method, **kwargs):
-    df_qls = method(
-        df=df, 
-        h=12, 
-        time_col='timestamp', 
-        target_col='value', 
-        quantiles=test_qls,
-        **kwargs
-    )
-    assert all(col in df_qls.columns for col in exp_q_cols)
-    assert not any('-lo-' in col for col in df_qls.columns)
-    # test monotonicity of quantiles
-    for c1, c2 in zip(exp_q_cols[:-1], exp_q_cols[1:]):
-        assert df_qls[c1].lt(df_qls[c2]).all()
-test_method_qls(nixtla_client.forecast)
-test_method_qls(nixtla_client.forecast, add_history=True)
-test_method_qls(nixtla_client.cross_validation)
-
-#| hide
 # test num partitions
 # we need to be sure that we can recover the same results
 # using a for loop
