@@ -72,40 +72,6 @@ model_id1 = str(uuid.uuid4())
 
 ### Data Quality
 
-#| hide
-# test compression
-captured_request = None
-
-class CapturingClient(httpx.Client):  
-    def post(self, *args, **kwargs):
-        request = self.build_request('POST', *args, **kwargs)
-        global captured_request
-        captured_request = {
-            'headers': dict(request.headers),
-            'content': request.content,
-            'method': request.method,
-            'url': str(request.url)
-        }
-        return super().post(*args, **kwargs)
-
-@contextmanager
-def capture_request():
-    original_client = httpx.Client
-    httpx.Client = CapturingClient
-    try:
-        yield
-    finally:
-        httpx.Client = original_client
-
-# this produces a 1MB payload
-series = generate_series(250, n_static_features=2)
-with capture_request():
-    nixtla_client.forecast(df=series, freq='D', h=1, hist_exog_list=['static_0', 'static_1'])
-
-assert captured_request['headers']['content-encoding'] == 'zstd'
-content = captured_request['content']
-assert len(content) < 2**20
-assert len(zstd.ZstdDecompressor().decompress(content)) > 2**20
 
 #| hide
 df = pd.read_csv(

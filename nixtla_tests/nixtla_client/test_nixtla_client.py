@@ -1,7 +1,34 @@
+import httpx
 import pytest
 
 import numpy as np
 import pandas as pd
+import zstandard as zstd
+
+from contextlib import contextmanager
+
+CAPTURED_REQUEST = None
+
+class CapturingClient(httpx.Client):
+    def post(self, *args, **kwargs):
+        request = self.build_request('POST', *args, **kwargs)
+        global CAPTURED_REQUEST
+        CAPTURED_REQUEST = {
+            'headers': dict(request.headers),
+            'content': request.content,
+            'method': request.method,
+            'url': str(request.url)
+        }
+        return super().post(*args, **kwargs)
+
+@contextmanager
+def capture_request():
+    original_client = httpx.Client
+    httpx.Client = CapturingClient
+    try:
+        yield
+    finally:
+        httpx.Client = original_client
 
 @pytest.mark.parametrize(
     "df_converter, freq",
@@ -90,3 +117,11 @@ def test_forecast_date_features_multiple_series_and_different_ends(nixtla_test_c
         )[1:].tolist()
         actual = fcst_test_series.query('unique_id == @uid')['ds'].tolist()
         assert actual == expected
+
+def test_compression(nixtla_test_client, series_1MB_payload):
+    with capture_request():
+        nixtla_test_client.forecast(df=series_1MB_payload, freq='D', h=1, hist_exog_list=['static_0', 'static_1'])
+        assert CAPTURED_REQUEST['headers']['content-encoding'] == 'zstd'
+        content = CAPTURED_REQUEST['content']
+        assert len(content) < 2**20
+        assert len(zstd.ZstdDecompressor().decompress(content)) > 2**20
