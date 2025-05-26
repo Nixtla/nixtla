@@ -8,18 +8,42 @@ from nixtla.nixtla_client import NixtlaClient
 from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier
 from types import SimpleNamespace
+from nixtla_tests.helpers.states import model_ids_object
 
 # note that scope="session" will result in failed test
-@pytest.fixture()
+@pytest.fixture(scope="class")
 def nixtla_test_client():
-    return NixtlaClient()
+    client = NixtlaClient()
+    yield client
 
-@pytest.fixture(scope="session")
+    try:
+        client.delete_finetuned_model(model_ids_object.model_id1)
+    except:
+        print("model_id1 not found, skipping deletion.")
+
+    try:
+        client.delete_finetuned_model(model_ids_object.model_id2)
+    except:
+        print("model_id2 not found, skipping deletion.")
+
+
+@pytest.fixture(scope="class")
 def custom_client():
-    return NixtlaClient(
+    client = NixtlaClient(
         base_url=os.environ['NIXTLA_BASE_URL_CUSTOM'],
         api_key=os.environ['NIXTLA_API_KEY_CUSTOM'],
     )
+    yield client
+
+    try:
+        client.delete_finetuned_model(model_ids_object.model_id1)
+    except:
+        print("model_id1 not found, skipping deletion.")
+
+    try:
+        client.delete_finetuned_model(model_ids_object.model_id2)
+    except:
+        print("model_id2 not found, skipping deletion.")
 
 @pytest.fixture
 def series_with_gaps():
