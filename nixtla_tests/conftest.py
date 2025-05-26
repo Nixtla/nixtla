@@ -279,3 +279,10 @@ def two_short_series():
 def series_1MB_payload():
     series = generate_series(250, n_static_features=2)
     return series
+
+@pytest.fixture(scope="module")
+def air_passengers_df():
+    return pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv',
+        parse_dates=['timestamp'],
+    )

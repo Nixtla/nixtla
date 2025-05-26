@@ -125,3 +125,66 @@ def test_compression(nixtla_test_client, series_1MB_payload):
         content = CAPTURED_REQUEST['content']
         assert len(content) < 2**20
         assert len(zstd.ZstdDecompressor().decompress(content)) > 2**20
+
+def test_cv_refit_equivalence(nixtla_test_client, air_passengers_df):
+    cv_kwargs = dict(
+        df=air_passengers_df,
+        n_windows=2,
+        h=12,
+        freq='MS',
+        time_col='timestamp',
+        target_col='value',
+        finetune_steps=2,
+    )
+    res_refit = nixtla_test_client.cross_validation(refit=True, **cv_kwargs)
+    res_no_refit = nixtla_test_client.cross_validation(refit=False, **cv_kwargs)
+    np.testing.assert_allclose(res_refit['value'], res_no_refit['value'])
+    with pytest.raises(AssertionError):
+        np.testing.assert_allclose(
+            res_refit['TimeGPT'],
+            res_no_refit['TimeGPT'],
+            atol=1e-4,
+            rtol=1e-3,
+        )
+
+def test_forecast_quantiles_error(nixtla_test_client, air_passengers_df):
+    with pytest.raises(Exception) as excinfo:
+        nixtla_test_client.forecast(
+            df=air_passengers_df, 
+            h=12, 
+            time_col='timestamp', 
+            target_col='value', 
+            level=[80], 
+            quantiles=[0.2, 0.3]
+        )
+    assert 'not both' in str(excinfo.value)
+
+@pytest.mark.parametrize("method,kwargs", [
+    ("forecast", {}),
+    ("forecast", {"add_history": True}),
+    ("cross_validation", {}),
+])
+def test_forecast_quantiles_output(nixtla_test_client, air_passengers_df, method, kwargs):
+    test_qls = list(np.arange(0.1, 1, 0.1))
+    exp_q_cols = [f"TimeGPT-q-{int(100 * q)}" for q in test_qls]
+
+    args = {
+        'df': air_passengers_df,
+        'h': 12,
+        'time_col': 'timestamp',
+        'target_col': 'value',
+        'quantiles': test_qls,
+        **kwargs
+    }
+    if method == "cross_validation":
+        func = nixtla_test_client.cross_validation
+    elif method == "forecast":
+        func = nixtla_test_client.forecast
+
+    df_qls = func(**args)
+
+    assert all(col in df_qls.columns for col in exp_q_cols)
+    assert not any('-lo-' in col for col in df_qls.columns)
+    # test monotonicity of quantiles
+    for c1, c2 in zip(exp_q_cols[:-1], exp_q_cols[1:]):
+        assert df_qls[c1].lt(df_qls[c2]).all()
