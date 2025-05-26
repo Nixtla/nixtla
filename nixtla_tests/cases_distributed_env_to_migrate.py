@@ -168,7 +168,3 @@ test_forecast_x_dataframe_diff_cols(ray_df_x_diff_cols, ray_future_ex_vars_df_di
 test_finetuned_model(ray_df)
 
 ray.shutdown()
-
-#| hide
-# cleanup
-custom_client.delete_finetuned_model(model_id2)

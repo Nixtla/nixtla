@@ -28,9 +28,9 @@ def test_custom_client_success():
 
 def test_forecast_with_wrong_api_key():
     with pytest.raises(Exception) as excinfo:
-        NixtlaClient(api_key='transphobic').forecast(df=pd.DataFrame(), h=None, validate_api_key=True),
+        NixtlaClient(api_key='transphobic').forecast(df=pd.DataFrame(), h=None, validate_api_key=True)
 
-        assert 'nixtla' in str(excinfo.value)
+    assert 'nixtla' in str(excinfo.value)
 
 def test_get_model_params(nixtla_test_client):
     assert nixtla_test_client._get_model_params(model='timegpt-1', freq='D') == (28, 7)
