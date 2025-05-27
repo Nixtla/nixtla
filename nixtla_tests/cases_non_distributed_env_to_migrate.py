@@ -5,7 +5,6 @@ import uuid
 import warnings
 import numpy as np
 import pandas as pd
-from contextlib import contextmanager
 from itertools import product
 from typing import Callable
 
@@ -80,78 +79,6 @@ df = pd.read_csv(
 )
 df.head()
 
-#| hide
-# test num partitions
-# we need to be sure that we can recover the same results
-# using a for loop
-# A: be aware that num partitons can produce different results
-# when used finetune_steps
-def test_num_partitions_same_results(method: Callable, num_partitions: int, **kwargs):
-    res_partitioned = method(**kwargs, num_partitions=num_partitions)
-    res_no_partitioned = method(**kwargs, num_partitions=1)
-    sort_by = ['unique_id', 'ds']
-    if 'cutoff' in res_partitioned:
-        sort_by.extend(['cutoff'])
-    pd.testing.assert_frame_equal(
-        res_partitioned.sort_values(sort_by).reset_index(drop=True), 
-        res_no_partitioned.sort_values(sort_by).reset_index(drop=True),
-        rtol=1e-2,
-        atol=1e-2,
-    )
-
-freqs = {'D': 7, 'W-THU': 52, 'Q-DEC': 8, '15T': 4 * 24 * 7}
-for freq, h in freqs.items():
-    df_freq = generate_series(
-        10, 
-        min_length=500 if freq != '15T' else 1_200, 
-        max_length=550 if freq != '15T' else 2_000,
-    )
-    #df_freq['y'] = df_freq['y'].astype(np.float32)
-    df_freq['ds'] = df_freq.groupby('unique_id', observed=True)['ds'].transform(
-        lambda x: pd.date_range(periods=len(x), freq=freq, end='2023-01-01')
-    )
-    min_size = df_freq.groupby('unique_id', observed=True).size().min()
-    test_num_partitions_same_results(
-        nixtla_client.detect_anomalies,
-        level=98,
-        df=df_freq,
-        num_partitions=2,
-    )
-    test_num_partitions_same_results(
-        nixtla_client.cross_validation,
-        h=7,
-        n_windows=2,
-        df=df_freq,
-        num_partitions=2,
-    )
-    test_num_partitions_same_results(
-        nixtla_client.forecast,
-        df=df_freq,
-        h=7,
-        add_history=True,
-        num_partitions=2,
-    )
-    df_freq["exog_1"] = 1
-    test_num_partitions_same_results(
-        nixtla_client.detect_anomalies,
-        level=98,
-        df=df_freq,
-        num_partitions=2,
-    )
-    test_num_partitions_same_results(
-        nixtla_client.cross_validation,
-        h=7,
-        n_windows=2,
-        df=df_freq,
-        num_partitions=2,
-    )
-    test_num_partitions_same_results(
-        nixtla_client.forecast,
-        df=df_freq,
-        h=7,
-        add_history=True,
-        num_partitions=2,
-    )
 
 #| hide
 def test_retry_behavior(side_effect, max_retries=5, retry_interval=5, max_wait_time=40, should_retry=True, sleep_seconds=5):
