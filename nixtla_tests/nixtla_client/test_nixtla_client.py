@@ -6,6 +6,8 @@ import pandas as pd
 import zstandard as zstd
 
 from contextlib import contextmanager
+from nixtla_tests.helpers.checks import check_num_partitions_same_results
+from utilsforecast.data import generate_series
 
 CAPTURED_REQUEST = None
 
@@ -188,3 +190,47 @@ def test_forecast_quantiles_output(nixtla_test_client, air_passengers_df, method
     # test monotonicity of quantiles
     for c1, c2 in zip(exp_q_cols[:-1], exp_q_cols[1:]):
         assert df_qls[c1].lt(df_qls[c2]).all()
+
+@pytest.mark.parametrize(
+        "freq",
+        ["D", "W-THU", "Q-DEC", "15T"]
+)
+@pytest.mark.parametrize(
+    "method_name,method_kwargs,exog",
+    [
+        ("detect_anomalies", {"level": 98}, False),
+        ("cross_validation", {"h": 7, "n_windows": 2}, False),
+        ("forecast", {"h": 7, "add_history": True}, False),
+        ("detect_anomalies", {"level": 98}, True),
+        ("cross_validation", {"h": 7, "n_windows": 2}, False),
+        ("forecast", {"h": 7, "add_history": True}, False),
+    ]
+)
+def test_num_partitions_same_results_parametrized(nixtla_test_client, method_name, method_kwargs, freq, exog):
+    mathod_mapper = {
+        "detect_anomalies": nixtla_test_client.detect_anomalies,
+        "cross_validation": nixtla_test_client.cross_validation,
+        "forecast": nixtla_test_client.forecast,
+    }
+    method = mathod_mapper[method_name]
+
+
+    df_freq = generate_series(
+        10,
+        min_length=500 if freq != '15T' else 1_200,
+        max_length=550 if freq != '15T' else 2_000,
+    )
+    df_freq['ds'] = df_freq.groupby('unique_id', observed=True)['ds'].transform(
+        lambda x: pd.date_range(periods=len(x), freq=freq, end='2023-01-01')
+    )
+    if exog:
+        df_freq["exog_1"] = 1
+
+    kwargs = {
+        "method": method,
+        "num_partitions": 2,
+        "df": df_freq,
+        **method_kwargs,
+    }
+
+    check_num_partitions_same_results(**kwargs)
