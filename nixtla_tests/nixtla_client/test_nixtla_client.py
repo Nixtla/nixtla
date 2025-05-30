@@ -8,7 +8,6 @@ import zstandard as zstd
 from contextlib import contextmanager
 from nixtla_tests.helpers.checks import check_num_partitions_same_results
 from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
-from utilsforecast.data import generate_series
 
 CAPTURED_REQUEST = None
 
