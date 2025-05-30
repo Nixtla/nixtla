@@ -1,12 +1,14 @@
 import re
 import pytest
-from nixtla.nixtla_client import _model_in_list
 from nixtla.nixtla_client import _audit_duplicate_rows
 from nixtla.nixtla_client import _audit_categorical_variables
 from nixtla.nixtla_client import _audit_leading_zeros
 from nixtla.nixtla_client import _audit_missing_dates
 from nixtla.nixtla_client import _audit_negative_values
+from nixtla.nixtla_client import _model_in_list
+from nixtla.nixtla_client import _maybe_add_date_features
 from nixtla.nixtla_client import AuditDataSeverity
+from nixtla.date_features import SpecialDates
 
 @pytest.mark.parametrize(
     "name, patterns, expected",
@@ -69,3 +71,30 @@ def test_audit_negative_values(df_negative_values):
     audit, negative_values_df = _audit_negative_values(df_negative_values)
     assert audit == AuditDataSeverity.CASE_SPECIFIC
     assert len(negative_values_df) == 3
+
+
+@pytest.mark.parametrize(
+    "date_features,freq,one_hot,expected_date_features",
+    [
+        (["year", "month"], "MS", False, ["year", "month"]),
+        ([SpecialDates({"first_dates": ["2021-01-1"], "second_dates": ["2021-01-01"]})], "D", False, ["first_dates", "second_dates"]),
+        (["year", "month"], "D", ["month"], ["month_" + str(i) for i in range(1, 13)]),
+    ]
+)
+def test_maybe_add_date_features(air_passengers_df, date_features, freq, one_hot, expected_date_features):
+    df_copy = air_passengers_df.copy()
+    df_copy.rename(columns={"timestamp": "ds", "value": "y"}, inplace=True)
+    df_copy.insert(0, "unique_id", "AirPassengers")
+    df_date_features, future_df = _maybe_add_date_features(
+        df=df_copy,
+        X_df=None,
+        h=12,
+        freq=freq,
+        features=date_features,
+        one_hot=one_hot,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+    )
+    assert all(col in df_date_features for col in expected_date_features)
+    assert all(col in future_df for col in expected_date_features)
