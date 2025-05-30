@@ -7,6 +7,7 @@ import zstandard as zstd
 
 from contextlib import contextmanager
 from nixtla_tests.helpers.checks import check_num_partitions_same_results
+from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
 from utilsforecast.data import generate_series
 
 CAPTURED_REQUEST = None
@@ -234,3 +235,27 @@ def test_num_partitions_same_results_parametrized(nixtla_test_client, method_nam
     }
 
     check_num_partitions_same_results(**kwargs)
+
+@pytest.mark.parametrize(
+    "freq,h",
+    [
+        ('D', 7),
+        ('W-THU', 52),
+        ('Q-DEC', 8),
+        ('15T', 4 * 24 * 7),
+    ]
+)
+def test_forecast_models_different_results(nixtla_test_client, freq, h):
+    df_freq = generate_series(
+        10,
+        min_length=500 if freq != '15T' else 1_200,
+        max_length=550 if freq != '15T' else 2_000,
+    )
+    df_freq['ds'] = df_freq.groupby('unique_id', observed=True)['ds'].transform(
+        lambda x: pd.date_range(periods=len(x), freq=freq, end='2023-01-01')
+    )
+    kwargs = dict(df=df_freq, h=h)
+    fcst_1_df = check_equal_fcsts_add_history(nixtla_test_client, **{**kwargs, 'model': 'timegpt-1'})
+    fcst_2_df = check_equal_fcsts_add_history(nixtla_test_client, **{**kwargs, 'model': 'timegpt-1-long-horizon'})
+    with pytest.raises(AssertionError, match=r'\(column name="TimeGPT"\) are different'):
+        pd.testing.assert_frame_equal(fcst_1_df, fcst_2_df)

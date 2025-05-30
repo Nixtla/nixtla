@@ -77,46 +77,7 @@ df = pd.read_csv(
     'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv',
     parse_dates=['timestamp'],
 )
-df.head()
-
-
-#| hide
-# test we recover the same <mean> forecasts
-# with and without restricting input
-# (add_history)
-def test_equal_fcsts_add_history(**kwargs):
-    fcst_no_rest_df = nixtla_client.forecast(**kwargs, add_history=True)
-    fcst_no_rest_df = fcst_no_rest_df.groupby('unique_id', observed=True).tail(kwargs['h']).reset_index(drop=True)
-    fcst_rest_df = nixtla_client.forecast(**kwargs)
-    pd.testing.assert_frame_equal(
-        fcst_no_rest_df,
-        fcst_rest_df,
-        atol=1e-4,
-        rtol=1e-3,
-    )
-    return fcst_rest_df
-
-freqs = {'D': 7, 'W-THU': 52, 'Q-DEC': 8, '15T': 4 * 24 * 7}
-for freq, h in freqs.items():
-    df_freq = generate_series(
-        10, 
-        min_length=500 if freq != '15T' else 1_200, 
-        max_length=550 if freq != '15T' else 2_000,
-    )
-    df_freq['ds'] = df_freq.groupby('unique_id', observed=True)['ds'].transform(
-        lambda x: pd.date_range(periods=len(x), freq=freq, end='2023-01-01')
-    )
-    kwargs = dict(
-        df=df_freq,
-        h=h,
-    )
-    fcst_1_df = test_equal_fcsts_add_history(**{**kwargs, 'model': 'timegpt-1'})
-    fcst_2_df = test_equal_fcsts_add_history(**{**kwargs, 'model': 'timegpt-1-long-horizon'})
-    test_fail(
-        lambda: pd.testing.assert_frame_equal(fcst_1_df, fcst_2_df),
-        contains='(column name="TimeGPT") are different',
-    )
-    # add test num_partitions    
+df.head() 
 
 #| hide
 # test different results for different models
