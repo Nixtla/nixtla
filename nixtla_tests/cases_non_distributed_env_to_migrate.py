@@ -19,8 +19,6 @@ from utilsforecast.evaluation import evaluate
 from utilsforecast.feature_engineering import fourier, time_features
 from utilsforecast.losses import rmse
 
-from nixtla.date_features import SpecialDates
-
 from nixtla.nixtla_client import (
     _maybe_add_date_features,
     ApiError,
@@ -195,40 +193,6 @@ for hyp in hyps:
         rtol=1e-2,
     )
 
-#| hide
-# test add callables
-date_features = [SpecialDates({'first_dates': ['2021-01-1'], 'second_dates': ['2021-01-01']})]
-df_daily = df_.copy()
-df_daily['ds'] = pd.date_range(end='2021-01-01', periods=len(df_daily))
-df_date_features, future_df = _maybe_add_date_features(
-    df=df_,
-    X_df=None,
-    h=12, 
-    freq='D', 
-    features=date_features,
-    one_hot=False,
-    id_col='unique_id',
-    time_col='ds',
-    target_col='y',
-)
-assert all(col in df_date_features for col in ['first_dates', 'second_dates'])
-assert all(col in future_df for col in ['first_dates', 'second_dates'])
-
-#| hide
-# test add date features one hot encoded
-date_features = ['year', 'month']
-date_features_to_one_hot = ['month']
-df_date_features, future_df = _maybe_add_date_features(
-    df=df_,
-    X_df=None,
-    h=12, 
-    freq='D', 
-    features=date_features,
-    one_hot=date_features_to_one_hot,
-    id_col='unique_id',
-    time_col='ds',
-    target_col='y',
-)
 
 #| hide
 # test pass dataframe with index
