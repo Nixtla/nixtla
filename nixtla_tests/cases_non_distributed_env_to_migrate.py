@@ -158,16 +158,6 @@ for hyp in hyps:
     )
 
 #| hide
-# test finetune cv
-finetune_cv = nixtla_client.cross_validation(
-            df=df_,
-            h=12,
-            n_windows=1,
-            finetune_steps=1
-        )
-test_eq(finetune_cv is not None, True)
-
-#| hide
 for hyp in hyps:
     fcst_test = nixtla_client.forecast(df_train, h=12, **hyp)
     fcst_test = df_test[['unique_id', 'ds', 'y']].merge(fcst_test)
@@ -215,24 +205,6 @@ for freq in ['Y', 'W-MON', 'Q-DEC', 'H']:
     fcst_inferred_df = nixtla_client.forecast(df_test, h=10)
     pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-4, rtol=1e-3)
 
-
-#| hide
-# test warning horizon too long
-nixtla_client.forecast(df=df.tail(3), h=100, time_col='timestamp', target_col='value')
-
-#| hide 
-# test short horizon with add_history
-test_fail(
-    lambda: nixtla_client.forecast(df=df.tail(3), h=12, time_col='timestamp', target_col='value', add_history=True),
-    contains='make sure'
-)
-
-#| hide 
-# test short horizon with finetunning
-test_fail(
-    lambda: nixtla_client.forecast(df=df.tail(3), h=12, time_col='timestamp', target_col='value', finetune_steps=10, finetune_loss='mae'),
-    contains='make sure'
-)
 
 #| hide
 # test using index as time_col
