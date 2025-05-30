@@ -215,56 +215,6 @@ for freq in ['Y', 'W-MON', 'Q-DEC', 'H']:
     fcst_inferred_df = nixtla_client.forecast(df_test, h=10)
     pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-4, rtol=1e-3)
 
-#| hide
-# test add date features with exogenous variables 
-# and multiple series
-date_features = ['year', 'month']
-df_actual_future = df_.tail(12)[['unique_id', 'ds']]
-df_date_features, future_df = _maybe_add_date_features(
-    df=df_,
-    X_df=df_actual_future,
-    h=24, 
-    freq='H', 
-    features=date_features,
-    one_hot=False,
-    id_col='unique_id',
-    time_col='ds',
-    target_col='y',
-)
-assert all(col in df_date_features for col in date_features)
-assert all(col in future_df for col in date_features)
-pd.testing.assert_frame_equal(
-    df_date_features[df_.columns],
-    df_,
-)
-pd.testing.assert_frame_equal(
-    future_df[df_actual_future.columns],
-    df_actual_future,
-)
-
-#| hide
-# test add date features one hot with exogenous variables 
-# and multiple series
-date_features = ['month', 'day']
-df_date_features, future_df = _maybe_add_date_features(
-    df=df_,
-    X_df=df_actual_future,
-    h=24, 
-    freq='H', 
-    features=date_features,
-    one_hot=date_features,
-    id_col='unique_id',
-    time_col='ds',
-    target_col='y',
-)
-pd.testing.assert_frame_equal(
-    df_date_features[df_.columns],
-    df_,
-)
-pd.testing.assert_frame_equal(
-    future_df[df_actual_future.columns],
-    df_actual_future.reset_index(drop=True),
-)
 
 #| hide
 # test warning horizon too long

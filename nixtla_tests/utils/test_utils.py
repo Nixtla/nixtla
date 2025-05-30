@@ -1,5 +1,7 @@
 import re
+import pandas as pd
 import pytest
+
 from nixtla.nixtla_client import _audit_duplicate_rows
 from nixtla.nixtla_client import _audit_categorical_variables
 from nixtla.nixtla_client import _audit_leading_zeros
@@ -98,3 +100,44 @@ def test_maybe_add_date_features(air_passengers_df, date_features, freq, one_hot
     )
     assert all(col in df_date_features for col in expected_date_features)
     assert all(col in future_df for col in expected_date_features)
+
+@pytest.mark.parametrize(
+    "date_features,one_hot,expected_date_features",
+    [
+        (['year', 'month'], False, ['year', 'month']),
+        (["month", "day"], ["month", "day"], ["month_" + str(i) for i in range(1, 13)]),
+    ],
+    ids=["no_one_hot", "with_one_hot"]
+)
+def test_add_date_features_with_exogenous_variables(air_passengers_df, date_features, one_hot, expected_date_features, request):
+    df_copy = air_passengers_df.copy()
+    df_copy.rename(columns={"timestamp": "ds", "value": "y"}, inplace=True)
+    df_copy.insert(0, "unique_id", "AirPassengers")
+
+    df_actual_future = df_copy.tail(12)[['unique_id', 'ds']]
+    df_date_features, future_df = _maybe_add_date_features(
+        df=df_copy,
+        X_df=df_actual_future,
+        h=24,
+        freq="H",
+        features=date_features,
+        one_hot=one_hot,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+    )
+    assert all(col in df_date_features for col in expected_date_features)
+    assert all(col in future_df for col in expected_date_features)
+    pd.testing.assert_frame_equal(
+        df_date_features[df_copy.columns],
+        df_copy,
+    )
+
+    if request.node.callspec.id == "no_one_hot":
+        expected_df_actual_future = df_actual_future.copy()
+    elif request.node.callspec.id == "with_one_hot":
+        expected_df_actual_future = df_actual_future.reset_index(drop=True)
+    pd.testing.assert_frame_equal(
+        future_df[df_actual_future.columns],
+        expected_df_actual_future,
+    )
