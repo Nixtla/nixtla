@@ -3,7 +3,6 @@ import pytest
 import time
 
 from nixtla.nixtla_client import NixtlaClient
-from nixtla.nixtla_client import ApiError
 from typing import Callable
 
 # test num partitions
@@ -43,3 +42,19 @@ def check_retry_behavior(df, side_effect, side_effect_exception, max_retries=5, 
         assert total_mock_time - upper_expected_time - (max_retries - 1) * sleep_seconds <= sleep_seconds
     else:
         assert total_mock_time <= max_wait_time
+
+
+# test we recover the same <mean> forecasts
+# with and without restricting input
+# (add_history)
+def check_equal_fcsts_add_history(nixtla_client, **kwargs):
+    fcst_no_rest_df = nixtla_client.forecast(**kwargs, add_history=True)
+    fcst_no_rest_df = fcst_no_rest_df.groupby('unique_id', observed=True).tail(kwargs['h']).reset_index(drop=True)
+    fcst_rest_df = nixtla_client.forecast(**kwargs)
+    pd.testing.assert_frame_equal(
+        fcst_no_rest_df,
+        fcst_rest_df,
+        atol=1e-4,
+        rtol=1e-3,
+    )
+    return fcst_rest_df
