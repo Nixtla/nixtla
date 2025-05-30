@@ -286,3 +286,14 @@ def air_passengers_df():
         'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv',
         parse_dates=['timestamp'],
     )
+
+@pytest.fixture
+def df_freq_generator():
+    def _df_freq(n_series, min_length, max_length, freq):
+        df_freq = generate_series(
+            n_series,
+            min_length=min_length if freq != '15T' else 1_200,
+            max_length=max_length if freq != '15T' else 2_000,
+        )
+        return df_freq
+    return _df_freq

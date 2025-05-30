@@ -207,7 +207,7 @@ def test_forecast_quantiles_output(nixtla_test_client, air_passengers_df, method
         ("forecast", {"h": 7, "add_history": True}, False),
     ]
 )
-def test_num_partitions_same_results_parametrized(nixtla_test_client, method_name, method_kwargs, freq, exog):
+def test_num_partitions_same_results_parametrized(nixtla_test_client, df_freq_generator, method_name, method_kwargs, freq, exog):
     mathod_mapper = {
         "detect_anomalies": nixtla_test_client.detect_anomalies,
         "cross_validation": nixtla_test_client.cross_validation,
@@ -216,11 +216,7 @@ def test_num_partitions_same_results_parametrized(nixtla_test_client, method_nam
     method = mathod_mapper[method_name]
 
 
-    df_freq = generate_series(
-        10,
-        min_length=500 if freq != '15T' else 1_200,
-        max_length=550 if freq != '15T' else 2_000,
-    )
+    df_freq = df_freq_generator(n_series=10, min_length=500, max_length=550, freq=freq)
     df_freq['ds'] = df_freq.groupby('unique_id', observed=True)['ds'].transform(
         lambda x: pd.date_range(periods=len(x), freq=freq, end='2023-01-01')
     )
@@ -245,12 +241,8 @@ def test_num_partitions_same_results_parametrized(nixtla_test_client, method_nam
         ('15T', 4 * 24 * 7),
     ]
 )
-def test_forecast_models_different_results(nixtla_test_client, freq, h):
-    df_freq = generate_series(
-        10,
-        min_length=500 if freq != '15T' else 1_200,
-        max_length=550 if freq != '15T' else 2_000,
-    )
+def test_forecast_models_different_results(nixtla_test_client, df_freq_generator, freq, h):
+    df_freq = df_freq_generator(n_series=10, min_length=500, max_length=550, freq=freq)
     df_freq['ds'] = df_freq.groupby('unique_id', observed=True)['ds'].transform(
         lambda x: pd.date_range(periods=len(x), freq=freq, end='2023-01-01')
     )
