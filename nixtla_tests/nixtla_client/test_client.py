@@ -37,3 +37,37 @@ def test_get_model_params(nixtla_test_client):
 
 def test_client_plot(nixtla_test_client, air_passengers_df):
     nixtla_test_client.plot(air_passengers_df, time_col='timestamp', target_col='value', engine='plotly')
+
+
+def test_finetune_cv(nixtla_test_client, air_passengers_df):
+    finetune_cv = nixtla_test_client.cross_validation(
+        air_passengers_df, h=12, time_col="timestamp", target_col="value", n_windows=1, finetune_steps=1
+    )
+    assert finetune_cv is not None
+
+def test_forecast_warning(nixtla_test_client, air_passengers_df, caplog):
+    nixtla_test_client.forecast(
+        df=air_passengers_df.tail(3),
+        h=100,
+        time_col='timestamp',
+        target_col='value',
+    )
+    assert "The specified horizon \"h\" exceeds the model horizon" in caplog.text
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"add_history": True},
+        {"finetune_steps": 10, "finetune_loss":"mae"},
+    ],
+    ids=["short horizon with add_history", "short horizon with finetuning"]
+)
+def test_forecast_error(nixtla_test_client, air_passengers_df, kwargs):
+    with pytest.raises(ValueError, match="Some series are too short. Please make sure that each series"):
+        nixtla_test_client.forecast(
+            df=air_passengers_df.tail(3),
+            h=12,
+            time_col='timestamp',
+            target_col='value',
+            **kwargs
+        )
