@@ -34,3 +34,6 @@ def test_forecast_with_wrong_api_key():
 
 def test_get_model_params(nixtla_test_client):
     assert nixtla_test_client._get_model_params(model='timegpt-1', freq='D') == (28, 7)
+
+def test_client_plot(nixtla_test_client, air_passengers_df):
+    nixtla_test_client.plot(air_passengers_df, time_col='timestamp', target_col='value', engine='plotly')

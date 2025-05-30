@@ -81,9 +81,6 @@ df.head()
 
 
 #| hide
-nixtla_client.plot(df, time_col='timestamp', target_col='value', engine='plotly')
-
-#| hide
 # test we recover the same <mean> forecasts
 # with and without restricting input
 # (add_history)
