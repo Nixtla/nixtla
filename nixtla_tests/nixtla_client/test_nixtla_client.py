@@ -250,3 +250,33 @@ def test_forecast_models_different_results(nixtla_test_client, df_freq_generator
     fcst_2_df = check_equal_fcsts_add_history(nixtla_test_client, **{**kwargs, 'model': 'timegpt-1-long-horizon'})
     with pytest.raises(AssertionError, match=r'\(column name="TimeGPT"\) are different'):
         pd.testing.assert_frame_equal(fcst_1_df, fcst_2_df)
+
+
+@pytest.mark.parametrize(
+    "method, method_kwargs",
+    [
+        ("forecast", dict(h=12, level=[90, 95], add_history=True, time_col='timestamp', target_col='value')),
+        ("cross_validation", dict(h=12, level=[90, 95], time_col='timestamp', target_col='value')),
+        ("detect_anomalies", dict(level=99, time_col='timestamp', target_col='value')),
+    ]
+)
+def test_different_models_give_different_results(air_passengers_df, nixtla_test_client, method, method_kwargs):
+    mathod_mapper = {
+        "detect_anomalies": nixtla_test_client.detect_anomalies,
+        "cross_validation": nixtla_test_client.cross_validation,
+        "forecast": nixtla_test_client.forecast,
+    }
+    execute = mathod_mapper[method]
+
+    # Run with first model
+    out1 = execute(df=air_passengers_df, model='timegpt-1', **method_kwargs)
+    # Run with second model
+    out2 = execute(df=air_passengers_df, model='timegpt-1-long-horizon', **method_kwargs)
+    # Compare only the TimeGPT column
+    with pytest.raises(AssertionError, match=r'\(column name="TimeGPT"\) are different'):
+        pd.testing.assert_frame_equal(out1[['TimeGPT']], out2[['TimeGPT']])
+
+    # test unsupported model
+    method_kwargs["model"] = "my-awesome-model"
+    with pytest.raises(ValueError, match="unsupported model"):
+        execute(df=air_passengers_df, **method_kwargs)
