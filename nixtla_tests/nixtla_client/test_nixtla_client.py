@@ -1,13 +1,19 @@
 import httpx
 import pytest
 
+import logging
 import numpy as np
 import pandas as pd
 import zstandard as zstd
 
 from contextlib import contextmanager
+from nixtla_tests.conftest import HYPER_PARAMS_TEST
 from nixtla_tests.helpers.checks import check_num_partitions_same_results
 from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
+
+logging.basicConfig(level=logging.INFO)
+logging.getLogger('httpx').setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
 
 CAPTURED_REQUEST = None
 
@@ -299,4 +305,53 @@ def test_shap_features(nixtla_test_client, date_features_result):
     _ = nixtla_test_client.feature_contributions
     pd.testing.assert_frame_equal(
         nixtla_test_client.feature_contributions, shap_values_hist, atol=1e-4, rtol=1e-3
-    )    
+    )
+
+@pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
+def test_exogenous_variables_cv(nixtla_test_client, exog_data, hyp):
+    logger.info(f'Hyperparameters: {hyp}')
+    logger.info('\n\nPerforming forecast\n')
+    df_ex_, df_train, df_test, x_df_test = exog_data
+    fcst_test = nixtla_test_client.forecast(
+        df_train.merge(df_ex_.drop(columns='y')), h=12, X_df=x_df_test, **hyp
+    )
+    fcst_test = df_test[['unique_id', 'ds', 'y']].merge(fcst_test)
+    fcst_test = fcst_test.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    logger.info('\n\nPerforming Cross validation\n')
+    fcst_cv = nixtla_test_client.cross_validation(df_ex_, h=12, **hyp)
+    fcst_cv = fcst_cv.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    logger.info('\n\nVerify difference\n')
+    pd.testing.assert_frame_equal(
+        fcst_test,
+        fcst_cv.drop(columns='cutoff'),
+        atol=1e-4,
+        rtol=1e-3,
+    )
+
+@pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
+def test_forecast_vs_cv_no_exog(nixtla_test_client, train_test_split, air_passengers_renamed_df, hyp):
+    df_train, df_test = train_test_split
+    fcst_test = nixtla_test_client.forecast(df_train, h=12, **hyp)
+    fcst_test = df_test[['unique_id', 'ds', 'y']].merge(fcst_test)
+    fcst_test = fcst_test.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    fcst_cv = nixtla_test_client.cross_validation(air_passengers_renamed_df, h=12, **hyp)
+    fcst_cv = fcst_cv.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    pd.testing.assert_frame_equal(
+        fcst_test,
+        fcst_cv.drop(columns='cutoff'),
+        rtol=1e-2,
+    )
+
+@pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
+def test_forecast_vs_cv_insert_y(nixtla_test_client, train_test_split, air_passengers_renamed_df, hyp):
+    df_train, df_test = train_test_split
+    fcst_test = nixtla_test_client.forecast(df_train, h=12, **hyp)
+    fcst_test.insert(2, 'y', df_test['y'].values)
+    fcst_test = fcst_test.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    fcst_cv = nixtla_test_client.cross_validation(air_passengers_renamed_df, h=12, **hyp)
+    fcst_cv = fcst_cv.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    pd.testing.assert_frame_equal(
+        fcst_test,
+        fcst_cv.drop(columns='cutoff'),
+        rtol=1e-2,
+    )
