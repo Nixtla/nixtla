@@ -95,49 +95,6 @@ detection_size = 5
 n_series = 2
 size = 100
 
-ds = pd.date_range(start='2023-01-01', periods=size, freq='W')
-x = np.arange(size)
-y = 10 * np.sin(0.1 * x) + 12
-y = np.tile(y, n_series)
-y[size - 5] = 30
-y[2*size - 1] = 30
-
-df = pd.DataFrame({
-    'unique_id': np.repeat(np.arange(1, n_series + 1), size),
-    'ds': np.tile(ds, n_series),
-    'y': y
-})
-
-anomaly_df = nixtla_client.detect_anomalies_online(
-    df, 
-    h=20, 
-    detection_size=detection_size, 
-    threshold_method="univariate", 
-    freq='W-SUN', 
-    level=99,
-)
-assert len(anomaly_df) == n_series * detection_size
-assert len(anomaly_df.columns) == 8 # [unique_id, ds, TimeGPT, y, anomaly, anomaly_score, hi, lo]
-assert anomaly_df['anomaly'].sum() == 2 
-assert anomaly_df['anomaly'].iloc[0] and anomaly_df['anomaly'].iloc[-1]
-
-multi_anomaly_df = nixtla_client.detect_anomalies_online(
-    df, 
-    h=20, 
-    detection_size=detection_size, 
-    threshold_method="multivariate", 
-    freq='W-SUN', 
-    level=99,
-)
-
-assert len(multi_anomaly_df) == n_series * detection_size
-assert len(multi_anomaly_df.columns) == 7 # [unique_id, ds, TimeGPT, y, anomaly, anomaly_score, accumulated_anomaly_score]
-assert multi_anomaly_df['anomaly'].sum() == 4
-assert (multi_anomaly_df['anomaly'].iloc[0] and 
-        multi_anomaly_df['anomaly'].iloc[4] and
-        multi_anomaly_df['anomaly'].iloc[5] and
-        multi_anomaly_df['anomaly'].iloc[9])
-
 
 ### Distributed
 
