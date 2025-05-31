@@ -355,3 +355,28 @@ def test_forecast_vs_cv_insert_y(nixtla_test_client, train_test_split, air_passe
         fcst_cv.drop(columns='cutoff'),
         rtol=1e-2,
     )
+
+def test_forecast_and_anomalies_index_vs_columns(
+        nixtla_test_client, 
+        air_passengers_renamed_df, 
+        air_passengers_renamed_df_with_index
+):
+    fcst_inferred_df_index = nixtla_test_client.forecast(air_passengers_renamed_df_with_index, h=10)
+    anom_inferred_df_index = nixtla_test_client.detect_anomalies(air_passengers_renamed_df_with_index)
+    fcst_inferred_df = nixtla_test_client.forecast(air_passengers_renamed_df[['ds', 'unique_id', 'y']], h=10)
+    anom_inferred_df = nixtla_test_client.detect_anomalies(air_passengers_renamed_df[['ds', 'unique_id', 'y']])
+    pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-4, rtol=1e-3)
+    pd.testing.assert_frame_equal(anom_inferred_df_index, anom_inferred_df, atol=1e-4, rtol=1e-3)
+
+@pytest.mark.parametrize("freq", ['Y', 'W-MON', 'Q-DEC', 'H'])
+def test_forecast_index_vs_columns_various_freq(nixtla_test_client, air_passengers_renamed_df_with_index, freq):
+    df_ds_index = air_passengers_renamed_df_with_index.groupby('unique_id').tail(80)
+    df_ds_index.index = np.concatenate(
+        df_ds_index['unique_id'].nunique() * [pd.date_range(end='2023-01-01', periods=80, freq=freq)]
+    )
+    df_ds_index.index.name = 'ds'
+    fcst_inferred_df_index = nixtla_test_client.forecast(df_ds_index, h=10)
+    df_test = df_ds_index.reset_index()
+    fcst_inferred_df = nixtla_test_client.forecast(df_test, h=10)
+    pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-4, rtol=1e-3)
+

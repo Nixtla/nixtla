@@ -84,28 +84,6 @@ df_.insert(0, 'unique_id', 'AirPassengers')
 
 
 #| hide
-# test pass dataframe with index
-df_ds_index = df_.set_index('ds')[['unique_id', 'y']]
-df_ds_index.index = pd.DatetimeIndex(df_ds_index.index)
-fcst_inferred_df_index = nixtla_client.forecast(df_ds_index, h=10)
-anom_inferred_df_index = nixtla_client.detect_anomalies(df_ds_index)
-fcst_inferred_df = nixtla_client.forecast(df_[['ds', 'unique_id', 'y']], h=10)
-anom_inferred_df = nixtla_client.detect_anomalies(df_[['ds', 'unique_id', 'y']])
-pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-4, rtol=1e-3)
-pd.testing.assert_frame_equal(anom_inferred_df_index, anom_inferred_df, atol=1e-4, rtol=1e-3)
-df_ds_index = df_ds_index.groupby('unique_id').tail(80)
-for freq in ['Y', 'W-MON', 'Q-DEC', 'H']:
-    df_ds_index.index = np.concatenate(
-        df_ds_index['unique_id'].nunique() * [pd.date_range(end='2023-01-01', periods=80, freq=freq)]
-    )
-    df_ds_index.index.name = 'ds'
-    fcst_inferred_df_index = nixtla_client.forecast(df_ds_index, h=10)
-    df_test = df_ds_index.reset_index()
-    fcst_inferred_df = nixtla_client.forecast(df_test, h=10)
-    pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-4, rtol=1e-3)
-
-
-#| hide
 # test using index as time_col
 # same results
 df_test = df.copy()

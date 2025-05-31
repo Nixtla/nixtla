@@ -296,6 +296,13 @@ def air_passengers_renamed_df(air_passengers_df):
     df_copy.insert(0, "unique_id", "AirPassengers")  
     return df_copy
 
+@pytest.fixture(scope="module")
+def air_passengers_renamed_df_with_index(air_passengers_renamed_df):
+    df_copy = deepcopy(air_passengers_renamed_df)
+    df_ds_index = df_copy.set_index('ds')[['unique_id', 'y']]
+    df_ds_index.index = pd.DatetimeIndex(df_ds_index.index)
+    return df_ds_index
+    
 @pytest.fixture
 def df_freq_generator():
     def _df_freq(n_series, min_length, max_length, freq):
