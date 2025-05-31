@@ -7,6 +7,7 @@ import pandas as pd
 import zstandard as zstd
 
 from contextlib import contextmanager
+from copy import deepcopy
 from nixtla_tests.conftest import HYPER_PARAMS_TEST
 from nixtla_tests.helpers.checks import check_num_partitions_same_results
 from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
@@ -380,3 +381,18 @@ def test_forecast_index_vs_columns_various_freq(nixtla_test_client, air_passenge
     fcst_inferred_df = nixtla_test_client.forecast(df_test, h=10)
     pd.testing.assert_frame_equal(fcst_inferred_df_index, fcst_inferred_df, atol=1e-4, rtol=1e-3)
 
+def test_index_as_time_col(nixtla_test_client, air_passengers_df):
+    df_test = deepcopy(air_passengers_df)
+    df_test["timestamp"] = pd.to_datetime(df_test["timestamp"])
+    df_test.set_index(df_test["timestamp"], inplace=True)
+    df_test.drop(columns="timestamp", inplace=True)
+    # Using user_provided time_col and freq
+    timegpt_anomalies_df_1 = nixtla_test_client.detect_anomalies(air_passengers_df, time_col='timestamp', target_col='value', freq='M')
+    # Infer time_col and freq from index
+    timegpt_anomalies_df_2 = nixtla_test_client.detect_anomalies(df_test, time_col='timestamp', target_col='value')
+    pd.testing.assert_frame_equal(
+        timegpt_anomalies_df_1,
+        timegpt_anomalies_df_2,
+        atol=1e-4,
+        rtol=1e-3,
+    )
