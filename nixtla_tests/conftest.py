@@ -4,11 +4,13 @@ import pandas as pd
 import pytest
 import utilsforecast.processing as ufp
 
+from copy import deepcopy
 from nixtla.nixtla_client import NixtlaClient
+from nixtla.nixtla_client import _maybe_add_date_features
+from nixtla_tests.helpers.states import model_ids_object
 from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier
 from types import SimpleNamespace
-from nixtla_tests.helpers.states import model_ids_object
 
 # note that scope="session" will result in failed test
 @pytest.fixture(scope="class")
@@ -297,3 +299,22 @@ def df_freq_generator():
         )
         return df_freq
     return _df_freq
+
+@pytest.fixture(scope="module")
+def date_features_result(air_passengers_df):
+    date_features = ['year', 'month']
+    df_copy = deepcopy(air_passengers_df)
+    df_copy.rename(columns={"timestamp": "ds", "value": "y"}, inplace=True)
+    df_copy.insert(0, "unique_id", "AirPassengers")  
+    df_date_features, future_df = _maybe_add_date_features(
+        df=df_copy,
+        X_df=None,
+        h=12,
+        freq='MS',
+        features=date_features,
+        one_hot=False,
+        id_col='unique_id',
+        time_col='ds',
+        target_col='y',
+    )
+    return df_date_features, future_df, date_features
