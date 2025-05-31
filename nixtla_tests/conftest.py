@@ -289,6 +289,13 @@ def air_passengers_df():
         parse_dates=['timestamp'],
     )
 
+@pytest.fixture(scope="module")
+def air_passengers_renamed_df(air_passengers_df):
+    df_copy = deepcopy(air_passengers_df)
+    df_copy.rename(columns={"timestamp": "ds", "value": "y"}, inplace=True)
+    df_copy.insert(0, "unique_id", "AirPassengers")  
+    return df_copy
+
 @pytest.fixture
 def df_freq_generator():
     def _df_freq(n_series, min_length, max_length, freq):
@@ -301,13 +308,10 @@ def df_freq_generator():
     return _df_freq
 
 @pytest.fixture(scope="module")
-def date_features_result(air_passengers_df):
+def date_features_result(air_passengers_renamed_df):
     date_features = ['year', 'month']
-    df_copy = deepcopy(air_passengers_df)
-    df_copy.rename(columns={"timestamp": "ds", "value": "y"}, inplace=True)
-    df_copy.insert(0, "unique_id", "AirPassengers")  
     df_date_features, future_df = _maybe_add_date_features(
-        df=df_copy,
+        df=air_passengers_renamed_df,
         X_df=None,
         h=12,
         freq='MS',
@@ -318,3 +322,30 @@ def date_features_result(air_passengers_df):
         target_col='y',
     )
     return df_date_features, future_df, date_features
+
+HYPER_PARAMS_TEST = [
+    # finetune steps is unstable due
+    # to numerical reasons
+    # dict(finetune_steps=2),
+    dict(),
+    dict(clean_ex_first=False),
+    dict(date_features=['month']),
+    dict(level=[80, 90]),
+    # dict(level=[80, 90], finetune_steps=2),
+]
+
+@pytest.fixture(scope="module")
+def train_test_split(air_passengers_renamed_df):
+    df_ = deepcopy(air_passengers_renamed_df)
+    df_test = df_.groupby('unique_id').tail(12)
+    df_train = df_.drop(df_test.index)
+    return df_train, df_test
+
+@pytest.fixture(scope="module")
+def exog_data(air_passengers_renamed_df, train_test_split):
+    df_ = deepcopy(air_passengers_renamed_df)
+    df_ex_ = df_.copy()
+    df_ex_['exogenous_var'] = df_ex_['y'] + np.random.normal(size=len(df_ex_))
+    df_train, df_test = train_test_split
+    x_df_test = df_test.drop(columns='y').merge(df_ex_.drop(columns='y'))
+    return df_ex_, df_train, df_test, x_df_test
