@@ -5,12 +5,18 @@ import pytest
 import utilsforecast.processing as ufp
 
 from copy import deepcopy
+from dotenv import load_dotenv
 from nixtla.nixtla_client import NixtlaClient
 from nixtla.nixtla_client import _maybe_add_date_features
 from nixtla_tests.helpers.states import model_ids_object
 from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier, time_features
 from types import SimpleNamespace
+
+@pytest.fixture(autouse=True)
+def load_env():
+    load_dotenv(override=True)
+    yield
 
 # note that scope="session" will result in failed test
 @pytest.fixture(scope="class")
