@@ -84,52 +84,10 @@ df_.insert(0, 'unique_id', 'AirPassengers')
 
 
 #| hide
-# Test large requests raise error and suggest partition number
-df = generate_series(20_000, min_length=1_000, max_length=1_000, freq='min')
-test_fail(
-    lambda: nixtla_client.forecast(df=df, h=1, freq='min', finetune_steps=2),
-    contains="num_partitions"
-)
-
-#| hide
 # future and historic exogs
 df = generate_series(n_series=2, min_length=5, max_length=20)
 train, future = time_features(df, freq='D', features=['year', 'month'], h=5)
 
-# features in df but not in X_df
-missing_exogenous = train.columns.drop(['unique_id', 'ds', 'y']).tolist()
-expected_warning = (
-    f'`df` contains the following exogenous features: {missing_exogenous}, '
-    'but `X_df` was not provided and they were not declared in `hist_exog_list`. '
-    'They will be ignored.'
-)
-with warnings.catch_warnings(record=True) as w:
-    forecasts = nixtla_client.forecast(train, h=5)
-    assert any(expected_warning in str(warning.message) for warning in w)
-
-# features in df not set as historic nor in X_df
-expected_warning = (
-    f"`df` contains the following exogenous features: ['month'], "
-    'but they were not found in `X_df` nor declared in `hist_exog_list`. '
-    'They will be ignored.'
-)
-with warnings.catch_warnings(record=True) as w:
-    forecasts = nixtla_client.forecast(train, h=5, X_df=future[['unique_id', 'ds', 'year']])
-    assert any(expected_warning in str(warning.message) for warning in w)
-
-# features in X_df not in df
-test_fail(
-    lambda: nixtla_client.forecast(
-        train[['unique_id', 'ds', 'y']],
-        h=5,
-        X_df=future,
-    ),
-    contains='features are present in `X_df` but not in `df`'
-)
-
-# test setting one as historic and other as future
-nixtla_client.forecast(train, h=5, X_df=future[['unique_id', 'ds', 'year']], hist_exog_list=['month'])
-test_eq(nixtla_client.weights_x['features'].tolist(), ['year', 'month'])
 
 #| hide
 # Test real-time anomaly detection

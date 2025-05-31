@@ -9,7 +9,7 @@ from nixtla.nixtla_client import NixtlaClient
 from nixtla.nixtla_client import _maybe_add_date_features
 from nixtla_tests.helpers.states import model_ids_object
 from utilsforecast.data import generate_series
-from utilsforecast.feature_engineering import fourier
+from utilsforecast.feature_engineering import fourier, time_features
 from types import SimpleNamespace
 
 # note that scope="session" will result in failed test
@@ -278,6 +278,11 @@ def two_short_series():
     return generate_series(n_series=2, min_length=5, max_length=20)
 
 @pytest.fixture
+def two_short_series_with_time_features_train_future(two_short_series):
+    train, future = time_features(two_short_series, freq='D', features=['year', 'month'], h=5)
+    return train, future
+
+@pytest.fixture
 def series_1MB_payload():
     series = generate_series(250, n_static_features=2)
     return series
@@ -356,3 +361,7 @@ def exog_data(air_passengers_renamed_df, train_test_split):
     df_train, df_test = train_test_split
     x_df_test = df_test.drop(columns='y').merge(df_ex_.drop(columns='y'))
     return df_ex_, df_train, df_test, x_df_test
+
+@pytest.fixture(scope="module")
+def large_series():
+    return generate_series(20_000, min_length=1_000, max_length=1_000, freq='min')
