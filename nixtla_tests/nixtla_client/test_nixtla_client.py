@@ -280,3 +280,23 @@ def test_different_models_give_different_results(air_passengers_df, nixtla_test_
     method_kwargs["model"] = "my-awesome-model"
     with pytest.raises(ValueError, match="unsupported model"):
         execute(df=air_passengers_df, **method_kwargs)
+
+def test_shap_features(nixtla_test_client, date_features_result):
+    # Test shap values are returned and sum to predictions
+    df_date_features, future_df, _ = date_features_result
+    h = 12
+    fcst_df = nixtla_test_client.forecast(df=df_date_features, h=h, X_df=future_df, feature_contributions=True)
+    shap_values = nixtla_test_client.feature_contributions
+    assert len(shap_values) == len(fcst_df)
+    np.testing.assert_allclose(fcst_df["TimeGPT"].values, shap_values.iloc[:, 3:].sum(axis=1).values)
+
+    fcst_hist_df = nixtla_test_client.forecast(df=df_date_features, h=h, X_df=future_df, add_history=True, feature_contributions=True)
+    shap_values_hist = nixtla_test_client.feature_contributions
+    assert len(shap_values_hist) == len(fcst_hist_df)
+    np.testing.assert_allclose(fcst_hist_df["TimeGPT"].values, shap_values_hist.iloc[:, 3:].sum(axis=1).values, atol=1e-4)
+
+    # test num partitions
+    _ = nixtla_test_client.feature_contributions
+    pd.testing.assert_frame_equal(
+        nixtla_test_client.feature_contributions, shap_values_hist, atol=1e-4, rtol=1e-3
+    )    

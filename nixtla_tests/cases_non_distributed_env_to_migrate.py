@@ -81,37 +81,7 @@ df.head()
 # test add date features
 df_ = df.rename(columns={'timestamp': 'ds', 'value': 'y'})
 df_.insert(0, 'unique_id', 'AirPassengers')
-date_features = ['year', 'month']
-df_date_features, future_df = _maybe_add_date_features(
-    df=df_,
-    X_df=None,
-    h=12, 
-    freq='MS', 
-    features=date_features,
-    one_hot=False,
-    id_col='unique_id',
-    time_col='ds',
-    target_col='y',
-)
-assert all(col in df_date_features for col in date_features)
-assert all(col in future_df for col in date_features)
 
-#| hide
-# Test shap values are returned and sum to predictions
-h=12
-fcst_df = nixtla_client.forecast(df=df_date_features, h=h, X_df=future_df, feature_contributions=True)
-shap_values = nixtla_client.feature_contributions
-assert len(shap_values) == len(fcst_df)
-np.testing.assert_allclose(fcst_df["TimeGPT"].values, shap_values.iloc[:, 3:].sum(axis=1).values)
-
-fcst_hist_df = nixtla_client.forecast(df=df_date_features, h=h, X_df=future_df, add_history=True, feature_contributions=True)
-shap_values_hist = nixtla_client.feature_contributions
-assert len(shap_values_hist) == len(fcst_hist_df)
-np.testing.assert_allclose(fcst_hist_df["TimeGPT"].values, shap_values_hist.iloc[:, 3:].sum(axis=1).values, atol=1e-4)
-
-# test num partitions
-_ = nixtla_client.forecast(df=df_date_features, h=h, X_df=future_df, add_history=True, feature_contributions=True, num_partitions=2)
-pd.testing.assert_frame_equal(nixtla_client.feature_contributions, shap_values_hist, atol=1e-4, rtol=1e-3)
 
 #| hide
 # cross validation tests
