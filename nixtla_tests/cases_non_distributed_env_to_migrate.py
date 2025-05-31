@@ -84,26 +84,6 @@ df_.insert(0, 'unique_id', 'AirPassengers')
 
 
 #| hide
-# test using index as time_col
-# same results
-df_test = df.copy()
-df_test["timestamp"] = pd.to_datetime(df_test["timestamp"])
-df_test.set_index(df_test["timestamp"], inplace=True)
-df_test.drop(columns="timestamp", inplace=True)
-
-# Using user_provided time_col and freq
-timegpt_anomalies_df_1 = nixtla_client.detect_anomalies(df, time_col='timestamp', target_col='value', freq= 'M')
-# Infer time_col and freq from index
-timegpt_anomalies_df_2 = nixtla_client.detect_anomalies(df_test, time_col='timestamp', target_col='value')
-
-pd.testing.assert_frame_equal(
-    timegpt_anomalies_df_1,
-    timegpt_anomalies_df_2,
-    atol=1e-4,
-    rtol=1e-3,
-)
-
-#| hide
 # Test large requests raise error and suggest partition number
 df = generate_series(20_000, min_length=1_000, max_length=1_000, freq='min')
 test_fail(
