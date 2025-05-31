@@ -29,9 +29,6 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger('httpx').setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
-#| hide
-load_dotenv(override=True)
-
 common_kwargs = {
     "freq": "D",
     "id_col": 'unique_id',
