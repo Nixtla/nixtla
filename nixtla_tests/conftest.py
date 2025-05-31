@@ -365,3 +365,21 @@ def exog_data(air_passengers_renamed_df, train_test_split):
 @pytest.fixture(scope="module")
 def large_series():
     return generate_series(20_000, min_length=1_000, max_length=1_000, freq='min')
+
+@pytest.fixture(scope="module")
+def anomaly_online_df():
+    detection_size = 5
+    n_series = 2
+    size = 100
+    ds = pd.date_range(start='2023-01-01', periods=size, freq='W')
+    x = np.arange(size)
+    y = 10 * np.sin(0.1 * x) + 12
+    y = np.tile(y, n_series)
+    y[size - 5] = 30
+    y[2*size - 1] = 30
+    df = pd.DataFrame({
+        'unique_id': np.repeat(np.arange(1, n_series + 1), size),
+        'ds': np.tile(ds, n_series),
+        'y': y
+    })
+    return df, n_series, detection_size
