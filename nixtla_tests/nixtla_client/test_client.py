@@ -6,6 +6,36 @@ import warnings
 from nixtla_tests.helpers.client_helper import delete_env_var
 from nixtla.nixtla_client import NixtlaClient
 
+def test_custom_business_hours(
+    business_hours_series, custom_business_hours
+):
+    nixtla_test_client = NixtlaClient()
+    nixtla_test_client.detect_anomalies(
+        df=business_hours_series, freq=custom_business_hours, level=90
+    )
+    nixtla_test_client.cross_validation(
+        df=business_hours_series, freq=custom_business_hours, h=7
+    )
+    fcst = nixtla_test_client.forecast(
+        df=business_hours_series, freq=custom_business_hours, h=7
+    )
+    assert sorted(fcst["ds"].dt.hour.unique().tolist()) == list(range(9, 16))
+    assert [
+        (model, freq.lower())
+        for (model, freq) in nixtla_test_client._model_params.keys()
+    ] == [("timegpt-1", "cbh")]
+
+
+def test_integer_freq(integer_freq_series):
+    nixtla_test_client = NixtlaClient()
+    nixtla_test_client.detect_anomalies(df=integer_freq_series, level=90, freq=1)
+    nixtla_test_client.cross_validation(df=integer_freq_series, h=7, freq=1)
+    fcst = nixtla_test_client.forecast(df=integer_freq_series, h=7, freq=1)
+    train_ends = integer_freq_series.groupby("unique_id", observed=True)["ds"].max()
+    fcst_ends = fcst.groupby("unique_id", observed=True)["ds"].max()
+    pd.testing.assert_series_equal(fcst_ends, train_ends + 7)
+    assert list(nixtla_test_client._model_params.keys()) == [("timegpt-1", "MS")]
+
 
 def test_api_key_fail():
     with delete_env_var("NIXTLA_API_KEY"), delete_env_var("TIMEGPT_TOKEN"):
