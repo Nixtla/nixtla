@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import pytest
+import ray
 import utilsforecast.processing as ufp
 
 from copy import deepcopy
@@ -12,6 +13,7 @@ from nixtla.nixtla_client import NixtlaClient
 from nixtla.nixtla_client import _maybe_add_date_features
 from nixtla_tests.helpers.states import model_ids_object
 from pyspark.sql import SparkSession
+from ray.cluster_utils import Cluster
 from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier, time_features
 from types import SimpleNamespace
@@ -491,3 +493,39 @@ def dask_df_x_diff_cols(distributed_df_x, renamer):
 @pytest.fixture(scope="module")
 def dask_future_ex_vars_df_diff_cols(distributed_future_ex_vars_df, renamer):
     return dd.from_pandas(distributed_future_ex_vars_df.rename(columns=renamer), npartitions=2)
+
+@pytest.fixture(scope="module")
+def ray_cluster_setup():
+    ray_cluster = Cluster(
+        initialize_head=True,
+        head_node_args={"num_cpus": 2}
+    )
+    ray.init(address=ray_cluster.address, ignore_reinit_error=True)
+    # add mock node to simulate a cluster
+    ray_cluster.add_node(num_cpus=2)
+    yield
+    ray.shutdown()
+
+@pytest.fixture(scope="module")
+def ray_df(distributed_series):
+    return ray.data.from_pandas(distributed_series)
+
+@pytest.fixture(scope="module")
+def ray_diff_cols_df(distributed_series, renamer):
+    return ray.data.from_pandas(distributed_series.rename(columns=renamer))
+
+@pytest.fixture(scope="module")
+def ray_df_x(distributed_df_x):
+    return ray.data.from_pandas(distributed_df_x)
+
+@pytest.fixture(scope="module")
+def ray_future_ex_vars_df(distributed_future_ex_vars_df):
+    return ray.data.from_pandas(distributed_future_ex_vars_df)
+
+@pytest.fixture(scope="module")
+def ray_df_x_diff_cols(distributed_df_x, renamer):
+    return ray.data.from_pandas(distributed_df_x.rename(columns=renamer))
+
+@pytest.fixture(scope="module")
+def ray_future_ex_vars_df_diff_cols(distributed_future_ex_vars_df, renamer):
+    return ray.data.from_pandas(distributed_future_ex_vars_df.rename(columns=renamer))

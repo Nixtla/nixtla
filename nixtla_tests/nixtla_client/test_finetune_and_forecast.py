@@ -80,3 +80,6 @@ class TestTimeSeriesDataSet1():
 
     def test_dask_finetune_model(self, custom_client, dask_df):
         check_finetuned_model(custom_client, dask_df, model_ids_object.model_id2)
+
+    def test_dask_finetune_model(self, custom_client, ray_df):
+        check_finetuned_model(custom_client, ray_df, model_ids_object.model_id2)
