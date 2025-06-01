@@ -113,11 +113,11 @@ class TestTimeSeriesDataSet1:
         with pytest.raises(ApiError, match="Model not found"):
             custom_client.finetuned_model("hi")
 
+    def test_ray_finetune_model(self, custom_client, ray_df):
+        check_finetuned_model(custom_client, ray_df, model_ids_object.model_id2)
+
     def test_spark_finetune_model(self, custom_client, spark_df):
         check_finetuned_model(custom_client, spark_df, model_ids_object.model_id2)
 
     def test_dask_finetune_model(self, custom_client, dask_df):
         check_finetuned_model(custom_client, dask_df, model_ids_object.model_id2)
-
-    def test_ray_finetune_model(self, custom_client, ray_df):
-        check_finetuned_model(custom_client, ray_df, model_ids_object.model_id2)
