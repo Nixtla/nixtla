@@ -13,10 +13,7 @@ from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier, time_features
 from types import SimpleNamespace
 
-@pytest.fixture(autouse=True)
-def load_env():
-    load_dotenv(override=True)
-    yield
+load_dotenv(override=True)
 
 # note that scope="session" will result in failed test
 @pytest.fixture(scope="class")
