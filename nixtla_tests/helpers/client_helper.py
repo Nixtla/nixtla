@@ -2,6 +2,7 @@ import os
 
 from contextlib import contextmanager
 
+
 @contextmanager
 def delete_env_var(key):
     original_value = os.environ.get(key)
