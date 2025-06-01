@@ -63,17 +63,9 @@ Before doing any changes to the code, please install the git hooks that run auto
 pre-commit install
 ```
 
-### Building the library
-The library is built using the notebooks contained in the `nbs` folder. If you want to make any changes to the library you have to find the relevant notebook, make your changes and then call:
-```
-nbdev_export
-```
 
 ### Running tests
-If you're working on the local interface you can just use `nbdev_test --n_workers 1 --do_print --timing`.
-
-### Cleaning notebooks
-Since the notebooks output cells can vary from run to run (even if they produce the same outputs) the notebooks are cleaned before committing them. Please make sure to run `nbdev_clean` before committing your changes.
+If you're working on the local interface you can just use `pytest nixtla_tests`
 
 ## Do you want to contribute to the documentation?
 
