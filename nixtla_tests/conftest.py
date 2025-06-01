@@ -1,3 +1,4 @@
+import dask.dataframe as dd
 import os
 import numpy as np
 import pandas as pd
@@ -5,6 +6,7 @@ import pytest
 import utilsforecast.processing as ufp
 
 from copy import deepcopy
+from dask.distributed import Client
 from dotenv import load_dotenv
 from nixtla.nixtla_client import NixtlaClient
 from nixtla.nixtla_client import _maybe_add_date_features
@@ -457,3 +459,35 @@ def spark_future_ex_vars_df(spark_client, distributed_future_ex_vars_df):
 def spark_future_ex_vars_df_diff_cols(spark_client, distributed_future_ex_vars_df, renamer):
     spark_df = spark_client.createDataFrame(distributed_future_ex_vars_df.rename(columns=renamer)).repartition(2)
     return spark_df
+
+@pytest.fixture(scope="module")
+def dask_client():
+    client = Client()
+    yield client
+    client.close()
+
+@pytest.fixture(scope="module")
+def dask_df(distributed_series):
+    return dd.from_pandas(distributed_series, npartitions=2)
+
+@pytest.fixture(scope="module")
+def dask_diff_cols_df(distributed_series, renamer):
+    return dd.from_pandas(
+        distributed_series.rename(columns=renamer), npartitions=2,
+    )
+
+@pytest.fixture(scope="module")
+def dask_df_x(distributed_df_x):
+    return dd.from_pandas(distributed_df_x, npartitions=2)
+
+@pytest.fixture(scope="module")
+def dask_future_ex_vars_df(distributed_future_ex_vars_df):
+    return dd.from_pandas(distributed_future_ex_vars_df, npartitions=2)
+
+@pytest.fixture(scope="module")
+def dask_df_x_diff_cols(distributed_df_x, renamer):
+    return dd.from_pandas(distributed_df_x.rename(columns=renamer), npartitions=2)
+
+@pytest.fixture(scope="module")
+def dask_future_ex_vars_df_diff_cols(distributed_future_ex_vars_df, renamer):
+    return dd.from_pandas(distributed_future_ex_vars_df.rename(columns=renamer), npartitions=2)

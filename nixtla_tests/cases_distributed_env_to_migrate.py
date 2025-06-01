@@ -68,40 +68,6 @@ future_ex_vars_df = pd.read_csv(
 )
 future_ex_vars_df = future_ex_vars_df.rename(columns=str.lower)
 
-
-#### Dask
-
-#| hide
-#| distributed
-client = Client()
-dask_df = dd.from_pandas(series, npartitions=2)
-dask_diff_cols_df = dd.from_pandas(series_diff_cols, npartitions=2)
-
-
-test_quantiles(dask_df, id_col="unique_id", time_col="ds")
-
-
-test_forecast_dataframe(dask_df)
-test_forecast_dataframe_diff_cols(dask_diff_cols_df)
-test_anomalies_dataframe(dask_df)
-test_anomalies_online_dataframe(dask_df)
-test_anomalies_dataframe_diff_cols(dask_diff_cols_df)
-
-# test exogenous variables
-dask_df_x = dd.from_pandas(df_x, npartitions=2)
-dask_future_ex_vars_df = dd.from_pandas(future_ex_vars_df, npartitions=2)
-test_forecast_x_dataframe(dask_df_x, dask_future_ex_vars_df)
-
-# test x different cols
-dask_df_x_diff_cols = dd.from_pandas(df_x.rename(columns=renamer), npartitions=2)
-dask_future_ex_vars_df_diff_cols = dd.from_pandas(future_ex_vars_df.rename(columns=renamer), npartitions=2)
-test_forecast_x_dataframe_diff_cols(dask_df_x_diff_cols, dask_future_ex_vars_df_diff_cols)
-
-# test finetuning
-test_finetuned_model(dask_df)
-
-client.close()
-
 #### Ray
 
 #| hide
