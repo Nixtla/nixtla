@@ -1,7 +1,7 @@
 import pytest
-import uuid
 
 from nixtla.nixtla_client import ApiError
+from nixtla_tests.helpers.checks import check_finetuned_model
 from nixtla_tests.helpers.states import model_ids_object
 from utilsforecast.evaluation import evaluate
 from utilsforecast.losses import rmse
@@ -74,3 +74,6 @@ class TestTimeSeriesDataSet1():
     def test_non_existing_model_returns_error(self, custom_client):
         with pytest.raises(ApiError, match="Model not found"):
             custom_client.finetuned_model('hi')
+
+    def test_spark_finetune_model(self, custom_client, spark_df):
+        check_finetuned_model(custom_client, spark_df, model_ids_object.model_id2)
