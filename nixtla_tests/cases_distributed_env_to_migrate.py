@@ -68,40 +68,4 @@ future_ex_vars_df = pd.read_csv(
 )
 future_ex_vars_df = future_ex_vars_df.rename(columns=str.lower)
 
-#### Ray
 
-#| hide
-#| distributed
-ray_cluster = Cluster(
-    initialize_head=True,
-    head_node_args={"num_cpus": 2}
-)
-ray.init(address=ray_cluster.address, ignore_reinit_error=True)
-# add mock node to simulate a cluster
-mock_node = ray_cluster.add_node(num_cpus=2)
-
-ray_df = ray.data.from_pandas(series)
-ray_diff_cols_df = ray.data.from_pandas(series_diff_cols)
-
-test_quantiles(ray_df, id_col="unique_id", time_col="ds")
-
-test_forecast_dataframe(ray_df)
-test_forecast_dataframe_diff_cols(ray_diff_cols_df)
-test_anomalies_dataframe(ray_df)
-test_anomalies_online_dataframe(ray_df)
-test_anomalies_dataframe_diff_cols(ray_diff_cols_df)
-
-# test exogenous variables
-ray_df_x = ray.data.from_pandas(df_x)
-ray_future_ex_vars_df = ray.data.from_pandas(future_ex_vars_df)
-test_forecast_x_dataframe(ray_df_x, ray_future_ex_vars_df)
-
-# test x different cols
-ray_df_x_diff_cols = ray.data.from_pandas(df_x.rename(columns=renamer))
-ray_future_ex_vars_df_diff_cols = ray.data.from_pandas(future_ex_vars_df.rename(columns=renamer))
-test_forecast_x_dataframe_diff_cols(ray_df_x_diff_cols, ray_future_ex_vars_df_diff_cols)
-
-# test finetuning
-test_finetuned_model(ray_df)
-
-ray.shutdown()
