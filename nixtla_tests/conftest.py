@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from nixtla.nixtla_client import NixtlaClient
 from nixtla.nixtla_client import _maybe_add_date_features
 from nixtla_tests.helpers.states import model_ids_object
+from pyspark.sql import SparkSession
 from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier, time_features
 from types import SimpleNamespace
@@ -16,7 +17,7 @@ from types import SimpleNamespace
 load_dotenv(override=True)
 
 # note that scope="session" will result in failed test
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def nixtla_test_client():
     client = NixtlaClient()
     yield client
@@ -386,3 +387,73 @@ def anomaly_online_df():
         'y': y
     })
     return df, n_series, detection_size
+
+@pytest.fixture(scope="module")
+def spark_client():
+    spark = SparkSession.builder.getOrCreate()
+    yield spark
+    spark.stop()
+
+@pytest.fixture(scope="module")
+def distributed_n_series():
+    return 4
+
+@pytest.fixture(scope="module")
+def renamer():
+    return {
+        'unique_id': 'id_col',
+        'ds': 'time_col',
+        'y': 'target_col',
+    }
+
+@pytest.fixture(scope="module")
+def distributed_series(distributed_n_series):
+    series = generate_series(distributed_n_series, min_length=100)
+    series['unique_id'] = series['unique_id'].astype(str)
+    return series
+
+@pytest.fixture(scope="module")
+def distributed_df_x():
+    df_x = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv',
+        parse_dates=['ds'],
+    ).rename(columns=str.lower)
+    return df_x
+
+@pytest.fixture(scope="module")
+def distributed_future_ex_vars_df():
+    future_ex_vars_df = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv',
+        parse_dates=['ds'],
+    ).rename(columns=str.lower)    
+    return future_ex_vars_df
+
+@pytest.fixture(scope="module")
+def spark_df(spark_client, distributed_series):
+    spark_df = spark_client.createDataFrame(distributed_series).repartition(2)
+    return spark_df
+
+@pytest.fixture(scope="module")
+def spark_diff_cols_df(spark_client, distributed_series, renamer):
+    spark_df = spark_client.createDataFrame(distributed_series.rename(columns=renamer)).repartition(2)
+    return spark_df
+
+@pytest.fixture(scope="module")
+def spark_df_x(spark_client, distributed_df_x):
+    spark_df = spark_client.createDataFrame(distributed_df_x).repartition(2)
+    return spark_df
+
+@pytest.fixture(scope="module")
+def spark_df_x_diff_cols(spark_client, distributed_df_x, renamer):
+    spark_df = spark_client.createDataFrame(distributed_df_x.rename(columns=renamer)).repartition(2)
+    return spark_df
+
+@pytest.fixture(scope="module")
+def spark_future_ex_vars_df(spark_client, distributed_future_ex_vars_df):
+    spark_df = spark_client.createDataFrame(distributed_future_ex_vars_df).repartition(2)
+    return spark_df
+
+@pytest.fixture(scope="module")
+def spark_future_ex_vars_df_diff_cols(spark_client, distributed_future_ex_vars_df, renamer):
+    spark_df = spark_client.createDataFrame(distributed_future_ex_vars_df.rename(columns=renamer)).repartition(2)
+    return spark_df

@@ -12,15 +12,15 @@ from pyspark.sql import SparkSession
 from ray.cluster_utils import Cluster
 
 from utilsforecast.data import generate_series
-from test_cases_revised import test_quantiles
-from test_cases_revised import test_forecast_dataframe 
-from test_cases_revised import test_forecast_dataframe_diff_cols
-from test_cases_revised import test_anomalies_dataframe
-from test_cases_revised import test_anomalies_dataframe_diff_cols
-from test_cases_revised import test_anomalies_online_dataframe
-from test_cases_revised import test_forecast_x_dataframe    
-from test_cases_revised import test_forecast_x_dataframe_diff_cols
-from test_cases_revised import test_finetuned_model
+from cases_non_distributed_env_to_migrate import test_quantiles
+from cases_non_distributed_env_to_migrate import test_forecast_dataframe 
+from cases_non_distributed_env_to_migrate import test_forecast_dataframe_diff_cols
+from cases_non_distributed_env_to_migrate import test_anomalies_dataframe
+from cases_non_distributed_env_to_migrate import test_anomalies_dataframe_diff_cols
+from cases_non_distributed_env_to_migrate import test_anomalies_online_dataframe
+from cases_non_distributed_env_to_migrate import test_forecast_x_dataframe    
+from cases_non_distributed_env_to_migrate import test_forecast_x_dataframe_diff_cols
+from cases_non_distributed_env_to_migrate import test_finetuned_model
 
 #| hide
 # custom client
@@ -68,35 +68,6 @@ future_ex_vars_df = pd.read_csv(
 )
 future_ex_vars_df = future_ex_vars_df.rename(columns=str.lower)
 
-#### Spark
-#| hide
-#| distributed
-spark = SparkSession.builder.getOrCreate()
-spark_df = spark.createDataFrame(series).repartition(2)
-spark_diff_cols_df = spark.createDataFrame(series_diff_cols).repartition(2)
-
-test_quantiles(spark_df, id_col="unique_id", time_col="ds")
-
-test_forecast_dataframe(spark_df)
-test_forecast_dataframe_diff_cols(spark_diff_cols_df)
-test_anomalies_dataframe(spark_df)
-test_anomalies_online_dataframe(spark_df)
-test_anomalies_dataframe_diff_cols(spark_diff_cols_df)
-# test exogenous variables
-spark_df_x = spark.createDataFrame(df_x).repartition(2)
-spark_future_ex_vars_df = spark.createDataFrame(future_ex_vars_df).repartition(2)
-test_forecast_x_dataframe(spark_df_x, spark_future_ex_vars_df)
-# test x different cols
-spark_df_x_diff_cols = spark.createDataFrame(df_x.rename(columns=renamer)).repartition(2)
-spark_future_ex_vars_df_diff_cols = spark.createDataFrame(
-    future_ex_vars_df.rename(columns=renamer)
-).repartition(2)
-test_forecast_x_dataframe_diff_cols(spark_df_x_diff_cols, spark_future_ex_vars_df_diff_cols)
-
-# test finetuning
-test_finetuned_model(spark_df)
-
-spark.stop()
 
 #### Dask
 
