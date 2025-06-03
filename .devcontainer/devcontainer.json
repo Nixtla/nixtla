@@ -51,7 +51,6 @@
     "waitFor": "postCreateCommand",
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2.12.2": {},
-        "ghcr.io/va-h/devcontainers-features/uv:1": {},
-	"ghcr.io/devcontainers/features/java:1": {"version": "11"}
+        "ghcr.io/va-h/devcontainers-features/uv:1": {}
     }
 }
