@@ -18,7 +18,7 @@ from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier, time_features
 from types import SimpleNamespace
 
-load_dotenv(override=True)
+load_dotenv()
 
 
 # note that scope="session" will result in failed test
