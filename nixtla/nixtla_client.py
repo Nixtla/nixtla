@@ -9,6 +9,7 @@ from enum import Enum
 import logging
 import math
 import os
+import re
 import warnings
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -638,7 +639,18 @@ def _process_exog_features(
 
     return X, hist_exog
 
-# %% ../nbs/src/nixtla_client.ipynb 11
+
+def _model_in_list(model: str, model_list: tuple[Any]) -> bool:
+    for m in model_list:
+        if isinstance(m, str):
+            if m == model:
+                return True
+        elif isinstance(m, re.Pattern):
+            if m.fullmatch(model):
+                return True
+    return False
+
+# %% ../nbs/src/nixtla_client.ipynb 12
 class AuditDataSeverity(Enum):
     """Enum class to indicate audit data severity levels"""
 
@@ -646,7 +658,7 @@ class AuditDataSeverity(Enum):
     CASE_SPECIFIC = "Case Specific"  # Indicates an issue that may be acceptable in specific contexts
     PASS = "Pass"  # Indicates that the data is acceptable
 
-# %% ../nbs/src/nixtla_client.ipynb 13
+# %% ../nbs/src/nixtla_client.ipynb 14
 def _audit_duplicate_rows(
     df: AnyDFType,
     id_col: str = "unique_id",
@@ -660,7 +672,7 @@ def _audit_duplicate_rows(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 16
+# %% ../nbs/src/nixtla_client.ipynb 17
 def _audit_missing_dates(
     df: AnyDFType,
     freq: _Freq,
@@ -688,7 +700,7 @@ def _audit_missing_dates(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 19
+# %% ../nbs/src/nixtla_client.ipynb 20
 def _audit_categorical_variables(
     df: AnyDFType,
     id_col: str = "unique_id",
@@ -708,7 +720,7 @@ def _audit_categorical_variables(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 22
+# %% ../nbs/src/nixtla_client.ipynb 23
 def _audit_leading_zeros(
     df: pd.DataFrame,
     id_col: str = "unique_id",
@@ -733,7 +745,7 @@ def _audit_leading_zeros(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 25
+# %% ../nbs/src/nixtla_client.ipynb 26
 def _audit_negative_values(
     df: AnyDFType,
     target_col: str = "y",
@@ -746,7 +758,7 @@ def _audit_negative_values(
     else:
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
-# %% ../nbs/src/nixtla_client.ipynb 27
+# %% ../nbs/src/nixtla_client.ipynb 28
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
@@ -760,7 +772,7 @@ class ApiError(Exception):
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
 
-# %% ../nbs/src/nixtla_client.ipynb 29
+# %% ../nbs/src/nixtla_client.ipynb 30
 class NixtlaClient:
 
     def __init__(
@@ -821,10 +833,7 @@ class NixtlaClient:
         )
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
-        if self._is_azure:
-            self.supported_models = ["azureai"]
-        else:
-            self.supported_models = ["timegpt-1", "timegpt-1-long-horizon"]
+        self.supported_models: list[Any] = [re.compile("^timegpt-.+$"), "azureai"]
 
     def _make_request(
         self,
@@ -1057,10 +1066,8 @@ class NixtlaClient:
     ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email support@nixtla.io")
-        if model not in self.supported_models:
-            raise ValueError(
-                f"unsupported model: {model}. supported models: {self.supported_models}"
-            )
+        if not _model_in_list(model, tuple(self.supported_models)):
+            raise ValueError(f"unsupported model: {model}.")
         drop_id = id_col not in df.columns
         if drop_id:
             df = ufp.copy_if_pandas(df, deep=False)
@@ -2862,7 +2869,7 @@ class NixtlaClient:
 
         return df, all_pass, error_dfs, case_specific_dfs
 
-# %% ../nbs/src/nixtla_client.ipynb 31
+# %% ../nbs/src/nixtla_client.ipynb 32
 def _forecast_wrapper(
     df: pd.DataFrame,
     client: NixtlaClient,
