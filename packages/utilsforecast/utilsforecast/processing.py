@@ -734,10 +734,14 @@ def _single_split(
     max_dates: Series,
     step_size: Optional[int] = None,
     input_size: Optional[int] = None,
+    allow_partial_horizons: bool = False,
 ) -> Tuple[DataFrame, Series, Series]:
     if step_size is None:
         step_size = h
-    test_size = h + step_size * (n_windows - 1)
+    if allow_partial_horizons:
+        test_size = step_size * n_windows
+    else:
+        test_size = h + step_size * (n_windows - 1)
     offset = test_size - i_window * step_size
     train_ends = offset_times(max_dates, freq, -offset)
     valid_ends = offset_times(train_ends, freq, h)
@@ -797,6 +801,7 @@ def backtest_splits(
     freq: Union[int, str, pd.offsets.BaseOffset],
     step_size: Optional[int] = None,
     input_size: Optional[int] = None,
+    allow_partial_horizons: bool = False,
 ) -> Generator[Tuple[DataFrame, DataFrame, DataFrame], None, None]:
     if isinstance(df, pd.DataFrame):
         max_dates = df.groupby(id_col, observed=True)[time_col].transform("max")
@@ -814,6 +819,7 @@ def backtest_splits(
             max_dates=max_dates,
             step_size=step_size,
             input_size=input_size,
+            allow_partial_horizons=allow_partial_horizons,
         )
         train = filter_with_mask(df, train_mask)
         valid = filter_with_mask(df, valid_mask)
