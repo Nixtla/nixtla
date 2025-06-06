@@ -56,7 +56,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install pip requirements
-        run: pip install uv && uv pip install --system ".[dev,distributed]" mlforecast lightgbuv pip install --system ".[dev,distributed]" mlforecast lightgbmm statsforecast neuralforecast hierarchicalforecast
+        run: pip install uv && uv pip install --system ".[dev,distributed,date_extra,plotting,nbconvert]"
 
       - name: Run tests
         run: pytest --cov=nixtla --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
@@ -86,7 +86,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install pip requirements
-        run: pip install uv && uv pip install --system ".[dev]"
+        run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
         run: pytest -m "not distributed_run" --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
