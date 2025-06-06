@@ -59,7 +59,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: pytest --cov=nixtla nixtla_tests
+        run: pytest --cov=nixtla --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
 
       - name: Run nbconvert
         run: |
@@ -89,4 +89,4 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev]"
 
       - name: Run tests
-        run: pytest -m "not distributed_run" nixtla_tests
+        run: pytest -m "not distributed_run" --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
