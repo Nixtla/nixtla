@@ -289,11 +289,14 @@ def plot_series(
         for level in levels:
             lo = df[f"{y_col}-lo-{level}"]
             hi = df[f"{y_col}-hi-{level}"]
+            min_alpha = 0.1  # fix alpha to avoid transparency issues
+            max_alpha = 0.9
+            alpha = max_alpha - (float(level) / 100) * (max_alpha - min_alpha)
             axi.fill_between(
                 times,
                 lo,
                 hi,
-                alpha=-float(level) / 100 + 1,
+                alpha=alpha,
                 color=color,
                 label=f"{y_col}_level_{level}",
             )
@@ -335,6 +338,9 @@ def plot_series(
             name = f"{y_col}_level_{level}"
             lo = df[f"{y_col}-lo-{level}"]
             hi = df[f"{y_col}-hi-{level}"]
+            min_alpha = 0.1
+            max_alpha = 0.9
+            alpha = max_alpha - (float(level) / 100) * (max_alpha - min_alpha)
             y = np.concatenate([hi, lo[::-1]])
             fig.add_trace(
                 go.Scatter(
@@ -343,7 +349,7 @@ def plot_series(
                     fill="toself",
                     mode="lines",
                     fillcolor=color,
-                    opacity=-float(level) / 100 + 1,
+                    opacity=alpha,
                     name=name,
                     legendgroup=name,
                     line=dict(color=color, width=1),
