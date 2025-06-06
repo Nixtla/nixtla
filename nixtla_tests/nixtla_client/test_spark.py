@@ -1,3 +1,5 @@
+import pytest
+
 from nixtla_tests.helpers.checks import check_anomalies_dataframe
 from nixtla_tests.helpers.checks import check_anomalies_online_dataframe
 from nixtla_tests.helpers.checks import check_anomalies_dataframe_diff_cols
@@ -7,6 +9,7 @@ from nixtla_tests.helpers.checks import check_forecast_x_dataframe
 from nixtla_tests.helpers.checks import check_forecast_x_dataframe_diff_cols
 from nixtla_tests.helpers.checks import check_quantiles
 
+pytestmark = pytest.mark.distributed_run
 
 def test_quantiles(nixtla_test_client, spark_df):
     check_quantiles(nixtla_test_client, spark_df, id_col="unique_id", time_col="ds")
