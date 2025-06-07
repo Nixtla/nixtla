@@ -68,7 +68,7 @@ jobs:
             jupyter nbconvert --to notebook --execute --inplace "$nb"
           done
 
-  run-local-tests:
+  run-cross-platform-tests:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -89,4 +89,4 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: pytest -m "not distributed_run" --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
+        run: pytest reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
