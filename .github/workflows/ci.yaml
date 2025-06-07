@@ -39,7 +39,7 @@ jobs:
       - name: Check import
         run: python -c "from nixtla import NixtlaClient"
 
-  run-all-tests:
+  run-notebooks-test:
     runs-on: nixtla-linux-large-public
     timeout-minutes: 60
     strategy:
@@ -58,9 +58,6 @@ jobs:
       - name: Install pip requirements
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
-      - name: Run tests
-        run: pytest --cov=nixtla --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
-
       - name: Run nbconvert
         run: |
           find nbs/docs/ -name "*.ipynb" -print0 | while IFS= read -r -d '' nb; do
@@ -74,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest]
+        os: [macos-14, windows-latest, ubuntu-latest]
         python-version: ["3.9", "3.10"]
     steps:
       - name: Clone repo
@@ -89,4 +86,4 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: pytest reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
+        run: pytest --cov=nixtla --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
