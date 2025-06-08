@@ -86,7 +86,7 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: pytest --cov=nixtla --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
+        run: pytest --cov=nixtla --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
 
   run-windows-local-tests:
     runs-on: ${{ matrix.os }}
@@ -109,4 +109,4 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: pytest --cov=nixtla -m "not distributed_run" --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError nixtla_tests
+        run: pytest --cov=nixtla -m "not distributed_run" --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
