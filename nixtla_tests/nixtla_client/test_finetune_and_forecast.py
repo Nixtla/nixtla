@@ -118,6 +118,7 @@ class TestTimeSeriesDataSet1:
         check_finetuned_model(custom_client, ray_df, model_ids_object.model_id2)
 
     @pytest.mark.distributed_run
+    @pytest.mark.spark_run
     def test_spark_finetune_model(self, custom_client, spark_df):
         check_finetuned_model(custom_client, spark_df, model_ids_object.model_id2)
 
