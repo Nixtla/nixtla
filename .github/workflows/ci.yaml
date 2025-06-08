@@ -86,4 +86,9 @@ jobs:
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
+        if: runner.os != 'Windows'
         run: pytest --cov=nixtla --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        run: pytest --cov=nixtla -m "not spark_run" --reruns 2 --reruns-delay 1 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
