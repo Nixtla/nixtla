@@ -151,5 +151,6 @@ d = { 'settings': { 'branch': 'main',
                                                                                'nixtla/nixtla_client.py'),
                                       'nixtla.nixtla_client._validate_input_size': ( 'src/nixtla_client.html#_validate_input_size',
                                                                                      'nixtla/nixtla_client.py')},
+            'nixtla.scripts.snowflake_install_nixtla': {},
             'nixtla.utils': { 'nixtla.utils.colab_badge': ('src/utils.html#colab_badge', 'nixtla/utils.py'),
                               'nixtla.utils.in_colab': ('src/utils.html#in_colab', 'nixtla/utils.py')}}}

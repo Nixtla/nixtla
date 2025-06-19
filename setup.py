@@ -28,9 +28,11 @@ requirements = cfg['requirements'].split()
 distributed_requirements = cfg['distributed_requirements'].split()
 plotting_requirements = cfg['plotting_requirements'].split()
 date_extra_requirements = cfg['date_extra_requirements'].split()
+snowflake_requirements = cfg.get('snowflake_requirements', '').split()
 dev_requirements = cfg['dev_requirements'].split()
 dev_requirements.extend(plotting_requirements)
 dev_requirements.extend(date_extra_requirements)
+dev_requirements.extend(snowflake_requirements)
 
 min_python = cfg['min_python']
 lic = licenses.get(cfg['license'].lower(), (cfg['license'], None))
@@ -52,6 +54,7 @@ setuptools.setup(
         "distributed": distributed_requirements,
         "plotting": plotting_requirements,
         "date_extras": date_extra_requirements,
+        "snowflake": snowflake_requirements,
     },
     dependency_links = cfg.get('dep_links','').split(),
     python_requires  = '>=' + cfg['min_python'],
