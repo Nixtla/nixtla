@@ -43,16 +43,16 @@ Missing something? Please open an issue here or write us in [![Slack](https://im
 
 ## 💻 Installation
 
-You can install `HierarchicalForecast`'s the Python package index [pip](https://pypi.org) with:
+We recommend using `uv` as Python package manager, for which you can find installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/). You can then install `HierarchicalForecast` with:
+
+```python
+uv pip install hierarchicalforecast
+```
+
+Alternatively, you can use the Python package index [pip](https://pypi.org) directly:
 
 ```python
 pip install hierarchicalforecast
-```
-
-You can also can install `HierarchicalForecast`'s from [conda](https://anaconda.org) with:
-
-```python
-conda install -c conda-forge hierarchicalforecast
 ```
 
 
