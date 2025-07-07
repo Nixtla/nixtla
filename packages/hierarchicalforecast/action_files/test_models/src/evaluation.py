@@ -1,19 +1,22 @@
+import fire
 import pickle
 import numpy as np
 import pandas as pd
 
-from hierarchicalforecast.evaluation import HierarchicalEvaluation
+import hierarchicalforecast.evaluation as hfe
+from utilsforecast.losses import rmse, mase,scaled_crps
+from functools import partial
 
-def rmse(y, y_hat):
-    return np.mean(np.sqrt(np.mean((y-y_hat)**2, axis=1)))
-
-def mase(y, y_hat, y_insample, seasonality=4):
-    errors = np.mean(np.abs(y - y_hat), axis=1)
-    scale = np.mean(np.abs(y_insample[:, seasonality:] - y_insample[:, :-seasonality]), axis=1)
-    return np.mean(errors / scale)
-
-
-def evaluate():
+def eval(type: str = "point") -> pd.DataFrame:
+    mase_p = partial(mase, seasonality=4)
+    if type == "probabilistic":
+        level = [80, 90]
+        metrics = [rmse, mase_p, scaled_crps]
+    elif type == "point":
+        level = None
+        metrics = [rmse, mase_p]        
+    else:
+        raise ValueError("Type must be either 'point' or 'probabilistic'.")
     execution_times = pd.read_csv('data/execution_times.csv')
     models = [f"{x[0]} ({x[1]:.2f} secs)" for x in execution_times.values]
 
@@ -24,26 +27,18 @@ def evaluate():
     with open('data/tags.pickle', 'rb') as handle:
         tags = pickle.load(handle)
 
-    eval_tags = {}
-    eval_tags['Total'] = tags['Country']
-    eval_tags['State'] = tags['Country/State']
-    eval_tags['Regions'] = tags['Country/State/Region']
-    eval_tags['Bottom'] = tags['Country/State/Region/Purpose']
-    eval_tags['All'] = np.concatenate(list(tags.values()))
-
-    evaluator = HierarchicalEvaluation(evaluators=[mase])
-    evaluation = evaluator.evaluate(
-            Y_hat_df=Y_rec_df, Y_test_df=Y_test_df,
-            tags=eval_tags, Y_df=Y_train_df
+    evaluation = hfe.evaluate(
+            df=Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds'], how="left"),
+            metrics = metrics,
+            level=level,
+            tags=tags, 
+            train_df=Y_train_df
     )
-    evaluation = evaluation.query("level != 'Overall'").set_index(['level', 'metric'])
-
-    evaluation.columns = ['Base'] + models
-    evaluation = evaluation.map('{:.2f}'.format)
-    return evaluation
-
+    numeric_cols = evaluation.select_dtypes(include="number").columns
+    evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.3}'.format).astype(np.float64)
+    evaluation.columns = ['level', 'metric', 'Base'] + models
+    print(evaluation.T)
+    evaluation.to_csv('./data/evaluation.csv')
 
 if __name__ == '__main__':
-    evaluation = evaluate()
-    evaluation.to_csv('./data/evaluation.csv')
-    print(evaluation.T)
+    fire.Fire(eval)

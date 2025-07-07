@@ -18,6 +18,16 @@ jobs:
             uv pip install ".[dev]"
             nbdev_test --do_print --timing
   test-model-performance:
+    parameters:
+      hierarchy: 
+        type: string
+        default: "strict"
+      forecast_type: 
+        type: string
+        default: "point"
+      engine: 
+        type: string
+        default: "pandas"
     resource_class: large
     docker:
       - image: python:3.10-slim
@@ -35,8 +45,8 @@ jobs:
             uv pip install ".[dev]"
             cd ./action_files/test_models/
             uv pip install -r requirements.txt
-            python -m src.models
-            python -m src.evaluation
+            python -m src.models << parameters.hierarchy >> << parameters.forecast_type >> << parameters.engine >>
+            python -m src.evaluation << parameters.forecast_type >>
             cd ../../
       - store_artifacts:
           path: ./action_files/test_models/data/evaluation.csv
@@ -59,7 +69,7 @@ jobs:
             uv pip install ".[dev]"
             cd ./action_files/test_models/
             uv pip install -r requirements.txt
-            python -m src.models_temporal
+            python -m src.models_temporal 
             python -m src.evaluation_temporal
             cd ../../
       - store_artifacts:
@@ -69,5 +79,10 @@ workflows:
   sample:
     jobs:
       - nbdev-tests
-      - test-model-performance
+      - test-model-performance:
+          matrix:
+            parameters:
+              hierarchy: ["strict", "non-strict"]
+              forecast_type: ["point", "probabilistic"]
+              engine: ["pandas"]
       - test-model-performance-temporal

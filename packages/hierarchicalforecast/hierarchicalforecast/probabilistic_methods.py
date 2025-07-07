@@ -8,6 +8,7 @@ import warnings
 from typing import Optional
 
 import numpy as np
+import scipy.sparse as sp
 from scipy.stats import norm
 from sklearn.preprocessing import OneHotEncoder
 
@@ -57,7 +58,10 @@ class Normality:
         self.S = S
         self.P = P
         self.y_hat = y_hat
-        self.SP = self.S @ self.P
+        if isinstance(P, sp.linalg.LinearOperator) and sp.issparse(S):
+            self.SP = sp.linalg.aslinearoperator(self.S) @ self.P
+        else:
+            self.SP = self.S @ self.P
         self.W = W
         self.sigmah = sigmah
         self.seed = seed
