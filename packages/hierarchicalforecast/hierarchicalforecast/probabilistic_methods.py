@@ -5,7 +5,7 @@ __all__ = ['Normality']
 
 # %% ../nbs/src/probabilistic_methods.ipynb 3
 import warnings
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import scipy.sparse as sp
@@ -48,11 +48,11 @@ class Normality:
 
     def __init__(
         self,
-        S: np.ndarray,
-        P: np.ndarray,
+        S: Union[np.ndarray, sp.spmatrix],
+        P: Union[np.ndarray, sp.spmatrix],
         y_hat: np.ndarray,
         sigmah: np.ndarray,
-        W: np.ndarray,
+        W: Union[np.ndarray, sp.spmatrix],
         seed: int = 0,
     ):
         self.S = S
@@ -162,14 +162,14 @@ class Bootstrap:
 
     def __init__(
         self,
-        S: np.ndarray,
-        P: np.ndarray,
+        S: Union[np.ndarray, sp.spmatrix],
+        P: Union[np.ndarray, sp.spmatrix],
         y_hat: np.ndarray,
         y_insample: np.ndarray,
         y_hat_insample: np.ndarray,
         num_samples: int = 100,
         seed: int = 0,
-        W: np.ndarray = None,
+        W: Union[np.ndarray, sp.spmatrix] = None,
     ):
         self.S = S
         self.P = P
@@ -202,9 +202,7 @@ class Bootstrap:
         samples_idx = rng.choice(sample_idx, size=num_samples)
         samples = [self.y_hat + residuals[:, idx : (idx + h)] for idx in samples_idx]
         SP = self.S @ self.P
-        samples = np.apply_along_axis(
-            lambda path: np.matmul(SP, path), axis=1, arr=samples
-        )
+        samples = np.apply_along_axis(lambda path: SP @ path, axis=1, arr=samples)
         samples_np = np.stack(samples)
 
         # [samples, N, H] -> [N, H, samples]
@@ -266,7 +264,7 @@ class PERMBU:
 
     def __init__(
         self,
-        S: np.ndarray,
+        S: Union[np.ndarray, sp.spmatrix],
         tags: dict[str, np.ndarray],
         y_hat: np.ndarray,
         y_insample: np.ndarray,
@@ -274,7 +272,7 @@ class PERMBU:
         sigmah: np.ndarray,
         num_samples: Optional[int] = None,
         seed: int = 0,
-        P: np.ndarray = None,
+        P: Union[np.ndarray, sp.spmatrix] = None,
     ):
         # PERMBU only works for strictly hierarchical structures
         if not is_strictly_hierarchical(S, tags):
@@ -361,7 +359,9 @@ class PERMBU:
         return permutated_prediction_samples
 
     def _nonzero_indexes_by_row(self, M):
-        return [np.nonzero(M[row, :])[0] for row in range(len(M))]
+        nonzeros = M.nonzero()[1]
+        nnz_per_row = int(M[0, :].sum())
+        return nonzeros.reshape(-1, nnz_per_row)
 
     def get_samples(self, num_samples: Optional[int] = None):
         """PERMBU Sample Reconciliation Method.
@@ -412,7 +412,7 @@ class PERMBU:
             encoder = OneHotEncoder(sparse_output=False, dtype=np.float64)
         except TypeError:
             encoder = OneHotEncoder(sparse=False, dtype=np.float64)
-        hier_links = np.vstack(self._nonzero_indexes_by_row(self.S.T))
+        hier_links = self._nonzero_indexes_by_row(self.S.T)
 
         # BottomUp hierarchy traversing
         hier_levels = hier_links.shape[1] - 1
