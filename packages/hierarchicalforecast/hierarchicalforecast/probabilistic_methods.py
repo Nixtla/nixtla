@@ -67,10 +67,18 @@ class Normality:
         self.seed = seed
 
         # Base Normality Errors assume independence/diagonal covariance
-        # TODO: replace bilinearity with elementwise row multiplication
+        # Calculate correlation matrix from covariance matrix
         std_ = np.sqrt(self.W.diagonal())
         R1 = self.W / np.outer(std_, std_)
-        Wh = [np.diag(sigma) @ R1 @ np.diag(sigma).T for sigma in self.sigmah.T]
+
+        # Using elementwise multiplication
+        Wh = []
+        for sigma in self.sigmah.T:
+            # Broadcast sigma to create a matrix of pairwise products
+            sigma_matrix = np.outer(sigma, sigma)
+            # Element-wise multiplication with correlation matrix
+            cov_matrix = R1 * sigma_matrix
+            Wh.append(cov_matrix)
 
         # Reconciled covariances across forecast horizon
         self.cov_rec = [(self.SP @ W @ self.SP.T) for W in Wh]
