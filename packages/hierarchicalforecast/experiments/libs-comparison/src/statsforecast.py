@@ -43,9 +43,8 @@ def get_ERM_lambda(group: str):
 def pipeline(group: str):
     results_group_dir = Path(f'./results/{group}')
     results_group_dir.mkdir(exist_ok=True, parents=True)
-    Y_df, S, tags = HierarchicalData.load('data', group)
+    Y_df, S_df, tags = HierarchicalData.load('data', group)
     Y_df['ds'] = pd.to_datetime(Y_df['ds'])
-    n_series = Y_df['unique_id'].nunique()
     meta_info_group = HierarchicalInfo[group]
     h = meta_info_group.horizon
     freq = meta_info_group.freq
@@ -97,7 +96,7 @@ def pipeline(group: str):
     Y_df_hat_rec = hrec.reconcile(
         Y_df_hat, 
         Y_df_fitted,
-        S,
+        S_df,
         tags
     )
     eval_tags = {'All': np.concatenate(list(tags.values()))}

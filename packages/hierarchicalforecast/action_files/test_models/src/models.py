@@ -115,7 +115,10 @@ def main(hierarchy: str = "non-strict", type: str = "point", engine: str = 'pand
     
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
     Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df,
-                               Y_df=Y_fitted_df, S=S_df, tags=tags, level=level)
+                               Y_df=Y_fitted_df, 
+                               S_df=S_df, 
+                               tags=tags,
+                               level=level)
 
     execution_times = pd.Series(hrec.execution_times).reset_index()
 

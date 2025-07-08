@@ -91,7 +91,7 @@ def main():
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
 
     Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, 
-                            S=S_test_df, 
+                            S_df=S_test_df, 
                             tags=tags_test, 
                             temporal=True,
                             )

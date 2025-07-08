@@ -83,9 +83,9 @@ from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
 from utilsforecast.losses import mse
 
 # Load TourismSmall dataset
-Y_df, S, tags = HierarchicalData.load('./data', 'TourismSmall')
+Y_df, S_df, tags = HierarchicalData.load('./data', 'TourismSmall')
 Y_df['ds'] = pd.to_datetime(Y_df['ds'])
-S = S.reset_index(names="unique_id")
+S_df = S_df.reset_index(names="unique_id")
 
 #split train/test sets
 Y_test_df  = Y_df.groupby('unique_id').tail(4)
@@ -105,7 +105,7 @@ reconcilers = [
 ]
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
 Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_train_df,
-                          S=S, tags=tags)
+                          S_df=S_df, tags=tags)
 ```
 
 ### Evaluation
@@ -119,7 +119,7 @@ evaluation = evaluate(df = df,
                       benchmark = "Naive")
 ```
 
-## 📖 Documentation (WIP)
+## 📖 Documentation
 Here is a link to the [documentation](https://nixtlaverse.nixtla.io/hierarchicalforecast/index.html).
 
 ## 📃 License

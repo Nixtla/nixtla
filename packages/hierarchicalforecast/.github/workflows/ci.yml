@@ -32,3 +32,6 @@ jobs:
 
       - name: Tests
         run: nbdev_test --do_print --timing --n_workers 0
+      
+      - name: Pytests
+        run: pytest --cov=hierarchicalforecast --cov-report=xml --cov-report=html

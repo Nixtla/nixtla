@@ -320,8 +320,8 @@ class HierarchicalReconciliation:
     def reconcile(
         self,
         Y_hat_df: Frame,
-        S: Frame,
         tags: dict[str, np.ndarray],
+        S_df: Frame = None,
         Y_df: Optional[Frame] = None,
         level: Optional[list[int]] = None,
         intervals_method: str = "normality",
@@ -333,6 +333,7 @@ class HierarchicalReconciliation:
         target_col: str = "y",
         id_time_col: str = "temporal_id",
         temporal: bool = False,
+        S: Frame = None,  # For compatibility with the old API, S_df is now S
     ) -> FrameT:
         """Hierarchical Reconciliation Method.
 
@@ -351,10 +352,10 @@ class HierarchicalReconciliation:
 
         **Parameters:**<br>
         `Y_hat_df`: DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.<br>
+        `tags`: Each key is a level and its value contains tags associated to that level.<br>
+        `S_df`: DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
         `Y_df`: DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`.<br>
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
-        `S`: DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
-        `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: positive float list [0,100), confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
@@ -367,9 +368,25 @@ class HierarchicalReconciliation:
         **Returns:**<br>
         `Y_tilde_df`: DataFrame, with reconciled predictions.
         """
+        # Handle deprecated S parameter
+        if S is not None:
+            import warnings
+
+            if S_df is not None:
+                raise ValueError(
+                    "Both 'S' and 'S_df' parameters were provided. Please use only 'S_df'."
+                )
+            warnings.warn(
+                "The 'S' parameter is deprecated and will be removed in a future version. "
+                "Please use 'S_df' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            S_df = S
+
         # To Narwhals
         Y_hat_nw = nw.from_native(Y_hat_df)
-        S_nw = nw.from_native(S)
+        S_nw = nw.from_native(S_df)
         if Y_df is not None:
             Y_nw = nw.from_native(Y_df)
         else:
@@ -409,9 +426,9 @@ class HierarchicalReconciliation:
         if any_sparse:
             if not nw.dependencies.is_pandas_dataframe(
                 Y_hat_df
-            ) or not nw.dependencies.is_pandas_dataframe(S):
+            ) or not nw.dependencies.is_pandas_dataframe(S_df):
                 raise ValueError(
-                    "You have one or more sparse reconciliation methods. Please convert `S` and `Y_hat_df` to a pandas DataFrame."
+                    "You have one or more sparse reconciliation methods. Please convert `S_df` and `Y_hat_df` to a pandas DataFrame."
                 )
             try:
                 S_for_sparse = sparse.csr_matrix(
@@ -578,10 +595,10 @@ class HierarchicalReconciliation:
 
         **Parameters:**<br>
         `Y_hat_df`: DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.<br>
+        `S_df`: DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
+        `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `Y_df`: DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`.<br>
         If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns.<br>
-        `S`: DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).<br>
-        `tags`: Each key is a level and its value contains tags associated to that level.<br>
         `level`: positive float list [0,100), confidence levels for prediction intervals.<br>
         `intervals_method`: str, method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`.<br>
         `num_samples`: int=-1, if positive return that many probabilistic coherent samples.
@@ -598,7 +615,7 @@ class HierarchicalReconciliation:
         for seed in range(num_seeds):
             Y_tilde_df = self.reconcile(
                 Y_hat_df=Y_hat_df,
-                S=S_df,
+                S_df=S_df,
                 tags=tags,
                 Y_df=Y_df,
                 level=level,
