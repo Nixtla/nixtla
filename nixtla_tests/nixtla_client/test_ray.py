@@ -9,7 +9,10 @@ from nixtla_tests.helpers.checks import check_forecast_x_dataframe
 from nixtla_tests.helpers.checks import check_forecast_x_dataframe_diff_cols
 from nixtla_tests.helpers.checks import check_quantiles
 
-pytestmark = pytest.mark.distributed_run
+pytestmark = [
+    pytest.mark.distributed_run,
+    pytest.mark.ray_run
+]
 
 def test_quantiles(nixtla_test_client, ray_df):
     check_quantiles(nixtla_test_client, ray_df, id_col="unique_id", time_col="ds")

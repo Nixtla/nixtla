@@ -114,6 +114,7 @@ class TestTimeSeriesDataSet1:
             custom_client.finetuned_model("hi")
 
     @pytest.mark.distributed_run
+    @pytest.mark.ray_run
     def test_ray_finetune_model(self, custom_client, ray_df):
         check_finetuned_model(custom_client, ray_df, model_ids_object.model_id2)
 
