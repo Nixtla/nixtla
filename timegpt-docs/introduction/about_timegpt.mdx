@@ -1,0 +1,177 @@
+---
+title: "About TimeGPT"
+description: "Learn about TimeGPT - the foundation model for time series."
+icon: "brain"
+---
+
+<br />
+
+<Info>
+TimeGPT is a production-ready generative pretrained transformer model specifically designed for time series forecasting. It accurately forecasts domains such as retail, electricity, finance, and IoT with minimal code. Below you'll find a high-level overview of its features, architecture, and practical examples.
+</Info>
+
+<br />
+
+<Steps>
+  <Step title="1. Start Now">
+    <CardGroup>
+      <Card title="Activate Free Trial" href="https://dashboard.nixtla.io/freetrial" description="Begin exploring TimeGPT right away with a free trial." />
+      <Card title="Quickstart Guide" href="/forecasting/timegpt_quickstart" description="Follow step-by-step instructions to get TimeGPT running quickly." />
+    </CardGroup>
+  </Step>
+
+  <Step title="2. Choose Your Interface">
+    You can access TimeGPT through:
+
+      -
+        [Azure Studio (TimeGEN-1)](https://docs.nixtla.io/docs/deployment-azureai)
+
+
+      - Public APIs
+
+      - Private deployment on your own infrastructure
+
+
+  </Step>
+
+  <Step title="3. Upload Time Series Data">
+    Provide your time series data. TimeGPT can consume data with irregular timestamps, exogenous variables, or multiple time series simultaneously.
+  </Step>
+
+  <Step title="4. Forecast or Detect Anomalies">
+    Perform zero-shot inference out-of-the-box to forecast future values or detect anomalies. Fine-tune the model if you need more targeted performance.
+  </Step>
+</Steps>
+
+<Check>
+For detailed instructions and advanced configurations, visit our
+[Quickstart Guide](/forecasting/timegpt_quickstart) and additional tutorials.
+</Check>
+
+## Features and Capabilities
+
+<AccordionGroup>
+  <Accordion title="Zero-shot Inference">
+    **[Zero-shot Inference](/forecasting/timegpt_quickstart)**:
+    Generate forecasts and detect anomalies immediately without prior training. Quickly gain insights from your data.
+  </Accordion>
+
+  <Accordion title="Fine-tuning">
+    **[Fine-tuning](/forecasting/fine-tuning/steps)**:
+    Enhance prediction accuracy by training TimeGPT on your own datasets, tailoring it to your unique scenario.
+  </Accordion>
+
+  <Accordion title="API Access">
+    **[API Access](https://dashboard.nixtla.io/sign_in)**:
+    Integrate forecasts into applications via a robust API. Easily obtain keys at the
+    [Dashboard](https://dashboard.nixtla.io/sign_in).
+    Easily deploy TimeGPT in your own infrastructure or with any cloud provider using [Docker](/setup/docker) or our Python [wheel file](/setup/python_wheel).
+    Also accessible in [Azure Studio](/setup/azureai) or through private deployment.
+  </Accordion>
+
+  <Accordion title="Add Exogenous Variables">
+    **[Add Exogenous Variables](/forecasting/exogenous-variables/numeric_features)**:
+    Incorporate external variables (e.g., events, prices) to improve forecast accuracy.
+  </Accordion>
+
+  <Accordion title="Multiple Series Forecasting">
+    **[Multiple Series Forecasting](/forecasting/timegpt_quickstart)**:
+    Predict multiple time series at once, improving workflow efficiency.
+  </Accordion>
+
+  <Accordion title="Specific Loss Function">
+    **[Specific Loss Function](/forecasting/fine-tuning/custom_loss)**:
+    Customize training with loss functions that match your performance objectives.
+  </Accordion>
+
+  <Accordion title="Cross-validation">
+    **[Cross-validation](/forecasting/evaluation/cross_validation)**:
+    Evaluate model reliability and generalization with built-in cross-validation.
+  </Accordion>
+
+  <Accordion title="Prediction Intervals">
+    **[Prediction Intervals](/forecasting/probabilistic/prediction_intervals)**:
+    Generate intervals to capture forecast uncertainty.
+  </Accordion>
+
+  <Accordion title="Irregular Timestamps">
+    **[Irregular Timestamps](/forecasting/special-topics/irregular_timestamps)**:
+    Process data with non-uniform timestamps directly, with no extra preprocessing.
+  </Accordion>
+
+  <Accordion title="Anomaly Detection">
+    **[Anomaly Detection](/anomaly_detection/real-time/introduction)**:
+    Identify anomalies automatically, integrating external features for improved precision.
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+Get started quickly with the
+[Quickstart guide](/forecasting/timegpt_quickstart). Explore in-depth tutorials on TimeGPT capabilities and real-world applications.
+</Info>
+
+## Architecture
+
+<Frame caption="TimeGPT Architecture Overview">
+  ![TimeGPT Architecture Overview](https://github.com/Nixtla/nixtla/blob/main/nbs/img/timegpt_archi.png?raw=true)
+</Frame>
+
+TimeGPT's architecture builds on the self-attention mechanism introduced in the original ["Attention is All You Need"](https://arxiv.org/abs/1706.03762) paper. Unlike typical large language models (LLMs), TimeGPT is independently trained on extensive time series datasets to minimize forecasting errors.
+
+<Info>
+TimeGPT employs an encoder-decoder structure with residual connections, layer normalization, and a linear output layer to match the decoder outputs to forecast dimensions. The attention-based mechanisms help the model capture diverse historical patterns to create accurate future predictions.
+</Info>
+
+The model processes input sequences from left to right, similar to how humans read sentences, and predicts future values (*"tokens"*) based on historical windows of time series data.
+
+## Explore Examples and Use Cases
+
+<AccordionGroup>
+  <Accordion title="Quickstart & Setup">
+    Quickly set up your workflow using our
+    [Quickstart Guide](/forecasting/timegpt_quickstart)
+    or learn to use the API by
+    [setting up your API key](/setup/setting_up_your_api_key).
+  </Accordion>
+  <Accordion title="Practical Topics">
+
+      - [Anomaly Detection](/anomaly_detection/real-time/introduction)
+
+      -
+        Fine-tuning with
+        [custom loss functions](/forecasting/fine-tuning/custom_loss)
+
+
+      -
+        Scaling workflows using
+        [Spark](/forecasting/forecasting-at-scale/spark),
+        [Dask](/forecasting/forecasting-at-scale/dask), or
+        [Ray](/forecasting/forecasting-at-scale/ray)
+
+
+      -
+        Integrating
+        [exogenous variables](/forecasting/exogenous-variables/numeric_features),
+        validation with
+        [cross-validation](/forecasting/evaluation/cross_validation),
+        and estimating uncertainty via
+        [quantile forecasts](/forecasting/probabilistic/quantiles)
+        or
+        [prediction intervals](/forecasting/probabilistic/prediction_intervals).
+
+
+
+  </Accordion>
+  <Accordion title="Real-world Applications">
+
+      - [Web Traffic Forecasting](/use_cases/forecasting_web_traffic)
+
+      - [Bitcoin Price Prediction](/use_cases/bitcoin_price_prediction)
+
+
+  </Accordion>
+</AccordionGroup>
+
+<Check>
+With TimeGPT, you can rapidly iterate from initial exploration to high-accuracy forecasting. Dive deeper into the comprehensive tutorials for more sophisticated workflows.
+</Check>

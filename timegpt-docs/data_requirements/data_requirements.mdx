@@ -1,0 +1,203 @@
+---
+title: "Data Requirements"
+description: "Overview of the data format and requirements for TimeGPT forecasting."
+icon: "table"
+---
+
+<Info>
+TimeGPT accepts **pandas** and **polars** dataframes in [long format](https://www.theanalysisfactor.com/wide-and-long-data/#comments). The minimum required columns are:
+</Info>
+
+<CardGroup cols={2}>
+  <Card title="Required Columns">
+
+      - **unique_id**: String or numerical value to label each series.
+
+      - **ds**(timestamp): String or datetime in `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` format.
+
+      - **y**(numeric): Numerical target variable to forecast.
+
+
+  </Card>
+  <Card title="Optional Index">
+
+      If a DataFrame lacks the `ds` column but uses a **DatetimeIndex**, that is also supported.
+
+  </Card>
+</CardGroup>
+
+<Check>
+TimeGPT also supports distributed dataframe libraries such as **dask**, **spark**, and **ray**.
+</Check>
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/getting-started/5_data_requirements.ipynb)
+
+<Info>
+You can include additional exogenous features in the same DataFrame. See the [Exogenous Variables tutorial](/forecasting/exogenous-variables/numeric_features) for details.
+</Info>
+
+---
+
+## Example DataFrame
+
+Below is a sample of a valid input DataFrame for TimeGPT (with columns named `timestamp` and `value` instead of `ds` and `y`):
+
+```python Sample Data Loading
+import pandas as pd
+
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+df["unique_id"] = "series1"
+df.head()
+```
+
+<Card title="Data Preview">
+
+**Sample Data Preview**
+
+  | **unique_id**      | **timestamp**    | **value**   |
+| ----- | ------------ | ------- |
+| series1     | 1949-01-01   | 112     |
+| series1     | 1949-02-01   | 118     |
+| series1     | 1949-03-01   | 132     |
+| series1     | 1949-04-01   | 129     |
+| series1     | 1949-05-01   | 121     |
+
+</Card>
+
+In this example:
+- `unique_id` identifies the series
+- `timestamp` corresponds to `ds`.
+- `value` corresponds to `y`.
+
+---
+
+## Matching Columns to TimeGPT
+
+You can choose how to align your DataFrame columns with TimeGPT’s expected structure:
+
+<Tabs>
+  <Tab title="Rename Columns">
+
+Rename `timestamp` to `ds` and `value` to `y`:
+
+```python Rename Columns Example
+df = df.rename(columns={'timestamp': 'ds', 'value': 'y'})
+```
+
+Now your DataFrame has the explicitly required columns:
+
+```bash Show Head of DataFrame
+print(df.head())
+```
+
+  </Tab>
+
+  <Tab title="Use time_col & target_col">
+
+Specify column names directly when calling `NixtlaClient`:
+
+```python NixtlaClient Forecast Example
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
+
+fcst = nixtla_client.forecast(
+    df=df,
+    h=12,
+    time_col='timestamp',
+    target_col='value'
+)
+
+fcst.head()
+```
+
+This way, you don’t need to rename your DataFrame columns, as TimeGPT will know which ones to treat as `ds` and `y`.
+  </Tab>
+</Tabs>
+
+---
+
+## Example Forecast
+
+When you run the forecast method:
+
+```python Forecast Example
+fcst = nixtla_client.forecast(
+    df=df,
+    h=12,
+    time_col='timestamp',
+    target_col='value'
+)
+
+fcst.head()
+```
+
+<Accordion title="Forecast Logs">
+```bash Forecast Logs
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+</Accordion>
+
+<Frame caption="Forecast Output Preview">
+  | unique_id | timestamp    | TimeGPT     |
+| ----- | ------------ | ----------- |
+| series1     | 1961-01-01   | 437.83792   |
+| series1     | 1961-02-01   | 426.06270   |
+| series1     | 1961-03-01   | 463.11655   |
+| series1     | 1961-04-01   | 478.24450   |
+| series1     | 1961-05-01   | 505.64648   |
+
+</Frame>
+
+<Info>
+TimeGPT attempts to automatically infer your data’s frequency (`freq`). You can override this by specifying the **freq** parameter (e.g., `freq='MS'`).
+</Info>
+
+For more information, see the [TimeGPT Quickstart](/forecasting/timegpt_quickstart).
+
+---
+
+## Important Considerations
+
+<Warning>
+**Warning:** Data passed to TimeGPT must not contain missing values or time gaps.
+</Warning>
+
+To handle missing data, see [Dealing with Missing Values in TimeGPT](/data_requirements/missing_values).
+
+---
+
+### Minimum Data Requirements (Azure AI)
+
+<Info>
+These are the minimum data sizes required for each frequency when using Azure AI:
+</Info>
+
+| Frequency                          | Minimum Size   |
+| ---------------------------------- | -------------- |
+| Hourly and subhourly (e.g., "H")   | 1008           |
+| Daily ("D")                        | 300            |
+| Weekly (e.g., "W-MON")             | 64             |
+| Monthly and others                 | 48             |
+
+
+
+When preparing your data, also consider:
+<Steps>
+  <Step title="Forecast horizon (h)">
+    Number of future periods you want to predict.
+  </Step>
+  <Step title="Number of validation windows (n_windows)">
+    How many times to test the model's performance.
+  </Step>
+  <Step title="Gaps (step_size)">
+    Periodic offset between validation windows during cross-validation.
+  </Step>
+</Steps>
+
+This ensures you have enough data for both training and evaluation.

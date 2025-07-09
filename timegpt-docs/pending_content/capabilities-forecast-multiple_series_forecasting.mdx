@@ -1,0 +1,119 @@
+---
+title: "Multiple Series Forecasting"
+description: "Learn how to forecast multiple time series at once with TimeGPT."
+icon: "chart-line-up"
+---
+
+# Multiple Series Forecasting with TimeGPT
+
+TimeGPT can concurrently forecast multiple series at once. To do this, you must provide a DataFrame with multiple unique values defined under the `unique_id` column.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/06_multiple_series.ipynb)
+
+<Info>
+TimeGPT is a powerful forecasting solution that supports simultaneous predictions for multiple time series. This guide will walk you through setting up your Nixtla Client, loading data, and generating forecasts.
+</Info>
+
+## How It Works
+
+<CardGroup>
+  <Card title="Key Concept" icon="lightbulb">
+    Forecasting multiple series requires each observation to have a unique identifier under the `unique_id` column. TimeGPT automatically handles each series individually and returns forecasts for every unique series in your dataset.
+  </Card>
+</CardGroup>
+
+<Steps>
+  <Step title="1. Import Required Libraries">
+    <CodeGroup>
+```python Import Libraries
+import pandas as pd
+from nixtla import NixtlaClient
+```
+    </CodeGroup>
+  </Step>
+
+  <Step title="2. Initialize the Nixtla Client">
+    Choose between the default Nixtla endpoint or an Azure AI endpoint.
+    <Tabs>
+      <Tab title="Default Endpoint">
+        <CodeGroup>
+```python Initialize Nixtla Client (Default)
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+        </CodeGroup>
+      </Tab>
+      <Tab title="Azure AI Endpoint">
+        <CodeGroup>
+```python Initialize Nixtla Client (Azure AI)
+nixtla_client = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="my_api_key_provided_by_nixtla"
+)
+```
+        </CodeGroup>
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="3. Prepare Your Data">
+    <CodeGroup>
+```python Load Data
+# Load data
+df = pd.read_csv(
+    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv'
+)
+```
+    </CodeGroup>
+  </Step>
+
+  <Step title="4. Forecast Multiple Series">
+    <CodeGroup>
+```python Forecast Multiple Series
+# Forecast multiple series
+forecast_df = nixtla_client.forecast(
+    df=df,
+    h=24
+)
+```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+<AccordionGroup>
+  <Accordion title="View Forecast Logs" icon="terminal">
+```bash Log Output
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+  **Available models in Azure AI**
+  If using an Azure AI endpoint, set the `model` parameter explicitly to `"azureai"`:
+</Info>
+
+<CodeGroup>
+```python Azure AI Model Setting
+nixtla_client.forecast(
+    ...,
+    model="azureai"
+)
+```
+</CodeGroup>
+
+<CardGroup>
+  <Card title="Choosing the Right Model" icon="gear">
+    If you're using the public API, two models are supported: `timegpt-1` and `timegpt-1-long-horizon`.
+    The default is `timegpt-1`. Check out the [long horizon tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting) to learn when and how to apply `timegpt-1-long-horizon`.
+  </Card>
+</CardGroup>
+
+For further details, visit the detailed tutorial:
+[Multiple series forecasting](https://docs.nixtla.io/docs/tutorials-multiple_series_forecasting).

@@ -1,0 +1,133 @@
+---
+title: "Forecasting Quickstart"
+description: "Get started quickly with TimeGPT forecasting using the Nixtla API."
+icon: "rocket"
+---
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/01_quickstart.ipynb)
+
+# Quickstart
+
+TimeGPT makes forecasting straightforward with the `forecast` method in the Nixtla API. Pass in your DataFrame, specify the time and target columns, and call `forecast`. You can also visualize results with the `plot` method.
+
+<Info>
+  Detailed guidance on data requirements is available [here](https://docs.nixtla.io/docs/getting-started-data_requirements).
+</Info>
+
+
+<Steps>
+
+<Step title="1. Install & Import Dependencies">
+  Make sure you have the latest Nixtla Client installed, then import the required libraries:
+
+```bash Nixtla Client Installation
+pip install nixtla
+```
+
+```python Import Libraries
+import pandas as pd
+from nixtla import NixtlaClient
+```
+</Step>
+
+<Step title="2. Initialize the Nixtla Client">
+  <Tabs>
+    <Tab title="Standard Usage">
+      <Check>
+        Provide your API key from Nixtla to authenticate:
+      </Check>
+
+```python Nixtla Client Standard Initialization
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+    </Tab>
+    <Tab title="Using Azure AI Endpoint">
+      <Check>
+        Use an Azure AI endpoint<br/>
+        If you'd like to use Azure AI, set the `base_url` to your Azure endpoint:
+      </Check>
+
+```python Nixtla Client Azure AI Endpoint
+nixtla_client = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="your api_key"
+)
+```
+    </Tab>
+  </Tabs>
+</Step>
+
+<Step title="3. Load Data & Create Forecast">
+
+```python Load Data and Run Forecast
+# Read data
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+
+# Forecast for the next 12 time steps
+forecast_df = nixtla_client.forecast(
+    df=df,
+    h=12,
+    time_col='timestamp',
+    target_col="value"
+)
+```
+</Step>
+
+<Step title="4. Visualize Predictions">
+
+```python Plot Forecast Results
+# Plot predictions
+nixtla_client.plot(
+    df=df,
+    forecasts_df=forecast_df,
+    time_col='timestamp',
+    target_col='value'
+)
+```
+</Step>
+
+</Steps>
+
+<Step title="Sample Logs (Optional)">
+  Below is an example of log output when running a forecast:
+
+<Accordion title="Forecast Log Output">
+
+```bash Forecast Process Logs
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+</Accordion>
+</Step>
+
+<Frame caption="TimeGPT Forecast Plot">
+  ![Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/01_quickstart_files/figure-markdown_strict/cell-10-output-2.png)
+</Frame>
+
+<Info>
+  **Available models in Azure AI**<br/>
+  To use an Azure AI endpoint for anomaly detection, set the `model` parameter to `"azureai"`:
+
+```python Azure AI Anomaly Detection
+nixtla_client.detect_anomalies(
+    ...,
+    model="azureai"
+)
+```
+</Info>
+
+<CardGroup cols={2}>
+  <Card title="timegpt-1">
+    Default option for general forecasting needs.
+  </Card>
+  <Card title="timegpt-1-long-horizon">
+    Optimized for extended forecast horizons. [Learn more here](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting).
+  </Card>
+</CardGroup>

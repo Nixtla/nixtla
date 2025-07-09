@@ -1,0 +1,85 @@
+---
+title: "Multiple Time Series"
+description: "Learn how to handle missing values in time series data for accurate forecasting with TimeGPT."
+icon: "table"
+---
+
+You can pass multiple time series within the same dataset to TimeGPT. We can then make forecasts or detect anomalies on all series simultaneously.
+
+To include multiple series, simply include a unique identifier column. By default, we expect this column to be called `unique_id`. The identifier column assigns a value to each series such that we can distinguish between them.
+
+## Load Data with Multiple Series
+
+Here is an example of loading a dataset with multiple series inside. 
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+df['ds'] = pd.to_datetime(df['ds'])
+df = df[["unique_id", "ds", "y"]]
+df.groupby('unique_id').head(1)
+```
+
+<Frame caption="Multiple-Series Data Preview">
+
+| unique_id | ds	     | y      |
+| --------- | ---------- | ------ |
+| BE	    | 2016-10-22 |	70.00 |
+| DE	    | 2017-10-22 |	19.10 |
+| FR	    | 2016-10-22 |	54.70 |
+| NP	    | 2018-10-15 |	2.17  |
+
+</Frame>
+
+Above, we can see that we have four unique series in the dataset, as there are four different values in `unique_id`. Note that each series can start at different dates.
+
+To forecast mutliple series, we can simply call:
+
+```python Multiple Series Forecast Example
+fcst = nixtla_client.forecast(df=df, h=24)
+fcst.head()
+```
+
+TimeGPT will produce forecasts for all unique IDs in your DataFrame simultaneously.
+
+### Specifying the series identifier column
+
+In the case where unique identifier is not stored in a column called `unique_id`, you can specify the name of the column when making a call to TimeGPT:
+
+```python Specify the name of the column for the series identifier
+fcst = nixtla_client.forecast(df=df, h=24, id_col="your_column_name")
+fcst.head()
+```
+---
+
+## Exogenous Variables
+
+TimeGPT supports the use of exogenous features. These are variables that are not part of the series you are trying to forecast. 
+
+For example, suppose that you are forecasting electricity consumption, which is affected by the temperature outside. In this case, the temperature is an exogenous feature, meaning that you want to use the information from the temperature to forecast the electricity consumption.
+
+In such case, exogenous features can be included as new columns in the dataset. Any additional column to the standard `unique_id`, `ds`, `y` format is considered as an exogenous feature.
+
+Here is an example of loading a dataset with multiple series inside and exogenous features. 
+
+```python Multiple Series Data Loading
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+df['ds'] = pd.to_datetime(df['ds'])
+df.groupby('unique_id').head(1)
+```
+
+<Frame caption="Multiple-Series with Exogenous Features Preview">
+
+| unique_id | ds | y | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
+|-----------|----|----|------------|------------|-------|-------|-------|-------|-------|-------|-------|
+| BE | 2016-10-22 | 70.00 | 57253.00 | 49593 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| DE | 2017-10-22 | 19.10 | 16972.75 | 15779 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 |
+| FR | 2016-10-22 | 54.70 | 57253.00 | 49593 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+| NP | 2018-10-15 | 2.17 | 34078.00 | 1791 | 1.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+
+</Frame>
+
+Above, we can see that we have the columns from `Exogenous1` to `day_6` will be considered as exogenous features when forecasting with TimeGPT. 
+
+For more information on forecasting with exogenous features, read the [Exogenous Variables tutorial](/forecasting/exogenous-variables/numeric_features) for further details.
+
+---

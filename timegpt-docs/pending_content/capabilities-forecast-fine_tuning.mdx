@@ -1,0 +1,155 @@
+---
+title: "Fine-tuning"
+description: "How to fine-tune TimeGPT forecasts using finetune_steps and finetune_depth parameters for improved accuracy."
+icon: "gear"
+---
+
+## Overview
+
+You can fine-tune TimeGPT forecasts by specifying the `finetune_steps` parameter. Fine-tuning allows you to further adjust the model to the nuances of your specific time series data, potentially improving forecast accuracy.
+
+<Info>
+Fine-tuning uses additional training iterations on your own dataset. While it can improve forecast performance, it also increases the compute time needed to generate predictions.
+</Info>
+
+---
+
+## Key Fine-tuning Concepts
+
+<CardGroup>
+  <Card title="finetune_steps" icon="gear">
+    The number of additional training steps to run. Increasing this value can improve accuracy, but also requires more computation.
+  </Card>
+  <Card title="finetune_depth" icon="circle-up">
+    The intensity or depth of the fine-tuning. By default, `finetune_depth=1`. Increasing it can further refine forecasts but also makes training more resource-intensive.
+  </Card>
+</CardGroup>
+
+<Warning>
+If you set both `finetune_steps` and `finetune_depth` too high, the training process can become very time-consuming.
+</Warning>
+
+---
+
+## Setting Up Your Environment
+
+Before creating forecasts, you need to install and initialize the Nixtla client with your API key.
+
+<Steps>
+  <Steps title="Install and Import Libraries">
+    ```python Import Libraries
+    import pandas as pd
+    from nixtla import NixtlaClient
+    ```
+  </Steps>
+  <Steps title="Initialize the Nixtla Client">
+    ```python Initialize Nixtla Client
+    nixtla_client = NixtlaClient(
+        # defaults to os.environ.get("NIXTLA_API_KEY")
+        api_key="my_api_key_provided_by_nixtla"
+    )
+    ```
+  </Steps>
+</Steps>
+
+<Info>
+If you're using an Azure AI endpoint, set the `base_url` parameter accordingly:
+</Info>
+
+```python Azure AI Configuration
+nixtla_client = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="your api_key"
+)
+```
+
+---
+
+## Forecasting with Fine-tuning
+
+Follow these steps to fine-tune your TimeGPT forecasts.
+
+<Steps>
+  <Steps title="Load Data">
+    ```python Load Dataset
+    df = pd.read_csv(
+        "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv"
+    )
+    ```
+  </Steps>
+  <Steps title="Create a Forecast (Example: 5 Fine-tune Steps)">
+    ```python Fine-tune Forecast Example
+    forecast_df = nixtla_client.forecast(
+        df=df,
+        h=12,
+        finetune_steps=5,
+        time_col="timestamp",
+        target_col="value"
+    )
+    ```
+  </Steps>
+</Steps>
+
+<Check>
+If you are using Azure AI, specify the model name explicitly:
+</Check>
+
+<CodeGroup>
+  ```python Azure AI Model Usage
+  nixtla_client.forecast(
+      df=df,
+      h=12,
+      finetune_steps=5,
+      model="azureai",
+      time_col="timestamp",
+      target_col="value"
+  )
+  ```
+</CodeGroup>
+
+<Info>
+In the public Nixtla API, you can choose from two models:
+
+  - `timegpt-1` (default)
+
+  - `timegpt-1-long-horizon`
+
+
+See the [long-horizon forecasting tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting) for information about when and how to use `timegpt-1-long-horizon`.
+</Info>
+
+---
+
+## Advanced Fine-tuning
+
+<AccordionGroup>
+  <Accordion title="Increase Fine-tuning Depth">
+    By default, `finetune_depth=1`. You can increase the fine-tuning intensity by specifying a higher `finetune_depth`.
+
+    ```python Increase Fine-tuning Depth Example
+    df = pd.read_csv(
+        "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv"
+    )
+
+    forecast_df = nixtla_client.forecast(
+        df=df,
+        h=12,
+        finetune_steps=5,
+        finetune_depth=2,
+        time_col="timestamp",
+        target_col="value"
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+Increasing `finetune_depth` and `finetune_steps` will increase computation time, thus requiring more time to generate predictions.
+</Info>
+
+---
+
+## Additional Resources
+
+For more detailed information and advanced configurations, see the
+[fine-tuning tutorial](https://docs.nixtla.io/docs/tutorials-fine_tuning).

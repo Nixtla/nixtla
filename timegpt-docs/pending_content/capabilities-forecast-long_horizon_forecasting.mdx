@@ -1,0 +1,133 @@
+---
+title: "Long-horizon forecasting"
+description: "Learn how to predict multiple seasonal cycles into the future using TimeGPT"
+icon: "calendar"
+---
+
+Long-horizon forecasting is used to predict multiple seasonal cycles into the future. The TimeGPT model offers long-term forecasting capabilities by setting the parameter `model="timegpt-1-long-horizon"`.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/10_prediction_intervals.ipynb)
+
+<Info>
+  This page provides an overview of how to perform long-horizon forecasting using the Nixtla Client. You'll also learn how to switch between default and Azure AI endpoints.
+</Info>
+
+## Overview
+
+Long-horizon forecasting allows you to forecast beyond one full seasonal cycle. For example, if monthly data exhibits annual seasonality, you can project several years into the future. TimeGPT's long-horizon variant can handle these extended forecasts.
+
+<AccordionGroup>
+  <Accordion title="Why use long-horizon forecasting?">
+    Long-horizon forecasting is especially useful for capacity planning, budgeting, strategic decision making, and any scenario where you need to see multiple seasonal patterns ahead.
+  </Accordion>
+</AccordionGroup>
+
+<Steps>
+  <Step title="Step 1 — Install and Import Libraries">
+    ```python Import Libraries
+    # Import Libraries
+    import pandas as pd
+    from nixtla import NixtlaClient
+    ```
+  </Step>
+
+  <Step title="Step 2 — Initialize Nixtla Client">
+    You can initialize the Nixtla Client by providing your API key:
+
+    ```python Initialize Nixtla Client
+    nixtla_client = NixtlaClient(
+        # defaults to os.environ.get("NIXTLA_API_KEY")
+        api_key="my_api_key_provided_by_nixtla"
+    )
+    ```
+
+    <Info>
+      **Use an Azure AI endpoint**<br/>
+      To use an Azure AI endpoint, explicitly specify the `base_url` parameter:
+
+      ```python Initialize Azure AI Client
+      nixtla_client = NixtlaClient(
+          base_url="your azure ai endpoint",
+          api_key="your api_key"
+      )
+      ```
+    </Info>
+  </Step>
+
+  <Step title="Step 3 — Load Data and Create Forecast">
+    Load your time series data into a Pandas DataFrame, then call the `forecast` method:
+
+    ```python Load Data and Create Forecast
+    # Load sample dataset
+    df = pd.read_csv(
+        "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv"
+    )
+
+    # Generate forecast
+    forecast_df = nixtla_client.forecast(
+        df=df,
+        h=36,
+        model="timegpt-1-long-horizon",
+        time_col="timestamp",
+        target_col="value"
+    )
+    ```
+  </Step>
+
+  <Step title="Step 4 — Review Logs">
+    The Nixtla Client emits helpful messages and warnings during the forecasting process:
+
+    <Accordion title="Forecasting Log Output">
+
+    ```bash Forecasting Logs
+    INFO:nixtla.nixtla_client:Validating inputs...
+    INFO:nixtla.nixtla_client:Preprocessing dataframes...
+    INFO:nixtla.nixtla_client:Inferred freq: MS
+    WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon.
+    This may lead to less accurate forecasts. Please consider using a smaller horizon.
+    INFO:nixtla.nixtla_client:Restricting input...
+    INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+    ```
+
+    </Accordion>
+
+    <Warning>
+      When the specified horizon `h` exceeds the model's recommended horizon, the accuracy may be lower. Consider adjusting `h` based on your forecasting needs.
+    </Warning>
+  </Step>
+</Steps>
+
+## Model Options
+
+<Info>
+  If using an Azure AI endpoint, explicitly select the Azure model with:
+
+  ```python Use Azure Model
+  nixtla_client.forecast(..., model="azureai")
+  ```
+</Info>
+
+<CardGroup cols={3}>
+  <Card title="timegpt-1" icon="robot">
+    Default model for general forecasting tasks.
+  </Card>
+
+  <Card title="timegpt-1-long-horizon" icon="calendar">
+    For extended (long-horizon) forecasts.
+  </Card>
+
+  <Card title="azureai" icon="cloud">
+    For Nixtla services running on your Azure endpoint.
+  </Card>
+</CardGroup>
+
+<Check>
+  Refer to the
+  [
+    Tutorial on Long-horizon Forecasting
+  ](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+  for best practices and guidance on choosing the right model for your use case.
+</Check>
+
+For a comprehensive walkthrough on forecasting more than one season ahead, visit the complete tutorial on
+[Long-horizon forecasting](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting).

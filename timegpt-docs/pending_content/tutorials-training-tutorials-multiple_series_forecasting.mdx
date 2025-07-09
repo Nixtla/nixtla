@@ -1,0 +1,164 @@
+---
+title: "Multiple Series Forecasting Tutorial"
+description: "Learn how to generate forecasts for multiple time series simultaneously."
+icon: "layer-group"
+---
+
+# Multiple Series Forecasting
+
+<Info>
+TimeGPT provides straightforward multi-series forecasting. This approach enables you to forecast several time series concurrently rather than focusing on just one.
+</Info>
+
+<Check>
+• Forecasts are univariate: TimeGPT does not directly account for interactions between target variables in different series.
+• Exogenous Features: You can still include additional explanatory (exogenous) variables like categories, numeric columns, holidays, or special events to enrich the model.
+</Check>
+
+Given these capabilities, TimeGPT can be fine-tuned to your own datasets for precise and efficient forecasting. Below, let's see how to use multiple series forecasting in practice:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/05_multiple_series.ipynb)
+
+<CardGroup cols={2}>
+  <Card title="Key Concept" icon="lightbulb">
+    Global models like TimeGPT can handle multiple series in a single training session and produce a separate forecast for each.
+  </Card>
+  <Card title="Benefit" icon="check">
+    Multi-series learning improves efficiency, leveraging shared patterns across series that often lead to better forecasts.
+  </Card>
+</CardGroup>
+
+<Steps>
+
+<Steps title="1. Install and import packages">
+Install and import the required libraries, then initialize the Nixtla client.
+
+```python Nixtla Client Initialization
+import pandas as pd
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+<AccordionGroup>
+  <Accordion title="Using an Azure AI Endpoint">
+    To use Azure AI endpoints, specify the `base_url` parameter:
+
+    ```python Azure AI Endpoint Setup
+    nixtla_client = NixtlaClient(
+        base_url="your azure ai endpoint",
+        api_key="your api_key"
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+</Steps>
+
+<Steps title="2. Load the data">
+You can now load the electricity prices dataset from various European markets. TimeGPT automatically treats it as multiple series based on the `unique_id` column.
+
+```python Load Electricity Dataset
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
+df.head()
+```
+
+<AccordionGroup>
+  <Accordion title="Dataset Preview">
+    |       | unique_id   | ds                    | y       |
+| ----- | ----------- | --------------------- | ------- |
+| 0     | BE          | 2016-12-01 00:00:00   | 72.00   |
+| 1     | BE          | 2016-12-01 01:00:00   | 65.80   |
+| 2     | BE          | 2016-12-01 02:00:00   | 59.99   |
+| 3     | BE          | 2016-12-01 03:00:00   | 50.69   |
+| 4     | BE          | 2016-12-01 04:00:00   | 52.58   |
+
+  </Accordion>
+</AccordionGroup>
+
+Now, let's visualize the data using the `NixtlaClient.plot()` method.
+
+```python Plot Electricity Series
+nixtla_client.plot(df)
+```
+
+<Frame caption="Electricity Markets Series Plot">
+  ![Electricity Markets Series Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/05_multiple_series_files/figure-markdown_strict/cell-11-output-1.png)
+</Frame>
+</Steps>
+
+<Steps title="3. Forecast multiple series">
+Pass the DataFrame to the `forecast()` method. TimeGPT automatically handles each unique series based on `unique_id`.
+
+```python Forecast Multiple Series
+timegpt_fcst_multiseries_df = nixtla_client.forecast(
+    df=df,
+    h=24,
+    level=[80, 90]
+)
+timegpt_fcst_multiseries_df.head()
+```
+
+<AccordionGroup>
+  <Accordion title="Model Execution Logs">
+    ```bash Forecast Model Logs
+    INFO:nixtla.nixtla_client:Validating inputs...
+    INFO:nixtla.nixtla_client:Preprocessing dataframes...
+    INFO:nixtla.nixtla_client:Inferred freq: H
+    INFO:nixtla.nixtla_client:Restricting input...
+    INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+    ```
+  </Accordion>
+  <Accordion title="Forecast Preview">
+    |       | unique_id   | ds                    | TimeGPT     | TimeGPT-lo-90   | TimeGPT-lo-80   | TimeGPT-hi-80   | TimeGPT-hi-90   |
+| ----- | ----------- | --------------------- | ----------- | --------------- | --------------- | --------------- | --------------- |
+| 0     | BE          | 2016-12-31 00:00:00   | 46.151176   | 36.660478       | 38.337019       | 53.965334       | 55.641875       |
+| 1     | BE          | 2016-12-31 01:00:00   | 42.426598   | 31.602231       | 33.976724       | 50.876471       | 53.250964       |
+| 2     | BE          | 2016-12-31 02:00:00   | 40.242889   | 30.439970       | 33.634985       | 46.850794       | 50.045809       |
+| 3     | BE          | 2016-12-31 03:00:00   | 38.265339   | 26.841481       | 31.022093       | 45.508585       | 49.689197       |
+| 4     | BE          | 2016-12-31 04:00:00   | 36.618801   | 18.541384       | 27.981346       | 45.256256       | 54.696218       |
+
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+When using Azure endpoints, specify `model="azureai"`. By default, the `timegpt-1` model is used. See the
+[details here](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting) for available models.
+</Info>
+
+Visualize the forecasts:
+
+```python Plot Forecasts
+nixtla_client.plot(
+    df,
+    timegpt_fcst_multiseries_df,
+    max_insample_length=365,
+    level=[80, 90]
+)
+```
+
+<Frame caption="Multiple Series Forecast Plot">
+  ![Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/05_multiple_series_files/figure-markdown_strict/cell-13-output-1.png)
+</Frame>
+</Steps>
+
+<Steps title="4. Generate historical forecasts">
+You can also produce historical forecasts (including prediction intervals) by setting `add_history=True`. This allows you to compare previously observed values with model predictions.
+
+```python Historical Forecasts with Prediction Intervals
+historical_fcst_df = nixtla_client.forecast(
+    df=df,
+    h=24,
+    level=[80, 90],
+    add_history=True
+)
+historical_fcst_df.head()
+```
+</Steps>
+
+</Steps>
+
+<Check>
+Congratulations! You have successfully performed multi-series forecasting with TimeGPT, taking advantage of its global modeling approach.
+</Check>

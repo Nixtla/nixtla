@@ -1,0 +1,159 @@
+---
+title: "Finetuning with a custom loss function"
+description: "Learn how to fine-tune forecasting models using a preferred loss function for improved performance."
+icon: "gear"
+---
+
+# Finetuning with a Custom Loss Function
+
+<Info>
+Fine-tuning your model allows you to specify a preferred loss function for forecasting tasks. This can significantly impact how your model learns from the data and, ultimately, its performance.
+</Info>
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/08_custom_loss_function.ipynb)
+
+## Overview
+
+When fine-tuning, specify the loss function using the `finetune_loss` argument.
+
+<Check>
+The current supported values for `finetune_loss` are:
+</Check>
+
+<CardGroup cols={3}>
+  <Card
+    title="mae"
+    description="Mean Absolute Error"
+  />
+  <Card
+    title="mse"
+    description="Mean Squared Error"
+  />
+  <Card
+    title="rmse"
+    description="Root Mean Squared Error"
+  />
+  <Card
+    title="mape"
+    description="Mean Absolute Percentage Error"
+  />
+  <Card
+    title="smape"
+    description="Symmetric Mean Absolute Percentage Error"
+  />
+</CardGroup>
+
+## Steps to Fine-Tune Your Forecast Model
+
+<Steps>
+  <Step title="1. Import Libraries">
+    ```python Import Libraries
+    import pandas as pd
+    from nixtla import NixtlaClient
+    ```
+  </Step>
+
+  <Step title="2. Initialize the Nixtla Client">
+    <Tabs groupId="client-type">
+      <Tab title="Nixtla Public API">
+        <Info>
+          By default, the `NixtlaClient` will look for the API key in your environment variables (`NIXTLA_API_KEY`).
+        </Info>
+        ```python Nixtla Public API Initialization
+        nixtla_client = NixtlaClient(
+            # defaults to os.environ.get("NIXTLA_API_KEY")
+            api_key='my_api_key_provided_by_nixtla'
+        )
+        ```
+      </Tab>
+
+      <Tab title="Azure AI Endpoint">
+        <Info>
+          To use an Azure AI endpoint, set the `base_url` parameter. You can also specify the model later in the `forecast` method.
+        </Info>
+        ```python Azure AI Endpoint Initialization
+        nixtla_client = NixtlaClient(
+            base_url="your azure ai endpoint",
+            api_key="your api_key"
+        )
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="3. Load Your Data">
+    ```python Load CSV Data
+    # Read data
+    df = pd.read_csv(
+        "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv"
+    )
+    ```
+  </Step>
+
+  <Step title="4. Fine-Tune the Model and Forecast">
+    ```python Fine-Tune Model with Loss Function
+    # Fine-tune with a specified loss function and make predictions
+    forecast_df = nixtla_client.forecast(
+        df=df,
+        h=12,
+        finetune_steps=5,
+        finetune_loss="mae",
+        time_col='timestamp',
+        target_col="value"
+    )
+    ```
+    <AccordionGroup>
+      <Accordion title="Example Logs">
+        ```bash Log Output
+        INFO:nixtla.nixtla_client:Validating inputs...
+        INFO:nixtla.nixtla_client:Preprocessing dataframes...
+        INFO:nixtla.nixtla_client:Inferred freq: MS
+        INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+        ```
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+</Steps>
+
+## Using Azure AI or Nixtla’s Public API
+
+<Info>
+When using an Azure AI endpoint, set `model="azureai"` explicitly in the `forecast` method.
+</Info>
+
+```python Forecast with Azure AI Model
+nixtla_client.forecast(
+    df=df,
+    h=12,
+    finetune_steps=5,
+    finetune_loss="mae",
+    time_col='timestamp',
+    target_col="value",
+    model="azureai"
+)
+```
+
+<Info>
+When using Nixtla’s public API, two models are available:
+</Info>
+
+<CardGroup cols={2}>
+  <Card
+    title="timegpt-1"
+    description="Default model"
+  />
+  <Card
+    title="timegpt-1-long-horizon"
+    description="For long-horizon forecasting tasks"
+  />
+</CardGroup>
+
+For more details on choosing or using `timegpt-1-long-horizon`, see the tutorial:
+[Long-Horizon Forecasting](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+
+---
+
+## Learn More
+
+For a detailed explanation on how different loss functions influence model performance, read the tutorial:
+[Fine-tuning with a Specific Loss Function](https://docs.nixtla.io/docs/tutorials-fine_tuning_with_a_specific_loss_function)

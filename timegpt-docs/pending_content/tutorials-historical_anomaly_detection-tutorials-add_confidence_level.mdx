@@ -1,0 +1,52 @@
+---
+title: "Add Confidence Levels"
+description: "Learn how to configure confidence levels to control anomaly detection sensitivity."
+icon: "percent"
+---
+
+
+## Confidence Level in Anomaly Detection
+
+The confidence level is used to determine the threshold for anomaly detection. By default, any values that lie outside the 99% confidence interval are labeled as anomalies.
+
+Use the `level` parameter (0-100) to control how many anomalies are detected.
+
+- Increasing the `level`(closer to 100) decreases the number of anomalies.
+- Decreasing the `level`(closer to 0) increases the number of anomalies.
+
+
+## How to Add Confidence Levels
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/historical-anomaly-detection/04_confidence_levels.ipynb)
+
+### Step 1: Set Up Data and Client
+
+Follow the steps in the [historical anomaly detection tutorial](tutorials-historical_anomaly_detection) to set up the data and client.
+
+### Step 2: Detect Anomalies with a Confidence Level
+
+To detect anomalies with a confidence level, use the `level` parameter. In this example, we'll use a 70% confidence level.
+
+```python
+# Anomaly detection using a 70% confidence interval
+anomalies_df = nixtla_client.detect_anomalies(
+    df,
+    freq='D',
+    level=70
+)
+```
+
+
+### Step 3: Visualize Results
+
+To visualize the results, use the `plot` method:
+
+```python
+nixtla_client.plot(df, anomalies_df)
+```
+
+<Frame caption="Anomalies detected with a 70% confidence interval">
+  ![Anomalies detected with a 70% confidence interval](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/04_confidence_levels_files/figure-markdown_strict/cell-10-output-2.png)
+</Frame>
+
+This plot highlights points that fall outside the 70% confidence interval, indicating they are considered anomalies. Points within the interval are considered normal behavior.

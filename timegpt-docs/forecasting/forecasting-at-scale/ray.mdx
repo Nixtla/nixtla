@@ -1,0 +1,210 @@
+---
+title: "Ray"
+description: "Distribute TimeGPT forecasting jobs on Ray for scalable Python workloads."
+icon: "server"
+---
+
+# TimeGPT on Ray
+
+<Info>
+Ray is an open-source unified compute framework that helps scale Python workloads for distributed computing. In this tutorial, you will learn how to distribute **TimeGPT** forecasting jobs on top of Ray.
+</Info>
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/19_computing_at_scale_ray_distributed.ipynb)
+
+<Check>
+This guide uses **Fugue** to easily run code across various distributed computing frameworks, including Ray.
+</Check>
+
+## Overview
+
+<AccordionGroup>
+  <Accordion title="Key Concepts">
+    <CardGroup>
+      <Card title="Ray">
+        A framework for scaling Python beyond a single machine.
+      </Card>
+      <Card title="Fugue">
+        A unified interface to execute Python code on several backends (including Ray).
+      </Card>
+      <Card title="TimeGPT">
+        A Nixtla service for scalable time-series forecasting.
+      </Card>
+    </CardGroup>
+
+      By combining *Ray*, *Fugue*, and *TimeGPT*, you can quickly scale your time-series forecasting tasks in distributed environments.
+
+  </Accordion>
+</AccordionGroup>
+
+Below is an outline of what we'll cover:
+
+1. Installation
+2. Load Your Data
+3. Initialize Ray
+4. Use TimeGPT on Ray
+5. Shutdown Ray
+
+<Steps>
+
+<Step title="1. Installation">
+Install Ray using **Fugue**. Fugue provides an easy-to-use interface for distributed computation. It lets you run Python code on several distributed computing frameworks, including Ray.
+
+```shell Fugue Ray Installation
+pip install fugue[ray]
+```
+
+<Warning>
+When executing on a distributed Ray cluster, ensure the `nixtla` library is installed on all workers.
+</Warning>
+</Step>
+
+<Step title="2. Load Your Data">
+Load your dataset into a pandas DataFrame. This tutorial uses hourly electricity prices from various markets:
+
+```python Load Dataset Example
+import pandas as pd
+
+df = pd.read_csv(
+    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv',
+    parse_dates=['ds'],
+)
+df.head()
+```
+
+<Frame caption="Preview of the first few rows of data">
+  |       | unique_id   | ds                    | y       |
+| ----- | ----------- | --------------------- | ------- |
+| 0     | BE          | 2016-10-22 00:00:00   | 70.00   |
+| 1     | BE          | 2016-10-22 01:00:00   | 37.10   |
+| 2     | BE          | 2016-10-22 02:00:00   | 37.10   |
+| 3     | BE          | 2016-10-22 03:00:00   | 44.75   |
+| 4     | BE          | 2016-10-22 04:00:00   | 37.10   |
+
+
+</Frame>
+</Step>
+
+<Step title="3. Initialize Ray">
+<Info>
+Here, we're spinning up a Ray cluster locally by creating a head node. You can scale this to multiple machines in a real cluster environment.
+</Info>
+
+```python Ray Cluster Initialization
+import ray
+from ray.cluster_utils import Cluster
+
+ray_cluster = Cluster(
+    initialize_head=True,
+    head_node_args={"num_cpus": 2}
+)
+
+ray.init(address=ray_cluster.address, ignore_reinit_error=True)
+
+# Convert your DataFrame to Ray format:
+ray_df = ray.data.from_pandas(df)
+ray_df
+```
+
+<Accordion title="Ray Initialization Logs">
+<AccordionGroup>
+  <Accordion title="Log Output">
+```bash Ray Initialization Logs
+INFO:ray._private.services:Ray runtime started.
+INFO:ray.dashboard:Dashboard is available at http://127.0.0.1:8265
+INFO:ray.cluster_utils:Cluster address: 127.0.0.1:6379
+```
+  </Accordion>
+</AccordionGroup>
+</Accordion>
+</Step>
+
+<Step title="4. Use TimeGPT on Ray">
+With Ray, you can run **TimeGPT** similar to a standard (non-distributed) local environment. Operations such as `forecast` still apply directly to Ray Dataset objects.
+
+<AccordionGroup>
+  <Accordion title="Instantiating NixtlaClient">
+
+  Begin by creating a `NixtlaClient`. Replace *my_api_key_provided_by_nixtla* with your own API key.
+
+  ```python NixtlaClient Initialization
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+  ```
+
+  <Info>
+    If you prefer using an Azure AI endpoint, specify the `base_url` and `api_key` for Azure.
+  </Info>
+
+  ```python NixtlaClient Azure Setup
+nixtla_client = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="your api_key"
+)
+  ```
+  </Accordion>
+
+  <Accordion title="Making a Forecast">
+    ```python TimeGPT Forecasting on Ray
+%%capture
+fcst_df = nixtla_client.forecast(ray_df, h=12)
+    ```
+    <Info>
+      Public API models supported include `timegpt-1` (default) and `timegpt-1-long-horizon`.
+    </Info>
+
+      Inspect the forecast results by converting to a pandas DataFrame:
+
+    ```python Inspect Forecast Results
+fcst_df.to_pandas().tail()
+    ```
+  </Accordion>
+
+  <Accordion title="Cross-validation with TimeGPT">
+
+      You can also perform cross-validation on Ray. The following sample code performs a cross-validation procedure using rolling windows:
+
+    ```python TimeGPT Cross-validation on Ray
+%%capture
+cv_df = nixtla_client.cross_validation(
+    ray_df,
+    h=12,
+    freq='H',
+    n_windows=5,
+    step_size=2
+)
+    ```
+
+      After computation, convert `cv_df` to pandas to view the results:
+
+    ```python Inspect Cross-validation Results
+cv_df.to_pandas().tail()
+    ```
+  </Accordion>
+
+  <Accordion title="Exogenous Variables">
+    <Info>
+      For adding extra predictors or exogenous variables, refer to the [Exogenous Variables Tutorial](/forecasting/exogenous-variables/numeric_features). While running on Ray, simply use your `ray_df` in place of a pandas DataFrame.
+    </Info>
+  </Accordion>
+</AccordionGroup>
+</Step>
+
+<Step title="5. Shutdown Ray">
+<Warning>
+Always shut down Ray after you finish your tasks to free up resources.
+</Warning>
+
+```python Shutdown Ray Example
+ray.shutdown()
+```
+</Step>
+
+</Steps>
+
+<Check>
+Congratulations! You've successfully used TimeGPT on Ray for distributed forecasting.
+</Check>

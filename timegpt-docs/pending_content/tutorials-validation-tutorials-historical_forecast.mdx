@@ -1,0 +1,191 @@
+---
+title: "Historical Forecast Evaluation"
+description: "Learn how to validate TimeGPT models by comparing historical forecasts against actual data."
+icon: "clock-rotate-left"
+---
+
+Our time series model offers a powerful feature that allows you to retrieve historical forecasts alongside prospective predictions. You can access this functionality by using the forecast method and setting `add_history=True`.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/09_historical_forecast.ipynb)
+
+<Info>
+  Historical forecasts can help you understand how well the model has performed in the past. This view provides insight into the model's predictive accuracy and any patterns in its performance.
+</Info>
+
+<Tabs>
+  <Tab title="Overview">
+    <CardGroup>
+      <Card>
+        <Card title="Key Benefit">
+          Adding historical forecasts (`add_history=True`) lets you compare model predictions against actual data, helping to identify trends.
+        </Card>
+      </Card>
+      <Card>
+        <Card title="When to Use Historical Forecasts">
+          Useful for performance evaluation, model reliability checks, and building trust in the predictions.
+        </Card>
+      </Card>
+    </CardGroup>
+  </Tab>
+</Tabs>
+
+<Steps>
+
+  <Step title="1. Import Required Packages">
+
+First, install and import the required packages. Then, initialize the Nixtla client. Replace `my_api_key_provided_by_nixtla` with your actual API key.
+
+
+    ```python Import Packages and Initialize NixtlaClient
+    import pandas as pd
+    from nixtla import NixtlaClient
+    ```
+
+    ```python Initialize NixtlaClient with API Key
+    nixtla_client = NixtlaClient(
+        # Defaults to os.environ.get("NIXTLA_API_KEY")
+        api_key='my_api_key_provided_by_nixtla'
+    )
+    ```
+
+    <Check>
+      **Use an Azure AI endpoint**<br/>
+      If you want to use an Azure AI endpoint, set the `base_url` argument:
+      ```python Initialize NixtlaClient with Azure AI Endpoint
+      nixtla_client = NixtlaClient(
+          base_url="your azure ai endpoint",
+          api_key="your api_key"
+      )
+      ```
+    </Check>
+  </Step>
+
+  <Step title="2. Load the Dataset">
+    <AccordionGroup>
+      <Accordion title="Load and Inspect Data">
+        First, import an example dataset using `pandas`:
+        ```python Load Dataset
+        df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+        df.head()
+        ```
+
+
+|       | timestamp    | value   |
+| ----- | ------------ | ------- |
+| 0     | 1949-01-01   | 112     |
+| 1     | 1949-02-01   | 118     |
+| 2     | 1949-03-01   | 132     |
+| 3     | 1949-04-01   | 129     |
+| 4     | 1949-05-01   | 121     |
+
+        <Info>
+          This dataset contains monthly passenger counts for an airline, starting in January 1949. The `timestamp` column is the time dimension, and `value` is the passenger count.
+        </Info>
+      </Accordion>
+    </AccordionGroup>
+
+You can visualize the dataset using Nixtla's built-in plotting function:
+
+    ```python Plot Initial Time Series
+    nixtla_client.plot(df, time_col='timestamp', target_col='value')
+    ```
+
+    <Frame caption="Time Series Plot">
+      ![Time Series Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/09_historical_forecast_files/figure-markdown_strict/cell-11-output-1.png)
+    </Frame>
+  </Step>
+
+  <Step title="3. Generate Historical Forecast">
+    <AccordionGroup>
+      <Accordion title="Using add_history=True">
+
+          Set `add_history=True` to generate historical fitted values. The returned DataFrame includes future forecasts (`h` steps ahead) and historical predictions.
+
+        <Warning>
+          Historical forecasts are unaffected by `h` and rely on the data frequency. They are generated in a rolling-window manner, building a full series of predictions sequentially.
+        </Warning>
+
+        ```python Generate Historical Forecast with add_history
+        timegpt_fcst_with_history_df = nixtla_client.forecast(
+            df=df,
+            h=12,
+            time_col='timestamp',
+            target_col='value',
+            add_history=True,
+        )
+        ```
+
+        <Check>
+          Below is an example of console output showing the progress and validation steps:
+        </Check>
+
+        <Accordion title="Log Output">
+
+        ```bash Forecast Process Log
+        INFO:nixtla.nixtla_client:Validating inputs...
+        INFO:nixtla.nixtla_client:Preprocessing dataframes...
+        INFO:nixtla.nixtla_client:Inferred freq: MS
+        INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+        INFO:nixtla.nixtla_client:Calling Historical Forecast Endpoint...
+        ```
+
+        </Accordion>
+
+        <Info>
+          **Available models in Azure AI**<br/>
+          If you use an Azure AI endpoint, specify the model with `model="azureai"`:
+          ```python
+          nixtla_client.forecast(..., model="azureai")
+          ```
+          For the public API, two models are available:
+
+            - `timegpt-1` (default)
+
+            - `timegpt-1-long-horizon`
+
+
+          See
+          [
+            this tutorial
+          ](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+          to learn how to use `timegpt-1-long-horizon`.
+        </Info>
+      </Accordion>
+    </AccordionGroup>
+
+    <CardGroup>
+      <Card>
+        <Card title="Inspection">
+          Review the first rows of the historical predictions:
+          ```python Inspect Historical Predictions
+          timegpt_fcst_with_history_df.head()
+          ```
+    |       | timestamp    | TimeGPT      |
+    | ----- | ------------ | ------------ |
+    | 0     | 1951-01-01   | 135.483673   |
+    | 1     | 1951-02-01   | 144.442398   |
+    | 2     | 1951-03-01   | 157.191910   |
+    | 3     | 1951-04-01   | 148.769363   |
+    | 4     | 1951-05-01   | 140.472946   |
+
+        </Card>
+      </Card>
+      <Card>
+        <Card title="Compare Observed & Predicted">
+          Plot the observed time series against both historical and future predictions for a consolidated view:
+          ```python Plot Observed vs Predictions
+          nixtla_client.plot(df, timegpt_fcst_with_history_df, time_col='timestamp', target_col='value')
+          ```
+          <Frame caption="Historical and Future Predictions Plot">
+            ![Historical and Future Predictions Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/09_historical_forecast_files/figure-markdown_strict/cell-14-output-1.png)
+          </Frame>
+        </Card>
+      </Card>
+    </CardGroup>
+
+    <Info>
+      Note that initial values of the dataset are not included in the historical forecasts. The model needs a certain number of observations before it can begin generating historical predictions. These early points serve as input data and cannot themselves be forecasted.
+    </Info>
+  </Step>
+
+</Steps>

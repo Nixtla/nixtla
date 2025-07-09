@@ -1,0 +1,114 @@
+---
+title: "Setting up your API key"
+description: "Learn how to securely configure your Nixtla SDK API key using direct code or environment variables."
+icon: "key"
+---
+
+<Info>
+  This tutorial explains how to set up your API key when using the Nixtla SDK. It covers both quick and secure methods to configure your API key directly in code or using environment variables. If you haven't done so yet, create an API Key in your [Nixtla Dashboard](https://dashboard.nixtla.io/).
+</Info>
+
+<Frame caption="Diagram of the API Key configuration process">
+
+
+  ![Diagram of the API Key configuration process](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
+</Frame>
+
+## Overview
+
+<CardGroup cols={2}>
+  <Card title="Why secure your API key?">
+    Your API key grants access to your Nixtla account and should be treated like a password. By securing it, you prevent unauthorized usage and protect your usage credits.
+  </Card>
+  <Card title="Where to find your key">
+    Your API key can be generated from your Nixtla Dashboard under the **API Keys** section. Make sure you copy the entire key with no extra spaces.
+  </Card>
+</CardGroup>
+
+## How to configure your API key
+
+<Steps>
+  <Step title="Option 1: Copy & Paste into Python">
+    <Warning>
+      This approach is simple but not secure. Your API key will be stored in your source code, visible to anyone with access to it.
+    </Warning>
+    **Step 1:** Copy your key from the [Nixtla Dashboard](https://dashboard.nixtla.io/).
+    **Step 2:** Paste the key into your Python code, for example:
+
+    ```python NixtlaClient Initialization with API Key
+    from nixtla import NixtlaClient
+
+    nixtla_client = NixtlaClient(api_key='your_api_key_here')
+    ```
+  </Step>
+  <Step title="Option 2: Secure Method with Environment Variables">
+    <Info>
+      Storing your API key in an environment variable is the recommended approach for security and ease of sharing code without exposing credentials.
+    </Info>
+    This method requires setting an environment variable named `NIXTLA_API_KEY`. The Nixtla SDK automatically detects this environment variable without needing to manually pass it into `NixtlaClient`.
+
+    <AccordionGroup>
+      <Accordion title="Temporary (Terminal Session)">
+        <Tabs>
+          <Tab title="Linux / Mac">
+            Open your terminal and use the `export` command:
+
+            ```bash Setting Environment Variable Temporarily on Linux/Mac
+            export NIXTLA_API_KEY=your_api_key
+            ```
+          </Tab>
+          <Tab title="Windows (PowerShell)">
+            Open a PowerShell session and set the environment variable:
+
+            ```powershell Setting Environment Variable Temporarily on Windows PowerShell
+            $env:NIXTLA_API_KEY = "your_api_key"
+            ```
+          </Tab>
+        </Tabs>
+        After setting the variable, instantiate the `NixtlaClient` without specifying the key:
+
+        ```python NixtlaClient Initialization Using Environment Variable
+        from nixtla import NixtlaClient
+        nixtla_client = NixtlaClient()
+        ```
+      </Accordion>
+      <Accordion title="Permanent (.env file)">
+        Create a file named `.env` in the same directory as your Python script with the following content:
+
+        ```env .env File Content
+        NIXTLA_API_KEY=your_api_key
+        ```
+
+        Then, in your Python script, load it with the `dotenv` package:
+
+        ```python Load Environment Variables with dotenv
+        from dotenv import load_dotenv
+        load_dotenv()
+
+        from nixtla import NixtlaClient
+        nixtla_client = NixtlaClient()
+        ```
+
+        <Warning>
+          Be sure not to commit your `.env` file to public repositories. Your API key grants access to your Nixtla account.
+        </Warning>
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+</Steps>
+
+## Validate your API key
+
+Use the `validate_api_key` method of `NixtlaClient` to confirm that you have correctly configured your API key. This method returns `True` if your API key is valid, or `False` otherwise:
+
+```python Validate API Key Method
+nixtla_client.validate_api_key()
+```
+
+<Info>
+  You do not need to validate your API key before every request. This method is a convenience function. To fully access **TimeGPT** functionality, ensure you have adequate credits by checking your [Nixtla Dashboard](https://dashboard.nixtla.io/).
+</Info>
+
+<Card title="Summary">
+  You've now learned how to configure your Nixtla API key through multiple methods, ranging from the simplest copy-and-paste approach to more secure environment variable setups. Remember to keep your API key confidential to prevent unauthorized usage.
+</Card>

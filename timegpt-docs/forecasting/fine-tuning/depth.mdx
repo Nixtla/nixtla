@@ -1,0 +1,130 @@
+---
+title: "Controlling the Level of Fine-Tuning"
+description: "Learn how to use the finetune_depth parameter to control the extent of fine-tuning in TimeGPT models."
+icon: "gear"
+---
+
+## Controlling the Level of Fine-Tuning
+It is possible to control the depth of fine-tuning with the `finetune_depth`
+parameter.
+
+`finetune_depth` takes values among `[1, 2, 3, 4, 5]`. By default, it is set to
+1, which means that a small set of the model's parameters are being adjusted,
+whereas a value of 5 fine-tunes the maximum amount of parameters.
+
+Increasing `finetune_depth` also increases the time to generate predictions.
+While it can generate better results, we must be careful to not overfit the
+model, in which case the predictions may not be as accurate.
+
+Let's run a small experiment to see how `finetune_depth` impacts the performance.
+
+
+## How to Control the Level of Fine-Tuning
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/23_finetune_depth_finetuning.ipynb)
+
+### Step 1: Import Packages
+
+First, we import the required packages and initialize the Nixtla client
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+from utilsforecast.losses import mae, mse
+from utilsforecast.evaluation import evaluate
+```
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+### Step 2: Load Data
+
+Next, load the dataset
+
+```python
+df = pd.read_csv(
+    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv'
+)
+df.head()
+```
+
+Now, we split the data into a training and test set so that we can measure the
+performance of the model as we vary `finetune_depth`.
+
+```python
+train = df[:-24]
+test = df[-24:]
+```
+
+### Step 3: Fine-Tuning With finetune_depth
+
+As mentioned above, `finetune_depth` controls how many parameters from TimeGPT
+are fine-tuned on your particular dataset. If the value is set to 1, only a few
+parameters are fine-tuned. Setting it to 5 means that all parameters of the
+model will be fine-tuned.
+
+Using a large value for `finetune_depth` can lead to better performances for
+large datasets with complex patterns. However, it can also lead to overfitting,
+in which case the accuracy of the forecasts may degrade, as we will see from the
+small experiment below.
+
+```python
+depths = [1, 2, 3, 4, 5]
+
+test = test.copy()
+
+for depth in depths:
+    preds_df = nixtla_client.forecast(
+        df=train,
+        h=24,
+        finetune_steps=5,
+        finetune_depth=depth,
+        time_col='timestamp',
+        target_col='value'
+    )
+
+    preds = preds_df['TimeGPT'].values
+    test.loc[:, f'TimeGPT_depth{depth}'] = preds
+```
+
+Evaluate the forecasts using MAE and MSE metrics:
+
+```python
+test['unique_id'] = 0
+
+evaluation = evaluate(
+    test,
+    metrics=[mae, mse],
+    time_col="timestamp",
+    target_col="value"
+)
+evaluation
+```
+
+| unique_id | metric | TimeGPT_depth1 | TimeGPT_depth2 | TimeGPT_depth3 | TimeGPT_depth4 | TimeGPT_depth5 |
+|-----------|--------|----------------|----------------|----------------|----------------|----------------|
+| 0         | mae    | 22.675540      | 17.908963      | 21.318518      | 24.745096      | 28.734302      |
+| 0         | mse    | 677.254283     | 461.320852     | 676.202126     | 991.835359     | 1119.722602    |
+
+
+From the result above, we can see that a `finetune_depth` of 2 achieves the best
+results since it has the lowest MAE and MSE.
+
+Also notice that with a `finetune_depth` of 4 and 5, the performance degrades,
+which is a clear sign of overfitting.
+
+Thus, keep in mind that fine-tuning can be a bit of trial and error. You might
+need to adjust the number of `finetune_steps` and the level of `finetune_depth`
+based on your specific needs and the complexity of your data. Usually, a higher
+`finetune_depth` works better for large datasets. In this specific tutorial,
+since we were forecasting a single series with a very short dataset, increasing
+the depth led to overfitting.
+
+It's recommended to monitor the model's performance during fine-tuning and
+adjust as needed. Be aware that more `finetune_steps` and a larger value of
+`finetune_depth` may lead to longer training times and could potentially lead
+to overfitting if not managed properly.
