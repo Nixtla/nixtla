@@ -1,7 +1,6 @@
 import httpx
 import pytest
 
-import logging
 import numpy as np
 import pandas as pd
 import zstandard as zstd
@@ -12,9 +11,6 @@ from nixtla_tests.conftest import HYPER_PARAMS_TEST
 from nixtla_tests.helpers.checks import check_num_partitions_same_results
 from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
 
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("httpx").setLevel(logging.ERROR)
-logger = logging.getLogger(__name__)
 
 CAPTURED_REQUEST = None
 
@@ -359,18 +355,14 @@ def test_shap_features(nixtla_test_client, date_features_result):
 
 @pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
 def test_exogenous_variables_cv(nixtla_test_client, exog_data, hyp):
-    logger.info(f"Hyperparameters: {hyp}")
-    logger.info("\n\nPerforming forecast\n")
     df_ex_, df_train, df_test, x_df_test = exog_data
     fcst_test = nixtla_test_client.forecast(
         df_train.merge(df_ex_.drop(columns="y")), h=12, X_df=x_df_test, **hyp
     )
     fcst_test = df_test[["unique_id", "ds", "y"]].merge(fcst_test)
     fcst_test = fcst_test.sort_values(["unique_id", "ds"]).reset_index(drop=True)
-    logger.info("\n\nPerforming Cross validation\n")
     fcst_cv = nixtla_test_client.cross_validation(df_ex_, h=12, **hyp)
     fcst_cv = fcst_cv.sort_values(["unique_id", "ds"]).reset_index(drop=True)
-    logger.info("\n\nVerify difference\n")
     pd.testing.assert_frame_equal(
         fcst_test,
         fcst_cv.drop(columns="cutoff"),
