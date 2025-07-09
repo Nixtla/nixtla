@@ -92,4 +92,4 @@ jobs:
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        run: pytest --cov=nixtla -m "not (spark_run or ray_run)" --reruns 10 --reruns-delay 3 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
+        run: pytest --cov=nixtla -m "not distributed_run" --reruns 10 --reruns-delay 3 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
