@@ -40,6 +40,7 @@ jobs:
         run: python -c "from nixtla import NixtlaClient"
 
   run-notebooks-test:
+    needs: run-cross-platform-tests
     runs-on: nixtla-linux-large-public
     timeout-minutes: 60
     strategy:
