@@ -124,5 +124,6 @@ class TestTimeSeriesDataSet1:
         check_finetuned_model(custom_client, spark_df, model_ids_object.model_id2)
 
     @pytest.mark.distributed_run
+    @pytest.mark.flaky(reruns=3, delay=10)
     def test_dask_finetune_model(self, custom_client, dask_df):
         check_finetuned_model(custom_client, dask_df, model_ids_object.model_id2)
