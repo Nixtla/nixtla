@@ -88,8 +88,8 @@ jobs:
 
       - name: Run tests
         if: runner.os != 'Windows'
-        run: pytest --cov=nixtla --reruns 20 --reruns-delay 10 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
+        run: pytest --cov=nixtla --reruns 10 --reruns-delay 10 --only-rerun httpcore.ConnectError --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        run: pytest --cov=nixtla -m "not distributed_run" --reruns 20 --reruns-delay 10 --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
+        run: pytest --cov=nixtla -m "not distributed_run" --reruns 10 --reruns-delay 10 --only-rerun httpcore.ConnectError --only-rerun httpx.ConnectError --only-rerun urllib.error.HTTPError nixtla_tests
