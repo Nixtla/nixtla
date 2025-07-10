@@ -1,0 +1,116 @@
+---
+title: "Cross Validation"
+description: "Learn how to validate your forecast models using time series cross-validation."
+icon: "clipboard-check"
+---
+
+# Cross-Validation
+
+<Info>
+Cross-validation is a robust method to evaluate and improve your forecasting models. By splitting your time series into multiple windows, you can test how well your model performs on unseen data.
+</Info>
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/09_cross_validation.ipynb)
+
+<Steps>
+  <Step title="1. Install and Import Dependencies">
+    <Info>
+      Make sure you have the `pandas` and `nixtla` libraries installed.
+    </Info>
+
+```python Import dependencies
+import pandas as pd
+from nixtla import NixtlaClient
+```
+  </Step>
+
+  <Step title="2. Initialize Nixtla Client">
+    <Check>
+      Replace `my_api_key_provided_by_nixtla` with the API key you received from Nixtla.
+    </Check>
+
+    <Tabs>
+      <Tab title="Default Nixtla Setup">
+```python Default NixtlaClient initialization
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+      </Tab>
+      <Tab title="Azure AI Setup">
+        <Check>
+          To use an Azure AI endpoint, add the `base_url` argument.
+        </Check>
+```python Azure AI NixtlaClient initialization
+nixtla_client = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="my_api_key_provided_by_nixtla"
+)
+```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="3. Read and Prepare Data">
+```python Load dataset
+# Read the data
+df = pd.read_csv(
+    "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv"
+)
+```
+    <Info>
+      In this example, we are using the airplane passengers dataset. You can replace the URL with your own dataset.
+    </Info>
+  </Step>
+
+  <Step title="4. Perform Cross-Validation">
+    <Info>
+      Specify the number of windows with the `n_windows` argument. Each window will be used to generate forecasts and evaluate performance.
+    </Info>
+```python Cross-validation example
+# Cross-validation using two windows
+forecast_cv_df = nixtla_client.cross_validation(
+    df=df,
+    h=12,
+    n_windows=2,
+    time_col='timestamp',
+    target_col="value",
+)
+```
+    <AccordionGroup>
+      <Accordion title="Detailed Logging">
+```bash Cross-validation logs
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
+```
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+</Steps>
+
+<Info>
+If you're using an Azure AI endpoint for forecasting, define the model explicitly by setting `model="azureai"` in the `forecast` method:
+</Info>
+
+```python Forecast with Azure AI model
+nixtla_client.forecast(
+    ...,
+    model="azureai"
+)
+```
+
+<CardGroup>
+  <Card title="timegpt-1">
+    This is the default model in the public API. It provides reliable short- to medium-range forecasts.
+  </Card>
+  <Card title="timegpt-1-long-horizon">
+    Designed for extended-range forecasts. Refer to the [long-horizon forecasting tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting) for more details.
+  </Card>
+</CardGroup>
+
+<Info>
+For more guidance and examples, consult our [cross-validation tutorial](https://docs.nixtla.io/docs/tutorials-cross_validation).
+</Info>

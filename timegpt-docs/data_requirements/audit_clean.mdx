@@ -1,0 +1,224 @@
+---
+title: "Audit and Clean Data"
+description: "Learn how to audit and clean your data with TimeGPT."
+icon: "table"
+---
+
+The `audit_data` and `clean_data` methods from TimeGPT can help you identify and fix potential issues in your data.
+
+The `audit_data` method checks for common problems such as duplicates, missing dates, categorical columns, negative values, and leading zeros. While not all issues will result in errors, addressing them can improve the quality of the forecasts, depending on your specific use case. 
+Once identified, `clean_data` can be used to automatically fix these issues. 
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/24_audit_data.ipynb)
+
+## How to Use the Audit and Clean Methods 
+
+### Step 1: Import Packages
+
+To use the `audit_data` and `clean_data` methods, you first need to import and instantiate the `NixtlaClient` class.
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'  # defaults to os.environ.get("NIXTLA_API_KEY")
+)
+```
+
+### Step 2: Create Minimal Example 
+
+The `audit_data` method performs a series of checks to identify issues in your data. These checks fall into two categories:
+
+<table>
+  <thead>
+    <tr>
+      <th><strong>Check Type</strong></th>
+      <th><strong>Description</strong></th>
+      <th><strong>Checks Performed</strong></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Fail</strong></td>
+      <td>Issues that will cause errors when you run TimeGPT</td>
+      <td>
+        Duplicate rows (D001)<br />
+        Missing dates (D002)<br />
+        Categorical feature columns (F001)
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Case-specific</strong></td>
+      <td>Issues that may not cause errors but could negatively affect your results</td>
+      <td>
+        Negative values (V001)<br />
+        Leading zeros (V002)
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+To show how the `audit_data` method works, we will create a sample dataset with missing dates, negative values and leading zeros. 
+
+```python 
+df = pd.DataFrame({
+    'unique_id': ['id1', 'id1', 'id1', 'id2', 'id2', 'id2', 'id2', 'id3', 'id3', 'id3', 'id3'],
+    'ds': ['2023-01-01', '2023-01-03', '2023-01-04', '2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04'],
+    'y': [1, 1, 1, 0, 0, 1, 2, -1, 0, 1, -2]
+})
+df
+```
+
+| unique_id | ds         | y  |
+|-----------|------------|----|
+| id1       | 2023-01-01 | 1  |
+| id1       | 2023-01-03 | 1  |
+| id1       | 2023-01-04 | 1  |
+| id2       | 2023-01-01 | 0  |
+| id2       | 2023-01-02 | 0  |
+| id2       | 2023-01-03 | 1  |
+| id2       | 2023-01-04 | 2  |
+| id3       | 2023-01-01 | -1 |
+| id3       | 2023-01-02 | 0  |
+| id3       | 2023-01-03 | 1  |
+| id3       | 2023-01-04 | -2 |
+
+### Step 3: Audit Data
+
+The `audit_data` method requires the following parameters:
+
+- `df` *(required)*: A pandas DataFrame with your input data.
+
+- `freq` *(required)*: The frequency of your time series data (e.g., `D` for daily, `M` for monthly).
+
+- `id_col`: Column name identifying each unique series. Default is `unique_id`.
+
+- `time_col`: Column name containing timestamps. Default is `ds`.
+
+- `target_col`: Column name containing the target variable. Default is `y`.
+
+Additionally, you can use the following optional parameters to specify how missing dates are identified:
+
+- `start`: The initial timestamp for the series.
+
+- `end`: The final timestamp for the series.
+
+Both `start` and `end` can take the following options:
+
+- `per_serie`: Uses the first or last timestamp of each individual series.
+
+- `global`: Uses the earliest or latest timestamp from the entire dataset.
+
+- A specific timestamp or integer (e.g., `2025-01-01`, `2025`, or `datetime(2025, 1, 1)`).
+
+```python 
+all_pass, fail_dfs, case_specific_dfs = nixtla_client.audit_data(
+    df = df,
+    freq = 'D', 
+    start = 'per_serie', 
+    end = 'per_serie'
+)
+```
+
+The audit_data method returns three values:
+
+- **all_pass** (bool): True if every check passed, otherwise False.
+
+- **fail_dfs** (dict): Any failed tests (D001, D002 or F001), each paired with the rows that failed.
+
+- **case_specific_dfs** (dict): Any case-specific tests (V001 or V002), each paired with the rows flagged.
+
+In the example above, the `audit_data` method should find missing dates (D002), negative values (V001), and leading zeros (V002).
+
+### Step 4. Clean Data 
+
+The `clean_data` method fixes the issues identified by the `audit_data` method. It requires the output of `audit_data`, so it must always be run after it. The `clean_data` method takes the following parameters:
+
+- `df` *(required)*: A pandas DataFrame with your input data.
+
+- `fail_dict` *(required)*: A dictionary with failed checks, as returned by the `audit_data` method.
+
+- `case_specific_dict` *(required)*: A dictionary with case-specific checks, also returned by the `audit_data` method.
+
+- `freq` *(required)*: The frequency of your time series data (e.g., `D` for daily, `M` for monthly). Can be a string, integer, or pandas offset.
+
+- `clean_case_specific`: Whether to clean case-specific issues (e.g., negative values, leading zeros). Default is `False`.
+
+- `id_col`: Column name identifying each unique series. Default is `unique_id`.
+
+- `time_col`: Column name containing timestamps or integer steps. Default is `ds`.
+
+- `target_col`: Column name containing the target variable. Default is `y`.
+
+```python 
+clean_df, all_pass, fail_dfs, case_specific_dfs = nixtla_client.clean_data(
+    df = df, 
+    fail_dict = fail_dfs,
+    case_specific_dict = case_specific_dfs,
+    clean_case_specific = True, 
+    freq = 'D'
+)
+clean_df
+```
+| unique_id | ds         | y   |
+|-----------|------------|-----|
+| id1       | 2023-01-01 | 1.0 |
+| id1       | 2023-01-03 | 1.0 |
+| id1       | 2023-01-04 | 1.0 |
+| id1       | 2023-01-02 | NaN |
+| id2       | 2023-01-03 | 1.0 |
+| id2       | 2023-01-04 | 2.0 |
+| id3       | 2023-01-01 | 0.0 |
+| id3       | 2023-01-02 | 0.0 |
+| id3       | 2023-01-03 | 1.0 |
+| id3       | 2023-01-04 | 0.0 |
+
+In this example, `clean_data` added the missing date in `id1`, removed the leading zeros in `id2`, and replaced the negative values in `id3`. 
+However, replacing negative values with zeros introduced new leading zeros in `id3`, so a second run of `clean_data` is required.
+
+```python 
+clean_df2, all_pass, fail_dfs, case_specific_dfs = nixtla_client.clean_data(
+    df = clean_df, 
+    fail_dict = fail_dfs,
+    case_specific_dict = case_specific_dfs,
+    clean_case_specific = True, # if False, the case-specific tests will be ignored
+    freq = 'D'
+)
+clean_df2
+```
+
+| unique_id | ds         | y   |
+|-----------|------------|-----|
+| id1       | 2023-01-01 | 1.0 |
+| id1       | 2023-01-03 | 1.0 |
+| id1       | 2023-01-04 | 1.0 |
+| id1       | 2023-01-02 | NaN |
+| id2       | 2023-01-03 | 1.0 |
+| id2       | 2023-01-04 | 2.0 |
+| id3       | 2023-01-03 | 1.0 |
+| id3       | 2023-01-04 | 0.0 |
+
+After the second run of `clean_data`, the leading zeros in `id3` have been removed. 
+The only remaining step is to fill the missing value created when the missing date was added in `id1`, and to sort the DataFrame by `unique_id` and `ds`.
+
+| unique_id | ds         | y   |
+|-----------|------------|-----|
+| id1       | 2023-01-01 | 1.0 |
+| id1       | 2023-01-02 | 0.0 |
+| id1       | 2023-01-03 | 1.0 |
+| id1       | 2023-01-04 | 1.0 |
+| id2       | 2023-01-03 | 1.0 |
+| id2       | 2023-01-04 | 2.0 |
+| id3       | 2023-01-03 | 1.0 |
+| id3       | 2023-01-04 | 0.0 |
+
+## Conclusion 
+
+The `audit_data` method helps you identify issues that may prevent TimeGPT from running properly. 
+These include fail tests (duplicate rows, missing dates, and categorical feature columns), which will always result in errors if not addressed. 
+It also flags case-specific issues (negative values and leading zeros), which may not cause errors but can affect the quality of your forecasts depending on your use case.
+
+The `clean_data` method can automatically fix the issues identified by `audit_data`. 
+Be cautious when removing negative values or leading zeros, as they may contain important information about your data. 
+Above all, when auditing and cleaning your data, make decisions based on the needs and context of your specific use case.

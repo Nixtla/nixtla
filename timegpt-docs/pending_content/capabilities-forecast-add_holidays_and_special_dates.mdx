@@ -1,0 +1,121 @@
+---
+title: "Add holidays and special dates"
+description: "Incorporate country-specific holidays and custom special dates into your forecasting models to improve accuracy."
+icon: "calendar"
+---
+
+<Info>
+Easily incorporate country-specific holidays and custom special dates into your forecasting. This feature helps your models capture seasonal effects and important observances to improve forecast accuracy.
+</Info>
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/10_prediction_intervals.ipynb)
+
+For a quick interactive walkthrough, open the notebook in Google Colab by clicking above.
+
+<CardGroup cols={2}>
+  <Card title="Why consider holidays?">
+    Holidays often reflect strong seasonal patterns. Accounting for them helps your forecasts better capture shifts in consumer behavior, staffing needs, and overall demand.
+  </Card>
+  <Card title="Why define special dates?">
+    Beyond standard holidays, custom special dates (such as company events, promotions, or local celebrations) can further improve the granularity and accuracy of your forecasting.
+  </Card>
+</CardGroup>
+
+<Steps>
+  <Step title="Install and Import Dependencies">
+
+```python Install and Dependencies
+import pandas as pd
+from nixtla import NixtlaClient
+from nixtla.date_features import CountryHolidays, SpecialDates
+```
+
+  </Step>
+  <Step title="Create a Nixtla Client">
+    Use one of the following options to initialize the Nixtla client.
+    <Tabs>
+      <Tab title="Default Nixtla Endpoint">
+
+```python Default Nixtla Client Initialization
+nixtla_client = NixtlaClient(
+    # Defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+      </Tab>
+      <Tab title="Using Azure AI Endpoint">
+        <Info>
+          You must explicitly set the **base_url** parameter for Azure AI endpoints.
+        </Info>
+
+```python Azure AI Client Initialization
+nixtla_client = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="your api_key"
+)
+```
+
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Retrieve Country-Specific Holidays">
+    <AccordionGroup>
+      <Accordion title="Show code">
+
+```python Retrieve Country-specific Holidays
+# Retrieve country-specific holidays (example for the US)
+c_holidays = CountryHolidays(countries=['US'])
+
+periods = 365 * 1
+dates = pd.date_range(end='2023-09-01', periods=periods)
+
+holidays_df = c_holidays(dates)
+holidays_df.head()
+```
+
+      </Accordion>
+    </AccordionGroup>
+
+    <Check>
+      Country-level holidays help capture recurring seasonal effects. Make sure to specify countries relevant to your business.
+    </Check>
+  </Step>
+  <Step title="Define and Retrieve Custom Special Dates">
+    <AccordionGroup>
+      <Accordion title="Show code">
+
+```python Define Custom Special Dates
+# Define custom special dates
+special_dates = SpecialDates(
+    special_dates={
+        'Important Dates': [
+            '2021-02-26',
+            '2020-02-26'
+        ],
+        'Very Important Dates': [
+            '2021-01-26',
+            '2020-01-26',
+            '2019-01-26'
+        ]
+    }
+)
+
+periods = 365 * 1
+dates = pd.date_range(end='2023-09-01', periods=periods)
+
+special_dates_df = special_dates(dates)
+special_dates_df.head()
+```
+
+      </Accordion>
+    </AccordionGroup>
+
+    <Info>
+      By defining your own special dates, you can capture one-time events or patterns that repeat on arbitrary dates.
+    </Info>
+  </Step>
+</Steps>
+
+For a more comprehensive tutorial on leveraging holidays and special dates in your forecasting models, see:
+[Holidays and special dates](https://docs.nixtla.io/docs/tutorials-holidays_and_special_dates).

@@ -1,0 +1,285 @@
+---
+title: "Changelog"
+description: "Complete list of changes for each version of the Nixtla client."
+icon: "clipboard"
+---
+
+## Changelog Overview
+
+Below you’ll find the complete list of changes for each version of the Nixtla client. Expand any version to see details about new features, improvements, changes, or deprecations, along with links to full release notes.
+
+<AccordionGroup>
+
+<Accordion title="Version 0.6.6">
+
+### Feature Enhancements
+
+<Info>
+**Online anomaly detection**
+We introduce the `online_anomaly_detection` method, which allows you to define a `detection_size` on which to look for anomalies.
+</Info>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.6.6)
+
+</Accordion>
+
+<Accordion title="Version 0.6.5">
+
+### Feature Enhancements
+
+<CardGroup>
+
+  <Card title="Persisting fine-tuned models">
+
+  You can now run an isolated fine-tuning process, save the model, and use it afterward in all of our methods:
+  <br />
+  <Steps>
+    <Steps title="Fine-tune the model" />
+    <Steps title="Save the model" />
+    <Steps title="Use it in forecast, cross_validation, or detect_anomalies" />
+  </Steps>
+  </Card>
+
+  <Card title="zstd compression">
+
+  All requests above 1MB are automatically compressed using
+  [zstd](https://github.com/facebook/zstd), which helps when sending large data volumes or with slower connections.
+  </Card>
+
+  <Card title="Refit argument in `cross_validation`">
+
+  Set `refit=False` to fine-tune the model only on the first window in
+  `cross_validation`. This significantly decreases computation time.
+  </Card>
+
+</CardGroup>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.6.5)
+
+</Accordion>
+
+<Accordion title="Version 0.6.4">
+
+### Feature Enhancements
+
+<CardGroup>
+
+  <Card title="Integer and custom pandas frequencies">
+
+  The client now supports integer timestamps and frequencies, and custom pandas timestamps
+  (including [CustomBusinessHour](https://pandas.pydata.org/docs/reference/api/pandas.tseries.offsets.CustomBusinessHour.html)).
+  </Card>
+
+  <Card title="Usage method">
+
+  You can programmatically retrieve your current API call count and limits using the new `usage` method.
+  </Card>
+
+  <Card title="Historic exogenous in cross validation">
+
+  The `cross_validation` method now accepts the `hist_exog_list` parameter, enabling definition of historical exogenous features.
+  </Card>
+
+</CardGroup>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.6.4)
+
+</Accordion>
+
+<Accordion title="Version 0.6.2">
+
+### Feature Enhancements
+
+<Info>
+**Fine-tune depth**
+Specify the fine-tuning depth through the `finetune_depth` parameter in
+`forecast` and `cross_validation`.
+</Info>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.6.2)
+
+</Accordion>
+
+<Accordion title="Version 0.6.0">
+
+### Feature Enhancements
+
+<CardGroup>
+
+  <Card title="V2 API endpoints">
+
+  The client now uses V2 API endpoints, providing lower latency.
+  </Card>
+
+  <Card title="orjson serialization">
+
+  Payload serialization now uses [orjson](https://github.com/ijl/orjson) for performance improvements, especially with exogenous features.
+  </Card>
+
+  <Card title="Historical exogenous features">
+
+  Historical exogenous features (`hist_exog_list`) are supported in the `forecast` method.
+  </Card>
+
+  <Card title="Feature contributions">
+
+  Activate feature contributions by setting:
+
+```python Feature Contributions Example
+feature_contributions = True
+```
+
+  in the `forecast` method.
+  </Card>
+
+</CardGroup>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.6.0)
+
+</Accordion>
+
+<Accordion title="Version 0.5.0">
+
+### Feature Enhancements
+
+<Info>
+**Cross validation endpoint**
+The `cross_validation` method now performs a single API call instead of individual calls per window.
+</Info>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.5.0)
+
+</Accordion>
+
+<Accordion title="Version 0.4.0">
+
+### Changes & Deprecations
+
+<Warning>
+**Important:**
+The `nixtlats` package has been deprecated in favor of the `nixtla` package.
+</Warning>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.4.0)
+
+</Accordion>
+
+<Accordion title="Version 0.3.0">
+
+### Changes & Deprecations
+
+<Warning>
+**Deprecation of `TimeGPT` class**
+Replace `TimeGPT` with `NixtlaClient`. Also note:
+
+  - Parameters renamed: `token` → `api_key`, `environment` → `base_url`
+
+  - Method renamed: `validate_token` → `validate_api_key`
+
+  - Update environment variables to match new parameter names.
+
+
+</Warning>
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.3.0)
+
+</Accordion>
+
+<Accordion title="Version 0.2.0 (Previously Released)">
+
+### Changes & Deprecations
+
+<Info>
+Renamed fine-tuning parameter:
+</Info>
+
+  - From `finetune_steps` to `fewshot_steps`
+
+
+(This change was later reverted for compatibility reasons).
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.2.0)
+
+</Accordion>
+
+<Accordion title="Version 0.1.21">
+
+### Feature Enhancements
+
+<Info>
+Quantile forecasts added to:
+</Info>
+
+  - `forecast`
+
+  - `cross_validation`
+
+
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.1.21)
+
+</Accordion>
+
+<Accordion title="Version 0.1.20">
+
+### Feature Enhancements
+
+<Info>
+Enhanced fine-tuning capability with new parameters:
+</Info>
+
+  - `finetune_loss`
+
+  - `finetune_steps`
+
+
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.1.20)
+
+</Accordion>
+
+<Accordion title="Version 0.1.19">
+
+### Feature Enhancements
+
+<Info>
+Implemented `num_partitions` parameter for improved resource optimization.
+</Info>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.1.19)
+
+</Accordion>
+
+<Accordion title="Version 0.1.18">
+
+### Feature Enhancements
+
+<CardGroup>
+  <Card title="New model: `timegpt-1-long-horizon`">
+    Support for longer forecast horizons with our specialized model.
+  </Card>
+
+  <Card title="Cross-validation support for multiple windows">
+    Evaluate model performance across different time periods.
+  </Card>
+
+  <Card title="Improved retry behavior">
+    Using parameters:
+    - `max_retries`
+    - `retry_interval`
+    - `max_wait_time`
+  </Card>
+
+  <Card title="Environment tokens">
+    Environment tokens are now handled automatically.
+  </Card>
+
+  <Card title="Introduced a [FAQ section](https://docs.nixtla.io/docs/faqs)">
+    Common questions and answers to help you get started.
+  </Card>
+</CardGroup>
+
+[See full changelog here](https://github.com/Nixtla/nixtla/releases/v0.1.18)
+
+</Accordion>
+
+</AccordionGroup>

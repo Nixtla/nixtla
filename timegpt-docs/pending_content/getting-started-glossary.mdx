@@ -1,0 +1,145 @@
+---
+title: "Glossary"
+description: "Key terminology and concepts for time series forecasting with TimeGPT"
+icon: "book-open"
+---
+
+<Info>
+Below are key concepts related to time series forecasting, designed to help you understand and harness the capabilities of TimeGPT. Click any section to expand and learn more.
+</Info>
+
+<AccordionGroup>
+
+<Accordion title="Time Series">
+A time series is a sequence of data points indexed by time, used to model phenomena that change over intervals (e.g., stock prices, temperature measurements, or product sales).
+
+
+Time series data often includes:
+- **Trend:** The long-term upward or downward direction of the data.
+- **Seasonality:** A recurring behavior with a known frequency (e.g., daily, weekly, yearly).
+- **Remainder:** Random noise or residual effects after accounting for trend and seasonality.
+</Accordion>
+
+<Accordion title="Forecasting">
+Forecasting predicts future values of a time series based on historical data. It plays a vital role in decision-making across many industries, including finance, healthcare, retail, and economics.
+
+Use cases vary from simple to advanced methods, such as:
+<Tabs>
+  <Tab title="Model Approaches">
+
+      - **Univariate models:** Use a single variable to predict future values.
+
+      - **Multivariate models:** Incorporate multiple variables to generate forecasts.
+
+      - **Local models:** Estimate parameters independently for each series.
+
+      - **Global models:** Estimate parameters jointly across multiple series.
+
+
+  </Tab>
+  <Tab title="Forecast Types">
+
+      - **Point forecasts:** Provide single-value predictions.
+
+      - **Probabilistic forecasts:** Express forecasts as probability distributions to capture uncertainty.
+
+
+  </Tab>
+</Tabs>
+</Accordion>
+
+<Accordion title="Foundation Model">
+A foundation model is a large, pre-trained model adaptable across multiple tasks—including forecasting. Popularized in natural language processing and computer vision, foundation models now also serve sequential data such as time series. They are trained on extensive datasets to capture general patterns, and can be adapted for specific tasks with fine-tuning.
+</Accordion>
+
+<Accordion title="TimeGPT">
+TimeGPT is the first foundation model built specifically for time series forecasting, developed by Nixtla. Trained on billions of observations across diverse, publicly available datasets, TimeGPT:
+
+  - Produces accurate forecasts from new time series data without immediate additional training.
+
+  - Sequentially reads "tokens" of historic data from left to right to predict future values.
+
+
+</Accordion>
+
+<Accordion title="Tokens">
+Tokens in TimeGPT are small sequential segments of time series data. This is analogous to NLP tokens (words or characters), but for time series data points. By reading tokens one by one, TimeGPT uncovers complex dependencies in the sequence.
+</Accordion>
+
+<Accordion title="Fine-tuning">
+Fine-tuning adapts the pre-trained TimeGPT model to a specific dataset or task by performing additional training. While TimeGPT can already forecast in a zero-shot fashion (no extra data required), fine-tuning with your custom dataset often boosts accuracy.
+
+<Info>
+  **Learn more:**[How to fine-tune TimeGPT](https://docs.nixtla.io/docs/tutorials-fine_tuning)
+</Info>
+
+```python fine-tuning-example
+# Example: Fine-tuning TimeGPT
+
+from nixtla import TimeGPT
+
+# Load TimeGPT
+model = TimeGPT()
+
+# Assume we have a custom dataset called 'my_time_series_data'
+# Fine-tune the model on this dataset (pseudo-code)
+model.fine_tune(data=my_time_series_data, epochs=5)
+
+# The model is now adapted to our dataset
+forecast = model.predict(my_time_series_data)
+
+print(forecast)
+```
+</Accordion>
+
+<Accordion title="Historical Forecasts">
+Historical forecasts (also called in-sample forecasts) are predictions made on previously observed data to evaluate a model's accuracy. By comparing these predictions to the actual values, you can assess how well your model performs on known data.
+
+<Info>
+  **Learn more:**[Making historical forecasts with TimeGPT](https://docs.nixtla.io/docs/tutorials-historical_forecast)
+</Info>
+</Accordion>
+
+<Accordion title="Anomaly Detection">
+Anomaly detection identifies points in a time series that differ significantly from typical behavior. These anomalies may stem from data collection errors, abrupt changes in underlying patterns, or external events. They can distort forecasts by obscuring trends or seasonal patterns.
+
+Common uses include:
+
+  - Fraud detection in finance
+
+  - Performance monitoring for digital services
+
+  - Spotting unexpected trends in energy consumption
+
+
+
+<Info>
+  **Learn more:**[Detect anomalies with TimeGPT](https://docs.nixtla.io/docs/capabilities-anomaly-detection-anomaly_detection)
+</Info>
+</Accordion>
+
+<Accordion title="Time Series Cross Validation">
+Time series cross-validation assesses how well a forecasting model performs by repeatedly training on historical data and testing on the next time segment. Unlike standard cross-validation, it respects the time order and avoids data leakage.
+
+<Steps>
+  <Step>Partition your time-based dataset into multiple segments.</Step>
+  <Step>Train the model on an earlier segment.</Step>
+  <Step>Forecast the subsequent segment.</Step>
+  <Step>Compare predictions to actual values.</Step>
+  <Step>Slide the window forward and repeat.</Step>
+</Steps>
+
+<Info>
+  **Learn more:**[Performing cross-validation with TimeGPT](https://docs.nixtla.io/docs/tutorials-cross_validation)
+</Info>
+</Accordion>
+
+<Accordion title="Exogenous Variables">
+Exogenous variables are external factors that influence a target time series but are not driven by the series itself (e.g., holidays or weather conditions). Including these variables in a forecast can improve accuracy by capturing additional context.
+
+<Info>
+  **Learn more:**[Including exogenous variables in TimeGPT](https://docs.nixtla.io/docs/tutorials-exogenous_variables)
+</Info>
+</Accordion>
+
+</AccordionGroup>

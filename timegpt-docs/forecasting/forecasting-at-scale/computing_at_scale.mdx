@@ -1,0 +1,123 @@
+---
+title: "Computing at Scale Tutorial"
+description: "Learn how to use TimeGPT with distributed computing frameworks for processing large datasets."
+icon: "microchip"
+---
+
+Handling large datasets is a common challenge in time series forecasting. For example, when working with retail data, you may need to forecast sales for thousands of products across hundreds of stores. Similarly, when dealing with electricity consumption data, you may need to predict consumption for thousands of households across multiple regions.
+
+Nixtla's **TimeGPT** enables you to efficiently scale these operations by integrating several distributed computing frameworks. Currently, **Spark**, **Dask**, and **Ray** are supported through **Fugue**.
+
+<Info>TimeGPT's distributed capabilities help you handle expansive datasets by parallelizing your forecasts across multiple time series, drastically reducing computation times.</Info>
+
+## Outline
+
+1. [Getting Started](#1-getting-started)
+2. [Forecasting at Scale](#2-forecasting-at-scale)
+3. [Important Considerations](#3-important-considerations)
+
+---
+
+## 1. Getting Started
+
+<Check>To use TimeGPT in any scenario—distributed or not—you must first have your API key. Make sure you've registered and confirmed your signup email with Nixtla.</Check>
+
+Upon [registration](https://dashboard.nixtla.io/), you will receive an email prompting you to confirm your signup. Once confirmed, you can access your dashboard. Navigate to the **API Keys** section to retrieve your key.
+
+<Info>For detailed steps on connecting your API key to Nixtla's SDK, see the
+[Setting Up Your Authentication Key tutorial](/setup/setting_up_your_api_key).</Info>
+
+---
+
+## 2. Forecasting at Scale
+
+Using TimeGPT with distributed computing frameworks is straightforward. The process only slightly differs from non-distributed usage.
+
+<Steps>
+  <Step title="1. Instantiate a NixtlaClient class">
+    ```python NixtlaClient Instantiation
+    from nixtla import NixtlaClient
+
+    # Replace 'YOUR_API_KEY' with the key obtained from your Nixtla dashboard
+    client = NixtlaClient(api_key="YOUR_API_KEY")
+    ```
+  </Step>
+
+  <Step title="2. Load your data into a pandas DataFrame">
+    Make sure your data is properly formatted, with each time series uniquely identified (e.g., by store or product).
+
+    ```python Loading Time Series Data
+    import pandas as pd
+
+    data = pd.read_csv("your_time_series_data.csv")
+    ```
+  </Step>
+
+  <Step title="3. Initialize a distributed computing framework">
+    Currently, TimeGPT supports:
+
+      - [Spark](/forecasting/forecasting-at-scale/spark)
+
+      - [Dask](/forecasting/forecasting-at-scale/dask)
+
+      - [Ray](/forecasting/forecasting-at-scale/ray)
+
+
+    Follow the links above for examples on setting up each framework.
+  </Step>
+
+  <Step title="4. Use NixtlaClient methods to forecast at scale">
+    Once your framework is initialized and your data is loaded, you can apply the forecasting methods:
+
+    ```python Forecasting Example with NixtlaClient
+    # Example function call within the distributed environment
+    forecast_results = client.forecast(
+        data=data,
+        h=14     # horizon (e.g., 14 days)
+    )
+    ```
+  </Step>
+
+  <Step title="5. Stop the distributed computing framework">
+    When you're finished, you may need to terminate your Spark, Dask, or Ray session. This depends on your environment and setup.
+  </Step>
+</Steps>
+
+<Info>Parallelization in these frameworks operates across multiple time series within your dataset. Ensure each series is uniquely identified so the parallelization can be fully leveraged.</Info>
+
+---
+
+## 3. Important Considerations
+
+<AccordionGroup>
+  <Accordion title="When to Use a Distributed Computing Framework">
+    Consider a distributed framework if your dataset:
+
+      - Contains millions of observations across multiple time series.
+
+      - Cannot fit into memory on a single machine.
+
+      - Requires extensive processing time that is impractical on a single machine.
+
+
+  </Accordion>
+
+  <Accordion title="Choosing the Right Framework">
+    When selecting Spark, Dask, or Ray, weigh your existing infrastructure and your team's expertise. Minimal code changes allow TimeGPT to work with each of these frameworks seamlessly. Pick the framework that aligns with your organization's tools and resources for the most efficient large-scale forecasting efforts.
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={2}>
+  <Card title="Key Concept:">
+
+    Distribute your forecasts across multiple compute nodes to handle huge datasets without clogging up memory or single-machine resources.
+  </Card>
+  <Card title="Key Concept:">
+
+    Make sure your data has distinct identifiers for each series. Correct labeling is crucial for successful multi-series parallel forecasts.
+  </Card>
+</CardGroup>
+
+---
+
+With these guidelines, you can efficiently forecast large-scale time series data using TimeGPT and the distributed computing framework that best fits your environment.

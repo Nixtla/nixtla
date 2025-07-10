@@ -1,0 +1,175 @@
+---
+title: "Long-horizon forecasting Tutorial"
+description: "Learn how to use the TimeGPT long-horizon model for forecasting far into the future with Nixtla client."
+icon: "clock"
+---
+
+Long-horizon forecasting refers to predictions far into the future, typically exceeding two seasonal periods.
+The exact threshold depends on data frequency. The further you forecast, the more uncertainty you face.
+To tackle these extended prediction windows, Nixtla provides the specialized
+`timegpt-1-long-horizon` model in TimeGPT.
+
+<CardGroup cols={3}>
+  <Card title="What is Long-Horizon Forecasting?">
+
+    Long-horizon forecasting refers to predictions far into the future—typically exceeding two seasonal periods—where uncertainty grows significantly. For instance, forecasting 72 hours ahead is long-horizon for hourly data, two years ahead for monthly data, and over two weeks for daily data.
+  </Card>
+  <Card title="Key Challenge">
+
+    Because these forecasts extend far into the future, they may be influenced by unforeseen factors not present in the initial dataset. Hence, long-horizon forecasts generally involve greater risk and uncertainty.
+  </Card>
+  <Card title="Solution: TimeGPT Model">
+
+    To address unique challenges, Nixtla provides the specialized `timegpt-1-long-horizon` model. Simply specify `model="timegpt-1-long-horizon"` when calling `nixtla_client.forecast`.
+  </Card>
+</CardGroup>
+
+<Info>
+  **For Interactive Tutorials**<br/>
+  Check out our [Google Colab notebook](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/04_longhorizon.ipynb) to run all code cells interactively.
+</Info>
+
+<Steps>
+  <Step title="1. Import Packages">
+    Start by installing and importing the required packages, then initialize the Nixtla client:
+    ```python Import Packages
+    from nixtla import NixtlaClient
+    from datasetsforecast.long_horizon import LongHorizon
+    from utilsforecast.losses import mae
+
+    nixtla_client = NixtlaClient(
+        api_key='my_api_key_provided_by_nixtla'  # defaults to os.environ.get("NIXTLA_API_KEY")
+    )
+    ```
+
+    <Check>
+      **Use an Azure AI Endpoint**<br/>
+      To use an Azure AI endpoint, specify the `base_url` parameter as well:
+
+      `nixtla_client = NixtlaClient(base_url="your azure ai endpoint", api_key="your api_key")`
+    </Check>
+  </Step>
+
+  <Step title="2. Load the Data">
+    We'll demonstrate long-horizon forecasting using the ETTh1 dataset, which measures oil temperatures and load variations on an electricity transformer in China. Here, we only forecast oil temperatures (`y`):
+    ```python Load ETTh1 Dataset
+    Y_df, *_ = LongHorizon.load(directory='./', group='ETTh1')
+
+    Y_df.head()
+    ```
+
+    <AccordionGroup>
+      <Accordion title="Download Progress & Logging">
+        <Accordion title="Download Progress & Logging">
+
+        ```bash Download Log
+        100%|██████████| 314M/314M [00:14<00:00, 21.3MiB/s]
+        INFO:datasetsforecast.utils:Successfully downloaded datasets.zip, 314116557, bytes.
+        INFO:datasetsforecast.utils:Decompressing zip file...
+        INFO:datasetsforecast.utils:Successfully decompressed longhorizon\\datasets\\datasets.zip
+        ```
+
+        </Accordion>
+      </Accordion>
+
+      <Accordion title="Sample Rows">
+        |       | unique_id   | ds                    | y          |
+| ----- | ----------- | --------------------- | ---------- |
+| 0     | OT          | 2016-07-01 00:00:00   | 1.460552   |
+| 1     | OT          | 2016-07-01 01:00:00   | 1.161527   |
+| 2     | OT          | 2016-07-01 02:00:00   | 1.161527   |
+| 3     | OT          | 2016-07-01 03:00:00   | 0.862611   |
+| 4     | OT          | 2016-07-01 04:00:00   | 0.525227   |
+
+      </Accordion>
+    </AccordionGroup>
+
+    We'll set our horizon to 96 timestamps (4 days) for testing and use the previous 42 days as input to the model:
+    ```python Setup Horizon and Input Sequence
+    test = Y_df[-96:]              # 96 timestamps (4 days × 24 hours/day)
+    input_seq = Y_df[-1104:-96]    # 1008 timestamps (42 days × 24 hours/day)
+    ```
+  </Step>
+
+  <Step title="3. Forecasting with the Long-Horizon Model">
+    TimeGPT's `timegpt-1-long-horizon` model is optimized for predictions far into the future. Specify it like so:
+    ```python Forecast with TimeGPT Long-Horizon
+    fcst_df = nixtla_client.forecast(
+        df=input_seq,
+        h=96,
+        level=[90],
+        finetune_steps=10,
+        finetune_loss='mae',
+        model='timegpt-1-long-horizon',
+        time_col='ds',
+        target_col='y'
+    )
+    ```
+
+    <AccordionGroup>
+      <Accordion title="Forecast Logging">
+        ```bash Forecast Log
+        INFO:nixtla.nixtla_client:Validating inputs...
+        INFO:nixtla.nixtla_client:Preprocessing dataframes...
+        INFO:nixtla.nixtla_client:Inferred freq: H
+        INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+        ```
+      </Accordion>
+    </AccordionGroup>
+
+    <Info>
+      **Models Available in Azure AI**<br />
+      If you access Azure AI services, set `model="azureai"`:
+      `nixtla_client.forecast(..., model="azureai")`
+    </Info>
+
+    Next, plot the forecast along with 90% confidence intervals:
+    ```python Plot Forecast with Confidence Intervals
+    nixtla_client.plot(
+        Y_df[-168:],
+        fcst_df,
+        models=['TimeGPT'],
+        level=[90],
+        time_col='ds',
+        target_col='y'
+    )
+    ```
+
+    <Frame caption="TimeGPT Long-Horizon Forecast with 90% Confidence Intervals">
+      ![Forecast plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/04_longhorizon_files/figure-markdown_strict/cell-14-output-1.png)
+    </Frame>
+  </Step>
+
+  <Step title="4. Evaluation">
+    Finally, assess forecast performance using Mean Absolute Error (MAE):
+    ```python Evaluate MAE of Forecast
+    test = test.copy()
+    test.loc[:, 'TimeGPT'] = fcst_df['TimeGPT'].values
+
+    evaluation = mae(
+        test,
+        models=['TimeGPT'],
+        id_col='unique_id',
+        target_col='y'
+    )
+
+    print(evaluation)
+    ```
+
+    <AccordionGroup>
+      <Accordion title="Evaluation Results">
+        ```bash MAE Output
+          unique_id   TimeGPT
+        0        OT  0.145393
+        ```
+      </Accordion>
+    </AccordionGroup>
+
+    The model achieves a MAE of approximately `0.146`, indicating strong performance for these longer-range forecasts.
+  </Step>
+</Steps>
+
+<Check>
+  **Congratulations!**<br/>
+  You've successfully set up a long-horizon forecasting pipeline using TimeGPT. Continue exploring to optimize model parameters, add additional covariates, or integrate Azure AI endpoints.
+</Check>

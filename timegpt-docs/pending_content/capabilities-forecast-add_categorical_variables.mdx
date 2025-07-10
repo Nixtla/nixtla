@@ -1,0 +1,147 @@
+---
+title: "Add categorical variables"
+description: "Learn how to create and use custom categorical variables with SpecialDates in TimeGPT forecasting."
+icon: "tags"
+---
+
+<Info>
+TimeGPT supports categorical variables to enhance your forecasts. This document shows you how to create and use custom categorical variables with `SpecialDates`.
+</Info>
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/04_categorical_variables.ipynb)
+
+<CardGroup cols={2}>
+  <Card title="Key Concept: Categorical Variables">
+    Categorical variables are non-numeric data points that help distinguish different groups or conditions in your dataset.
+    For example, holiday labels or season markers can be treated as categorical variables in time series forecasting.
+  </Card>
+  <Card title="Key Concept: SpecialDates">
+    `SpecialDates` is a utility in Nixtla that allows you to define specific date-based labels (e.g., holiday periods, special events).
+    These labels can then be merged into your main dataset as additional columns for forecasting.
+  </Card>
+</CardGroup>
+
+<Steps>
+
+  <Step title="Step 1: Import the Libraries">
+```python Import Libraries
+import pandas as pd
+import datetime
+from nixtla import NixtlaClient
+from nixtla.date_features import SpecialDates
+```
+  </Step>
+
+  <Step title="Step 2: Set Up the Nixtla Client">
+You can either use the default endpoint or an Azure AI endpoint. Select the appropriate tab below:
+
+    <Tabs>
+      <Tab title="Default Endpoint">
+```python Nixtla Client Default Endpoint
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+      </Tab>
+      <Tab title="Azure AI Endpoint">
+        <Check>
+          **Use an Azure AI endpoint**<br />
+          When using an Azure AI endpoint, set the `base_url` argument as shown below.
+        </Check>
+```python Nixtla Client Azure AI Endpoint
+nixtla_client = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="your api_key"
+)
+```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Step 3: Read the Data">
+```python Load Dataset
+# Read the data
+df = pd.read_csv(
+    "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv"
+)
+```
+  </Step>
+
+  <Step title="Step 4: Create Categorical Variables">
+Use `SpecialDates` to define holiday or seasonal periods you want to label in your time series.
+```python Define and Merge Categorical Variables
+# Create categorical variables for Christmas and summer vacations
+categories_dates = SpecialDates(
+    special_dates={
+        'christmas_vacations': [
+            datetime.date(year, 12, 1) for year in range(1949, 1960 + 1)
+        ],
+        'summer_vacations': [
+            datetime.date(year, month, 1)
+            for year in range(1949, 1960 + 1)
+            for month in (6, 7)
+        ]
+    }
+)
+
+dates = pd.date_range('1949-01-01', '1960-12-01', freq='MS')
+categories_df = categories_dates(dates).reset_index(drop=True)
+
+# Merge with the dataset
+cat_df = pd.concat([df, categories_df], axis=1)
+```
+  </Step>
+
+  <Step title="Step 5: Forecast with Categorical Variables">
+```python Forecast with Categorical Variables
+# Forecast
+forecast_df = nixtla_client.forecast(
+    df=cat_df,
+    h=24,
+    target_col='value',
+    time_col='timestamp'
+)
+```
+  </Step>
+
+</Steps>
+
+<Warning>
+Below is an example of the forecast process logs.
+These messages show up when you run the forecast, including any warnings about exogenous variables or horizon lengths.
+</Warning>
+
+<Accordion title="Forecast Process Log">
+```bash Forecast Logs
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:You did not provide X_df. Exogenous variables in df are ignored. To suppress this warning, please add X_df with exogenous variables: christmas_vacations, summer_vacations
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+</Accordion>
+
+<Info>
+**Available models in Azure AI**<br />
+If you use an Azure AI endpoint, set `model="azureai"` explicitly:
+<br /><br />
+```python Azure AI Model Parameter
+nixtla_client.forecast(
+    ...,
+    model="azureai"
+)
+```
+<br />
+The public API supports two models: `timegpt-1` and `timegpt-1-long-horizon`.
+By default, `timegpt-1` is used. See [this tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting) for more details on using the `timegpt-1-long-horizon` model.
+</Info>
+
+<AccordionGroup>
+  <Accordion title="Additional Resource: Categorical Variables Tutorial">
+    For a more in-depth guide on forecasting with categorical variables,
+    see the tutorial here: [Categorical variables](https://docs.nixtla.io/docs/tutorials-categorical_variables).
+  </Accordion>
+</AccordionGroup>

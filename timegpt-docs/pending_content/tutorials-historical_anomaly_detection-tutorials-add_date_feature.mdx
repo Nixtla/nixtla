@@ -1,0 +1,78 @@
+---
+title: "Add Date Features"
+description: "Learn how to enrich datasets with date features for historical anomaly detection."
+icon: "calendar"
+---
+
+## Why Add Date Features?
+
+Date features help the model recognize seasonal patterns, holiday effects, or recurring fluctuations. Examples include `day_of_week`, `month`, `year`, and more.
+
+Adding date features is a powerful way to enrich your dataset when no exogenous variables are available. These features help guide the historical anomaly detection model in recognizing seasonal and temporal patterns.
+
+## How to Add Date Features
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/20_anomaly_detection.ipynb)
+
+### Step 1: Set Up Data and Client
+
+Follow the steps in the [historical anomaly detection tutorial](tutorials-historical_anomaly_detection) to set up the data and client.
+
+### Step 2: Add Date Features for Anomaly Detection
+
+To add date features, use the `date_features` parameter. You can enable all possible features by setting `date_features=True`, or specify certain features to focus on:
+
+```python
+# Add date features at the month and year levels
+anomalies_df_x = nixtla_client.detect_anomalies(
+    df,
+    freq='D',
+    date_features=['month', 'year'],
+    date_features_to_one_hot=True,
+    level=99.99,
+)
+```
+
+This code extracts monthly and yearly patterns, then converts them to one-hot-encoded features, creating multiple exogenous variables for the anomaly detection model.
+
+### Step 3: Review Output Logs
+
+When you run the detection, logs inform you about which exogenous features were used:
+
+```bash
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Using the following exogenous features: [
+  'month_1.0', 'month_2.0', ...
+  'year_2007.0', 'year_2008.0', ...
+]
+INFO:nixtla.nixtla_client:Calling Anomaly Detector Endpoint...
+```
+
+This output shows which date features were used in the anomaly detection process.
+
+### Step 4: Visualize Anomalies
+
+To visualize the anomalies, use the `plot` method:
+
+```python
+nixtla_client.plot(df, anomalies_df_x)
+```
+
+<Frame caption="Anomaly plot showing flagged points based on date features.">
+  ![Date features anomalies plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-10-output-2.png)
+</Frame>
+
+To see the weight contributions of the date features, use the `weights_x` method:
+
+```python
+nixtla_client.weights_x.plot.barh(
+    x='features',
+    y='weights'
+)
+```
+
+<Frame caption="Bar chart indicating which date features contribute most to anomaly detection.">
+  ![Weights plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-11-output-1.png)
+</Frame>

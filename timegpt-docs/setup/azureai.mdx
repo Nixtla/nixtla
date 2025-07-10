@@ -1,0 +1,167 @@
+---
+title: "TimeGEN-1 Quickstart (Azure)"
+description: "Quickstart guide to deploy and use TimeGEN-1 on Azure with the Nixtla Python SDK for time series forecasting."
+icon: "rocket"
+---
+
+<Info>
+  TimeGEN-1 is TimeGPT optimized for Azure infrastructure. It is a production-ready generative pretrained transformer for time series, capable of accurately predicting domains such as retail, electricity, finance, and IoT with minimal code.
+</Info>
+
+
+<CardGroup cols={2}>
+  <Card title="Key Benefit">
+    Azure-native generative forecasting with TimeGEN-1 for streamlined deployments.
+  </Card>
+  <Card title="Use Cases">
+    • Demand forecasting\
+
+    • Electricity load prediction\
+
+    • Financial time series\
+
+    • IoT data analysis
+  </Card>
+</CardGroup>
+
+<Steps>
+  <Step title="Step 1: Set up a TimeGEN-1 endpoint on Azure and generate an API key">
+    1. Visit [ml.azure.com](https://ml.azure.com) and sign in (or create a Microsoft account if needed).
+    2. Click **Models** in the sidebar.
+    3. Search for **TimeGEN** in the catalog and select **TimeGEN-1**.
+    4. Click **Deploy** to create an endpoint.
+
+    <Frame caption="TimeGEN-1 model catalog deployment option.">
+      ![TimeGEN-1 model catalog deployment option](https://github.com/Nixtla/nixtla/blob/main/nbs/img/azure-deploy.png?raw=true)
+    </Frame>
+    5. Click **Endpoint** in the sidebar.
+    6. Copy the **base URL** and **API Key** shown for your TimeGEN-1 endpoint.
+
+    <Frame caption="Endpoint URL and API key for TimeGEN-1.">
+      ![Endpoint URL and API key](https://github.com/Nixtla/nixtla/blob/main/nbs/img/azure-endpoint.png?raw=true)
+    </Frame>
+  </Step>
+  <Step title="Step 2: Install Nixtla Python SDK">
+    Install the **nixtla** package using pip:
+
+    ```shell Install nixtla SDK
+    pip install nixtla
+    ```
+  </Step>
+  <Step title="Step 3: Import and instantiate the Nixtla client">
+    Import the Nixtla client into your Python environment:
+
+    ```python Import NixtlaClient
+    from nixtla import NixtlaClient
+    ```
+
+    Then create a client instance using your TimeGEN-1 endpoint credentials:
+
+    ```python Instantiate NixtlaClient
+    nixtla_client = NixtlaClient(
+        base_url="YOUR_BASE_URL",
+        api_key="YOUR_API_KEY"
+    )
+    ```
+  </Step>
+  <Step title="Step 4: Load your time series data">
+    In this example, we'll use the classic **AirPassengers** dataset to demonstrate forecasting. The dataset shows monthly passenger counts in Australia between 1949 and 1960.
+
+    ```python Load AirPassengers dataset
+    import pandas as pd
+
+    df = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv'
+    )
+    df.head()
+    ```
+
+    Use the Nixtla client to quickly visualize your data:
+
+    ```python Visualize time series
+    nixtla_client.plot(df, time_col='timestamp', target_col='value')
+    ```
+
+    <Frame caption="AirPassengers time series sample visualized.">
+      ![AirPassengers time series visualization](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-12-output-1.png)
+    </Frame>
+    <AccordionGroup>
+      <Accordion title="Data Requirements">
+        <Info>
+          • Ensure the target column has no missing or non-numeric values.\
+
+          • Avoid gaps in date stamps (for the specific frequency) from the initial to final timestamp—missing dates are not automatically imputed.\
+
+          • Datestamps must be in a pandas-readable format. ([See Pandas reference](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html))
+        </Info>
+        See [Data Requirements](/data_requirements/data_requirements) for details.
+      </Accordion>
+      <Accordion title="Saving Figures">
+        <Check>
+          In most notebook environments, figures display automatically. To save a figure locally, run:
+        </Check>
+        ```python Save plot figure
+        fig = nixtla_client.plot(df, time_col='timestamp', target_col='value')
+        fig.savefig('plot.png', bbox_inches='tight')
+        ```
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+  <Step title="Step 5: Generate forecasts">
+    Use the `forecast` method from the Nixtla client to forecast the next 12 months.
+
+    <Card title="Parameters">
+      • `df`: Pandas DataFrame with time series data\
+
+      • `h`: Forecast horizon (number of steps ahead)\
+
+      • `freq`: Time series frequency ([pandas frequency aliases](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases))\
+
+      • `time_col`: Name of timestamp column\
+
+      • `target_col`: Name of forecast variable
+    </Card>
+    ```python Generate 12-month forecast
+    timegen_fcst_df = nixtla_client.forecast(
+        df=df,
+        h=12,
+        freq='MS',
+        time_col='timestamp',
+        target_col='value'
+    )
+    timegen_fcst_df.head()
+    ```
+
+    <Info>
+      Forecast endpoint call logs will be displayed for validation and preprocessing steps.
+    </Info>
+    <Accordion title="Forecast API Call Log">
+      ```bash Forecast API call logs
+      INFO:nixtla.nixtla_client:Validating inputs...
+      INFO:nixtla.nixtla_client:Preprocessing dataframes...
+      INFO:nixtla.nixtla_client:Inferred freq: MS
+      INFO:nixtla.nixtla_client:Restricting input...
+      INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+      ```
+    </Accordion>
+    Example output:
+
+    |   | timestamp  | TimeGPT    |
+    | --- | ---------- | ---------- |
+    | 0 | 1961-01-01 | 437.837921 |
+    | 1 | 1961-02-01 | 426.062714 |
+    | 2 | 1961-03-01 | 463.116547 |
+    | 3 | 1961-04-01 | 478.244507 |
+    | 4 | 1961-05-01 | 505.646484 |
+
+    Visualize the forecast results:
+
+    ```python Visualize forecast results
+    nixtla_client.plot(df, timegen_fcst_df, time_col='timestamp', target_col='value')
+    ```
+
+    <Frame caption="Forecast visualization for the AirPassengers dataset.">
+      ![Forecast visualization AirPassengers](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/22_azure_quickstart_files/figure-markdown_strict/cell-14-output-1.png)
+    </Frame>
+  </Step>
+</Steps>

@@ -1,0 +1,262 @@
+---
+title: "Bitcoin Price Prediction"
+description: "Learn how to use TimeGPT to predict Bitcoin prices and evaluate forecast accuracy."
+icon: "bitcoin"
+---
+
+<Info>
+  Learn how to use TimeGPT for financial time series forecasting with Bitcoin price and market data.
+</Info>
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/use-cases/2_bitcoin_price_prediction.ipynb)
+
+## Introduction
+
+Forecasting time series is a foundational task in finance, supporting decisions for trading, risk management, and strategic planning. However, predicting future asset prices can be complicated due to market volatility. TimeGPT helps streamline this process by providing robust forecasting capabilities for professionals who need accurate financial predictions.
+
+This guide demonstrates Bitcoin price prediction using TimeGPT, including uncertainty quantification for risk management and informed decision-making.
+
+<CardGroup cols={2}>
+  <Card title="Why Forecast Bitcoin Prices">
+    Bitcoin is the first decentralized digital currency, recorded on a public ledger known as the blockchain. It is widely traded, and its price is highly volatile, making accurate forecasting a valuable tool for financial analysis, trading strategies, and risk management.
+  </Card>
+  <Card title="What You'll Learn">
+    • How to load and prepare Bitcoin price data
+    • How to generate short-term forecasts with TimeGPT
+    • How to visualize and interpret forecast results
+    • How to detect anomalies and add exogenous variables
+  </Card>
+</CardGroup>
+
+<Info>
+  The procedures in this tutorial apply to many financial asset forecasting scenarios, not just Bitcoin.
+</Info>
+
+## Tutorial Outline
+
+<Steps>
+  <Step title="Load Bitcoin Price Data" id="load-bitcoin-price-data" />
+  <Step title="Get Started with TimeGPT" id="get-started-with-timegpt" />
+  <Step title="Visualize the Data" id="visualize-the-data" />
+  <Step title="Forecast with TimeGPT" id="forecast-with-timegpt" />
+  <Step title="Extend Bitcoin Price Analysis with TimeGPT" id="extend-bitcoin-price-analysis-with-timegpt" />
+  <Step title="Understand the Model Limitations" id="understand-the-model-limitations" />
+  <Step title="References and Additional Material" id="references-and-additional-material" />
+</Steps>
+
+---
+
+## 1. Load Bitcoin Price Data
+
+Bitcoin (₿) is the first decentralized digital currency, with transactions recorded on a public ledger called the blockchain. Bitcoins are created through mining—solving cryptographic tasks—and are used for payments, trading, and long-term investment.
+
+<Info>
+  For convenience, we'll rename columns to match TimeGPT's expected `ds` (date) and `y` (target) format.
+</Info>
+
+<CodeGroup>
+```python Load Bitcoin Dataset
+import pandas as pd
+
+df = pd.read_csv(
+    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/bitcoin_price_usd.csv',
+    sep=','
+)
+
+df.head()
+```
+</CodeGroup>
+
+This dataset includes daily Bitcoin closing prices (in USD) from 2020-01-01 to 2023-12-31. While Bitcoin trades continuously, "closing price" here refers to a specific daily time rather than a traditional market close.
+
+<CodeGroup>
+```python Rename Columns for TimeGPT
+# Rename the columns for convenience
+df.rename(columns={'Date': 'ds', 'Close': 'y'}, inplace=True)
+```
+</CodeGroup>
+
+---
+
+## 2. Get Started with TimeGPT
+
+Initialize the `NixtlaClient` with your Nixtla API key.
+
+<CodeGroup>
+```python Initialize NixtlaClient
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+</CodeGroup>
+
+<Info>
+  When using Azure AI, you must also specify `base_url` in the `NixtlaClient`.
+</Info>
+
+<Tabs>
+  <Tab title="Default Endpoint">
+    <CodeGroup>
+    ```python Default NixtlaClient Endpoint
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key="my_api_key_provided_by_nixtla"
+)
+    ```
+    </CodeGroup>
+  </Tab>
+  <Tab title="Azure AI Endpoint">
+    <CodeGroup>
+    ```python Azure AI NixtlaClient Endpoint
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    base_url="your Azure AI endpoint",
+    api_key="your api_key"
+)
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+You can learn more about API keys in the [Nixtla Authentication Guide](/setup/setting_up_your_api_key).
+
+---
+
+## 3. Visualize the Data
+
+TimeGPT's client offers a convenient `plot` method to visualize your data:
+
+<CodeGroup>
+```python Plot Bitcoin Price Data
+nixtla_client.plot(df)
+```
+</CodeGroup>
+
+<Frame caption="Bitcoin Price Data">
+  ![Bitcoin Price Data](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-12-output-1.png)
+</Frame>
+
+If you did not rename the columns, specify them explicitly:
+
+<CodeGroup>
+```python Plot with Explicit Columns
+nixtla_client.plot(
+    df,
+    time_col='Date Column',
+    target_col='Close Column'
+)
+```
+</CodeGroup>
+
+---
+
+## 4. Forecast with TimeGPT
+
+Forecast the next 7 days using TimeGPT:
+
+<CodeGroup>
+```python Forecast Next 7 Days
+level = [50, 80, 90]
+
+fcst = nixtla_client.forecast(
+    df,
+    h=7,
+    level=level
+)
+
+fcst.head()
+```
+</CodeGroup>
+
+Visualize the forecast with historical data:
+
+<CodeGroup>
+```python Plot Forecast and Historical Data
+nixtla_client.plot(df, fcst, level=level)
+```
+</CodeGroup>
+
+<Frame caption="Panel view of historical data with future forecasts">
+  ![Panel view of historical data with future forecasts](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-14-output-1.png)
+</Frame>
+
+---
+
+## 5. Extend Bitcoin Price Analysis with TimeGPT
+
+<AccordionGroup>
+  <Accordion title="Anomaly Detection">
+    Easily detect anomalies in your dataset:
+
+    <CodeGroup>
+    ```python Detect Anomalies
+anomalies_df = nixtla_client.detect_anomalies(df)
+
+nixtla_client.plot(
+    df,
+    anomalies_df,
+    plot_anomalies=True
+)
+    ```
+    </CodeGroup>
+
+    <Frame caption="Highlighted anomalies in Bitcoin price data">
+      ![Highlighted anomalies in Bitcoin price data](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-19-output-1.png)
+    </Frame>
+
+    For more details on anomaly detection, visit the
+    [Anomaly Detection Tutorial](/anomaly_detection/real-time/introduction).
+  </Accordion>
+
+  <Accordion title="Exogenous Variables">
+    You can enhance your forecast accuracy by adding external (exogenous) variables:
+
+    <Info>
+      Exogenous variables could include macroeconomic indicators, social media sentiment, or other data that might correlate with Bitcoin price.
+    </Info>
+
+    Learn more in the [Exogenous Variables Tutorial](/forecasting/exogenous-variables/numeric_features).
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## 6. Understand the Model Limitations
+
+<Warning>
+  Forecasting financial assets, especially cryptocurrencies, is inherently challenging. High volatility and market sentiment can lead to rapid price swings that limit model reliability.
+</Warning>
+
+TimeGPT offers:
+• Point forecasts
+• Uncertainty quantification
+• In-sample forecasting
+• Anomaly detection
+• Exogenous variable integration
+
+However, it cannot guarantee future accuracy. For questions about advanced use cases, visit the
+[TimeGPT Documentation](https://docs.nixtla.io/).
+
+---
+
+## 7. References and Additional Material
+
+<CardGroup cols={2}>
+  <Card title="Further Reading">
+        [Bitcoin Prediction Explained](https://www.cienciadedatos.net/documentos/py41-forecasting-cryptocurrency-bitcoin-machine-learning-python.html)
+        [Nixtla's StatsForecast Library](https://nixtlaverse.nixtla.io/statsforecast/index.html)
+  </Card>
+  <Card title="Pro Tip">
+    Financial time series often exhibit random walk behavior, especially cryptocurrencies. Evaluate your models thoroughly with statistical metrics and domain knowledge to make informed decisions.
+  </Card>
+</CardGroup>
+
+
+Congratulations! You have successfully learned how to forecast Bitcoin prices using TimeGPT. For more information and advanced configuration of open source alternatives, visit the
+[Nixtla Documentation](https://docs.nixtla.io/).
+
+

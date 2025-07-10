@@ -1,0 +1,194 @@
+---
+title: "Why TimeGPT?"
+description: "Understand the benefits of using TimeGPT for time series analysis."
+icon: "lightbulb"
+---
+
+<Info>
+  Before running this notebook, please visit our [dashboard](https://dashboard.nixtla.io) to obtain your TimeGPT `api_key`.
+</Info>
+
+## Why TimeGPT?
+
+TimeGPT is a powerful, general-purpose time series forecasting solution. Throughout this notebook, we compare TimeGPT's performance against three popular forecasting approaches:
+
+- Classical model (ARIMA)
+- Machine learning model (LightGBM)
+- Deep learning model (N-HiTS)
+
+
+<iframe width="800" height="800" src="https://marimo.io/p/@max/notebook-e185w7?show-code=false" title="Graph"> </iframe>
+
+  
+
+Below are three core benefits that our users value the most:
+
+<CardGroup cols={3}>
+  <Card title="Accuracy" icon="chart-line">
+    TimeGPT consistently outperforms traditional models by accurately capturing complex patterns.
+  </Card>
+  <Card title="Speed" icon="bolt">
+    Quickly generates forecasts with minimal training and tuning requirements per series.
+  </Card>
+  <Card title="Ease of Use" icon="rocket">
+    Minimal setup and no complex preprocessing make TimeGPT immediately accessible for use.
+  </Card>
+</CardGroup>
+
+## TimeGPT Advantage
+
+TimeGPT delivers **superior results with minimal effort** compared to traditional approaches. In head-to-head testing against ARIMA, LightGBM, and N-HiTS models on M5 competition data, TimeGPT consistently achieves better accuracy metrics (**lowest RMSE at 592.6** and **SMAPE at 4.94%**).
+
+Unlike other models which require:
+
+- _Extensive preprocessing_
+- _Parameter tuning_
+- _Significant computational resources_
+
+TimeGPT provides **powerful forecasting capabilities** with a simple API interface, making advanced time series analysis **accessible to users of all technical backgrounds**.
+
+<Steps>
+  <Step title="1. Data Introduction">
+    This notebook uses an aggregated subset from the M5 Forecasting Accuracy competition. The dataset:
+
+    - Consists of **7 daily time series**
+    - Has **1,941 observations** per series
+    - Reserves the last **28 observations** for evaluation on unseen data
+
+    ```python Data Loading and Stats Preview
+    import os
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    
+    from nixtla import NixtlaClient
+    from utilsforecast.plotting import plot_series
+    from utilsforecast.losses import mae, rmse, smape
+    from utilsforecast.evaluation import evaluate
+    
+    nixtla_client = NixtlaClient(
+        # api_key='my_api_key_provided_by_nixtla'
+    )
+    
+    df = pd.read_csv(
+        'https://datasets-nixtla.s3.amazonaws.com/demand_example.csv',
+        parse_dates=['ds']
+    )
+    
+    # Display aggregated statistics per time series
+    df.groupby('unique_id').agg({
+        "ds": ["min", "max", "count"],
+        "y": ["min", "mean", "median", "max"]
+    })
+    ```
+
+    <Info>
+      Below is a preview of the aggregated statistics for each of the 7 time series.
+    </Info>
+    | unique_id | min date   | max date   | count | min y | mean y   | median y | max y  |
+    | --------- | ---------- | ---------- | ----- | ----- | -------- | -------- | ------ |
+    | FOODS_1   | 2011-01-29 | 2016-05-22 | 1941  | 0.0   | 2674.086 | 2665.0   | 5493.0 |
+    | FOODS_2   | 2011-01-29 | 2016-05-22 | 1941  | 0.0   | 4015.984 | 3894.0   | 9069.0 |
+    | ...       | ...        | ...        | ...   | ...   | ...      | ...      | ...    |
+
+    Next, we split our dataset into training and test sets. Here, we use data up to "2016-04-24" for training and the remaining data for testing.
+
+    ```python Train-Test Split Example
+    df_train = df.query('ds <= "2016-04-24"')
+    df_test = df.query('ds > "2016-04-24"')
+    
+    print(df_train.shape, df_test.shape)
+    # (13391, 3) (196, 3)
+    ```
+  </Step>
+  <Step title="2. Model Fitting (TimeGPT, ARIMA, LightGBM, N-HiTS)">
+    TimeGPT is compared against four different modeling approaches. Each approach forecasts the final 28 days of our dataset and we compare results across Root Mean Squared Error (RMSE) and Symmetric Mean Absolute Percentage Error (SMAPE).
+
+    <AccordionGroup>
+      <Accordion title="2.1 TimeGPT">
+        <Info>
+          TimeGPT offers a streamlined solution for time series forecasting with minimal setup.
+        </Info>
+        ```python TimeGPT Forecasting with NixtlaClient
+        fcst_timegpt = nixtla_client.forecast(
+            df=df_train,
+            target_col='y',
+            h=28,
+            model='timegpt-1-long-horizon',
+            finetune_steps=10,
+            level=[90]
+        )
+        
+        evaluation_timegpt.groupby(['metric'])['TimeGPT'].mean()
+        # metric
+        # rmse     592.607378
+        # smape      0.049403
+        # Name: TimeGPT, dtype: float64
+        ```
+      </Accordion>
+      <Accordion title="2.2 Classical Models (ARIMA)">
+        <Info>
+          ARIMA is a common baseline for time series, though it often requires more data preprocessing and does not handle multiple series as efficiently.
+        </Info>
+        ```python ARIMA Forecasting Using StatsForecast
+        from statsforecast import StatsForecast
+        from statsforecast.models import AutoARIMA
+        
+        sf = StatsForecast(models=[AutoARIMA()], freq='D')
+        fcst_arima = sf.forecast(h=28, df=df_train)
+        # Evaluation methods omitted here for brevity
+        ```
+      </Accordion>
+      <Accordion title="2.3 Machine Learning Models (LightGBM)">
+        <Info>
+          LightGBM is a popular gradient-boosted tree approach. However, careful feature engineering is typically required for optimal results.
+        </Info>
+        ```python LightGBM Modeling with AutoMLForecast
+        import optuna
+        from mlforecast.auto import AutoMLForecast, AutoLightGBM
+        
+        mlf = AutoMLForecast(models=[AutoLightGBM()], freq='D')
+        mlf.fit(df_train)
+        fcst_lgbm = mlf.predict(28)
+        # Evaluation methods omitted here for brevity
+        ```
+      </Accordion>
+      <Accordion title="2.4 N-HiTS">
+        <Info>
+          N-HiTS is a deep learning architecture for time series. While powerful, it often requires GPU resources and more hyperparameter tuning.
+        </Info>
+        ```python N-HiTS Deep Learning Forecast
+        from neuralforecast.core import NeuralForecast
+        from neuralforecast.models import NHITS
+        
+        nf = NeuralForecast(models=[NHITS()], freq='D')
+        nf.fit(df=df_train)
+        fcst_nhits = nf.predict()
+        # Evaluation methods omitted here for brevity
+        ```
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+  <Step title="3. Performance Comparison and Results">
+    Below is a summary of the performance metrics (RMSE and SMAPE) on the test dataset. TimeGPT consistently delivers superior forecasting accuracy:
+
+    | Model    | RMSE  | SMAPE |
+    | -------- | ----- | ----- |
+    | ARIMA    | 724.9 | 5.50% |
+    | LightGBM | 687.8 | 5.14% |
+    | N-HiTS   | 605.0 | 5.34% |
+    | TimeGPT  | 592.6 | 4.94% |
+
+    <Frame caption="Comparative Performance Visualization">
+      ![Performance Chart](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/7_why_timegpt_files/figure-markdown_strict/cell-27-output-1.png)
+    </Frame>
+    <Frame caption="Benchmark Results">
+      ![Benchmarking Results](https://github.com/Nixtla/nixtla/blob/main/nbs/img/timeseries_model_arena.png?raw=true)
+    </Frame>
+  </Step>
+  <Step title="4. Conclusion">
+    TimeGPT stands out with its accuracy, speed, and ease of use. Get started today by visiting the
+    [Nixtla dashboard](https://dashboard.nixtla.io) to generate your
+    `api_key` and access advanced forecasting with minimal overhead.
+  </Step>
+</Steps>

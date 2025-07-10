@@ -1,0 +1,79 @@
+---
+title: "Evaluation Metrics"
+description: "Learn to select the right evaluation metrics to measure the performance of TimeGPT."
+icon: "vial"
+---
+
+Selecting the right evaluation metric is crucial, as it guides the selection of the best settings for TimeGPT to ensure the model is making accurate forecasts.
+
+## Overview of Common Evaluation Metrics
+
+The following table summarizes the common evaluation metrics used in forecasting depending on the type of forecasts. It also indicates when to use and when to avoid a particular metric.
+
+| Metric | Types of forecast      | Properties | When to avoid |
+| ------ | ---------------------- | ----------- | ------------- |
+| MAE    | Point forecast         | <ul><li>robust to outliers</li><li>easy to interpret</li><li>same units as the data</li></ul> | When averaging over series of different scales |
+| MSE    | Point forecast         | <ul><li>penalizes large errors</li><li>not the same units as the data</li><li>sensitive to outliers</li></ul> | There are unrepresentative outliers in the data |
+| RMSE   | Point forecast         | <ul><li>penalizes large errors</li><li>same units as the data</li><li>sensitive to outliers</li></ul> | There are unrepresentative outliers in the data  |
+| MAPE   | Point forecast         | <ul><li>expressed as a percentage</li><li>easy to interpret</li><li>favors under-forecasts</li></ul> | When data has zero values |
+| sMAPE  | Point forecast         | <ul><li>robust to over- and under-forecasts</li><li>expressed as a percentage</li><li>easy to interpret</li></ul> | When data has zero values |
+| MASE   | Point forecast         | <ul><li>like the MAE, but scaled by the naive forecast</li><li>inherently compares to a simple benchmark</li><li>requires technical knowledge to interpret</li></ul> | There is only one series to evaluate |
+| CRPS   | Probabilistic forecast | <ul><li>generalizaed MAE for probabilistic forecasts</li><li>requires technical knowledge to interpret</li></ul> | When evaluating point forecasts |
+
+In the following sections, we dive deeper into each metric. Note that all of these metrics can be used to evaluate the forecasts of TimeGPT using the *utilsforecast* library. For more information, read our tutorial on [evaluating TimeGPT with utilsforecast](/forecasting-eval-evaluation_utilsforecast).
+
+## Mean Absolute Error (MAE)
+
+The mean absolute error simply averages the absolute distance between the forecasts and the actual values.
+
+It is a good evaluation metric that works in the vast majority of forecasting tasks. It is robust to outliers, meaning that it will not magnifiy large errors, and it is expressed as the same units as the data, making it easy to interpret.
+
+Simply be careful when average the MAE over multiple series of different scales, since then a series with smaller values might bring down the MAE, while a series with larger values will bring it up.
+
+## Mean Squared Error (MSE)
+The mean squared error squares the forecast errors before averaging them, which heavily penalizes large errors while giving less weight to small ones.
+
+As such, it is not robust to outliers since a single large error can dramatically inflate the MSE value. Additionally, the units are squared (e.g., dollars²), making it difficult to interpret in practical terms.
+
+Avoid MSE when your data contains outliers or when you need an easily interpretable metric. It's best used in optimization contexts where you specifically want to penalize large errors more severely.
+
+## Root Mean Squared Error (RMSE)
+The root mean squared error is simply the square root of the MSE, bringing the metric back to the original units of the data while preserving MSE's property of penalizing large errors.
+
+RMSE is more interpretable than MSE since it's expressed in the same units as your data.
+
+You should avoid RMSE when outliers are present or when you want equal treatment of all errors.
+
+## Mean Absolute Percentage Error (MAPE)
+The mean absolute percentage error expresses forecast errors as percentages of the actual values, making it scale-independent and easy to interpret.
+
+MAPE is excellent for comparing forecast accuracy across different time series with varying scales. It's intuitive and easily understood in business contexts.
+
+Avoid MAPE when your data contains zero or near-zero values (causes division by zero) or when you have intermittent demand patterns. 
+
+Not that it's also asymmetric, penalizing positive errors (over-forecasts) more heavily than negative errors (under-forecasts).
+
+## Symmetric Mean Absolute Percentage Error (sMAPE)
+The symmetric mean absolute percentage error attempts to address MAPE's asymmetry by using the average of actual and forecast values in the denominator, making it more balanced between over- and under-forecasts.
+sMAPE is more stable than MAPE and less prone to extreme values. It's still scale-independent and relatively easy to interpret, though not as intuitive as MAPE.
+
+Avoid sMAPE when dealing with zero values or when the sum of actual and forecast values approaches zero. While more symmetric than MAPE, it's still not perfectly symmetric and can behave unexpectedly in edge cases.
+
+## Mean Absolute Scaled Error (MASE)
+The mean absolute scaled error scales forecast errors relative to the average error of a naive seasonal forecast, providing a scale-independent measure that's robust and interpretable.
+
+MASE is excellent for comparing forecasts across different time series and scales. A MASE value less than 1 indicates your forecast is better than the naive benchmark, while values greater than 1 indicate worse performance. 
+
+It's robust to outliers and handles zero values well.
+
+While it is a good metric to compare across multiple series, it might not make sense for you to compare against naive forecasts, and it does require some technical knowledge to interpret correctly.
+
+## Continuous Ranked Probability Score (CRPS)
+The continuous ranked probability score measures the distance between the entire forecast distribution and the observed value, making it ideal for evaluating probabilistic forecasts.
+
+CRPS is a proper scoring rule that reduces to MAE when dealing with deterministic forecasts, making it a natural extension for probabilistic forecasting. It's expressed in the same units as the original data and provides a comprehensive evaluation of forecast distributions, rewarding both accuracy and good uncertainty quantification.
+
+CRPS is specifically designed for probabilistic forecasts, so avoid it when you only have point forecasts. It's also more computationally intensive to calculate than simpler metrics and may be less intuitive for stakeholders unfamiliar with probabilistic forecasting concepts.
+
+## Evaluating TimeGPT
+To learn how to use any of the metrics outlined above to evaluate the forecasts of TimeGPT, read our tutorial on [evaluating TimeGPT with utilsforecast](/forecasting/evaluation/evaluation_utilsforecast).
