@@ -486,7 +486,7 @@ class HierarchicalEvaluation:
                 },
                 **dict(zip(model_names, evaluation_np.T)),
             },
-            native_namespace=native_namespace,
+            backend=native_namespace,
         )
 
         evaluation = evaluation_nw.to_native()
