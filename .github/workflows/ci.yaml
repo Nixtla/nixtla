@@ -66,6 +66,18 @@ jobs:
             jupyter nbconvert --to notebook --execute --inplace "$nb"
           done
 
+  run-local-tests: # dummy tests
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, windows-latest]
+        python-version: ["3.10"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
   run-cross-platform-tests:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
