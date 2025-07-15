@@ -17,6 +17,7 @@ website:
           - examples/AustralianDomesticTourism.ipynb
           - examples/AustralianPrisonPopulation.ipynb
           - examples/NonNegativeReconciliation.ipynb
+          - examples/AustralianDomesticTourism-Multimodel.ipynb
         - section: Probabilistic Reconciliation
           contents:
           - examples/AustralianDomesticTourism-Intervals.ipynb
