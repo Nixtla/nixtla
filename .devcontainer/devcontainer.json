@@ -47,7 +47,7 @@
         8888
     ],
     "onCreateCommand": "make devenv",
-    "postCreateCommand": "uv pip install -Ue .[dev,distributed]",
+    "postCreateCommand": ["uv pip install -Ue .[dev,distributed]", "npm i -g mint"],
     "waitFor": "postCreateCommand",
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2.12.2": {},
