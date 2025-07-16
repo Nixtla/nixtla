@@ -32,7 +32,7 @@ icon: "question"
 <Tabs>
   <Tab title="TimeGPT" icon="chart-line">
     <Accordion title="What is TimeGPT?">
-      <img src="images/docs/Nixtla/nixtla/blob/main/nbs/img/timegpt_archi.png" alt="TimeGPT Concept" className="rounded-lg" width="300" style={{ float: 'right', margin: '0 0 20px 20px' }} />
+      <img src="/images/docs/Nixtla/nixtla/blob/main/nbs/img/timegpt_archi.png" alt="TimeGPT Concept" className="rounded-lg" width="300" style={{ float: 'right', margin: '0 0 20px 20px' }} />
 
       TimeGPT is the first foundation model for time series forecasting. It produces accurate forecasts for new time series across diverse domains using only historical values as inputs. The model reads time series data sequentially from left to right, similar to how humans read a sentence. It examines windows of past data as "tokens" and predicts what comes next based on identified patterns that extrapolate into the future. Beyond forecasting, TimeGPT supports other time series tasks, including what-if scenarios and anomaly detection.
     </Accordion>
@@ -112,7 +112,7 @@ icon: "question"
       Upon registration, you receive an API key available in your [dashboard](https://dashboard.nixtla.io/) under "API Keys". Keep your API key confidential.
 
       <Frame caption="Example API Key location in dashboard">
-        <img src="images/docs/Nixtla/nixtla/blob/main/nbs/img/dashboard.png" alt="API Key Dashboard" className="rounded-lg" />
+        <img src="/images/docs/Nixtla/nixtla/blob/main/nbs/img/dashboard.png" alt="API Key Dashboard" className="rounded-lg" />
       </Frame>
     </Accordion>
 
@@ -351,23 +351,23 @@ icon: "question"
     </Accordion>
 
     <Accordion title="Can TimeGPT be used to forecast historical data?">
-      Yes. To forecast historical data using TimeGPT, see the [Historical Forecast](/forecasting/timegpt_quickstart) tutorial.
+      Yes. To forecast historical data using TimeGPT, use cross-validation. See the full tutorial on [cross-validation](/forecasting/evaluation/cross_validation).
 
       <CodeGroup>
         <CodeBlock title="Historical Forecast Example" icon="clock">
           ```python Historical Forecast
           # Get in-sample predictions
-          historical_forecast = client.forecast(
+          historical_forecast = client.cross_validation(
               df,
-              h=7,
-              add_history=True  # Include historical predictions
+              h=12,
+              n_windows=11 # Set as many windows as you want
           )
           ```
         </CodeBlock>
       </CodeGroup>
 
-      <Frame caption="Historical vs. Future Forecasting">
-        <img src="images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/09_historical_forecast_files/figure-markdown_strict/cell-14-output-1.png" alt="Historical Forecast" className="rounded-lg" />
+      <Frame caption="Historical Forecasting">
+        <img src="/images/docs/cv_historical.png" alt="Historical Forecast" className="rounded-lg" />
       </Frame>
     </Accordion>
 
@@ -404,7 +404,7 @@ icon: "question"
       </CodeGroup>
 
       <Frame caption="Anomaly Detection Example">
-        <img src="images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/20_anomaly_detection_files/figure-markdown_strict/cell-13-output-1.png" alt="Anomaly Detection" className="rounded-lg" />
+        <img src="/images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/20_anomaly_detection_files/figure-markdown_strict/cell-13-output-1.png" alt="Anomaly Detection" className="rounded-lg" />
       </Frame>
     </Accordion>
 
@@ -443,7 +443,7 @@ icon: "question"
       </CodeGroup>
 
       <Frame caption="Forecast with Prediction Intervals">
-        <img src="images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-1.png" alt="Prediction Intervals" className="rounded-lg" />
+        <img src="/images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-1.png" alt="Prediction Intervals" className="rounded-lg" />
       </Frame>
     </Accordion>
   </Tab>
@@ -506,7 +506,7 @@ icon: "question"
       </CodeGroup>
 
       <Frame caption="Sample TimeGPT Forecast Visualization">
-        <img src="images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/01_quickstart_files/figure-markdown_strict/cell-10-output-2.png" alt="Forecast Plot" className="rounded-lg" />
+        <img src="/images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/01_quickstart_files/figure-markdown_strict/cell-10-output-2.png" alt="Forecast Plot" className="rounded-lg" />
       </Frame>
     </Accordion>
 
