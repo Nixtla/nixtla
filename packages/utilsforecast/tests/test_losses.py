@@ -24,6 +24,7 @@ from utilsforecast.losses import (
     scaled_mqloss,
     scaled_quantile_loss,
     smape,
+    tweedie_deviance,
 )
 
 if POLARS_INSTALLED:
@@ -329,3 +330,52 @@ class TestProbabilisticMetrics:
             scaled_crps(series_pl, multi_quantile_models, quantiles),
             models,
         )
+
+class TestTweedieDeviance:
+    
+    @pytest.mark.parametrize("power", [0, 1, 1.5, 2, 3])
+    def test_non_zero_handling(self, setup_series, power):
+        series, series_pl, models = setup_series
+    # for power in [0, 1, 1.5, 2, 3]:
+        # Test Pandas vs Polars
+        td_pd = tweedie_deviance(series,   models, target_col="y", power=power)
+        td_pl = tweedie_deviance(series_pl, models, target_col="y", power=power)
+        pd_vs_pl(
+            td_pd,
+            td_pl,
+            models,
+        )
+        # Test for NaNs
+        assert not td_pd[models].isna().any().any(), f"NaNs found in pd DataFrame for power {power}"
+        assert not td_pl.select(pl.col(models).is_null().any()).sum_horizontal().item(), f"NaNs found in pl DataFrame for power {power}"
+        # Test for infinites
+        is_infinite = td_pd[models].isin([np.inf, -np.inf]).any().any()
+        assert not is_infinite, f"Infinities found in pd DataFrame for power {power}"
+        is_infinite_pl = td_pl.select(pl.col(models).is_infinite().any()).sum_horizontal().item()
+        assert not is_infinite_pl, f"Infinities found in pl DataFrame for power {power}"
+
+    @pytest.mark.parametrize("power", [0, 1, 1.5])
+    def test_zero_handling(self, setup_series, power):
+        series, series_pl, models = setup_series
+        # Test zero handling (skip power >=2 since it requires all y > 0)
+        series.loc[0, 'y'] = 0.0  # Set a zero value to test the zero handling
+        series.loc[49, 'y'] = 0.0  # Set another zero value to test the zero handling
+        series_pl[0, 'y'] = 0.0  # Set a zero value to test the zero handling
+        series_pl[49, 'y'] = 0.0  # Set another zero value to test the zero handling
+        
+        # Test Pandas vs Polars
+        td_pd = tweedie_deviance(series,   models, target_col="y", power=power)
+        td_pl = tweedie_deviance(series_pl, models, target_col="y", power=power)
+        pd_vs_pl(
+            td_pd,
+            td_pl,
+            models,
+        )
+        # Test for NaNs
+        assert not td_pd[models].isna().any().any(), f"NaNs found in pd DataFrame for power {power}"
+        assert not td_pl.select(pl.col(models).is_null().any()).sum_horizontal().item(), f"NaNs found in pl DataFrame for power {power}"
+        # Test for infinites
+        is_infinite = td_pd[models].isin([np.inf, -np.inf]).any().any()
+        assert not is_infinite, f"Infinities found in pd DataFrame for power {power}"
+        is_infinite_pl = td_pl.select(pl.col(models).is_infinite().any()).sum_horizontal().item()
+        assert not is_infinite_pl, f"Infinities found in pl DataFrame for power {power}"
