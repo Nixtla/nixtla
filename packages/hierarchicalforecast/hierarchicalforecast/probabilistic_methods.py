@@ -72,19 +72,24 @@ class Normality:
         R1 = self.W / np.outer(std_, std_)
 
         # Using elementwise multiplication
-        Wh = []
+        cov_recs = []
+        sigmah_recs = []
         for sigma in self.sigmah.T:
             # Broadcast sigma to create a matrix of pairwise products
             sigma_matrix = np.outer(sigma, sigma)
             # Element-wise multiplication with correlation matrix
-            cov_matrix = R1 * sigma_matrix
-            Wh.append(cov_matrix)
+            if sp.issparse(R1):
+                cov_matrix = R1.multiply(sigma_matrix).toarray()
+                cov_rec = self.SP @ cov_matrix @ self.SP.T
+            else:
+                # If R1 is dense, use numpy multiplication
+                cov_matrix = R1 * sigma_matrix
+                cov_rec = self.SP @ cov_matrix @ self.SP.T
+            cov_recs.append(cov_rec)
+            sigmah_recs.append(np.sqrt(cov_rec.diagonal()))
 
-        # Reconciled covariances across forecast horizon
-        self.cov_rec = [(self.SP @ W @ self.SP.T) for W in Wh]
-        self.sigmah_rec = np.hstack(
-            [np.sqrt(cov.diagonal())[:, None] for cov in self.cov_rec]
-        )
+        self.sigmah_rec = np.hstack(sigmah_recs).reshape(-1, self.sigmah.shape[0]).T
+        self.cov_rec = cov_recs
 
     def get_samples(self, num_samples: int):
         """Normality Coherent Samples.

@@ -82,16 +82,18 @@ def main(hierarchy: str = "non-strict", type: str = "point", engine: str = 'pand
                 TopDown(method="average_proportions"),
                 TopDown(method="proportion_averages"),
                 MinTrace(method='mint_cov'),
+                MiddleOut(middle_level="Country/State", top_down_method="average_proportions"),
+                MiddleOut(middle_level="Country/State", top_down_method="proportion_averages"),
+                MiddleOutSparse(middle_level="Country/State", top_down_method="average_proportions"),
+                MiddleOutSparse(middle_level="Country/State", top_down_method="proportion_averages"),
         ]
         if level is None:
             reconcilers += [
                     TopDown(method="forecast_proportions"),
-                    MiddleOut(middle_level="Country/State", top_down_method="average_proportions"),
             ]    
             if engine == 'pandas':
                 reconcilers += [
                     TopDownSparse(method="forecast_proportions"),
-                    MiddleOutSparse(middle_level="Country/State", top_down_method="average_proportions"),
                     ]
 
     # Add sparse reconcilers only if using pandas engine
