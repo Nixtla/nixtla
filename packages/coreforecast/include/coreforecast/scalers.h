@@ -79,8 +79,8 @@ T BoxCox_GuerreroCV(T lambda, const std::vector<T> &x_mean,
   auto x_rat =
       std_vec.array() / (mean_vec.array().log() * (1.0 - lambda)).exp();
   double mean = x_rat.mean();
-  double std = (x_rat.array() - mean).square().sum() / (x_rat.size() - 1);
-  return static_cast<T>(std / mean);
+  double var = (x_rat.array() - mean).square().sum() / (x_rat.size() - 1);
+  return static_cast<T>(std::sqrt(var) / mean);
 }
 
 template <typename T>
