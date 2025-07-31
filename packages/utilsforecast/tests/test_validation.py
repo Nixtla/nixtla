@@ -2,8 +2,7 @@ import datetime
 
 import pandas as pd
 import polars as pl
-import polars.testing
-from fastcore.test import test_fail as _test_fail
+from conftest import assert_raises_with_message
 
 from utilsforecast.compat import POLARS_INSTALLED
 from utilsforecast.validation import (
@@ -47,61 +46,35 @@ def test_ensure_time_dtype():
     )
     df = pd.DataFrame({'ds': [1, 2]})
     assert df is ensure_time_dtype(df)
-    _test_fail(
-        lambda: ensure_time_dtype(pd.DataFrame({'ds': ['2000-14-14']})),
-        contains='Please make sure that it contains valid timestamps',
-    )
+    assert_raises_with_message(ensure_time_dtype, 'Please make sure that it contains valid timestamps', pd.DataFrame({'ds': ['2000-14-14']}))
     pl.testing.assert_frame_equal(
         ensure_time_dtype(pl.DataFrame({'ds': ['2000-01-01']})),
         pl.DataFrame().with_columns(ds=pl.datetime(2000, 1, 1)),
     )
     df = pl.DataFrame({'ds': [1, 2]})
     assert df is ensure_time_dtype(df)
-    _test_fail(
-        lambda: ensure_time_dtype(pl.DataFrame({'ds': ['hello']})),
-        contains='Please make sure that it contains valid timestamps',
-    )
+    assert_raises_with_message(ensure_time_dtype, 'Please make sure that it contains valid timestamps', pl.DataFrame({'ds': ['hello']}))
 
 
 def test_validate_format():
-    _test_fail(lambda: validate_format(1), contains="got <class 'int'>")
+    assert_raises_with_message(validate_format, "got <class 'int'>", 1)
     constructors = [pd.DataFrame]
     if POLARS_INSTALLED:
         constructors.append(pl.DataFrame)
     for constructor in constructors:
         df = constructor({'unique_id': [1]})
-        _test_fail(lambda: validate_format(df), contains="missing: ['ds', 'y']")
+        assert_raises_with_message(validate_format, "missing: ['ds', 'y']", df)
         df = constructor({'unique_id': [1], 'time': ['x'], 'y': [1]})
-        _test_fail(
-            lambda: validate_format(df, time_col='time'),
-            contains="('time') should have either timestamps or integers",
-        )
+        assert_raises_with_message(validate_format,"('time') should have either timestamps or integers", df, time_col='time'),
         for time in [1, datetime.datetime(2000, 1, 1)]:
             df = constructor({'unique_id': [1], 'ds': [time], 'sales': ['x']})
-            _test_fail(
-                lambda: validate_format(df, target_col='sales'),
-                contains="('sales') should have a numeric data type",
-            )
+            assert_raises_with_message(validate_format, "('sales') should have a numeric data type", df, target_col='sales')
 
 
 def test_validate_freq():
-    _test_fail(
-        lambda: validate_freq(pd.Series([1, 2]), 'D'),
-        contains='provide a valid integer',
-    )
-    _test_fail(
-        lambda: validate_freq(pd.to_datetime(['2000-01-01']).to_series(), 1),
-        contains='provide a valid pandas or polars offset',
-    )
-    _test_fail(
-        lambda: validate_freq(pl.Series([1, 2]), '1d'),
-        contains='provide a valid integer',
-    )
-    _test_fail(
-        lambda: validate_freq(pl.Series([datetime.datetime(2000, 1, 1)]), 1),
-        contains='provide a valid pandas or polars offset',
-    )
-    _test_fail(
-        lambda: validate_freq(pl.Series([datetime.datetime(2000, 1, 1)]), 'D'),
-        contains='valid polars offset',
-    )
+    assert_raises_with_message(validate_freq, 'provide a valid integer',pd.Series([1, 2]), 'D')
+    assert_raises_with_message(validate_freq, 'provide a valid pandas or polars offset', pd.to_datetime(['2000-01-01']).to_series(), 1),
+    assert_raises_with_message(validate_freq, 'provide a valid integer', pl.Series([1, 2]), '1d')
+    assert_raises_with_message(validate_freq, 'provide a valid pandas or polars offset', pl.Series([datetime.datetime(2000, 1, 1)]), 1),
+    assert_raises_with_message(validate_freq, 'valid polars offset', pl.Series([datetime.datetime(2000, 1, 1)]), 'D'),
+

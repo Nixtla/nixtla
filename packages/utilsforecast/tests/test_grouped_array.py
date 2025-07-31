@@ -1,7 +1,6 @@
 # test _append_one
 import numpy as np
-from fastcore.test import test_eq as _test_equal
-from fastcore.test import test_fail as _test_fail
+from conftest import assert_raises_with_message
 
 from utilsforecast.data import generate_series
 from utilsforecast.grouped_array import GroupedArray, _append_one, _append_several
@@ -64,7 +63,7 @@ def test_grouped_array():
     data = np.arange(20, dtype=np.float32).reshape(-1, 2)
     indptr = np.array([0, 2, 10])  # group 1: [0, 1], group 2: [2..9]
     ga = GroupedArray(data, indptr)
-    _test_equal(len(ga), 2)
+    assert len(ga) == 2
     # Iterate through the groups
     ga_iter = iter(ga)
     np.testing.assert_equal(next(ga_iter), np.arange(4).reshape(-1, 2))
@@ -130,7 +129,7 @@ def test_grouped_array_1d():
     np.testing.assert_allclose(subset1d[0].data, ga2_1d[0].data)
     np.testing.assert_allclose(subset1d[1].data, ga2_1d[2].data)
     # try to append new values that don't match the number of groups
-    _test_fail(lambda: ga.append(np.array([1.0, 2.0, 3.0])), contains="new must have 2 rows")
+    assert_raises_with_message(lambda: ga.append(np.array([1.0, 2.0, 3.0])), "new must have 2 rows")
     # build from df
     series_pd = generate_series(10, static_as_categorical=False, engine="pandas")
     ga_pd = GroupedArray.from_sorted_df(series_pd, "unique_id", "ds", "y")

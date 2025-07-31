@@ -5,9 +5,7 @@ from datetime import datetime as dt
 import numpy as np
 import pandas as pd
 import pytest
-from fastcore.test import test_eq as _test_eq
-from fastcore.test import test_fail as _test_fail
-from polars import DataFrame as pl_DataFrame
+from conftest import assert_raises_with_message
 from polars import Series as pl_Series
 
 from utilsforecast.compat import POLARS_INSTALLED
@@ -24,7 +22,6 @@ from utilsforecast.processing import (
     cv_times,
     fill_null,
     group_by,
-    group_by_agg,
     horizontal_concat,
     is_in,
     is_nan,
@@ -659,7 +656,6 @@ def test_cv_times_with_horizon_and_test_sizes():
     for equal_ends in [True, False]:
         n_series = 2
         series = generate_series(n_series, equal_ends=equal_ends)
-        freq = pd.tseries.frequencies.to_offset("D")
         uids, last_times, data, indptr, _ = process_df(series, "unique_id", "ds", "y")
         times = series["ds"].to_numpy()
         df_dates = cv_times(
@@ -670,7 +666,7 @@ def test_cv_times_with_horizon_and_test_sizes():
             test_size=test_size,
             step_size=1,
         )
-        _test_eq(len(df_dates), n_series * horizon * (test_size - horizon + 1))
+        assert len(df_dates) == n_series * horizon * (test_size - horizon + 1)
 
 @pytest.fixture
 def static_features():
@@ -689,12 +685,12 @@ def test_static_features(static_features):
         scrambled_series_pd = series_pd.sample(frac=1.0)
         dfp = DataFrameProcessor("unique_id", "ds", "y")
         uids, times, data, indptr, _ = dfp.process(scrambled_series_pd)
-        _test_eq(times, series_pd.groupby("unique_id", observed=True)["ds"].max().values)
-        _test_eq(uids, np.sort(series_pd["unique_id"].unique()))
+        np.testing.assert_array_equal(times, series_pd.groupby("unique_id", observed=True)["ds"].max().values)
+        np.testing.assert_array_equal(uids, np.sort(series_pd["unique_id"].unique()))
         for i in range(n_static_features):
             series_pd[f"static_{i}"] = series_pd[f"static_{i}"].cat.codes
-        _test_eq(data, series_pd[["y"] + static_features[:n_static_features]].to_numpy())
-        _test_eq(
+        np.testing.assert_array_equal(data, series_pd[["y"] + static_features[:n_static_features]].to_numpy())
+        np.testing.assert_array_equal(
             np.diff(indptr), series_pd.groupby("unique_id", observed=True).size().values
         )
 
@@ -718,20 +714,20 @@ def test_n_static_features(static_features):
         dfp = DataFrameProcessor("unique_id", "ds", "y")
         uids, times, data, indptr, _ = dfp.process(scrambled_series_pl)
         grouped = group_by(series_pl, "unique_id")
-        _test_eq(times, grouped.agg(pl.col("ds").max()).sort("unique_id")["ds"].to_numpy())
-        _test_eq(uids, series_pl["unique_id"].unique().sort())
-        _test_eq(
+        np.testing.assert_array_equal(times, grouped.agg(pl.col("ds").max()).sort("unique_id")["ds"].to_numpy())
+        np.testing.assert_array_equal(uids, series_pl["unique_id"].unique().sort())
+        np.testing.assert_array_equal(
             data,
             series_pl.select(
                 pl.col(c).map_batches(lambda s: s.to_physical())
                 for c in ["y"] + static_features[:n_static_features]
             ).to_numpy(),
         )
-        _test_eq(np.diff(indptr), grouped.count().sort("unique_id")["count"].to_numpy())
+        np.testing.assert_array_equal(np.diff(indptr), grouped.len().sort("unique_id")["len"].to_numpy())
 
 def test_short_stories():
     short_series = generate_series(100, max_length=50)
-    backtest_results = list(
+    list(
         backtest_splits(
             short_series,
             n_windows=1,
@@ -741,7 +737,7 @@ def test_short_stories():
             freq=pd.offsets.Day(),
         )
     )[0]
-    _test_fail(
+    assert_raises_with_message(
         lambda: list(
             backtest_splits(
                 short_series,
@@ -752,12 +748,12 @@ def test_short_stories():
                 freq=pd.offsets.Day(),
             )
         ),
-        contains="at least 51 samples are required",
+        "at least 51 samples are required",
     )
     some_short_series = generate_series(100, min_length=20, max_length=100)
     with warnings.catch_warnings(record=True) as issued_warnings:
         warnings.simplefilter("always", UserWarning)
-        splits = list(
+        _ = list(
             backtest_splits(
                 some_short_series,
                 n_windows=1,
@@ -768,15 +764,6 @@ def test_short_stories():
             )
         )
         assert any("will be dropped" in str(w.message) for w in issued_warnings)
-    short_series_int = short_series.copy()
-    short_series_int["ds"] = short_series.groupby("unique_id", observed=True).transform(
-        "cumcount"
-    )
-    backtest_int_results = list(
-        backtest_splits(
-            short_series_int, n_windows=1, h=40, id_col="unique_id", time_col="ds", freq=1
-        )
-    )[0]
 
 
 def _test_backtest_splits(df, n_windows, h, step_size, input_size):
