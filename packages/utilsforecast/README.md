@@ -33,10 +33,10 @@ series
     .dataframe tbody tr th:only-of-type {
         vertical-align: middle;
     }
-&#10;    .dataframe tbody tr th {
+    .dataframe tbody tr th {
         vertical-align: top;
     }
-&#10;    .dataframe thead th {
+    .dataframe thead th {
         text-align: right;
     }
 </style>
@@ -89,10 +89,10 @@ with_gaps
     .dataframe tbody tr th:only-of-type {
         vertical-align: middle;
     }
-&#10;    .dataframe tbody tr th {
+    .dataframe tbody tr th {
         vertical-align: top;
     }
-&#10;    .dataframe thead th {
+    .dataframe thead th {
         text-align: right;
     }
 </style>
@@ -116,10 +116,10 @@ fill_gaps(with_gaps, freq='D')
     .dataframe tbody tr th:only-of-type {
         vertical-align: middle;
     }
-&#10;    .dataframe tbody tr th {
+    .dataframe tbody tr th {
         vertical-align: top;
     }
-&#10;    .dataframe thead th {
+    .dataframe thead th {
         text-align: right;
     }
 </style>
@@ -164,10 +164,10 @@ evaluate(valid, metrics=[mape, daily_mase], train_df=train)
     .dataframe tbody tr th:only-of-type {
         vertical-align: middle;
     }
-&#10;    .dataframe tbody tr th {
+    .dataframe tbody tr th {
         vertical-align: top;
     }
-&#10;    .dataframe thead th {
+    .dataframe thead th {
         text-align: right;
     }
 </style>

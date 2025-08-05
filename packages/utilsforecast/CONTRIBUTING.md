@@ -72,44 +72,43 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-#### Install git hooks
+## Viewing documentation locally
 
-Before doing any changes to the code, please install the git hooks that run
-automatic scripts during each commit and merge to strip the notebooks of
-superfluous metadata (and avoid merge conflicts).
+The new documentation pipeline relies on `mintlify` and `lazydocs`.
 
-```bash
-nbdev_install_hooks
+### install mintlify
+
+> [!NOTE]
+> Please install Node.js before proceeding.
+
+```sh
+npm i -g mint
 ```
 
-### Preview Changes
+For additional instructions, you can read about it [here](https://mintlify.com/docs/installation).
 
-You can preview changes in your local browser before pushing by using the
-`nbdev_preview`.
-
-### Building the library
-
-The library is built using the notebooks contained in the `nbs` folder. If you
-want to make any changes to the library you have to find the relevant notebook,
-make your changes and then call:
-
-```bash
-nbdev_export
+```sh
+uv pip install -e '.[dev]' lazydocs
+lazydocs .utilsforecast
+python docs/to_mdx.py
 ```
 
-### Running tests
+Finally to view the documentation
+
+```sh
+mintlify dev
+```
+
+## Running tests
 
 If you're working on the local interface you can just use
-`nbdev_test --n_workers 1 --do_print --timing`.
 
+```sh
+uv run pytest
+```
 
 ## Do you want to contribute to the documentation?
 
-- Docs are automatically created from the notebooks in the `nbs` folder.
-- In order to modify the documentation:
-  1. Find the relevant notebook.
-  2. Make your changes.
-  3. Run all cells.
-  4. If you are modifying library notebooks (not in `nbs/examples`), clean all
-     outputs using `Edit > Clear All Outputs`.
-  5. Run `nbdev_preview`.
+- The docs are automatically generated from the docstrings in the utilsforecast folder.
+- To contribute, ensure your docstrings follow the Google style format.
+- Once your docstring is correctly written, the documentation framework will scrape it and regenerate the corresponding `.mdx` files and your changes will then appear in the updated docs.

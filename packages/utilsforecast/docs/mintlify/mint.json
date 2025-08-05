@@ -22,17 +22,17 @@
   "navigation": [
     {
       "group": "",
-      "pages": ["index.html"]
+      "pages": ["index"]
     },
     {
       "group": "API Reference",
       "pages": [
-        "preprocessing.html",
-        "feature_engineering.html",
-        "evaluation.html",
-        "losses.html",
-        "plotting.html",
-        "data.html"
+        "preprocessing",
+        "feature_engineering",
+        "evaluation",
+        "losses",
+        "plotting",
+        "data"
       ]
     }
   ]

@@ -673,26 +673,26 @@ def static_features():
     return ["static_0", "static_1"]
 
 
-def test_static_features(static_features):
-    for n_static_features in [0, 2]:
-        series_pd = generate_series(
-            1_000, n_static_features=n_static_features, equal_ends=False, engine="pandas"
+@pytest.mark.parametrize("n_static_features", [0, 2])
+def test_static_features(static_features, n_static_features):
+    series_pd = generate_series(
+        1_000, n_static_features=n_static_features, equal_ends=False, engine="pandas"
+    )
+    for i in range(n_static_features):
+        series_pd[f"static_{i}"] = (
+            series_pd[f"static_{i}"].map(lambda x: f"x_{x}").astype("category")
         )
-        for i in range(n_static_features):
-            series_pd[f"static_{i}"] = (
-                series_pd[f"static_{i}"].map(lambda x: f"x_{x}").astype("category")
-            )
-        scrambled_series_pd = series_pd.sample(frac=1.0)
-        dfp = DataFrameProcessor("unique_id", "ds", "y")
-        uids, times, data, indptr, _ = dfp.process(scrambled_series_pd)
-        np.testing.assert_array_equal(times, series_pd.groupby("unique_id", observed=True)["ds"].max().values)
-        np.testing.assert_array_equal(uids, np.sort(series_pd["unique_id"].unique()))
-        for i in range(n_static_features):
-            series_pd[f"static_{i}"] = series_pd[f"static_{i}"].cat.codes
-        np.testing.assert_array_equal(data, series_pd[["y"] + static_features[:n_static_features]].to_numpy())
-        np.testing.assert_array_equal(
-            np.diff(indptr), series_pd.groupby("unique_id", observed=True).size().values
-        )
+    scrambled_series_pd = series_pd.sample(frac=1.0)
+    dfp = DataFrameProcessor("unique_id", "ds", "y")
+    uids, times, data, indptr, _ = dfp.process(scrambled_series_pd)
+    np.testing.assert_array_equal(times, series_pd.groupby("unique_id", observed=True)["ds"].max().values)
+    np.testing.assert_array_equal(uids, np.sort(series_pd["unique_id"].unique()))
+    for i in range(n_static_features):
+        series_pd[f"static_{i}"] = series_pd[f"static_{i}"].cat.codes
+    np.testing.assert_array_equal(data, series_pd[["y"] + static_features[:n_static_features]].to_numpy())
+    np.testing.assert_array_equal(
+        np.diff(indptr), series_pd.groupby("unique_id", observed=True).size().values
+    )
 
 
 # test process_df with target_col=None
@@ -705,25 +705,29 @@ def test_none_target():
         to_numpy(series_pd.drop(columns=["unique_id", "ds"])),
     )
 
-def test_n_static_features(static_features):
-    for n_static_features in [0, 2]:
-        series_pl = generate_series(
-            1_000, n_static_features=n_static_features, equal_ends=False, engine="polars"
-        )
-        scrambled_series_pl = series_pl.sample(fraction=1.0, shuffle=True)
-        dfp = DataFrameProcessor("unique_id", "ds", "y")
-        uids, times, data, indptr, _ = dfp.process(scrambled_series_pl)
-        grouped = group_by(series_pl, "unique_id")
-        np.testing.assert_array_equal(times, grouped.agg(pl.col("ds").max()).sort("unique_id")["ds"].to_numpy())
-        np.testing.assert_array_equal(uids, series_pl["unique_id"].unique().sort())
-        np.testing.assert_array_equal(
-            data,
-            series_pl.select(
+@pytest.mark.parametrize("n_static_features", [0, 2])
+def test_n_static_features(static_features, n_static_features):
+    series_pl = generate_series(
+        1_000, n_static_features=n_static_features, equal_ends=False, engine="polars"
+    )
+    scrambled_series_pl = series_pl.sample(fraction=1.0, shuffle=True)
+    dfp = DataFrameProcessor("unique_id", "ds", "y")
+    uids, times, data, indptr, _ = dfp.process(scrambled_series_pl)
+    grouped = group_by(series_pl, "unique_id")
+    np.testing.assert_array_equal(times, grouped.agg(pl.col("ds").max()).sort("unique_id")["ds"].to_numpy())
+    np.testing.assert_array_equal(uids, series_pl["unique_id"].unique().sort())
+
+    expected_data = (
+            scrambled_series_pl
+            .sort(["unique_id", "ds"])
+            .select([
                 pl.col(c).map_batches(lambda s: s.to_physical())
                 for c in ["y"] + static_features[:n_static_features]
-            ).to_numpy(),
+            ])
+            .to_numpy()
         )
-        np.testing.assert_array_equal(np.diff(indptr), grouped.len().sort("unique_id")["len"].to_numpy())
+    np.testing.assert_array_equal(data, expected_data)
+    np.testing.assert_array_equal(np.diff(indptr), grouped.len().sort("unique_id")["len"].to_numpy())
 
 def test_short_stories():
     short_series = generate_series(100, max_length=50)
