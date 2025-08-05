@@ -19,8 +19,8 @@ jobs:
 
       - name: Build docs
         run: |
-          pip install . lazydocs
-          lazydocs .utilsforecast
+          pip install '.[dev]' lazydocs
+          lazydocs .utilsforecast --no-watermark
           python docs/to_mdx.py
 
       - name: Deploy
