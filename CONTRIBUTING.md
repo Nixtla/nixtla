@@ -75,7 +75,7 @@ Docs are automatically created from the notebooks in the `nbs` folder.
 1. Find the relevant notebook.
 2. Make your changes.
     * Do not rename the document.
-    * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`.
+    * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-subscription_plans_and_pricing`.
 3. Run all cells.
 4. Run `nbdev_preview`.
 5. Clean the notebook metadata using `nbdev_clean --fname nbs/docs/[path_to_notebook.ipynb]`.
@@ -86,13 +86,15 @@ Docs are automatically created from the notebooks in the `nbs` folder.
 ### Creating a new document
 1. Copy an existing jupyter notebook in a folder where you want to create a new document. This should be a subfolder of `nbs/docs`.
 2. Rename the document using the following format: `[document_number]_document_title_in_lower_case.ipynb` (for example: `01_quickstart.ipynb`), incrementing the document number from the current highest number within the folder and retaining the leading zero.
-3. The first header (title) is ideally the same as the notebook name (without the document number). This is because in Readme.com the first header (title) is used to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` of a document in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`. Thus, it is advised to keep the document name and header the same.
-4. Work on your new document. Pay attention to:
+3. The first header (title) is ideally the same as the notebook name (without the document number). This is because in Readme.com the first header (title) is used to create the filename. For example, a first header of `Subscription Plans and Pricing` of a document in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-subscription_plans_and_pricing`. Thus, it is advised to keep the document name and header the same. 
+4. The header should be in a separate Markdown cell. Don't start the body of the document in the same markdown cell as the title. It won't be displayed on our Mintlify (Nixtlaverse)docs.
+5. Work on your new document. Pay attention to:
     * The Google Colab link;
     * How images should be linked;
     * How the `IN_COLAB` variable is used to distinguish when the notebook is used locally vs in Google Colab.
-5. Add the document to `nbs/mint.json` under the correct group with the following name `document_title_in_lower_case.html`.
-6. Follow steps 3 - 8 under `Modifying an existing doc`.
+    * When referring to an emailadres, use a code block, i.e. `support@nixtla.io`. Don't use a link block - this will fail on Mintlify.
+6. Add the document to `nbs/mint.json` under the correct group with the following name `document_title_in_lower_case.html`.
+7. Follow steps 3 - 8 under `Modifying an existing doc`.
 
 ### Publishing documentation
 When the PR is approved, the documentation will not be visible directly. It will be visible:
@@ -114,3 +116,19 @@ Make sure to check that our [Mintlify docs](https://nixtlaverse.nixtla.io/nixtla
 * Don't rename documents! The filename is used statically in various files to properly index the file in the correct (sub)folder. If you rename, you're effectively creating a new document. Follow the correct procedure for creating a new document (above), and check every other document (yes, every single one) in our documentation whether there's a link now breaking to the doc you renamed.
 * Check the changes / new document online in both [Readme.com](https://docs.nixtla.io/) and [Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html).
 * Screwed up? You can hide a document in Readme.com in the Admin console, under `Guides`. Make sure to unhide it again after you've fixed your misstakes.
+
+### Debugging errors on our docs
+We have two documentation systems:
+* [Nixtlaverse via Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html)
+* [Readme.com](https://docs.nixtla.io/)
+
+Mintlify is used to build to Nixtlaverse docs. The process is as follows:
+1. The PR with the new or changed doc is merged.
+2. The action [build_docs](https://github.com/Nixtla/docs/tree/docs/nixtla/docs) runs automatically. This will generate the documentation files.
+3. The documentation files are generated as html.mdx files and transferred onto [the Nixtla docs repository under the docs branch](https://github.com/Nixtla/docs/tree/docs/nixtla/docs). You can check that the generated source files contain all the changes you made. If the changes are not present, it could be that Mintlify encountered an error. This should be apparent from the commit or you can check the Mintlify dashboard to check for an error (see next step).
+4. You can check the status of the update of the documentation files [in the Mintlify dashboard](https://dashboard.mintlify.com/nixtla/nixtla). If errors occur, you will see them here.
+
+Readme.com is used to build the [docs.nixtla.io](https://docs.nixtla.io/) documentation. If you encounter an error, for example:
+* The doc hasn't been published: check this guide under `Publishing documentation` and repeat the steps mentioned there.
+* The doc is in the wrong place: check this guide under `Publishing documentation` and repeat the steps mentioned there.
+* There's a failure on how it is displaying things: this could be a parsing error. For example, you used an incorrect image tag. Look at how other docs in our repo handle that type of element and copy the same syntax. Go to the Admin panel of readme.com and inspect the source of the document.
