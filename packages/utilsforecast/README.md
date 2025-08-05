@@ -2,42 +2,30 @@
 
 ### PyPI
 
-``` sh
+```sh
 pip install utilsforecast
 ```
 
 ### Conda
 
-``` sh
+```sh
 conda install -c conda-forge utilsforecast
 ```
+
+---
 
 ## How to use
 
 ### Generate synthetic data
 
-``` python
+```python
 from utilsforecast.data import generate_series
-```
 
-``` python
 series = generate_series(3, with_trend=True, static_as_categorical=False)
 series
 ```
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-
+```
 |     | unique_id | ds         | y          |
 |-----|-----------|------------|------------|
 | 0   | 0         | 2000-01-01 | 0.422133   |
@@ -51,49 +39,38 @@ series
 | 483 | 2         | 2000-06-13 | 160.839176 |
 | 484 | 2         | 2000-06-14 | 162.679603 |
 | 485 | 2         | 2000-06-15 | 165.089288 |
+```
 
-<p>486 rows × 3 columns</p>
-</div>
+---
 
 ### Plotting
 
-``` python
+```python
 from utilsforecast.plotting import plot_series
-```
 
-``` python
 fig = plot_series(series, plot_random=False, max_insample_length=50, engine='matplotlib')
 fig.savefig('imgs/index.png', bbox_inches='tight')
 ```
 
-![](https://raw.githubusercontent.com/Nixtla/utilsforecast/main/docs/imgs/index.png)
+![](https://raw.githubusercontent.com/Nixtla/utilsforecast/main/nbs/imgs/index.png)
+![Example Plot](https://raw.githubusercontent.com/Nixtla/utilsforecast/main/docs/imgs/index.png)
+
+---
 
 ### Preprocessing
 
-``` python
+```python
 from utilsforecast.preprocessing import fill_gaps
-```
 
-``` python
 serie = series[series['unique_id'].eq(0)].tail(10)
 # drop some points
 with_gaps = serie.sample(frac=0.5, random_state=0).sort_values('ds')
 with_gaps
 ```
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
+Example output with missing dates:
 
+```
 |     | unique_id | ds         | y         |
 |-----|-----------|------------|-----------|
 | 213 | 0         | 2000-08-01 | 18.543147 |
@@ -101,26 +78,15 @@ with_gaps
 | 216 | 0         | 2000-08-04 | 21.968733 |
 | 220 | 0         | 2000-08-08 | 19.091509 |
 | 221 | 0         | 2000-08-09 | 20.220739 |
+```
 
-</div>
-
-``` python
+```python
 fill_gaps(with_gaps, freq='D')
 ```
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
+Returns:
 
+```
 |     | unique_id | ds         | y         |
 |-----|-----------|------------|-----------|
 | 0   | 0         | 2000-08-01 | 18.543147 |
@@ -132,43 +98,35 @@ fill_gaps(with_gaps, freq='D')
 | 6   | 0         | 2000-08-07 | NaN       |
 | 7   | 0         | 2000-08-08 | 19.091509 |
 | 8   | 0         | 2000-08-09 | 20.220739 |
+```
 
-</div>
+---
 
 ### Evaluating
 
-``` python
+```python
 from functools import partial
-
 import numpy as np
 
 from utilsforecast.evaluation import evaluate
 from utilsforecast.losses import mape, mase
 ```
 
-``` python
+```python
 valid = series.groupby('unique_id').tail(7).copy()
 train = series.drop(valid.index)
+
 rng = np.random.RandomState(0)
 valid['seas_naive'] = train.groupby('unique_id')['y'].tail(7).values
 valid['rand_model'] = valid['y'] * rng.rand(valid['y'].shape[0])
+
 daily_mase = partial(mase, seasonality=7)
+
 evaluate(valid, metrics=[mape, daily_mase], train_df=train)
 ```
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 
+```
 |     | unique_id | metric | seas_naive | rand_model |
 |-----|-----------|--------|------------|------------|
 | 0   | 0         | mape   | 0.024139   | 0.440173   |
@@ -177,5 +135,6 @@ evaluate(valid, metrics=[mape, daily_mase], train_df=train)
 | 3   | 0         | mase   | 0.907149   | 16.418014  |
 | 4   | 1         | mase   | 0.991635   | 6.404254   |
 | 5   | 2         | mase   | 1.013596   | 11.365040  |
+```
 
-</div>
+---
