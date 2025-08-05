@@ -14,7 +14,11 @@ for file in Path("docs").glob("*.md"):
     output_file = output_path / (module_name + ".mdx")
     output_file.write_text(text)
 
-
+header = """---
+description: Forecasting utilities
+title: "utilsforecast"
+---
+"""
 readme_text = Path("README.md").read_text()
-readme_text = readme_text
+readme_text = header + readme_text
 (output_path / "index.mdx").write_text(readme_text)
