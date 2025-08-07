@@ -1,7 +1,8 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
-import warnings
 
 from hierarchicalforecast.core import HierarchicalReconciliation
 from hierarchicalforecast.methods import BottomUp

@@ -1,16 +1,15 @@
 import numpy as np
 import pandas as pd
 import pytest
+import pytest_benchmark  # noqa: F401
 from scipy import sparse
-from hierarchicalforecast.methods import MinTrace, ERM, BottomUp
-from hierarchicalforecast.utils import _ma_cov
 from statsforecast.core import StatsForecast
 from statsforecast.models import AutoETS
 
-from hierarchicalforecast.utils import aggregate
 from hierarchicalforecast.core import HierarchicalReconciliation
+from hierarchicalforecast.methods import ERM, BottomUp, MinTrace
+from hierarchicalforecast.utils import _ma_cov, aggregate
 
-import pytest_benchmark # noqa: F401
 
 #%% MinT benchmarks
 # run using: pytest tests\test_benchmark.py -v -s --benchmark-min-rounds=20
@@ -34,7 +33,7 @@ def _create_reconciler_inputs(n_bottom_timeseries):
     # Create top and bottom level
     S_top = sparse.csr_matrix(ones, dtype=np.float64)
     S_bottom = sparse.eye(n_bottom_timeseries, dtype=np.float64, format="csr")
-    # Construct S: stack top, aggregations and bottom 
+    # Construct S: stack top, aggregations and bottom
     S_sp = sparse.vstack([S_top, S_aggs, S_bottom])
 
     y_hat_bottom = np.vstack([i * np.ones(h, dtype=np.float64) for i in range(n_bottom_timeseries)])
@@ -79,14 +78,14 @@ def test_erm_reg(benchmark, n_bottom_timeseries, erm_method):
     S, y_hat, y_insample, y_hat_insample, idx_bottom = _create_reconciler_inputs(n_bottom_timeseries)
 
     cls_erm = ERM(method=erm_method)
-    result_erm = benchmark(cls_erm, S=S, y_hat=y_hat, y_insample=y_insample, y_hat_insample=y_hat_insample, idx_bottom=idx_bottom) # noqa: F841   
+    result_erm = benchmark(cls_erm, S=S, y_hat=y_hat, y_insample=y_insample, y_hat_insample=y_hat_insample, idx_bottom=idx_bottom) # noqa: F841
 
 @pytest.fixture
 def load_tourism():
     df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/tourism.csv')
     df = df.rename({'Trips': 'y', 'Quarter': 'ds'}, axis=1)
     df.insert(0, 'Country', 'Australia')
-    return df    
+    return df
 
 # run with: pytest tests\test_benchmark.py::test_reconciler -v -s --benchmark-min-rounds=20 --disable-warnings
 @pytest.mark.parametrize("reconciler", [MinTrace(method='mint_shrink'), BottomUp()])
@@ -98,8 +97,8 @@ def test_reconciler(benchmark, reconciler, load_tourism):
     # Create hierarchical seires based on geographic levels and purpose
     # And Convert quarterly ds string to pd.datetime format
     hierarchy_levels = [['Country'],
-                        ['Country', 'State'], 
-                        ['Country', 'State', 'Region'], 
+                        ['Country', 'State'],
+                        ['Country', 'State', 'Region'],
                         ['Country', 'State', 'Region', 'Purpose']]
 
     Y_df, S_df, tags = aggregate(df=df, spec=hierarchy_levels)

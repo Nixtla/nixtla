@@ -1178,14 +1178,13 @@ class MinTrace(HReconciler):
             raise ValueError(f"Unknown reconciliation method {self.method}")
 
         try:
-            P = (
-                J
-                - np.linalg.solve(
-                    UtW[:, n_aggs:] @ Ut.T[n_aggs:] + UtW[:, :n_aggs],
-                    UtW[:, n_aggs:] @ J.T[n_aggs:],
-                ).T
-                @ Ut
-            )
+            # improve stability of linalg.solve
+            coef = UtW[:, n_aggs:] @ Ut.T[n_aggs:] + UtW[:, :n_aggs]
+            coef[np.abs(coef) < 1e-10] = 0.0
+            dep = UtW[:, n_aggs:] @ J.T[n_aggs:]
+            dep[np.abs(dep) < 1e-10] = 0.0
+
+            P = J - np.linalg.solve(coef, dep).T @ Ut
         except np.linalg.LinAlgError:
             if self.method == "mint_shrink":
                 raise Exception(
