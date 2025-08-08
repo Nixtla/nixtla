@@ -30,7 +30,7 @@ website:
             href: https://github.com/nixtla/neuralforecast
           - text: "StatsForecast ⚡️"
             href: https://github.com/nixtla/statsforecast
-          
+
       - text: "Help"
         menu:
           - text: "Report an Issue"

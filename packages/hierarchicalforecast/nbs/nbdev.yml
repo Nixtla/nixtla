@@ -1,9 +1,0 @@
-project:
-  output-dir: _docs
-
-website:
-  title: "hierarchicalforecast"
-  site-url: "https://Nixtla.github.io/hierarchicalforecast/"
-  description: "Hierarchical Methods Time series forecasting"
-  repo-branch: main
-  repo-url: "https://github.com/Nixtla/hierarchicalforecast/"

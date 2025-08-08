@@ -1,4 +1,86 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hierarchicalforecast"
+dynamic = ["version"]
+description = "Hierarchical Methods Time series forecasting"
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {text = "Apache Software License 2.0"}
+authors = [
+    {name = "Nixtla", email = "business@nixtla.io"}
+]
+keywords = ["time-series", "forecasting", "datasets", "hierarchical"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "numba",
+    "pandas>=2.1.0",
+    "scikit-learn>=1.2",
+    "quadprog",
+    "clarabel",
+    "matplotlib",
+    "narwhals>=1.27.0",
+    "utilsforecast>=0.2.12",
+    "intel-cmplr-lib-rt ; platform_system!='Darwin' and platform_machine=='x86_64'"
+]
+
+[project.optional-dependencies]
+dev = [
+    "datasetsforecast",
+    "fire",
+    "ipython<=8.32.0",
+    "statsforecast>=1.0.0",
+    "requests",
+    "scipy",
+    "pre-commit",
+    "ruff",
+    "black",
+    "pytest",
+    "pytest-benchmark",
+    "pytest-cov",
+]
+polars = [
+    "polars[numpy]<=1.32.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/hierarchicalforecast/"
+Repository = "https://github.com/Nixtla/hierarchicalforecast/"
+Documentation = "https://nixtla.github.io/hierarchicalforecast/"
+
+[tool.setuptools.dynamic]
+version = {attr = "hierarchicalforecast.__version__"}
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hierarchicalforecast*"]
+
 [tool.ruff.lint]
 select = [
     "F",  # pyflakes
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=hierarchicalforecast",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=70", #TODO: Update tests to increase coverage to 80
 ]
