@@ -266,8 +266,10 @@ def load_model(model_uri, dst_path=None):
                         - ``mlflow-artifacts:/path/to/model``
 
             For more information about supported URI schemes, see
-            `Referencing Artifacts <https://www.mlflow.org/docs/latest/tracking.html#
-            artifact-locations>`_.
+            Referencing Artifacts:
+            ```
+            https://www.mlflow.org/docs/latest/tracking.html#artifact-locations
+            ```
         dst_path (str, optional): The local filesystem path to which to download the model artifact.This
             directory must already exist. If unspecified, a local output path will
             be created. Defaults to None.
