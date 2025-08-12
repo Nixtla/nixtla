@@ -20,7 +20,7 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install black 'nbdev<2.3.26' pre-commit
+        run: pip install black "fastcore<1.8.0" nbdev==2.3.25 pre-commit
 
       - name: Run pre-commit
         run: pre-commit run --files mlforecast/*

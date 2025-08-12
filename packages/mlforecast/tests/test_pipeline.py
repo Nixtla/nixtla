@@ -5,7 +5,7 @@ from sklearn.linear_model import LinearRegression
 from utilsforecast.losses import smape
 
 from mlforecast import MLForecast
-from mlforecast.lag_transforms import RollingMean, RollingMax, RollingMin
+from mlforecast.lag_transforms import RollingMax, RollingMean, RollingMin
 from mlforecast.target_transforms import Differences, LocalStandardScaler
 from mlforecast.utils import generate_daily_series
 
@@ -73,7 +73,7 @@ def exogs(series_with_exog, statics):
 
 @pytest.mark.parametrize("use_exog", [True, False])
 @pytest.mark.parametrize("num_threads", [1, 2])
-def test_preprocess(benchmark, fcst: MLForecast, series, use_exog, series_with_exog, statics, num_threads):
+def test_preprocess(benchmark, fcst, series, use_exog, series_with_exog, statics, num_threads):
     if use_exog:
         series = series_with_exog
     fcst.ts.num_threads = num_threads
@@ -83,7 +83,7 @@ def test_preprocess(benchmark, fcst: MLForecast, series, use_exog, series_with_e
 @pytest.mark.parametrize("use_exog", [True, False])
 @pytest.mark.parametrize("num_threads", [1, 2])
 @pytest.mark.parametrize("keep_last_n", [None, 50])
-def test_predict(benchmark, fcst: MLForecast, series, use_exog, series_with_exog, exogs, statics, keep_last_n, num_threads):
+def test_predict(benchmark, fcst, series, use_exog, series_with_exog, exogs, statics, keep_last_n, num_threads):
     horizon = 14
     if use_exog:
         series = series_with_exog

@@ -1,10 +1,99 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlforecast"
+dynamic = ["version"]
+description = "Scalable machine learning based time series forecasting"
+authors = [{name = "José Morales", email = "jmoralz92@gmail.com"}]
+license = {text = "Apache Software License 2.0"}
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["python", "forecast", "forecasting", "machine-learning", "dask"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "cloudpickle",
+    "coreforecast>=0.0.15",
+    "fsspec",
+    "optuna",
+    "pandas",
+    "scikit-learn",
+    "utilsforecast>=0.2.9",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/mlforecast"
+Repository = "https://github.com/Nixtla/mlforecast"
+Documentation = "https://Nixtla.github.io/mlforecast/"
+
+
+[project.optional-dependencies]
+dask = ["fugue", "dask[complete]<=2024.12.1", "lightgbm", "xgboost"]
+ray = ["fugue[ray]", "lightgbm_ray", "xgboost_ray"]
+spark = ["fugue", "pyspark>=3.3", "lightgbm", "xgboost"]
+aws = ["fsspec[s3]"]
+gcp = ["fsspec[gcs]"]
+azure = ["fsspec[adl]"]
+polars = ["polars[numpy]"]
+dev = [
+    "black>=24",
+    "datasetsforecast>=1",
+    "fastcore<=1.7.29",
+    "gitpython",
+    "holidays<0.21",
+    "lightgbm<4.6",
+    "matplotlib",
+    "mlflow>=2.10.0",
+    "mypy",
+    "nbdev<2.3.26",
+    "numpy>=2",
+    "pandas>=2.2.2",
+    "pre-commit",
+    "polars[numpy]<=1.31.0",
+    "pyarrow",
+    "ruff",
+    "setuptools",
+    "statsmodels",
+    "xgboost",
+    "pytest",
+    "pytest-benchmark",
+    "pytest-cov",
+]
+
+[tool.setuptools]
+packages = ["mlforecast"]
+include-package-data = true
+
+
+[tool.setuptools.dynamic]
+version = {attr = "mlforecast.__version__"}
+
 [tool.ruff.lint]
 select = ["F", "ARG"]
 
-exclude = ["_nbdev.py"]
-
 [tool.mypy]
 ignore_missing_imports = true
+
 [[tool.mypy.overrides]]
 module = 'mlforecast.compat'
 ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=mlforecast",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=75" #TODO: adds tests to increase coverage to 80
+]

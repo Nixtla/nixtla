@@ -36,7 +36,6 @@ import mlforecast
 import mlforecast.flavor
 from mlforecast import MLForecast
 
-
 FLAVOR_NAME = "mlforecast"
 _MODEL_DATA_SUBPATH = "mlforecast-model"
 
@@ -44,11 +43,10 @@ _MODEL_DATA_SUBPATH = "mlforecast-model"
 def get_default_pip_requirements():
     """Create list of default pip requirements for MLflow Models.
 
-    Returns
-    -------
-    list of default pip requirements for MLflow Models produced by this flavor.
-    Calls to :func:`save_model()` and :func:`log_model()` produce a pip environment
-    that, at a minimum, contains these requirements.
+    Returns:
+        list: list of default pip requirements for MLflow Models produced by this flavor.
+            Calls to :func:`save_model()` and :func:`log_model()` produce a pip environment
+            that, at a minimum, contains these requirements.
     """
     return [_get_pinned_requirement("mlforecast")]
 
@@ -56,10 +54,9 @@ def get_default_pip_requirements():
 def get_default_conda_env():
     """Return default Conda environment for MLflow Models.
 
-    Returns
-    -------
-    The default Conda environment for MLflow Models produced by calls to
-    :func:`save_model()` and :func:`log_model()`
+    Returns:
+        The default Conda environment for MLflow Models produced by calls to
+        :func:`save_model()` and :func:`log_model()`
     """
     return _mlflow_conda_env(additional_conda_deps=get_default_pip_requirements())
 
@@ -77,55 +74,46 @@ def save_model(
 ):
     """Save an ``MLForecast`` model to a local path
 
-    Parameters
-    ----------
-    model : MLForecast
-        Fitted ``MLForecast`` model object.
-    path : str
-        Local path where the model is to be saved.
-    conda_env : Union[dict, str], optional (default=None)
-        Either a dictionary representation of a Conda environment or the path to a
-        conda environment yaml file.
-    code_paths : array-like, optional (default=None)
-        A list of local filesystem paths to Python file dependencies (or directories
-        containing file dependencies). These files are *prepended* to the system path
-        when the model is loaded.
-    mlflow_model: mlflow.models.Model, optional (default=None)
-        mlflow.models.Model configuration to which to add the python_function flavor.
-    signature : mlflow.models.signature.ModelSignature, optional (default=None)
-        Model Signature mlflow.models.ModelSignature describes
-        model input and output :py:class:`Schema <mlflow.types.Schema>`. The model
-        signature can be :py:func:`inferred <mlflow.models.infer_signature>` from
-        datasets with valid model input (e.g. the training dataset with target column
-        omitted) and valid model output (e.g. model predictions generated on the
-        training dataset), for example:
+    Args:
+        model (MLForecast): Fitted ``MLForecast`` model object.
+        path (str): Local path where the model is to be saved.
+        conda_env (Union[dict, str], optional): Either a dictionary representation of a Conda environment or the path to a
+            conda environment yaml file. Defaults to None.
+        code_paths (array-like, optional): A list of local filesystem paths to Python file dependencies (or directories
+            containing file dependencies). These files are *prepended* to the system path
+            when the model is loaded. Defaults to None.
+        mlflow_model (mlflow.models.Model, optional): mlflow.models.Model configuration to which to add the python_function flavor.
+            Defaults to None.
+        signature (mlflow.models.signature.ModelSignature, optional): Model Signature mlflow.models.ModelSignature describes
+            model input and output :py:class:`Schema <mlflow.types.Schema>`. The model
+            signature can be :py:func:`inferred <mlflow.models.infer_signature>` from
+            datasets with valid model input (e.g. the training dataset with target column
+            omitted) and valid model output (e.g. model predictions generated on the
+            training dataset), for example:
 
-        .. code-block:: py
+            .. code-block:: py
 
-          from mlflow.models import infer_signature
+              from mlflow.models import infer_signature
 
-          train = df.drop_column("target_label")
-          predictions = ...  # compute model predictions
-          signature = infer_signature(train, predictions)
+              train = df.drop_column("target_label")
+              predictions = ...  # compute model predictions
+              signature = infer_signature(train, predictions)
 
-    input_example : Union[pandas.core.frame.DataFrame, numpy.ndarray, dict, list, csr_matrix, csc_matrix], optional (default=None)
-        Input example provides one or several instances of valid model input.
-        The example can be used as a hint of what data to feed the model. The given
-        example will be converted to a ``Pandas DataFrame`` and then serialized to json
-        using the ``Pandas`` split-oriented format. Bytes are base64-encoded.
-    pip_requirements : Union[Iterable, str], optional (default=None)
-        Either an iterable of pip requirement strings
-        (e.g. ["mlforecast", "-r requirements.txt", "-c constraints.txt"]) or the string
-        path to a pip requirements file on the local filesystem
-        (e.g. "requirements.txt")
-    extra_pip_requirements : Union[Iterable, str], optional (default=None)
-        Either an iterable of pip requirement strings
-        (e.g. ["pandas", "-r requirements.txt", "-c constraints.txt"]) or the string
-        path to a pip requirements file on the local filesystem
-        (e.g. "requirements.txt")
-    serialization_format : str, optional (default="pickle")
-        The format in which to serialize the model. This should be one of the formats
-        "pickle" or "cloudpickle"
+            Defaults to None.
+        input_example (Union[pandas.core.frame.DataFrame, numpy.ndarray, dict, list, csr_matrix, csc_matrix], optional): Input example provides one or several instances of valid model input.
+            The example can be used as a hint of what data to feed the model. The given
+            example will be converted to a ``Pandas DataFrame`` and then serialized to json
+            using the ``Pandas`` split-oriented format. Bytes are base64-encoded. Defaults to None.
+        pip_requirements (Union[Iterable, str], optional): Either an iterable of pip requirement strings
+            (e.g. ["mlforecast", "-r requirements.txt", "-c constraints.txt"]) or the string
+            path to a pip requirements file on the local filesystem
+            (e.g. "requirements.txt"). Defaults to None.
+        extra_pip_requirements (Union[Iterable, str], optional): Either an iterable of pip requirement strings
+            (e.g. ["pandas", "-r requirements.txt", "-c constraints.txt"]) or the string
+            path to a pip requirements file on the local filesystem
+            (e.g. "requirements.txt"). Defaults to None.
+        serialization_format (str, optional): The format in which to serialize the model. This should be one of the formats
+            "pickle" or "cloudpickle". Defaults to "pickle".
     """
     _validate_env_arguments(conda_env, pip_requirements, extra_pip_requirements)
     _validate_and_prepare_target_save_path(path)
@@ -201,64 +189,52 @@ def log_model(
     """
     Log an ``MLForecast`` model as an MLflow artifact for the current run.
 
-    Parameters
-    ----------
-    model : MLForecast
-        Fitted ``MLForecast`` model object.
-    artifact_path : str
-        Run-relative artifact path to save the model to.
-    conda_env : Union[dict, str], optional (default=None)
-        Either a dictionary representation of a Conda environment or the path to a
-        conda environment yaml file.
-    code_paths : array-like, optional (default=None)
-        A list of local filesystem paths to Python file dependencies (or directories
-        containing file dependencies). These files are *prepended* to the system path
-        when the model is loaded.
-    registered_model_name : str, optional (default=None)
-        If given, create a model version under ``registered_model_name``, also creating
-        a registered model if one with the given name does not exist.
-    signature : mlflow.models.signature.ModelSignature, optional (default=None)
-        Model Signature mlflow.models.ModelSignature describes
-        model input and output :py:class:`Schema <mlflow.types.Schema>`. The model
-        signature can be :py:func:`inferred <mlflow.models.infer_signature>` from
-        datasets with valid model input (e.g. the training dataset with target column
-        omitted) and valid model output (e.g. model predictions generated on the
-        training dataset), for example:
+    Args:
+        model (MLForecast): Fitted ``MLForecast`` model object.
+        artifact_path (str): Run-relative artifact path to save the model to.
+        conda_env (Union[dict, str], optional): Either a dictionary representation of a Conda environment or the path to a
+            conda environment yaml file. Defaults to None.
+        code_paths (array-like, optional): A list of local filesystem paths to Python file dependencies (or directories
+            containing file dependencies). These files are *prepended* to the system path
+            when the model is loaded. Defaults to None.
+        registered_model_name (str, optional): If given, create a model version under ``registered_model_name``, also creating
+            a registered model if one with the given name does not exist. Defaults to None.
+        signature (mlflow.models.signature.ModelSignature, optional): Model Signature mlflow.models.ModelSignature describes
+            model input and output :py:class:`Schema <mlflow.types.Schema>`. The model
+            signature can be :py:func:`inferred <mlflow.models.infer_signature>` from
+            datasets with valid model input (e.g. the training dataset with target column
+            omitted) and valid model output (e.g. model predictions generated on the
+            training dataset), for example:
 
-        .. code-block:: py
+            .. code-block:: py
 
-          from mlflow.models import infer_signature
+              from mlflow.models import infer_signature
 
-          train = df.drop_column("target_label")
-          predictions = ...  # compute model predictions
-          signature = infer_signature(train, predictions)
+              train = df.drop_column("target_label")
+              predictions = ...  # compute model predictions
+              signature = infer_signature(train, predictions)
 
-    input_example : Union[pandas.core.frame.DataFrame, numpy.ndarray, dict, list, csr_matrix, csc_matrix], optional (default=None)
-        Input example provides one or several instances of valid model input.
-        The example can be used as a hint of what data to feed the model. The given
-        example will be converted to a ``Pandas DataFrame`` and then serialized to json
-        using the ``Pandas`` split-oriented format. Bytes are base64-encoded.
-    await_registration_for : int, optional (default=None)
-        Number of seconds to wait for the model version to finish being created and is
-        in ``READY`` status. By default, the function waits for five minutes. Specify 0
-        or None to skip waiting.
-    pip_requirements : Union[Iterable, str], optional (default=None)
-        Either an iterable of pip requirement strings
-        (e.g. ["mlforecast", "-r requirements.txt", "-c constraints.txt"]) or the string
-        path to a pip requirements file on the local filesystem
-        (e.g. "requirements.txt")
-    extra_pip_requirements : Union[Iterable, str], optional (default=None)
-        Either an iterable of pip requirement strings
-        (e.g. ["pandas", "-r requirements.txt", "-c constraints.txt"]) or the string
-        path to a pip requirements file on the local filesystem
-        (e.g. "requirements.txt")
-    kwargs:
-        Additional arguments for :py:class:`mlflow.models.model.Model`
+            Defaults to None.
+        input_example (Union[pandas.core.frame.DataFrame, numpy.ndarray, dict, list, csr_matrix, csc_matrix], optional): Input example provides one or several instances of valid model input.
+            The example can be used as a hint of what data to feed the model. The given
+            example will be converted to a ``Pandas DataFrame`` and then serialized to json
+            using the ``Pandas`` split-oriented format. Bytes are base64-encoded. Defaults to None.
+        await_registration_for (int, optional): Number of seconds to wait for the model version to finish being created and is
+            in ``READY`` status. By default, the function waits for five minutes. Specify 0
+            or None to skip waiting. Defaults to None.
+        pip_requirements (Union[Iterable, str], optional): Either an iterable of pip requirement strings
+            (e.g. ["mlforecast", "-r requirements.txt", "-c constraints.txt"]) or the string
+            path to a pip requirements file on the local filesystem
+            (e.g. "requirements.txt"). Defaults to None.
+        extra_pip_requirements (Union[Iterable, str], optional): Either an iterable of pip requirement strings
+            (e.g. ["pandas", "-r requirements.txt", "-c constraints.txt"]) or the string
+            path to a pip requirements file on the local filesystem
+            (e.g. "requirements.txt"). Defaults to None.
+        kwargs: Additional arguments for :py:class:`mlflow.models.model.Model`
 
-    Returns
-    -------
-    A :py:class:`ModelInfo <mlflow.models.model.ModelInfo>` instance that contains the
-    metadata of the logged model.
+    Returns:
+        A :py:class:`ModelInfo <mlflow.models.model.ModelInfo>` instance that contains the
+        metadata of the logged model.
     """
     return Model.log(
         artifact_path=artifact_path,
@@ -280,28 +256,24 @@ def load_model(model_uri, dst_path=None):
     """
     Load an ``MLForecast`` model from a local file or a run.
 
-    Parameters
-    ----------
-    model_uri : str
-        The location, in URI format, of the MLflow model. For example:
+    Args:
+        model_uri (str): The location, in URI format, of the MLflow model. For example:
 
-                    - ``/Users/me/path/to/local/model``
-                    - ``relative/path/to/local/model``
-                    - ``s3://my_bucket/path/to/model``
-                    - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
-                    - ``mlflow-artifacts:/path/to/model``
+                        - ``/Users/me/path/to/local/model``
+                        - ``relative/path/to/local/model``
+                        - ``s3://my_bucket/path/to/model``
+                        - ``runs:/<mlflow_run_id>/run-relative/path/to/model``
+                        - ``mlflow-artifacts:/path/to/model``
 
-        For more information about supported URI schemes, see
-        `Referencing Artifacts <https://www.mlflow.org/docs/latest/tracking.html#
-        artifact-locations>`_.
-    dst_path : str, optional (default=None)
-        The local filesystem path to which to download the model artifact.This
-        directory must already exist. If unspecified, a local output path will
-        be created.
+            For more information about supported URI schemes, see
+            `Referencing Artifacts <https://www.mlflow.org/docs/latest/tracking.html#
+            artifact-locations>`_.
+        dst_path (str, optional): The local filesystem path to which to download the model artifact.This
+            directory must already exist. If unspecified, a local output path will
+            be created. Defaults to None.
 
-    Returns
-    -------
-    An ``MLForecast`` model instance.
+    Returns:
+        An ``MLForecast`` model instance.
     """
     local_model_path = _download_artifact_from_uri(artifact_uri=model_uri, output_path=dst_path)
     flavor_conf = _get_flavor_configuration(model_path=local_model_path, flavor_name=FLAVOR_NAME)
@@ -313,10 +285,8 @@ def load_model(model_uri, dst_path=None):
 def _load_pyfunc(path):
     """Load PyFunc implementation. Called by ``pyfunc.load_model``.
 
-    Parameters
-    ----------
-    path : str
-        Local filesystem path to the MLflow Model with the ``mlforecast`` flavor.
+    Args:
+        path (str): Local filesystem path to the MLflow Model with the ``mlforecast`` flavor.
 
     """
     pyfunc_flavor_conf = _get_flavor_configuration(model_path=path, flavor_name=pyfunc.FLAVOR_NAME)

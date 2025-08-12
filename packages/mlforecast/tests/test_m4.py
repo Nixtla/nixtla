@@ -1,7 +1,7 @@
 import lightgbm as lgb
 import pandas as pd
 import pytest
-from datasetsforecast.m4 import M4, M4Info, M4Evaluation
+from datasetsforecast.m4 import M4, M4Evaluation, M4Info
 from sklearn.linear_model import ElasticNet
 
 from mlforecast import MLForecast

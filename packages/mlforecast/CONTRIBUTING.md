@@ -15,7 +15,7 @@
 
 Bug fixes and features are added through pull requests (PRs).
 
-##  PR submission guidelines
+## PR submission guidelines
 
 * Keep each PR focused. While it's more convenient, do not combine several unrelated fixes together. Create as many branches as needing to keep each PR focused.
 * Ensure that your PR includes a test that fails without your patch, and passes with it.
@@ -25,54 +25,105 @@ Bug fixes and features are added through pull requests (PRs).
 * Do not turn an already submitted PR into your development playground. If after you submitted PR, you discovered that more work is needed - close the PR, do the required work and then submit a new PR. Otherwise each of your commits requires attention from maintainers of the project.
 * If, however, you submitted a PR and received a request for changes, you should proceed with commits inside that PR, so that the maintainer can see the incremental fixes and won't need to review the whole PR again. In the exception case where you realize it'll take many many commits to complete the requests, then it's probably best to close the PR, do the work and then submit it again. Use common sense where you'd choose one way over another.
 
-### Local setup for working on a PR
+## Local setup for working on a PR
 
-#### 1. Clone the repository
+### 1. Clone the repository
+
 * HTTPS: `git clone https://github.com/Nixtla/mlforecast.git`
 * SSH: `git clone git@github.com:Nixtla/mlforecast.git`
 * GitHub CLI: `gh repo clone Nixtla/mlforecast`
 
-#### 2. Install the required dependencies for development
-##### conda/mamba
+### 2. Install the required dependencies for development
+
+#### conda/mamba
+
 The repo comes with an `environment.yml` file which contains the libraries needed to run all the tests (please note that the distributed interface is only available on Linux). In order to set up the environment you must have `conda/mamba` installed, we recommend [mambaforge](https://github.com/conda-forge/miniforge#mambaforge).
 
 Once you have `conda/mamba` go to the top level directory of the repository and run:
-```
+
+```sh
 {conda|mamba} env create -f environment.yml
 ```
 
 Once you have your environment setup, activate it using `conda activate mlforecast`.
 
-##### PyPI
+#### Using `uv`
+
+```sh
+pip install uv
+uv venv --python 3.10
+source .venv/bin/activate
+
+# Install the library in editable mode for development
+uv pip install -e ".[dev]" -U
+```
+
+#### PyPI
+
 From the top level directory of the repository run: `pip install ".[dev]"`
 
-#### 3. Install the library
+#### Install the library
+
 From the top level directory of the repository run: `pip install -e .[dev]`
 
-##### Setting up pre-commit
+#### Optional dependencies
+
+You can install other optional dependencies using `pip install -e '.[dask,ray,spark,aws,gcp,azure,polars]'`
+
+#### Setting up pre-commit
+
 Run `pre-commit install`
 
-### Building the library
-The library is built using the notebooks contained in the `nbs` folder. If you want to make any changes to the library you have to find the relevant notebook, make your changes and then call `nbdev_export`.
+### 3. Running tests
+
+To run the tests, run
+
+```sh
+uv run pytest
+```
+
+#### 4. Viewing documentation locally
+
+The new documentation pipeline relies on `quarto`, `mintlify` and `lazydocs`.
+
+#### install quarto
+
+Install `quarto` from &rarr; [this link](https://quarto.org/docs/get-started/)
+
+#### install mintlify
+
+> [!NOTE]
+> Please install Node.js before proceeding.
+
+```sh
+npm i -g mint
+```
+
+For additional instructions, you can read about it &rarr; [this link](https://mintlify.com/docs/installation).
+
+```sh
+uv pip install -e '.[dev]' lazydocs
+make all_docs
+```
+
+Finally to view the documentation
+
+```sh
+make preview_docs
+```
 
 ### Running tests
 
-* If you're working on the local interface, use `nbdev_test --skip_file_glob "distributed*" --n_workers 1`.
-* If you're modifying the distributed interface run the tests using `nbdev_test --n_workers 1`.
+If you're working on the local interface you can just use
 
-### Run the linting tasks
-Run `./action_files/lint`
-
-### Cleaning notebooks
-Run `./action_files/clean_nbs`
-
+```sh
+uv run pytest
+```
 
 ## Do you want to contribute to the documentation?
 
-* Docs are automatically created from the notebooks in the `nbs` folder.
-* In order to modify the documentation:
-    1. Find the relevant notebook.
-    2. Make your changes.
-    3. Run all cells.
-    4. Run `nbdev_preview`
-    5. If you modified the `index.ipynb` notebook, run `nbdev_readme`.
+* The docs are automatically generated from the docstrings in the `mlforecast` folder.
+* To contribute, ensure your docstrings follow the Google style format.
+* Once your docstring is correctly written, the documentation framework will scrape it and regenerate the corresponding `.mdx` files and your changes will then appear in the updated docs.
+* To contribute, examples/how-to-guides, make sure you submit clean notebooks, with cleared formatted LaTeX, links and images.
+* Make an appropriate entry in the `mint.json` file.
