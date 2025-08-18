@@ -175,7 +175,8 @@ def df_negative_values():
 @pytest.fixture(scope="module")
 def ts_data_set1():
     h = 5
-    series = generate_series(10, equal_ends=True)
+    freq = "D"
+    series = generate_series(10, freq, equal_ends=True)
     train_end = series["ds"].max() - h * pd.offsets.Day()
     train_mask = series["ds"] <= train_end
     train = series[train_mask]
@@ -187,6 +188,7 @@ def ts_data_set1():
         train=train,
         train_end=train_end,
         valid=valid,
+        freq=freq,
     )
 
 

@@ -52,6 +52,16 @@ class TestTimeSeriesDataSet1:
             )
         assert getattr(excinfo.value, "status_code", None) == 404
 
+        # Enough data to finetune
+        _, model_horizon = custom_client._get_model_params("timegpt-1", ts_data_set1.freq)
+        forecast3 = custom_client.forecast(ts_data_set1.train.tail(model_horizon + 1), h=ts_data_set1.h, finetune_steps=10)
+
+        # Not enough data to finetune
+        with pytest.raises(
+            ValueError, match="Some series are too short. Please make sure that each series contains at least 8 observations."
+        ):
+            custom_client.forecast(ts_data_set1.train.tail(model_horizon), h=ts_data_set1.h, finetune_steps=10)
+
     def test_cv_with_finetuned_model(self, custom_client, ts_data_set1):
         cv_base = custom_client.cross_validation(
             ts_data_set1.series, n_windows=2, h=ts_data_set1.h
@@ -112,6 +122,7 @@ class TestTimeSeriesDataSet1:
     def test_non_existing_model_returns_error(self, custom_client):
         with pytest.raises(ApiError, match="Model not found"):
             custom_client.finetuned_model("hi")
+
 
     @pytest.mark.distributed_run
     @pytest.mark.ray_run
