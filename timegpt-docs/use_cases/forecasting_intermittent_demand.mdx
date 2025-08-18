@@ -1,0 +1,232 @@
+---
+title: "Forecasting Intermittent Demand"
+description: "Learn how to forecast sporadic demand patterns for inventory management."
+icon: "box"
+---
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/4_intermittent_demand.ipynb)
+
+## Introduction
+
+Forecasting intermittent demand (demand that contains many zero values) can be challenging, especially when performance and accuracy are paramount. In this tutorial, we demonstrate how to handle intermittent demand data using TimeGPT. We use a subset of the M5 dataset that captures food item sales in a California store, including exogenous variables like selling price and daily events.
+
+TimeGPT delivers:
+- An impressive Mean Absolute Error (MAE) of **0.49**, a **14% improvement** over the best statistical model specifically designed for intermittent series.
+- Quick inference times (approximately 6.8 seconds for prediction), slightly slower (~1 second) than statistical models but highly accurate.
+
+<Check>
+TimeGPT significantly enhances accuracy for intermittent demand forecasting, outperforming specialized statistical alternatives.
+</Check>
+
+
+
+
+
+<CardGroup>
+  <Card title="Key Features">
+• Exogenous variable support
+
+• Log transform for bounded forecasts
+</Card>
+  <Card title="Performance">
+• MAE = 0.49 (14% improvement)
+
+• ~6.8s to forecast with TimeGPT
+</Card>
+</CardGroup>
+
+----
+
+## Data Preview
+
+Here's a quick look at the data structure. The dataset tracks food item demand along with exogenous variables (e.g., selling price, event types):
+
+| unique_id | ds         | y | sell_price | event_type_Cultural | event_type_National | event_type_Religious | event_type_Sporting |
+|-----------|------------|---|------------|---------------------|---------------------|----------------------|---------------------|
+| FOODS_1_001 | 2011-01-29 | 3 | 2.0        | 0                   | 0                   | 0                    | 0                   |
+| FOODS_1_001 | 2011-01-30 | 0 | 2.0        | 0                   | 0                   | 0                    | 0                   |
+| FOODS_1_001 | 2011-01-31 | 0 | 2.0        | 0                   | 0                   | 0                    | 0                   |
+| FOODS_1_001 | 2011-02-01 | 1 | 2.0        | 0                   | 0                   | 0                    | 0                   |
+| FOODS_1_001 | 2011-02-02 | 4 | 2.0        | 0                   | 0                   | 0                    | 0                   |
+
+<Frame caption="Figure 1: Visualization of intermittent demand data">
+  ![Dataset Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/4_intermittent_demand_files/figure-markdown_strict/cell-11-output-1.png)
+</Frame>
+
+----
+
+<Steps>
+  <Step title="Step 1: Environment Setup">
+    <Info>
+      You'll need packages like `pandas`, `numpy`, and `nixtla` before starting.
+    </Info>
+    ```python Environment Setup
+    import time
+    import pandas as pd
+    import numpy as np
+
+    from nixtla import NixtlaClient
+    from utilsforecast.losses import mae
+    from utilsforecast.evaluation import evaluate
+
+    nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
+    ```
+    <Info>
+      **Using an Azure AI endpoint**<br/>
+      To use an Azure AI endpoint, specify the `base_url` parameter:
+      ```python Azure AI Endpoint Setup
+      nixtla_client = NixtlaClient(base_url="your azure ai endpoint", api_key="your api_key")
+      ```
+    </Info>
+  </Step>
+
+  <Step title="Step 2: Load the Dataset">
+    ```python Load Dataset
+    df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/m5_sales_exog_small.csv")
+    df['ds'] = pd.to_datetime(df['ds'])
+    df.head()
+    ```
+    <Check>
+      Confirm that the dataset columns match `unique_id`, `ds`, and `y`, plus any exogenous variables (e.g., `sell_price` and event details).
+    </Check>
+  </Step>
+
+  <Step title="Step 3: Transform the Data">
+    <AccordionGroup>
+      <Accordion title="Perform a Log Transform">
+        <Info>
+          This step helps avoid negative predictions.
+        </Info>
+        ```python Log Transform
+        df_transformed = df.copy()
+        df_transformed['y'] = np.log(df_transformed['y'] + 1)
+        ```
+      </Accordion>
+      <Accordion title="Create Train/Test Splits">
+        ```python Train Test Split
+        # Reserve the last 28 days for testing
+        test_df = df_transformed.groupby('unique_id').tail(28)
+        input_df = df_transformed.drop(test_df.index).reset_index(drop=True)
+        ```
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+
+  <Step title="Step 4: Forecast with TimeGPT">
+    ```python Forecast Execution
+    start = time.time()
+
+    fcst_df = nixtla_client.forecast(
+        df=input_df,
+        h=28,
+        level=[80],
+        finetune_steps=10,
+        finetune_loss='mae',
+        model='timegpt-1-long-horizon',
+        time_col='ds',
+        target_col='y',
+        id_col='unique_id'
+    )
+
+    timegpt_duration = time.time() - start
+    print(f"Time (TimeGPT): {timegpt_duration}")
+
+    # Inverse transform predictions
+    cols = [col for col in fcst_df.columns if col not in ['ds', 'unique_id']]
+    fcst_df[cols] = np.exp(fcst_df[cols]) - 1
+    ```
+    <Info>
+      **Available Models in Azure AI**<br/>
+      To use Azure AI directly, set `model="azureai"`.
+      Public API models include `timegpt-1` and `timegpt-1-long-horizon`.
+    </Info>
+  </Step>
+
+  <Step title="Step 5: Evaluate the Forecasts">
+    ```python Forecast Evaluation
+    # Visualize the TimeGPT forecasts
+    nixtla_client.plot(
+        test_df,
+        fcst_df,
+        models=['TimeGPT'],
+        level=[80],
+        time_col='ds',
+        target_col='y'
+    )
+
+    # Compute MAE
+    test_df = pd.merge(test_df, fcst_df, how='left', on=['unique_id', 'ds'])
+    evaluation = evaluate(
+        test_df,
+        metrics=[mae],
+        models=['TimeGPT'],
+        target_col='y',
+        id_col='unique_id'
+    )
+    average_metrics = evaluation.groupby('metric')['TimeGPT'].mean()
+    average_metrics
+    ```
+    <Check>
+      **MAE for TimeGPT:** approximately 0.49
+    </Check>
+  </Step>
+
+  <Step title="Step 6: Compare with Statistical Models">
+    ```python Statistical Models Comparison
+    from statsforecast import StatsForecast
+    from statsforecast.models import CrostonClassic, CrostonOptimized, IMAPA, TSB
+
+    sf = StatsForecast(
+        models=[CrostonClassic(), CrostonOptimized(), IMAPA(), TSB(0.1, 0.1)],
+        freq='D',
+        n_jobs=-1
+    )
+
+    start_stats = time.time()
+    sf.fit(df=input_df)
+    sf_preds = sf.predict(h=28)
+    stats_duration = time.time() - start_stats
+
+    # TimeGPT outperforms these specialized intermittent demand models by ~14%.
+    print(f"Time (Statistical models): {stats_duration}")
+    ```
+    <Info>
+      TimeGPT's MAE is about 14% lower than the best-performing statistical model.
+    </Info>
+  </Step>
+
+  <Step title="Step 7: Use Exogenous Variables">
+    ```python Exogenous Variables Forecast
+    # Include holiday/event data as exogenous features
+    futr_exog_df = test_df[['unique_id', 'ds', 'event_type_Cultural', 'event_type_National', 'event_type_Religious', 'event_type_Sporting']]
+
+    fcst_df_ex = nixtla_client.forecast(
+        df=input_df,
+        X_df=futr_exog_df,
+        h=28,
+        level=[80],
+        finetune_steps=10,
+        finetune_loss='mae',
+        model='timegpt-1-long-horizon',
+        time_col='ds',
+        target_col='y',
+        id_col='unique_id'
+    )
+    ```
+    <Check>
+      Incorporating exogenous event data can further refine predictions.
+    </Check>
+  </Step>
+</Steps>
+
+----
+
+## Final Results
+
+TimeGPT provides a robust solution for forecasting intermittent demand:
+• ~14% MAE improvement over specialized models
+• Supports exogenous features for enhanced accuracy
+
+<Info>
+By leveraging TimeGPT and combining both internal series patterns and external factors, organizations can achieve more reliable forecasts even for challenging intermittent demands.
+</Info>

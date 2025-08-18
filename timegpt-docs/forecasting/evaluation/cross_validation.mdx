@@ -1,0 +1,231 @@
+---
+title: "Cross-validation Tutorial"
+description: "Learn how to validate time series models with rolling-window cross-validation"
+icon: "check"
+---
+
+<Info>
+Cross-validation is an effective model validation method for time series forecasting. It uses historical data to evaluate the stability and performance of your model before deployment, helping you make confident predictions in real-world scenarios.
+</Info>
+
+Cross-validation can be especially challenging for time series data, due to the inherent uncertainty and variability over time. Unlike general machine learning tasks where data can be shuffled randomly, time series data requires an approach that respects temporal ordering.
+
+<Frame caption="Rolling-window cross-validation conceptually splits your dataset into multiple training and validation sets over time.">
+  ![Rolling-window cross-validation](https://raw.githubusercontent.com/Nixtla/statsforecast/main/nbs/imgs/ChainedWindows.gif)
+</Frame>
+
+The **TimeGPT** class in Nixtla incorporates a `cross_validation` method tailored to time series forecasting. This tutorial shows how to use **NixtlaClient** to run cross-validation, reinforcing the reliability of your forecasting models.
+
+<Card title="Open In Colab" icon="cloud" href="https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/08_cross_validation.ipynb" />
+
+<Check>
+For best results, ensure your data is properly formatted: you must have a time column (e.g., `ds`), a target column (e.g., `y`), and, if necessary, an identifier column (e.g., `unique_id`) for multiple time series.
+</Check>
+
+<CardGroup cols={3}>
+  <Card>
+    **Goal:** Validate your forecasting model systematically across different time segments.
+  </Card>
+  <Card title="Key Benefit:">
+
+  </Card>
+  <Card title="Outcome:">
+
+  </Card>
+</CardGroup>
+
+---
+
+## Tutorial Steps
+
+<Steps>
+  <Step title="1. Import Packages and Initialize NixtlaClient">
+
+Cross-validation starts with installing and importing the required packages, then creating an instance of `NixtlaClient`.
+
+```python import-packages
+import pandas as pd
+from nixtla import NixtlaClient
+from IPython.display import display
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+<Tabs>
+  <Tab title="Standard Usage">
+    <Info>
+      Use this variant if you're connecting to Nixtla's standard API.
+    </Info>
+
+    ```python standard-client
+nixtla_client_standard = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+    ```
+  </Tab>
+  <Tab title="Azure AI Endpoint">
+    <Info>
+      If you are using Azure AI, include `base_url` with your endpoint.
+    </Info>
+
+    ```python azure-client
+nixtla_client_azure = NixtlaClient(
+    base_url="your azure ai endpoint",
+    api_key="your api_key"
+)
+    ```
+  </Tab>
+</Tabs>
+
+  </Step>
+
+  <Step title="2. Load Example Data">
+Use the Peyton Manning dataset as an example. The dataset can be loaded directly from Nixtla's S3 bucket:
+
+```python load-data
+pm_df = pd.read_csv(
+    'https://datasets-nixtla.s3.amazonaws.com/peyton-manning.csv'
+)
+```
+  </Step>
+
+  <Step title="3. Perform Cross-Validation">
+
+<AccordionGroup>
+  <Accordion title="Why Rolling-window Cross-validation?">
+Time series forecasting differs from typical cross-validation because future data shouldn't leak into model training. Rolling-window cross-validation respects time ordering by shifting the training and validation sets step by step.
+  </Accordion>
+  <Accordion title="Important Parameters">
+
+      - `freq`: Frequency of your data (e.g., `'D'` for daily). If not specified, it will be inferred.
+
+      - `id_col`, `time_col`, `target_col`: Columns representing series ID, timestamps, and target values.
+
+      - `n_windows`: Number of separate validation windows.
+
+      - `step_size`: Step size between each validation window.
+
+      - `h`: Forecast horizon (e.g., the number of days ahead to predict).
+
+
+  </Accordion>
+</AccordionGroup>
+
+Use `cross_validation` on the Peyton Manning dataset:
+
+```python cross-validation
+timegpt_cv_df = nixtla_client.cross_validation(
+    pm_df,
+    h=7,
+    n_windows=5,
+    freq='D'
+)
+timegpt_cv_df.head()
+```
+
+<Info>
+The logs below indicate successful cross-validation calls and data preprocessing.
+</Info>
+
+<Accordion title="Cross-validation Log Output">
+
+```bash Log Output
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Cross Validation Endpoint...
+```
+
+</Accordion>
+
+<Check>
+Cross-validation output includes the forecasted values (`TimeGPT`) aligned with historical values (`y`).
+</Check>
+
+| unique_id   | ds           | cutoff       | y          | TimeGPT    |
+| ----------- | ------------ | ------------ | ---------- | ---------- |
+| 0           | 2015-12-17   | 2015-12-16   | 7.591862   | 7.939553   |
+| 0           | 2015-12-18   | 2015-12-16   | 7.528869   | 7.887512   |
+| 0           | 2015-12-19   | 2015-12-16   | 7.171657   | 7.766617   |
+| 0           | 2015-12-20   | 2015-12-16   | 7.891331   | 7.931502   |
+| 0           | 2015-12-21   | 2015-12-16   | 8.360071   | 8.312632   |
+
+
+
+<Warning>
+If you are using an Azure AI endpoint, remember to specify
+`model="azureai"` in `cross_validation`. Also refer to
+[this tutorial](/forecasting/model-version/longhorizon_model) to explore other supported models.
+</Warning>
+
+  </Step>
+
+  <Step title="4. Plot Cross-Validation Results">
+Visualize forecast performance for each cutoff period. Here's an example plotting the last 100 rows of actual data along with cross-validation forecasts for each cutoff.
+
+```python plot-results
+cutoffs = timegpt_cv_df['cutoff'].unique()
+
+for cutoff in cutoffs:
+    fig = nixtla_client.plot(
+        pm_df.tail(100),
+        timegpt_cv_df.query('cutoff == @cutoff').drop(columns=['cutoff', 'y']),
+    )
+    display(fig)
+```
+
+<Frame
+  caption="An example visualization of predicted vs. actual values in the Peyton Manning dataset."
+  >
+  ![Cross-validation Example](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-12-output-1.png)
+</Frame>
+  </Step>
+
+  <Step title="5. Use Prediction Intervals, Exogenous Variables, and Model Variations">
+You can customize your cross-validation further:
+
+<AccordionGroup>
+  <Accordion title="Features to Enhance Your Model">
+
+      - **Prediction intervals:** Pass `level=[80, 90]` to compute confidence intervals.
+
+      - **Exogenous variables:** Include built-in date features like `date_features=['month']`, or provide your own dynamic exogenous variables.
+
+      - **Model variants:** Set `model='timegpt-1-long-horizon'` (or other Nixtla-supported models) for specialized tasks like long-horizon forecasts.
+
+
+  </Accordion>
+  <Accordion title="Example Usage">
+    ```python advanced-cross-validation
+timegpt_cv_custom_df = nixtla_client.cross_validation(
+    df=pm_df,
+    h=7,
+    freq='D',
+    level=[80, 90],
+    date_features=['month'],
+    model='timegpt-1-long-horizon'
+)
+
+timegpt_cv_custom_df.head()
+      ```
+
+    | unique_id   | ds           | cutoff       | y          | TimeGPT    | TimeGPT-lo-90   | TimeGPT-hi-90   | TimeGPT-lo-80   | TimeGPT-hi-80   |
+| ----------- | ------------ | ------------ | ---------- | ---------- | --------------- | --------------- | --------------- | --------------- |
+| 0           | 2015-12-17   | 2015-12-16   | 7.591862   | 7.939553   | 7.112531        | 8.730458        | 7.316611        | 8.562029        |
+
+
+  </Accordion>
+</AccordionGroup>
+  </Step>
+</Steps>
+
+## Conclusion
+
+By systematically testing your forecasting models over multiple time windows, `cross_validation` in Nixtla's **TimeGPT** ensures predictions are accurate and reliable. Incorporating confidence intervals, exogenous variables, and different model variants can further enhance your forecasts, giving you robust insights for real-world applications.
+
+<Check>
+Ready to take the next step? Explore other tutorials in the Nixtla documentation for more details on custom models, hyperparameter tuning, and advanced visualization techniques.
+</Check>

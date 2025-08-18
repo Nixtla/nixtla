@@ -1,0 +1,82 @@
+---
+title: "Add Exogenous Variables"
+description: "Learn how to improve anomaly detection by incorporating external factors."
+icon: "input-text"
+---
+
+## Why Use Exogenous Variables?
+
+Including relevant exogenous variables can greatly improve anomaly detection, especially for time series influenced by external factors such as weather or
+market indicators.
+
+Key benefits of using exogenous variables:
+
+- Improve anomaly detection accuracy
+- Enhance model interpretability
+- Provide additional context for anomaly detection
+
+
+## How to Use Exogenous Variables
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/historical-anomaly-detection/02_anomaly_exogenous.ipynb)
+
+
+### Step 1: Set Up Data and Client
+
+Follow the steps in the [historical anomaly detection tutorial](/anomaly_detection/historical_anomaly_detection) to set up the data and client.
+
+### Step 2: Detect Anomalies with Exogenous Features
+
+Use the `detect_anomalies` method to identify anomalies. The method will automatically detect and utilize any exogenous features present in your DataFrame:
+
+```python
+anomalies_df = nixtla_client.detect_anomalies(
+    df=df,
+    time_col='ds',
+    target_col='y'
+)
+```
+### Step 3: Add Date Features (Optional)
+
+Adding date features is a powerful way to enrich datasets for historical anomaly detection—especially when external exogenous variables are unavailable. By passing date components like `['month', 'year']` and enabling `date_features_to_one_hot=True`, TimeGPT automatically encodes these as one-hot vectors. This allows the model to better detect seasonal patterns, calendar effects, and periodic anomalies.
+
+```python
+anomalies_df = nixtla_client.detect_anomalies(
+    df=df,
+    time_col='ds',
+    target_col='y',
+    date_features=['month', 'year'],
+    date_features_to_one_hot=True
+)
+```
+
+### Step 4: Visualize Anomalies
+
+Use the `plot` method to visualize the detected anomalies in the time series data.
+
+```python
+nixtla_client.plot(df, anomalies_df)
+```
+
+    <Frame caption="Detected anomalies in time series with exogenous variables">
+      ![Detected anomalies in time series with exogenous variables](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/02_anomaly_exogenous_files/figure-markdown_strict/cell-11-output-2.png)
+    </Frame>
+
+The plot shows the time series with detected anomalies marked in red. The blue line represents the actual values, while the shaded area indicates the confidence interval. Points that fall outside this interval are flagged as anomalies.
+
+### Step 5: Inspect Model Weights (Optional)
+
+Use the `weights_x` method to view the relative weights of the exogenous features to understand their impact:
+
+```python
+nixtla_client.weights_x.plot.barh(
+    x='features',
+    y='weights'
+)
+```
+
+    <Frame caption="Weights of exogenous date features">
+      ![Weights of exogenous date features](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/02_anomaly_exogenous_files/figure-markdown_strict/cell-12-output-1.png)
+    </Frame>
+
+The horizontal bar plot shows the relative importance of each exogenous feature in the anomaly detection model. Features with larger weights have a stronger influence on the model's predictions. This visualization helps identify which external factors are most significant in determining anomalies in your time series.

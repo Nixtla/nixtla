@@ -1,0 +1,212 @@
+---
+title: "TimeGPT Quickstart (Polars)"
+description: "Get started with TimeGPT using Polars for efficient data processing."
+icon: "bolt-lightning"
+---
+
+<Info>
+TimeGPT is a production-ready, generative pretrained transformer for time series. It can make accurate predictions in just a few lines of code across domains like retail, electricity, finance, and IoT.
+</Info>
+
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/getting-started/21_polars_quickstart.ipynb)
+
+<Steps>
+  <Step title="Create a TimeGPT Account and Generate an API Key">
+    1. Visit [dashboard.nixtla.io](https://dashboard.nixtla.io/)
+    2. Sign in with Google, GitHub, or email
+    3. Select **API Keys** in the menu, then click **Create New API Key**
+    4. Copy your generated API key using the provided button
+
+    <Frame caption="TimeGPT dashboard with API key management">
+      ![TimeGPT dashboard with API key management](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
+    </Frame>
+  </Step>
+
+  <Step title="Install Nixtla">
+  ```bash install-nixtla
+  pip install nixtla
+  ```
+  </Step>
+
+  <Step title="Import and Validate Your Nixtla Client">
+  ```python client-setup
+  from nixtla import NixtlaClient
+
+  # Instantiate the NixtlaClient
+  nixtla_client = NixtlaClient(
+      api_key='my_api_key_provided_by_nixtla'
+  )
+
+  # Validate the API key
+  nixtla_client.validate_api_key()
+  ```
+
+  <Warning>
+    For enhanced security, check [Setting Up your API Key](https://docs.nixtla.io/docs/getting-started-setting_up_your_api_key).
+  </Warning>
+  </Step>
+
+  <Step title="Make Forecasts with Polars">
+    <AccordionGroup>
+      <Accordion title="1. Load and Preview the Dataset">
+        <Info>
+          We use the **AirPassengers** dataset, containing monthly airline passenger totals from 1949 to 1960. This dataset is a classic example for time series forecasting.
+        </Info>
+
+      ```python load-airpassengers-data
+      import polars as pl
+
+      df = pl.read_csv(
+          'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv',
+          try_parse_dates=True,
+      )
+
+      df.head()
+      ```
+
+      | timestamp    | value   |
+| ------------ | ------- |
+| 1949-01-01   | 112     |
+| 1949-02-01   | 118     |
+| 1949-03-01   | 132     |
+| 1949-04-01   | 129     |
+| 1949-05-01   | 121     |
+
+
+
+      <Info>
+        **Plot the dataset** for a quick visual inspection:
+      </Info>
+
+      ```python plot-airpassengers-data
+      nixtla_client.plot(df, time_col='timestamp', target_col='value')
+      ```
+
+      <Frame caption="Monthly airline passengers from 1949–1960">
+        ![Monthly airline passengers from 1949–1960](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/21_polars_quickstart_files/figure-markdown_strict/cell-13-output-1.png)
+      </Frame>
+      </Accordion>
+
+      <Accordion title="2. Data Requirements">
+        <Info>
+
+            - The target variable column should not contain missing or non-numeric values.
+
+            - Ensure there are no gaps in the timestamps.
+
+            - The time column must be of type [Date](https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Date.html) or [Datetime](https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Datetime.html).
+
+
+          For comprehensive details, visit [Data Requirements](https://docs.nixtla.io/docs/getting-started-data_requirements).
+        </Info>
+      </Accordion>
+
+      <Accordion title="3. Generate a 12-Month Forecast">
+      ```python forecast-timegpt-12-months
+      timegpt_fcst_df = nixtla_client.forecast(
+          df=df,
+          h=12,
+          freq='1mo',
+          time_col='timestamp',
+          target_col='value'
+      )
+
+      timegpt_fcst_df.head()
+      ```
+
+      <Info>
+        Forecast values for the next 12 months:
+      </Info>
+
+      | timestamp    | TimeGPT      |
+| ------------ | ------------ |
+| 1961-01-01   | 437.837921   |
+| 1961-02-01   | 426.062714   |
+| 1961-03-01   | 463.116547   |
+| 1961-04-01   | 478.244507   |
+| 1961-05-01   | 505.646484   |
+
+
+
+      <Info>
+        Plot the 12-month forecast alongside the actual data:
+      </Info>
+
+      ```python plot-timegpt-12-months
+      nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+      ```
+
+      <Frame caption="Comparison of forecast and actual data (12 months)">
+        ![Comparison of forecast and actual data (12 months)](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/21_polars_quickstart_files/figure-markdown_strict/cell-15-output-1.png)
+      </Frame>
+      </Accordion>
+
+      <Accordion title="4. Forecast Longer Horizons (36 Months)">
+        <Warning>
+          When requesting `h` (horizon) values larger than the models maximum, you may see a warning.
+        </Warning>
+
+      ```python forecast-timegpt-36-months
+      timegpt_fcst_df = nixtla_client.forecast(
+          df=df,
+          h=36,
+          time_col='timestamp',
+          target_col='value',
+          freq='1mo',
+          model='timegpt-1-long-horizon'
+      )
+
+      timegpt_fcst_df.head()
+      ```
+
+      <Info>
+        Plot the 36-month forecast results:
+      </Info>
+
+      ```python plot-timegpt-36-months
+      nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+      ```
+
+      <Frame caption="36-month forecast">
+        ![36-month forecast](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/21_polars_quickstart_files/figure-markdown_strict/cell-17-output-1.png)
+      </Frame>
+      </Accordion>
+
+      <Accordion title="5. Generate a Shorter Forecast (6 Months)">
+      ```python forecast-timegpt-6-months
+      timegpt_fcst_df = nixtla_client.forecast(
+          df=df,
+          h=6,
+          time_col='timestamp',
+          target_col='value',
+          freq='1mo'
+      )
+
+      nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+      ```
+
+      <Frame caption="6-month forecast">
+        ![6-month forecast](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/21_polars_quickstart_files/figure-markdown_strict/cell-18-output-2.png)
+      </Frame>
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+</Steps>
+
+<CardGroup cols={1}>
+  <Card title="Key Takeaways">
+
+      - TimeGPT can forecast short to long horizons easily.
+
+      - Minimal setup is required—just an API key and your dataset!
+
+      - Data validation helps ensure accurate forecasts.
+
+
+  </Card>
+</CardGroup>
+
+<Check>
+You are now ready to harness TimeGPT for quick and reliable time series forecasting using Polars!
+</Check>

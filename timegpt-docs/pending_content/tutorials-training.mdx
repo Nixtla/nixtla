@@ -1,0 +1,123 @@
+---
+title: "Training"
+description: "Tutorials and steps for training TimeGPT for various forecasting scenarios"
+icon: "gear"
+---
+
+## Overview
+
+This section provides tutorials about training **TimeGPT** under specific conditions. Learn how to extend predictions across multiple time series and over long horizons with ease.
+
+<Info>
+  TimeGPT is designed to handle time series forecasting tasks of varying complexities. The tutorials below will guide you through key strategies for effective training and deployment.
+</Info>
+
+---
+
+## Quick Start: General Training Steps
+
+Below is a concise overview of how to start training with **TimeGPT**.
+
+<Steps>
+  <Step title="Prepare Your Data">
+    Ensure your time series data is clean, properly formatted, and includes all necessary features (e.g., timestamps, values, external variables).
+  </Step>
+  <Step title="Select Your Forecasting Approach">
+    Decide whether you need a single series or multi-series approach, and whether you need short or long horizons.
+  </Step>
+  <Step title="Configure TimeGPT">
+    Set up the relevant hyperparameters for your forecasting needs (window size, horizon, seasonalities, etc.).
+  </Step>
+  <Step title="Train and Evaluate">
+    Train the model on your dataset and evaluate performance with appropriate error metrics (MAPE, RMSE, etc.).
+  </Step>
+  <Step title="Refine and Deploy">
+    Use performance insights to refine your model, then deploy it in a production environment.
+  </Step>
+</Steps>
+
+---
+
+## Tutorials
+
+<AccordionGroup>
+  <Accordion title="Long Horizon Forecasting">
+    Learn how to make predictions beyond two seasonal periods or further into the future using the specialized long-horizon forecasting model of **TimeGPT**.
+
+    <br />
+
+    <br />
+
+    <Info>
+      For forecasting horizons that exceed two seasonal periods, you may need additional computational resources and careful hyperparameter tuning.
+    </Info>
+    <br />
+
+    <CardGroup cols={2}>
+      <Card title="Long Horizon Forecasting Guide" href="https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting" cta="View Tutorial">
+        Discover the steps to train and optimize TimeGPT’s long-horizon capabilities.
+      </Card>
+    </CardGroup>
+  </Accordion>
+  <Accordion title="Multiple Series Forecasting">
+    Learn how to forecast multiple time series simultaneously using **TimeGPT**.
+
+    <br />
+
+    <br />
+
+    <Info>
+      Forecasting multiple time series can help you leverage shared patterns and reduce overall computational overhead.
+    </Info>
+    <br />
+
+    <CardGroup cols={2}>
+      <Card title="Multiple Series Forecasting Guide" href="https://docs.nixtla.io/docs/tutorials-multiple_series_forecasting" cta="View Tutorial">
+        Forecast numerous time series at once, streamlining your workflow for complex projects.
+      </Card>
+    </CardGroup>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Example Training Code
+
+Below is a simplified example of how you might train **TimeGPT** in Python. Adjust hyperparameters as needed for your specific use case.
+
+<CodeGroup>
+
+```python Example: Training TimeGPT Multi-Series
+# Example: Training TimeGPT for a multi-series scenario
+import timegpt
+
+# Load your dataset
+data = timegpt.load_data("my_dataset.csv")
+
+# Initialize the model
+model = timegpt.TimeGPT(
+    horizon=30,           # Forecast horizon
+    max_epochs=50,        # Number of training epochs
+    seasonality=24,       # Seasonal period
+    learning_rate=1e-3
+)
+
+# Train the model
+model.fit(data)
+
+# Generate predictions
+predictions = model.predict(data)
+
+# Evaluate results
+error = model.evaluate(predictions, data)
+
+print(f"Forecast error: {error:.2f}")
+```
+
+</CodeGroup>
+
+---
+
+<Check>
+  Congratulations\! You now have an overview of how to set up and train TimeGPT for both single and multiple series forecasting as well as for long-horizon use cases.
+</Check>

@@ -1,0 +1,98 @@
+---
+title: "TimeGPT in R"
+description: "Using TimeGPT for time series forecasting in the R programming language"
+icon: "code"
+---
+
+<div className="flex justify-center">
+  <img src="https://github.com/Nixtla/nixtla/blob/main/nbs/img/logo_nixtlar.png?raw=true" alt="Logo for nixtlar" width="150" />
+</div>
+
+## Introduction
+
+**TimeGPT-1**: The first foundation model for time series forecasting and anomaly detection.
+
+The `nixtlar` package is the R interface to TimeGPT, allowing you to perform state-of-the-art time series forecasting directly from R. TimeGPT is a production-ready, generative pretrained transformer for time series forecasting, developed by Nixtla. It is capable of accurately predicting various domains such as retail, electricity, finance, and IoT, with just a few lines of code. Additionally, it can detect anomalies in time series data.
+
+<Note>
+  Version 0.6.2 of nixtlar is now available on CRAN! This version introduces support for TimeGEN-1, TimeGPT optimized for Azure, along with enhanced date support, business-day frequency inference, and various bug fixes.
+</Note>
+
+## How to use
+
+To learn how to use `nixtlar`, please refer to the
+[documentation](https://nixtla.github.io/nixtlar/).
+
+To view directly on CRAN, please use this
+[link](https://cloud.r-project.org/web/packages/nixtlar/index.html).
+
+<Note title="API key required">
+  The `nixtlar` package requires an API key. Get yours on the [Nixtla Dashboard](http://dashboard.nixtla.io).
+</Note>
+
+## Installation
+
+```r
+# Install nixtlar from CRAN
+install.packages("nixtlar")
+
+# Then load it
+library(nixtlar)
+
+# Set your API key
+nixtla_set_api_key(api_key = "Your API key here")
+```
+
+## Quick Example
+
+```r
+# Load sample data
+df <- nixtlar::electricity
+head(df)
+
+# Forecast the next 8 steps ahead
+nixtla_client_fcst <- nixtla_client_forecast(df, h = 8, level = c(80,95))
+
+# Optionally, plot the results
+nixtla_client_plot(df, nixtla_client_fcst, max_insample_length = 200)
+```
+
+## Anomaly Detection Example
+
+```r
+# Detect anomalies
+nixtla_client_anomalies <- nixtlar::nixtla_client_detect_anomalies(df)
+
+# Plot with anomalies highlighted
+nixtlar::nixtla_client_plot(df, nixtla_client_anomalies, plot_anomalies = TRUE)
+```
+
+## Features and Capabilities
+
+TimeGPT through the `nixtlar` package provides:
+
+- **Zero-shot Inference**: Generate forecasts and detect anomalies with no prior training
+- **Fine-tuning**: Enhance model performance for your specific datasets
+- **Add Exogenous Variables**: Incorporate additional variables like special dates or events to improve accuracy
+- **Multiple Series Forecasting**: Simultaneously forecast multiple time series
+- **Custom Loss Function**: Tailor the fine-tuning process with specific performance metrics
+- **Cross Validation**: Implement out-of-the-box validation techniques
+- **Prediction Intervals**: Quantify uncertainty in your predictions
+- **Irregular Timestamps**: Handle data with non-uniform intervals
+
+## How to Cite
+
+If you find TimeGPT useful for your research, please consider citing:
+
+```
+Garza, A., Challu, C., & Mergenthaler-Canseco, M. (2024). TimeGPT-1.
+arXiv preprint arXiv:2310.03589. Available at
+https://arxiv.org/abs/2310.03589
+```
+
+## Support
+
+If you have questions or need support, please email `support@nixtla.io`.
+
+TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License.
+

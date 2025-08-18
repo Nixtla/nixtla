@@ -47,10 +47,14 @@
         8888
     ],
     "onCreateCommand": "make devenv",
-    "postCreateCommand": "uv pip install -Ue .[dev,distributed]",
+    "postCreateCommand": ["uv pip install -Ue .[dev,distributed]", "npm i -g mint"],
     "waitFor": "postCreateCommand",
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2.12.2": {},
-        "ghcr.io/va-h/devcontainers-features/uv:1": {}
+        "ghcr.io/va-h/devcontainers-features/uv:1": {},
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "lts",
+            "nodeGlobalInstallDirectory": "/usr/local/share/npm-global"
+        }
     }
 }

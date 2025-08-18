@@ -1,0 +1,205 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "TimeGPT Foundational model for time series forecasting and anomaly detection",
+  "colors": {
+    "primary": "#16A34A",
+    "light": "#07C983",
+    "dark": "#15803D"
+  },
+  "favicon": "/favicon.ico",
+  "ignore": ["utils/**", "depracted-docs/**"],
+  "navigation": {
+    "groups": [
+      {
+        "group": "INTRODUCTION",
+        "pages": [
+          "/introduction/introduction",
+          "/introduction/why_timegpt",
+          "/introduction/about_timegpt",
+          "/introduction/timegpt_subscription_plans",
+          "/introduction/faq"
+        ]
+      },
+      {
+        "group": "SETUP",
+        "pages": [
+          "/setup/setting_up_your_api_key",
+          "/setup/python_wheel",
+          "/setup/docker",
+          "/setup/azureai"
+        ]
+      },
+      {
+        "group": "DATA REQUIREMENTS",
+        "pages": [
+          "/data_requirements/data_requirements",
+          "/data_requirements/multiple_series",
+          "/data_requirements/missing_values",
+          "/data_requirements/audit_clean"
+        ]
+      },
+      {
+        "group": "FORECASTING",
+        "pages": [
+          "/forecasting/timegpt_quickstart",
+          {
+            "group": "Exogenous variables",
+            "pages": [
+              "/forecasting/exogenous-variables/numeric_features",
+              "/forecasting/exogenous-variables/categorical_features",
+              "/forecasting/exogenous-variables/holiday_and_special_dates",
+              "/forecasting/exogenous-variables/date_features",
+              "/forecasting/exogenous-variables/interpretability_with_shap"
+            ]
+          },
+          {
+            "group": "Fine-tuning",
+            "pages": [
+              "/forecasting/fine-tuning/steps",
+              "/forecasting/fine-tuning/depth",
+              "/forecasting/fine-tuning/custom_loss",
+              "/forecasting/fine-tuning/save_reuse_delete_finetuned_models"
+            ]
+          },
+          {
+            "group": "Probabilistic forecasting",
+            "pages": [
+              "/forecasting/probabilistic/introduction",
+              "/forecasting/probabilistic/prediction_intervals",
+              "/forecasting/probabilistic/quantiles"
+            ]
+          },
+          {
+            "group": "Model versions",
+            "pages": ["/forecasting/model-version/longhorizon_model"]
+          },
+          {
+            "group": "Evaluation",
+            "pages": [
+              "/forecasting/evaluation/cross_validation",
+              "/forecasting/evaluation/evaluation_metrics",
+              "/forecasting/evaluation/evaluation_utilsforecast"
+            ]
+          },
+          {
+            "group": "Special topics",
+            "pages": [
+              "/forecasting/special-topics/irregular_timestamps",
+              "/forecasting/special-topics/bounded_forecasts",
+              "/forecasting/special-topics/hierarchical_forecasting",
+              "/forecasting/special-topics/temporal_hierarchical"
+            ]
+          },
+          "/forecasting/improve_accuracy",
+          {
+            "group": "Forecasting at scale",
+            "pages": [
+              "/forecasting/forecasting-at-scale/computing_at_scale",
+              "/forecasting/forecasting-at-scale/spark",
+              "/forecasting/forecasting-at-scale/dask",
+              "/forecasting/forecasting-at-scale/ray"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "ANOMALY DETECTION",
+        "pages": [
+          "/anomaly_detection/historical_anomaly_detection",
+          "/anomaly_detection/exogenous_variables",
+          {
+            "group": "Real-time anomaly detection",
+            "pages": [
+              "/anomaly_detection/real-time/introduction",
+              "/anomaly_detection/real-time/adjusting_detection",
+              "/anomaly_detection/real-time/univariate_multivariate"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "USE CASES",
+        "pages": [
+          "/use_cases/forecasting_web_traffic",
+          "/use_cases/bitcoin_price_prediction",
+          "/use_cases/forecasting_energy_demand",
+          "/use_cases/forecasting_intermittent_demand",
+          "/use_cases/what_if_forecasting_price_effects_in_retail"
+        ]
+      },
+      {
+        "group": "REFERENCE",
+        "pages": [
+          "/reference/sdk_reference",
+          "/reference/date_features",
+          "/reference/timegpt_excel_add_in_beta_",
+          "/reference/timegpt_in_r"
+        ]
+      },
+      {
+        "group": "About",
+        "pages": [
+          "/about/key-concepts",
+          "/about/sub-categoria",
+          "/about/terms-and-conditions",
+          "/about/privacy-notice"
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Home",
+          "href": "https://www.nixtla.io",
+          "icon": "book-open-cover"
+        },
+        {
+          "anchor": "Get in touch",
+          "href": "https://share.hsforms.com/2kPRkvHcfRHO5m4Qqc9wKqArbxr6",
+          "icon": "envelope"
+        },
+        {
+          "anchor": "Meet with us",
+          "href": "https://meetings.hubspot.com/cristian-challu/enterprise-contact-us?uuid=dc037f5a-d93b-4%5B…%5D90b-a611dd9460af&utm_source=docs&utm_medium=docs",
+          "icon": "calendar"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Book a meeting",
+        "href": "https://meetings.hubspot.com/cristian-challu/enterprise-contact-us?uuid=dc037f5a-d93b-4%5B…%5D90b-a611dd9460af&utm_source=docs&utm_medium=docs"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://dashboard.nixtla.io"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/nixtlainc",
+      "github": "https://github.com/nixtla",
+      "linkedin": "https://linkedin.com/company/nixtlainc"
+    }
+  },
+  "integrations": {
+    "amplitude": {
+      "apiKey": "799ca210229ab5f1a23493c6302eaae1"
+    },
+    "gtm": {
+      "tagId": "GTM-TBJ64S3X"
+    },
+    "posthog": {
+      "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82"
+    }
+  }
+}

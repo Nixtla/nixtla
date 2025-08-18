@@ -1,0 +1,92 @@
+---
+title: "Validation"
+description: "Learn how to validate time series models with cross-validation and historical forecasts"
+icon: "check"
+---
+
+<Info>
+  Time series data can be highly variable. Validating your model's accuracy and reliability is crucial for confident forecasting.
+</Info>
+
+One of the primary challenges in time series forecasting is the inherent uncertainty and variability over time. It is therefore critical to validate the accuracy and reliability of the models you use.
+`TimeGPT` provides capabilities for cross-validation and historical forecasts to assist in validating your predictions.
+
+<Steps>
+  <Step title="Step 1: Understand Validation Goals">
+    Before you begin, clarify what you want to achieve with your validation process. For example:
+
+      - Measure performance over different time windows.
+
+      - Evaluate historical forecasts for accuracy insight.
+
+
+  </Step>
+  <Step title="Step 2: Choose Your Validation Method">
+    Decide whether cross-validation, historical forecasting, or both suit your scenario. Consult the resources below to learn how to implement each approach.
+  </Step>
+  <Step title="Step 3: Implement & Assess">
+    Implement your validation method in a controlled environment. Review performance metrics such as Root Mean Squared Error (RMSE) or Mean Absolute Error (MAE) to determine success.
+  </Step>
+</Steps>
+
+## What You Will Learn
+
+<CardGroup cols={2}>
+  <Card title="Cross-Validation" cta="Learn More" href="https://docs.nixtla.io/docs/tutorials-cross_validation" icon="chart-bar">
+    Learn how to perform time series cross-validation across multiple consecutive windows of your data.
+  </Card>
+
+  <Card title="Historical Forecasts" cta="Learn More" href="https://docs.nixtla.io/docs/tutorials-historical_forecast" icon="clock">
+    Learn how to generate historical forecasts within sample data to validate how `TimeGPT` would have performed historically, offering deeper insights into your model's accuracy.
+  </Card>
+</CardGroup>
+
+<AccordionGroup>
+  <Accordion title="Why Cross-Validation Is Crucial">
+    Cross-validation helps you evaluate your model's ability to generalize by testing it on multiple consecutive time windows.
+    By doing so, you gain confidence that the model isn't overfitting to a single period of data.
+  </Accordion>
+  <Accordion title="Why Generate Historical Forecasts">
+    Historical forecasts provide insight into how your model would have performed in real-world conditions.
+    These forecasts simulate past scenarios and compare predictions to actual outcomes, helping refine your approach and understanding of model performance.
+  </Accordion>
+</AccordionGroup>
+
+<Check>
+  By combining cross-validation and historical forecasts, you can get a comprehensive view of how reliable your time series predictions are.
+</Check>
+
+## Example Usage
+
+Below is a simple example of how you might set up a validation workflow in code:
+
+```python Validation Workflow Example
+import pandas as pd
+from nixtla import TimeGPT
+
+# 1. Prepare your data
+df = pd.read_csv('time_series_data.csv')
+
+# 2. Initialize TimeGPT
+timegpt = TimeGPT(api_key="YOUR_API_KEY")
+
+# 3. Cross-Validation
+#    Specify number of folds and other parameters
+cv_scores = timegpt.cross_validate(df, target_column="sales", n_folds=5)
+print("Cross-validation scores:", cv_scores)
+
+# 4. Historical Forecast
+historical_forecasts = timegpt.historical_forecast(df, target_column="sales")
+print("Historical Forecast:", historical_forecasts.head())
+
+# 5. Evaluate results
+#    Compare model insights from both cross-validation and historical forecasts
+```
+
+<Warning>
+  Always ensure your validation data is representative of real-world conditions. Avoid data leakage by not including future data when training.
+</Warning>
+
+<Info>
+  For more in-depth usage and parameter configurations, refer to the official [Cross-Validation](https://docs.nixtla.io/docs/tutorials-cross_validation) and [Historical Forecasting](https://docs.nixtla.io/docs/tutorials-historical_forecast) documentation.
+</Info>

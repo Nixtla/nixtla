@@ -1,0 +1,111 @@
+---
+title: "AzureAI"
+description: "Guide to deploying and using the TimeGEN-1 model as an Azure AI endpoint."
+icon: "cloud"
+---
+
+<Info>
+**Azure Deployment Note**
+The foundational models for time series developed by Nixtla can be deployed directly to Azure subscriptions. This guide explains how to quickly start using TimeGEN-1 as an Azure AI endpoint. If you currently use the `nixtla` library, the Azure deployment works as a drop-in replacement—simply adjust the client parameters (**endpoint URL**, **API key**, and **model name**).
+</Info>
+
+## Deploying TimeGEN-1
+
+<AccordionGroup>
+  <Accordion title="Overview">
+    TimeGEN-1 is Nixtla’s foundation AI model for time series. You can deploy it to your Azure subscription through the Azure Portal or via CLI. Once deployed, it becomes accessible as an Azure AI endpoint.
+  </Accordion>
+
+  <Accordion title="Prerequisites">
+    - An active Azure subscription with permissions to create AI endpoints.
+    - Familiarity with the Azure Portal or Azure CLI for creating and managing deployments.
+    - Basic understanding of Nixtla’s Python client library (optional but recommended).
+  </Accordion>
+</AccordionGroup>
+
+<Frame caption="Time Gen on the Azure Portal">
+  ![Azure Portal Example](/images/docs/nixtla-announcement.png)
+</Frame>
+
+## Using the Model
+
+After you have successfully deployed TimeGEN-1 and ensured you have permission to access its endpoint, you can interact with the model as you would with a standard Nixtla endpoint.
+
+<Check>
+Ensure you have your deployment URL and API key ready before proceeding.
+</Check>
+
+<AccordionGroup>
+  <Accordion title="Configure Environment Variables">
+    Define the following environment variables in your local or hosted environment:
+
+    | Environment Variable         | Description                   | Format / Example                                  |
+    |-----------------------------|-------------------------------|-------------------------------------------------|
+    | `AZURE_AI_NIXTLA_BASE_URL`  | Your API URL                   | `https://your-endpoint.inference.ai.azure.com/` |
+    | `AZURE_AI_NIXTLA_API_KEY`   | Your Azure AI authentication API key | `0000000000000000000000`                |
+
+  </Accordion>
+</AccordionGroup>
+
+## How to Use
+
+<Steps>
+  <Steps title="Install the Nixtla Client">
+    ```bash Nixtla Client Installation
+    pip install nixtla
+    ```
+    This installs the official Nixtla Python client library so you can make forecast requests to your Azure AI endpoint.
+  </Steps>
+
+  <Steps title="Set Up Your Environment">
+    Make sure you have the following environment variables properly configured:
+
+      - `AZURE_AI_NIXTLA_BASE_URL`
+
+      - `AZURE_AI_NIXTLA_API_KEY`
+
+
+  </Steps>
+
+  <Steps title="Initialize the Nixtla Client">
+    ```python Nixtla Client Initialization
+    import os
+    from nixtla import NixtlaClient
+
+    base_url = os.environ["AZURE_AI_NIXTLA_BASE_URL"]
+    api_key = os.environ["AZURE_AI_NIXTLA_API_KEY"]
+    model = "azureai"
+
+    nixtla_client = NixtlaClient(
+        api_key=api_key,
+        base_url=base_url
+    )
+    ```
+    Here, we create a new client instance using your Azure endpoint URL and API key.
+  </Steps>
+
+  <Steps title="Make a Forecast Request">
+    ```python Forecast Request Example
+    # Example forecast call; replace "..." with your actual parameters
+    nixtla_client.forecast(
+        ...,
+        model=model,
+    )
+    ```
+    Replace the ellipsis (**...**) with your specific forecasting parameters and then call the endpoint to get predictions.
+  </Steps>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Key Concept: Drop-In Replacement">
+    Because TimeGEN-1 on Azure uses the same API structure as the Nixtla library, you only need to switch out the **base URL**, **API key**, and **model name**. Your workflow remains unchanged.
+  </Card>
+
+  <Card title="Key Concept: Seamless Integration">
+    Deploying TimeGEN-1 to Azure allows you to leverage Azure’s scalability, security, and management tools directly for your time series forecasting needs without altering core application logic.
+  </Card>
+</CardGroup>
+
+<Info>
+**Tip:** Remember that you can use any Azure-supported authentication or security measures to further protect your endpoint, such as Azure Key Vault for managing secrets or role-based access control for restricting usage.
+</Info>

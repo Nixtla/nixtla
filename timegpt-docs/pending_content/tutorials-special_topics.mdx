@@ -1,0 +1,111 @@
+---
+title: "Special topics"
+description: "Explore special topics in TimeGPT including irregular timestamps, bounded forecasts, hierarchical forecasts, missing values, and improving forecast accuracy."
+icon: "gear"
+---
+
+# Special Topics in TimeGPT
+
+<Info>
+**TimeGPT** is a robust foundation model for time series forecasting. It provides advanced capabilities, including hierarchical and bounded forecasts. Certain special situations require specific considerations, such as handling irregular timestamps or datasets containing missing values, to leverage the full potential of **TimeGPT**.
+</Info>
+
+In this section, we cover these special topics to help you get the most out of TimeGPT:
+
+## Overview of Special Topics
+
+<CardGroup cols={3}>
+  <Card
+    title="Irregular Timestamps"
+    href="https://docs.nixtla.io/docs/capabilities-forecast-irregular_timestamps"
+  >
+    Learn how to manage irregular timestamps effectively to ensure correct utilization of TimeGPT.
+  </Card>
+
+  <Card
+    title="Bounded Forecasts"
+    href="https://docs.nixtla.io/docs/tutorials-bounded_forecasts"
+  >
+    Explore how to generate forecasts within defined limits using TimeGPT, ideal for bounded-outcome scenarios.
+  </Card>
+
+  <Card
+    title="Hierarchical Forecasts"
+    href="https://docs.nixtla.io/docs/tutorials-hierarchical_forecasting"
+  >
+    Understand how to perform coherent forecasts at multiple aggregation levels using TimeGPT.
+  </Card>
+
+  <Card
+    title="Missing Values"
+    href="https://docs.nixtla.io/docs/tutorials-missing_values"
+  >
+    Learn effective strategies for handling missing data points in time series when using TimeGPT.
+  </Card>
+
+  <Card
+    title="Improve Forecast Accuracy"
+    href="https://docs.nixtla.io/docs/tutorials-improve_forecast_accuracy_with_timegpt"
+  >
+    Discover techniques to enhance forecasting accuracy when working with TimeGPT.
+  </Card>
+</CardGroup>
+
+## Getting Started with Special Topics
+
+Sometimes, the best way to integrate special features in TimeGPT is by following a series of clear, sequential steps. Below is a simplified workflow to guide you:
+
+<Steps>
+  <Step title="Step 1: Identify the Special Topic">
+    Determine the challenge you are addressing (e.g., irregular timestamps, bounded forecasts, hierarchical forecasts, handling missing values, or improving accuracy).
+  </Step>
+
+  <Step title="Step 2: Prepare Your Data">
+    Align your time series data with the requirements of the specific topic.
+
+    <Info>
+      For instance, if timestamps are irregular, you might need to resample or align data before passing it to TimeGPT.
+    </Info>
+  </Step>
+
+  <Step title="Step 3: Configure TimeGPT">
+    Modify your forecasts to accommodate the special topic. For example, set upper and lower bounds for bounded forecasts.
+
+    <CodeGroup>
+      ```python Configuring TimeGPT for Bounded Forecasting
+      # Example: Configuring TimeGPT for bounded forecasting
+      from timegpt import TimeGPT
+
+      timegpt_model = TimeGPT(
+          lower_bound=0,
+          upper_bound=100  # Example bounds
+      )
+
+      # Fit the model (pseudo-code)
+      timegpt_model.fit(training_data)
+
+      # Make a forecast with the specified bounds
+      forecast = timegpt_model.predict(future_data)
+      print(forecast)
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Step 4: Monitor and Evaluate Forecasts">
+    Use appropriate evaluation metrics to ensure the forecasts meet your accuracy requirements. Adjust parameters or data preprocessing steps as needed.
+  </Step>
+
+  <Step title="Step 5: Iterate and Improve">
+    Incorporate feedback from real-world usage to refine your approach. Revisit the documentation for each specific topic and apply best practices.
+  </Step>
+</Steps>
+
+<AccordionGroup>
+  <Accordion title="Need More Guidance?">
+    Refer to the linked tutorials in the **Overview of Special Topics** section for deeper insights on each specialized area.
+  </Accordion>
+</AccordionGroup>
+
+<Check>
+With a careful approach to preparing data and configuring **TimeGPT** for these special scenarios, you can unlock superior forecasting performance for a wide range of real-world applications.
+</Check>

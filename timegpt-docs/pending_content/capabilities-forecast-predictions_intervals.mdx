@@ -1,0 +1,143 @@
+---
+title: "Prediction Intervals"
+description: "Learn how to use the level parameter to generate prediction intervals that quantify forecast uncertainty."
+icon: "chart-candlestick"
+---
+
+<CardGroup>
+  <Card title="What are Prediction Intervals?" icon="circle-info">
+    Prediction intervals measure the uncertainty around forecasted values. By specifying a confidence level, you can visualize the range in which future observations are expected to fall.
+  </Card>
+  <Card title="Key Parameter: level" icon="gear">
+    The **level** parameter accepts values between 0 and 100 (including decimals). For example, `[80]` represents an 80% confidence interval.
+  </Card>
+</CardGroup>
+
+## Overview
+
+Use the `forecast` method's **level** parameter to generate prediction intervals. This helps quantify the uncertainty around your forecasts.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/10_prediction_intervals.ipynb)
+
+<Steps>
+
+  <Step title="Step 1: Import Dependencies">
+
+  ```python Import Dependencies
+  import pandas as pd
+  from nixtla import NixtlaClient
+  ```
+
+  </Step>
+
+  <Step title="Step 2: Initialize NixtlaClient">
+
+  ```python Initialize NixtlaClient
+  nixtla_client = NixtlaClient(
+      # defaults to os.environ.get("NIXTLA_API_KEY")
+      api_key='my_api_key_provided_by_nixtla'
+  )
+  ```
+
+  </Step>
+
+  <Step title="(Optional) Use an Azure AI Endpoint">
+    <AccordionGroup>
+      <Accordion title="Configuring an Azure AI Endpoint">
+        <Check>
+          **Use an Azure AI endpoint**
+          To use an Azure AI endpoint, set the `base_url` argument as follows:
+        </Check>
+        ```python Azure AI Endpoint Configuration
+        nixtla_client = NixtlaClient(
+            base_url="your azure ai endpoint",
+            api_key="your api_key"
+        )
+        ```
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+
+  <Step title="Step 3: Load Dataset">
+
+  ```python Load Dataset
+  df = pd.read_csv(
+      "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv"
+  )
+  ```
+
+  </Step>
+
+  <Step title="Step 4: Generate Forecast with an 80% Interval">
+
+  ```python Generate 80% Interval Forecast
+  forecast_df = nixtla_client.forecast(
+      df=df,
+      h=12,
+      time_col='timestamp',
+      target_col='value',
+      level=[80]
+  )
+  ```
+
+  </Step>
+
+  <Step title="Step 5: Plot Predictions and Intervals">
+
+  ```python Plot Forecast and Intervals
+  nixtla_client.plot(
+      df=df,
+      forecasts_df=forecast_df,
+      time_col='timestamp',
+      target_col='value',
+      level=[80]
+  )
+  ```
+
+  </Step>
+
+</Steps>
+
+<Info>
+Logs indicate the validation and preprocessing steps, along with the inferred data frequency:
+</Info>
+
+<Accordion title="Forecasting Log Output">
+```bash Log Output
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+</Accordion>
+
+<Frame caption="Forecast with an 80% Prediction Interval">
+  ![Forecast](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/10_prediction_intervals_files/figure-markdown_strict/cell-10-output-2.png)
+</Frame>
+
+<AccordionGroup>
+  <Accordion title="Using Azure AI Models">
+    <Info>
+      **Available Models in Azure AI**
+      If you are using an Azure AI endpoint, set the `model` parameter to `"azureai"`:
+    </Info>
+    ```python Azure AI Models
+    nixtla_client.forecast(..., model="azureai")
+    ```
+    The public API supports two models:
+
+      - `timegpt-1` (default)
+
+      - `timegpt-1-long-horizon`
+
+
+
+      See [this tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting) for guidance on using **timegpt-1-long-horizon**.
+
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+For more information on uncertainty estimation, refer to the tutorials about [quantile forecasts](https://docs.nixtla.io/docs/tutorials-quantile_forecasts) and [prediction intervals](https://docs.nixtla.io/docs/tutorials-prediction_intervals).
+</Info>

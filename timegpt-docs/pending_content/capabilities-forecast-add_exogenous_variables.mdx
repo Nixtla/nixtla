@@ -1,0 +1,184 @@
+---
+title: "Add Exogenous Variables to Forecasts"
+description: "Learn how to incorporate external factors to improve forecast accuracy."
+icon: "table-list"
+---
+
+# Adding Exogenous Variables to Your Forecasts
+
+<Info>
+Exogenous variables are additional features external to your target time series. They can significantly improve forecasting accuracy when historical and/or future values are available.
+</Info>
+
+<Steps>
+  <Step title="1. Set up your environment">
+    Install and import the required libraries:
+
+    ```python Setup Environment
+    import pandas as pd
+    from nixtla import NixtlaClient
+
+    nixtla_client = NixtlaClient(
+        api_key='my_api_key_provided_by_nixtla'
+    )
+    ```
+  </Step>
+
+  <Step title="2. (Optional) Configure Azure AI endpoint">
+    <Info>
+      Use an Azure AI endpoint by setting the **base_url** argument:
+    </Info>
+
+    ```python Azure AI Endpoint Configuration
+    nixtla_client = NixtlaClient(
+        base_url="your azure ai endpoint",
+        api_key="your api_key"
+    )
+    ```
+  </Step>
+
+  <Step title="3. Choose your exogenous variable approach">
+    Depending on your use case, you can include only historical variables, only future variables, or both.
+  </Step>
+</Steps>
+
+<CardGroup cols={3}>
+  <Card title="Historical Exogenous">
+    Use past exogenous data for your forecast by including it in `df`.
+  </Card>
+  <Card title="Future Exogenous">
+    Supply future values of exogenous variables to the `X_df` parameter to forecast beyond the historical period.
+  </Card>
+  <Card title="Historical + Future">
+    Combine both historical and future exogenous data for maximum flexibility and accuracy.
+  </Card>
+</CardGroup>
+
+<AccordionGroup>
+
+  <Accordion title="1. Historical Exogenous Variables">
+    Include historical exogenous variables in the same DataFrame you pass to `forecast`:
+
+    ```python Historical Exogenous Variables Example
+    # Read data
+    df = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv'
+    )
+
+    # Forecast using historical exogenous variables
+    forecast_df = nixtla_client.forecast(
+        df=df,
+        h=24,
+        id_col='unique_id',
+        target_col='y',
+        time_col='ds',
+        hist_exog_list=[
+            'Exogenous1',
+            'Exogenous2',
+            'day_0',
+            'day_1',
+            'day_2',
+            'day_3',
+            'day_4',
+            'day_5',
+            'day_6'
+        ]
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="2. Future Exogenous Variables">
+    Provide future exogenous values via the `X_df` parameter:
+
+    ```python Future Exogenous Variables Example
+    import numpy as np
+
+    # Read historical data
+    df = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv'
+    )
+
+    # Load future exogenous variable data
+    future_ex_vars_df = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv'
+    )
+
+    # Forecast using future exogenous variables
+    forecast_df = nixtla_client.forecast(
+        df=df,
+        X_df=future_ex_vars_df,
+        h=24,
+        id_col='unique_id',
+        target_col='y',
+        time_col='ds'
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="3. Historical and Future Exogenous Variables">
+    Combine both historical and future exogenous variables for a more comprehensive model:
+
+    ```python Historical and Future Exogenous Variables Example
+    # Read historical data
+    df = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv'
+    )
+
+    # Load future exogenous variable data
+    future_ex_vars_df = pd.read_csv(
+        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv'
+    )
+
+    # Select specific exogenous variable columns from future data
+    future_ex_vars_df = future_ex_vars_df[[
+        "unique_id",
+        "ds",
+        "Exogenous1",
+        "Exogenous2"
+    ]]
+
+    # Forecast using both historical and future exogenous variables
+    forecast_df = nixtla_client.forecast(
+        df=df,
+        X_df=future_ex_vars_df,
+        h=24,
+        id_col='unique_id',
+        target_col='y',
+        time_col='ds',
+        hist_exog_list=[
+            'day_0',
+            'day_1',
+            'day_2',
+            'day_3',
+            'day_4',
+            'day_5',
+            'day_6'
+        ]
+    )
+    ```
+  </Accordion>
+
+</AccordionGroup>
+
+<Info>
+**Run on Azure AI Models**<br/>
+When using an Azure AI endpoint, set `model="azureai"`:
+</Info>
+
+```python Azure AI Model Example
+nixtla_client.detect_anomalies(
+    ...,
+    model="azureai"
+)
+```
+
+<Info>
+The public API supports two models: `timegpt-1` and `timegpt-1-long-horizon`.
+By default, `timegpt-1` is used.
+</Info>
+
+For more details on exogenous features and long-horizon forecasting, see:
+
+- [Exogenous variables tutorial](https://docs.nixtla.io/docs/tutorials-exogenous_variables)
+- [Categorical variables tutorial](https://docs.nixtla.io/docs/tutorials-categorical_variables)
+- [Long-horizon forecasting tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)

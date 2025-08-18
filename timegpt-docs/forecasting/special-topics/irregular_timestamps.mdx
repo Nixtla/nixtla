@@ -1,0 +1,262 @@
+---
+title: "Irregular Timestamps"
+description: "Learn how to work with both regular and irregular timestamps in TimeGPT for accurate forecasting."
+icon: "clock"
+---
+
+## Why Handle Irregular Timestamps?
+
+When working with time series data, it is important to specify its frequency
+correctly, as this can significantly impact forecasting results. TimeGPT is
+designed to automatically infer the frequency of your timestamps. For commonly
+used frequencies, such as hourly, daily, or monthly, TimeGPT reliably infers
+the frequency automatically, so no additional input is required.
+
+However, for irregular frequencies, where observations are not recorded at
+consistent or regular intervals, such as the days the U.S. stock market is open,
+it is necessary to specify the frequency directly.
+
+In this tutorial, we will show you how to handle irregular and custom
+frequencies in TimeGPT.
+
+> NOTE: TimeGPT requires that your data does not contain missing values, as this is not
+currently supported. In other words, the irregularity of the data should stem
+from the nature of the recorded phenomenon, not from missing observations.
+If your data contains missing values, please refer to our
+[tutorial on missing dates](/data_requirements/missing_values).
+
+## Tutorial
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/11_irregular_timestamps.ipynb)
+
+### Step 1: Import Packages
+
+First, we import the required packages and initialize the Nixtla client.
+
+```python
+import pandas as pd
+import pandas_market_calendars as mcal
+from nixtla import NixtlaClient
+```
+
+Initialize NixtlaClient with your API key:
+
+```python
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+### Step 2: Handling Regular Frequencies
+
+As discussed in the introduction, for time series data with regular frequencies,
+where observations are recorded at consistent intervals, TimeGPT can automatically
+infer the frequency of your timestamps if the input data is a **pandas DataFrame**.
+If you prefer not to rely on TimeGPT's automatic inference, you can set the
+`freq` parameter to a valid
+[pandas frequency string](https://pandas.pydata.org/docs/user_guide/timeseries.html#offset-aliases),
+such as `MS` for month-start frequency or `min` for minutely frequency.
+
+When working with **Polars DataFrames**, you must specify the frequency explicitly
+by using a valid [polars offset](https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.dt.offset_by.html),
+such as `1d` for daily frequency or `1h` for hourly frequency.
+
+Below is an example of how to specify the frequency for a Polars DataFrame.
+
+```python
+import polars as pl
+
+url = 'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv'
+polars_df = pl.read_csv(url, try_parse_dates=True)
+
+fcst_df = nixtla_client.forecast(
+    df=polars_df,
+    h=12,
+    freq='1mo',
+    time_col='timestamp',
+    target_col='value',
+    level=[80, 95]
+)
+```
+
+Plot the forecast DataFrame:
+
+```python
+nixtla_client.plot(
+    polars_df,
+    fcst_df,
+    time_col='timestamp',
+    target_col='value',
+    level=[80, 95]
+)
+```
+
+<Frame caption="Air Passengers Forecast">
+  ![Air Passengers Forecast](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/11_irregular_timestamps_files/figure-markdown_strict/cell-11-output-1.png)
+</Frame>
+
+### Step 3: Handling Irregular Frequencies
+
+In this section, we will discuss cases where observations are not recorded at
+consistent intervals.
+
+#### Load data
+
+We will use the daily stock prices of Palantir Technologies (PLTR) from 2020 to 2023.
+The dataset includes data up to 2023-09-22, but for this tutorial, we will exclude
+any data before 2023-08-28. This allows us to show how a custom frequency can
+handle days when the stock market is closed, such as Labor Day in the U.S.
+
+> IMPORTANT NOTE: While we are using TimeGPT to predict stock price in this
+tutorial, please note that this is being done only with the intention of showing
+the capability of forecasting with irregular timestamps. **Stock prices are [`random
+walks`](https://otexts.com/fpppy/nbs/09-arima.html#random-walk-model) and as
+such can not be predicted using traditional time series forecasting methods
+(including TimeGPT)**. Predictions for random walk will be a straight line type
+of forecast where tomorrow's price is predicted to be equal to today's price,
+which is not a useful model.
+
+```python
+url = 'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/openbb/pltr.csv'
+pltr_df = pd.read_csv(url, parse_dates=['date'])
+pltr_df = pltr_df.query('date < "2023-08-28"')
+pltr_df.head()
+```
+
+|   |       date |  Open |  High |  Low | Close | Adj Close |    Volume | Dividends | Stock Splits |
+|--:|-----------:|------:|------:|-----:|------:|----------:|----------:|----------:|-------------:|
+| 0 | 2020-09-30 | 10.00 | 11.41 | 9.11 |  9.50 |      9.50 | 338584400 |       0.0 |          0.0 |
+| 1 | 2020-10-01 |  9.69 | 10.10 | 9.23 |  9.46 |      9.46 | 124297600 |       0.0 |          0.0 |
+| 2 | 2020-10-02 |  9.06 |  9.28 | 8.94 |  9.20 |      9.20 |  55018300 |       0.0 |          0.0 |
+| 3 | 2020-10-05 |  9.43 |  9.49 | 8.92 |  9.03 |      9.03 |  36316900 |       0.0 |          0.0 |
+| 4 | 2020-10-06 |  9.04 | 10.18 | 8.90 |  9.90 |      9.90 |  90864000 |       0.0 |          0.0 |
+
+We will forecast the **adjusted closing price**, which represents the stock's
+closing price adjusted for corporate actions such as stock splits, dividends,
+and rights offerings. Hence, we will exclude the other columns from the dataset.
+
+```python
+pltr_df = pltr_df[['date', 'Adj Close']]
+
+nixtla_client.plot(
+    pltr_df,
+    time_col="date",
+    target_col="Adj Close"
+)
+```
+
+<Frame caption="PLTR Adjusted Close Prices">
+  ![PLTR Adjusted Close Prices](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/11_irregular_timestamps_files/figure-markdown_strict/cell-13-output-1.png)
+</Frame>
+
+#### Define the Frequency
+
+To define a custom frequency, we will first extract and sort the dates from the
+input data, ensuring they are in the correct datetime format. Next, we will use
+the [`pandas_market_calendars package`](https://pypi.org/project/pandas-market-calendars/),
+specifically the `get_calendar` method, to obtain the New York Stock Exchange
+(NYSE) calendar. Using this calendar, we can create a custom frequency that
+includes only the days the stock market is open.
+
+```python
+dates = pd.DatetimeIndex(sorted(pltr_df['date'].unique()))
+
+nyse = mcal.get_calendar('NYSE')
+```
+
+Note that the days the stock market is open need to include all the dates in the
+input data plus the forecast horizon. In this example, we will forecast 7 days
+ahead, so we need to make sure our trading days include the last date in the
+input data as well as the next 7 valid trading days.
+
+To avoid dealing with holidays or weekends during the forecast horizon, we will
+specify an end date well beyond the forecast horizon. For this example, we will
+use January 1, 2024, as a safe cutoff.
+
+```python
+trading_days = nyse.valid_days(
+    start_date=dates.min(),
+    end_date="2024-01-01"
+).tz_localize(None)
+```
+
+Now, with the list of trading days, we can identify the days the stock market is
+closed. These are all weekdays (Monday to Friday) within the range that are not
+trading days. Using this information, we can define a custom frequency that skips
+the stock market's closed days.
+
+```python
+all_weekdays = pd.date_range(
+    start=dates.min(),
+    end="2024-01-01",
+    freq='B'
+)
+
+closed_days = all_weekdays.difference(trading_days)
+
+custom_bday = pd.offsets.CustomBusinessDay(
+    holidays=closed_days
+)
+```
+
+#### Forecast with TimeGPT
+
+With the custom frequency defined, we can now use the forecast method,
+specifying the custom_bday frequency in the freq argument. This will make the
+forecast respect the trading schedule of the stock market.
+
+```python
+fcst_pltr_df = nixtla_client.forecast(
+    df=pltr_df,
+    h=7,
+    freq=custom_bday,
+    time_col='date',
+    target_col='Adj Close',
+    level=[80, 95]
+)
+```
+
+Finally, plot the forecast results:
+
+```python
+nixtla_client.plot(
+    pltr_df,
+    fcst_pltr_df,
+    time_col="date",
+    target_col="Adj Close",
+    level=[80, 95],
+    max_insample_length=180
+)
+```
+
+<Frame caption="PLTR Forecast (Custom Frequency)">
+  ![PLTR Forecast (Custom Frequency)](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/11_irregular_timestamps_files/figure-markdown_strict/cell-18-output-1.png)
+</Frame>
+
+```python
+fcst_pltr_df[['date']].head(7)
+```
+
+|   | date       |
+|--:|------------|
+| 0 | 2023-08-28 |
+| 1 | 2023-08-29 |
+| 2 | 2023-08-30 |
+| 3 | 2023-08-31 |
+| 4 | 2023-09-01 |
+| 5 | 2023-09-05 |
+| 6 | 2023-09-06 |
+
+Note that the forecast excludes 2023-09-04, which was a Monday when the stock
+market was closed for Labor Day in the United States.
+
+## Conclusion
+
+Below are the key takeaways of this tutorial:
+
+- TimeGPT can reliably infer regular frequencies, but you can override this by
+setting the `freq` parameter to the corresponding pandas alias.
+- When working with polars data frames, you must always specify the frequency
+using the correct polars offset.
+- TimeGPT supports irregular frequencies and allows you to define a custom
+frequency, generating forecasts exclusively for the specified dates.

@@ -1,0 +1,613 @@
+---
+title: "TimeGPT FAQ"
+description: "Frequently asked questions about TimeGPT"
+icon: "question"
+---
+
+<CardGroup cols={3}>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/forecasting/timegpt_quickstart"
+  >
+    Get started with TimeGPT in minutes
+  </Card>
+  <Card
+    title="SDK Installation"
+    icon="box"
+    href="/setup/setting_up_your_api_key"
+  >
+    Set up the Python SDK for TimeGPT
+  </Card>
+  <Card
+    title="Pricing"
+    icon="credit-card"
+    href="/introduction/timegpt_subscription_plans"
+  >
+    Review subscription plans and pricing
+  </Card>
+</CardGroup>
+
+## Commonly asked questions
+<Tabs>
+  <Tab title="TimeGPT" icon="chart-line">
+    <Accordion title="What is TimeGPT?">
+      <img src="/images/docs/Nixtla/nixtla/blob/main/nbs/img/timegpt_archi.png" alt="TimeGPT Concept" className="rounded-lg" width="300" style={{ float: 'right', margin: '0 0 20px 20px' }} />
+
+      TimeGPT is the first foundation model for time series forecasting. It produces accurate forecasts for new time series across diverse domains using only historical values as inputs. The model reads time series data sequentially from left to right, similar to how humans read a sentence. It examines windows of past data as "tokens" and predicts what comes next based on identified patterns that extrapolate into the future. Beyond forecasting, TimeGPT supports other time series tasks, including what-if scenarios and anomaly detection.
+    </Accordion>
+
+    <Accordion title="Is TimeGPT based on a Large Language Model (LLM)?">
+      <Check>
+        TimeGPT is specifically designed for time series data, not text.
+      </Check>
+
+      No, TimeGPT is not based on any large language model. While it follows the principle of training a large transformer model on a vast dataset, its architecture specifically handles time series data and minimizes forecasting errors.
+    </Accordion>
+
+    <Accordion title="How do I get started with TimeGPT?">
+      To get started with TimeGPT, register for an account at [dashboard.nixtla.io](https://dashboard.nixtla.io/). After confirming your signup via email, you can access your dashboard with account details.
+
+      <Steps>
+        <Step title="Sign up" icon="plus">
+          Create an account at [dashboard.nixtla.io](https://dashboard.nixtla.io/)
+        </Step>
+        <Step title="Confirm email" icon="envelope">
+          Click the confirmation link in your email
+        </Step>
+        <Step title="Get API key" icon="key">
+          Find your API key in the dashboard under "API Keys"
+        </Step>
+        <Step title="Install SDK" icon="download">
+          Run `pip install nixtla` to install the Python SDK
+        </Step>
+      </Steps>
+    </Accordion>
+
+    <Accordion title="How accessible is TimeGPT and what are the usage costs?">
+      For a deeper understanding of TimeGPT, refer to the [research paper](https://arxiv.org/pdf/2310.03589.pdf). While some aspects of the model architecture remain confidential, registration for TimeGPT is open to everyone.
+    </Accordion>
+
+    <Accordion title="How can I use TimeGPT?">
+      You can use TimeGPT through the Python SDK or the REST API.
+
+      <Tabs>
+        <Tab title="Python SDK" icon="code">
+          ```python Python SDK Forecast Example
+          from nixtla import NixtlaClient
+
+          # Initialize client with your API key
+          client = NixtlaClient(api_key="your_api_key")
+
+          # Make a forecast
+          forecast = client.forecast(df, h=7)
+          ```
+        </Tab>
+
+        <Tab title="REST API" icon="server">
+          ```bash REST API Forecast Example
+          curl -X POST "https://api.nixtla.io/timegpt" \
+            -H "accept: application/json" \
+            -H "x-api-key: your_api_key" \
+            -H "Content-Type: application/json" \
+            -d '{"df": [{"ds": "2023-01-01", "y": 100}, ...], "h": 7}'
+          ```
+        </Tab>
+      </Tabs>
+
+      Both methods require an API key, obtained upon registration and available in your dashboard under "API Keys".
+    </Accordion>
+  </Tab>
+
+  <Tab title="API Key" icon="key">
+    <Accordion title="What is an API key?">
+      An API key is a unique string of characters that authenticates your requests when using the Nixtla SDK, ensuring only authorized users can make requests.
+
+      <Warning>
+        Your API key is personal and should not be shared with anyone or exposed in client-side code.
+      </Warning>
+    </Accordion>
+
+    <Accordion title="Where can I get an API key?">
+      Upon registration, you receive an API key available in your [dashboard](https://dashboard.nixtla.io/) under "API Keys". Keep your API key confidential.
+
+      <Frame caption="Example API Key location in dashboard">
+        <img src="/images/docs/Nixtla/nixtla/blob/main/nbs/img/dashboard.png" alt="API Key Dashboard" className="rounded-lg" />
+      </Frame>
+    </Accordion>
+
+    <Accordion title="How do I use my API key?">
+      To integrate your API key into your development workflow, refer to the [Setting Up Your API Key](/setup/setting_up_your_api_key) tutorial.
+
+      <CodeGroup>
+        <CodeBlock title="Python API Key Usage" icon="code">
+          ```python Python API Key Example
+          from nixtla import NixtlaClient
+
+          client = NixtlaClient(api_key="your_api_key")
+          ```
+        </CodeBlock>
+
+        <CodeBlock title="REST API Key Usage" icon="server">
+          ```bash REST API Key Example
+          curl -X POST "https://api.nixtla.io/timegpt" \
+            -H "accept: application/json" \
+            -H "x-api-key: your_api_key" \
+            -H "Content-Type: application/json" \
+            -d '{"df": [{"ds": "2023-01-01", "y": 100}, ...], "h": 7}'
+          ```
+        </CodeBlock>
+      </CodeGroup>
+    </Accordion>
+
+    <Accordion title="How can I check the status of my API key?">
+      Check your API key status with the [`validate_api_key` method](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-validate-api-key) of the `NixtlaClient` class.
+
+      ```python Validate API Key Example
+      from nixtla import NixtlaClient
+
+      nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
+      nixtla_client.validate_api_key()
+      ```
+
+      ```bash Log Output
+      INFO:nixtla.nixtla_client:Happy Forecasting! :), If you have questions or need support, please email support@nixtla.io
+
+      True
+      ```
+    </Accordion>
+
+    <Accordion title="What if my API key isn't validating?">
+      When you validate your API key and it returns `False`:
+      * If you are targeting an Azure endpoint, getting `False` from the `NixtlaClient.validate_api_key` method is expected. You can skip this step when targeting an Azure endpoint and proceed diretly to forecasting instead.
+      * If you are not taregting an Azure endpoint, then you should check the following:
+        * Make sure you are using the latest version of the SDK (Python or R).
+        * Check that your API key is active in your dashboard by visiting https://dashboard.nixtla.io/.
+        * Consider any firewalls your organization might have. There may be restricted access. If so, you can whitelist our endpoint https://api.nixtla.io/.
+          * To use Nixtla's API, you need to let your system know that our endpoint is ok, so it will let you access it. Whitelisting the endpoint isn't something that Nixtla can do on our side. It's something that needs to be done on the user's system. This is a bit of an [overview on whitelisting](https://www.csoonline.com/article/569493/whitelisting-explained-how-it-works-and-where-it-fits-in-a-security-program.html).
+          * If you work in an organization, please work with an IT team. They're likely the ones setting the security and you can talk with them to get it addressed. If you run your own systems, then it's something you should be able to update, depending on the system you're using.
+    </Accordion>
+  </Tab>
+
+  <Tab title="Privacy & Security" icon="shield-check">
+    <Accordion title="How do you ensure the privacy and security of my data?">
+      At Nixtla, we take privacy and security very seriously. To ensure you understand our data policies, refer to these documents:
+
+      <CardGroup cols={3}>
+        <Card title="Privacy Notice" icon="shield-check" href="/about/privacy-notice">
+          Our data privacy policies
+        </Card>
+        <Card title="License Agreement" icon="file" href="https://github.com/Nixtla/nixtla/blob/main/LICENSE">
+          Python SDK license
+        </Card>
+        <Card title="Terms and Conditions" icon="scale-balanced" href="/about/terms-and-conditions">
+          TimeGPT service terms
+        </Card>
+      </CardGroup>
+
+      <Info>
+        We offer a self-hosted version of TimeGPT, allowing you complete control over your data - your data never leaves your premises. You can either use [Docker](/setup/docker) or a [Python wheel file](/setup/python_wheel). If interested in these option, contact us at `support@nixtla.io`.
+      </Info>
+    </Accordion>
+  </Tab>
+
+  <Tab title="Troubleshooting" icon="wrench">
+    <h3 className="text-lg font-semibold mb-3">Common errors and warnings</h3>
+
+    <Accordion title="Error message: Invalid API key">
+      ```python Invalid API Key Error
+      ApiError: status_code: 401, body: {'data': None, 'message': 'Invalid API key', 'details': 'Key not found', 'code': 'A12', 'requestID': 'E7F2BBTB2P', 'support': 'If you have questions or need support, please email support@nixtla.io'}
+      ```
+
+      <Note>
+        This error occurs when your TimeGPT API key is invalid or not set up correctly. Use the `validate_api_key` method to verify it or check that you copied it correctly from the "API Keys" section of your [dashboard](https://dashboard.nixtla.io/).
+      </Note>
+    </Accordion>
+
+    <Accordion title="Error message: Too many requests">
+      ```python Too Many Requests Error
+      ApiError: status_code: 429, body: {'data': None, 'message': 'Too many requests', 'details': 'You need to add a payment method to continue using the API, do so from https://dashboard.nixtla.io', 'code': 'A21', 'requestID': 'NCJDK7KSJ6', 'support': 'If you have questions or need support, please email support@nixtla.io'}
+      ```
+
+      <Note>
+        This error occurs when you have exhausted your free credits and need to add a payment method to continue using TimeGPT. Add a payment method in the "Billing" section of your [dashboard](https://dashboard.nixtla.io/).
+      </Note>
+    </Accordion>
+
+    <Accordion title="Error message: WriteTimeout">
+      <Note>
+        A `WriteTimeout` error indicates the request exceeded allowable processing time. This commonly happens with large datasets. To fix this, increase the `num_partitions` parameter in the [`forecast` method](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-forecast) of the `NixtlaClient` class, or use a distributed backend.
+      </Note>
+    </Accordion>
+  </Tab>
+
+  <Tab title="Support" icon="headphones">
+    Get Help with TimeGPT
+    For more questions or support, reach out through one of our channels:
+
+    <CardGroup cols={3}>
+      <Card
+        title="GitHub Issues"
+        icon="bug"
+        href="https://github.com/Nixtla/nixtla/issues"
+      >
+        For technical questions or bugs
+      </Card>
+      <Card title="Email Support" icon="envelope" href="mailto:support@nixtla.io">
+        For general inquiries or support
+      </Card>
+      <Card
+        title="Slack Community"
+        icon="comments"
+        href="https://join.slack.com/t/nixtlacommunity/shared_invite/zt-2ebtgjbip-QMSnvm6ED1NF5vi4xj_13Q"
+      >
+        Connect with our team and community
+      </Card>
+    </CardGroup>
+
+    <Tip className="mt-6">
+      When reporting issues, include your API key status, SDK version, and sample code to help us assist you more quickly.
+    </Tip>
+  </Tab>
+</Tabs>
+
+## Features & Capabilities
+
+<Tabs>
+  <Tab title="Input Data" icon="database">
+    <Accordion title="What is the input to TimeGPT?">
+      TimeGPT accepts pandas dataframes in [long format](https://www.theanalysisfactor.com/wide-and-long-data/#comments) with these necessary columns:
+
+      <ParamField name="ds" type="timestamp" required>
+        Timestamp in format `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`
+      </ParamField>
+
+      <ParamField name="y" type="numeric" required>
+        The target variable to forecast
+      </ParamField>
+
+      <Tip>
+        You can also pass a DataFrame with a DatetimeIndex without the `ds` column.
+      </Tip>
+
+      <CodeGroup>
+        <CodeBlock title="Example Input DataFrame" icon="table">
+          ```python Example Input DataFrame
+          import pandas as pd
+
+          # Create sample data
+          data = {
+              'ds': ['2023-01-01', '2023-01-02', '2023-01-03'],
+              'y': [10, 12, 15]
+          }
+
+          df = pd.DataFrame(data)
+          df['ds'] = pd.to_datetime(df['ds'])
+
+          print(df)
+          ```
+        </CodeBlock>
+
+        <CodeBlock title="Printed DataFrame Output" icon="clipboard">
+          ```
+                   ds   y
+          0 2023-01-01  10
+          1 2023-01-02  12
+          2 2023-01-03  15
+          ```
+        </CodeBlock>
+      </CodeGroup>
+
+      TimeGPT also works with [distributed dataframes](/forecasting/forecasting-at-scale/computing_at_scale) like `dask`, `spark`, and `ray`.
+    </Accordion>
+
+    <Accordion title="Can TimeGPT handle multiple time series?">
+      <Check>
+        Yes, TimeGPT can forecast multiple time series simultaneously.
+      </Check>
+
+      For guidance on forecasting multiple time series at once, consult the [Multiple Series](/forecasting/timegpt_quickstart) tutorial.
+
+      <CodeGroup>
+        <CodeBlock title="Multiple Series Forecasting Example" icon="chart-bar">
+          ```python Multiple Series Forecasting
+          # Example of forecasting multiple series
+          from nixtla import NixtlaClient
+
+          # Initialize client
+          client = NixtlaClient(api_key="your_api_key")
+
+          # Group identifier for multiple series
+          df['unique_id'] = df['store_id'] + '_' + df['item_id']
+
+          # Forecast multiple series at once
+          forecast = client.forecast(df, h=7, level=[80, 90])
+          ```
+        </CodeBlock>
+      </CodeGroup>
+    </Accordion>
+  </Tab>
+
+  <Tab title="Forecasting" icon="chart-bar">
+    <Accordion title="Does TimeGPT support forecasting with exogenous variables?">
+      <Check>
+        Yes, TimeGPT can incorporate external variables into forecasts.
+      </Check>
+
+      For instructions on incorporating exogenous variables to TimeGPT, see the [Exogenous Variables](/forecasting/exogenous-variables/numeric_features) tutorial. For incorporating calendar dates, the [Holidays and Special Dates](https://docs.nixtla.io/docs/tutorials-holidays_and_special_dates) tutorial might help. For categorical variables, refer to the [Categorical Variables](https://docs.nixtla.io/docs/tutorials-categorical_variables) tutorial.
+
+      <CodeGroup>
+        <CodeBlock title="Exogenous Variables Forecast Example" icon="code-branch">
+          ```python Exogenous Variables Forecast
+          # Forecasting with exogenous variables
+          forecast = client.forecast(
+              df,
+              h=7,
+              X_df=exog_df  # DataFrame with exogenous variables
+          )
+          ```
+        </CodeBlock>
+      </CodeGroup>
+    </Accordion>
+
+    <Accordion title="Can TimeGPT be used to forecast historical data?">
+      Yes. To forecast historical data using TimeGPT, use cross-validation. See the full tutorial on [cross-validation](/forecasting/evaluation/cross_validation).
+
+      <CodeGroup>
+        <CodeBlock title="Historical Forecast Example" icon="clock">
+          ```python Historical Forecast
+          # Get in-sample predictions
+          historical_forecast = client.cross_validation(
+              df,
+              h=12,
+              n_windows=11 # Set as many windows as you want
+          )
+          ```
+        </CodeBlock>
+      </CodeGroup>
+
+      <Frame caption="Historical Forecasting">
+        <img src="/images/docs/cv_historical.png" alt="Historical Forecast" className="rounded-lg" />
+      </Frame>
+    </Accordion>
+
+    <Accordion title="What is the maximum forecast horizon allowed by TimeGPT?">
+      TimeGPT has no maximum forecast horizon, but performance decreases as the horizon increases. When the forecast horizon exceeds the data's seasonal length (for example, more than 12 months for monthly data), you will receive this message:
+
+      <Info>
+        `WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon`
+      </Info>
+
+      For details, refer to the [Long Horizon in Time Series](/forecasting/model-version/longhorizon_model) tutorial.
+
+      <Tip>
+        For best results, keep your forecast horizon within the seasonal pattern of your data.
+      </Tip>
+    </Accordion>
+  </Tab>
+
+  <Tab title="Advanced Features" icon="gear">
+    <Accordion title="Can TimeGPT be used for anomaly detection?">
+      <Check>
+        Yes, TimeGPT includes anomaly detection capabilities.
+      </Check>
+
+      To learn how to use TimeGPT for anomaly detection, refer to the [Anomaly Detection](/anomaly_detection/real-time/introduction) tutorial.
+
+      <CodeGroup>
+        <CodeBlock title="Anomaly Detection Example" icon="bug">
+          ```python Anomaly Detection Example
+          # Detect anomalies in time series
+          anomalies = client.detect_anomalies(df)
+          ```
+        </CodeBlock>
+      </CodeGroup>
+
+      <Frame caption="Anomaly Detection Example">
+        <img src="/images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/20_anomaly_detection_files/figure-markdown_strict/cell-13-output-1.png" alt="Anomaly Detection" className="rounded-lg" />
+      </Frame>
+    </Accordion>
+
+    <Accordion title="Does TimeGPT support cross-validation?">
+      Yes. To learn how to use TimeGPT for cross-validation, refer to the [Cross-Validation](/forecasting/evaluation/cross_validation) tutorial.
+
+      <CodeGroup>
+        <CodeBlock title="Cross-Validation Example" icon="check">
+          ```python Cross-Validation Example
+          # Perform cross-validation
+          cv_results = client.cross_validation(
+              df,
+              h=7,
+              k=3,  # Number of folds
+              test_size=7  # Size of each test fold
+          )
+          ```
+        </CodeBlock>
+      </CodeGroup>
+    </Accordion>
+
+    <Accordion title="Can TimeGPT be used for uncertainty quantification?">
+      Yes. For more information, explore the [Prediction Intervals](/forecasting/probabilistic/prediction_intervals) and [Quantile Forecasts](/forecasting/probabilistic/quantiles) tutorials.
+
+      <CodeGroup>
+        <CodeBlock title="Prediction Intervals Example" icon="chart-bar">
+          ```python Prediction Intervals Example
+          # Generate prediction intervals
+          forecast_with_intervals = client.forecast(
+              df,
+              h=7,
+              level=[80, 90, 95]  # Confidence levels
+          )
+          ```
+        </CodeBlock>
+      </CodeGroup>
+
+      <Frame caption="Forecast with Prediction Intervals">
+        <img src="/images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/10_uncertainty_quantification_with_quantile_forecasts_files/figure-markdown_strict/cell-12-output-1.png" alt="Prediction Intervals" className="rounded-lg" />
+      </Frame>
+    </Accordion>
+  </Tab>
+
+  <Tab title="Data Requirements" icon="clipboard-check">
+    <Accordion title="Can TimeGPT handle large datasets?">
+      <Check>
+        Yes, TimeGPT works with distributed computing frameworks for large datasets.
+      </Check>
+
+      For large datasets with hundreds of thousands or millions of time series, we recommend using a distributed backend. TimeGPT works with several [distributed computing frameworks](/forecasting/forecasting-at-scale/computing_at_scale), including [Spark](/forecasting/forecasting-at-scale/spark), [Ray](/forecasting/forecasting-at-scale/ray), and [Dask](/forecasting/forecasting-at-scale/dask).
+
+      <CodeGroup>
+        <CodeBlock title="Using Dask for Large Datasets" icon="desktop">
+          ```python Using Dask Example
+          import dask.dataframe as dd
+
+          # Convert to Dask DataFrame
+          dask_df = dd.from_pandas(df, npartitions=4)
+
+          # Forecast using Dask backend
+          forecast = client.forecast(dask_df, h=7)
+          ```
+        </CodeBlock>
+      </CodeGroup>
+    </Accordion>
+
+    <Accordion title="Can TimeGPT be used with limited/short data?">
+      TimeGPT supports any amount of data for generating point forecasts and can produce results with just one observation per series. When using arguments such as `level`, `finetune_steps`, `X_df` (exogenous variables), or `add_history`, additional data points are necessary depending on data frequency. For more details, refer to the [Data Requirements](/data_requirements/data_requirements) tutorial.
+
+      <Info>
+        While TimeGPT can work with minimal data, more historical data typically produces better forecasts.
+      </Info>
+    </Accordion>
+
+    <Accordion title="Can TimeGPT handle missing values?">
+      <Warning>
+        TimeGPT cannot handle missing values or series with irregular timestamps.
+      </Warning>
+
+      For more information, see the [Forecasting Time Series with Irregular Timestamps](/forecasting/special-topics/irregular_timestamps) and [Dealing with Missing Values](/data_requirements/missing_values) tutorials.
+    </Accordion>
+  </Tab>
+
+  <Tab title="Visualization" icon="chart-bar">
+    <Accordion title="How can I plot the TimeGPT forecast?">
+      The `NixtlaClient` class has a [`plot` method](/reference/sdk_reference#nixtlaclient-plot) for visualizing forecasts. This method works only in interactive environments such as Jupyter notebooks, not in Python scripts.
+
+      <CodeGroup>
+        <CodeBlock title="Plotting Forecast Example" icon="image">
+          ```python Plotting Forecast Example
+          # Plot forecast
+          client.plot(
+              historical_data=df,
+              forecast_data=forecast,
+              level=[80, 95]  # Optional: show prediction intervals
+          )
+          ```
+        </CodeBlock>
+      </CodeGroup>
+
+      <Frame caption="Sample TimeGPT Forecast Visualization">
+        <img src="/images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/forecast/01_quickstart_files/figure-markdown_strict/cell-10-output-2.png" alt="Forecast Plot" className="rounded-lg" />
+      </Frame>
+    </Accordion>
+
+    <Accordion title="Does TimeGPT support polars?">
+      Currently, TimeGPT does not support polars.
+    </Accordion>
+
+    <Accordion title="Does TimeGPT produce stable predictions?">
+      <Check>
+        Yes, TimeGPT produces consistent results for identical inputs.
+      </Check>
+
+      TimeGPT is engineered for stability, ensuring consistent results for identical input data. Given the same dataset, the model will produce the same forecasts.
+    </Accordion>
+
+    <Accordion title="Can TimeGPT forecast data with simple pattern such as a straight line or sine wave?">
+      While not the primary use case for TimeGPT, it can generate solid results on simple data patterns like straight lines. Zero-shot predictions might not always meet expectations, but fine-tuning allows TimeGPT to quickly grasp trends and produce accurate forecasts. For more details, refer to the [Improve Forecast Accuracy with TimeGPT](/forecasting/improve_accuracy) tutorial.
+    </Accordion>
+  </Tab>
+
+  <Tab title="Fine-tuning" icon="sliders">
+    <Accordion title="What is fine-tuning?">
+      <Check>
+        Fine-tuning improves TimeGPT's performance for your specific data patterns.
+      </Check>
+
+      TimeGPT was trained on the largest publicly available time series dataset, covering domains including finance, retail, healthcare, and more. This comprehensive training enables TimeGPT to produce accurate forecasts for new time series without additional training (zero-shot learning).
+
+      While the zero-shot model provides a solid baseline, TimeGPT performance often improves through fine-tuning. During this process, the TimeGPT model undergoes additional training using your specific dataset, starting from the pre-trained parameters.
+
+
+      <CodeGroup>
+        <CodeBlock title="Fine-tuning Usage Example" icon="wrench">
+          ```python Fine-tuning Example
+          # Fine-tune with 100 steps
+          forecast = client.forecast(
+              df,
+              h=7,
+              finetune_steps=100,
+              finetune_loss="mse"  # Mean Squared Error
+          )
+          ```
+        </CodeBlock>
+      </CodeGroup>
+
+      For a comprehensive guide on fine-tuning, refer to the [fine-tuning](/forecasting/fine-tuning/steps) and [fine-tuning with a specific loss function](/forecasting/fine-tuning/custom_loss) tutorials.
+    </Accordion>
+
+    <Accordion title="Do I have to fine-tune every series?">
+      No, you do not need to fine-tune every series individually. When using the `finetune_steps` parameter, the model fine-tunes across all series in your dataset simultaneously. This cross-learning approach allows the model to learn from multiple series at once, which can improve individual forecasts.
+
+      <Info>
+        Selecting the right number of fine-tuning steps may require experimentation. As fine-tuning steps increase, the model becomes more specialized to your dataset but takes longer to train and may become more prone to overfitting.
+      </Info>
+    </Accordion>
+
+    <Accordion title="Can I save fine-tuned parameters?">
+      <Check>
+        Yes, you can save and reuse fine-tuned models.
+      </Check>
+
+      You can fine-tune the TimeGPT model, save it, and reuse it later. For detailed instructions, see our guide on [Re-using Fine-tuned Models](/forecasting/fine-tuning/save_reuse_delete_finetuned_models).
+
+      <Tabs>
+        <Tab title="Save Model" icon="save">
+          ```python Save Fine-tuned Model
+          # Fine-tune and save the model
+          fine_tuned_parameters = client.forecast(
+              df,
+              h=7,
+              finetune_steps=100,
+              return_model=True  # Return the fine-tuned parameters
+          )
+
+          # Save to file
+          import pickle
+          with open("fine_tuned_model.pkl", "wb") as f:
+              pickle.dump(fine_tuned_parameters, f)
+          ```
+        </Tab>
+
+        <Tab title="Load Model" icon="folder-open">
+          ```python Load Fine-tuned Model
+          # Load the fine-tuned parameters
+          import pickle
+          with open("fine_tuned_model.pkl", "rb") as f:
+              fine_tuned_parameters = pickle.load(f)
+
+          # Use the fine-tuned model
+          forecast = client.forecast(
+              new_df,
+              h=7,
+              model=fine_tuned_parameters
+          )
+          ```
+        </Tab>
+      </Tabs>
+    </Accordion>
+  </Tab>
+</Tabs>
+
+<Note>
+  Need more help? Contact our [support team](mailto:support@nixtla.io).
+</Note>

@@ -1,0 +1,253 @@
+---
+title: "Improve Forecast Accuracy with TimeGPT"
+description: "Advanced techniques to enhance TimeGPT forecast accuracy for energy and electricity."
+icon: "bullseye"
+---
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/22_how_to_improve_forecast_accuracy.ipynb)
+
+
+# Improve Forecast Accuracy with TimeGPT
+
+This guide demonstrates how to improve forecast accuracy using TimeGPT. We use hourly electricity price data from Germany as an illustrative example. Before you begin, make sure you have initialized the `NixtlaClient` object with your API key.
+
+## Forecasting Results Overview
+
+Below is a summary of our experiments and the corresponding accuracy improvements. We progressively refine forecasts by adding fine-tuning steps, adjusting loss functions, increasing the number of fine-tuned parameters, incorporating exogenous variables, and switching to a long-horizon model.
+
+| Steps   | Description                    | MAE    | MAE Improvement (%)   | RMSE   | RMSE Improvement (%)   |
+| ------- | ------------------------------ | ------ | --------------------- | ------ | ---------------------- |
+| 0       | Zero-Shot TimeGPT              | 18.5   | N/A                   | 20.0   | N/A                    |
+| 1       | Add Fine-Tuning Steps          | 11.5   | 38%                   | 12.6   | 37%                    |
+| 2       | Adjust Fine-Tuning Loss        | 9.6    | 48%                   | 11.0   | 45%                    |
+| 3       | Fine-tune More Parameters      | 9.0    | 51%                   | 11.3   | 44%                    |
+| 4       | Add Exogenous Variables        | 4.6    | 75%                   | 6.4    | 68%                    |
+| 5       | Switch to Long-Horizon Model   | 6.4    | 65%                   | 7.7    | 62%                    |
+---
+
+## Step-by-Step Guide
+
+
+
+### Step 1: Install and Import Packages  
+Make sure all necessary libraries are installed and imported. Then set up the Nixtla client (replace with your actual API key).
+
+```python 
+import numpy as np
+import pandas as pd
+from utilsforecast.evaluation import evaluate
+from utilsforecast.plotting import plot_series
+from utilsforecast.losses import mae, rmse
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    # api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+
+### Step 2: Load the Dataset  
+We use hourly electricity price data from Germany (`unique_id == "DE"`). The final two days (`48` data points) form the test set.
+
+```python
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv')
+df['ds'] = pd.to_datetime(df['ds'])
+
+df_sub = df.query('unique_id == "DE"')
+
+df_train = df_sub.query('ds < "2017-12-29"')
+df_test = df_sub.query('ds >= "2017-12-29"')
+
+df_train.shape, df_test.shape
+```
+
+<Accordion title="Dataset Load Output">
+```bash Dataset Shape Output
+((1632, 12), (48, 12))
+```
+</Accordion>
+
+<Frame caption="Hourly electricity price for Germany (training period highlighted).">
+  ![Electricity Price Over Time](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/22_how_to_improve_forecast_accuracy_files/figure-markdown_strict/cell-11-output-1.png)
+</Frame>
+
+
+### Step 3: Benchmark Forecast with TimeGPT  
+<Info>
+**Info:** We first generate a zero-shot forecast using TimeGPT, which captures overall trends but may struggle with short-term fluctuations.
+</Info>
+
+```python
+fcst_timegpt = nixtla_client.forecast(
+    df=df_train[['unique_id', 'ds', 'y']],
+    h=2*24,
+    target_col='y',
+    level=[90, 95]
+)
+```
+
+<Accordion title="Forecasting Log Output">
+```bash Forecast Logs
+[INFO logs here...]
+```
+</Accordion>
+
+#### Evaluation Metrics
+
+| unique_id | metric | TimeGPT |
+|-----------|--------|---------|
+| DE        | mae    | 18.519  |
+| DE        | rmse   | 20.038  |
+
+<Frame caption="Zero-shot TimeGPT Forecast">
+  ![TimeGPT Forecast for Germany](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/22_how_to_improve_forecast_accuracy_files/figure-markdown_strict/cell-15-output-1.png)
+</Frame>
+
+
+### Step 4: Methods to Enhance Forecasting Accuracy  
+
+Use these following strategies to refine and improve your forecast:
+
+#### 4.1 Add Fine-tuning Steps
+Further fine-tuning typically reduces forecasting errors by adjusting the internal weights of the TimeGPT model, allowing it to better adapt to your specific data.
+
+```python
+fcst_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
+                                 h=24*2,
+                                 finetune_steps = 30,
+                                 level=[90, 95])
+```
+
+<Frame caption="Add 30 Fine-tuning Steps">
+  ![TimeGPT Forecast for Germany](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/22_how_to_improve_forecast_accuracy_files/figure-markdown_strict/cell-18-output-1.png)
+</Frame>
+
+Evaluation result:
+
+| unique_id | metric | TimeGPT |
+|-----------|--------|---------|
+| DE        | mae    | 11.458  |
+| DE        | rmse   | 12.643  |
+
+
+#### 4.2 Fine-tune Using Different Loss Functions
+Trying different loss functions (e.g., `MAE`, `MSE`) can yield better results for specific use cases.
+```python 
+fcst_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
+                                 h=24*2,
+                                 finetune_steps = 30,
+                                 finetune_loss = 'mae',
+                                 level=[90, 95])
+```
+<Frame caption="Fine-tune with MAE loss function">
+  ![TimeGPT Forecast for Germany](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/22_how_to_improve_forecast_accuracy_files/figure-markdown_strict/cell-21-output-1.png)
+</Frame>
+
+Evaluation result:
+
+| unique_id | metric | TimeGPT |
+|-----------|--------|---------|
+| DE        | mae    | 9.641  |
+| DE        | rmse   | 10.956  |
+
+
+#### 4.3 Adjust Number of Fine-tuned Parameters
+The finetune_depth parameter controls how many model layers are fine-tuned. It ranges from 1 (few parameters) to 5 (more parameters).
+```python 
+fcst_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
+                                 h=24*2,
+                                 finetune_steps = 30,
+                                 finetune_depth=2,
+                                 finetune_loss = 'mae',
+                                 level=[90, 95])
+```
+<Frame caption="Fine-tune with depth of 2">
+  ![TimeGPT Forecast for Germany](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/22_how_to_improve_forecast_accuracy_files/figure-markdown_strict/cell-24-output-1.png)
+</Frame>
+
+Evaluation result:
+
+| unique_id | metric | TimeGPT |
+|-----------|--------|---------|
+| DE        | mae    | 9.002  |
+| DE        | rmse   | 11.348  |
+
+
+#### 4.4 Forecast with Exogenous Variables
+Incorporate external data (e.g., weather conditions) to boost predictive performance.
+```python 
+#import exogenous variables
+future_ex_vars_df = df_test.drop(columns = ['y'])
+future_ex_vars_df.head()
+
+#make forecast with historical and future exogenous variables
+fcst_df = nixtla_client.forecast(df=df_train,
+                                 X_df=future_ex_vars_df,
+                                 h=24*2,
+                                 level=[90, 95])
+```
+<Frame caption="Add exogenous variables">
+  ![TimeGPT Forecast for Germany](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/22_how_to_improve_forecast_accuracy_files/figure-markdown_strict/cell-29-output-1.png)
+</Frame>
+
+Evaluation result:
+
+| unique_id | metric | TimeGPT |
+|-----------|--------|---------|
+| DE        | mae    | 4.603  |
+| DE        | rmse   | 6.359  |
+
+#### 4.5 Use a Long-Horizon Model
+For longer forecasting periods, models optimized for multi-step predictions tend to perform better. You can enable this by setting the model parameter to `timegpt-1-long-horizon`.
+```python
+fcst_df = nixtla_client.forecast(df=df_train[['unique_id', 'ds', 'y']],
+                                 h=24*2,
+                                 model = 'timegpt-1-long-horizon',
+                                 level=[90, 95])
+```
+<Frame caption="Use a Long-Horizon Model">
+  ![TimeGPT Forecast for Germany](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/22_how_to_improve_forecast_accuracy_files/figure-markdown_strict/cell-32-output-1.png)
+</Frame>
+
+Evaluation result:
+| unique_id | metric | TimeGPT |
+|-----------|--------|---------|
+| DE        | mae    | 6.366  |
+| DE        | rmse   | 7.738  |
+
+
+
+### Step 5: Conclusion and Next Steps  
+Key takeaways:
+
+The following strategies offer consistent improvements in forecast accuracy. We recommend systematically experimenting with each approach to find the best combination for your data.
+<CardGroup>
+  <Card>
+
+      - Increase the number of fine-tuning steps.
+
+      - Experiment with different loss functions.
+
+      - Incorporate exogenous data.
+
+      - Switching to the long-horizon model for extended forecasting periods.
+
+  </Card>
+</CardGroup>
+
+<Check>
+**Success:** Small refinements—like adding exogenous data or adjusting fine-tuning parameters—can significantly improve your forecasting results.
+</Check>
+
+---
+
+## Result Summary
+
+
+| Steps   | Description                    | MAE    | MAE Improvement (%)   | RMSE   | RMSE Improvement (%)   |
+| ------- | ------------------------------ | ------ | --------------------- | ------ | ---------------------- |
+| 0       | Zero-Shot TimeGPT              | 18.5   | N/A                   | 20.0   | N/A                    |
+| 1       | Add Fine-Tuning Steps          | 11.5   | 38%                   | 12.6   | 37%                    |
+| 2       | Adjust Fine-Tuning Loss        | 9.6    | 48%                   | 11.0   | 45%                    |
+| 3       | Fine-tune More Parameters      | 9.0    | 51%                   | 11.3   | 44%                    |
+| 4       | Add Exogenous Variables        | 4.6    | 75%                   | 6.4    | 68%                    |
+| 5       | Switch to Long-Horizon Model   | 6.4    | 65%                   | 7.7    | 62%                    | 

@@ -39,7 +39,8 @@ jobs:
       - name: Check import
         run: python -c "from nixtla import NixtlaClient"
 
-  run-all-tests:
+  run-notebooks-test:
+    needs: run-cross-platform-tests
     runs-on: nixtla-linux-large-public
     timeout-minutes: 60
     strategy:
@@ -58,16 +59,32 @@ jobs:
       - name: Install pip requirements
         run: pip install uv && uv pip install --system ".[dev,distributed]"
 
-      - name: Run tests
-        run: nbdev_test --timing --do_print --n_workers 0 --flags 'distributed'
+      - name: Run nbconvert
+        run: |
+          find nbs/docs/ -name "*.ipynb" -print0 | while IFS= read -r -d '' nb; do
+            echo "Running $nb..."
+            jupyter nbconvert --to notebook --execute --inplace "$nb"
+          done
 
-  run-local-tests:
+  run-local-tests: # dummy tests
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [macos-13, windows-latest]
+        python-version: ["3.10"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+  run-cross-platform-tests:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest, windows-latest]
         python-version: ["3.9", "3.10"]
     steps:
       - name: Clone repo
@@ -79,30 +96,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install pip requirements
-        run: pip install uv && uv pip install --system ".[dev]"
+        run: pip install uv && uv pip install --system ".[dev,distributed]"
 
       - name: Run tests
-        run: nbdev_test --timing --do_print --n_workers 0 --skip_file_re "computing_at_scale|distributed"
+        if: runner.os != 'Windows'
+        run: pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
 
-  run-minimal-tests:
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-13, macos-14, ubuntu-latest, windows-latest]
-        python-version: ["3.9", "3.13"]
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Set up python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # 5.4.0
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install pip requirements
-        run: pip install uv && uv pip install --system . "ipython<=8.32.0" matplotlib nbdev python-dotenv
-
-      - name: Run tests
-        run: nbdev_test --n_workers 0 --path nbs/docs/getting-started/2_quickstart.ipynb
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        run: pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests

@@ -1,0 +1,115 @@
+---
+title: "Key Concepts"
+description: "Understanding the foundations of time series forecasting with TimeGPT"
+icon: "lightbulb"
+---
+
+<Info>
+These key concepts cover the foundations of time series data, how forecasts are generated, and the role of TimeGPT in predicting future values and detecting anomalies.
+</Info>
+
+<Check>
+Use these concepts as a reference to better understand how TimeGPT simplifies tasks such as demand forecasting, anomaly detection, and multi-series forecasting.
+</Check>
+
+<CardGroup>
+  <Card title="Time Series">
+    A sequence of numerical data points arranged in chronological order.
+  </Card>
+  <Card title="Forecasting">
+    Predicting future values by analyzing historical data and patterns.
+  </Card>
+  <Card title="Anomaly Detection">
+    Identifying unusual or unexpected events that deviate from typical behavior.
+  </Card>
+  <Card title="Multiple Series">
+    Managing and forecasting multiple time series data at once.
+  </Card>
+  <Card title="TimeGPT">
+    Nixtla's generative pre-trained model for time series forecasting.
+  </Card>
+  <Card title="Inputs (Tokens)">
+    Segments of historical data that inform TimeGPT's forecasting process.
+  </Card>
+</CardGroup>
+
+<AccordionGroup>
+
+<Accordion title="Time Series">
+## Time Series
+
+A time series is a sequence of numerical data points arranged in chronological order. In the context of TimeGPT, each data point in the series serves as input to the model. The model learns from patterns in the data and uses this understanding to forecast future values. Time series data appear in various domains, such as stock prices, weather recordings, and sales figures.
+
+</Accordion>
+
+<Accordion title="Forecasting">
+## Forecasting
+
+Forecasting is a method used in many fields—such as business and environmental studies—to predict future outcomes based on historical information. It involves analyzing past data to detect patterns, trends, or recurring behaviors and extending these insights into the future.
+
+<Info>
+One significant advancement in forecasting is the application of modern machine-learning methods, including deep learning. Models like TimeGPT can handle large datasets and identify complex patterns with enhanced prediction accuracy.
+</Info>
+
+For example, a retailer might analyze past sales to forecast product demand, while an economist uses historical data to anticipate future economic conditions. TimeGPT makes these advanced capabilities accessible even to users without in-depth machine-learning expertise.
+
+<Frame caption="TimeGPT output">
+  ![TimeGPT output](https://files.readme.io/f0402e5-image.png)
+</Frame>
+</Accordion>
+
+<Accordion title="Anomaly Detection">
+## Anomaly Detection
+
+Analyzing sequential data often requires identifying anomalies or unexpected events that deviate from standard patterns. TimeGPT supports anomaly detection by monitoring data sequences (such as daily temperatures) for unusual fluctuations.
+
+<Warning>
+Detecting anomalies is crucial for timely responses. Sudden changes in market behavior, unusual network activity, or abnormal sensor readings can all indicate a need for prompt investigation.
+</Warning>
+
+For example, in finance, TimeGPT can highlight abrupt market changes; in cybersecurity, it helps uncover suspicious network activity. Anomaly detection enhances forecasting by flagging significant outliers, improving overall data insights.
+
+<Frame caption="Anomaly detection">
+  ![Anomaly detection](https://files.readme.io/9655290-slice4.png)
+</Frame>
+</Accordion>
+
+<Accordion title="Multiple Series">
+## Multiple Series
+
+TimeGPT provides robust support for multi-series forecasting, allowing simultaneous analysis of multiple time series. Users can train the model on many related series, improving accuracy and enabling more flexible customization for specific forecasting requirements.
+
+<Frame caption="Multiple series forecasting">
+  ![Multiple series forecasting](https://files.readme.io/8b9b818-slice8.png)
+</Frame>
+</Accordion>
+
+<Accordion title="TimeGPT">
+## TimeGPT
+
+TimeGPT by Nixtla is a generative pre-trained model specifically designed for time series forecasting. It reviews historical series values (and optional exogenous variables) to generate predictions. Beyond forecasting, TimeGPT enables tasks like anomaly detection and financial forecasts.
+
+<Info>
+TimeGPT scans time series data similarly to how a person might read text: sequentially, from left to right. It can interpret historical windows (tokens) and leverage temporal patterns learned from billions of data points.
+</Info>
+
+With the TimeGPT API, you can access these forecasting capabilities for various potential use cases—from scenario planning to anomaly detection and beyond.
+
+<Frame caption="TimeGPT API">
+  ![TimeGPT API](https://files.readme.io/6f59c1b-Screenshot_2023-08-09_at_2.49.05_PM.png)
+</Frame>
+</Accordion>
+</AccordionGroup>
+
+## Get Started with TimeGPT
+
+Now that you understand the key concepts, you're ready to start using TimeGPT for your forecasting needs.
+
+<CardGroup>
+  <Card title="Introduction" icon="book-open" href="/intro">
+    Learn more about TimeGPT and how it can transform your time series analysis.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/forecasting-timegpt_quickstart">
+    Get up and running with TimeGPT in minutes with our step-by-step guide.
+  </Card>
+</CardGroup>
