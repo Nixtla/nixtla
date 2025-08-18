@@ -123,7 +123,6 @@ class TestTimeSeriesDataSet1:
         with pytest.raises(ApiError, match="Model not found"):
             custom_client.finetuned_model("hi")
 
-
     @pytest.mark.distributed_run
     @pytest.mark.ray_run
     def test_ray_finetune_model(self, custom_client, ray_df):

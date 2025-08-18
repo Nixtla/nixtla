@@ -176,7 +176,7 @@ def df_negative_values():
 def ts_data_set1():
     h = 5
     freq = "D"
-    series = generate_series(10, freq, equal_ends=True)
+    series = generate_series(n_series=10, freq=freq, equal_ends=True)
     train_end = series["ds"].max() - h * pd.offsets.Day()
     train_mask = series["ds"] <= train_end
     train = series[train_mask]
