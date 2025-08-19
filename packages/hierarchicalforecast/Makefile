@@ -1,6 +1,8 @@
 load_docs_scripts:
 # 	load processing scripts
-	git clone -b scripts https://github.com/Nixtla/docs.git docs-scripts
+	if [ ! -d "docs-scripts" ] ; then \
+		git clone -b scripts https://github.com/Nixtla/docs.git docs-scripts --single-branch; \
+	fi
 
 api_docs:
 	lazydocs .hierarchicalforecast --no-watermark
@@ -20,5 +22,10 @@ format_docs:
 
 preview_docs:
 	cd docs/mintlify && mintlify dev
+
+clean:
+	rm -f docs/*.md
+	find docs/mintlify -name "*.mdx" -exec rm -f {} +
+
 
 all_docs: load_docs_scripts api_docs examples_docs format_docs

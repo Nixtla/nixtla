@@ -158,3 +158,4 @@ docs-scripts
 docs/mintlify/examples
 
 nbs/_extensions
+.quarto

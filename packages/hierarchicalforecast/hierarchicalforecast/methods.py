@@ -162,14 +162,15 @@ class BottomUp(HReconciler):
     The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for
     the first time by Orcutt in 1968.
     The corresponding hierarchical \"projection\" matrix is defined as:
-    $$\mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]$$
+    $$
+    \mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]
+    $$
 
     Args:
         None
 
     References:
-        - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). \"Data aggregation and information loss\". The American
-        Economic Review, 58 , 773(787)](http://www.jstor.org/stable/1815532).
+        - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). "Data aggregation and information loss". The American Economic Review, 58 , 773(787)](http://www.jstor.org/stable/1815532).
     """
 
     insample = False
@@ -370,11 +371,8 @@ class TopDown(HReconciler):
         method: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.
 
     References:
-        - [CW. Gross (1990). \"Disaggregation methods to expedite product line forecasting\". Journal of Forecasting, 9 , 233–254.
-        doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).
-        - [G. Fliedner (1999). \"An investigation of aggregate variable time series forecast strategies with specific subaggregate
-        time series statistical correlation\". Computers and Operations Research, 26 , 1133–1149.
-        doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
+        - [CW. Gross (1990). "Disaggregation methods to expedite product line forecasting". Journal of Forecasting, 9 , 233-254. doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).
+        - [G. Fliedner (1999). "An investigation of aggregate variable time series forecast strategies with specific subaggregate time series statistical correlation". Computers and Operations Research, 26 , 1133-1149. doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
     """
 
     is_strictly_hierarchical = False
@@ -736,9 +734,7 @@ class MiddleOut(HReconciler):
         top_down_method: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.
 
     References:
-        - [Hyndman, R.J., & Athanasopoulos, G. (2021). \"Forecasting: principles and practice, 3rd edition:
-        Chapter 11: Forecasting hierarchical and grouped series.\". OTexts: Melbourne, Australia. OTexts.com/fpp3
-        Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
+        - [Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting: principles and practice, 3rd edition: Chapter 11: Forecasting hierarchical and grouped series". OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
     """
 
     def __init__(self, middle_level: str, top_down_method: str):
@@ -1065,12 +1061,8 @@ class MinTrace(HReconciler):
         num_threads: int=1, number of threads to use for solving the optimization problems (when nonnegative=True).
 
     References:
-        - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). \"Optimal forecast reconciliation for
-        hierarchical and grouped time series through trace minimization\". Journal of the American Statistical Association,
-        114 , 804–819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
-        - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). \"Optimal non-negative
-        forecast reconciliation". Stat Comput 30, 1167–1182,
-        https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
+        - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). "Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization". Journal of the American Statistical Association, 114 , 804-819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
+        - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
 
     def __init__(
@@ -1369,16 +1361,16 @@ class MinTraceSparse(MinTrace):
 
     This is the implementation of OLS and WLS estimators using sparse matrices. It is not guaranteed
     to give identical results to the non-sparse version, but works much more efficiently on data sets
-    with many time series.<br>
+    with many time series.
 
-    See the parent class for more details.<br>
+    See the parent class for more details.
 
-    **Parameters:**<br>
-    `method`: str, one of `ols`, `wls_struct`, or `wls_var`.<br>
-    `nonnegative`: bool, return non-negative reconciled forecasts.<br>
-    `num_threads`: int, number of threads to execute non-negative quadratic programming calls.<br>
-    `qp`: bool, implement non-negativity constraint with a quadratic programming approach. Setting
-    this to True generally gives better results, but at the expense of higher cost to compute. <br>
+    Args:
+        method (str): One of `ols`, `wls_struct`, or `wls_var`.
+        nonnegative (bool): Return non-negative reconciled forecasts.
+        num_threads (int): Number of threads to execute non-negative quadratic programming calls.
+        qp (bool): Implement non-negativity constraint with a quadratic programming approach. Setting
+        this to True generally gives better results, but at the expense of higher cost to compute.
     """
 
     is_sparse_method = True
@@ -1706,13 +1698,9 @@ class OptimalCombination(MinTrace):
         nonnegative: bool, reconciled forecasts should be nonnegative?
 
     References:
-        - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang (2010). \"Optimal Combination Forecasts for
-        Hierarchical Time Series\".](https://robjhyndman.com/papers/Hierarchical6.pdf).
-        - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman (2010). \"Optimal Combination Forecasts for
-        Hierarchical Time Series\".](https://robjhyndman.com/papers/MinT.pdf).
-        - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). \"Optimal non-negative
-        forecast reconciliation". Stat Comput 30, 1167–1182,
-        https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
+        - [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang (2010). "Optimal Combination Forecasts for Hierarchical Time Series".](https://robjhyndman.com/papers/Hierarchical6.pdf).
+        - [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman (2010). "Optimal Combination Forecasts for Hierarchical Time Series".](https://robjhyndman.com/papers/MinT.pdf).
+        - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
 
     def __init__(self, method: str, nonnegative: bool = False, num_threads: int = 1):
@@ -1745,9 +1733,7 @@ class ERM(HReconciler):
         lambda_reg: float, l1 regularizer for `reg` and `reg_bu`.
 
     References:
-        - [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without
-        unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge
-        Discovery & Data Mining KDD ’19 (p. 1337-1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).
+        - [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining KDD '19 (p. 1337-1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).
     """
 
     def __init__(self, method: str, lambda_reg: float = 1e-2):

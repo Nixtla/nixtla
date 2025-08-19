@@ -59,7 +59,7 @@ polars = [
 [project.urls]
 Homepage = "https://github.com/Nixtla/hierarchicalforecast/"
 Repository = "https://github.com/Nixtla/hierarchicalforecast/"
-Documentation = "https://nixtla.github.io/hierarchicalforecast/"
+Documentation = "https://nixtlaverse.nixtla.io/hierarchicalforecast/"
 
 [tool.setuptools.dynamic]
 version = {attr = "hierarchicalforecast.__version__"}

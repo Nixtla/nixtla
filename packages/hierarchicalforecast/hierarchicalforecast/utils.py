@@ -540,7 +540,7 @@ class HierarchicalPlot:
     to medium sized hierarchical series.
 
     Args:
-        S (Frame): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate function](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).
+        S (Frame): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate function](https://nixtlaverse.nixtla.io/hierarchicalforecast/utils#function-aggregate).
         tags (dict[str, np.ndarray]): hierarchical aggregation indexes, where
             each key is a level and its value contains tags associated to that level.
         S_id_col (str, optional): column that identifies each aggregation. Default is 'unique_id'.
@@ -1012,8 +1012,8 @@ def _shrunk_covariance_schaferstrimmer_no_nans(
 ):
     """Shrink empirical covariance according to the following method:
         Schäfer, Juliane, and Korbinian Strimmer.
-        ‘A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and
-        Implications for Functional Genomics’. Statistical Applications in
+        "A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and
+        Implications for Functional Genomics". Statistical Applications in
         Genetics and Molecular Biology 4, no. 1 (14 January 2005).
         https://doi.org/10.2202/1544-6115.1175.
 
@@ -1079,8 +1079,8 @@ def _shrunk_covariance_schaferstrimmer_with_nans(
 ):
     """Shrink empirical covariance according to the following method:
         Schäfer, Juliane, and Korbinian Strimmer.
-        ‘A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and
-        Implications for Functional Genomics’. Statistical Applications in
+        "A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and
+        Implications for Functional Genomics". Statistical Applications in
         Genetics and Molecular Biology 4, no. 1 (14 January 2005).
         https://doi.org/10.2202/1544-6115.1175.
 

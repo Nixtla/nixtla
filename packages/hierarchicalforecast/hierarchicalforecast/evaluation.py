@@ -105,8 +105,8 @@ def mqloss(
         Union[float, np.ndarray]: numpy array, (single value).
 
     References:
-        [Roger Koenker and Gilbert Bassett, Jr., "Regression Quantiles".](https://www.jstor.org/stable/1913643)
-        [James E. Matheson and Robert L. Winkler, "Scoring Rules for Continuous Probability Distributions".](https://www.jstor.org/stable/2629907)
+        - [Roger Koenker and Gilbert Bassett, Jr., "Regression Quantiles".](https://www.jstor.org/stable/1913643)
+        - [James E. Matheson and Robert L. Winkler, "Scoring Rules for Continuous Probability Distributions".](https://www.jstor.org/stable/2629907)
     """
     _loss_deprecation_notice("mqloss")
     if weights is None:
@@ -151,12 +151,8 @@ def rel_mse(y, y_hat, y_train, mask=None):
         float: loss.
 
     References:
-        - [Hyndman, R. J and Koehler, A. B. (2006).
-           "Another look at measures of forecast accuracy",
-           International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)
-        - [Kin G. Olivares, O. Nganba Meetei, Ruijun Ma, Rohan Reddy, Mengfei Cao, Lee Dicker.
-           "Probabilistic Hierarchical Forecasting with Deep Poisson Mixtures.
-           Submitted to the International Journal Forecasting, Working paper available at arxiv.](https://arxiv.org/pdf/2110.13179.pdf)
+        - [Hyndman, R. J and Koehler, A. B. (2006). "Another look at measures of forecast accuracy". International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)
+        - [Kin G. Olivares, O. Nganba Meetei, Ruijun Ma, Rohan Reddy, Mengfei Cao, Lee Dicker. "Probabilistic Hierarchical Forecasting with Deep Poisson Mixtures". Submitted to the International Journal Forecasting, Working paper available at [arxiv](https://arxiv.org/pdf/2110.13179.pdf).](https://arxiv.org/pdf/2110.13179.pdf)
     """
     _loss_deprecation_notice("rel_mse")
     if mask is None:
@@ -194,9 +190,7 @@ def msse(y, y_hat, y_train, mask=None):
         float: loss.
 
     References:
-        - [Hyndman, R. J and Koehler, A. B. (2006).
-           "Another look at measures of forecast accuracy",
-           International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)
+        - [Hyndman, R. J and Koehler, A. B. (2006). "Another look at measures of forecast accuracy". International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)
     """
     _loss_deprecation_notice("msse")
     if mask is None:
@@ -239,14 +233,9 @@ def scaled_crps(y, y_hat, quantiles):
         float: loss.
 
     References:
-        - [Gneiting, Tilmann. (2011). \"Quantiles as optimal point forecasts\".
-        International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207010000063)
-        - [Spyros Makridakis, Evangelos Spiliotis, Vassilios Assimakopoulos, Zhi Chen, Anil Gaba, Ilia Tsetlin, Robert L. Winkler. (2022).
-        \"The M5 uncertainty competition: Results, findings and conclusions\".
-        International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207021001722)
-        - [Syama Sundar Rangapuram, Lucien D Werner, Konstantinos Benidis, Pedro Mercado, Jan Gasthaus, Tim Januschowski. (2021).
-        \"End-to-End Learning of Coherent Probabilistic Forecasts for Hierarchical Time Series\".
-        Proceedings of the 38th International Conference on Machine Learning (ICML).](https://proceedings.mlr.press/v139/rangapuram21a.html)
+        - [Gneiting, Tilmann. (2011). "Quantiles as optimal point forecasts". International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207010000063)
+        - [Spyros Makridakis, Evangelos Spiliotis, Vassilios Assimakopoulos, Zhi Chen, Anil Gaba, Ilia Tsetlin, Robert L. Winkler. (2022). "The M5 uncertainty competition: Results, findings and conclusions". International Journal of Forecasting.](https://www.sciencedirect.com/science/article/pii/S0169207021001722)
+        - [Syama Sundar Rangapuram, Lucien D Werner, Konstantinos Benidis, Pedro Mercado, Jan Gasthaus, Tim Januschowski. (2021). "End-to-End Learning of Coherent Probabilistic Forecasts for Hierarchical Time Series". Proceedings of the 38th International Conference on Machine Learning (ICML).](https://proceedings.mlr.press/v139/rangapuram21a.html)
     """
     _loss_deprecation_notice("scaled_crps")
     eps = np.finfo(float).eps
@@ -282,12 +271,8 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
         float: score.
 
     References:
-        - [Gneiting, Tilmann, and Adrian E. Raftery. (2007).
-        \"Strictly proper scoring rules, prediction and estimation\".
-        Journal of the American Statistical Association.](https://sites.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf)
-        - [Anastasios Panagiotelis, Puwasala Gamakumara, George Athanasopoulos, Rob J. Hyndman. (2022).
-        \"Probabilistic forecast reconciliation: Properties, evaluation and score optimisation\".
-        European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+        - [Gneiting, Tilmann, and Adrian E. Raftery. (2007). "Strictly proper scoring rules, prediction and estimation". Journal of the American Statistical Association.](https://sites.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf)
+        - [Anastasios Panagiotelis, Puwasala Gamakumara, George Athanasopoulos, Rob J. Hyndman. (2022). "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation". European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
     """
     _loss_deprecation_notice("energy_score")
     if beta > 2 or beta < 0:
@@ -357,12 +342,13 @@ class HierarchicalEvaluation:
     Consider, for example, the function `rmse` that calculates the root mean squared error.
 
     This class facilitates measurements across the hierarchy, defined by the `tags` list.
-    See also the [aggregate method](https://nixtla.github.io/hierarchicalforecast/utils.html#aggregate).
+    See also the [aggregate method](https://nixtlaverse.nixtla.io/hierarchicalforecast/utils#function-aggregate).
 
     Args:
         evaluators (list[Callable]): functions with arguments `y`, `y_hat` (numpy arrays).
 
     References:
+        - [Hyndman, R. J and Koehler, A. B. (2006). "Another look at measures of forecast accuracy". International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)
     """
 
     def __init__(self, evaluators: list[Callable]):
@@ -509,38 +495,21 @@ def evaluate(
 ) -> FrameT:
     """Evaluate hierarchical forecast using different metrics.
 
-    Parameters
-    ----------
-    df : pandas, polars, dask or spark DataFrame.
-        Forecasts to evaluate.
-        Must have `id_col`, `time_col`, `target_col` and models' predictions.
-    metrics : list of callable
-        Functions with arguments `df`, `models`, `id_col`, `target_col` and optionally `train_df`.
-    tags : dict
-        Each key is a level in the hierarchy and its value contains tags associated to that level.
-    models : list of str, optional (default=None)
-        Names of the models to evaluate.
-        If `None` will use every column in the dataframe after removing id, time and target.
-    train_df : pandas, polars, dask or spark DataFrame, optional (default=None)
-        Training set. Used to evaluate metrics such as `mase`.
-    level : list of int, optional (default=None)
-        Prediction interval levels. Used to compute losses that rely on quantiles.
-    id_col : str (default='unique_id')
-        Column that identifies each serie.
-    time_col : str (default='ds')
-        Column that identifies each timestep, its values can be timestamps or integers.
-    target_col : str (default='y')
-        Column that contains the target.
-    agg_fn : str, optional (default="mean")
-        Statistic to compute on the scores by id to reduce them to a single number.
-    benchmark : str, optional (default=None)
-        If passed, evaluators are scaled by the error of this benchmark model.
+    Args:
+        df (pandas, polars, dask or spark DataFrame): Forecasts to evaluate. Must have `id_col`, `time_col`, `target_col` and models' predictions.
+        metrics (list of callable): Functions with arguments `df`, `models`, `id_col`, `target_col` and optionally `train_df`.
+        tags (dict): Each key is a level in the hierarchy and its value contains tags associated to that level. Each key is a level in the hierarchy and its value contains tags associated to that level.
+        models (list of str, optional): Names of the models to evaluate. If `None` will use every column in the dataframe after removing id, time and target.
+        train_df (pandas, polars, dask or spark DataFrame, optional): Training set. Used to evaluate metrics such as `mase`.
+        level (list of int, optional): Prediction interval levels. Used to compute losses that rely on quantiles.
+        id_col (str): Column that identifies each serie.
+        time_col (str): Column that identifies each timestep, its values can be timestamps or integers.
+        target_col (str): Column that contains the target.
+        agg_fn (str, optional): Statistic to compute on the scores by id to reduce them to a single number.
+        benchmark (str, optional): If passed, evaluators are scaled by the error of this benchmark model.
 
-    Returns
-    -------
-    pandas, polars DataFrame
-        Metrics with one row per (id, metric) combination and one column per model.
-        If `agg_fn` is not `None`, there is only one row per metric.
+    Returns:
+        pandas, polars DataFrame: Metrics with one row per (id, metric) combination and one column per model. If `agg_fn` is not `None`, there is only one row per metric.
     """
     # Check benchmark in columns
     if benchmark is not None:

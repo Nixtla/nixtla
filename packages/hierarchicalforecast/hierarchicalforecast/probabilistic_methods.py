@@ -38,8 +38,7 @@ class Normality:
         seed (int, optional): int, random seed for numpy generator's replicability. Default is 0.
 
     References:
-        - [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022).
-        "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation". European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+        - [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022). "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation". European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
     """
 
     def __init__(
@@ -179,10 +178,8 @@ class Bootstrap:
         seed: int, random seed for numpy generator's replicability.
 
     References:
-        - [Puwasala Gamakumara Ph. D. dissertation. Monash University, Econometrics and Business Statistics (2020).
-        "Probabilistic Forecast Reconciliation"](https://bridges.monash.edu/articles/thesis/Probabilistic_Forecast_Reconciliation_Theory_and_Applications/11869533)
-        - [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022).
-        "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation". European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+        - [Puwasala Gamakumara Ph. D. dissertation. Monash University, Econometrics and Business Statistics (2020). "Probabilistic Forecast Reconciliation"](https://bridges.monash.edu/articles/thesis/Probabilistic_Forecast_Reconciliation_Theory_and_Applications/11869533)
+        - [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022). "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation". European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
     """
 
     def __init__(
@@ -282,9 +279,7 @@ class PERMBU:
         seed: int, random seed for numpy generator's replicability.
 
     References:
-        - [Taieb, Souhaib Ben and Taylor, James W and Hyndman, Rob J. (2017).
-        Coherent probabilistic forecasts for hierarchical time series.
-        International conference on machine learning ICML.](https://proceedings.mlr.press/v70/taieb17a.html)
+        - [Taieb, Souhaib Ben and Taylor, James W and Hyndman, Rob J. (2017). "Coherent probabilistic forecasts for hierarchical time series. International conference on machine learning ICML."](https://proceedings.mlr.press/v70/taieb17a.html)
     """
 
     def __init__(
@@ -319,12 +314,11 @@ class PERMBU:
         Efficiently obtain vector ranks.
         Example `array=[4,2,7,1]` -> `ranks=[2, 1, 3, 0]`.
 
-        **Parameters**<br>
-        `array`: np.array, matrix with floats or integers on which the
-                ranks will be computed on the second dimension.<br>
+        Args:
+            array (np.ndarray): Matrix with floats or integers on which the ranks will be computed on the second dimension.
 
-        **Returns**<br>
-        `ranks`: np.array, matrix with ranks along the second dimension.<br>
+        Returns:
+            np.ndarray: Matrix with ranks along the second dimension.
         """
         temp = array.argsort(axis=1)
         ranks = np.empty_like(temp)
@@ -338,13 +332,12 @@ class PERMBU:
 
         Applies efficient vectorized permutation on the samples.
 
-        **Parameters**<br>
-        `samples`: np.array [series,samples], independent base samples.<br>
-        `permutations`: np.array [series,samples], permutation ranks with wich
-                  which `samples` dependence will be restored see `_obtain_ranks`.<br>
+        Args:
+            samples (np.ndarray): Independent base samples.
+            permutations (np.ndarray): Permutation ranks with which `samples` dependence will be restored see `_obtain_ranks`.
 
-        **Returns**<br>
-        `permutated_samples`: np.array.<br>
+        Returns:
+            np.ndarray: Permutated samples.
         """
         # Generate auxiliary and flat permutation indexes
         n_rows, n_cols = permutations.shape
@@ -363,15 +356,12 @@ class PERMBU:
 
         Applies permutations to prediction_samples across the horizon.
 
-        **Parameters**<br>
-        `prediction_samples`: np.array [series,horizon,samples], independent
-                  base prediction samples.<br>
-        `permutations`: np.array [series, samples], permutation ranks with which
-                  `samples` dependence will be restored see `_obtain_ranks`.
-                  it can also apply a random permutation.<br>
+        Args:
+            prediction_samples (np.ndarray): Independent base prediction samples.
+            permutations (np.ndarray): Permutation ranks with which `samples` dependence will be restored see `_obtain_ranks`.
 
-        **Returns**<br>
-        `permutated_prediction_samples`: np.array.<br>
+        Returns:
+            np.ndarray: Permutated prediction samples.
         """
         # Apply permutation throughout forecast horizon
         permutated_prediction_samples = prediction_samples.copy()

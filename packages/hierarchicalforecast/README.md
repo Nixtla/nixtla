@@ -4,20 +4,20 @@
 <img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_mid.png" />
 <h1 align="center">Hierarchical Forecast 👑</h1>
 <h3 align="center">Probabilistic hierarchical forecasting with statistical and econometric methods</h3>
-    
-[![CI](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml/badge.svg)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/ci.yml)
+
+[![pytest](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/pytest.yml/badge.svg)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/pytest.yml)
 [![Python](https://img.shields.io/pypi/pyversions/hierarchicalforecast)](https://pypi.org/project/hierarchicalforecast/)
 [![PyPi](https://img.shields.io/pypi/v/hierarchicalforecast?color=blue)](https://pypi.org/project/hierarchicalforecast/)
 [![conda-nixtla](https://img.shields.io/conda/vn/conda-forge/hierarchicalforecast?color=seagreen&label=conda)](https://anaconda.org/conda-forge/hierarchicalforecast)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE)
-    
+
 **HierarchicalForecast** offers a collection of cross-sectional and temporal reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`, as well as probabilistic coherent prediction methods such as `Normality`, `Bootstrap`, and `PERMBU`.
 </div>
 
 ## 📚 Intro
-A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include cross-sectional aggregations such as categories, brands, or geographical groupings, or temporal aggregations such as weeks, months or years. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers different reconciliation methods that render coherent forecasts across cross-sectional and temporal hierachies. 
+A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include cross-sectional aggregations such as categories, brands, or geographical groupings, or temporal aggregations such as weeks, months or years. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers different reconciliation methods that render coherent forecasts across cross-sectional and temporal hierachies.
 
-## 🎊 Features 
+## 🎊 Features
 
 * Classic reconciliation methods:
     - `BottomUp`: Simple addition to the upper levels.
@@ -35,7 +35,7 @@ A vast amount of time series datasets are organized into structures with differe
 
 Missing something? Please open an issue here or write us in [![Slack](https://img.shields.io/badge/Slack-4A154B?&logo=slack&logoColor=white)](https://join.slack.com/t/nixtlaworkspace/shared_invite/zt-135dssye9-fWTzMpv2WBthq8NK0Yvu6A)
 
-## 📖 Why? 
+## 📖 Why?
 
 **Short**: We want to contribute to the ML field by providing reliable baselines and benchmarks for hierarchical forecasting task in industry and academia. Here's the complete [paper](https://arxiv.org/abs/2207.03517).
 
@@ -137,12 +137,12 @@ We encourage users to explore this [literature review](https://otexts.com/fpp3/h
 If you enjoy or benefit from using these Python implementations, a citation to this [hierarchical forecasting reference paper](https://arxiv.org/abs/2207.03517) will be greatly appreciated.
 ```bibtex
 @article{olivares2024hierarchicalforecastreferenceframeworkhierarchical,
-      title={HierarchicalForecast: A Reference Framework for Hierarchical Forecasting in Python}, 
+      title={HierarchicalForecast: A Reference Framework for Hierarchical Forecasting in Python},
       author={Kin G. Olivares and Azul Garza and David Luo and Cristian Challú and Max Mergenthaler and Souhaib Ben Taieb and Shanika L. Wickramasuriya and Artur Dubrawski},
       year={2024},
       eprint={2207.03517},
       archivePrefix={arXiv},
       primaryClass={stat.ML},
-      url={https://arxiv.org/abs/2207.03517}, 
+      url={https://arxiv.org/abs/2207.03517},
 }
 ```

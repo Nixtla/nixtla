@@ -26,85 +26,93 @@ Bug fixes and features are added through pull requests (PRs).
 ## Local setup for working on a PR
 
 ### Clone the repository
+
 * HTTPS: `git clone https://github.com/Nixtla/hierarchicalforecast.git`
 * SSH: `git clone git@github.com:Nixtla/hierarchicalforecast.git`
 * GitHub CLI: `gh repo clone Nixtla/hierarchicalforecast`
 
-###  Set Up a Virtual Environment with `uv`
+### Set Up a Virtual Environment with `uv`
 
 `uv` is an [open-source package management](https://docs.astral.sh/uv/getting-started/installation/) and environment management system that runs on Windows, macOS, and Linux. Once you have `uv` installed, run:
 
-```
+```sh
 uv venv --python 3.10
 ```
 
 Then, activate your new environment:
-- on MacOS / Linux:
-```
+
+* on MacOS / Linux:
+
+```sh
 source .venv/bin/activate
 ```
-- on Windows:
-```
+
+* on Windows:
+
+```sh
 .\.venv\Scripts\activate
 ```
 
 Install all dependencies:
 
-```
+```sh
 uv pip install -r setup.py --extra dev
 ```
 
 ### Install the library
+
 Install the library in editable mode:
 
-```
+```sh
 uv pip install -e ".[dev]"
 ```
 
-### Install git hooks
-Before doing any changes to the code, please install the git hooks and checks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
-```
-nbdev_install_hooks
+### Install Pre-commit Hooks
+
+Pre-commit hooks help maintain code quality by running checks before commits.
+
+```bash
 pre-commit install
+pre-commit run --files hierarchicalforecast/*
 ```
 
-### Build the library
-The library is built using the notebooks contained in the `nbs` folder. **If you want to make any changes to the library you have to find the relevant notebook and make your changes in that notebook**, and then call: 
-```
-nbdev_export
+## Viewing documentation locally
+
+The new documentation pipeline relies on `mintlify` and `lazydocs`.
+
+### install mintlify
+
+> [!NOTE]
+> Please install Node.js before proceeding.
+
+```sh
+npm i -g mint
 ```
 
-### Preview Changes
-You can preview changes in your local browser before pushing by running:
-```
-nbdev_preview
+For additional instructions, you can read about it [here](https://mintlify.com/docs/installation).
+
+```sh
+make all_docs
 ```
 
-### Run tests
-If you're working on the local interface you can use
-```
-nbdev_test --n_workers 1 --do_print --timing
+Finally to view the documentation
+
+```sh
+make preview_docs
 ```
 
-### Clean notebook's outputs
-Since the notebooks output cells can vary from run to run (even if they produce the same outputs) the notebooks are cleaned before committing them. Before committing your changes, please make sure to run:
-```
-nbdev_clean --clear_all
+## Running tests
+
+If you're working on the local interface you can just use
+
+```sh
+uv run pytest
 ```
 
-If you clean the library's notebooks with this command please backtrack the changes you make to the example notebooks by running:
-```
-git checkout nbs/examples
-```
-unless you intend to change the examples.
+## Do you want to contribute to the documentation?
 
-### Do you want to contribute to the documentation?
-
-* Docs are automatically created from the notebooks in the `nbs` folder.
-* In order to modify the documentation:
-    1. Find the relevant notebook.
-    2. Make your changes.
-    3. Run all cells.
-    4. If you are modifying library notebooks (not in `nbs/examples`), clean all outputs using `Edit > Clear All Outputs`.
-    5. Run `nbdev_preview`.
-    6. Clean the notebook metadata using `nbdev_clean`.
+* The docs are automatically generated from the docstrings in the `hierarchicalforecast` folder.
+* To contribute, ensure your docstrings follow the Google style format.
+* Once your docstring is correctly written, the documentation framework will scrape it and regenerate the corresponding `.mdx` files and your changes will then appear in the updated docs.
+* To contribute, examples/how-to-guides, make sure you submit clean notebooks, with cleared formatted LaTeX, links and images.
+* Make an appropriate entry in the `mint.json` file.

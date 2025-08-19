@@ -1,6 +1,6 @@
 version: 2.1
 jobs:
-  nbdev-tests:
+  pytest:
     resource_class: xlarge
     docker:
       - image: python:3.10-slim
@@ -14,18 +14,18 @@ jobs:
       - run:
           name: Run nbdev tests
           command: |
-            source .venv/bin/activate           
-            uv pip install ".[dev]"
-            nbdev_test --do_print --timing
+            source .venv/bin/activate
+            uv pip install -e ".[dev,polars]"
+            pytest
   test-model-performance:
     parameters:
-      hierarchy: 
+      hierarchy:
         type: string
         default: "strict"
-      forecast_type: 
+      forecast_type:
         type: string
         default: "point"
-      engine: 
+      engine:
         type: string
         default: "pandas"
     resource_class: large
@@ -41,8 +41,8 @@ jobs:
       - run:
           name: Run model performance tests
           command: |
-            source .venv/bin/activate           
-            uv pip install ".[dev]"
+            source .venv/bin/activate
+            uv pip install ".[dev,polars]"
             cd ./action_files/test_models/
             uv pip install -r requirements.txt
             python -m src.models << parameters.hierarchy >> << parameters.forecast_type >> << parameters.engine >>
@@ -65,11 +65,11 @@ jobs:
       - run:
           name: Run model performance tests
           command: |
-            source .venv/bin/activate           
-            uv pip install ".[dev]"
+            source .venv/bin/activate
+            uv pip install ".[dev,polars]"
             cd ./action_files/test_models/
             uv pip install -r requirements.txt
-            python -m src.models_temporal 
+            python -m src.models_temporal
             python -m src.evaluation_temporal
             cd ../../
       - store_artifacts:
@@ -78,7 +78,7 @@ jobs:
 workflows:
   sample:
     jobs:
-      - nbdev-tests
+      - pytest
       - test-model-performance:
           matrix:
             parameters:
