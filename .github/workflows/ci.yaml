@@ -100,12 +100,8 @@ jobs:
 
       - name: Run tests
         if: runner.os != 'Windows'
-        #run: pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
-        run: |
-          echo ${{ env.NIXTLA_BASE_URL}}
-          pytest nixtla_tests/nixtla_client/test_client.py
+        run: pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        #run: pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
-        run: pytest nixtla_tests/nixtla_client/test_client.py
+        run: pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
