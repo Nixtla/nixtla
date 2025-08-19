@@ -88,15 +88,13 @@ npm i -g mint
 For additional instructions, you can read about it [here](https://mintlify.com/docs/installation).
 
 ```sh
-uv pip install -e '.[dev]' lazydocs
-lazydocs .utilsforecast
-python docs/to_mdx.py
+make all_docs
 ```
 
 Finally to view the documentation
 
 ```sh
-mintlify dev
+make preview_docs
 ```
 
 ## Running tests
