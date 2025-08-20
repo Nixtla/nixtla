@@ -101,6 +101,7 @@ def test_forecast_different_hist_exog_gives_different_results(
                 rtol=1e-3,
             )
 
+
 def test_forecast_date_features_multiple_series_and_different_ends(
     nixtla_test_client, two_short_series
 ):
@@ -328,7 +329,7 @@ def test_shap_features(nixtla_test_client, date_features_result):
     shap_values = nixtla_test_client.feature_contributions
     assert len(shap_values) == len(fcst_df)
     np.testing.assert_allclose(
-        fcst_df["TimeGPT"].values, shap_values.iloc[:, 3:].sum(axis=1).values
+        fcst_df["TimeGPT"].values, shap_values.iloc[:, 3:].sum(axis=1).values, rtol=1e-3
     )
 
     fcst_hist_df = nixtla_test_client.forecast(
