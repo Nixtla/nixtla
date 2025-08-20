@@ -40,6 +40,7 @@ docs/**/*.mdx
 
 docs-scripts
 docs/mintlify/examples
+docs/mintlify/assets
 
 nbs/_extensions
 .quarto
