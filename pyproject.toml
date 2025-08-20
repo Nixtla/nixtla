@@ -44,7 +44,6 @@ dev = [
     "ipython<=8.32.0",
     "ipywidgets",
     "jupyterlab",
-    "nbdev",
     "neuralforecast",
     "numpy<2",
     "plotly",
