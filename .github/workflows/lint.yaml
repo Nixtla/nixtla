@@ -19,7 +19,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install black nbdev pre-commit
+        run: pip install black pre-commit
 
       - name: Run pre-commit
         run: pre-commit run --show-diff-on-failure --files nixtla/*
