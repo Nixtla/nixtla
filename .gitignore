@@ -46,3 +46,5 @@ nbs/_extensions
 .quarto
 
 *.png
+
+.coverage*
