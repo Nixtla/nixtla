@@ -40,7 +40,7 @@ jobs:
 
       - name: Install pip requirements (Linux Python 3.11)
         if: runner.os == 'Linux' && matrix.python-version == '3.11'
-        run: pip install uv && uv pip install -e ".[dev,distributed]"
+        run: pip install uv && uv pip install --system -e ".[dev,distributed]"
 
       - name: Run tests (Linux Python 3.11)
         if: runner.os == 'Linux' && matrix.python-version == '3.11'
@@ -48,7 +48,7 @@ jobs:
 
       - name: Install pip requirements (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
-        run: pip install uv && uv pip install -e ".[dev]"
+        run: pip install uv && uv pip install --system -e ".[dev]"
 
       - name: Run tests (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
