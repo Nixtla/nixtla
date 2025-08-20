@@ -32,15 +32,15 @@ data using remote clusters.
 `conda install -c conda-forge mlforecast`
 
 For more detailed instructions you can refer to the [installation
-page](https://nixtla.github.io/mlforecast/docs/getting-started/install.html).
+page](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/install).
 
 ## Quick Start
 
 **Get Started with this [quick
-guide](https://nixtla.github.io/mlforecast/docs/getting-started/quick_start_local.html).**
+guide](https://nixtlaverse.github.io/mlforecast/docs/getting-started/quick_start_local.html).**
 
 **Follow this [end-to-end
-walkthrough](https://nixtla.github.io/mlforecast/docs/getting-started/end_to_end_walkthrough.html)
+walkthrough](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/end_to_end_walkthrough)
 for best practices.**
 
 ### Videos
@@ -61,7 +61,7 @@ for best practices.**
 Current Python alternatives for machine learning models are slow,
 inaccurate and don’t scale well. So we created a library that can be
 used to forecast in production environments.
-[`MLForecast`](https://Nixtla.github.io/mlforecast/forecast.html#mlforecast)
+[`MLForecast`](https://nixtlaverse.nixtla.io/mlforecast/forecast#class-mlforecast)
 includes efficient feature engineering to train any machine learning
 model (with `fit` and `predict` methods such as
 [`sklearn`](https://scikit-learn.org/stable/)) to fit millions of time
@@ -83,36 +83,36 @@ Missing something? Please open an issue or write us in
 ## Examples and Guides
 
 📚 [End to End
-Walkthrough](https://nixtla.github.io/mlforecast/docs/getting-started/end_to_end_walkthrough.html):
+Walkthrough](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/end_to_end_walkthrough):
 model training, evaluation and selection for multiple time series.
 
 🔎 [Probabilistic
-Forecasting](https://nixtla.github.io/mlforecast/docs/how-to-guides/prediction_intervals.html):
+Forecasting](https://nixtlaverse.nixtla.io/mlforecast/docs/tutorials/prediction_intervals_in_forecasting_models):
 use Conformal Prediction to produce prediciton intervals.
 
 👩‍🔬 [Cross
-Validation](https://nixtla.github.io/mlforecast/docs/how-to-guides/cross_validation.html):
+Validation](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/cross_validation):
 robust model’s performance evaluation.
 
 🔌 [Predict Demand
-Peaks](https://nixtla.github.io/mlforecast/docs/tutorials/electricity_peak_forecasting.html):
+Peaks](https://nixtlaverse.nixtla.io/mlforecast/docs/tutorials/electricity_peak_forecasting):
 electricity load forecasting for detecting daily peaks and reducing
 electric bills.
 
 📈 [Transfer
-Learning](https://nixtla.github.io/mlforecast/docs/how-to-guides/transfer_learning.html):
+Learning](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/transfer_learning):
 pretrain a model using a set of time series and then predict another one
 using that pretrained model.
 
 🌡️ [Distributed
-Training](https://nixtla.github.io/mlforecast/docs/getting-started/quick_start_distributed.html):
+Training](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/quick_start_distributed):
 use a Dask, Ray or Spark cluster to train models at scale.
 
 ## How to use
 
 The following provides a very basic overview, for a more detailed
 description see the
-[documentation](https://nixtla.github.io/mlforecast/).
+[documentation](https://nixtlaverse.nixtla.io/mlforecast/).
 
 ### Data setup
 
@@ -165,7 +165,7 @@ models = [
 ### Forecast object
 
 Now instantiate an
-[`MLForecast`](https://Nixtla.github.io/mlforecast/forecast.html#mlforecast)
+[`MLForecast`](https://nixtlaverse.nixtla.io/mlforecast/forecast#class-mlforecast)
 object with the models and the features that you want to use. The
 features can be lags, transformations on the lags and date features. You
 can also define transformations to apply to the target before fitting,
