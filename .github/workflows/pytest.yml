@@ -1,0 +1,55 @@
+name: pytest
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
+  NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+  NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
+  NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
+  API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
+
+
+jobs:
+  run-tests:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, nixtla-linux-large-public, windows-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        # windows python 3.13 can't install pyreadr
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # 5.4.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install pip requirements (Linux Python 3.11)
+        if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        run: pip install uv && uv pip install -e ".[dev,distributed]"
+
+      - name: Run tests (Linux Python 3.11)
+        if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        run: pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
+
+      - name: Install pip requirements (not Linux Python 3.11)
+        if: runner.os != 'Linux' || matrix.python-version != '3.11'
+        run: pip install uv && uv pip install -e ".[dev]"
+
+      - name: Run tests (not Linux Python 3.11)
+        if: runner.os != 'Linux' || matrix.python-version != '3.11'
+        run: pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
