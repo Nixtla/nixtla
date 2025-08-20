@@ -2,7 +2,6 @@ devenv:
 	uv venv
 	. .venv/bin/activate; uv pip install -Ue .[dev,distributed]
 	. .venv/bin/activate; pre-commit install
-	. .venv/bin/activate; nbdev_install_hooks
 
 
 jupyter:
