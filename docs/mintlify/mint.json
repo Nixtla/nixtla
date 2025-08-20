@@ -156,8 +156,8 @@
     {
       "group": "API Reference",
       "pages": [
-        "docs/reference/01_nixtla_client",
-        "docs/reference/02_date_features",
+        "nixtla_client",
+        "date_features",
         "docs/reference/03_excel_addin",
         "docs/reference/04_nixtlar"
       ]
