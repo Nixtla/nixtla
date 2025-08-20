@@ -1,24 +1,25 @@
-import dask.dataframe as dd
 import os
+from copy import deepcopy
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
-import ray
 import utilsforecast.processing as ufp
-
-from copy import deepcopy
-from dask.distributed import Client
 from dotenv import load_dotenv
-from nixtla.nixtla_client import NixtlaClient
-from nixtla.nixtla_client import _maybe_add_date_features
-from nixtla_tests.helpers.states import model_ids_object
-from pyspark.sql import SparkSession
-from ray.cluster_utils import Cluster
 from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier, time_features
-from types import SimpleNamespace
+
+from nixtla.nixtla_client import NixtlaClient, _maybe_add_date_features
+from nixtla_tests.helpers.states import model_ids_object
 
 load_dotenv(override=True)
+
+pytest_plugins = [
+    "nixtla_tests.fixtures.dask_fixtures",
+    "nixtla_tests.fixtures.spark_fixtures",
+    "nixtla_tests.fixtures.ray_fixtures",
+]
 
 
 # note that scope="session" will result in failed test
@@ -175,7 +176,8 @@ def df_negative_values():
 @pytest.fixture(scope="module")
 def ts_data_set1():
     h = 5
-    series = generate_series(10, equal_ends=True)
+    freq = "D"
+    series = generate_series(n_series=10, freq=freq, equal_ends=True)
     train_end = series["ds"].max() - h * pd.offsets.Day()
     train_mask = series["ds"] <= train_end
     train = series[train_mask]
@@ -187,6 +189,7 @@ def ts_data_set1():
         train=train,
         train_end=train_end,
         valid=valid,
+        freq=freq,
     )
 
 
@@ -519,13 +522,6 @@ def anomaly_online_df():
 
 
 @pytest.fixture(scope="module")
-def spark_client():
-    spark = SparkSession.builder.getOrCreate()
-    yield spark
-    spark.stop()
-
-
-@pytest.fixture(scope="module")
 def distributed_n_series():
     return 4
 
@@ -562,131 +558,3 @@ def distributed_future_ex_vars_df():
         parse_dates=["ds"],
     ).rename(columns=str.lower)
     return future_ex_vars_df
-
-
-@pytest.fixture(scope="module")
-def spark_df(spark_client, distributed_series):
-    spark_df = spark_client.createDataFrame(distributed_series).repartition(2)
-    return spark_df
-
-
-@pytest.fixture(scope="module")
-def spark_diff_cols_df(spark_client, distributed_series, renamer):
-    spark_df = spark_client.createDataFrame(
-        distributed_series.rename(columns=renamer)
-    ).repartition(2)
-    return spark_df
-
-
-@pytest.fixture(scope="module")
-def spark_df_x(spark_client, distributed_df_x):
-    spark_df = spark_client.createDataFrame(distributed_df_x).repartition(2)
-    return spark_df
-
-
-@pytest.fixture(scope="module")
-def spark_df_x_diff_cols(spark_client, distributed_df_x, renamer):
-    spark_df = spark_client.createDataFrame(
-        distributed_df_x.rename(columns=renamer)
-    ).repartition(2)
-    return spark_df
-
-
-@pytest.fixture(scope="module")
-def spark_future_ex_vars_df(spark_client, distributed_future_ex_vars_df):
-    spark_df = spark_client.createDataFrame(distributed_future_ex_vars_df).repartition(
-        2
-    )
-    return spark_df
-
-
-@pytest.fixture(scope="module")
-def spark_future_ex_vars_df_diff_cols(
-    spark_client, distributed_future_ex_vars_df, renamer
-):
-    spark_df = spark_client.createDataFrame(
-        distributed_future_ex_vars_df.rename(columns=renamer)
-    ).repartition(2)
-    return spark_df
-
-
-@pytest.fixture(scope="module")
-def dask_client():
-    client = Client()
-    yield client
-    client.close()
-
-
-@pytest.fixture(scope="module")
-def dask_df(distributed_series):
-    return dd.from_pandas(distributed_series, npartitions=2)
-
-
-@pytest.fixture(scope="module")
-def dask_diff_cols_df(distributed_series, renamer):
-    return dd.from_pandas(
-        distributed_series.rename(columns=renamer),
-        npartitions=2,
-    )
-
-
-@pytest.fixture(scope="module")
-def dask_df_x(distributed_df_x):
-    return dd.from_pandas(distributed_df_x, npartitions=2)
-
-
-@pytest.fixture(scope="module")
-def dask_future_ex_vars_df(distributed_future_ex_vars_df):
-    return dd.from_pandas(distributed_future_ex_vars_df, npartitions=2)
-
-
-@pytest.fixture(scope="module")
-def dask_df_x_diff_cols(distributed_df_x, renamer):
-    return dd.from_pandas(distributed_df_x.rename(columns=renamer), npartitions=2)
-
-
-@pytest.fixture(scope="module")
-def dask_future_ex_vars_df_diff_cols(distributed_future_ex_vars_df, renamer):
-    return dd.from_pandas(
-        distributed_future_ex_vars_df.rename(columns=renamer), npartitions=2
-    )
-
-
-@pytest.fixture(scope="module")
-def ray_cluster_setup():
-    ray_cluster = Cluster(initialize_head=True, head_node_args={"num_cpus": 2})
-    ray.init(address=ray_cluster.address, ignore_reinit_error=True)
-    # add mock node to simulate a cluster
-    ray_cluster.add_node(num_cpus=2)
-    yield
-    ray.shutdown()
-
-
-@pytest.fixture(scope="module")
-def ray_df(distributed_series):
-    return ray.data.from_pandas(distributed_series)
-
-
-@pytest.fixture(scope="module")
-def ray_diff_cols_df(distributed_series, renamer):
-    return ray.data.from_pandas(distributed_series.rename(columns=renamer))
-
-
-@pytest.fixture(scope="module")
-def ray_df_x(distributed_df_x):
-    return ray.data.from_pandas(distributed_df_x)
-
-
-@pytest.fixture(scope="module")
-def ray_future_ex_vars_df(distributed_future_ex_vars_df):
-    return ray.data.from_pandas(distributed_future_ex_vars_df)
-
-
-@pytest.fixture(scope="module")
-def ray_df_x_diff_cols(distributed_df_x, renamer):
-    return ray.data.from_pandas(distributed_df_x.rename(columns=renamer))
-
-
-@pytest.fixture(scope="module")
-def ray_future_ex_vars_df_diff_cols(distributed_future_ex_vars_df, renamer):
-    return ray.data.from_pandas(distributed_future_ex_vars_df.rename(columns=renamer))
