@@ -17,29 +17,6 @@
 
 </div>
 
-## 📖 Table of Contents
-
-- [Nixtla     ](#nixtla---)
-  - [📖 Table of Contents](#-table-of-contents)
-  - [🚀 Quick Start](#-quick-start)
-    - [Install nixtla's SDK](#install-nixtlas-sdk)
-    - [Import libraries and load data](#import-libraries-and-load-data)
-    - [Forecast using TimeGPT in 3 easy steps](#forecast-using-timegpt-in-3-easy-steps)
-    - [Anomaly detection using TimeGPT in 3 easy steps](#anomaly-detection-using-timegpt-in-3-easy-steps)
-  - [🤓 API support for other languages](#-api-support-for-other-languages)
-  - [🔥 Features and Capabilities](#-features-and-capabilities)
-  - [📚 Documentation with examples and use cases](#-documentation-with-examples-and-use-cases)
-  - [🗞️ TimeGPT-1: Revolutionizing Forecasting and Anomaly Detection](#️-timegpt-1-revolutionizing-forecasting-and-anomaly-detection)
-  - [⚙️ TimeGPT's Architecture](#️-timegpts-architecture)
-  - [⚡️ Zero-shot Results](#️-zero-shot-results)
-    - [Accuracy](#accuracy)
-    - [Ease of use](#ease-of-use)
-    - [Efficiency and Speed](#efficiency-and-speed)
-  - [📝 How to cite?](#-how-to-cite)
-  - [🎉 Features and Mentions](#-features-and-mentions)
-  - [🔖 License](#-license)
-  - [📞 Get in touch](#-get-in-touch)
-
 ## 🚀 Quick Start
 
 https://github.com/Nixtla/nixtla/assets/4086186/163ad9e6-7a16-44e1-b2e9-dab8a0b7b6b6
