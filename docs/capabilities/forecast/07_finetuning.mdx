@@ -1,0 +1,114 @@
+---
+title: Fine-tuning
+---
+
+
+```python
+!pip install -Uqq nixtla
+```
+
+
+
+```python
+from nixtla.utils import in_colab
+```
+
+
+
+```python
+IN_COLAB = in_colab()
+```
+
+
+
+```python
+if not IN_COLAB:
+    from nixtla.utils import colab_badge
+    from dotenv import load_dotenv
+```
+
+
+We can fine-tune TimeGPT by specifying the `finetune_steps` parameter.
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+> 👍 Use an Azure AI endpoint
+>
+> To use an Azure AI endpoint, remember to set also the `base_url`
+> argument:
+>
+> `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
+
+
+```python
+if not IN_COLAB:
+    nixtla_client = NixtlaClient()
+```
+
+
+```python
+# Read data
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+
+# Forecast with fine-tuning.
+# Here, we fine-tune for 5 steps
+forecast_df = nixtla_client.forecast(
+    df=df,
+    h=12,
+    finetune_steps=5,
+    time_col='timestamp',
+    target_col="value"
+)
+```
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.forecast(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
+By default, only a small amount of finetuning is applied
+(`finetune_depth=1`). We can increase the intensity of finetuning by
+increasing the `finetune_depth` parameter. Note that increasing
+`finetune_depth` and `finetune_steps` increases wall time for generating
+predictions.
+
+```python
+# Read data
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+
+# Forecast with fine-tuning.
+# Here, we fine-tune for 5 steps
+# and we finetune more than just the last layer
+forecast_df = nixtla_client.forecast(
+    df=df,
+    h=12,
+    finetune_steps=5,
+    finetune_depth=2,
+    time_col='timestamp',
+    target_col="value"
+)
+```
+
+For more information on fine-tuning, read our [fine-tuning
+tutorial](https://docs.nixtla.io/docs/tutorials-fine_tuning).
+

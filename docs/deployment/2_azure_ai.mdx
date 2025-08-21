@@ -1,0 +1,51 @@
+---
+title: AzureAI
+---
+
+> The foundational models for time series by Nixtla can be deployed on
+> your Azure subscription. This page explains how to easily get started
+> with TimeGEN-1 deployed as an Azure AI endpoint. If you use the
+> `nixtla` library, it should be a drop-in replacement where you only
+> need to change the client parameters (endpoint URL, API key, model
+> name).
+
+## Deploying TimeGEN-1
+
+## Using the model
+
+Once your model is deployed and provided that you have the relevant
+permissions, consuming it will basically be the same process as for a
+Nixtla endpoint.
+
+To run the examples below, you will need to define the following
+environment variables:
+
+-   `AZURE_AI_NIXTLA_BASE_URL` is your api URL, should be of the form
+    `https://your-endpoint.inference.ai.azure.com/`.
+-   `AZURE_AI_NIXTLA_API_KEY` is your authentication key.
+
+## How to use
+
+Just import the library, set your credentials, and start forecasting in
+two lines of code!
+
+```bash
+pip install nixtla
+```
+
+
+```python
+import os
+from nixtla import NixtlaClient
+
+base_url = os.environ["AZURE_AI_NIXTLA_BASE_URL"]
+api_key = os.environ["AZURE_AI_NIXTLA_API_KEY"]
+model = "azureai"
+
+nixtla_client = NixtlaClient(api_key=api_key, base_url=base_url)
+nixtla_client.forecast(
+    ...,
+    model=model,
+)
+```
+
