@@ -1,9 +1,11 @@
 name: build-docs
 on:
-  release:
-    types: [released]
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
+  release:
+    types: [released]
 
 jobs:
   build-docs:
@@ -18,8 +20,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: |
-          pip install -e '.[dev]' lazydocs pyyaml
+        run: pip install -e '.[dev]' lazydocs pyyaml
 
       # setup quarto for rendering example/tutorial nbs
       - uses: quarto-dev/quarto-actions/setup@v2
@@ -29,8 +30,18 @@ jobs:
       - name: Build Docs
         run: make all_docs
 
-      - name: Deploy
-        if: github.event_name == 'push'
+      - name: Deploy (Push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: docs-preview
+          publish_dir: docs/mintlify
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Deploy (Release)
+        if: github.event_name == 'release'
         uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -38,9 +49,24 @@ jobs:
           publish_dir: docs/mintlify
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
+          tag_name: ${{ github.event.release.tag_name }}
+          tag_message: 'Documentation for release ${{ github.event.release.tag_name }}'
 
-      - name: Trigger mintlify workflow
-        if: github.event_name == 'push'
+      - name: Trigger mintlify workflow (Push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.DOCS_WORKFLOW_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'nixtla',
+              repo: 'docs',
+              workflow_id: 'mintlify-action-preview.yml',
+              ref: 'main',
+            });
+
+      - name: Trigger mintlify workflow (Release)
+        if: github.event_name == 'release'
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           github-token: ${{ secrets.DOCS_WORKFLOW_TOKEN }}
@@ -50,4 +76,8 @@ jobs:
               repo: 'docs',
               workflow_id: 'mintlify-action.yml',
               ref: 'main',
+              inputs: {
+                version: '${{ github.event.release.tag_name }}',
+                is_release: 'true'
+              }
             });
