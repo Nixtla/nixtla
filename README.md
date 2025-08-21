@@ -1,7 +1,7 @@
 # Nixtla &nbsp; [![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Statistical%20Forecasting%20Algorithms%20by%20Nixtla%20&url=https://github.com/Nixtla/neuralforecast&via=nixtlainc&hashtags=StatisticalModels,TimeSeries,Forecasting) &nbsp;[![Slack](https://img.shields.io/badge/Slack-4A154B?&logo=slack&logoColor=white)](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1pmhan9j5-F54XR20edHk0UtYAPcW4KQ)
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_new.png">
+<img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_new.png"/>
 <h1 align="center">TimeGPT-1 </h1>
 <h3 align="center">The first foundation model for forecasting and anomaly detection</h3>
 
@@ -13,37 +13,29 @@
 [![Downloads](https://pepy.tech/badge/nixtla/month)](https://pepy.tech/project/nixtla)
 [![Downloads](https://pepy.tech/badge/nixtla/week)](https://pepy.tech/project/nixtla)
 
-**TimeGPT** is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code 🚀. </div>
+**TimeGPT** is a production ready, generative pretrained transformer for time series. It's capable of accurately predicting various domains such as retail, electricity, finance, and IoT with just a few lines of code 🚀.
 
-## 📖 Table of Contents
-- [Quick Start](#-quick-start)
-- [Installation](#install-nixtlas-sdk)
-- [Forecasting with TimeGPT](#forecast-using-timegpt-in-3-easy-steps)
-- [Anomaly Detection](#anomaly-detection-using-timegpt-in-3-easy-steps)
-- [Zero-shot Results](#️-zero-shot-results)
-- [How to Cite](#-how-to-cite)
-- [Features and Mentions](#-features-and-mentions)
-- [License](#-license)
-- [Get in Touch](#-get-in-touch)
-
+</div>
 
 ## 🚀 Quick Start
 
 https://github.com/Nixtla/nixtla/assets/4086186/163ad9e6-7a16-44e1-b2e9-dab8a0b7b6b6
 
-
-
 ### Install nixtla's SDK
+
 ```python
 pip install nixtla>=0.5.1
 ```
 
 ### Import libraries and load data
+
 ``` python
 import pandas as pd
 from nixtla import NixtlaClient
 ```
-###  Forecast using TimeGPT in 3 easy steps
+
+### Forecast using TimeGPT in 3 easy steps
+
 ```python
 # Get your API Key at dashboard.nixtla.io
 
@@ -60,9 +52,11 @@ fcst_df = nixtla_client.forecast(df, h=24, level=[80, 90])
 nixtla_client.plot(df, fcst_df, level=[80, 90])
 
 ```
+
 ![Forecast Results](./nbs/img/forecast_readme.png)
 
-###  Anomaly detection using TimeGPT in 3 easy steps
+### Anomaly detection using TimeGPT in 3 easy steps
+
 ```python
 # Get your API Key at dashboard.nixtla.io
 
@@ -79,9 +73,11 @@ anomalies_df = nixtla_client.detect_anomalies(df, time_col='timestamp', target_c
 # 4. Plot your results (optional)
 nixtla_client.plot(df, anomalies_df,time_col='timestamp', target_col='value')
 ```
+
 ![AnomalyDetection](nbs/img/anomaly.png)
 
 ## 🤓 API support for other languages
+
 Explore our [API Reference](https://docs.nixtla.io) to discover how to leverage TimeGPT across various programming languages including JavaScript, Go, and more.
 
 ## 🔥 Features and Capabilities
@@ -116,8 +112,6 @@ Dive into our [comprehensive documentation](https://docs.nixtla.io/docs/getting-
 
 - **Real-World Applications**: Uncover how TimeGPT is applied in real-world scenarios through case studies on [forecasting web traffic](https://docs.nixtla.io/docs/use-cases-forecasting_web_traffic) and [predicting Bitcoin prices](https://docs.nixtla.io/docs/use-cases-bitcoin_price_prediction).
 
-
-
 ## 🗞️ TimeGPT-1: Revolutionizing Forecasting and Anomaly Detection
 
 Time series data is pivotal across various sectors, including finance, healthcare, meteorology, and social sciences. Whether it's monitoring ocean tides or tracking the Dow Jones's daily closing values, time series data is crucial for forecasting and decision-making.
@@ -127,6 +121,7 @@ Traditional analysis methods such as ARIMA, ETS, MSTL, Theta, CES, machine learn
 TimeGPT is user-friendly and low-code, enabling users to upload their time series data and either generate forecasts or detect anomalies with just a single line of code. As the only foundation model for time series analysis out of the box, TimeGPT can be integrated via our public APIs, through Azure Studio (coming soon), or deployed on your own infrastructure.
 
 ## ⚙️ TimeGPT's Architecture
+
 Self-attention, the revolutionary concept introduced by the paper “Attention is all you need“, is the basis of the this foundational model. The TimeGPT model is not based on any existing large language model(LLMs). It is independently trained on vast timeseries dataset as a large transformer model and is designed so as to minimize the forecasting error.
 
 The architecture consists of an encoder-decoder structure with
@@ -134,7 +129,6 @@ multiple layers, each with residual connections and layer normalization. Finally
 future distributions.
 
 ![Arquitecture](nbs/img/forecast.png)
-
 
 TimeGPT was trained on, to our knowledge, the largest collection of publicly available time series,
 collectively encompassing over 100 billion data points. This training set incorporates time series
@@ -145,15 +139,19 @@ the training dataset contains time series with a wide range of characteristics
 ---
 
 ## ⚡️ Zero-shot Results
-### Accuracy:
+
+### Accuracy
+
 TimeGPT has been tested for its zero-shot inference capabilities on more than 300K unique series, which involve using the model without additional fine-tuning on the test dataset. TimeGPT outperforms a comprehensive range of well-established statistical and cutting-edge deep learning models, consistently ranking among the top three performers across various frequencies.
 
-### Ease of use:
+### Ease of use
+
 TimeGPT also excels by offering simple and rapid predictions using a pre-trained model. This stands in stark contrast to other models that typically require an extensive training and prediction pipeline.
 
 ![Results](nbs/img/results.jpg)
 
-### Efficiency and Speed:
+### Efficiency and Speed
+
 For zero-shot inference, our internal tests recorded an average GPU inference speed of 0.6 milliseconds per series for TimeGPT, which nearly mirrors that of the simple Seasonal Naive.
 
 ## 📝 How to cite?
@@ -172,6 +170,7 @@ If you find TimeGPT useful for your research, please consider citing the associa
 ```
 
 ## 🎉 Features and Mentions
+
 TimeGPT has been featured in many publications and has been recognized for its innovative approach to time series forecasting. Here are some of the features and mentions:
 
 - [TimeGPT Revolutionizing Time Series Forecasting](https://www.analyticsvidhya.com/blog/2024/02/timegpt-revolutionizing-time-series-forecasting/)
@@ -184,9 +183,10 @@ TimeGPT has been featured in many publications and has been recognized for its i
 - [How TimeGPT Transforms Predictive Analytics with AI](https://hackernoon.com/how-timegpt-transforms-predictive-analytics-with-ai)
 - [TimeGPT: The First Foundation Model - AI Horizon Forecast](https://aihorizonforecast.substack.com/p/timegpt-the-first-foundation-model)
 
-
 ## 🔖 License
+
 TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
 
 ## 📞 Get in touch
+
 For any questions or feedback, please feel free to reach out to us at ops [at] nixtla.io.

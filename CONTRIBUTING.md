@@ -15,7 +15,7 @@
 
 Bug fixes and features are added through pull requests (PRs).
 
-##  PR submission guidelines
+## PR submission guidelines
 
 * Keep each PR focused. While it's more convenient, do not combine several unrelated fixes together. Create as many branches as needing to keep each PR focused.
 * Ensure that your PR includes a test that fails without your patch, and passes with it.
@@ -28,11 +28,13 @@ Bug fixes and features are added through pull requests (PRs).
 ### Local setup for working on a PR
 
 #### Clone the repository
+
 * HTTPS: `git clone https://github.com/Nixtla/nixtla.git`
 * SSH: `git clone git@github.com:Nixtla/nixtla.git`
 * GitHub CLI: `gh repo clone Nixtla/nixtla`
 
 #### Set up an environment
+
 Create a virtual environment to install the library's dependencies. We recommend [astral's uv](https://github.com/astral-sh/uv).
 Once you've created the virtual environment you should activate it and then install the library in editable mode along with its
 development dependencies.
@@ -49,22 +51,55 @@ uv pip install -Ue .[dev,distributed]
 ```
 
 #### Set Up Nixtla API Key
+
 This library uses `python-dotenv` for development. To set up your Nixtla API key, add the following lines to your `.env` file:
 
-```
+```sh
 NIXTLA_API_KEY=<your token>
 ```
 
 * NOTE: You can get your Nixtla API key by logging into [Nixtla Dashboard](https://dashboard.nixtla.io/) where you can get few API calls for free. If you need more API calls for development purpose, please write to `support@nixtla.io`.
 
-#### Install git hooks
-Before doing any changes to the code, please install the git hooks that run automatic scripts during each commit and merge to strip the notebooks of superfluous metadata (and avoid merge conflicts).
-```
+#### Install pre-commit
+
+```sh
 pre-commit install
+pre-commit run --show-diff-on-failure --files nixtla/*
 ```
 
+#### Viewing documentation locally
+
+The new documentation pipeline relies on `quarto`, `mintlify` and `lazydocs`.
+
+##### Install `quarto`
+
+Install `quarto` from &rarr; [this link](https://quarto.org/docs/get-started/)
+
+##### Install mintlify
+
+```sh
+npm i -g mint
+```
+
+For additional instructions, you can read about it &rarr; [this link](https://mintlify.com/docs/installation).
+
+```sh
+uv pip install -e '.[dev]' lazydocs
+make all_docs
+```
+
+Finally to view the documentation
+
+```sh
+make preview_docs
+```
 
 ### Running tests
+
+```sh
+pytest nixtla_tests
+```
+
 If you're working on the local interface you can just use `pytest nixtla_tests`
 
 ## Do you want to contribute to the documentation?
@@ -72,18 +107,28 @@ If you're working on the local interface you can just use `pytest nixtla_tests`
 Docs are automatically created from the notebooks in the `nbs` folder.
 
 ### Modifying an existing doc
+
+#### For scripts
+
+* The docs are automatically generated from the docstrings in the `nixtla` folder.
+* To contribute, ensure your docstrings follow the Google style format.
+* Once your docstring is correctly written, the documentation framework will scrape it and regenerate the corresponding `.mdx` files and your changes will then appear in the updated docs.
+* To contribute, examples/how-to-guides, make sure you submit clean notebooks, with cleared formatted LaTeX, links and images.
+* Make an appropriate entry in the `docs/mintlify/mint.json` file.
+
+#### For notebooks
+
 1. Find the relevant notebook.
 2. Make your changes.
     * Do not rename the document.
     * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`.
 3. Run all cells.
-4. Run `nbdev_preview`.
-5. Clean the notebook metadata using `nbdev_clean --fname nbs/docs/[path_to_notebook.ipynb]`.
-6. Add, commit and push the changes.
-7. Open a PR.
-8. Follow the steps under 'Publishing documentation'
+4. Add, commit and push the changes.
+5. Open a PR.
+6. Follow the steps under 'Publishing documentation'
 
 ### Creating a new document
+
 1. Copy an existing jupyter notebook in a folder where you want to create a new document. This should be a subfolder of `nbs/docs`.
 2. Rename the document using the following format: `[document_number]_document_title_in_lower_case.ipynb` (for example: `01_quickstart.ipynb`), incrementing the document number from the current highest number within the folder and retaining the leading zero.
 3. The first header (title) is ideally the same as the notebook name (without the document number). This is because in Readme.com the first header (title) is used to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` of a document in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`. Thus, it is advised to keep the document name and header the same.
@@ -91,11 +136,13 @@ Docs are automatically created from the notebooks in the `nbs` folder.
     * The Google Colab link;
     * How images should be linked;
     * How the `IN_COLAB` variable is used to distinguish when the notebook is used locally vs in Google Colab.
-5. Add the document to `nbs/mint.json` under the correct group with the following name `document_title_in_lower_case.html`.
+5. Add the document to `docs/mintlify/mint.json` under the correct group with the following name `path-to-document/document_title_in_lower_case`.
 6. Follow steps 3 - 8 under `Modifying an existing doc`.
 
 ### Publishing documentation
+
 When the PR is approved, the documentation will not be visible directly. It will be visible:
+
 1. When we make a release
 2. When you manually trigger the workflows required to publish. The workflows you need to manually trigger under [Actions](https://github.com/Nixtla/nixtla/actions), in order, are:
     1. The `build-docs` workflow on branch `main`. Use the `Run workflow` button on the right and choose the `main` branch.
@@ -103,6 +150,7 @@ When the PR is approved, the documentation will not be visible directly. It will
     * After both workflows have completed (should take max. 10 minutes), check the [docs](https://docs.nixtla.io/) to see if your changes have been reflected.
 
 It could be that on our Readme.com [docs](https://docs.nixtla.io/), the newly created document is not in the correct (sub)folder.
+
 1. Go to the `Log In` (top right corner), log in with your Nixtla account.
 2. Go to the Admin Dashboard (top right, under user-name)
 3. On the left, go to `Guides`. You now see an overview of the documentation and the structure.
@@ -111,6 +159,7 @@ It could be that on our Readme.com [docs](https://docs.nixtla.io/), the newly cr
 Make sure to check that our [Mintlify docs](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html) also work as expected, and your change is reflected there too. Mintlify is commonly somewhat slower syncing the docs, so it could a bit more time to reflect the change.
 
 ### Do's and don'ts
+
 * Don't rename documents! The filename is used statically in various files to properly index the file in the correct (sub)folder. If you rename, you're effectively creating a new document. Follow the correct procedure for creating a new document (above), and check every other document (yes, every single one) in our documentation whether there's a link now breaking to the doc you renamed.
 * Check the changes / new document online in both [Readme.com](https://docs.nixtla.io/) and [Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html).
 * Screwed up? You can hide a document in Readme.com in the Admin console, under `Guides`. Make sure to unhide it again after you've fixed your misstakes.

@@ -33,3 +33,18 @@ nbs/_extensions
 
 # VSCode
 *.code-workspace
+
+# ignore files created in the docs folder
+docs/*.md
+docs/**/*.mdx
+
+docs-scripts
+docs/mintlify/examples
+docs/mintlify/assets
+
+nbs/_extensions
+.quarto
+
+*.png
+
+.coverage*
