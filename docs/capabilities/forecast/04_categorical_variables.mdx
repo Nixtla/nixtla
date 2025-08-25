@@ -1,0 +1,124 @@
+---
+title: Add categorical variables
+---
+
+
+```python
+!pip install -Uqq nixtla
+```
+
+
+
+```python
+from nixtla.utils import in_colab
+```
+
+
+
+```python
+IN_COLAB = in_colab()
+```
+
+
+
+```python
+if not IN_COLAB:
+    from nixtla.utils import colab_badge
+    from dotenv import load_dotenv
+```
+
+
+TimeGPT supports categorical variables and we can create them using
+`SpecialDates`.
+
+<figure>
+<a
+href="https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/04_categorical_variables.ipynb"><img
+src="https://colab.research.google.com/assets/colab-badge.svg" /></a>
+</figure>
+
+```python
+import pandas as pd
+import datetime
+from nixtla import NixtlaClient
+from nixtla.date_features import SpecialDates
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+> 👍 Use an Azure AI endpoint
+>
+> To use an Azure AI endpoint, remember to set also the `base_url`
+> argument:
+>
+> `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
+
+
+```python
+if not IN_COLAB:
+    nixtla_client = NixtlaClient()
+```
+
+
+```python
+# Read the data
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+
+# Create categorical variables to label Christmas and summer vacations
+categories_dates = SpecialDates(
+    special_dates={
+        'christmas_vacations': [datetime.date(year, 12, 1) for year in range(1949, 1960 + 1)],
+        'summer_vacations': [datetime.date(year, month, 1) for year in range(1949, 1960 + 1) for month in (6, 7)]
+    }
+)
+
+dates = pd.date_range('1949-01-01', '1960-12-01', freq='MS')
+
+categories_df = categories_dates(dates).reset_index(drop=True)
+
+# Merge with the dataset
+cat_df = pd.concat([df, categories_df], axis=1)
+
+# Forecast
+forecast_df = nixtla_client.forecast(
+    df=cat_df, 
+    h=24,
+    target_col='value',
+    time_col='timestamp'
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+WARNING:nixtla.nixtla_client:You did not provide X_df. Exogenous variables in df are ignored. To surpress this warning, please add X_df with exogenous variables: christmas_vacations, summer_vacations
+WARNING:nixtla.nixtla_client:The specified horizon "h" exceeds the model horizon. This may lead to less accurate forecasts. Please consider using a smaller horizon.
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.forecast(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
+For a detailed guide on using categorical variables for forecasting,
+read our in-depth tutorial on [Categorical
+variables](https://docs.nixtla.io/docs/tutorials-categorical_variables).
+

@@ -1,0 +1,695 @@
+
+
+
+
+# <kbd>module</kbd> `nixtla.nixtla_client`
+
+
+
+
+**Global Variables**
+---------------
+- **TYPE_CHECKING**
+
+
+---
+
+
+
+## <kbd>class</kbd> `FinetunedModel`
+
+
+
+
+
+---
+
+#### <kbd>property</kbd> model_extra
+
+Get extra fields set during validation. 
+
+
+
+**Returns:**
+  A dictionary of extra fields, or `None` if `config.extra` is not set to `"allow"`. 
+
+---
+
+#### <kbd>property</kbd> model_fields_set
+
+Returns the set of fields that have been explicitly set on this model instance. 
+
+
+
+**Returns:**
+  A set of strings representing the fields that have been set,  i.e. that were not filled from defaults. 
+
+
+
+
+---
+
+
+
+## <kbd>class</kbd> `AuditDataSeverity`
+Enum class to indicate audit data severity levels 
+
+
+
+
+
+---
+
+
+
+## <kbd>class</kbd> `ApiError`
+
+
+
+
+
+
+### <kbd>method</kbd> `__init__`
+
+```python
+__init__(status_code: Optional[int] = None, body: Optional[Any] = None)
+```
+
+
+
+
+
+
+
+
+
+---
+
+
+
+## <kbd>class</kbd> `NixtlaClient`
+
+
+
+
+
+
+### <kbd>method</kbd> `__init__`
+
+```python
+__init__(
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    timeout: Optional[int] = 60,
+    max_retries: int = 6,
+    retry_interval: int = 10,
+    max_wait_time: int = 360
+)
+```
+
+Client to interact with the Nixtla API. 
+
+
+
+
+
+**Args:**
+ 
+ - <b>`api_key`</b> (str, optional):  The authorization API key to interact  with the Nixtla API. If not provided, will use the  NIXTLA_API_KEY environment variable. 
+ - <b>`base_url`</b> (str, optional):  Custom base URL.  If not provided, will use the NIXTLA_BASE_URL environment  variable. 
+ - <b>`timeout`</b> (int, optional):  Request timeout in seconds.  Set to `None` to disable it. Defaults to 60. 
+ - <b>`max_retries`</b> (int, optional):  The maximum number of attempts to  make when calling the API before giving up. It defines how  many times the client will retry the API call if it fails.  Default value is 6, indicating the client will attempt the  API call up to 6 times in total. Defaults to 60. 
+ - <b>`retry_interval`</b> (int, optional):  The interval in seconds between  consecutive retry attempts. This is the waiting period before  the client tries to call the API again after a failed attempt.  Default value is 10 seconds, meaning the client waits for  10 seconds between retries. Defaults to 10. 
+ - <b>`max_wait_time`</b> (int, optional):  The maximum total time in seconds  that the client will spend on all retry attempts before  giving up. This sets an upper limit on the cumulative  waiting time for all retry attempts. If this time is  exceeded, the client will stop retrying and raise an  exception. Default value is 360 seconds, meaning the  client will cease retrying if the total time spent on retries  exceeds 360 seconds. The client throws a ReadTimeout error  after 60 seconds of inactivity. If you want to catch these  errors, use max_wait_time >> 60. Defaults to 360. 
+
+
+
+
+---
+
+
+
+### <kbd>method</kbd> `audit_data`
+
+```python
+audit_data(
+    df: ~AnyDFType,
+    freq: Union[str, int, BaseOffset],
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    start: Union[str, int, date, datetime] = 'per_serie',
+    end: Union[str, int, date, datetime] = 'global'
+) → tuple[bool, dict[str, Union[DataFrame, DataFrame]], dict[str, Union[DataFrame, DataFrame]]]
+```
+
+Audit data quality. 
+
+
+
+**Args:**
+ 
+ - <b>`df`</b> (pandas or polars DataFrame):  The dataframe to be audited. 
+ - <b>`freq`</b> (str, int or pandas offset):  Frequency of the timestamps. 
+ - <b>`Must be specified. See [pandas' available frequencies](https`</b>: //pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). 
+ - <b>`id_col`</b> (str):  Column that identifies each series. Defaults to  'unique_id'. 
+ - <b>`time_col`</b> (str):  Column that identifies each timestep, its values  can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str):  Column that contains the target. Defaults to 'y'. start (Union[str, int, datetime.date, datetime.datetime], optional):  Initial timestamp for the series.  * 'per_serie' uses each series first timestamp  * 'global' uses the first timestamp seen in the data  * Can also be a specific timestamp or integer,  e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)  , by default "per_serie" end (Union[str, int, datetime.date, datetime.datetime], optional):  Final timestamp for the series.  * 'per_serie' uses each series last timestamp  * 'global' uses the last timestamp seen in the data  * Can also be a specific timestamp or integer,  e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)  , by default "global" 
+
+
+
+**Returns:**
+ tuple[bool, dict[str, DataFrame], dict[str, DataFrame]]:  Tuple containing: 
+        - bool: True if all tests pass, False otherwise 
+        - dict: Dictionary mapping test IDs to error DataFrames for failed  tests or None if the test could not be performed. 
+        - dict: Dictionary mapping test IDs to error DataFrames for  case-specific tests. 
+
+ Test IDs: 
+        - D001: Test for duplicate rows 
+        - D002: Test for missing dates 
+        - F001: Test for presence of categorical feature columns 
+        - V001: Test for negative values 
+        - V002: Test for leading zeros 
+
+---
+
+
+
+### <kbd>method</kbd> `clean_data`
+
+```python
+clean_data(
+    df: ~AnyDFType,
+    fail_dict: dict[str, Union[DataFrame, DataFrame]],
+    case_specific_dict: dict[str, Union[DataFrame, DataFrame]],
+    freq: Union[str, int, BaseOffset],
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    clean_case_specific: bool = False,
+    agg_dict: Optional[dict[str, Union[str, Callable]]] = None
+) → tuple[~AnyDFType, bool, dict[str, Union[DataFrame, DataFrame]], dict[str, Union[DataFrame, DataFrame]]]
+```
+
+Clean the data. This should be run after running `audit_data`. 
+
+
+
+**Args:**
+ 
+ - <b>`df`</b> (AnyDFType):  The dataframe to be cleaned 
+ - <b>`fail_dict`</b> (dict[str, DataFrame]):  The failure dictionary from the  audit_data method. 
+ - <b>`case_specific_dict`</b> (dict[str, DataFrame]):  The case specific  dictionary from the audit_data method. 
+ - <b>`freq`</b> (str, int or pandas offset):  Frequency of the timestamps. 
+ - <b>`Must be specified. See [pandas' available frequencies](https`</b>: //pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). 
+ - <b>`id_col`</b> (str):  Column that identifies each series. Defaults to  'unique_id'. 
+ - <b>`time_col`</b> (str):  Column that identifies each timestep, its values  can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str):  Column that contains the target. Defaults to 'y'. 
+ - <b>`clean_case_specific`</b> (bool, optional):  If True, clean case  specific issues. Defaults to False. agg_dict (Optional[dict[str, Union[str, Callable]]], optional):  The aggregation methods to use when there are duplicate rows (D001),  by default None 
+
+
+
+**Returns:**
+ tuple[AnyDFType, bool, dict[str, DataFrame], dict[str, DataFrame]]:  Tuple containing: 
+        - AnyDFType: The cleaned dataframe 
+        - The three outputs from audit_data that are run at the end of cleansing. 
+
+
+
+**Raises:**
+ 
+ - <b>`ValueError`</b>:  Any exceptions during the cleaning process. 
+
+---
+
+
+
+### <kbd>method</kbd> `cross_validation`
+
+```python
+cross_validation(
+    df: ~AnyDFType,
+    h: Annotated[int, Gt(gt=0)],
+    freq: Optional[str, int, BaseOffset] = None,
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    level: Optional[list[Union[int, float]]] = None,
+    quantiles: Optional[list[float]] = None,
+    validate_api_key: bool = False,
+    n_windows: Annotated[int, Gt(gt=0)] = 1,
+    step_size: Optional[Annotated[int, Gt(gt=0)]] = None,
+    finetune_steps: Annotated[int, Ge(ge=0)] = 0,
+    finetune_depth: Literal[1, 2, 3, 4, 5] = 1,
+    finetune_loss: Literal['default', 'mae', 'mse', 'rmse', 'mape', 'smape'] = 'default',
+    finetuned_model_id: Optional[str] = None,
+    refit: bool = True,
+    clean_ex_first: bool = True,
+    hist_exog_list: Optional[list[str]] = None,
+    date_features: Union[bool, list[str]] = False,
+    date_features_to_one_hot: Union[bool, list[str]] = False,
+    model: str = 'timegpt-1',
+    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None
+) → ~AnyDFType
+```
+
+Perform cross validation in your time series using TimeGPT. 
+
+
+
+**Args:**
+ 
+ - <b>`df`</b> (pandas or polars DataFrame):  The DataFrame on which the  function will operate. Expected to contain at least the  following columns: 
+        - time_col:  Column name in `df` that contains the time indices of the  time series. This is typically a datetime column with  regular intervals, e.g., hourly, daily, monthly data points. 
+        - target_col:  Column name in `df` that contains the target variable of the  time series, i.e., the variable we wish to predict or analyze.  Additionally, you can pass multiple time series (stacked in the  dataframe) considering an additional column: 
+        - id_col:  Column name in `df` that identifies unique time series.  Each unique value in this column corresponds to a unique  time series. 
+ - <b>`h`</b> (int):  Forecast horizon. 
+ - <b>`freq`</b> (str, int or pandas offset, optional):  Frequency of the  timestamps. If `None`, it will be inferred automatically. 
+ - <b>`See [pandas' available frequencies](https`</b>: //pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). Defaults to None. 
+ - <b>`id_col`</b> (str):  Column that identifies each series. Defaults to  'unique_id'. 
+ - <b>`time_col`</b> (str):  Column that identifies each timestep, its values  can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str):  Column that contains the target. Defaults to 'y'. 
+ - <b>`level`</b> (list[float], optional):  Confidence levels between 0 and 100  for prediction intervals. Defaults to None. 
+ - <b>`quantiles`</b> (list[float], optional):  Quantiles to forecast, list  between (0, 1). `level` and `quantiles` should not be  used simultaneously. The output dataframe will have  the quantile columns formatted as TimeGPT-q-(100 * q) for each  q. 100 * q represents percentiles but we choose this notation  to avoid having dots in column names. Defaults to None. 
+ - <b>`validate_api_key`</b> (bool):  If True, validates api_key before sending  requests. Defaults to False. 
+ - <b>`n_windows`</b> (int):  Number of windows to evaluate. Defaults to 1. 
+ - <b>`step_size`</b> (int, optional):  Step size between each cross validation  window. If None it will be equal to `h`. Defaults to None. 
+ - <b>`finetune_steps`</b> (int):  Number of steps used to finetune learning  TimeGPT in the new data. Defaults to 0. 
+ - <b>`finetune_depth`</b> (int):  The depth of the finetuning. Uses a scale  from 1 to 5, where 1 means little finetuning, and 5 means that  the entire model is finetuned. Defaults to 1. 
+ - <b>`finetune_loss`</b> (str):  Loss function to use for finetuning. Options 
+ - <b>`are`</b>:  `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. Defaults to 'default'. 
+ - <b>`finetuned_model_id`</b> (str, optional):  ID of previously fine-tuned  model to use. Defaults to None. 
+ - <b>`finetuned_model_id`</b> (str, optional):  ID of previously fine-tuned  model to use. Defaults to None. refit (bool):  Fine-tune the model in each window. If `False`, only  fine-tunes on the first window. Only used if `finetune_steps`  > 0. Defaults to True. clean_ex_first (bool):  Clean exogenous signal before making forecasts using TimeGPT.  Defaults to True. hist_exog_list (list[str], optional):  Column names of the historical exogenous features. Defaults  to None. 
+ - <b>`date_features`</b> (bool or list[str] or callable, optional):  Features  computed from the dates. Can be pandas date attributes  or functions that will take the dates as input. If True  automatically adds most used date features for the  frequency of `df`. Defaults to False. 
+ - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
+ - <b>`model`</b> (str):  Model to use as a string. Options are: `timegpt-1`,  and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
+
+
+
+**Returns:**
+ pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with cross validation forecasts. 
+
+---
+
+
+
+### <kbd>method</kbd> `delete_finetuned_model`
+
+```python
+delete_finetuned_model(finetuned_model_id: str) → bool
+```
+
+Delete a previously fine-tuned model 
+
+
+
+**Args:**
+ 
+ - <b>`finetuned_model_id`</b> (str):  ID of the fine-tuned model to be deleted. 
+
+
+
+**Returns:**
+ 
+ - <b>`bool`</b>:  Whether delete was successful. 
+
+---
+
+
+
+### <kbd>method</kbd> `detect_anomalies`
+
+```python
+detect_anomalies(
+    df: ~AnyDFType,
+    freq: Optional[str, int, BaseOffset] = None,
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    level: Union[int, float] = 99,
+    finetuned_model_id: Optional[str] = None,
+    clean_ex_first: bool = True,
+    validate_api_key: bool = False,
+    date_features: Union[bool, list[str]] = False,
+    date_features_to_one_hot: Union[bool, list[str]] = False,
+    model: str = 'timegpt-1',
+    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None
+) → ~AnyDFType
+```
+
+Detect anomalies in your time series using TimeGPT. 
+
+
+
+**Args:**
+ 
+ - <b>`df`</b> (pandas or polars DataFrame):  The DataFrame on which the  function will operate. Expected to contain at least the  following columns: 
+        - time_col:  Column name in `df` that contains the time indices of the  time series. This is typically a datetime column with  regular intervals, e.g., hourly, daily, monthly data points. 
+        - target_col:  Column name in `df` that contains the target variable of  the time series, i.e., the variable we wish to predict  or analyze.  Additionally, you can pass multiple time series (stacked in  the dataframe) considering an additional column: 
+        - id_col:  Column name in `df` that identifies unique time series.  Each unique value in this column corresponds to a unique time series. 
+ - <b>`freq`</b> (str, int, pandas offset, optional):  Frequency of the  timestamps.  If `None`, it will be inferred automatically. 
+ - <b>`See [pandas' available frequencies](https`</b>: //pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). Defaults to None. 
+ - <b>`id_col`</b> (str):  Column that identifies each series. Defaults to  'unique_id'. 
+ - <b>`time_col`</b> (str):  Column that identifies each timestep, its values  can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str):  Column that contains the target. Defaults to 'y'. 
+ - <b>`level`</b> (float):  Confidence level between 0 and 100 for detecting  the anomalies. Defaults to 99. 
+ - <b>`finetuned_model_id`</b> (str, optional):  ID of previously fine-tuned  model to use. Defaults to None. 
+ - <b>`clean_ex_first`</b> (bool):  Clean exogenous signal before making  forecasts using TimeGPT. Defaults to True. validate_api_key (bool):  If True, validates api_key before sending requests. Defaults  to False. 
+ - <b>`date_features`</b> (bool or list[str] or callable, optional):  Features  computed from the dates. Can be pandas date attributes or  functions that will take the dates as input. If True  automatically adds most used date features for the frequency  of `df`. Defaults to False. 
+ - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
+ - <b>`model`</b> (str):  str (default='timegpt-1') 
+ - <b>`Model to use as a string. Options are`</b>:  `timegpt-1`, and `timegpt-1-long-horizon`. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data. Defaults to 'timegpt-1'. 
+ - <b>`num_partitions`</b> (int):  Number of partitions to use. If None, the  number of partitions will be equal to the available parallel  resources in distributed environments. Defaults to None. 
+
+
+
+**Returns:**
+ pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with anomalies flagged by TimeGPT. 
+
+---
+
+
+
+### <kbd>method</kbd> `detect_anomalies_online`
+
+```python
+detect_anomalies_online(
+    df: ~AnyDFType,
+    h: Annotated[int, Gt(gt=0)],
+    detection_size: Annotated[int, Gt(gt=0)],
+    threshold_method: Literal['univariate', 'multivariate'] = 'univariate',
+    freq: Optional[str, int, BaseOffset] = None,
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    level: Union[int, float] = 99,
+    clean_ex_first: bool = True,
+    step_size: Optional[Annotated[int, Gt(gt=0)]] = None,
+    finetune_steps: Annotated[int, Ge(ge=0)] = 0,
+    finetune_depth: Literal[1, 2, 3, 4, 5] = 1,
+    finetune_loss: Literal['default', 'mae', 'mse', 'rmse', 'mape', 'smape'] = 'default',
+    hist_exog_list: Optional[list[str]] = None,
+    date_features: Union[bool, list[str]] = False,
+    date_features_to_one_hot: Union[bool, list[str]] = False,
+    model: str = 'timegpt-1',
+    refit: bool = False,
+    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None
+) → ~AnyDFType
+```
+
+Online anomaly detection in your time series using TimeGPT. 
+
+
+
+**Args:**
+  df (pandas or polars DataFrame):  The DataFrame on which the function will operate. Expected  to contain at least the following columns: 
+        - time_col:  Column name in `df` that contains the time indices of the  time series. This is typically a datetime column with  regular intervals, e.g., hourly, daily, monthly data  points. 
+        - target_col:  Column name in `df` that contains the target variable of  the time series, i.e., the variable we wish to predict or  analyze. 
+        - id_col:  Column name in `df` that identifies unique time series.  Each unique value in this column corresponds to a unique  time series. 
+
+
+ - <b>`h`</b> (int):  Forecast horizon. 
+ - <b>`detection_size`</b> (int):  The length of the sequence where anomalies  will be detected starting from the end of the dataset. 
+ - <b>`threshold_method`</b> (str, optional):  The method used to calculate the  intervals for anomaly detection. Use `univariate` to flag  anomalies independently for each series in the dataset.  Use `multivariate` to have a global threshold across all series  in the dataset. For this method, all series must have the same  length. Defaults to 'univariate'. 
+ - <b>`freq`</b> (str, optional):  Frequency of the data. By default, the freq 
+ - <b>`will be inferred automatically. See [pandas' available frequencies](https`</b>: //pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). 
+ - <b>`id_col`</b> (str, optional):  Column that identifies each series.  Defaults to 'unique_id' 
+ - <b>`time_col`</b> (str, optional):  Column that identifies each timestep,  its values can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str, optional):  Column that contains the target.  Defaults to 'y'. level (float, optional):  Confidence level between 0 and 100 for detecting the anomalies.  Defaults to 99. 
+ - <b>`clean_ex_first`</b> (bool, optional):  Clean exogenous signal before  making forecasts using TimeGPT. Defaults to True. 
+ - <b>`step_size`</b> (int, optional):  Step size between each cross validation  window. If None it will be equal to `h`. Defaults to None. 
+ - <b>`finetune_steps`</b> (int):  Number of steps used to finetune TimeGPT in  the new data. Defaults to 0. 
+ - <b>`finetune_depth`</b> (int):  The depth of the finetuning. Uses a scale  from 1 to 5, where 1 means little finetuning, and 5 means that  the entire model is finetuned. Defaults to 1. 
+ - <b>`finetune_loss`</b> (str):  Loss function to use for finetuning. 
+ - <b>`Options are`</b>:  `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. Defaults to 'default'. 
+ - <b>`hist_exog_list`</b> (list[str], optional):  Column names of the historical  exogenous features. Defaults to None. 
+ - <b>`date_features`</b> (bool or list[str] or callable, optional):  Features  computed from the dates. Can be pandas date attributes  or functions that will take the dates as input. If True  automatically adds most used date features for the  frequency of `df`. Defaults to False. 
+ - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
+ - <b>`model`</b> (str, optional):  Model to use as a string. Options are:  `timegpt-1`, and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. 
+ - <b>`refit`</b> (bool, optional):  Fine-tune the model in each window. If  False, only fine-tunes on the first window. Only used if  finetune_steps > 0. Defaults to False. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
+
+
+
+**Returns:**
+ pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with anomalies flagged by TimeGPT. 
+
+---
+
+
+
+### <kbd>method</kbd> `finetune`
+
+```python
+finetune(
+    df: Union[DataFrame, DataFrame],
+    freq: Optional[str, int, BaseOffset] = None,
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    finetune_steps: Annotated[int, Ge(ge=0)] = 10,
+    finetune_depth: Literal[1, 2, 3, 4, 5] = 1,
+    finetune_loss: Literal['default', 'mae', 'mse', 'rmse', 'mape', 'smape'] = 'default',
+    output_model_id: Optional[str] = None,
+    finetuned_model_id: Optional[str] = None,
+    model: str = 'timegpt-1'
+) → str
+```
+
+Fine-tune TimeGPT to your series. 
+
+
+
+**Args:**
+ 
+ - <b>`df`</b> (pandas or polars DataFrame):  The DataFrame on which the  function will operate. Expected to contain at least the  following columns: 
+        - time_col:  Column name in `df` that contains the time indices of  the time series. This is typically a datetime column with  regular intervals, e.g., hourly, daily, monthly data  points. 
+        - target_col:  Column name in `df` that contains the target variable of  the time series, i.e., the variable we wish to predict  or analyze.  Additionally, you can pass multiple time series (stacked in  the dataframe) considering an additional column: 
+        - id_col:  Column name in `df` that identifies unique time series.  Each unique value in this column corresponds to a unique  time series. 
+ - <b>`freq`</b> (str, int, pandas offset, optional):  Frequency of the  timestamps.  If `None`, it will be inferred automatically. 
+ - <b>`See [pandas' available frequencies](https`</b>: //pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). Defaults to None. 
+ - <b>`id_col`</b> (str):  Column that identifies each series. Defaults to  'unique_id'. 
+ - <b>`time_col`</b> (str):  Column that identifies each timestep, its values  can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str):  Column that contains the target. Defaults to 'y'. 
+ - <b>`finetune_steps`</b> (int):  Number of steps used to finetune learning  TimeGPT in the new data. Defaults to 10. 
+ - <b>`finetune_depth`</b> (int):  The depth of the finetuning. Uses a scale  from 1 to 5, where 1 means little finetuning, and 5 means that  the entire model is finetuned. Defaults to 1. 
+ - <b>`finetune_loss`</b> (str):  Loss function to use for finetuning. Options 
+ - <b>`are`</b>:  `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. Defaults to 'default'. 
+ - <b>`output_model_id`</b> (str, optional):  ID to assign to the fine-tuned model.  If `None`, an UUID is used. Defaults to None. 
+ - <b>`finetuned_model_id`</b> (str, optional):  ID of previously fine-tuned  model to use as base. Defaults to None. model (str): 
+ - <b>`Model to use as a string. Options are`</b>:  `timegpt-1`, and `timegpt-1-long-horizon`. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data. Defaults to 'timegpt-1'. 
+
+
+
+**Returns:**
+ 
+ - <b>`str`</b>:  ID of the fine-tuned model 
+
+---
+
+
+
+### <kbd>method</kbd> `finetuned_model`
+
+```python
+finetuned_model(finetuned_model_id: str) → FinetunedModel
+```
+
+Get fine-tuned model metadata 
+
+
+
+**Args:**
+ 
+ - <b>`finetuned_model_id`</b> (str):  ID of the fine-tuned model to get  metadata from. 
+
+
+
+**Returns:**
+ 
+ - <b>`FinetunedModel`</b>:  Fine-tuned model metadata. 
+
+---
+
+
+
+### <kbd>method</kbd> `finetuned_models`
+
+```python
+finetuned_models(as_df: bool = False) → Union[list[FinetunedModel], DataFrame]
+```
+
+List fine-tuned models 
+
+
+
+**Args:**
+ 
+ - <b>`as_df`</b> (bool):  Return the fine-tuned models as a pandas dataframe. 
+
+
+
+**Returns:**
+ 
+ - <b>`List of FinetunedModel`</b>:  List of available fine-tuned models. 
+
+---
+
+
+
+### <kbd>method</kbd> `forecast`
+
+```python
+forecast(
+    df: ~AnyDFType,
+    h: Annotated[int, Gt(gt=0)],
+    freq: Optional[str, int, BaseOffset] = None,
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    X_df: Optional[~AnyDFType] = None,
+    level: Optional[list[Union[int, float]]] = None,
+    quantiles: Optional[list[float]] = None,
+    finetune_steps: Annotated[int, Ge(ge=0)] = 0,
+    finetune_depth: Literal[1, 2, 3, 4, 5] = 1,
+    finetune_loss: Literal['default', 'mae', 'mse', 'rmse', 'mape', 'smape'] = 'default',
+    finetuned_model_id: Optional[str] = None,
+    clean_ex_first: bool = True,
+    hist_exog_list: Optional[list[str]] = None,
+    validate_api_key: bool = False,
+    add_history: bool = False,
+    date_features: Union[bool, list[Union[str, Callable]]] = False,
+    date_features_to_one_hot: Union[bool, list[str]] = False,
+    model: str = 'timegpt-1',
+    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
+    feature_contributions: bool = False
+) → ~AnyDFType
+```
+
+Forecast your time series using TimeGPT. 
+
+
+
+**Args:**
+ 
+ - <b>`df`</b> (pandas or polars DataFrame):  The DataFrame on which the  function will operate. Expected to contain at least the  following columns: 
+        - time_col:  Column name in `df` that contains the time indices of  the time series. This is typically a datetime column  with regular intervals, e.g., hourly, daily, monthly  data points. 
+        - target_col:  Column name in `df` that contains the target variable of  the time series, i.e., the variable we wish to predict  or analyze.  Additionally, you can pass multiple time series (stacked in  the dataframe) considering an additional column: 
+        - id_col:  Column name in `df` that identifies unique time series.  Each unique value in this column corresponds to a unique  time series. 
+ - <b>`h`</b> (int):  Forecast horizon. 
+ - <b>`freq`</b> (str, int or pandas offset, optional):  Frequency of the  timestamps. If `None`, it will be inferred automatically. 
+ - <b>`See [pandas' available frequencies](https`</b>: //pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases). Defaults to None. 
+ - <b>`id_col`</b> (str):  Column that identifies each series. Defaults to  'unique_id'. 
+ - <b>`time_col`</b> (str):  Column that identifies each timestep, its values  can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str):  Column that contains the target. Defaults to 'y'. X_df (pandas or polars DataFrame, optional):  DataFrame with [`unique_id`, `ds`] columns and `df`'s future  exogenous. Defaults to None. 
+ - <b>`level`</b> (list[float], optional):  Confidence levels between 0 and 100  for prediction intervals. Defaults to None. 
+ - <b>`quantiles`</b> (list[float], optional):  Quantiles to forecast, list  between (0, 1). `level` and `quantiles` should not be  used simultaneously. The output dataframe will have  the quantile columns formatted as TimeGPT-q-(100 * q) for each  q. 100 * q represents percentiles but we choose this notation  to avoid having dots in column names. Defaults to None. 
+ - <b>`finetune_steps`</b> (int):  Number of steps used to finetune learning  TimeGPT in the new data. Defaults to 0. 
+ - <b>`finetune_depth`</b> (int):  The depth of the finetuning. Uses a scale  from 1 to 5, where 1 means little finetuning, and 5 means that  the entire model is finetuned. Defaults to 1. 
+ - <b>`finetune_loss`</b> (str):  Loss function to use for finetuning. Options 
+ - <b>`are`</b>:  `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`. Defaults to 'default'. 
+ - <b>`finetuned_model_id`</b> (str, optional):  ID of previously fine-tuned model  to use. Defaults to None. 
+ - <b>`clean_ex_first`</b> (bool):  Clean exogenous signal before making  forecasts using TimeGPT. Defaults to True. 
+ - <b>`hist_exog_list`</b> (list[str], optional):  Column names of the  historical exogenous features. Defaults to None. validate_api_key (bool):  If True, validates api_key before sending requests. Defaults  to False. 
+ - <b>`add_history`</b> (bool):  Return fitted values of the model. Defaults  to False. 
+ - <b>`date_features`</b> (bool or list[str] or callable, optional):  Features  computed from the dates. Can be pandas date attributes  or functions that will take the dates as input. If True  automatically adds most used date features for the  frequency of `df`. Defaults to False. 
+ - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
+ - <b>`model`</b> (str):  Model to use as a string. Options are: `timegpt-1`,  and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
+ - <b>`feature_contributions`</b> (bool):  Compute SHAP values.  Gives access to computed SHAP values to explain the impact  of features on the final predictions. Defaults to False. 
+
+
+
+**Returns:**
+ pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with TimeGPT forecasts for point predictions and  probabilistic predictions (if level is not None). 
+
+---
+
+
+
+### <kbd>method</kbd> `plot`
+
+```python
+plot(
+    df: Optional[DataFrame, DataFrame] = None,
+    forecasts_df: Optional[DataFrame, DataFrame] = None,
+    id_col: str = 'unique_id',
+    time_col: str = 'ds',
+    target_col: str = 'y',
+    unique_ids: Union[list[str], NoneType, ndarray] = None,
+    plot_random: bool = True,
+    max_ids: int = 8,
+    models: Optional[list[str]] = None,
+    level: Optional[list[Union[int, float]]] = None,
+    max_insample_length: Optional[int] = None,
+    plot_anomalies: bool = False,
+    engine: Literal['matplotlib', 'plotly', 'plotly-resampler'] = 'matplotlib',
+    resampler_kwargs: Optional[dict] = None,
+    ax: Optional[ForwardRef('Axes'), ndarray, ForwardRef('Figure')] = None
+)
+```
+
+Plot forecasts and insample values. 
+
+
+
+**Args:**
+ 
+ - <b>`df`</b> (pandas or polars DataFrame):  The DataFrame on which the  function will operate. Expected to contain at least the  following columns: 
+        - time_col:  Column name in `df` that contains the time indices of  the time series. This is typically a datetime column  with regular intervals, e.g., hourly, daily, monthly  data points. 
+        - target_col:  Column name in `df` that contains the target variable of  the time series, i.e., the variable we wish to predict  or analyze.  Additionally, you can pass multiple time series (stacked in  the dataframe) considering an additional column: 
+        - id_col:  Column name in `df` that identifies unique time series.  Each unique value in this column corresponds to a unique  time series. 
+ - <b>`forecasts_df`</b> (pandas or polars DataFrame, optional):  DataFrame with  columns [`unique_id`, `ds`] and models. Defaults to None. 
+ - <b>`id_col`</b> (str):  Column that identifies each series. Defaults to  'unique_id'. 
+ - <b>`time_col`</b> (str):  Column that identifies each timestep, its values  can be timestamps or integers. Defaults to 'ds'. 
+ - <b>`target_col`</b> (str):  Column that contains the target. Defaults to 'y'. 
+ - <b>`unique_ids`</b> (list[str], optional):  Time Series to plot. If None,  time series are selected randomly. Defaults to None. plot_random (bool):  Select time series to plot randomly. Defaults to True. max_ids (int):  Maximum number of ids to plot. Defaults to 8. 
+ - <b>`models`</b> (list[str], optional):  List of models to plot. Defaults to  None. 
+ - <b>`level`</b> (list[float], optional):  List of prediction intervals to  plot if paseed. Defaults to None. 
+ - <b>`max_insample_length`</b> (int, optional):  Max number of train/insample  observations to be plotted. Defaults to None. 
+ - <b>`plot_anomalies`</b> (bool):  Plot anomalies for each prediction interval.  Defaults to False. 
+ - <b>`engine`</b> (str):  Library used to plot. 'matplotlib', 'plotly' or  'plotly-resampler'. Defaults to 'matplotlib'. 
+ - <b>`resampler_kwargs`</b> (dict):  Kwargs to be passed to plotly-resampler  constructor. For further custumization ("show_dash") call  the method, store the plotting object and add the extra  arguments to its `show_dash` method. ax (matplotlib axes, array of matplotlib axes or plotly Figure, 
+ - <b>`optional)`</b>:  Object where plots will be added. Defaults to None. 
+
+---
+
+
+
+### <kbd>method</kbd> `usage`
+
+```python
+usage() → dict[str, dict[str, int]]
+```
+
+Query consumed requests and limits 
+
+
+
+**Returns:**
+ 
+ - <b>`dict`</b>:  Consumed requests and limits by minute and month. 
+
+---
+
+
+
+### <kbd>method</kbd> `validate_api_key`
+
+```python
+validate_api_key(log: bool = True) → bool
+```
+
+Check API key status. 
+
+
+
+**Args:**
+ 
+ - <b>`log`</b> (bool):  Show the endpoint's response. Defaults to True. 
+
+
+
+**Returns:**
+ 
+ - <b>`bool`</b>:  Whether API key is valid. 
+
+

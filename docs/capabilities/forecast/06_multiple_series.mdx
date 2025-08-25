@@ -1,0 +1,104 @@
+---
+title: Multiple series forecasting
+---
+
+
+```python
+!pip install -Uqq nixtla
+```
+
+
+
+```python
+from nixtla.utils import in_colab
+```
+
+
+
+```python
+IN_COLAB = in_colab()
+```
+
+
+
+```python
+if not IN_COLAB:
+    from nixtla.utils import colab_badge
+    from dotenv import load_dotenv
+```
+
+
+TimeGPT can concurrently forecast many series at the same time. Simply
+use a DataFrame with more than one unique value in the `unique_id`
+column.
+
+<figure>
+<a
+href="https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/06_multiple_series.ipynb"><img
+src="https://colab.research.google.com/assets/colab-badge.svg" /></a>
+</figure>
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+> 👍 Use an Azure AI endpoint
+>
+> To use an Azure AI endpoint, remember to set also the `base_url`
+> argument:
+>
+> `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
+
+
+```python
+if not IN_COLAB:
+    nixtla_client = NixtlaClient()
+```
+
+
+```python
+# Read the data
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv')
+
+# Forecast
+forecast_df = nixtla_client.forecast(
+    df=df, 
+    h=24
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: H
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+> 📘 Available models in Azure AI
+>
+> If you are using an Azure AI endpoint, please be sure to set
+> `model="azureai"`:
+>
+> `nixtla_client.forecast(..., model="azureai")`
+>
+> For the public API, we support two models: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. Please see [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> on how and when to use `timegpt-1-long-horizon`.
+
+For more details on forecasting multiple series, read our in-depth
+tutorial on [Multiple series
+forecasting](https://docs.nixtla.io/docs/tutorials-multiple_series_forecasting).
+

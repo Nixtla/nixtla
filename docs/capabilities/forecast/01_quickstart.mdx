@@ -1,0 +1,112 @@
+---
+title: Quickstart
+---
+
+
+```python
+!pip install -Uqq nixtla
+```
+
+
+
+```python
+from nixtla.utils import in_colab
+```
+
+
+
+```python
+IN_COLAB = in_colab()
+```
+
+
+
+```python
+if not IN_COLAB:
+    from nixtla.utils import colab_badge
+    from dotenv import load_dotenv
+```
+
+
+To forecast with TimeGPT, call the `forecast` method. Pass your
+DataFrame and specify your target and time column names. Then plot the
+predictions using the `plot` method. You can read about data
+requierments
+[here](https://docs.nixtla.io/docs/getting-started-data_requirements).
+
+<figure>
+<a
+href="https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/forecast/01_quickstart.ipynb"><img
+src="https://colab.research.google.com/assets/colab-badge.svg" /></a>
+</figure>
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+```
+
+
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key = 'my_api_key_provided_by_nixtla'
+)
+```
+
+> 👍 Use an Azure AI endpoint
+>
+> To use an Azure AI endpoint, set the `base_url` argument:
+>
+> `nixtla_client = NixtlaClient(base_url="you azure ai endpoint", api_key="your api_key")`
+
+
+```python
+if not IN_COLAB:
+    nixtla_client = NixtlaClient()
+```
+
+
+```python
+# Read the data
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv")
+
+# Forecast
+forecast_df = nixtla_client.forecast(
+    df=df,
+    h=12,
+    time_col='timestamp',
+    target_col="value"
+)
+
+# Plot predictions
+nixtla_client.plot(
+    df=df, 
+    forecasts_df=forecast_df, 
+    time_col='timestamp', 
+    target_col='value'
+)
+```
+
+``` text
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: MS
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+![](01_quickstart_files/figure-markdown_strict/cell-10-output-2.png)
+
+> 📘 Available models in Azure AI
+>
+> If you use an Azure AI endpoint, set `model="azureai"`
+>
+> `nixtla_client.detect_anomalies(..., model="azureai")`
+>
+> For the public API, two models are supported: `timegpt-1` and
+> `timegpt-1-long-horizon`.
+>
+> By default, `timegpt-1` is used. See [this
+> tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting)
+> for details on using `timegpt-1-long-horizon`.
+
