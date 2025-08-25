@@ -24,7 +24,7 @@ https://github.com/Nixtla/nixtla/assets/4086186/163ad9e6-7a16-44e1-b2e9-dab8a0b7
 ### Install nixtla's SDK
 
 ```python
-pip install nixtla>=0.5.1
+pip install nixtla>=0.7.0
 ```
 
 ### Import libraries and load data
