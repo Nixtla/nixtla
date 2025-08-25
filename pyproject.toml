@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nixtla"
-version = "0.6.8.dev1"
+dynamic = ["version"]
 description = "Python SDK for Nixtla API (TimeGPT)"
 authors = [
     {name = "Nixtla", email = "business@nixtla.io"}
@@ -34,6 +34,9 @@ dependencies = [
     "tqdm",
     "utilsforecast>=0.2.8",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "nixtla.__version__"}
 
 [project.optional-dependencies]
 dev = [
