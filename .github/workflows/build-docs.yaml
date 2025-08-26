@@ -49,8 +49,7 @@ jobs:
           publish_dir: docs/mintlify
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
-          tag_name: ${{ github.event.release.tag_name }}
-          tag_message: 'Documentation for release ${{ github.event.release.tag_name }}'
+
 
       - name: Trigger mintlify workflow (Push to main or Pull Request)
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
@@ -76,8 +75,4 @@ jobs:
               repo: 'docs',
               workflow_id: 'mintlify-action.yml',
               ref: 'main',
-              inputs: {
-                version: '${{ github.event.release.tag_name }}',
-                is_release: 'true'
-              }
             });
