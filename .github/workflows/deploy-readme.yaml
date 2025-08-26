@@ -32,8 +32,9 @@ jobs:
       - name: Install pip requirements
         run: pip install ".[dev]"
 
-      - name: Install Quarto
-        run: nbdev_install_quarto
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 1.4.515
 
       - name: Create readme docs
         env:
