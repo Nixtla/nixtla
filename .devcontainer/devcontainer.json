@@ -2,9 +2,9 @@
     "name": "Nixtla Development Environment",
     "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11",
     "hostRequirements": {
-        "cpus": 4,
-        "memory": "16gb",
-        "storage": "32gb"
+        "cpus": 8,
+        "memory": "32gb",
+        "storage": "64gb"
     },
     "customizations": {
         "vscode": {
