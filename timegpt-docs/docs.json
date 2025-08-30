@@ -154,9 +154,13 @@
       },
       {
         "dropdown": "API Ref",
-        "icon": "book-open",
-
-        "pages": ["/api_ref/**"]
+        "icon": "flag",
+        "groups": [
+          {
+            "group": "v1",
+            "openapi": "./openapi.json"
+          }
+        ]
       }
     ]
   },
