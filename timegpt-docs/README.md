@@ -17,7 +17,6 @@ The easiest and safest way to make changes to the documentation is using the [on
 
 The mintlify editor will send a PR in github so the team can review the changes and merge them. Same process as if you were contributing to the repo in any other way.
 
-
 ### Option 2: Using GitHub Codespaces
 
 If you prefer to work locally, this repository is configured with GitHub Codespaces to easily view and develop documentation with Mintlify.
@@ -26,15 +25,16 @@ If you prefer to work locally, this repository is configured with GitHub Codespa
 2. Select the "Codespaces" tab
 3. Click "Create codespace on [branch]"
 4. Once the Codespace is ready, open a terminal and run:
+
    ```bash
    mintlify dev
    ```
+
 5. Click on the "Ports" tab and open port 3000 in your browser to view the documentation
 
 For more information about the Codespace setup, see the [.devcontainer](/.devcontainer) directory.
 
 Please be aware that linters and formatters fail most of the time because the docs follow a very specific structure that is not supported by the default linters. So please turn them off when working locally to prevent extra changes in your PRs like adding or removing spaces in the code.
-
 
 ## Release process
 
@@ -65,36 +65,37 @@ The conversion was done using a Node.js script located at `/docs/utils/convert-l
 
 1. Install dependencies (if not already installed):
 
-   ```
+   ```bash
    npm install glob
    ```
 
 2. Change to the docs directory:
 
-   ```
+   ```bash
    cd docs
    ```
 
 3. Run the script:
-   ```
+
+   ```bash
    node utils/convert-links.js
    ```
 
 For testing a single file without making changes:
 
-```
+```bash
 node utils/convert-links.js --test path/to/file.mdx
 ```
 
 For a dry run (simulate changes without writing to files):
 
-```
+```bash
 node utils/convert-links.js --dry-run
 ```
 
 #### Conversion Results
 
-A total of 143 HTML links were converted to Markdown format across 96 MDX files. See the full [conversion log]() <-**broken link**  for details.
+A total of 143 HTML links were converted to Markdown format across 96 MDX files. See the full conversion log **broken link** for details.
 
 ### HTML to Markdown General Conversion
 
@@ -110,32 +111,29 @@ The conversion was performed using a more advanced Node.js script at `/docs/util
 
 To run the script:
 
-1. Change to the docs directory:
-
-   ```
-   cd docs
-   ```
+1. Change to the docs directory: `cd docs`
 
 2. Run the script:
-   ```
-   node utils/html-to-markdown.js
-   ```
+
+```bash
+node utils/html-to-markdown.js
+```
 
 For testing a single file without making changes:
 
-```
+```bash
 node utils/html-to-markdown.js --test path/to/file.mdx
 ```
 
 For a dry run (simulate changes without writing to files):
 
-```
+```bash
 node utils/html-to-markdown.js --dry-run
 ```
 
 #### Conversion Results
 
-The script processed multiple HTML elements across the documentation files, standardizing them to Markdown format. See the detailed [HTML to Markdown log]() <-**broken link** for complete results.
+The script processed multiple HTML elements across the documentation files, standardizing them to Markdown format. See the detailed [HTML to Markdown log]() **broken link** for complete results.
 
 ### Frame Component Image Standardization
 
@@ -157,6 +155,7 @@ To run the script:
    ```
 
 2. Run the script:
+
    ```
    node utils/fix-frame-images.js
    ```
@@ -175,7 +174,7 @@ node utils/fix-frame-images.js --dry-run
 
 #### Standardization Results
 
-The script fixed 12 frame-image elements across 4 files. The script automatically adds meaningful alt text for images that were missing it. See the full [frame image fix log]() <-**broken link** for details.
+The script fixed 12 frame-image elements across 4 files. The script automatically adds meaningful alt text for images that were missing it. See the full [frame image fix log]() **broken link** for details.
 
 ### Card Title Standardization
 
@@ -204,6 +203,7 @@ To run the script:
    ```
 
 3. Automatically fix issues:
+
    ```
    node utils/check-card-titles.js --fix
    ```
@@ -247,6 +247,7 @@ To run the script:
    ```
 
 3. Automatically convert all tables:
+
    ```
    node utils/convert-tables.js --fix
    ```
