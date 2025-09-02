@@ -201,5 +201,11 @@
     "posthog": {
       "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/use-cases-:slug*",
+      "destination": "/use_cases/:slug*"
+    }
+  ]
 }
