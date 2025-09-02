@@ -204,8 +204,24 @@
   },
   "redirects": [
     {
-      "source": "/use-cases-:slug*",
-      "destination": "/use_cases/:slug*"
+      "source": "/use-cases-forecasting_web_traffic",
+      "destination": "/use_cases/forecasting_web_traffic"
+    },
+    {
+      "source": "/use-cases-bitcoin_price_prediction",
+      "destination": "/use_cases/bitcoin_price_prediction"
+    },
+    {
+      "source": "/use-cases-forecasting_energy_demand",
+      "destination": "/use_cases/forecasting_energy_demand"
+    },
+    {
+      "source": "/use-cases-forecasting_intermittent_demand",
+      "destination": "/use_cases/forecasting_intermittent_demand"
+    },
+    {
+      "source": "/use-cases-what_if_forecasting_price_effects_in_retail",
+      "destination": "/use_cases/what_if_forecasting_price_effects_in_retail"
     }
   ]
 }
