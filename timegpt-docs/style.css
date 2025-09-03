@@ -82,7 +82,7 @@ a.font-semibold svg {
 }
 
 a.card svg {
-  background: var(--primary);
+  background: var(--primary-dark);
   opacity: 0.8;
 }
 
@@ -113,4 +113,8 @@ html.dark #topbar-cta-button a span {
 
 html.dark #topbar-cta-button svg {
   color: #000;
+}
+
+html.dark a.card svg {
+  background: var(--primary-light);
 }
