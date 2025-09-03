@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "TimeGPT Foundational model for time series forecasting and anomaly detection",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#161616",
+    "light": "#FFF",
+    "dark": "#161616"
   },
   "favicon": "/favicon.ico",
   "ignore": ["utils/**", "depracted-docs/**"],
