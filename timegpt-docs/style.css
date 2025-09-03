@@ -1,0 +1,116 @@
+@font-face {
+  font-family: "PPNeueMontreal";
+  src: url("./fonts/ppneuemontreal-medium.otf") format("otf");
+}
+
+@font-face {
+  font-family: "SupplyMono";
+  src: url("./fonts/Supply-Regular.otf") format("otf");
+}
+
+:root {
+  --primary-light: #fff;
+  --primary-dark: #161616;
+  --gray: #f0f0f0;
+}
+
+html,
+body {
+  background-color: var(--gray);
+  font-family: "PPNeueMontreal", sans-serif;
+}
+
+.eyebrow {
+  font-family: "SupplyMono", monospace;
+  @apply text-red-300;
+}
+
+#navbar img {
+  height: 20px;
+}
+
+.bg-gradient-to-b {
+  background-color: transparent;
+  background-image: none;
+}
+
+a {
+  border-radius: 0.125rem !important;
+  border: 1px solid transparent;
+}
+
+a.font-semibold {
+  background: var(--primary-light);
+  border: 1px solid var(--primary-dark);
+  font-weight: 500;
+  color: var(--primary-dark);
+}
+
+a.font-semibold svg {
+  background: var(--primary-dark);
+}
+
+.rounded-md {
+  border-radius: 0.125rem !important;
+}
+
+.rounded-xl {
+  border-radius: 0.125rem !important;
+}
+
+.rounded-2xl,
+.rounded-search {
+  border-radius: 0.25rem !important;
+}
+
+#navbar-transition {
+  background: var(--gray);
+}
+
+#topbar-cta-button a span {
+  background: var(--primary-dark);
+  border-radius: 0.125rem;
+}
+
+#content-side-layout a {
+  border: none;
+}
+
+#content-side-layout a.font-medium {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+a.card svg {
+  background: var(--primary);
+  opacity: 0.8;
+}
+
+/* dark mode */
+html.dark > body {
+  background-color: #161616;
+}
+
+html.dark #navbar-transition {
+  background: var(--primary-dark);
+}
+
+html.dark a.font-semibold {
+  background: #000;
+  border: 1px solid var(--gray);
+  outline-color: var(--gray);
+  color: #fff;
+}
+
+html.dark a.font-semibold svg {
+  background: #fff;
+}
+
+html.dark #topbar-cta-button a span {
+  background: #fff;
+  color: #000;
+}
+
+html.dark #topbar-cta-button svg {
+  color: #000;
+}
