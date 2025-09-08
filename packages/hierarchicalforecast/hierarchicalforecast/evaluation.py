@@ -152,7 +152,7 @@ def rel_mse(y, y_hat, y_train, mask=None):
 
     References:
         - [Hyndman, R. J and Koehler, A. B. (2006). "Another look at measures of forecast accuracy". International Journal of Forecasting, Volume 22, Issue 4.](https://www.sciencedirect.com/science/article/pii/S0169207006000239)
-        - [Kin G. Olivares, O. Nganba Meetei, Ruijun Ma, Rohan Reddy, Mengfei Cao, Lee Dicker. "Probabilistic Hierarchical Forecasting with Deep Poisson Mixtures". Submitted to the International Journal Forecasting, Working paper available at [arxiv](https://arxiv.org/pdf/2110.13179.pdf).](https://arxiv.org/pdf/2110.13179.pdf)
+        - [Kin G. Olivares, O. Nganba Meetei, Ruijun Ma, Rohan Reddy, Mengfei Cao, Lee Dicker. "Probabilistic Hierarchical Forecasting with Deep Poisson Mixtures". International Journal of Forecasting, Volume 40, Issue 2.](https://www.sciencedirect.com/science/article/pii/S0169207023000432)
     """
     _loss_deprecation_notice("rel_mse")
     if mask is None:
@@ -254,8 +254,8 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
 
     $$
     \mathrm{ES}(\\mathbf{y}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}')
-    = \\frac{1}{2} \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{\hat{y}}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}'||^{\\beta} \\right]
-    -  \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{y}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}||^{\\beta} \\right]
+    = \\frac{1}{2} \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{\hat{y}}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}'||^{\\beta} \\right] -  
+    \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{y}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}||^{\\beta} \\right]
     \quad \\beta \in (0,2]
     $$
 
@@ -307,8 +307,8 @@ def log_score(y, y_hat, cov, allow_singular=True):
     $$
     f(\\mathbf{y}_{\\tau}, \\theta_{\\tau}) =
     (2\\pi )^{-k/2}\\det({\\boldsymbol{\Sigma }})^{-1/2}
-    \,\\exp \\left(
-    -{\\frac {1}{2}}(\mathbf{y}_{\\tau} -\\hat{\mathbf{y}}_{\\tau})^{\!{\mathsf{T}}}
+    \,\\exp \\left(-
+    {\\frac {1}{2}}(\mathbf{y}_{\\tau} -\\hat{\mathbf{y}}_{\\tau})^{\!{\mathsf{T}}}
     {\\boldsymbol{\Sigma }}^{-1}
     (\mathbf{y}_{\\tau} -\\hat{\mathbf{y}}_{\\tau})
     \\right)
@@ -342,7 +342,7 @@ class HierarchicalEvaluation:
     Consider, for example, the function `rmse` that calculates the root mean squared error.
 
     This class facilitates measurements across the hierarchy, defined by the `tags` list.
-    See also the [aggregate method](https://nixtlaverse.nixtla.io/hierarchicalforecast/utils#function-aggregate).
+    See also the [aggregate method](./utils#function-aggregate).
 
     Args:
         evaluators (list[Callable]): functions with arguments `y`, `y_hat` (numpy arrays).

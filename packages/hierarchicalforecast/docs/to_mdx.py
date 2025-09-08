@@ -20,5 +20,6 @@ title: "Hierarchical Forecast 👑"
 ---
 """
 readme_text = Path("README.md").read_text()
+readme_text = re.sub(r"https?://nixtlaverse\.nixtla\.io/", "./", readme_text)
 readme_text = header + readme_text
 (output_path / "index.mdx").write_text(readme_text)

@@ -17,7 +17,7 @@ class Normality:
 
     The Normality method leverages the Gaussian Distribution linearity, to
     generate hierarchically coherent prediction distributions. This class is
-    meant to be used as the `sampler` input as other `HierarchicalForecast` [reconciliation classes](https://nixtla.github.io/hierarchicalforecast/methods.html).
+    meant to be used as the `sampler` input as other `HierarchicalForecast` [reconciliation classes](./methods).
 
     Given base forecasts under a normal distribution:
     $$\hat{y}_{h} \sim \mathrm{N}(\hat{\\boldsymbol{\\mu}}, \hat{\mathbf{W}}_{h})$$
@@ -160,7 +160,7 @@ class Bootstrap:
     base sample paths that are latered reconciled. This clever idea and its
     simplicity allows to generate coherent bootstraped prediction intervals
     for any reconciliation strategy. This class is meant to be used as the `sampler`
-    input as other `HierarchicalForecast` [reconciliation classes](https://nixtla.github.io/hierarchicalforecast/methods.html).
+    input as other `HierarchicalForecast` [reconciliation classes](./methods).
 
     Given a boostraped set of simulated sample paths:
     $$(\hat{\mathbf{y}}^{[1]}_{\\tau}, \dots ,\hat{\mathbf{y}}^{[B]}_{\\tau})$$
