@@ -93,10 +93,6 @@ For a dry run (simulate changes without writing to files):
 node utils/convert-links.js --dry-run
 ```
 
-#### Conversion Results
-
-A total of 143 HTML links were converted to Markdown format across 96 MDX files. See the full conversion log **broken link** for details.
-
 ### HTML to Markdown General Conversion
 
 We've enhanced our documentation by converting various HTML elements to their Markdown equivalents for improved readability and maintainability. This comprehensive conversion captures elements beyond just links.
@@ -130,10 +126,6 @@ For a dry run (simulate changes without writing to files):
 ```bash
 node utils/html-to-markdown.js --dry-run
 ```
-
-#### Conversion Results
-
-The script processed multiple HTML elements across the documentation files, standardizing them to Markdown format. See the detailed [HTML to Markdown log]() **broken link** for complete results.
 
 ### Frame Component Image Standardization
 
@@ -171,10 +163,6 @@ For a dry run (simulate changes without writing to files):
 ```
 node utils/fix-frame-images.js --dry-run
 ```
-
-#### Standardization Results
-
-The script fixed 12 frame-image elements across 4 files. The script automatically adds meaningful alt text for images that were missing it. See the full [frame image fix log]() **broken link** for details.
 
 ### Card Title Standardization
 
