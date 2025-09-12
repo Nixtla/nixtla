@@ -223,5 +223,8 @@
       "source": "/use-cases-what_if_forecasting_price_effects_in_retail",
       "destination": "/use_cases/what_if_forecasting_price_effects_in_retail"
     }
-  ]
+  ],
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude"]
+  }
 }
