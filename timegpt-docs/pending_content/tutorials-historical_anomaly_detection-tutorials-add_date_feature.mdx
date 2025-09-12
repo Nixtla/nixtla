@@ -16,7 +16,7 @@ Adding date features is a powerful way to enrich your dataset when no exogenous 
 
 ### Step 1: Set Up Data and Client
 
-Follow the steps in the [historical anomaly detection tutorial](tutorials-historical_anomaly_detection) to set up the data and client.
+Follow the steps in the historical anomaly detection tutorial to set up the data and client.
 
 ### Step 2: Add Date Features for Anomaly Detection
 
@@ -61,7 +61,8 @@ nixtla_client.plot(df, anomalies_df_x)
 ```
 
 <Frame caption="Anomaly plot showing flagged points based on date features.">
-  ![Date features anomalies plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-10-output-2.png)
+  ![Date features anomalies
+  plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-10-output-2.png)
 </Frame>
 
 To see the weight contributions of the date features, use the `weights_x` method:
@@ -74,5 +75,6 @@ nixtla_client.weights_x.plot.barh(
 ```
 
 <Frame caption="Bar chart indicating which date features contribute most to anomaly detection.">
-  ![Weights plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-11-output-1.png)
+  ![Weights
+  plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-11-output-1.png)
 </Frame>
