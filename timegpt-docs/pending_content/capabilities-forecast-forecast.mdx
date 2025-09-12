@@ -5,7 +5,8 @@ icon: "chart-line"
 ---
 
 <Info>
-  TimeGPT offers advanced zero-shot forecasting capabilities for a wide range of time series domains, thanks to its large-scale and diverse pretraining.
+  TimeGPT offers advanced zero-shot forecasting capabilities for a wide range of
+  time series domains, thanks to its large-scale and diverse pretraining.
 </Info>
 
 <AccordionGroup>
@@ -25,6 +26,7 @@ icon: "chart-line"
     - Handling irregular timestamps
 
     These capabilities allow teams to handle real-world scenarios across different industries and problem domains.
+
   </Accordion>
   <Accordion title="When to Use TimeGPT for Forecasting">
     TimeGPT is a powerful choice when you need:
@@ -32,20 +34,26 @@ icon: "chart-line"
     - Rapid iteration without explicit training on your own datasets.
     - A flexible model that generalizes well across different time series scenarios.
     - Support for additional context or features like holidays, external events, or categorical data.
+
   </Accordion>
 </AccordionGroup>
 
 <CardGroup cols={2}>
   <Card title="Key Feature: Zero-Shot Forecasting">
-    Zero-shot forecasting lets you generate predictions without having to train a new model from scratch on your data. This can significantly reduce your time to production for new or changing forecasting tasks.
+    Zero-shot forecasting lets you generate predictions without having to train
+    a new model from scratch on your data. This can significantly reduce your
+    time to production for new or changing forecasting tasks.
   </Card>
   <Card title="Key Feature: Fine-Tuning">
-    Gain performance boosts by fine-tuning TimeGPT on your own dataset or by leveraging specific loss functions. This approach helps tailor the model to your unique forecasting requirements.
+    Gain performance boosts by fine-tuning TimeGPT on your own dataset or by
+    leveraging specific loss functions. This approach helps tailor the model to
+    your unique forecasting requirements.
   </Card>
 </CardGroup>
 
 <Check>
-  By combining zero-shot approaches with optional fine-tuning, TimeGPT offers a robust and efficient solution for time series forecasting.
+  By combining zero-shot approaches with optional fine-tuning, TimeGPT offers a
+  robust and efficient solution for time series forecasting.
 </Check>
 
 <Steps>
@@ -53,16 +61,19 @@ icon: "chart-line"
     Zero-shot forecasting is an excellent starting point for quick insights.
 
     For detailed instructions, see: [Zero-shot forecasting documentation](https://docs.nixtla.io/docs/capabilities-forecast-quickstart).
+
   </Step>
   <Step title="2. Add Exogenous Variables">
     If you have additional external drivers or explanatory factors, include them to improve predictions.
 
     For more details, visit: [Forecasting with exogenous variables](https://docs.nixtla.io/docs/capabilities-forecast-add_exogenous_variables).
+
   </Step>
   <Step title="3. Incorporate Holidays or Special Dates">
     Holidays and special dates can have significant impact on time series signals.
 
     Learn how to handle them here: [Forecasting with holidays and special dates](https://docs.nixtla.io/docs/capabilities-forecast-add_holidays_and_special_dates).
+
   </Step>
 </Steps>
 
@@ -71,27 +82,31 @@ icon: "chart-line"
     <AccordionGroup>
       <Accordion title="Forecasting with Categorical Variables">
         Explore how to add categorical information and improve your forecasts:
-        [Forecasting with categorical variables](https://docs.nixtla.io/docs/capabilities-forecast-add_categorical_variables).
+        [Forecasting with categorical
+        variables](https://docs.nixtla.io/docs/capabilities-forecast-add_categorical_variables).
       </Accordion>
       <Accordion title="Long-Horizon Forecasting">
-        Learn best practices for forecasting extended time periods well into the future:
-        [Long-horizon forecasting](https://docs.nixtla.io/docs/capabilities-forecast-long_horizon_forecasting).
+        Learn best practices for forecasting extended time periods well into the
+        future: [Long-horizon
+        forecasting](https://docs.nixtla.io/docs/capabilities-forecast-long_horizon_forecasting).
       </Accordion>
       <Accordion title="Forecasting Multiple Series">
-        Handle multiple time series simultaneously to build scalable and efficient solutions:
-        [Forecasting multiple series](https://docs.nixtla.io/docs/capabilities-forecast-multiple_series_forecasting).
+        Handle multiple time series simultaneously to build scalable and
+        efficient solutions: [Forecasting multiple
+        series](https://docs.nixtla.io/docs/capabilities-forecast-multiple_series_forecasting).
       </Accordion>
     </AccordionGroup>
   </Tab>
   <Tab title="Fine-Tuning & Advanced Topics">
     <AccordionGroup>
       <Accordion title="Fine-Tuning TimeGPT">
-        Adapt TimeGPT to your specific domain or data distribution:
-        [Fine-tuning TimeGPT](https://docs.nixtla.io/docs/capabilities-forecast-fine_tuning).
+        Adapt TimeGPT to your specific domain or data distribution: [Fine-tuning
+        TimeGPT](https://docs.nixtla.io/docs/capabilities-forecast-fine_tuning).
       </Accordion>
       <Accordion title="Custom Loss Functions">
         Go beyond default metrics by defining custom loss functions:
-        [Fine-tuning with a specific loss function](https://docs.nixtla.io/docs/capabilities-forecast-finetuning_with_a_custom_loss_function).
+        [Fine-tuning with a specific loss
+        function](https://docs.nixtla.io/docs/capabilities-forecast-finetuning_with_a_custom_loss_function).
       </Accordion>
       <Accordion title="Cross-Validation">
         Ensure robust forecasting performance through cross-validation:
@@ -99,18 +114,21 @@ icon: "chart-line"
       </Accordion>
       <Accordion title="Prediction Intervals">
         Build prediction intervals to quantify uncertainty in your forecasts:
-        [Adding prediction intervals](https://docs.nixtla.io/docs/capabilities-forecast-predictions_intervals).
+        [Adding prediction
+        intervals](https://docs.nixtla.io/docs/capabilities-forecast-predictions_intervals).
       </Accordion>
       <Accordion title="Irregular Timestamps">
         Discover approaches to deal with missing or irregular time steps:
-        [Handling irregular timestamps](https://docs.nixtla.io/docs/capabilities-forecast-irregular_timestamps).
+        [Handling irregular
+        timestamps](https://docs.nixtla.io/docs/capabilities-forecast-irregular_timestamps).
       </Accordion>
     </AccordionGroup>
   </Tab>
 </Tabs>
 
 <Info>
-  Below is a concise code snippet to get started with zero-shot forecasting. This example demonstrates how to import TimeGPT and make a simple prediction.
+  Below is a concise code snippet to get started with zero-shot forecasting.
+  This example demonstrates how to import TimeGPT and make a simple prediction.
 </Info>
 
 <CodeGroup>
@@ -132,10 +150,8 @@ print("Forecast:", forecast)
 
 </CodeGroup>
 
-<Frame caption="Visual depiction of a sample zero-shot forecast with TimeGPT">
-  ![Forecast Example](images/docs/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-17-output-1.png)
-</Frame>
-
 <Check>
-  Congratulations\! You are now equipped with TimeGPT's key forecasting features. Explore the linked guides for detailed instructions on advanced topics.
+  Congratulations\! You are now equipped with TimeGPT's key forecasting
+  features. Explore the linked guides for detailed instructions on advanced
+  topics.
 </Check>

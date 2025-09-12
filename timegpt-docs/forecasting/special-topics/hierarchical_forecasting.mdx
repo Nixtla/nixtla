@@ -18,7 +18,6 @@ Using TimeGPT, you can create forecasts for multiple related time series and the
 - Improves accuracy: Reconciliation methods often yield more robust predictions.
 - Facilitates deeper insights: Understand how smaller segments contribute to overall trends.
 
-
 ## Tutorial
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/14_hierarchical_forecasting.ipynb)
@@ -81,18 +80,18 @@ Y_df['ds'] = pd.to_datetime(Y_df['ds'])
 Y_df.head(10)
 ```
 
-| Country   | Region  | State          | Purpose  | ds         | y         |
-|-----------|---------|----------------|----------|------------|-----------|
-| Australia | Adelaide| South Australia| Business | 1998-01-01 | 135.077690|
-| Australia | Adelaide| South Australia| Business | 1998-04-01 | 109.987316|
-| Australia | Adelaide| South Australia| Business | 1998-07-01 | 166.034687|
-| Australia | Adelaide| South Australia| Business | 1998-10-01 | 127.160464|
-| Australia | Adelaide| South Australia| Business | 1999-01-01 | 137.448533|
-| Australia | Adelaide| South Australia| Business | 1999-04-01 | 199.912586|
-| Australia | Adelaide| South Australia| Business | 1999-07-01 | 169.355090|
-| Australia | Adelaide| South Australia| Business | 1999-10-01 | 134.357937|
-| Australia | Adelaide| South Australia| Business | 2000-01-01 | 154.034398|
-| Australia | Adelaide| South Australia| Business | 2000-04-01 | 168.776364|
+| Country   | Region   | State           | Purpose  | ds         | y          |
+| --------- | -------- | --------------- | -------- | ---------- | ---------- |
+| Australia | Adelaide | South Australia | Business | 1998-01-01 | 135.077690 |
+| Australia | Adelaide | South Australia | Business | 1998-04-01 | 109.987316 |
+| Australia | Adelaide | South Australia | Business | 1998-07-01 | 166.034687 |
+| Australia | Adelaide | South Australia | Business | 1998-10-01 | 127.160464 |
+| Australia | Adelaide | South Australia | Business | 1999-01-01 | 137.448533 |
+| Australia | Adelaide | South Australia | Business | 1999-04-01 | 199.912586 |
+| Australia | Adelaide | South Australia | Business | 1999-07-01 | 169.355090 |
+| Australia | Adelaide | South Australia | Business | 1999-10-01 | 134.357937 |
+| Australia | Adelaide | South Australia | Business | 2000-01-01 | 154.034398 |
+| Australia | Adelaide | South Australia | Business | 2000-04-01 | 168.776364 |
 
 We define the dataset hierarchies explicitly. Each level in the list describes
 one view of the hierarchy:
@@ -117,18 +116,18 @@ Y_df, S_df, tags = aggregate(Y_df, spec)
 Y_df.head(10)
 ```
 
-| unique_id | ds         | y          |
-|-----------|------------|------------|
-| Australia | 1998-01-01 | 23182.197269|
-| Australia | 1998-04-01 | 20323.380067|
-| Australia | 1998-07-01 | 19826.640511|
-| Australia | 1998-10-01 | 20830.129891|
-| Australia | 1999-01-01 | 22087.353380|
-| Australia | 1999-04-01 | 21458.373285|
-| Australia | 1999-07-01 | 19914.192508|
-| Australia | 1999-10-01 | 20027.925640|
-| Australia | 2000-01-01 | 22339.294779|
-| Australia | 2000-04-01 | 19941.063482|
+| unique_id | ds         | y            |
+| --------- | ---------- | ------------ |
+| Australia | 1998-01-01 | 23182.197269 |
+| Australia | 1998-04-01 | 20323.380067 |
+| Australia | 1998-07-01 | 19826.640511 |
+| Australia | 1998-10-01 | 20830.129891 |
+| Australia | 1999-01-01 | 22087.353380 |
+| Australia | 1999-04-01 | 21458.373285 |
+| Australia | 1999-07-01 | 19914.192508 |
+| Australia | 1999-10-01 | 20027.925640 |
+| Australia | 2000-01-01 | 22339.294779 |
+| Australia | 2000-04-01 | 19941.063482 |
 
 Next, create the train/test splits. Here, we use the last two years (eight
 quarters) of data for testing:
@@ -184,7 +183,7 @@ nixtla_client.plot(
 )
 ```
 
-![hier_plot1](./images/docs/hier1.png)
+![hier_plot1](images/docs/hier1.png)
 
 #### Apply Hierarchical Reconciliation
 
@@ -228,7 +227,7 @@ nixtla_client.plot(
 )
 ```
 
-![hier_plot1](./images/docs/hier2.png)
+![hier_plot1](images/docs/hier2.png)
 
 ### Step 4: Evaluate Forecast Accuracy
 
@@ -259,14 +258,14 @@ evaluation[evaluation.select_dtypes(np.number).columns] = evaluation.select_dtyp
 evaluation
 ```
 
-|          | level    | metric  | TimeGPT | TimeGPT/MinTrace_method-ols | TimeGPT/MinTrace_method-mint_shrink |
-|----------|----------|---------|---------|-----------------------------|-------------------------------------|
-| 0        | Total    | rmse    | 1433.07 | 1436.07                     | 1627.43                             |
-| 1        | Purpose  | rmse    | 482.09  | 475.64                      | 507.50                              |
-| 2        | State    | rmse    | 275.85  | 278.39                      | 294.28                              |
-| 3        | Regions  | rmse    | 49.40   | 47.91                       | 47.99                               |
-| 4        | Bottom   | rmse    | 19.32   | 19.11                       | 18.86                               |
-| 5        | Overall  | rmse    | 38.66   | 38.21                       | 39.16                               |
+|     | level   | metric | TimeGPT | TimeGPT/MinTrace_method-ols | TimeGPT/MinTrace_method-mint_shrink |
+| --- | ------- | ------ | ------- | --------------------------- | ----------------------------------- |
+| 0   | Total   | rmse   | 1433.07 | 1436.07                     | 1627.43                             |
+| 1   | Purpose | rmse   | 482.09  | 475.64                      | 507.50                              |
+| 2   | State   | rmse   | 275.85  | 278.39                      | 294.28                              |
+| 3   | Regions | rmse   | 49.40   | 47.91                       | 47.99                               |
+| 4   | Bottom  | rmse   | 19.32   | 19.11                       | 18.86                               |
+| 5   | Overall | rmse   | 38.66   | 38.21                       | 39.16                               |
 
 ## Conclusion
 
