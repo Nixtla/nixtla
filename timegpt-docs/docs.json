@@ -226,5 +226,12 @@
   ],
   "contextual": {
     "options": ["copy", "view", "chatgpt", "claude"]
+  },
+  "errors": {
+    "404": {
+      "redirect": false,
+      "title": "The site is currently unreachable",
+      "description": "We are working to restore access as quickly as possible."
+    }
   }
 }
