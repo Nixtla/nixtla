@@ -32,7 +32,7 @@ If you prefer to work locally, this repository is configured with GitHub Codespa
 
 5. Click on the "Ports" tab and open port 3000 in your browser to view the documentation
 
-For more information about the Codespace setup, see the [.devcontainer](/.devcontainer) directory.
+For more information about the Codespace setup, see the `.devcontainer` directory.
 
 Please be aware that linters and formatters fail most of the time because the docs follow a very specific structure that is not supported by the default linters. So please turn them off when working locally to prevent extra changes in your PRs like adding or removing spaces in the code.
 

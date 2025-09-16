@@ -4,17 +4,18 @@ description: "Learn how to evaluate TimeGPT model performance using tools in uti
 icon: "square-root-variable"
 ---
 
-## Overview  
+## Overview
 
 After generating forecasts with TimeGPT, the next step is to evaluate how accurate those forecasts are. The evaluate function from the utilsforecast library provides a fast and flexible way to assess model performance using a wide range of metrics. This pipeline works seamlessly with TimeGPT and other forecasting models.  
-With the evaluation pipeline, you can easily select models and define metrics like MAE, MSE, or MAPE to benchmark forecasting performance. 
+With the evaluation pipeline, you can easily select models and define metrics like MAE, MSE, or MAPE to benchmark forecasting performance.
 
 ## Step-to-Step Guide
 
 ### Step 1. Import Required Packages
 
 Start by importing the necessary libraries and initializing the `NixtlaClient` with your API key.
-```python 
+
+```python
 import pandas as pd
 from nixtla import NixtlaClient
 from functools import partial
@@ -25,22 +26,28 @@ nixtla_client = NixtlaClient(api_key='your_api_key_here')
 ```
 
 ### Step 2. Load and Prepare the Dataset
+
 For this example, we use the Air Passenger dataset, which records monthly totals of international airline passengers. We'll load the dataset, format the timestamps, and split the data into a training set and a test set. The last 12 months are used for testing.
-```python 
+
+```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
 df['unique_id'] = 'passengers'
 df['timestamp'] = pd.to_datetime(df['timestamp'])
 ```
-```python 
+
+```python
 df_train = df.iloc[:-12]
 df_test = df.iloc[-12:]
 ```
-### Step 3. Generate Forecast with TimeGPT
-Next, we will:  
-- Use the training set to generate a 12-step forecast with TimeGPT.  
-- Merge the forecast with the test set for evaluation.  
 
-```python 
+### Step 3. Generate Forecast with TimeGPT
+
+Next, we will:
+
+- Use the training set to generate a 12-step forecast with TimeGPT.
+- Merge the forecast with the test set for evaluation.
+
+```python
 fcst_timegpt = nixtla_client.forecast(df = df_train,
                                       h=12,
                                       time_col = 'timestamp',
@@ -50,15 +57,16 @@ fcst_timegpt = fcst_timegpt.merge(df_test, on = ['timestamp','unique_id'])
 ```
 
 ### Step 4. Define Models and Metrics for Evaluation
-Next, we define the models to evaluate and the metrics to use. For more information about supported metrics, refer to the [evaluation metrics tutorial](forecasting-eval-evaluation_metrics) .
 
-```python 
+Next, we define the models to evaluate and the metrics to use. For more information about supported metrics, refer to the [evaluation metrics tutorial](forecasting/evaluation/evaluation_metrics) .
+
+```python
 models = ['TimeGPT']
 metrics = [
            mae,
-           mse, 
-           rmse, 
-           mape, 
+           mse,
+           rmse,
+           mape,
            smape,
            partial(mase, seasonality=12),
            scaled_crps
@@ -66,9 +74,10 @@ metrics = [
 ```
 
 ### Step 5. Run the Evaluation
+
 Finally, call the evaluate function with your merged forecast results. Include `train_df` for metrics that need the training data and `level` if using probabilistic metrics.
 
-```python 
+```python
 evaluation = evaluate(
     fcst_timegpt,
     target_col = 'value',
@@ -79,12 +88,13 @@ evaluation = evaluate(
     level=[80, 95]
 )
 ```
-| unique_id | metric       | TimeGPT    |
-|-----------|--------------|------------|
-| passengers | mae          | 12.67930  |
-| passengers | mse          | 213.9358 |
-| passengers | rmse         | 14.62654  |
-| passengers | mape         | 0.026964   |
-| passengers | smape        | 0.013527   |
-| passengers | mase        | 0.416397   |
-| passengers | scaled_crps  | 0.008991   |
+
+| unique_id  | metric      | TimeGPT  |
+| ---------- | ----------- | -------- |
+| passengers | mae         | 12.67930 |
+| passengers | mse         | 213.9358 |
+| passengers | rmse        | 14.62654 |
+| passengers | mape        | 0.026964 |
+| passengers | smape       | 0.013527 |
+| passengers | mase        | 0.416397 |
+| passengers | scaled_crps | 0.008991 |
