@@ -141,10 +141,7 @@
           "/reference/date_features",
           "/reference/timegpt_excel_add_in_beta_",
           "/reference/timegpt_in_r"
-        ]
-      },
-      {
-        "group": "API REFERENCE",
+        ],
         "openapi": "./openapi.json"
       },
       {
