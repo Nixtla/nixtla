@@ -8,7 +8,11 @@
     "dark": "#161616"
   },
   "favicon": "/favicon.ico",
-  "ignore": ["utils/**", "depracted-docs/**", "pending_content/**"],
+  "ignore": [
+    "utils/**",
+    "depracted-docs/**",
+    "pending_content/**"
+  ],
   "navigation": {
     "groups": [
       {
@@ -72,7 +76,9 @@
           },
           {
             "group": "Model versions",
-            "pages": ["/forecasting/model-version/longhorizon_model"]
+            "pages": [
+              "/forecasting/model-version/longhorizon_model"
+            ]
           },
           {
             "group": "Evaluation",
@@ -135,7 +141,8 @@
           "/reference/date_features",
           "/reference/timegpt_excel_add_in_beta_",
           "/reference/timegpt_in_r"
-        ]
+        ],
+        "openapi": "./openapi.json"
       },
       {
         "group": "About",
@@ -225,6 +232,11 @@
     }
   ],
   "contextual": {
-    "options": ["copy", "view", "chatgpt", "claude"]
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude"
+    ]
   }
 }
