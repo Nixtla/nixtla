@@ -26,6 +26,10 @@ from utilsforecast.losses import (
     scaled_quantile_loss,
     smape,
     tweedie_deviance,
+    cfe,
+    pis,
+    spis,
+    linex,
 )
 
 if POLARS_INSTALLED:
@@ -120,6 +124,125 @@ class TestBasicMetrics:
             bias(series_pl, models),
             models,
         )
+        
+    def test_cfe(self, setup_series):
+        series, series_pl, models = setup_series
+        pd_vs_pl(
+            cfe(series, models),
+            cfe(series_pl, models),
+            models,
+        )
+        
+    def test_pis(self, setup_series):
+        series, series_pl, models = setup_series
+        pd_vs_pl(
+            pis(series, models),
+            pis(series_pl, models),
+            models,
+        )
+        
+    def test_linex(self, setup_series):
+        series, series_pl, models = setup_series
+        pd_vs_pl(
+            linex(series, models),
+            linex(series_pl, models),
+            models,
+        )
+        
+
+    def test_pis_numerical(self):
+        """
+        Numerical check for PIS (Prediction Interval Score) using absolute error.
+        Verifies output per unique_id for both Pandas and Polars.
+        """
+        df = pd.DataFrame({
+            "unique_id": ["A", "A", "B", "B"],
+            "y":         [10,   15,   5,   7],
+            "y_hat":     [12,   14,   4,  10],
+        })
+
+        expected = pd.DataFrame({
+            "unique_id": ["A", "B"],
+            "y_hat": [3, 4]  # ints to match actual output
+        })
+
+        out_pd = pis(df, ["y_hat"])
+        pd.testing.assert_frame_equal(out_pd, expected)
+
+        out_pl = pis(pl.DataFrame(df), ["y_hat"])
+        pd.testing.assert_frame_equal(out_pl.to_pandas(), expected)
+        
+    def test_spis_numerical(self):
+        """
+        Numerical check for Scaled Prediction Interval Score (SPIS).
+        Validates scaled sum of absolute errors per series (Pandas and Polars).
+        """
+        # In-sample data for scaling (mean per series)
+        df_train = pd.DataFrame({
+            "unique_id": ["A", "A", "B", "B"],
+            "y": [1, 3, 2, 6]
+        })
+
+        df = pd.DataFrame({
+            "unique_id": ["A", "A", "B", "B"],
+            "y":        [3, 3, 2, 8],
+            "y_hat":    [6, 2, 3, 5]
+        })
+
+        # Expected:
+        # A: |3−6| + |3−2| = 3+1 = 4   → 4 / mean([1,3]) = 4 / 2 = 2.0
+        # B: |2−3| + |8−5| = 1+3 = 4   → 4 / mean([2,6]) = 4 / 4 = 1.0
+        expected = pd.DataFrame({
+            "unique_id": ["A", "B"],
+            "y_hat": [2.0, 1.0]
+        })
+
+        # Pandas test
+        out_pd = spis(
+            df=df,
+            df_train=df_train,
+            models=["y_hat"],
+            id_col="unique_id",
+            target_col="y",
+        )
+        pd.testing.assert_frame_equal(out_pd, expected)
+
+        # Polars test
+        out_pl = spis(
+            df=pl.DataFrame(df),
+            df_train=pl.DataFrame(df_train),
+            models=["y_hat"],
+            id_col="unique_id",
+            target_col="y",
+        )
+        pd.testing.assert_frame_equal(out_pl.to_pandas(), expected)
+        
+    def test_linex_loss_numerical(self):
+        """
+        Numerical check for Linex loss with a=0.2 for both Pandas and Polars.
+        """
+        df = pd.DataFrame({
+        "unique_id": ["A", "A", "A"],
+        "y": [1.0, 2.0, 3.0],
+        "model1": [1.0, 2.5, 2.0],  # errors: 0.0, 0.5, -1.0
+        })
+
+        a = 0.2
+        errors = [0.0, 0.5, -1.0]
+        expected_val = np.mean([np.exp(a * e) - a * e - 1 for e in errors])
+
+        expected = pd.DataFrame({
+            "unique_id": ["A"],
+            "model1": [expected_val]
+        })
+
+        # Pandas test
+        out_pd = linex(df, ["model1"], a=a)
+        pd.testing.assert_frame_equal(out_pd, expected)
+
+        # Polars test
+        out_pl = linex(pl.DataFrame(df), ["model1"], a=a)
+        pd.testing.assert_frame_equal(out_pl.to_pandas(), expected)
 
 
 class TestPercentageErrors:

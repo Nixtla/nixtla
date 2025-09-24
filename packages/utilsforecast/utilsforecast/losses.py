@@ -333,6 +333,44 @@ def spis(
             .drop("insample_mean")
         )
         return res
+    
+@_base_docstring
+def linex(
+    df: DFType,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
+    a: float = 1.0,
+) -> DFType:
+    """
+    Linex Loss
+
+    The Linex (Linear Exponential) loss penalizes over- and under-forecasting
+    asymmetrically depending on the parameter a.
+
+    - If a > 0, under-forecasting (y > y_hat) is penalized more.
+    - If a < 0, over-forecasting (y_hat > y) is penalized more.
+    - a must not be 0.
+    """
+    if np.isclose(a, 0.0):
+        raise ValueError("Parameter a in Linex loss must be non-zero.")
+
+    if isinstance(df, pd.DataFrame):
+        error = df[models].sub(df[target_col], axis=0)
+        loss = (
+            (np.exp(a * error) - a * error - 1)
+            .groupby(df[id_col], observed=True)
+            .mean()
+        )
+        loss.index.name = id_col
+        return loss.reset_index()
+    else:
+
+        def gen_expr(model):
+            err = pl.col(model).sub(pl.col(target_col))
+            return (err.mul(a).exp().sub(err.mul(a)).sub(1)).alias(model)
+
+        return _pl_agg_expr(df, models, id_col, gen_expr)
 
 
 def _zero_to_nan(series: Union[pd.Series, "pl.Expr"]) -> Union[pd.Series, "pl.Expr"]:
