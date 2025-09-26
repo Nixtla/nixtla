@@ -53,12 +53,6 @@ source .venv/bin/activate
 .\.venv\Scripts\activate
 ```
 
-Install all dependencies:
-
-```sh
-uv pip install -r setup.py --extra dev
-```
-
 ### Install the library
 
 Install the library in editable mode:
