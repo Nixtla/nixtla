@@ -292,7 +292,7 @@ def pis(
 @_base_docstring
 def spis(
     df: DFType,
-    df_train: DFType,
+    train_df: DFType,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
@@ -304,7 +304,7 @@ def spis(
     yielding a scale-independent bias measure that can be aggregated across series.
     """
     if isinstance(df, pd.DataFrame):
-        ins_means = df_train.groupby(id_col)[target_col].mean().rename("insample_mean")
+        ins_means = train_df.groupby(id_col)[target_col].mean().rename("insample_mean")
         abs_err_sum = (
             (df[models].sub(df[target_col], axis=0))
             .abs()
@@ -315,7 +315,7 @@ def spis(
         res.index.name = id_col
         return res.reset_index()
     else:
-        ins_means = df_train.group_by(id_col).agg(
+        ins_means = train_df.group_by(id_col).agg(
             pl.col(target_col).mean().alias("insample_mean")
         )
         abs_err = _pl_agg_expr(

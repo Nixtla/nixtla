@@ -178,7 +178,7 @@ class TestBasicMetrics:
         Validates scaled sum of absolute errors per series (Pandas and Polars).
         """
         # In-sample data for scaling (mean per series)
-        df_train = pd.DataFrame({
+        train_df = pd.DataFrame({
             "unique_id": ["A", "A", "B", "B"],
             "y": [1, 3, 2, 6]
         })
@@ -200,7 +200,7 @@ class TestBasicMetrics:
         # Pandas test
         out_pd = spis(
             df=df,
-            df_train=df_train,
+            train_df=train_df,
             models=["y_hat"],
             id_col="unique_id",
             target_col="y",
@@ -210,7 +210,7 @@ class TestBasicMetrics:
         # Polars test
         out_pl = spis(
             df=pl.DataFrame(df),
-            df_train=pl.DataFrame(df_train),
+            train_df=pl.DataFrame(train_df),
             models=["y_hat"],
             id_col="unique_id",
             target_col="y",
