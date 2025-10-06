@@ -2,7 +2,7 @@
 
 __all__ = ['mae', 'mse', 'rmse', 'bias', 'cfe', 'pis', 'spis', 'mape', 'smape', 'mase', 'rmae', 'nd', 'msse', 'rmsse',
            'quantile_loss', 'scaled_quantile_loss', 'mqloss', 'scaled_mqloss', 'coverage', 'calibration', 'scaled_crps',
-           'tweedie_deviance']
+           'tweedie_deviance', 'linex']
 
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
