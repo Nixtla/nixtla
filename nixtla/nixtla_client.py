@@ -14,6 +14,7 @@ from typing import (
     Annotated,
     Any,
     Callable,
+    Dict,
     Literal,
     Optional,
     TypeVar,
@@ -1437,6 +1438,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
+        model_parameters: Optional[Dict[str, Any]] = None,
     ) -> AnyDFType:
         """Forecast your time series using TimeGPT.
 
@@ -1520,6 +1522,8 @@ class NixtlaClient:
             feature_contributions (bool): Compute SHAP values.
                 Gives access to computed SHAP values to explain the impact
                 of features on the final predictions. Defaults to False.
+            model_parameters (dict): The dictionary settings that determine
+                the behavior of the model. Default is None
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -1637,6 +1641,9 @@ class NixtlaClient:
             "finetuned_model_id": finetuned_model_id,
             "feature_contributions": feature_contributions and X is not None,
         }
+        if model_parameters is not None:
+            payload.update({"model_parameters": model_parameters})
+
         with self._make_client(**self._client_kwargs) as client:
             insample_feat_contributions = None
             if num_partitions is None:
