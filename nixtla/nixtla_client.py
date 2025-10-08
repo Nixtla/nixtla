@@ -1349,6 +1349,7 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         feature_contributions: bool,
+        model_parameters: Optional[Dict[str, Any]] = None,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1408,6 +1409,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=None,
                 feature_contributions=feature_contributions,
+                model_parameters=model_parameters,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -1554,6 +1556,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=num_partitions,
                 feature_contributions=feature_contributions,
+                model_parameters=model_parameters,
             )
         self.__dict__.pop("weights_x", None)
         self.__dict__.pop("feature_contributions", None)
@@ -2897,6 +2900,7 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
+    model_parameters: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
@@ -2927,6 +2931,7 @@ def _forecast_wrapper(
         model=model,
         num_partitions=num_partitions,
         feature_contributions=feature_contributions,
+        model_parameters=model_parameters,
     )
 
 
