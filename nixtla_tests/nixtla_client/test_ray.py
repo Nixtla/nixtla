@@ -14,7 +14,15 @@ from nixtla_tests.helpers.checks import (
     check_quantiles,
 )
 
-pytestmark = [pytest.mark.distributed_run, pytest.mark.ray_run]
+pytestmark = [
+    pytest.mark.distributed_run,
+    pytest.mark.ray_run,
+    pytest.mark.skipif(
+        condition=(sys.version_info == (3, 11))
+        and ("ubuntu" in platform.platform().lower()),
+        reason="Unstable test for python3.11 https://github.com/Nixtla/nixtla/actions/runs/18332071546/job/52208824583?pr=681",
+    ),
+]
 
 
 def test_quantiles(nixtla_test_client, ray_df):
@@ -37,11 +45,6 @@ def test_anomalies_online(nixtla_test_client, ray_df):
     check_anomalies_online_dataframe(nixtla_test_client, ray_df)
 
 
-@pytest.mark.xfail(
-    condition=(sys.version_info == (3, 11))
-    and ("ubuntu" in platform.platform().lower()),
-    reason="Unstable test for python3.11 https://github.com/Nixtla/nixtla/actions/runs/18332071546/job/52208824583?pr=681",
-)
 def test_forecast_x_dataframe(
     nixtla_test_client,
     ray_df_x,
