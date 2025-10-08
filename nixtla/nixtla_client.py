@@ -1645,6 +1645,8 @@ class NixtlaClient:
             "feature_contributions": feature_contributions and X is not None,
         }
         if model_parameters is not None:
+            if not isinstance(model_parameters, dict):
+                raise ValueError("model_parameters should be a dictionary.")
             payload.update({"model_parameters": model_parameters})
 
         with self._make_client(**self._client_kwargs) as client:

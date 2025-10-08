@@ -59,6 +59,22 @@ def test_forecast_with_error(series_with_gaps, nixtla_test_client, df_converter,
     ):
         nixtla_test_client.forecast(df=df_converter(series, with_gaps), h=1, freq=freq)
 
+@pytest.mark.parametrize("test_params, expected_exception, expected_error_msg",
+    [
+       ({"model_parameters": "not a dict"}, ValueError, "model_parameters should be a dictionary."),
+    ]
+)
+def test_forecast_unexpected_params(nixtla_test_client, air_passengers_df, test_params, expected_exception, expected_error_msg):
+    base_params = {
+        "df": air_passengers_df,
+        "h": 12,
+        "time_col": "timestamp",
+        "target_col": "value",
+    }
+    with pytest.raises(expected_exception, match=expected_error_msg):
+        base_params.update(test_params)
+        nixtla_test_client.forecast(**base_params)
+
 
 def test_cv_forecast_consistency(nixtla_test_client, cv_series_with_features):
     series_with_features, train, valid, x_cols, h, freq = cv_series_with_features
