@@ -561,7 +561,8 @@ forecast(
     date_features_to_one_hot: Union[bool, list[str]] = False,
     model: str = 'timegpt-1',
     num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
-    feature_contributions: bool = False
+    feature_contributions: bool = False,
+    model_parameters: Optional[Dict[str, Any]] = None
 ) → ~AnyDFType
 ```
 
@@ -595,6 +596,7 @@ Forecast your time series using TimeGPT.
  - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
  - <b>`model`</b> (str):  Model to use as a string. Options are: `timegpt-1`,  and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
  - <b>`feature_contributions`</b> (bool):  Compute SHAP values.  Gives access to computed SHAP values to explain the impact  of features on the final predictions. Defaults to False. 
+ - <b>`model_parameters`</b> (dict):  The dictionary settings that determine  the behavior of the model. Default is None 
 
 
 
