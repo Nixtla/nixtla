@@ -1,17 +1,33 @@
 ---
 title: "Cross-validation Tutorial"
-description: "Learn how to validate time series models with rolling-window cross-validation"
+description: "Master time series cross-validation with TimeGPT. Complete Python tutorial for model validation, rolling-window techniques, and prediction intervals with code examples."
 icon: "check"
 ---
 
 ## What is Cross-validation?
 
+Time series cross-validation is essential for validating machine learning models and ensuring accurate forecasts. Unlike traditional k-fold cross-validation, time series validation requires specialized rolling-window techniques that respect temporal order. This comprehensive tutorial shows you how to perform cross-validation in Python using TimeGPT, including prediction intervals, exogenous variables, and model performance evaluation.
+
 One of the primary challenges in time series forecasting is the inherent uncertainty and variability over time, making it crucial to validate the accuracy and reliability of the models employed. Cross-validation, a robust model validation technique, is particularly adapted for this task, as it provides insights into the expected performance of a model on unseen data, ensuring the forecasts are reliable and resilient before being deployed in real-world scenarios.
 
-TimeGPT, understanding the intricate needs of time series forecasting, incorporates the `cross_validation` method, designed to streamline the validation process for time series models. This functionality enables practitioners to rigorously test their forecasting models against historical data, assessing their effectiveness while tuning them for optimal performance. This tutorial will guide you through the nuanced process of conducting cross-validation within the `NixtlaClient` class, ensuring your time series forecasting models are not just well-constructed, but also validated for trustworthiness and precision.
+TimeGPT incorporates the `cross_validation` method, designed to streamline the validation process for [time series forecasting models](/forecasting/timegpt_quickstart). This functionality enables practitioners to rigorously test their forecasting models against historical data, with support for [prediction intervals](/forecasting/probabilistic/prediction_intervals) and [exogenous variables](/forecasting/exogenous-variables/numeric_features). This tutorial will guide you through the nuanced process of conducting cross-validation within the `NixtlaClient` class, ensuring your time series forecasting models are not just well-constructed, but also validated for trustworthiness and precision.
+
+### Why Use Cross-Validation for Time Series?
+
+Cross-validation provides several critical benefits for time series forecasting:
+
+- **Prevent overfitting**: Test model performance across multiple time periods
+- **Validate generalization**: Ensure forecasts work on unseen data
+- **Quantify uncertainty**: Generate prediction intervals for risk assessment
+- **Compare models**: Evaluate different forecasting approaches systematically
+- **Optimize hyperparameters**: Fine-tune model parameters with confidence
 
 
 ## How to Perform Cross-validation with TimeGPT
+
+<Info>
+**Quick Summary**: Learn time series cross-validation with TimeGPT in Python. This tutorial covers rolling-window validation, prediction intervals, model performance metrics, and advanced techniques with real-world examples using the Peyton Manning dataset.
+</Info>
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/08_cross_validation.ipynb)
 
@@ -26,6 +42,7 @@ import pandas as pd
 from nixtla import NixtlaClient
 from IPython.display import display
 
+# Initialize TimeGPT client for cross-validation
 nixtla_client = NixtlaClient(
     api_key='my_api_key_provided_by_nixtla'
 )
@@ -43,7 +60,7 @@ pm_df = pd.read_csv(
 
 <Info>If you are using your own data, ensure your data is properly formatted: you must have a time column (e.g., `ds`), a target column (e.g., `y`), and, if necessary, an identifier column (e.g., `unique_id`) for multiple time series.</Info>
 
-### Step 3: Perform Cross-Validation
+### Step 3: Implement Rolling-Window Cross-Validation
 
 The `cross_validation` method within the TimeGPT class is an advanced functionality crafted to perform systematic validation on time series forecasting models. This method necessitates a dataframe comprising time-ordered data and employs a rolling-window scheme to meticulously evaluate the model's performance across different time periods, thereby ensuring the model's reliability and stability over time. The animation below shows how TimeGPT performs cross-validation.
 
@@ -61,14 +78,19 @@ Key parameters include:
 
 In execution, `cross_validation` assesses the model's forecasting accuracy in each window, providing a robust view of the model's performance variability over time and potential overfitting. This detailed evaluation ensures the forecasts generated are not only accurate but also consistent across diverse temporal contexts.
 
+<Info>
+**Key Concepts**: Rolling-window cross-validation splits your dataset into multiple training and testing sets over time. Each window moves forward chronologically, training on historical data and validating on future periods. This approach mimics real-world forecasting scenarios where you predict forward in time.
+</Info>
+
 Use `cross_validation` on the Peyton Manning dataset:
 
 ```python
+# Perform cross-validation with 5 windows and 7-day forecast horizon
 timegpt_cv_df = nixtla_client.cross_validation(
     pm_df,
-    h=7,
-    n_windows=5,
-    freq='D'
+    h=7,  # Forecast 7 days ahead
+    n_windows=5,  # Test across 5 different time periods
+    freq='D'  # Daily frequency
 )
 timegpt_cv_df.head()
 ```
@@ -120,7 +142,7 @@ for cutoff in cutoffs:
   ![Cross-validation Example](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-12-output-5.png)
 </Frame>
 
-### Step 5: Add Prediction Intervals to Cross-validation
+### Step 5: Generate Prediction Intervals for Model Uncertainty
 
 It is also possible to generate prediction intervals during cross-validation. To do so, we simply use the `level` argument.
 
@@ -167,7 +189,7 @@ for cutoff in cutoffs:
   ![Cross-validation Example with Prediction Intervals](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-14-output-5.png)
 </Frame>
 
-### Step 6: Add Exogenous Variables to Cross-validation
+### Step 6: Enhance Forecasts with Exogenous Variables
 
 #### Time Features
 
@@ -254,7 +276,7 @@ for cutoff in cutoffs:
   ![Cross-validation Example with Dynamic Exogenous Variables](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-19-output-3.png)
 </Frame>
 
-### Step 7: Use a Long Horizon Model
+### Step 7: Long-Horizon Forecasting with TimeGPT
 
 Also, you can generate cross validation for different instances of `TimeGPT` using the `model` argument. Here we use the base model and the model for long-horizon forecasting.
 
@@ -286,10 +308,32 @@ for cutoff in cutoffs:
   ![Cross-validation Example with Long Horizon Forecasting](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/08_cross_validation_files/figure-markdown_strict/cell-20-output-3.png)
 </Frame>
 
+## Frequently Asked Questions
+
+**What is time series cross-validation?**
+
+Time series cross-validation is a model validation technique that uses rolling windows to evaluate forecasting accuracy while preserving temporal order, ensuring reliable predictions on unseen data.
+
+**How is time series cross-validation different from k-fold cross-validation?**
+
+Unlike k-fold cross-validation which randomly shuffles data, time series cross-validation maintains temporal order using techniques like walk-forward validation and expanding windows to prevent data leakage.
+
+**What are the key parameters for cross-validation in TimeGPT?**
+
+Key parameters include `h` (forecast horizon), `n_windows` (number of validation windows), `step_size` (window increment), and `level` (prediction interval confidence levels).
+
+**How do you evaluate cross-validation results?**
+
+Evaluate results by comparing forecasted values against actual values across multiple time windows, analyzing prediction intervals, and calculating metrics like MAE, RMSE, and MAPE.
+
 ## Conclusion
 
-By systematically testing your forecasting models over multiple time windows, `cross_validation` in Nixtla's **TimeGPT** ensures predictions are accurate and reliable. Incorporating confidence intervals, exogenous variables, and different model variants can further enhance your forecasts, giving you robust insights for real-world applications.
+You've mastered time series cross-validation with TimeGPT, including rolling-window validation, prediction intervals, exogenous variables, and long-horizon forecasting. These model validation techniques ensure your forecasts are accurate, reliable, and production-ready.
 
-<Check>
-Ready to take the next step? Explore other tutorials in the Nixtla documentation for more details on custom models, hyperparameter tuning, and advanced visualization techniques.
-</Check>
+### Next Steps in Model Validation
+
+- Explore [evaluation metrics](/forecasting/evaluation/evaluation_metrics) to quantify forecast accuracy
+- Learn about [fine-tuning TimeGPT](/forecasting/fine-tuning/steps) for domain-specific data
+- Apply cross-validation to [multiple time series](/data_requirements/multiple_series)
+
+Ready to validate your forecasts at scale? [Start your TimeGPT trial](https://dashboard.nixtla.io/) and implement robust cross-validation today.
