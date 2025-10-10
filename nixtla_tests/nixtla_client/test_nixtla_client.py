@@ -10,6 +10,7 @@ from copy import deepcopy
 from nixtla_tests.conftest import HYPER_PARAMS_TEST
 from nixtla_tests.helpers.checks import check_num_partitions_same_results
 from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
+from pydantic import ValidationError
 
 
 CAPTURED_REQUEST = None
@@ -61,7 +62,16 @@ def test_forecast_with_error(series_with_gaps, nixtla_test_client, df_converter,
 
 @pytest.mark.parametrize("test_params, expected_exception, expected_error_msg",
     [
-       ({"model_parameters": "not a dict"}, ValueError, "model_parameters should be a dictionary."),
+       ({"model_parameters": None}, None, ""),
+       ({"model_parameters": {"max_q": 1}}, None, ""),
+       ({"model_parameters": {"max_p": None}}, None, ""),
+       ({"model_parameters": "not a dict"}, ValidationError, "Input should be a valid dictionary"),
+       ({"model_parameters": 123}, ValidationError, "Input should be a valid dictionary"),
+       ({"model_parameters": {"horizon": [1, 2, 3]}}, TypeError, "Nested structures not allowed"),
+       ({"model_parameters": {"horizon": (1, 2, 3)}}, TypeError, "Nested structures not allowed"),
+       ({"model_parameters": {"horizon": {1, 2}}}, TypeError, "Nested structures not allowed"),
+       ({"model_parameters": {"horizon": {"nested": "dict"}}}, TypeError, "Nested structures not allowed"),
+       ({"model_parameters": {"horizon": pd.DataFrame()}}, TypeError, "Invalid value type"),
     ]
 )
 def test_forecast_unexpected_params(nixtla_test_client, air_passengers_df, test_params, expected_exception, expected_error_msg):
@@ -71,9 +81,14 @@ def test_forecast_unexpected_params(nixtla_test_client, air_passengers_df, test_
         "time_col": "timestamp",
         "target_col": "value",
     }
-    with pytest.raises(expected_exception, match=expected_error_msg):
-        base_params.update(test_params)
+    base_params.update(test_params)
+    if expected_exception is None:
         nixtla_test_client.forecast(**base_params)
+    else:
+        with pytest.raises(expected_exception) as exc_info:
+            nixtla_test_client.forecast(**base_params)
+
+        assert expected_error_msg in str(exc_info.value)
 
 
 def test_cv_forecast_consistency(nixtla_test_client, cv_series_with_features):
