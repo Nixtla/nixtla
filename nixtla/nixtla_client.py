@@ -30,7 +30,7 @@ import orjson
 import pandas as pd
 import utilsforecast.processing as ufp
 import zstandard as zstd
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel, TypeAdapter
 from tenacity import (
     RetryCallState,
     retry,
@@ -97,8 +97,25 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
+def validate_no_nested_dict(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Validate that the dictionary doesn't contain nested structures."""
+    if value is None:
+        return value
+
+    if not isinstance(value, dict):
+        raise TypeError("Value must be a dictionary")
+
+    for k, v in value.items():
+        if isinstance(v, (dict, list, tuple, set)):
+            raise TypeError(f"Nested structures not allowed (found {type(v).__name__})")
+        if not isinstance(v, (str, int, float, bool, type(None))):
+            raise TypeError(f"Invalid value type: {type(v).__name__}")
+    return value
+
 _PositiveInt = Annotated[int, annotated_types.Gt(0)]
 _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
+_ExtraParamDataType = Annotated[Optional[Dict[str, Any]], AfterValidator(validate_no_nested_dict)]
+extra_param_checker = TypeAdapter(_ExtraParamDataType)
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = str
 _FinetuneDepth = Literal[1, 2, 3, 4, 5]
@@ -1440,7 +1457,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
-        model_parameters: Optional[Dict[str, Any]] = None,
+        model_parameters: _ExtraParamDataType = None,
     ) -> AnyDFType:
         """Forecast your time series using TimeGPT.
 
@@ -1532,6 +1549,8 @@ class NixtlaClient:
                 DataFrame with TimeGPT forecasts for point predictions and
                 probabilistic predictions (if level is not None).
         """
+        extra_param_checker.validate_python(model_parameters)
+
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_forecast(
                 df=df,
@@ -1645,8 +1664,6 @@ class NixtlaClient:
             "feature_contributions": feature_contributions and X is not None,
         }
         if model_parameters is not None:
-            if not isinstance(model_parameters, dict):
-                raise ValueError("model_parameters should be a dictionary.")
             payload.update({"model_parameters": model_parameters})
 
         with self._make_client(**self._client_kwargs) as client:
