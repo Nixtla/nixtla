@@ -1366,7 +1366,7 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         feature_contributions: bool,
-        model_parameters: Optional[Dict[str, Any]] = None,
+        model_parameters: _ExtraParamDataType = None,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2919,7 +2919,7 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
-    model_parameters: Optional[Dict[str, Any]] = None,
+    model_parameters: _ExtraParamDataType = None,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
