@@ -619,7 +619,7 @@ def check_finetuned_model(
 
     # forecast
     local_fcst = nixtla_client.forecast(
-        df=fa.as_pandas(df), h=5, finetuned_model_id=model_id2, model_parameters={"dummy": 1}
+        df=fa.as_pandas(df), h=5, finetuned_model_id=model_id2,
     )
     distr_fcst = (
         fa.as_pandas(nixtla_client.forecast(df=df, h=5, finetuned_model_id=model_id2))
