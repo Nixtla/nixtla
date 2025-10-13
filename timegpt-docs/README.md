@@ -25,9 +25,11 @@ If you prefer to work locally, this repository is configured with GitHub Codespa
 2. Select the "Codespaces" tab
 3. Click "Create codespace on [branch]"
 4. Once the Codespace is ready, open a terminal and run:
+
    ```bash
    mintlify dev
    ```
+
 5. Click on the "Ports" tab and open port 3000 in your browser to view the documentation
 
 For more information about the Codespace setup, see the `.devcontainer` directory.
@@ -63,30 +65,31 @@ The conversion was done using a Node.js script located at `/docs/utils/convert-l
 
 1. Install dependencies (if not already installed):
 
-   ```
+   ```bash
    npm install glob
    ```
 
 2. Change to the docs directory:
 
-   ```
+   ```bash
    cd docs
    ```
 
 3. Run the script:
-   ```
+
+   ```bash
    node utils/convert-links.js
    ```
 
 For testing a single file without making changes:
 
-```
+```bash
 node utils/convert-links.js --test path/to/file.mdx
 ```
 
 For a dry run (simulate changes without writing to files):
 
-```
+```bash
 node utils/convert-links.js --dry-run
 ```
 
@@ -104,26 +107,23 @@ The conversion was performed using a more advanced Node.js script at `/docs/util
 
 To run the script:
 
-1. Change to the docs directory:
-
-   ```
-   cd docs
-   ```
+1. Change to the docs directory: `cd docs`
 
 2. Run the script:
-   ```
-   node utils/html-to-markdown.js
-   ```
+
+```bash
+node utils/html-to-markdown.js
+```
 
 For testing a single file without making changes:
 
-```
+```bash
 node utils/html-to-markdown.js --test path/to/file.mdx
 ```
 
 For a dry run (simulate changes without writing to files):
 
-```
+```bash
 node utils/html-to-markdown.js --dry-run
 ```
 
@@ -147,6 +147,7 @@ To run the script:
    ```
 
 2. Run the script:
+
    ```
    node utils/fix-frame-images.js
    ```
@@ -190,6 +191,7 @@ To run the script:
    ```
 
 3. Automatically fix issues:
+
    ```
    node utils/check-card-titles.js --fix
    ```
@@ -233,6 +235,7 @@ To run the script:
    ```
 
 3. Automatically convert all tables:
+
    ```
    node utils/convert-tables.js --fix
    ```
