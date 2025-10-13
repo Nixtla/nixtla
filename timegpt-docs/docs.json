@@ -229,6 +229,22 @@
     {
       "source": "/use-cases-what_if_forecasting_price_effects_in_retail",
       "destination": "/use_cases/what_if_forecasting_price_effects_in_retail"
+    },
+    {
+      "source": "/docs/getting-started-timegpt_quickstart",
+      "destination": "/docs/forecasting/timegpt_quickstart"
+    },
+    {
+      "source": "/docs/tutorials-special_topics-tutorials-improve_forecast_accuracy_with_timegpt",
+      "destination": "/docs/forecasting/improve_accuracy"
+    },
+    {
+      "source": "/docs/capabilities-anomaly-detection-anomaly_detection",
+      "destination": "/docs/anomaly_detection/historical_anomaly_detection"
+    },
+    {
+      "source": "/docs/getting-started-timegen_1_quickstart_azure_",
+      "destination": "/docs/setup/azureai"
     }
   ],
   "contextual": {
