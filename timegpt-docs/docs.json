@@ -229,6 +229,86 @@
     {
       "source": "/use-cases-what_if_forecasting_price_effects_in_retail",
       "destination": "/use_cases/what_if_forecasting_price_effects_in_retail"
+    },
+    {
+      "source": "/statsforecast/docs/getting-started/installation.html",
+      "destination": "/statsforecast/docs/getting-started/0_Installation"
+    },
+    {
+      "source": "/statsforecast/docs/getting-started/getting_started_short.html",
+      "destination": "/statsforecast/docs/getting-started/1_Getting_Started_short"
+    },
+    {
+      "source": "/statsforecast/docs/getting-started/getting_started_complete.html",
+      "destination": "/statsforecast/docs/getting-started/2_Getting_Started_complete"
+    },
+    {
+      "source": "/statsforecast/docs/tutorials/anomalydetection.html",
+      "destination": "/statsforecast/docs/tutorials/AnomalyDetection"
+    },
+    {
+      "source": "/statsforecast/docs/tutorials/crossvalidation.html",
+      "destination": "/statsforecast/docs/tutorials/CrossValidation"
+    },
+    {
+      "source": "/statsforecast/docs/tutorials/multipleseasonalities.html",
+      "destination": "/statsforecast/docs/tutorials/MultipleSeasonalities"
+    },
+    {
+      "source": "/statsforecast/docs/tutorials/electricitypeakforecasting.html",
+      "destination": "/statsforecast/docs/tutorials/ElectricityPeakForecasting"
+    },
+    {
+      "source": "/statsforecast/docs/tutorials/intermittentdata.html",
+      "destination": "/statsforecast/docs/tutorials/IntermittentData"
+    },
+    {
+      "source": "/statsforecast/docs/how-to-guides/exogenous.html",
+      "destination": "/statsforecast/docs/how-to-guides/Exogenous"
+    },
+    {
+      "source": "/capabilities-forecast-long_horizon_forecasting",
+      "destination": "/forecasting/model-version/longhorizon_model"
+    },
+    {
+      "source": "/docs/tutorials-special_topics-tutorials-hierarchical_forecasting",
+      "destination": "/docs/forecasting/special-topics/hierarchical_forecasting"
+    },
+    {
+      "source": "/docs/getting-started-data_requirements",
+      "destination": "/docs/data_requirements/data_requirements"
+    },
+    {
+      "source": "/docs/tutorials-special_topics",
+      "destination": "/docs/forecasting/special-topics/hierarchical_forecasting"
+    },
+    {
+      "source": "/docs/tutorials-special_topics-tutorials-missing_values",
+      "destination": "/docs/data_requirements/missing_values"
+    },
+    {
+      "source": "/docs/getting-started-faq",
+      "destination": "/docs/introduction/faq"
+    },
+    {
+      "source": "/docs/capabilities-forecast-add_categorical_variables",
+      "destination": "/docs/forecasting/exogenous-variables/categorical_features"
+    },
+    {
+      "source": "/docs/tutorials-uncertainty_quantification-tutorials-prediction_intervals",
+      "destination": "/docs/forecasting/probabilistic/prediction_intervals"
+    },
+    {
+      "source": "/docs/tutorials-validation",
+      "destination": "/docs/forecasting/evaluation/cross_validation"
+    },
+    {
+      "source": "/docs/tutorials-training-tutorials-multiple_series_forecasting",
+      "destination": "/docs/data_requirements/multiple_series"
+    },
+    {
+      "source": "/docs/tutorials-training-tutorials-long_horizon_forecasting",
+      "destination": "/docs/forecasting/model-version/longhorizon_model"
     }
   ],
   "contextual": {
