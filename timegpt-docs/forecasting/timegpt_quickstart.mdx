@@ -1,14 +1,14 @@
 ---
-title: "Quickstart"
-description: "Learn how to use TimeGPT for accurate time series forecasting in just a few steps"
+title: "Quickstart Guide"
+description: "Learn how to use TimeGPT for accurate time series forecasting"
 icon: "chart-line"
 ---
 
-## What is TimeGPT?
+## TimeGPT - Foundation Model for Time Series Forecasting
 
-TimeGPT is a production-ready generative pretrained transformer for time series. It can accurately predict domains such as retail, electricity, finance, and IoT with just a few lines of code. Get started below\!
+TimeGPT is a production-ready generative pretrained transformer for time series forecasting and predictions. It delivers accurate forecasts for retail sales, electricity demand, financial markets, and IoT sensor data with just a few lines of Python code. This quickstart guide will have you making your first forecast in under 5 minutes! Learn more about [TimeGPT's capabilities](/capabilities/overview) and [use cases](/use-cases/overview).
 
-## Set Up TimeGPT
+## Set Up TimeGPT for Python Time Series Forecasting
 
 ### Step 1: Get an API Key
 
@@ -17,7 +17,7 @@ TimeGPT is a production-ready generative pretrained transformer for time series.
 - Navigate to **API Keys** in the menu and select **Create New API Key**.\
 - Your new API key will appear on the screen. Copy this key using the button on the right.
 
-<Frame caption="Dashboard displaying TimeGPT API keys and controls.">
+<Frame caption="TimeGPT dashboard showing API key management interface for Python forecasting">
   ![Dashboard for TimeGPT API keys](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
 </Frame>
 
@@ -68,9 +68,9 @@ True
   [Setting Up your API Key](/setup/setting_up_your_api_key).
 </Info>
 
-## Make Forecasts
+## Make Your First Time Series Forecast
 
-We will use the classic `AirPassengers` dataset to demonstrate forecasts.
+We'll demonstrate TimeGPT's forecasting capabilities using the classic `AirPassengers` dataset, a monthly time series showing international airline passengers from 1949 to 1960.
 
 ```python
 import pandas as pd
@@ -104,7 +104,7 @@ Plot the dataset:
 nixtla_client.plot(df, time_col='timestamp', target_col='value')
 ```
 
-<Frame caption="Historical AirPassengers data from 1949 to 1960.">
+<Frame caption="Historical AirPassengers time series data visualization showing monthly passenger trends from 1949 to 1960">
   ![Time Series Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-13-output-1.png)
 </Frame>
 
@@ -116,6 +116,14 @@ The `plot` method automatically displays figures in notebook environments. To sa
 fig = nixtla_client.plot(df, time_col='timestamp', target_col='value')
 fig.savefig('plot.png', bbox_inches='tight')
 ```
+
+## Real-World Forecasting Applications
+
+TimeGPT excels at:
+- **Retail forecasting**: Predict product demand and inventory needs
+- **Energy forecasting**: Forecast electricity consumption and renewable energy production
+- **Financial forecasting**: Project revenue, sales, and market trends
+- **IoT predictions**: Anticipate sensor readings and equipment metrics
 
 ## Short and Long-Term Forecasting Examples
 
@@ -140,7 +148,7 @@ Plot the forecast:
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-<Frame caption="12-month forecast for AirPassengers data.">
+<Frame caption="TimeGPT 12-month forecast visualization with confidence intervals for AirPassengers dataset">
   ![Forecasted Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-15-output-1.png)
 </Frame>
 
@@ -164,7 +172,7 @@ Plot the forecast:
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-<Frame caption="36-month forecast using the 'timegpt-1-long-horizon' model.">
+<Frame caption="TimeGPT long-horizon model 36-month forecast with extended prediction intervals">
   ![Longer Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-17-output-1.png)
 </Frame>
 
@@ -188,6 +196,32 @@ Plot the forecast:
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
 ```
 
-<Frame caption="6-month forecast for AirPassengers data.">
+<Frame caption="TimeGPT 6-month short-term forecast for AirPassengers with prediction confidence bands">
   ![Shorter Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-18-output-2.png)
 </Frame>
+
+## Frequently Asked Questions
+
+### How accurate is TimeGPT for forecasting?
+
+TimeGPT achieves state-of-the-art accuracy across multiple domains including retail, finance, and electricity forecasting with zero-shot learning.
+
+### Can I use TimeGPT with my own time series data?
+
+Yes, TimeGPT works with any time series data in pandas DataFrame format with a timestamp and target value column.
+
+### How long does it take to generate forecasts?
+
+TimeGPT typically generates forecasts in seconds, making it suitable for production environments.
+
+## Next Steps
+
+Now that you've made your first forecast, explore these tutorials to unlock TimeGPT's full capabilities:
+
+- [Improve Accuracy](/forecasting/improve_accuracy) - Advanced techniques to enhance forecast accuracy
+- [Fine-Tuning](/forecasting/fine-tuning/steps) - Customize TimeGPT for your specific data
+- [Exogenous Variables](/forecasting/exogenous-variables/numeric_features) - Include external variables in forecasts
+- [Uncertainty Quantification](/forecasting/probabilistic/introduction) - Generate prediction intervals and quantile forecasts
+- [Cross-Validation](/forecasting/evaluation/cross_validation) - Assess forecast performance
+- [Forecasting at Scale](/forecasting/forecasting-at-scale/computing_at_scale) - Process thousands of time series
+- [Anomaly Detection](/anomaly_detection/historical_anomaly_detection) - Identify outliers in your data
