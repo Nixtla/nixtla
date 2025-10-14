@@ -97,8 +97,11 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
-def validate_no_nested_dict(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Validate that the dictionary doesn't contain nested structures."""
+def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Validate that the dictionary doesn't contain complex structures."""
+    primitives = (str, int, float, bool, type(None))
+
+
     if value is None:
         return value
 
@@ -106,15 +109,22 @@ def validate_no_nested_dict(value: Optional[Dict[str, Any]]) -> Optional[Dict[st
         raise TypeError("Value must be a dictionary")
 
     for k, v in value.items():
-        if isinstance(v, (dict, list, tuple, set)):
-            raise TypeError(f"Nested structures not allowed (found {type(v).__name__})")
-        if not isinstance(v, (str, int, float, bool, type(None))):
+        if isinstance(v, dict):
+            for _, nv in v.items():
+                # nested structure allowed but they can support primitive values only
+                if not isinstance(nv, primitives):
+                    raise TypeError(f"Invalid value type: {type(nv).__name__}")
+        elif isinstance(v, (dict, list, tuple, set)):
+            for nv in v:
+                if not isinstance(nv, primitives):
+                    raise TypeError(f"Invalid value type: {type(nv).__name__}")
+        elif not isinstance(v, primitives):
             raise TypeError(f"Invalid value type: {type(v).__name__}")
     return value
 
 _PositiveInt = Annotated[int, annotated_types.Gt(0)]
 _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
-_ExtraParamDataType = Annotated[Optional[Dict[str, Any]], AfterValidator(validate_no_nested_dict)]
+_ExtraParamDataType = Annotated[Optional[Dict[str, Any]], AfterValidator(validate_extra_params)]
 extra_param_checker = TypeAdapter(_ExtraParamDataType)
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = str
