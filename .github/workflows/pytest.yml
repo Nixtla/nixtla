@@ -3,8 +3,12 @@ name: pytest
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'timegpt-docs/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'timegpt-docs/**'
   workflow_dispatch:
 
 concurrency:
