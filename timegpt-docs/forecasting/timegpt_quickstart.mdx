@@ -4,76 +4,75 @@ description: "Learn how to use TimeGPT for accurate time series forecasting in j
 icon: "chart-line"
 ---
 
+## What is TimeGPT?
+
+TimeGPT is a production-ready generative pretrained transformer for time series. It can accurately predict domains such as retail, electricity, finance, and IoT with just a few lines of code. Get started below\!
+
+## Set Up TimeGPT
+
+### Step 1: Get an API Key
+
+- Visit [dashboard.nixtla.io](https://dashboard.nixtla.io) to activate your free trial and create an account.\
+- Sign in using Google, GitHub, or your email.\
+- Navigate to **API Keys** in the menu and select **Create New API Key**.\
+- Your new API key will appear on the screen. Copy this key using the button on the right.
+
+<Frame caption="Dashboard displaying TimeGPT API keys and controls.">
+  ![Dashboard for TimeGPT API keys](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
+</Frame>
+
+### Step 2: Install Nixtla
+
+Install the Nixtla library in your preferred Python environment:
+
+```bash
+pip install nixtla
+```
+
+### Step 3: Import the Nixtla TimeGPT client
+
+Import the Nixtla client and instantiate it with your API key:
+
+```python
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+### Step 4: Load your time series data
+
+Import the Nixtla client and instantiate it with your API key:
+
+```python
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+Verify the status and validity of your API key:
+
+```python
+nixtla_client.validate_api_key()
+```
+
+```bash
+True
+```
+
 <Info>
-  TimeGPT is a production-ready generative pretrained transformer for time series. It can accurately predict domains such as retail, electricity, finance, and IoT with just a few lines of code. Get started below\!
+  For enhanced security practices, see our guide on
+  [Setting Up your API Key](/setup/setting_up_your_api_key).
 </Info>
 
-## Implementation Guide
+## Make Forecasts
 
-<Steps>
-  <Step title="Create a TimeGPT account and generate your API key">
-    • Visit [dashboard.nixtla.io](https://dashboard.nixtla.io) to activate your free trial and create an account.\
-    • Sign in using Google, GitHub, or your email.\
-    • Navigate to **API Keys** in the menu and select **Create New API Key**.\
-    • Your new API key will appear on the screen. Copy this key using the button on the right.
+We will use the classic `AirPassengers` dataset to demonstrate forecasts.
 
-    <Frame caption="Dashboard displaying TimeGPT API keys and controls.">
-      ![Dashboard for TimeGPT API keys](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
-    </Frame>
-  </Step>
-  <Step title="Install Nixtla">
-    Install the Nixtla library in your preferred Python environment:
-
-    ```bash Install Nixtla
-    pip install nixtla
-    ```
-  </Step>
-  <Step title="Import the Nixtla TimeGPT client">
-    Import the Nixtla client and instantiate it with your API key:
-
-    ```python Nixtla Client Setup
-    from nixtla import NixtlaClient
-
-    nixtla_client = NixtlaClient(
-        api_key='my_api_key_provided_by_nixtla'
-    )
-    ```
-
-    Verify the status and validity of your API key:
-
-    ```python Validate API Key
-    nixtla_client.validate_api_key()
-    ```
-
-    <Accordion title="API Validation Output">
-      ```bash Validation Log Output
-      INFO:nixtla.nixtla_client:Happy Forecasting! :), If you have questions or need support, please email support@nixtla.io
-
-      True
-      ```
-    </Accordion>
-    <Info>
-      **Important:** For enhanced security practices, see our guide on
-      [Setting Up your API Key](/setup/setting_up_your_api_key).
-    </Info>
-  </Step>
-</Steps>
-
-## Start making forecasts\!
-
-<CardGroup cols={3}>
-  <Card title="1. Load the AirPassengers Dataset">
-    We will use the classic `AirPassengers` dataset to demonstrate forecasts.
-  </Card>
-  <Card title="2. Preview the Dataset">
-    Quickly examine structures like timestamps and values before forecasting.
-  </Card>
-  <Card title="3. Plot the Time Series">
-    Visualize historical data to understand trends or seasonality.
-  </Card>
-</CardGroup>
-
-```python Load AirPassengers Data
+```python
 import pandas as pd
 
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
@@ -88,9 +87,20 @@ df.head()
 | 3 | 1949-04-01 | 129   |
 | 4 | 1949-05-01 | 121   |
 
+<Info>
+
+If you are using your own data, here are the data requirements:
+- The target variable must not contain missing or non-numeric values.
+- The timestamp column must not contain missing values.
+- Date stamps must form a continuous sequence without gaps for the selected frequency.
+- pandas must be able to parse the timestamp column as datetime objects. ([see Pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html)).
+
+For more details, visit [Data Requirements](/data_requirements/data_requirements).
+</Info>
+
 Plot the dataset:
 
-```python Plot AirPassengers Data
+```python
 nixtla_client.plot(df, time_col='timestamp', target_col='value')
 ```
 
@@ -98,93 +108,86 @@ nixtla_client.plot(df, time_col='timestamp', target_col='value')
   ![Time Series Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-13-output-1.png)
 </Frame>
 
-<Accordion title="Data Requirements">
-  <Info>
-    - The target variable must not contain missing or non-numeric values.
-    - Date stamps must form a continuous sequence without gaps for the selected frequency.
-    - **Pandas** should correctly parse the timestamp column ([see Pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html)).
-    - The forecast method does not fill or handle missing dates.
 
-    For more details, visit
-    [Data Requirements](/data_requirements/data_requirements).
-  </Info>
-</Accordion>
 
-<Accordion title="Saving Figures from TimeGPT">
-  <Info>
-    The `plot` method automatically displays figures in notebook environments. To save a plot locally:
+The `plot` method automatically displays figures in notebook environments. To save a plot locally:
 
-    ```python Save Figure Example
-    fig = nixtla_client.plot(df, time_col='timestamp', target_col='value')
-    fig.savefig('plot.png', bbox_inches='tight')
-    ```
-  </Info>
-</Accordion>
+```python
+fig = nixtla_client.plot(df, time_col='timestamp', target_col='value')
+fig.savefig('plot.png', bbox_inches='tight')
+```
 
 ## Short and Long-Term Forecasting Examples
 
-<AccordionGroup>
-  <Accordion title="Generate a longer-term forecast">
-    Forecast the next 12 months using the SDK's `forecast` method:
+### Generate a longer-term forecast
 
-    ```python Forecast 12 Months
-    timegpt_fcst_df = nixtla_client.forecast(
-        df=df,
-        h=12,
-        freq='MS',
-        time_col='timestamp',
-        target_col='value'
-    )
-    timegpt_fcst_df.head()
-    ```
+Forecast the next 12 months using the SDK's `forecast` method:
 
-    Display the forecast:
+```python
+timegpt_fcst_df = nixtla_client.forecast(
+    df=df,
+    h=12,
+    freq='MS',
+    time_col='timestamp',
+    target_col='value'
+)
+timegpt_fcst_df.head()
+```
 
-    ```python Plot 12 Month Forecast
-    nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
-    ```
+Plot the forecast:
 
-    <Frame caption="12-month forecast for AirPassengers data.">
-      ![Forecasted Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-15-output-1.png)
-    </Frame>
-    You may also generate forecasts for longer horizons with the `timegpt-1-long-horizon` model. For example, 36 months ahead:
+```python
+nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+```
 
-    ```python Forecast 36 Months Long Horizon
-    timegpt_fcst_df = nixtla_client.forecast(
-        df=df,
-        h=36,
-        freq='MS',
-        time_col='timestamp',
-        target_col='value',
-        model='timegpt-1-long-horizon'
-    )
-    timegpt_fcst_df.head()
-    ```
+<Frame caption="12-month forecast for AirPassengers data.">
+  ![Forecasted Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-15-output-1.png)
+</Frame>
 
-    ```python Plot 36 Month Forecast
-    nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
-    ```
+You may also generate forecasts for longer horizons with the `timegpt-1-long-horizon` model. For example, 36 months ahead:
 
-    <Frame caption="36-month forecast using the 'timegpt-1-long-horizon' model.">
-      ![Longer Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-17-output-1.png)
-    </Frame>
-  </Accordion>
-  <Accordion title="Generate a shorter-term forecast">
-    Forecast the next 6 months with a single command:
+```python
+timegpt_fcst_df = nixtla_client.forecast(
+    df=df,
+    h=36,
+    freq='MS',
+    time_col='timestamp',
+    target_col='value',
+    model='timegpt-1-long-horizon'
+)
+timegpt_fcst_df.head()
+```
 
-    ```python Forecast 6 Months
-    timegpt_fcst_df = nixtla_client.forecast(
-        df=df,
-        h=6,
-        freq='MS',
-        time_col='timestamp',
-        target_col='value'
-    )
-    nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
-    ```
+Plot the forecast:
 
-    <Frame caption="6-month forecast for AirPassengers data.">
-      ![Shorter Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-18-output-2.png)
-    </Frame>
-  </Accordion>
-</AccordionGroup>
+```python
+nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+```
+
+<Frame caption="36-month forecast using the 'timegpt-1-long-horizon' model.">
+  ![Longer Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-17-output-1.png)
+</Frame>
+
+### Generate a shorter-term forecast
+
+Forecast the next 6 months with a single command:
+
+```python
+timegpt_fcst_df = nixtla_client.forecast(
+    df=df,
+    h=6,
+    freq='MS',
+    time_col='timestamp',
+    target_col='value'
+)
+```
+
+Plot the forecast:
+
+```python
+nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+```
+
+<Frame caption="6-month forecast for AirPassengers data.">
+  ![Shorter Forecast Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-18-output-2.png)
+</Frame>
