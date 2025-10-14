@@ -245,6 +245,30 @@
     {
       "source": "/docs/getting-started-timegen_1_quickstart_azure_",
       "destination": "/docs/setup/azureai"
+    },
+    {
+      "source": "/docs/capabilities-forecast-cross_validation",
+      "destination": "/docs/forecasting/evaluation/cross_validation"
+    },
+    {
+      "source": "/docs/capabilities-forecast-multiple_series_forecasting",
+      "destination": "/docs/data_requirements/multiple_series"
+    },
+    {
+      "source": "/docs/tutorials-computing_at_scale",
+      "destination": "/docs/forecasting/forecasting-at-scale/computing_at_scale"
+    },
+    {
+      "source": "/docs/tutorials-special_topics-tutorials-hierarchical_forecasting",
+      "destination": "/docs/forecasting/special-topics/temporal_hierarchical"
+    },
+    {
+      "source": "/docs/tutorials-exogenous_variables-tutorials-shap_values_for_timegpt_and_timegen",
+      "destination": "/docs/forecasting/exogenous-variables/interpretability_with_shap"
+    },
+    {
+      "source": "/docs/tutorials-uncertainty_quantification-tutorials-prediction_intervals",
+      "destination": "/docs/forecasting/probabilistic/introduction#uncertainty-quantification-with-timegpt"
     }
   ],
   "contextual": {
