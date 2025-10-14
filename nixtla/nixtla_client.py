@@ -108,7 +108,7 @@ def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str,
     if not isinstance(value, dict):
         raise TypeError("Value must be a dictionary")
 
-    for k, v in value.items():
+    for _, v in value.items():
         if isinstance(v, dict):
             for _, nv in v.items():
                 # nested structure allowed but they can support primitive values only
