@@ -229,6 +229,46 @@
     {
       "source": "/use-cases-what_if_forecasting_price_effects_in_retail",
       "destination": "/use_cases/what_if_forecasting_price_effects_in_retail"
+    },
+    {
+      "source": "/getting-started-timegpt_quickstart",
+      "destination": "/forecasting/timegpt_quickstart"
+    },
+    {
+      "source": "/tutorials-special_topics-tutorials-improve_forecast_accuracy_with_timegpt",
+      "destination": "/forecasting/improve_accuracy"
+    },
+    {
+      "source": "/capabilities-anomaly-detection-anomaly_detection",
+      "destination": "/anomaly_detection/historical_anomaly_detection"
+    },
+    {
+      "source": "/getting-started-timegen_1_quickstart_azure_",
+      "destination": "/setup/azureai"
+    },
+    {
+      "source": "/capabilities-forecast-cross_validation",
+      "destination": "/forecasting/evaluation/cross_validation"
+    },
+    {
+      "source": "/capabilities-forecast-multiple_series_forecasting",
+      "destination": "/data_requirements/multiple_series"
+    },
+    {
+      "source": "/tutorials-computing_at_scale",
+      "destination": "/forecasting/forecasting-at-scale/computing_at_scale"
+    },
+    {
+      "source": "/tutorials-special_topics-tutorials-hierarchical_forecasting",
+      "destination": "/forecasting/special-topics/temporal_hierarchical"
+    },
+    {
+      "source": "/tutorials-exogenous_variables-tutorials-shap_values_for_timegpt_and_timegen",
+      "destination": "/forecasting/exogenous-variables/interpretability_with_shap"
+    },
+    {
+      "source": "/tutorials-uncertainty_quantification-tutorials-prediction_intervals",
+      "destination": "/forecasting/probabilistic/introduction#uncertainty-quantification-with-timegpt"
     }
   ],
   "contextual": {
