@@ -15,15 +15,15 @@
 
 
 
-## <kbd>function</kbd> `validate_extra_params`
+## <kbd>function</kbd> `validate_no_nested_dict`
 
 ```python
-validate_extra_params(
+validate_no_nested_dict(
     value: Optional[Dict[str, Any]]
 ) → Optional[Dict[str, Any]]
 ```
 
-Validate that the dictionary doesn't contain complex structures. 
+Validate that the dictionary doesn't contain nested structures. 
 
 
 ---
@@ -576,7 +576,7 @@ forecast(
     model: str = 'timegpt-1',
     num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
     feature_contributions: bool = False,
-    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7f87ca1bae60>)] = None
+    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_no_nested_dict at 0x7f905923ae60>)] = None
 ) → ~AnyDFType
 ```
 
