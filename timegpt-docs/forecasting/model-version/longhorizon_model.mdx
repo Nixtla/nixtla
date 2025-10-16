@@ -1,18 +1,27 @@
 ---
-title: "Long-horizon forecasting Tutorial"
-description: "Learn how to use the TimeGPT long-horizon model for forecasting far into the future with Nixtla client."
+title: "Long-Horizon Forecasting with TimeGPT"
+description: "Master long-horizon time series forecasting in Python using TimeGPT. Learn to predict 2+ seasonal periods ahead with confidence intervals and uncertainty quantification."
 icon: "clock"
 ---
 
 
 ## What is Long-Horizon Forecasting?
 
-Long-horizon forecasting refers to predictions far into the future, typically exceeding two seasonal periods.
-The exact threshold depends on data frequency. The further you forecast, the more uncertainty you face.
+Long-horizon forecasting refers to predictions far into the future, typically exceeding two seasonal periods. For example, forecasting electricity demand 3 months ahead for hourly data, or predicting sales 2 years ahead for monthly data. The exact threshold depends on data frequency. The further you forecast, the more uncertainty you face.
 
 The key challenge with long-horizon forecasting is that these predictions extend so far into the future that they may be influenced by unforeseen factors not present in the initial dataset. This means long-horizon forecasts generally involve greater risk and uncertainty compared to short-term predictions.
 
 To address these unique challenges, Nixtla provides the specialized `timegpt-1-long-horizon` model in TimeGPT. You can access this model by simply specifying `model="timegpt-1-long-horizon"` when calling `nixtla_client.forecast`.
+
+## When to Use Long-Horizon Forecasting
+
+Long-horizon forecasting is ideal for:
+- **Supply chain planning**: Predict inventory needs 3-6 months ahead
+- **Financial forecasting**: Model quarterly or annual revenue projections
+- **Energy demand**: Forecast power consumption weeks or months in advance
+- **Climate modeling**: Predict seasonal weather patterns
+
+Use the `timegpt-1-long-horizon` model when your forecast horizon exceeds two complete seasonal cycles in your data.
 
 ## How to Use the Long-Horizon Model
 
@@ -88,7 +97,7 @@ nixtla_client.plot(
 ```
 
 <Frame caption="TimeGPT Long-Horizon Forecast with 90% Confidence Intervals">
-  ![Forecast plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/04_longhorizon_files/figure-markdown_strict/cell-14-output-1.png)
+  ![Long-horizon time series forecast showing predicted oil temperature with 90% confidence intervals over 96 hours](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/04_longhorizon_files/figure-markdown_strict/cell-14-output-1.png)
 </Frame>
 
 
@@ -116,3 +125,25 @@ Evaluation result:
 
 
 The model achieves a MAE of approximately 0.146, indicating strong performance for these longer-range forecasts.
+
+## Frequently Asked Questions
+
+**Q: What's the difference between timegpt-1 and timegpt-1-long-horizon?**
+
+The `timegpt-1-long-horizon` model is specifically trained for extended forecast horizons (2+ seasonal periods), providing better accuracy for long-range predictions.
+
+**Q: How far ahead can I forecast with the long-horizon model?**
+
+The optimal horizon depends on your data frequency and patterns. Generally, the model performs well up to 4-6 seasonal cycles ahead.
+
+**Q: Can I use exogenous variables with long-horizon forecasting?**
+
+Yes, TimeGPT supports exogenous variables for improved long-horizon accuracy. See our [exogenous variables guide](/forecasting/exogenous-variables/numeric_features) for details.
+
+## Related Resources
+
+Learn more about TimeGPT capabilities:
+- [Fine-tuning TimeGPT](/forecasting/fine-tuning/steps) - Improve accuracy for your specific dataset
+- [Prediction Intervals](/forecasting/probabilistic/prediction_intervals) - Quantify forecast uncertainty
+- [Cross-Validation](/forecasting/evaluation/cross_validation) - Validate model performance
+- [Anomaly Detection](/anomaly_detection/historical_anomaly_detection) - Identify unusual patterns in time series
