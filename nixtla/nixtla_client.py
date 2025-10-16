@@ -2283,6 +2283,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         num_partitions: Optional[int],
+        model_parameters: _ExtraParamDataType,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2323,6 +2324,7 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=None,
+                model_parameters=model_parameters,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -2353,6 +2355,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
+        model_parameters: _ExtraParamDataType = None,
     ) -> AnyDFType:
         """Perform cross validation in your time series using TimeGPT.
 
@@ -2436,11 +2439,15 @@ class NixtlaClient:
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
+            model_parameters (dict): The dictionary settings that determine
+                the behavior of the model. Default is None
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with cross validation forecasts.
         """
+        extra_param_checker.validate_python(model_parameters)
+
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_cross_validation(
                 df=df,
@@ -2465,6 +2472,7 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=num_partitions,
+                model_parameters=model_parameters,
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2538,6 +2546,9 @@ class NixtlaClient:
             "finetuned_model_id": finetuned_model_id,
             "refit": refit,
         }
+        if model_parameters is not None:
+            payload.update({"model_parameters": model_parameters})
+
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
@@ -3068,6 +3079,7 @@ def _cross_validation_wrapper(
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
+    model_parameters: _ExtraParamDataType,
 ) -> pd.DataFrame:
     return client.cross_validation(
         df=df,
@@ -3092,6 +3104,7 @@ def _cross_validation_wrapper(
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
         num_partitions=num_partitions,
+        model_parameters=model_parameters,
     )
 
 
