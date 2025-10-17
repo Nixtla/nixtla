@@ -15,15 +15,15 @@
 
 
 
-## <kbd>function</kbd> `validate_extra_params`
+## <kbd>function</kbd> `validate_no_nested_dict`
 
 ```python
-validate_extra_params(
+validate_no_nested_dict(
     value: Optional[Dict[str, Any]]
 ) → Optional[Dict[str, Any]]
 ```
 
-Validate that the dictionary doesn't contain complex structures. 
+Validate that the dictionary doesn't contain nested structures. 
 
 
 ---
@@ -263,8 +263,7 @@ cross_validation(
     date_features: Union[bool, list[str]] = False,
     date_features_to_one_hot: Union[bool, list[str]] = False,
     model: str = 'timegpt-1',
-    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
-    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7fe8baeaee60>)] = None
+    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None
 ) → ~AnyDFType
 ```
 
@@ -298,7 +297,6 @@ Perform cross validation in your time series using TimeGPT.
  - <b>`date_features`</b> (bool or list[str] or callable, optional):  Features  computed from the dates. Can be pandas date attributes  or functions that will take the dates as input. If True  automatically adds most used date features for the  frequency of `df`. Defaults to False. 
  - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
  - <b>`model`</b> (str):  Model to use as a string. Options are: `timegpt-1`,  and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
- - <b>`model_parameters`</b> (dict):  The dictionary settings that determine  the behavior of the model. Default is None 
 
 
 
@@ -578,7 +576,7 @@ forecast(
     model: str = 'timegpt-1',
     num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
     feature_contributions: bool = False,
-    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7fe8baeaee60>)] = None
+    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_no_nested_dict at 0x7f4b512eee60>)] = None
 ) → ~AnyDFType
 ```
 
