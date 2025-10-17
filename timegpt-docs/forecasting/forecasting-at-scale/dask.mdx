@@ -1,12 +1,26 @@
 ---
-title: "Dask"
-description: "Run TimeGPT in a distributed manner using Dask for scalable forecasting."
+title: "Time Series Forecasting with Dask and TimeGPT"
+description: "Scale pandas workflows with Dask and TimeGPT for distributed time series forecasting. Learn to process 10M+ time series in Python with minimal code changes."
 icon: "server"
 ---
 
 ## Overview
 
-Dask is an open-source parallel computing library for Python. This guide explains how to use TimeGPT from Nixtla with Dask for distributed forecasting tasks.
+Dask is an open-source parallel computing library for Python that scales pandas workflows seamlessly. This guide explains how to use TimeGPT from Nixtla with Dask for distributed forecasting tasks.
+
+Dask is ideal when you're already using pandas and need to scale beyond single-machine memory limits—typically for datasets with 10-100 million observations across multiple time series. Unlike Spark, Dask requires minimal code changes from your existing pandas workflow.
+
+## Why Use Dask for Time Series Forecasting?
+
+Dask offers unique advantages for scaling time series forecasting:
+
+- **Pandas-like API**: Minimal code changes from your existing pandas workflows
+- **Easy scaling**: Convert pandas DataFrames to Dask with a single line of code
+- **Python-native**: Pure Python implementation, no JVM required (unlike Spark)
+- **Flexible deployment**: Run on your laptop or scale to a cluster
+- **Memory efficiency**: Process datasets larger than RAM through intelligent chunking
+
+Choose Dask when you need to scale from 10 million to 100 million observations and want the smoothest transition from pandas.
 
 **What you'll learn:**
 
@@ -128,6 +142,15 @@ You can use any method from the `NixtlaClient`, such as `forecast` or `cross_val
 
 
 
-<Check>
-  TimeGPT with Dask also supports exogenous variables. Refer to the [Exogenous Variables Tutorial](/forecasting/exogenous-variables/numeric_features) for details. Substitute pandas DataFrames with Dask DataFrames as needed.
-</Check>
+## Working with Exogenous Variables
+
+TimeGPT with Dask also supports exogenous variables. Refer to the [Exogenous Variables Tutorial](/forecasting/exogenous-variables/numeric_features) for details. Simply substitute pandas DataFrames with Dask DataFrames—the API remains identical.
+
+## Related Resources
+
+Explore more distributed forecasting options:
+- [Distributed Computing Overview](/forecasting/forecasting-at-scale/computing_at_scale) - Compare Spark, Dask, and Ray
+- [Spark Integration](/forecasting/forecasting-at-scale/spark) - For datasets with 100M+ observations
+- [Ray Integration](/forecasting/forecasting-at-scale/ray) - For ML pipeline integration
+- [Fine-tuning TimeGPT](/forecasting/fine-tuning/steps) - Improve accuracy at scale
+- [Cross-Validation](/forecasting/evaluation/cross_validation) - Validate distributed forecasts
