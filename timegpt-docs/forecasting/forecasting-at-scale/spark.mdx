@@ -1,151 +1,147 @@
 ---
-title: "Spark"
-description: "Learn how to run TimeGPT in a distributed manner on Spark for scalable forecasting and cross-validation."
+title: "Time Series Forecasting with Spark"
+description: "Scale enterprise time series forecasting with Spark and TimeGPT. Learn to process 100M+ observations across distributed clusters with Python and PySpark."
 icon: "server"
 ---
 
-# Run TimeGPT in a Distributed Manner on Spark
+## Overview
 
-<Info>
-Spark is an open-source distributed compute framework designed for large-scale data processing. With Spark, you can seamlessly scale your Python-based workflows for big data analytics and machine learning tasks. This tutorial demonstrates how to use **TimeGPT** with Spark to perform forecasting and cross-validation.
-</Info>
+[Spark](https://spark.apache.org/) is an open-source distributed compute framework designed for large-scale data processing. This guide demonstrates how to use TimeGPT with Spark to perform forecasting and cross-validation across distributed clusters.
+
+Spark is ideal for enterprise environments with existing Hadoop infrastructure and datasets exceeding 100 million observations. Its robust distributed architecture handles massive-scale time series forecasting with fault tolerance and high performance.
+
+## Why Use Spark for Time Series Forecasting?
+
+Spark offers unique advantages for enterprise-scale time series forecasting:
+
+- **Enterprise-grade scalability**: Handle datasets with 100M+ observations across distributed clusters
+- **Hadoop integration**: Seamlessly integrate with existing HDFS and Hadoop ecosystems
+- **Fault tolerance**: Automatic recovery from node failures ensures reliable computation
+- **Mature ecosystem**: Leverage Spark's rich ecosystem of tools and libraries
+- **Multi-language support**: Work with Python (PySpark), Scala, or Java
+
+Choose Spark when you have enterprise infrastructure, datasets exceeding 100 million observations, or need robust fault tolerance for mission-critical forecasting.
+
+**What you'll learn:**
+
+- Install Fugue with Spark support for distributed computing
+- Convert pandas DataFrames to Spark DataFrames
+- Run TimeGPT forecasting and cross-validation on Spark clusters
+
+## Prerequisites
+
+Before proceeding, make sure you have an [API key from Nixtla](/setup/setting_up_your_api_key).
+
+If executing on a distributed Spark cluster, ensure the `nixtla` library is installed on all worker nodes for consistent execution.
+
+## How to Use TimeGPT with Spark
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/16_computing_at_scale_spark_distributed.ipynb)
 
-<Warning>
-If executing on a distributed Spark cluster, be sure the `nixtla` library (and any dependencies) are installed on all worker nodes to ensure consistent execution across the cluster.
-</Warning>
+### Step 1: Install Fugue and Spark
 
-<Steps>
-  <Steps title="1. Installation">
-    Fugue provides a convenient interface to distribute Python code across frameworks like Spark.
-    <br />
+Fugue provides a convenient interface to distribute Python code across frameworks like Spark.
 
-    <Info>
-      Install `fugue` with Spark support:
-    </Info>
+Install Fugue with Spark support:
 
-    ```bash pip install fugue with spark
-    pip install fugue[spark]
+```bash
+pip install fugue[spark]
+```
+
+To work with TimeGPT, make sure you have the `nixtla` library installed as well.
+
+### Step 2: Load Your Data
+
+Load the dataset into a pandas DataFrame. In this example, we use hourly electricity price data from different markets:
+
+```python
+import pandas as pd
+
+df = pd.read_csv(
+    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv',
+    parse_dates=['ds'],
+)
+df.head()
+```
+
+### Step 3: Initialize Spark
+
+Create a Spark session and convert your pandas DataFrame to a Spark DataFrame:
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.getOrCreate()
+
+spark_df = spark.createDataFrame(df)
+spark_df.show(5)
+```
+
+### Step 4: Use TimeGPT on Spark
+
+To use TimeGPT with Spark, provide a Spark DataFrame to Nixtla's client methods instead of a pandas DataFrame. The main difference from local usage is working with Spark DataFrames instead of pandas DataFrames.
+
+Instantiate the `NixtlaClient` class to interact with Nixtla's API:
+
+```python
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+You can use any method from the `NixtlaClient`, such as `forecast` or `cross_validation`.
+
+<Tabs>
+  <Tab title="Forecast Example">
+    ```python
+    fcst_df = nixtla_client.forecast(spark_df, h=12)
+    fcst_df.show(5)
     ```
 
-    To work with TimeGPT, make sure you have the `nixtla` library installed as well.
-  </Steps>
+    When using Azure AI endpoints, specify `model="azureai"`:
 
-  <Steps title="2. Load Data">
-    Load the dataset into a pandas DataFrame. In this example, we use hourly electricity price data from different markets.
-
-    ```python load electricity price data
-    import pandas as pd
-
-    df = pd.read_csv(
-        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv',
-        parse_dates=['ds'],
+    ```python
+    nixtla_client.forecast(
+        spark_df,
+        h=12,
+        model="azureai"
     )
-    df.head()
     ```
 
-  </Steps>
-
-  <Steps title="3. Initialize Spark">
-    Create a Spark session and convert your pandas DataFrame to a Spark DataFrame:
-    ```python spark session creation and conversion
-    from pyspark.sql import SparkSession
-
-    spark = SparkSession.builder.getOrCreate()
-
-    spark_df = spark.createDataFrame(df)
-    spark_df.show(5)
+    The public API supports two models: `timegpt-1` (default) and `timegpt-1-long-horizon`. For long horizon forecasting, see the [long-horizon model tutorial](/forecasting/model-version/longhorizon_model).
+  </Tab>
+  <Tab title="Cross-validation Example">
+    ```python
+    cv_df = nixtla_client.cross_validation(
+        spark_df,
+        h=12,
+        n_windows=5,
+        step_size=2
+    )
+    cv_df.show(5)
     ```
-  </Steps>
+  </Tab>
+</Tabs>
 
-  <Steps title="4. Use TimeGPT on Spark">
+### Step 5: Stop Spark
 
-    <CardGroup>
-      <Card>
-        **Key Concept**<br/>
+After completing your tasks, stop the Spark session to free resources:
 
-          Using TimeGPT with Spark is very similar to using it locally. The main difference is that you
-          work with Spark DataFrames instead of pandas DataFrames.
+```python
+spark.stop()
+```
 
-      </Card>
-    </CardGroup>
+## Working with Exogenous Variables
 
-    <Check>
-      TimeGPT can handle large-scale data when distributed via Spark, allowing you to scale your time series forecasting tasks efficiently.
-    </Check>
+TimeGPT with Spark also supports exogenous variables. Refer to the [Exogenous Variables Tutorial](/forecasting/exogenous-variables/numeric_features) for details. Simply substitute pandas DataFrames with Spark DataFrames—the API remains identical.
 
-    <AccordionGroup>
-      <Accordion title="Create a NixtlaClient Instance">
-        ```python NixtlaClient initialization
-        from nixtla import NixtlaClient
+## Related Resources
 
-        nixtla_client = NixtlaClient(
-            api_key='my_api_key_provided_by_nixtla'  # defaults to os.environ.get("NIXTLA_API_KEY")
-        )
-        ```
-
-        <Info>
-          If you need to use an Azure AI endpoint, set the `base_url` parameter:
-        </Info>
-
-        ```python NixtlaClient with Azure AI endpoint
-        nixtla_client = NixtlaClient(
-            base_url="your azure ai endpoint",
-            api_key="your api_key"
-        )
-        ```
-      </Accordion>
-
-      <Accordion title="Forecast">
-        ```python forecasting with NixtlaClient on Spark
-        fcst_df = nixtla_client.forecast(spark_df, h=12)
-        fcst_df.show(5)
-        ```
-
-        <Info>
-          When using Azure AI endpoints, specify `model="azureai"`.
-        </Info>
-
-        ```python AzureAI model usage example
-        nixtla_client.forecast(
-            spark_df,
-            h=12,
-            model="azureai"
-        )
-        ```
-
-        <Info>
-          The public API supports two models: `timegpt-1` (default) and `timegpt-1-long-horizon`.
-          For long horizon forecasting, see
-          [this tutorial](/forecasting/model-version/longhorizon_model).
-        </Info>
-      </Accordion>
-
-      <Accordion title="Cross-Validation">
-        Perform cross-validation with Spark DataFrames:
-        ```python cross-validation example
-        cv_df = nixtla_client.cross_validation(
-            spark_df,
-            h=12,
-            n_windows=5,
-            step_size=2
-        )
-        cv_df.show(5)
-        ```
-      </Accordion>
-    </AccordionGroup>
-
-    <Info>
-      For including exogenous variables with TimeGPT on Spark, use Spark DataFrames instead of pandas DataFrames, as demonstrated in the
-      [Exogenous Variables](/forecasting/exogenous-variables/numeric_features) tutorial.
-    </Info>
-  </Steps>
-
-  <Steps title="5. Stop Spark">
-    After completing your tasks, stop the Spark session to free resources:
-    ```python stop spark session
-    spark.stop()
-    ```
-  </Steps>
-</Steps>
+Explore more distributed forecasting options:
+- [Distributed Computing Overview](/forecasting/forecasting-at-scale/computing_at_scale) - Compare Spark, Dask, and Ray
+- [Dask Integration](/forecasting/forecasting-at-scale/dask) - For datasets with 10M-100M observations
+- [Ray Integration](/forecasting/forecasting-at-scale/ray) - For ML pipeline integration
+- [Fine-tuning TimeGPT](/forecasting/fine-tuning/steps) - Improve accuracy at scale
+- [Cross-Validation](/forecasting/evaluation/cross_validation) - Validate distributed forecasts
