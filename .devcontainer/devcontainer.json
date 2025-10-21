@@ -1,6 +1,6 @@
 {
     "name": "Nixtla Development Environment",
-    "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11",
+    "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11-bookworm",
     "hostRequirements": {
         "cpus": 4,
         "memory": "16gb",
@@ -39,22 +39,23 @@
                 "ms-toolsai.jupyter@2025.2.0",
                 "charliermarsh.ruff@2025.22.0",
                 "GitHub.copilot",
-                "tamasfe.even-better-toml"
+                "tamasfe.even-better-toml",
+                "anthropic.claude-code@1.0.127"
             ]
         }
     },
     "forwardPorts": [
         8888
     ],
+    "containerEnv": {
+        "UV_NO_SYNC": "1"
+    },
     "onCreateCommand": "make devenv",
-    "postCreateCommand": ["uv pip install -Ue .[dev,distributed]", "npm i -g mint"],
+    "postCreateCommand": "make init_codespace",
     "waitFor": "postCreateCommand",
     "features": {
-        "ghcr.io/devcontainers/features/docker-in-docker:2.12.2": {},
-        "ghcr.io/va-h/devcontainers-features/uv:1": {},
-        "ghcr.io/devcontainers/features/node:1": {
-            "version": "lts",
-            "nodeGlobalInstallDirectory": "/usr/local/share/npm-global"
-        }
+        "ghcr.io/devcontainers/features/docker-in-docker:2.12.3": {},
+        "ghcr.io/va-h/devcontainers-features/uv:1.1.4": {},
+        "ghcr.io/devcontainers/features/node:1.6.3": {}
     }
 }
