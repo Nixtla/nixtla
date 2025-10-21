@@ -45,8 +45,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Setup devenv
+        if: matrix.python-version != '3.12'
         run: >
           make devenv
+
+      - name: Setup devenv 3.12
+        if: matrix.python-version == '3.12'
+        run: >
+          uv sync --quiet --all-groups --no-group=distributed --all-extras --frozen
 
       - name: Run tests (Linux Python 3.11)
         if: runner.os == 'Linux' && matrix.python-version == '3.11'

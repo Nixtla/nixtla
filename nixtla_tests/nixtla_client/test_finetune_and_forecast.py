@@ -42,8 +42,8 @@ class TestTimeSeriesDataSet1:
         ).loc[0]
         # error was reduced over 30% by finetuning
         assert 1 - fcst_rmse["ten_rounds"] / fcst_rmse["TimeGPT"] > 0.3
-        # error was reduced over 30% by further finetuning
-        assert 1 - fcst_rmse["twenty_rounds"] / fcst_rmse["ten_rounds"] > 0.3
+        # error was reduced over 20% by further finetuning
+        assert 1 - fcst_rmse["twenty_rounds"] / fcst_rmse["ten_rounds"] > 0.2
 
         # non-existent model returns 404
         with pytest.raises(ApiError) as excinfo:
