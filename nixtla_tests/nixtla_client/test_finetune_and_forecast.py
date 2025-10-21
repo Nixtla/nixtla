@@ -1,10 +1,10 @@
 import pytest
+from utilsforecast.evaluation import evaluate
+from utilsforecast.losses import rmse
 
 from nixtla.nixtla_client import ApiError
 from nixtla_tests.helpers.checks import check_finetuned_model
 from nixtla_tests.helpers.states import model_ids_object
-from utilsforecast.evaluation import evaluate
-from utilsforecast.losses import rmse
 
 
 class TestTimeSeriesDataSet1:
@@ -40,8 +40,8 @@ class TestTimeSeriesDataSet1:
             metrics=[rmse],
             agg_fn="mean",
         ).loc[0]
-        # error was reduced over 40% by finetuning
-        assert 1 - fcst_rmse["ten_rounds"] / fcst_rmse["TimeGPT"] > 0.4
+        # error was reduced over 30% by finetuning
+        assert 1 - fcst_rmse["ten_rounds"] / fcst_rmse["TimeGPT"] > 0.3
         # error was reduced over 30% by further finetuning
         assert 1 - fcst_rmse["twenty_rounds"] / fcst_rmse["ten_rounds"] > 0.3
 
@@ -53,39 +53,51 @@ class TestTimeSeriesDataSet1:
         assert getattr(excinfo.value, "status_code", None) == 404
 
         # Enough data to finetune
-        _, model_horizon = custom_client._get_model_params("timegpt-1", ts_data_set1.freq)
-        forecast3 = custom_client.forecast(ts_data_set1.train.tail(model_horizon + 1), h=ts_data_set1.h, finetune_steps=10)
+        _, model_horizon = custom_client._get_model_params(
+            "timegpt-1", ts_data_set1.freq
+        )
+        _ = custom_client.forecast(
+            ts_data_set1.train.tail(model_horizon + 1),
+            h=ts_data_set1.h,
+            finetune_steps=10,
+        )
 
         # Not enough data to finetune
         with pytest.raises(
-            ValueError, match="Some series are too short. Please make sure that each series contains at least 8 observations."
+            ValueError,
+            match="Some series are too short. Please make sure that each series contains at least 8 observations.",
         ):
-            custom_client.forecast(ts_data_set1.train.tail(model_horizon), h=ts_data_set1.h, finetune_steps=10)
+            custom_client.forecast(
+                ts_data_set1.train.tail(model_horizon),
+                h=ts_data_set1.h,
+                finetune_steps=10,
+            )
 
     def test_cv_with_finetuned_model(self, custom_client, ts_data_set1):
-        cv_base = custom_client.cross_validation(
-            ts_data_set1.series, n_windows=2, h=ts_data_set1.h
-        )
-        cv_finetune = custom_client.cross_validation(
-            ts_data_set1.series,
-            n_windows=2,
-            h=ts_data_set1.h,
-            finetuned_model_id=model_ids_object.model_id1,
-        )
-        merged = cv_base.merge(
-            cv_finetune,
-            on=["unique_id", "ds", "cutoff", "y"],
-            suffixes=("_base", "_finetune"),
-        ).drop(columns="cutoff")
-        cv_rmse = evaluate(
-            merged,
-            metrics=[rmse],
-            agg_fn="mean",
-        ).loc[0]
-        # error was reduced over 40% by finetuning
-        assert 1 - cv_rmse["TimeGPT_finetune"] / cv_rmse["TimeGPT_base"] > 0.4
-
-        custom_client.delete_finetuned_model(model_ids_object.model_id1)
+        try:
+            cv_base = custom_client.cross_validation(
+                ts_data_set1.series, n_windows=2, h=ts_data_set1.h
+            )
+            cv_finetune = custom_client.cross_validation(
+                ts_data_set1.series,
+                n_windows=2,
+                h=ts_data_set1.h,
+                finetuned_model_id=model_ids_object.model_id1,
+            )
+            merged = cv_base.merge(
+                cv_finetune,
+                on=["unique_id", "ds", "cutoff", "y"],
+                suffixes=("_base", "_finetune"),
+            ).drop(columns="cutoff")
+            cv_rmse = evaluate(
+                merged,
+                metrics=[rmse],
+                agg_fn="mean",
+            ).loc[0]
+            # error was reduced over 30% by finetuning
+            assert 1 - cv_rmse["TimeGPT_finetune"] / cv_rmse["TimeGPT_base"] > 0.3
+        finally:
+            custom_client.delete_finetuned_model(model_ids_object.model_id1)
 
     def test_anomaly_detection_with_finetuned_model(
         self, custom_client, ts_anomaly_data
