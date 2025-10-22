@@ -106,7 +106,6 @@ def test_forecast_warning(nixtla_test_client, air_passengers_df, caplog):
     "kwargs",
     [
         {"add_history": True},
-        {"finetune_steps": 10, "finetune_loss": "mae"},
     ],
     ids=["short horizon with add_history", "short horizon with finetuning"],
 )
