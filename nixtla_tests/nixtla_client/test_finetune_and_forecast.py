@@ -57,6 +57,7 @@ class TestTimeSeriesDataSet1:
             ts_data_set1.train.tail(2),
             h=ts_data_set1.h,
             finetune_steps=10,
+            freq="D",
         )
 
     def test_cv_with_finetuned_model(self, custom_client, ts_data_set1):
