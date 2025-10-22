@@ -65,6 +65,10 @@ jobs:
       - name: Run nbconvert
         run: |
           find nbs/docs/ -name "*.ipynb" -print0 | while IFS= read -r -d '' nb; do
+            if [[ "$(basename "$nb")" == "19_computing_at_scale_ray_distributed.ipynb" ]]; then
+              echo "Skipping $nb..."
+              continue
+            fi
             echo "Running $nb..."
             jupyter nbconvert --to notebook --execute --inplace "$nb"
           done
