@@ -107,7 +107,7 @@ def test_forecast_warning(nixtla_test_client, air_passengers_df, caplog):
     [
         {"add_history": True},
     ],
-    ids=["short horizon with add_history", "short horizon with finetuning"],
+    ids=["short horizon with add_history"],
 )
 def test_forecast_error(nixtla_test_client, air_passengers_df, kwargs):
     with pytest.raises(
