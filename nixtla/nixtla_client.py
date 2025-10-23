@@ -1265,8 +1265,7 @@ class NixtlaClient:
             target_col=target_col,
         )
         standard_freq = _standardize_freq(freq, processed)
-        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
-        _validate_input_size(processed, 1, model_horizon)
+        _validate_input_size(processed, 1, 1)
         logger.info("Calling Fine-tune Endpoint...")
         payload = {
             "series": {
@@ -1616,7 +1615,7 @@ class NixtlaClient:
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if finetune_steps > 0:
-            _validate_input_size(processed, 1, model_horizon)
+            _validate_input_size(processed, 1, 1)
         if add_history:
             _validate_input_size(processed, model_input_size, model_horizon)
         if h > model_horizon:
