@@ -76,7 +76,7 @@ def test_forecast_with_error(series_with_gaps, nixtla_test_client, df_converter,
        ({"model_parameters": {"horizon": {"nested_key": [1, 2, 3]}}}, TypeError, "Invalid value type"),
        ({"model_parameters": {"horizon": {"nested_key": (1, 2, 3)}}}, TypeError, "Invalid value type"),
        ({"model_parameters": {"horizon": {"nested_key": {1, 2}}}}, TypeError, "Invalid value type"),
-       ({"model_parameters": {"horizon": {"nested_key": {"inner_key": "val"}}}}, TypeError, "Invalid value type")
+       ({"model_parameters": {"horizon": {"nested_key": {"inner_key": "val"}}}}, TypeError, "Invalid value type"),
        ({"model_parameters": {"horizon": pd.DataFrame()}}, TypeError, "Invalid value type"),
     ]
 )
@@ -93,7 +93,7 @@ def test_model_parameters(nixtla_test_client, air_passengers_df, test_params, ex
         if endpoint == "forecast":
             nixtla_test_client.forecast(**base_params)
         elif endpoint == "cross_validation":
-            nixtla_test_client.forecast(**base_params)
+            nixtla_test_client.cross_validation(**base_params)
     else:
         with pytest.raises(expected_exception) as exc_info:
             if endpoint == "forecast":
