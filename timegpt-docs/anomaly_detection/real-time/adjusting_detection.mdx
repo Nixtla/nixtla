@@ -1,18 +1,34 @@
 ---
 title: "Controlling the Anomaly Detection Process"
-description: "Learn how to refine TimeGPT's anomaly detection process by tuning parameters for improved accuracy and alignment with specific use cases."
+description: "Learn how to tune TimeGPT's anomaly detection parameters for optimal accuracy. Step-by-step guide to adjusting detection_size, level, confidence intervals, and fine-tuning strategies with Python code examples."
 icon: "brain"
 ---
 
+## Overview
 
-## Why Anomaly Detection?
-TimeGPT leverages forecast errors to identify anomalies in your time-series data. By optimizing parameters, you can detect subtle deviations and customize results for specific use cases.
+Fine-tuning anomaly detection parameters is essential for reducing false positives and improving detection accuracy in time series data. This guide shows you how to optimize TimeGPT's `detect_anomalies_online` method by adjusting key parameters like detection sensitivity, window sizes, and model fine-tuning options.
 
-## Key Parameters
+For an introduction to real-time anomaly detection, see our [Real-Time Anomaly Detection guide](/anomaly_detection/real-time/introduction). To understand local vs global detection strategies, check out [Local vs Global Anomaly Detection](/anomaly_detection/real-time/univariate_multivariate).
 
-• **detection_size** determines data window size for threshold calculation.<br/>
-• **level** sets confidence intervals for anomaly thresholds.<br/>
-• **freq** aligns detection with data frequency (e.g., "D" for daily).
+## Why Parameter Tuning Matters
+
+TimeGPT leverages forecast errors to identify anomalies in your time-series data. By optimizing parameters, you can detect subtle deviations, reduce false positives, and customize results for specific use cases.
+
+## Key Parameters for Anomaly Detection
+
+TimeGPT's anomaly detection can be controlled through three primary parameters:
+
+- **detection_size**: Controls the data window size for threshold calculation, determining how much historical context is used
+- **level**: Sets confidence intervals for anomaly thresholds (e.g., 80%, 95%, 99%), controlling detection sensitivity
+- **freq**: Aligns detection with data frequency (e.g., 'D' for daily, 'H' for hourly, 'min' for minute-level data)
+
+## Common Use Cases
+
+Adjusting anomaly detection parameters is crucial for:
+- **Reducing false positives** in noisy time series data
+- **Increasing sensitivity** to detect subtle anomalies
+- **Optimizing detection** for different data frequencies (hourly, daily, weekly)
+- **Improving accuracy** through model fine-tuning with custom loss functions
 
 ## How to Adjust the Anomaly Detection Process
 
@@ -39,7 +55,7 @@ nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
 
 ### Step 3: Conduct a baseline detection
 
-Load a portion of the Peyton Manning dataset to illustrate the default anomaly detection process:
+Load a portion of the Peyton Manning dataset to illustrate the default anomaly detection process. We use the Peyton Manning Wikipedia page views dataset to demonstrate parameter tuning on real-world data with natural anomalies and trends.
 
 ```python
 df = pd.read_csv(
@@ -147,3 +163,30 @@ anomaly_df_horizon = nixtla_client.detect_anomalies_online(
 **Choosing `h` and `step_size`** depends on the nature of your data:
 - Frequent or short anomalies: Use smaller `h` and `step_size`
 - Smooth or longer trends: Choose larger `h` and `step_size`
+
+## Summary
+
+You've learned how to control TimeGPT's anomaly detection process through:
+1. **Baseline detection** using default parameters
+2. **Fine-tuning** with custom training iterations and loss functions
+3. **Window adjustment** using forecast horizon and step size parameters
+
+Experiment with these parameters to optimize detection for your specific use case and data patterns.
+
+## Frequently Asked Questions
+
+**How do I reduce false positives in anomaly detection?**
+
+Increase the `level` parameter (e.g., from 80 to 95 or 99) to make detection stricter, or use fine-tuning parameters like `finetune_steps` to improve forecast accuracy.
+
+**What's the difference between detection_size and step_size?**
+
+`detection_size` determines how many data points to analyze, while `step_size` controls the interval between detection windows when using overlapping windows.
+
+**When should I use fine-tuning for anomaly detection?**
+
+Use fine-tuning when you have domain-specific patterns or when baseline detection produces too many false positives. Fine-tuning helps TimeGPT better understand your specific time series characteristics.
+
+**How does overlapping windows improve detection?**
+
+When `step_size` < `h`, TimeGPT analyzes the same time steps multiple times from different perspectives, making detection more robust but requiring more computation.
