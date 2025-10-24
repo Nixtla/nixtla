@@ -14,75 +14,34 @@ TimeGPT leverages forecast errors to identify anomalies in your time-series data
 • **level** sets confidence intervals for anomaly thresholds.<br/>
 • **freq** aligns detection with data frequency (e.g., "D" for daily).
 
+## How to Adjust the Anomaly Detection Process
+
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/online-anomaly-detection/02_adjusting_detection_process.ipynb)
 
-<Steps>
+### Step 1: Install and Import Dependencies
 
-<Step title="1. Install and Import Dependencies">
 In your environment, install and import the necessary libraries:
 
-```python Import Dependencies
+```python
 import pandas as pd
 from nixtla import NixtlaClient
 import matplotlib.pyplot as plt
 ```
 
-</Step>
+### Step 2: Initialize the Nixtla Client
 
-{/* <Step title="2. Define a Plotting Utility Function">
-Use this helper function to visualize detected anomalies:
-
-```python Plot Anomaly Function
-def plot_anomaly(df, anomaly_df, time_col='ts', target_col='y'):
-    merged_df = pd.merge(
-        df.tail(300),
-        anomaly_df[[time_col, 'anomaly', 'TimeGPT']],
-        on=time_col,
-        how='left'
-    )
-    plt.figure(figsize=(12, 2))
-    plt.plot(merged_df[time_col], merged_df[target_col], label='y', color='navy', alpha=0.8)
-    plt.plot(merged_df[time_col], merged_df['TimeGPT'], label='TimeGPT', color='orchid', alpha=0.7)
-    plt.scatter(
-        merged_df.loc[merged_df['anomaly'], time_col],
-        merged_df.loc[merged_df['anomaly'], target_col],
-        color='orchid',
-        label='Anomalies Detected'
-    )
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-```
-
-</Step> */}
-
-<Step title="2. Initialize the Nixtla Client">
 Create an instance of NixtlaClient with your API key:
 
-```python Initialize Nixtla Client
-nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')  # Replace with your Nixtla API key
+```python
+nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
 ```
 
-<Info>
-If you are using an Azure AI endpoint, set the **base_url** parameter:
 
-```python Azure AI Endpoint Setup
-nixtla_client = NixtlaClient(
-    base_url="your azure ai endpoint",
-    api_key="your api_key"
-)
-```
-</Info>
-</Step>
-
-<Step title="3. Conduct a baseline detection">
-
-<Tabs>
-<Tab title="Example Data" id="example-data">
+### Step 3: Conduct a baseline detection
 
 Load a portion of the Peyton Manning dataset to illustrate the default anomaly detection process:
 
-```python Load Dataset
+```python
 df = pd.read_csv(
     'https://datasets-nixtla.s3.amazonaws.com/peyton-manning.csv',
     parse_dates=['ds']
@@ -100,12 +59,10 @@ df.head()
 | 2768   | 0           | 2015-07-09   | 7.152269   |
 
 
+Set a baseline by using only the default parameters of the method.
 
-</Tab>
 
-<Tab title="Baseline Anomaly Detection" id="baseline-detection">
-
-```python Baseline Anomaly Detection Call
+```python
 anomaly_df = nixtla_client.detect_anomalies_online(
     df,
     freq='D',
@@ -115,7 +72,6 @@ anomaly_df = nixtla_client.detect_anomalies_online(
 )
 ```
 
-<Accordion title="Baseline Detection Log Output">
 
 ```bash Baseline Detection Log Output
 INFO:nixtla.nixtla_client:Validating inputs...
@@ -124,24 +80,20 @@ WARNING:nixtla.nixtla_client:Detection size is large. Using the entire series to
 INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
 ```
 
-</Accordion>
 
 <Frame caption="Baseline Anomaly Detection Visualization">
   ![Baseline Anomaly Detection Visualization](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/02_adjusting_detection_process_files/figure-markdown_strict/cell-13-output-1.png)
 </Frame>
 
-</Tab>
-</Tabs>
-</Step>
+### Step 4: Fine-tuned detection
 
-<Step title="4. Fine-tuned detection">
-TimeGPT detects anomalies based on forecast errors. By improving your model’s forecasts, you can strengthen anomaly detection performance. The following parameters can be fine-tuned:
+TimeGPT detects anomalies based on forecast errors. By improving your model's forecasts, you can strengthen anomaly detection performance. The following parameters can be fine-tuned:
 
-• **finetune_steps**: Number of additional training iterations<br/>
-• **finetune_depth**: Depth level for refining the model<br/>
-• **finetune_loss**: Loss function used during fine-tuning
+- **finetune_steps**: Number of additional training iterations
+- **finetune_depth**: Depth level for refining the model
+- **finetune_loss**: Loss function used during fine-tuning
 
-```python Fine-tuning Anomaly Detection
+```python
 anomaly_online_ft = nixtla_client.detect_anomalies_online(
     df,
     freq='D',
@@ -154,8 +106,6 @@ anomaly_online_ft = nixtla_client.detect_anomalies_online(
 )
 ```
 
-<Accordion title="Fine-tuned Detection Log Output">
-
 ```bash Fine-tuned Detection Log Output
 INFO:nixtla.nixtla_client:Validating inputs...
 INFO:nixtla.nixtla_client:Preprocessing dataframes...
@@ -163,17 +113,21 @@ WARNING:nixtla.nixtla_client:Detection size is large. Using the entire series to
 INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
 ```
 
-</Accordion>
-
 <Frame caption="Fine-tuned TimeGPT Anomaly Detection">
   ![Fine-tuned TimeGPT Anomaly Detection](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/02_adjusting_detection_process_files/figure-markdown_strict/cell-15-output-1.png)
 </Frame>
-</Step>
 
-<Step title="5. Adjusting Forecast Horizon and Step Size">
-You can refine the resolution and sensitivity of anomaly detection by modifying forecast horizon (**h**) and the interval between detection windows (**step_size**).
+From the plot above, we can see that fewer anomalies were detected by the model, since the fine-tuning process helps TimeGPT better forecast the series.
 
-```python Adjusting Horizon and Step Size
+### Step 5: Adjusting Forecast Horizon and Step Size
+
+Similar to cross-validation, the anomaly detection method generates forecasts for historical data by splitting the time series into multiple windows. The way these windows are defined can impact the anomaly detection results. Two key parameters control this process:
+
+* `h`: Specifies how many steps into the future the forecast is made for each window.
+* `step_size`: Determines the interval between the starting points of consecutive windows.
+
+Note that when `step_size` is smaller than `h`, then we get overlapping windows. This can make the detection process more robust, as TimeGPT will see the same time step more than once. However, this comes with a computational cost, since the same time step will be predicted more than once.
+```python
 anomaly_df_horizon = nixtla_client.detect_anomalies_online(
     df,
     time_col='ds',
@@ -190,15 +144,6 @@ anomaly_df_horizon = nixtla_client.detect_anomalies_online(
   ![Adjusted Horizon and Step Size Visualization](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/02_adjusting_detection_process_files/figure-markdown_strict/cell-17-output-1.png)
 </Frame>
 
-<Info>
-**Choosing `h` and `step_size`** depends on the nature of your data:<br/>
-• Frequent or short anomalies: Use smaller `h` and `step_size`<br/>
-• Smooth or longer trends: Choose larger `h` and `step_size`
-</Info>
-</Step>
-
-</Steps>
-
-<Check>
-You have successfully refined anomaly detection using TimeGPT. Experiment with different fine-tuning strategies, horizons, and step sizes to tailor alerts for your unique data patterns.
-</Check>
+**Choosing `h` and `step_size`** depends on the nature of your data:
+- Frequent or short anomalies: Use smaller `h` and `step_size`
+- Smooth or longer trends: Choose larger `h` and `step_size`
