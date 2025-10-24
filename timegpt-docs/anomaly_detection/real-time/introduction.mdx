@@ -1,17 +1,23 @@
 ---
 title: "Online (Real-Time) Anomaly Detection"
-description: "Learn how to use the detect_anomalies_online method for real-time anomaly detection in streaming time series data with TimeGPT."
+description: "Learn how to detect anomalies in real-time streaming data using TimeGPT's detect_anomalies_online method. Complete Python tutorial with code examples for monitoring server logs, IoT sensors, and live data streams."
 icon: "bolt"
 ---
 
 ## Overview
 
-Online (real-time) anomaly detection helps you identify unusual behavior in time series data as soon as it appears. With **TimeGPT**, you can:
+Real-time anomaly detection enables you to identify unusual patterns in streaming time series data instantly—essential for monitoring server performance, detecting fraud, identifying system failures, and tracking IoT sensor anomalies. TimeGPT's `detect_anomalies_online` method provides:
 
-- **Flexible Control**: Gain more flexibility and control over the anomaly detection process
-- **Local & Global**: Perform local and global anomaly detection
-- **Stream Processing**: Detect anomalies on stream data as it arrives
+- **Flexible Control**: Fine-tune detection sensitivity and confidence levels
+- **Local & Global Detection**: Analyze individual series or detect system-wide anomalies across multiple correlated metrics
+- **Stream Processing**: Monitor live data feeds with rolling window analysis
 
+## Common Use Cases
+
+- **Server Monitoring**: Detect CPU spikes, memory leaks, and downtime
+- **IoT Sensors**: Identify equipment failures and sensor malfunctions
+- **Fraud Detection**: Flag suspicious transactions in real-time
+- **Application Performance**: Monitor API response times and error rates
 
 ## Quick Start
 
@@ -57,14 +63,14 @@ We observe that the time series remains stable during the initial period; howeve
 
 ### Step 4: Detect anomalies in real time
 
-The `detect_anomalies_online` method detect anomalies in a time series leveraging TimeGPT's forecast power. It uses the forecast error in deciding the anomalous step so you can specify and tune the parameters like that of the `forecast` method. This function will return a dataframe that contains anomaly flags and anomaly score (its absolute value quantifies the abnormality of the value).
+The `detect_anomalies_online` method detects anomalies in a time series leveraging TimeGPT's forecast power. It uses the forecast error in deciding the anomalous step so you can specify and tune the parameters like that of the `forecast` method. This function will return a dataframe that contains anomaly flags and anomaly score (its absolute value quantifies the abnormality of the value).
 
-To perfom real-time anomaly detection, set the following parameters:
+To perform real-time anomaly detection, set the following parameters:
 
 - `df`: A pandas DataFrame containing the time series data.
 - `time_col`: The column that identifies the datestamp.
 - `target_col`: The variable to forecast.
-- `h`: Horizon is the number of steps ahead to make forecast.
+- `h`: Horizon is the number of steps ahead to make a forecast.
 - `freq`: The frequency of the time series in Pandas format.
 - `level`: Percentile of scores distribution at which the threshold is set, controlling how strictly anomalies are flagged. Default at 99%.
 - `detection_size`: The number of steps to analyze for anomaly at the end of time series.
@@ -108,6 +114,16 @@ From the plot, we observe that the anomalous period is promptly detected.
 <Check>
   Here we use a detection size of 100 to illustrate the anomaly detection process. In production, running detections more frequently with smaller detection sizes can help identify anomalies as soon as they occur.
 </Check>
+
+## Frequently Asked Questions
+
+**What's the difference between online and historical anomaly detection?**
+
+Online detection analyzes recent data windows for immediate alerting, while historical detection analyzes complete datasets for pattern discovery.
+
+**Can I adjust detection sensitivity?**
+
+Yes, tune the `level` parameter (confidence threshold) and `detection_size` (analysis window) to control false positive rates.
 
 ## Next Steps
 
