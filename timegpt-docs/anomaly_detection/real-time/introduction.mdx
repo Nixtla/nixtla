@@ -4,128 +4,93 @@ description: "Learn how to use the detect_anomalies_online method for real-time 
 icon: "bolt"
 ---
 
-<Info>
-Online anomaly detection helps you catch issues in real time—like spotting traffic spikes on a website. Using detect_anomalies_online, you can monitor the latest data with rolling forecasts. This guide shows you how to get started and how it differs from historical detection.
-</Info>
-
 ## Overview
 
 Online (real-time) anomaly detection helps you identify unusual behavior in time series data as soon as it appears. With **TimeGPT**, you can:
 
-<CardGroup cols={3}>
-  <Card title="Flexible Control">
-    More flexibility and control over the anomaly detection process.
-  </Card>
-  <Card title="Local & Global">
-    Perform local and global anomaly detection.
-  </Card>
-  <Card title="Stream Processing">
-    Detect anomalies on stream data as it arrives.
-  </Card>
-</CardGroup>
+- **Flexible Control**: Gain more flexibility and control over the anomaly detection process
+- **Local & Global**: Perform local and global anomaly detection
+- **Stream Processing**: Detect anomalies on stream data as it arrives
 
-
----
 
 ## Quick Start
+
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/online-anomaly-detection/01_quickstart.ipynb)
 
-<Steps>
-  <Step title="1. Set up your environment">
-    Initialize your Python environment by importing the required libraries:
+### Step 1: Set up your environment
 
-    ```python Environment Setup
-    import pandas as pd
-    from nixtla import NixtlaClient
-    import matplotlib.pyplot as plt
-    ```
-  </Step>
+Initialize your Python environment by importing the required libraries:
 
-  <Step title="2. Configure your NixtlaClient">
-    Provide your API key (and optionally a custom base URL).
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+import matplotlib.pyplot as plt
+```
 
-    ```python Nixtla Client Configuration
-    nixtla_client = NixtlaClient(
-        # defaults to os.environ.get("NIXTLA_API_KEY")
-        api_key='my_api_key_provided_by_nixtla'
-    )
-    ```
+### Step 2: Configure your NixtlaClient
 
-    <Info>
-      **Using an Azure AI endpoint**<br/>
-      To use an Azure AI endpoint, set the `base_url` argument:
+Provide your API key (and optionally a custom base URL).
 
-      ```python Azure AI Endpoint Setup
-      nixtla_client = NixtlaClient(
-          base_url="your_azure_ai_endpoint",
-          api_key="your_api_key"
-      )
-      ```
-    </Info>
-  </Step>
+```python
+nixtla_client = NixtlaClient(
+    # defaults to os.environ.get("NIXTLA_API_KEY")
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
 
-  <Step title="3. Load your dataset">
-    We use a minute-level time series dataset that monitors server usage. This dataset is ideal for showcasing streaming data scenarios, where the task is to detect server failures or downtime in real time.
+### Step 3: Load your dataset
 
-    ```python Load Server Dataset
-    df = pd.read_csv(
-        'https://datasets-nixtla.s3.us-east-1.amazonaws.com/machine-1-1.csv',
-        parse_dates=['ts']
-    )
-    ```
+We use a minute-level time series dataset that monitors server usage. This dataset is ideal for showcasing streaming data scenarios, where the task is to detect server failures or downtime in real time.
 
-    <Info>
-      We observe that the time series remains stable during the initial period; however, a spike occurs in the last 20 steps, indicating anomalous behavior. Our goal is to capture this abnormal jump as soon as it appears.
-    </Info>
+```python
+df = pd.read_csv(
+    'https://datasets-nixtla.s3.us-east-1.amazonaws.com/machine-1-1.csv',
+    parse_dates=['ts']
+)
+```
 
-    <Frame caption="Server Data with Spike Anomaly">
-      ![Server Data with Spike Anomaly](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/01_quickstart_files/figure-markdown_strict/cell-11-output-1.png)
-    </Frame>
-  </Step>
+We observe that the time series remains stable during the initial period; however, a spike occurs in the last 20 steps, indicating anomalous behavior. Our goal is to capture this abnormal jump as soon as it appears.
 
-  <Step title="4. Detect anomalies in real time">
-    Use the `detect_anomalies_online` method to identify anomalies by leveraging TimeGPT’s forecasting capabilities.
+<Frame caption="Server Data with Spike Anomaly">
+  ![Server Data with Spike Anomaly](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/01_quickstart_files/figure-markdown_strict/cell-11-output-1.png)
+</Frame>
 
-    <Info>
-      **Key Parameters**<br/>
-      • **df**: A DataFrame containing your time series.<br/>
-      • **time_col**: Datestamp column.<br/>
-      • **target_col**: Variable to forecast.<br/>
-      • **h**: Forecast horizon (steps ahead).<br/>
-      • **freq**: Frequency (e.g., 'min').<br/>
-      • **level**: Confidence level (default 99%).<br/>
-      • **detection_size**: Number of recent steps to analyze for anomalies.
-    </Info>
+### Step 4: Detect anomalies in real time
 
-    ```python Run Online Anomaly Detection
-    anomaly_online = nixtla_client.detect_anomalies_online(
-        df,
-        time_col='ts',
-        target_col='y',
-        freq='min',                # Specify the frequency of the data
-        h=10,                      # Specify the forecast horizon
-        level=99,                  # Set the confidence level for anomaly detection
-        detection_size=100         # Number of steps to analyze for anomalies
-    )
+The `detect_anomalies_online` method detect anomalies in a time series leveraging TimeGPT's forecast power. It uses the forecast error in deciding the anomalous step so you can specify and tune the parameters like that of the `forecast` method. This function will return a dataframe that contains anomaly flags and anomaly score (its absolute value quantifies the abnormality of the value).
 
-    anomaly_online.tail()
-    ```
+To perfom real-time anomaly detection, set the following parameters:
 
-    <Check>
-      Here we use a detection size of 100 to illustrate the anomaly detection process. In production, running detections more frequently with smaller detection sizes can help identify anomalies as soon as they occur.
-    </Check>
+- `df`: A pandas DataFrame containing the time series data.
+- `time_col`: The column that identifies the datestamp.
+- `target_col`: The variable to forecast.
+- `h`: Horizon is the number of steps ahead to make forecast.
+- `freq`: The frequency of the time series in Pandas format.
+- `level`: Percentile of scores distribution at which the threshold is set, controlling how strictly anomalies are flagged. Default at 99%.
+- `detection_size`: The number of steps to analyze for anomaly at the end of time series.
 
-    <Accordion title="Anomaly Detection Log Output">
-    ```bash Log Output
-    INFO:nixtla.nixtla_client:Validating inputs...
-    INFO:nixtla.nixtla_client:Preprocessing dataframes...
-    INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
-    ```
-    </Accordion>
+```python
+anomaly_online = nixtla_client.detect_anomalies_online(
+    df,
+    time_col='ts',
+    target_col='y',
+    freq='min',                # Specify the frequency of the data
+    h=10,                      # Specify the forecast horizon
+    level=99,                  # Set the confidence level for anomaly detection
+    detection_size=100         # Number of steps to analyze for anomalies
+)
 
-    <AccordionGroup>
-      <Accordion title="View last 5 anomaly detections">
-        | unique_id          | ts                    | y          | TimeGPT    | anomaly   | anomaly_score   | TimeGPT-hi-99   | TimeGPT-lo-99   |
+anomaly_online.tail()
+```
+
+```bash Log Output
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
+```
+
+View last 5 anomaly detections:
+| unique_id          | ts                    | y          | TimeGPT    | anomaly   | anomaly_score   | TimeGPT-hi-99   | TimeGPT-lo-99   |
 | ------------------ | --------------------- | ---------- | ---------- | --------- | --------------- | --------------- | --------------- |
 | machine-1-1_y_29   | 2020-02-01 22:11:00   | 0.606017   | 0.544625   | True      | 18.463266       | 0.553161        | 0.536090        |
 | machine-1-1_y_29   | 2020-02-01 22:12:00   | 0.044413   | 0.570869   | True      | -158.933850     | 0.579404        | 0.562333        |
@@ -134,15 +99,19 @@ Online (real-time) anomaly detection helps you identify unusual behavior in time
 | machine-1-1_y_29   | 2020-02-01 22:15:00   | 0.044413   | 0.467860   | True      | -127.848560     | 0.476396        | 0.459325        |
 
 
-      </Accordion>
-    </AccordionGroup>
+<Frame caption="Identified Anomalies">
+  ![Identified Anomalies](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/01_quickstart_files/figure-markdown_strict/cell-13-output-1.png)
+</Frame>
 
-    <Frame caption="Identified Anomalies">
-      ![Identified Anomalies](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/01_quickstart_files/figure-markdown_strict/cell-13-output-1.png)
-    </Frame>
-  </Step>
+From the plot, we observe that the anomalous period is promptly detected. 
 
-  <Step title="5. Next steps">
-    From the plot, we observe that the anomalous period is promptly detected. For a deeper dive into `detect_anomalies_online`—including parameter tuning and strategies for fine-tuning anomaly detection—stay tuned for our upcoming tutorial.
-  </Step>
-</Steps>
+<Check>
+  Here we use a detection size of 100 to illustrate the anomaly detection process. In production, running detections more frequently with smaller detection sizes can help identify anomalies as soon as they occur.
+</Check>
+
+## Next Steps
+
+Now that you've detected your first anomalies in real-time, explore these guides to optimize your detection:
+
+- [Controlling the Anomaly Detection Process](/anomaly_detection/real-time/adjusting_detection) - Learn how to fine-tune key parameters for more accurate detection
+- [Local vs Global Anomaly Detection](/anomaly_detection/real-time/univariate_multivariate) - Choose the right detection strategy for single vs multiple correlated time series

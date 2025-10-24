@@ -4,20 +4,15 @@ description: "Learn how to refine TimeGPT's anomaly detection process by tuning 
 icon: "brain"
 ---
 
-<Info>
- This notebook shows you how to refine TimeGPT's anomaly detection process. By tuning parameters, you can align anomaly detection with specific use cases and improve accuracy.
-</Info>
 
-<CardGroup cols={2}>
-  <Card title="Why Anomaly Detection?">
-    TimeGPT leverages forecast errors to identify anomalies in your time-series data. By optimizing parameters, you can detect subtle deviations and customize results for specific use cases.
-  </Card>
-  <Card title="Key Parameters">
-    • **detection_size** determines data window size for threshold calculation.<br/>
-    • **level** sets confidence intervals for anomaly thresholds.<br/>
-    • **freq** aligns detection with data frequency (e.g., "D" for daily).
-  </Card>
-</CardGroup>
+## Why Anomaly Detection?
+TimeGPT leverages forecast errors to identify anomalies in your time-series data. By optimizing parameters, you can detect subtle deviations and customize results for specific use cases.
+
+## Key Parameters
+
+• **detection_size** determines data window size for threshold calculation.<br/>
+• **level** sets confidence intervals for anomaly thresholds.<br/>
+• **freq** aligns detection with data frequency (e.g., "D" for daily).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/online-anomaly-detection/02_adjusting_detection_process.ipynb)
 
