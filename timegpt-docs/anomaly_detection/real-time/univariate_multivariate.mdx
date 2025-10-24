@@ -1,16 +1,32 @@
 ---
 title: "Local vs Global Anomaly Detection"
-description: "Explore the differences between single and multiple variable anomaly detection approaches."
+description: "Compare local vs global anomaly detection methods for time series. Learn when to use univariate detection for independent metrics vs multivariate detection for correlated server data with Python examples."
 icon: "chart-mixed"
 ---
 
 ## Overview
 
-This guide demonstrates anomaly detection across multiple time series using local and global methods. You will learn:
-- How to detect anomalies in each time series independently (local)
-- How to detect anomalies across multiple correlated time series (global)
+When monitoring multiple time series simultaneously, such as server metrics (CPU, memory, disk I/O), you need to choose between local and global anomaly detection strategies. This guide demonstrates:
+- **Local (Univariate) Detection**: Analyzing each time series independently for isolated metric anomalies
+- **Global (Multivariate) Detection**: Analyzing all time series collectively to detect system-wide failures
 
-Both local and global methods rely on the Nixtla API for anomaly detection. The main difference is how anomalies are identified: individually per time series vs. collectively across multiple series at the same timestamp.
+Both methods use TimeGPT's `detect_anomalies_online` with the `threshold_method` parameter. The main difference is whether anomalies are identified individually per series (local) or collectively across multiple correlated series (global).
+
+For an introduction to real-time anomaly detection, see our [Real-Time Anomaly Detection guide](/anomaly_detection/real-time/introduction). To learn about parameter tuning, check out [Controlling the Anomaly Detection Process](/anomaly_detection/real-time/adjusting_detection).
+
+## When to Use Each Method
+
+### Use Local Detection When:
+- Monitoring independent, uncorrelated metrics
+- Each metric has distinct baseline behavior
+- You need low computational overhead
+- False positives in individual series are acceptable
+
+### Use Global Detection When:
+- Monitoring correlated server or system metrics
+- System-wide failures affect multiple metrics simultaneously
+- You need to detect coordinated anomalies (e.g., CPU spike + memory spike + network spike)
+- Reducing false positives by considering metric relationships
 
 ## How to Detect Anomalies Across Multiple Time Series
 
@@ -38,9 +54,9 @@ nixtla_client = NixtlaClient(
 
 ### Step 2: Load the Dataset
 
-In this notebook example from SMD dataset. SMD (Server Machine Dataset) is a benchmark dataset for anomaly detection with multiple time series. It monitors abnormal patterns in server machine data. 
+This tutorial uses the SMD (Server Machine Dataset), a benchmark dataset for anomaly detection across multiple time series. SMD monitors abnormal patterns in server machine data.
 
-Here, we use a set of monitoring data from a single server machine(machine-1-1) that has 38 time series. Each time series represents a different metric being monitored, such as CPU usage, memory usage, disk I/O, and network I/O. 
+We analyze monitoring data from a single server (machine-1-1) containing 38 time series. Each series represents a different server metric: CPU usage, memory usage, disk I/O, network throughput, and other system performance indicators. 
 
 ```python
 df = pd.read_csv(
@@ -56,6 +72,16 @@ Output:
 ```
 
 ### Step 3: Local and Global Anomaly Detection Methods
+
+#### Method Comparison
+
+| Aspect | Local (Univariate) | Global (Multivariate) |
+|--------|-------------------|----------------------|
+| **Analysis Scope** | Individual series | All series collectively |
+| **Best For** | Independent metrics | Correlated metrics |
+| **Computational Cost** | Low | Higher |
+| **System-wide Anomalies** | May miss | Detects effectively |
+| **Parameter** | `threshold_method='univariate'` | `threshold_method='multivariate'` |
 
 #### Step 3.1: Local Method
 
@@ -160,9 +186,39 @@ plot_anomalies(anomaly_online_multi, display_ids, rows=2, cols=2)
 
 In global anomaly detection, anomaly scores from all series at each time step are aggregated. A step is anomalous if the combined score exceeds the threshold. This reveals systemic anomalies that may go unnoticed if each series is considered alone.
 
+## Real-World Use Cases
+
+### Local Detection Examples:
+- **Independent application metrics**: Response time, error rates, request counts for different microservices
+- **IoT sensor networks**: Temperature sensors at different locations with no correlation
+- **Business metrics**: Sales figures across different product categories
+
+### Global Detection Examples:
+- **Server monitoring**: CPU, memory, disk I/O, and network metrics from the same server
+- **Distributed system health**: Correlated metrics across multiple nodes indicating cluster-wide issues
+- **Manufacturing equipment**: Multiple sensor readings from a single machine indicating equipment failure
+
 ## Summary
 
 - **Local:** Best for detecting anomalies in a single metric or uncorrelated metrics. Low computational overhead, but may overlook cross-series patterns.
 - **Global:** Considers correlations across metrics, capturing system-wide issues. More complex and computationally intensive than local methods.
 
 Both detection approaches use Nixtla's online anomaly detection method. Choose the strategy that best fits your use case and data characteristics.
+
+## Frequently Asked Questions
+
+**What's the difference between univariate and multivariate anomaly detection?**
+
+Univariate (local) detection analyzes each time series independently using the `threshold_method='univariate'` parameter, while multivariate (global) detection analyzes all series together using `threshold_method='multivariate'`, considering correlations between metrics.
+
+**When should I use global detection instead of local?**
+
+Use global detection when your time series are correlated and system-wide failures affect multiple metrics simultaneously, such as monitoring CPU, memory, and network metrics from the same server.
+
+**Does global detection increase computational cost?**
+
+Yes, global detection requires analyzing relationships across all time series, making it more computationally intensive. However, it can reduce overall false positives by considering metric correlations.
+
+**Can I run both local and global detection?**
+
+Yes, you can run both methods and compare results. Local detection may catch metric-specific anomalies while global detection identifies system-wide issues.
