@@ -4,252 +4,165 @@ description: "Explore the differences between single and multiple variable anoma
 icon: "chart-mixed"
 ---
 
-# Overview
+## Overview
 
 This guide demonstrates anomaly detection across multiple time series using local and global methods. You will learn:
-• How to detect anomalies in each time series independently (local).
-• How to detect anomalies across multiple correlated time series (global).
+- How to detect anomalies in each time series independently (local)
+- How to detect anomalies across multiple correlated time series (global)
 
-If you want to run this notebook interactively, click the badge below:
+Both local and global methods rely on the Nixtla API for anomaly detection. The main difference is how anomalies are identified: individually per time series vs. collectively across multiple series at the same timestamp.
+
+## How to Detect Anomalies Across Multiple Time Series
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/capabilities/online-anomaly-detection/03_univariate_vs_multivariate_anomaly_detection.ipynb)
 
-<Info>
-Both local and global methods rely on the Nixtla API for anomaly detection. The main difference is how anomalies are identified: individually per time series vs. collectively across multiple series at the same timestamp.
-</Info>
+### Step 1: Set Up Your Environment
 
-## Setup
+Import dependencies that you will use in the tutorial.
 
-<Steps>
-  <Step title="1. Install and Import Dependencies">
-    If you haven't already, install Nixtla and import your dependencies.
+```python
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from nixtla import NixtlaClient
+```
 
-    <CodeGroup>
-      ```bash Nixtla Installation
-      pip install nixtla
-      ```
-      ```python Python Imports
-      import numpy as np
-      import pandas as pd
-      import matplotlib.pyplot as plt
-      from nixtla import NixtlaClient
-      ```
-    </CodeGroup>
-  </Step>
+Create a NixtlaClient instance. Replace 'my_api_key_provided_by_nixtla' with your actual API key.
 
-  <Step title="2. Connect to the Nixtla API">
-    Create a NixtlaClient instance. Replace 'my_api_key_provided_by_nixtla' with your actual API key.
+```python
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
 
-    <CodeGroup>
-      ```python Nixtla Client Setup
-      nixtla_client = NixtlaClient(
-          api_key='my_api_key_provided_by_nixtla'
-      )
-      ```
-    </CodeGroup>
 
-    <Check>
-      **Use an Azure AI Endpoint**<br />
-      To use an Azure AI endpoint, set the `base_url` argument explicitly:
-      <CodeGroup>
-        ```python Azure AI Endpoint Setup
-        nixtla_client = NixtlaClient(
-            base_url="your azure ai endpoint",
-            api_key="your api_key"
+### Step 2: Load the Dataset
+
+In this notebook example from SMD dataset. SMD (Server Machine Dataset) is a benchmark dataset for anomaly detection with multiple time series. It monitors abnormal patterns in server machine data. 
+
+Here, we use a set of monitoring data from a single server machine(machine-1-1) that has 38 time series. Each time series represents a different metric being monitored, such as CPU usage, memory usage, disk I/O, and network I/O. 
+
+```python
+df = pd.read_csv(
+    'https://datasets-nixtla.s3.us-east-1.amazonaws.com/SMD_test.csv',
+    parse_dates=['ts']
+)
+df.unique_id.nunique()
+```
+
+Output:
+```bash
+38
+```
+
+### Step 3: Local and Global Anomaly Detection Methods
+
+#### Step 3.1: Local Method
+
+Local anomaly detection analyzes each time series in isolation, flagging anomalies based on each series' individual deviation from its expected behavior. This approach is efficient for individual metrics or when correlations between metrics are not relevant. However, it may miss large-scale, system-wide anomalies that are only apparent when multiple series deviate simultaneously.
+
+Example usage:
+
+```python
+anomaly_online = nixtla_client.detect_anomalies_online(
+    df[['ts', 'y', 'unique_id']],
+    time_col='ts',
+    target_col='y',
+    freq='h',
+    h=24,
+    level=95,
+    detection_size=475,
+    threshold_method='univariate'  # local anomaly detection
+)
+```
+
+Log output:
+
+```bash
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:Detection size is large. Using the entire series to compute the anomaly threshold...
+INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
+```
+
+Visualize the anomalies:
+
+```python
+# Utility function to plot anomalies
+def plot_anomalies(df, unique_ids, rows, cols):
+    fig, axes = plt.subplots(rows, cols, figsize=(12, rows * 2))
+
+    for i, (ax, uid) in enumerate(zip(axes.flatten(), unique_ids)):
+        filtered_df = df[df['unique_id'] == uid]
+        ax.plot(filtered_df['ts'], filtered_df['y'], color='navy', alpha=0.8, label='y')
+        ax.plot(filtered_df['ts'], filtered_df['TimeGPT'], color='orchid', alpha=0.7, label='TimeGPT')
+        ax.scatter(
+            filtered_df.loc[filtered_df['anomaly'] == 1, 'ts'],
+            filtered_df.loc[filtered_df['anomaly'] == 1, 'y'],
+            color='orchid', label='Anomalies Detected'
         )
-        ```
-      </CodeGroup>
-    </Check>
-  </Step>
-</Steps>
+        ax.set_title(f"Unique_id: {uid}", fontsize=8)
+        ax.tick_params(axis='x', labelsize=6)
 
-## 1. Dataset
-
-We use an example from the SMD dataset (**SMD: Server Machine Dataset**). This dataset is a benchmark for anomaly detection across correlated server-performance metrics (CPU, memory, disk I/O, network throughput, etc.).
-
-<CardGroup>
-  <Card title="File Used:">
-
-    **Data Size:** 38 unique time series
-    **Frequency:** Hourly (freq='h')
-  </Card>
-</CardGroup>
-
-<CodeGroup>
-  ```python SMD Dataset Loading
-  df = pd.read_csv(
-      'https://datasets-nixtla.s3.us-east-1.amazonaws.com/SMD_test.csv',
-      parse_dates=['ts']
-  )
-  df.unique_id.nunique()
-  ```
-
-  <Accordion title="Dataset Load Output">
-  ```bash Unique IDs Count
-  38
-  ```
-  </Accordion>
-</CodeGroup>
-
-## 2. local vs. Global Methods
-
-<Tabs>
-  <Tab title="local Method">
-    <Card>
-
-        **Definition:** local anomaly detection analyzes each time series in isolation. It flags anomalies based on each series' individual deviation from its expected behavior.
+    fig.legend(loc='upper center', ncol=3, fontsize=8, labels=['y', 'TimeGPT', 'Anomaly'])
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
 
 
-        **Pros:** Efficient for individual metrics or when correlations between metrics are not relevant.
+display_ids = ['machine-1-1_y_0', 'machine-1-1_y_1', 'machine-1-1_y_6', 'machine-1-1_y_29']
+plot_anomalies(anomaly_online, display_ids, rows=2, cols=2)
+```
 
+<Frame caption="Local Anomaly Detection Results">
+  ![Local Anomaly Detection Results](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/03_univariate_vs_multivariate_anomaly_detection_files/figure-markdown_strict/cell-13-output-1.png)
+</Frame>
 
-        **Cons:** May miss large-scale, system-wide anomalies that are only apparent when multiple series deviate simultaneously.
+*This figure highlights anomalies detected in four selected metrics. Each metric is analyzed independently, so anomalies reflect unusual behavior within that series alone.*
 
-    </Card>
+#### Step 3.2: Global Method
 
-    <AccordionGroup>
-      <Accordion title="2.1.1 Example Usage">
-        local detection code:
-        <CodeGroup>
-          ```python local Anomaly Detection Call
-          anomaly_online = nixtla_client.detect_anomalies_online(
-              df[['ts', 'y', 'unique_id']],
-              time_col='ts',
-              target_col='y',
-              freq='h',
-              h=24,
-              level=95,
-              detection_size=475,
-              threshold_method='univariate'  # local anomaly detection
-          )
-          ```
-        </CodeGroup>
-        Sample output logs:
-        <Accordion title="local Method Log Output">
+Global anomaly detection considers all time series collectively, flagging a time step as anomalous if the aggregate deviation across all series at that time exceeds a threshold. This approach captures systemic or correlated anomalies that might be missed when analyzing each series in isolation. However, it comes with slightly higher complexity and computational overhead, and may require careful threshold tuning.
 
-        ```bash Univariate Anomaly Detection Logs
-        INFO:nixtla.nixtla_client:Validating inputs...
-        INFO:nixtla.nixtla_client:Preprocessing dataframes...
-        WARNING:nixtla.nixtla_client:Detection size is large. Using the entire series to compute the anomaly threshold...
-        INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
-        ```
+Example usage:
 
-        </Accordion>
-      </Accordion>
+```python
+anomaly_online_multi = nixtla_client.detect_anomalies_online(
+    df[['ts', 'y', 'unique_id']],
+    time_col='ts',
+    target_col='y',
+    freq='h',
+    h=24,
+    level=95,
+    detection_size=475,
+    threshold_method='multivariate'  # global anomaly detection
+)
+```
 
-      <Accordion title="2.1.2 Visualization">
-        <CodeGroup>
-          ```python local Anomaly Plot Function and Usage
-          # Utility function to plot anomalies
-          def plot_anomalies(df, unique_ids, rows, cols):
-              fig, axes = plt.subplots(rows, cols, figsize=(12, rows * 2))
+Log output:
+```bash
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+WARNING:nixtla.nixtla_client:Detection size is large. Using the entire series to compute the anomaly threshold...
+INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
+```
 
-              for i, (ax, uid) in enumerate(zip(axes.flatten(), unique_ids)):
-                  filtered_df = df[df['unique_id'] == uid]
-                  ax.plot(filtered_df['ts'], filtered_df['y'], color='navy', alpha=0.8, label='y')
-                  ax.plot(filtered_df['ts'], filtered_df['TimeGPT'], color='orchid', alpha=0.7, label='TimeGPT')
-                  ax.scatter(
-                      filtered_df.loc[filtered_df['anomaly'] == 1, 'ts'],
-                      filtered_df.loc[filtered_df['anomaly'] == 1, 'y'],
-                      color='orchid', label='Anomalies Detected'
-                  )
-                  ax.set_title(f"Unique_id: {uid}", fontsize=8)
-                  ax.tick_params(axis='x', labelsize=6)
+Visualize the anomalies:
 
-              fig.legend(loc='upper center', ncol=3, fontsize=8, labels=['y', 'TimeGPT', 'Anomaly'])
-              plt.tight_layout(rect=[0, 0, 1, 0.95])
-              plt.show()
+```python
+plot_anomalies(anomaly_online_multi, display_ids, rows=2, cols=2)
+```
 
+<Frame caption="Global Anomaly Detection Results">
+  ![Global Anomaly Detection Results](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/03_univariate_vs_multivariate_anomaly_detection_files/figure-markdown_strict/cell-15-output-1.png)
+</Frame>
 
-          display_ids = ['machine-1-1_y_0', 'machine-1-1_y_1', 'machine-1-1_y_6', 'machine-1-1_y_29']
-          plot_anomalies(anomaly_online, display_ids, rows=2, cols=2)
-          ```
-        </CodeGroup>
+*In global mode, an anomaly is flagged when the combined deviation across these series reaches a threshold. This can reveal system-wide anomalies.*
 
-        <Frame caption="local Anomaly Detection Results">
-          *This figure highlights anomalies detected in four selected metrics. Each metric is analyzed independently, so anomalies reflect unusual behavior within that series alone.*
-          <br />
-          ![Local Anomaly Detection Results](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/03_univariate_vs_multivariate_anomaly_detection_files/figure-markdown_strict/cell-13-output-1.png)
-        </Frame>
-      </Accordion>
-    </AccordionGroup>
-  </Tab>
-
-  <Tab title="Global Method">
-    <Card>
-
-        **Definition:** Global anomaly detection considers all time series collectively. A time step is flagged as anomalous if the aggregate deviation across all series at that time exceeds a threshold.
-
-
-        **Pros:** Captures systemic or correlated anomalies that might be missed when analyzing each series in isolation.
-
-
-        **Cons:** Slightly higher complexity and computational overhead. May require careful threshold tuning.
-
-    </Card>
-
-    <AccordionGroup>
-      <Accordion title="2.2.1 Example Usage">
-        global detection code:
-        <CodeGroup>
-          ```python global Anomaly Detection Call
-          anomaly_online_multi = nixtla_client.detect_anomalies_online(
-              df[['ts', 'y', 'unique_id']],
-              time_col='ts',
-              target_col='y',
-              freq='h',
-              h=24,
-              level=95,
-              detection_size=475,
-              threshold_method='multivariate'  # global anomaly detection
-          )
-          ```
-        </CodeGroup>
-        Sample output logs:
-        <Accordion title="global Method Log Output">
-
-        ```bash Multivariate Anomaly Detection Logs
-        INFO:nixtla.nixtla_client:Validating inputs...
-        INFO:nixtla.nixtla_client:Preprocessing dataframes...
-        WARNING:nixtla.nixtla_client:Detection size is large. Using the entire series to compute the anomaly threshold...
-        INFO:nixtla.nixtla_client:Calling Online Anomaly Detector Endpoint...
-        ```
-
-        </Accordion>
-      </Accordion>
-
-      <Accordion title="2.2.2 Visualization">
-        <CodeGroup>
-          ```python global Anomaly Plot Usage
-          plot_anomalies(anomaly_online_multi, display_ids, rows=2, cols=2)
-          ```
-        </CodeGroup>
-
-        <Frame caption="global Anomaly Detection Results">
-          *In global mode, an anomaly is flagged when the combined deviation across these series reaches a threshold. This can reveal system-wide anomalies.*
-          <br />
-          ![global Anomaly Detection Results](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/online-anomaly-detection/03_univariate_vs_multivariate_anomaly_detection_files/figure-markdown_strict/cell-15-output-1.png)
-        </Frame>
-
-        <Info>
-          In global anomaly detection, anomaly scores from all series at each time step are aggregated. A step is anomalous if the combined score exceeds the threshold. This reveals systemic anomalies that may go unnoticed if each series is considered alone.
-        </Info>
-      </Accordion>
-    </AccordionGroup>
-  </Tab>
-</Tabs>
+In global anomaly detection, anomaly scores from all series at each time step are aggregated. A step is anomalous if the combined score exceeds the threshold. This reveals systemic anomalies that may go unnoticed if each series is considered alone.
 
 ## Summary
 
-<CardGroup>
-  <Card title="Local:">
-
-    Best for detecting anomalies in a single metric or uncorrelated metrics. Low computational overhead, but may overlook cross-series patterns.
-  </Card>
-  <Card title="Global:">
-
-    Considers correlations across metrics, capturing system-wide issues. More complex and computationally intensive than local methods.
-  </Card>
-</CardGroup>
+- **Local:** Best for detecting anomalies in a single metric or uncorrelated metrics. Low computational overhead, but may overlook cross-series patterns.
+- **Global:** Considers correlations across metrics, capturing system-wide issues. More complex and computationally intensive than local methods.
 
 Both detection approaches use Nixtla's online anomaly detection method. Choose the strategy that best fits your use case and data characteristics.
