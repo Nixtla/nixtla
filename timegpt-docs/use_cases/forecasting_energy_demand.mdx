@@ -1,6 +1,6 @@
 ---
 title: "Forecasting Energy Demand"
-description: "Learn how TimeGPT accurately predicts electricity consumption patterns"
+description: "Energy demand forecasting tutorial using TimeGPT AI. Step-by-step Python guide for electricity consumption prediction with 90% faster predictions and superior accuracy."
 icon: "bolt"
 ---
 
@@ -41,7 +41,7 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-### Step 2: Read the Data
+### Step 2: Load Energy Consumption Data
 Load the energy consumption dataset and convert datetime strings to timestamps.
 
 ```python
@@ -68,11 +68,11 @@ nixtla_client.plot(
 )
 ```
 
-<Frame caption="Seasonal patterns in energy consumption.">
-  ![Seasonal patterns in energy consumption.](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-12-output-1.png)
+<Frame caption="Seasonal patterns in energy consumption showing daily and weekly cycles in PJM electricity demand data">
+  ![Seasonal patterns in energy consumption showing daily and weekly cycles in PJM electricity demand data](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-12-output-1.png)
 </Frame>
 
-### Step 3: Forecast with TimeGPT
+### Step 3: Generate Energy Demand Forecasts with TimeGPT
 We'll split our dataset into:
 - A training/input set for model calibration
 - A testing set (last 4 days) to validate performance
@@ -113,11 +113,11 @@ nixtla_client.plot(
 )
 ```
 
-<Frame caption="TimeGPT forecast compared to actual values.">
-  ![TimeGPT forecast compared to actual values.](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-15-output-1.png)
+<Frame caption="TimeGPT energy demand forecast with 90% confidence intervals compared to actual electricity consumption">
+  ![TimeGPT energy demand forecast with 90% confidence intervals compared to actual electricity consumption](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-15-output-1.png)
 </Frame>
 
-### Step 4: Evaluate TimeGPT
+### Step 4: Evaluate Forecast Accuracy
 Compute accuracy metrics (MAE and sMAPE) for TimeGPT.
 
 ```python
@@ -178,3 +178,13 @@ TimeGPT demonstrates substantial performance improvements over N-HiTS across key
 These results make TimeGPT a powerful tool for forecasting energy consumption and other time-series tasks where both accuracy and speed are critical.
 
 Experiment with the parameters to further optimize performance for your specific use case.
+
+## Related Tutorials
+
+Ready to explore more forecasting applications? Check out these guides:
+
+- [Bitcoin Price Prediction with TimeGPT](/use_cases/bitcoin_price_prediction) - Financial time series forecasting
+- [Exogenous Variables Guide](/forecasting/exogenous-variables/numeric_features) - Improve forecasts with external data
+- [Long Horizon Forecasting](/forecasting/model-version/longhorizon_model) - Extended forecast periods
+
+Learn more about [TimeGPT capabilities](/introduction/introduction) for time series prediction.
