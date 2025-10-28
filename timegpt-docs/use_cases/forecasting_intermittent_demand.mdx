@@ -263,7 +263,8 @@ To forecast with exogenous variables, we need to specify their future values ove
 
 ```python
 # Include holiday/event data as exogenous features
-futr_exog_df = test_df[['unique_id', 'ds', 'event_type_Cultural', 'event_type_National', 'event_type_Religious', 'event_type_Sporting']]
+exog_cols = ['event_type_Cultural', 'event_type_National', 'event_type_Religious', 'event_type_Sporting']
+futr_exog_df = test_df[['unique_id', 'ds'] + exog_cols]
 futr_exog_df.head()
 ```
 
@@ -338,12 +339,14 @@ test_df.head()
 evaluation = evaluate(
     test_df,
     metrics=[mae],
-    models=["TimeGPT", "CrostonClassic", "CrostonOptimized", "IMAPA", "TSB", "TimeGPT_ex"],
+    models=["TimeGPT"] + statistical_models + ["TimeGPT_ex"],
     target_col="y",
     id_col='unique_id'
 )
 
-average_metrics = evaluation.groupby('metric')[["TimeGPT", "CrostonClassic", "CrostonOptimized", "IMAPA", "TSB", "TimeGPT_ex"]].mean()
+average_metrics = (
+    evaluation.groupby('metric')[["TimeGPT"] + statistical_models + ["TimeGPT_ex"]]
+).mean()
 average_metrics
 ```
 
