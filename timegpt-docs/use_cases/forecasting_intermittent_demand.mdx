@@ -1,6 +1,6 @@
 ---
-title: "Forecasting Intermittent Demand"
-description: "Learn how to forecast sporadic demand patterns for inventory management."
+title: "Intermittent Demand Forecasting with TimeGPT | Inventory Optimization Tutorial"
+description: "Master intermittent demand forecasting with TimeGPT for inventory optimization. Achieve 14% better accuracy than specialized models using the M5 dataset with exogenous variables and log transforms."
 icon: "box"
 ---
 
@@ -8,9 +8,9 @@ icon: "box"
 
 Intermittent demand occurs when products or services have irregular purchase patterns with frequent zero-value periods. This is common in retail, spare parts inventory, and specialty products where demand is irregular rather than continuous.
 
-Forecasting these patterns accurately is essential for optimizing stock levels, reducing costs, and preventing stockouts. TimeGPT excels at intermittent demand forecasting by capturing complex patterns that traditional statistical methods miss.
+Forecasting these patterns accurately is essential for optimizing stock levels, reducing costs, and preventing stockouts. [TimeGPT](/introduction/about_timegpt) excels at intermittent demand forecasting by capturing complex patterns that traditional statistical methods miss.
 
-This tutorial demonstrates TimeGPT's capabilities using the M5 dataset of food sales, including exogenous variables like pricing and promotional events that influence purchasing behavior.
+This tutorial demonstrates TimeGPT's capabilities using the M5 dataset of food sales, including [exogenous variables](/forecasting/exogenous-variables/numeric_features) like pricing and promotional events that influence purchasing behavior.
 
 ### What You'll Learn
 
@@ -19,7 +19,7 @@ This tutorial demonstrates TimeGPT's capabilities using the M5 dataset of food s
 - How to use log transforms to ensure realistic forecasts
 - How TimeGPT compares to specialized intermittent demand models
 
-The methods shown here apply broadly to inventory management and retail forecasting challenges.
+The methods shown here apply broadly to inventory management and retail forecasting challenges. For getting started with TimeGPT, see our [quickstart guide](/forecasting/timegpt_quickstart).
 
 
 ## How to Use TimeGPT to Forecast Intermittent Demand
@@ -107,9 +107,9 @@ fcst_df = nixtla_client.forecast(
     df=input_df,
     h=28,
     level=[80],
-    finetune_steps=10,
+    finetune_steps=10,               # Learn more about fine-tuning: /forecasting/fine-tuning/steps
     finetune_loss='mae',
-    model='timegpt-1-long-horizon',
+    model='timegpt-1-long-horizon',  # For long-horizon forecasting: /forecasting/model-version/longhorizon_model
     time_col='ds',
     target_col='y',
     id_col='unique_id'
@@ -160,7 +160,7 @@ nixtla_client.plot(
 </Frame>
 
 
-Finally, we can measure the mean absolute error (MAE) of the model.
+Finally, we can measure the mean absolute error (MAE) of the model. Learn more about [evaluation metrics](/forecasting/evaluation/evaluation_metrics) in our documentation.
 
 ```python
 # Compute MAE
@@ -259,7 +259,7 @@ These results demonstrate TimeGPT's strong performance without additional featur
 
 ### Step 7: Use Exogenous Variables
 
-To forecast with exogenous variables, we need to specify their future values over the forecast horizon. Therefore, let's simply take the types of events, as those dates are known in advance.
+To forecast with [exogenous variables](/forecasting/exogenous-variables/numeric_features), we need to specify their future values over the forecast horizon. Therefore, let's simply take the types of events, as those dates are known in advance. You can also explore using [date features](/forecasting/exogenous-variables/date_features) and [holidays](/forecasting/exogenous-variables/holiday_and_special_dates) as exogenous variables.
 
 ```python
 # Include holiday/event data as exogenous features
@@ -364,3 +364,10 @@ TimeGPT provides a robust solution for forecasting intermittent demand:
 - Supports exogenous features for enhanced accuracy
 
 By leveraging TimeGPT and combining both internal series patterns and external factors, organizations can achieve more reliable forecasts even for challenging intermittent demands.
+
+### Next Steps
+
+- Explore [other use cases](/use_cases/forecasting_energy_demand) with TimeGPT
+- Learn about [probabilistic forecasting](/forecasting/probabilistic/introduction) with prediction intervals
+- Scale your forecasts with [distributed computing](/forecasting/forecasting-at-scale/computing_at_scale)
+- Fine-tune models with [custom loss functions](/forecasting/fine-tuning/custom_loss)
