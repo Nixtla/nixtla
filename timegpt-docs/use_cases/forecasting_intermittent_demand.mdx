@@ -4,42 +4,54 @@ description: "Learn how to forecast sporadic demand patterns for inventory manag
 icon: "box"
 ---
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/4_intermittent_demand.ipynb)
-
 ## Introduction
 
-Forecasting intermittent demand (demand that contains many zero values) can be challenging, especially when performance and accuracy are paramount. In this tutorial, we demonstrate how to handle intermittent demand data using TimeGPT. We use a subset of the M5 dataset that captures food item sales in a California store, including exogenous variables like selling price and daily events.
+Intermittent demand occurs when products or services have irregular purchase patterns with frequent zero-value periods. This is common in retail, spare parts inventory, and specialty products where demand is irregular rather than continuous.
 
-TimeGPT delivers:
-- An impressive Mean Absolute Error (MAE) of **0.49**, a **14% improvement** over the best statistical model specifically designed for intermittent series.
-- Quick inference times (approximately 6.8 seconds for prediction), slightly slower (~1 second) than statistical models but highly accurate.
+Forecasting these patterns accurately is essential for optimizing stock levels, reducing costs, and preventing stockouts. TimeGPT excels at intermittent demand forecasting by capturing complex patterns that traditional statistical methods miss.
 
-<Check>
-TimeGPT significantly enhances accuracy for intermittent demand forecasting, outperforming specialized statistical alternatives.
-</Check>
+This tutorial demonstrates TimeGPT's capabilities using the M5 dataset of food sales, including exogenous variables like pricing and promotional events that influence purchasing behavior.
+
+### What You'll Learn
+
+- How to prepare and analyze intermittent demand data
+- How to leverage exogenous variables for better predictions
+- How to use log transforms to ensure realistic forecasts
+- How TimeGPT compares to specialized intermittent demand models
+
+The methods shown here apply broadly to inventory management and retail forecasting challenges.
 
 
+## How to Use TimeGPT to Forecast Intermittent Demand
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/use-cases/4_intermittent_demand.ipynb)
 
 
+### Step 1: Environment Setup
 
-<CardGroup>
-  <Card title="Key Features">
-• Exogenous variable support
+Start by importing the required packages for this tutorial and create an instance of `NixtlaClient`.
 
-• Log transform for bounded forecasts
-</Card>
-  <Card title="Performance">
-• MAE = 0.49 (14% improvement)
+```python
+import pandas as pd
+import numpy as np
 
-• ~6.8s to forecast with TimeGPT
-</Card>
-</CardGroup>
+from nixtla import NixtlaClient
+from utilsforecast.losses import mae
+from utilsforecast.evaluation import evaluate
 
-----
+nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
+```
 
-## Data Preview
 
-Here's a quick look at the data structure. The dataset tracks food item demand along with exogenous variables (e.g., selling price, event types):
+### Step 2: Load and Visualize the Dataset
+
+Load the dataset from the M5 dataset and convert the `ds` column to a datetime object:
+
+```python
+df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/m5_sales_exog_small.csv")
+df['ds'] = pd.to_datetime(df['ds'])
+df.head()
+```
 
 | unique_id | ds         | y | sell_price | event_type_Cultural | event_type_National | event_type_Religious | event_type_Sporting |
 |-----------|------------|---|------------|---------------------|---------------------|----------------------|---------------------|
@@ -49,184 +61,303 @@ Here's a quick look at the data structure. The dataset tracks food item demand a
 | FOODS_1_001 | 2011-02-01 | 1 | 2.0        | 0                   | 0                   | 0                    | 0                   |
 | FOODS_1_001 | 2011-02-02 | 4 | 2.0        | 0                   | 0                   | 0                    | 0                   |
 
+
+
+Visualize the dataset using the `plot` method:
+
+```python
+nixtla_client.plot(
+    df,
+    max_insample_length=365,
+)
+```
+
 <Frame caption="Figure 1: Visualization of intermittent demand data">
   ![Dataset Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/4_intermittent_demand_files/figure-markdown_strict/cell-11-output-1.png)
 </Frame>
 
-----
+In the figure above, we can see the intermittent nature of this dataset, with many periods with zero demand.
 
-<Steps>
-  <Step title="Step 1: Environment Setup">
-    <Info>
-      You'll need packages like `pandas`, `numpy`, and `nixtla` before starting.
-    </Info>
-    ```python Environment Setup
-    import time
-    import pandas as pd
-    import numpy as np
+Now, let's use TimeGPT to forecast the demand of each product.
 
-    from nixtla import NixtlaClient
-    from utilsforecast.losses import mae
-    from utilsforecast.evaluation import evaluate
+### Step 3: Transform the Data
 
-    nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
-    ```
-    <Info>
-      **Using an Azure AI endpoint**<br/>
-      To use an Azure AI endpoint, specify the `base_url` parameter:
-      ```python Azure AI Endpoint Setup
-      nixtla_client = NixtlaClient(base_url="your azure ai endpoint", api_key="your api_key")
-      ```
-    </Info>
-  </Step>
+To avoid getting negative predictions coming from the model, we use a log transformation on the data. That way, the model will be forced to predict only positive values.
 
-  <Step title="Step 2: Load the Dataset">
-    ```python Load Dataset
-    df = pd.read_csv("https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/m5_sales_exog_small.csv")
-    df['ds'] = pd.to_datetime(df['ds'])
-    df.head()
-    ```
-    <Check>
-      Confirm that the dataset columns match `unique_id`, `ds`, and `y`, plus any exogenous variables (e.g., `sell_price` and event details).
-    </Check>
-  </Step>
+Note that due to the presence of zeros in our dataset, we add one to all points before taking the log.
 
-  <Step title="Step 3: Transform the Data">
-    <AccordionGroup>
-      <Accordion title="Perform a Log Transform">
-        <Info>
-          This step helps avoid negative predictions.
-        </Info>
-        ```python Log Transform
-        df_transformed = df.copy()
-        df_transformed['y'] = np.log(df_transformed['y'] + 1)
-        ```
-      </Accordion>
-      <Accordion title="Create Train/Test Splits">
-        ```python Train Test Split
-        # Reserve the last 28 days for testing
-        test_df = df_transformed.groupby('unique_id').tail(28)
-        input_df = df_transformed.drop(test_df.index).reset_index(drop=True)
-        ```
-      </Accordion>
-    </AccordionGroup>
-  </Step>
+```python
+df_transformed = df.copy()
+df_transformed['y'] = np.log(df_transformed['y'] + 1)
+```
 
-  <Step title="Step 4: Forecast with TimeGPT">
-    ```python Forecast Execution
-    start = time.time()
+Now, let's keep the last 28 time steps for the test set and use the rest as input to the model.
 
-    fcst_df = nixtla_client.forecast(
-        df=input_df,
-        h=28,
-        level=[80],
-        finetune_steps=10,
-        finetune_loss='mae',
-        model='timegpt-1-long-horizon',
-        time_col='ds',
-        target_col='y',
-        id_col='unique_id'
-    )
+```python
+test_df = df_transformed.groupby('unique_id').tail(28)
+input_df = df_transformed.drop(test_df.index).reset_index(drop=True)
+```
 
-    timegpt_duration = time.time() - start
-    print(f"Time (TimeGPT): {timegpt_duration}")
+### Step 4: Forecast with TimeGPT
 
-    # Inverse transform predictions
-    cols = [col for col in fcst_df.columns if col not in ['ds', 'unique_id']]
-    fcst_df[cols] = np.exp(fcst_df[cols]) - 1
-    ```
-    <Info>
-      **Available Models in Azure AI**<br/>
-      To use Azure AI directly, set `model="azureai"`.
-      Public API models include `timegpt-1` and `timegpt-1-long-horizon`.
-    </Info>
-  </Step>
+Forecast with TimeGPT using the `forecast` method:
 
-  <Step title="Step 5: Evaluate the Forecasts">
-    ```python Forecast Evaluation
-    # Visualize the TimeGPT forecasts
-    nixtla_client.plot(
-        test_df,
-        fcst_df,
-        models=['TimeGPT'],
-        level=[80],
-        time_col='ds',
-        target_col='y'
-    )
+```python
+fcst_df = nixtla_client.forecast(
+    df=input_df,
+    h=28,
+    level=[80],
+    finetune_steps=10,
+    finetune_loss='mae',
+    model='timegpt-1-long-horizon',
+    time_col='ds',
+    target_col='y',
+    id_col='unique_id'
+)
+```
 
-    # Compute MAE
-    test_df = pd.merge(test_df, fcst_df, how='left', on=['unique_id', 'ds'])
-    evaluation = evaluate(
-        test_df,
-        metrics=[mae],
-        models=['TimeGPT'],
-        target_col='y',
-        id_col='unique_id'
-    )
-    average_metrics = evaluation.groupby('metric')['TimeGPT'].mean()
-    average_metrics
-    ```
-    <Check>
-      **MAE for TimeGPT:** approximately 0.49
-    </Check>
-  </Step>
+```bash
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: D
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
 
-  <Step title="Step 6: Compare with Statistical Models">
-    ```python Statistical Models Comparison
-    from statsforecast import StatsForecast
-    from statsforecast.models import CrostonClassic, CrostonOptimized, IMAPA, TSB
+Great! We now have predictions. However, those predictions are transformed, so we need to inverse the transformation to get back to the original scale. Therefore, we take the exponential and subtract one from each data point.
 
-    sf = StatsForecast(
-        models=[CrostonClassic(), CrostonOptimized(), IMAPA(), TSB(0.1, 0.1)],
-        freq='D',
-        n_jobs=-1
-    )
+```python
+cols = [col for col in fcst_df.columns if col not in ['ds', 'unique_id']]
+fcst_df[cols] = np.exp(fcst_df[cols]) - 1
+fcst_df.head()
+```
 
-    start_stats = time.time()
-    sf.fit(df=input_df)
-    sf_preds = sf.predict(h=28)
-    stats_duration = time.time() - start_stats
+|   | unique_id   | ds         | TimeGPT  | TimeGPT-lo-80 | TimeGPT-hi-80 |
+|---|-------------|------------|----------|---------------|---------------|
+| 0 | FOODS_1_001 | 2016-05-23 | 0.286841 | -0.267101     | 1.259465      |
+| 1 | FOODS_1_001 | 2016-05-24 | 0.320482 | -0.241236     | 1.298046      |
+| 2 | FOODS_1_001 | 2016-05-25 | 0.287392 | -0.362250     | 1.598791      |
+| 3 | FOODS_1_001 | 2016-05-26 | 0.295326 | -0.145489     | 0.963542      |
+| 4 | FOODS_1_001 | 2016-05-27 | 0.315868 | -0.166516     | 1.077437      |
 
-    # TimeGPT outperforms these specialized intermittent demand models by ~14%.
-    print(f"Time (Statistical models): {stats_duration}")
-    ```
-    <Info>
-      TimeGPT's MAE is about 14% lower than the best-performing statistical model.
-    </Info>
-  </Step>
 
-  <Step title="Step 7: Use Exogenous Variables">
-    ```python Exogenous Variables Forecast
-    # Include holiday/event data as exogenous features
-    futr_exog_df = test_df[['unique_id', 'ds', 'event_type_Cultural', 'event_type_National', 'event_type_Religious', 'event_type_Sporting']]
+### Step 5: Evaluate the Forecasts
 
-    fcst_df_ex = nixtla_client.forecast(
-        df=input_df,
-        X_df=futr_exog_df,
-        h=28,
-        level=[80],
-        finetune_steps=10,
-        finetune_loss='mae',
-        model='timegpt-1-long-horizon',
-        time_col='ds',
-        target_col='y',
-        id_col='unique_id'
-    )
-    ```
-    <Check>
-      Incorporating exogenous event data can further refine predictions.
-    </Check>
-  </Step>
-</Steps>
+Before measuring the performance metric, let's plot the predictions against the actual values.
 
-----
+```python
+nixtla_client.plot(
+    test_df,
+    fcst_df,
+    models=['TimeGPT'],
+    level=[80],
+    time_col='ds',
+    target_col='y'
+)
+```
 
-## Final Results
+<Frame caption="Figure 2: Visualization of the predictions against the actual values">
+  ![Predictions vs Actual Values](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/4_intermittent_demand_files/figure-markdown_strict/cell-16-output-1.png)
+</Frame>
+
+
+Finally, we can measure the mean absolute error (MAE) of the model.
+
+```python
+# Compute MAE
+test_df = pd.merge(test_df, fcst_df, how='left', on=['unique_id', 'ds'])
+evaluation = evaluate(
+    test_df,
+    metrics=[mae],
+    models=['TimeGPT'],
+    target_col='y',
+    id_col='unique_id'
+)
+average_metrics = evaluation.groupby('metric')['TimeGPT'].mean()
+average_metrics
+```
+
+```bash
+metric
+mae    0.492559
+```
+
+### Step 6: Compare with Statistical Models
+
+The library `statsforecast` by Nixtla provides a suite of statistical models specifically built for intermittent forecasting, such as Croston, IMAPA and TSB. Let's use these models and see how they perform against TimeGPT.
+
+```python
+from statsforecast import StatsForecast
+from statsforecast.models import CrostonClassic, CrostonOptimized, IMAPA, TSB
+
+sf = StatsForecast(
+    models=[CrostonClassic(), CrostonOptimized(), IMAPA(), TSB(0.1, 0.1)],
+    freq='D',
+    n_jobs=-1
+)
+```
+
+Then, we can fit the models on our data.
+
+```python
+sf.fit(df=input_df)
+sf_preds = sf.predict(h=28)
+```
+
+Again, we need to inverse the transformation. Remember that the training data was previously transformed using the log function.
+
+```python
+cols = [col for col in sf_preds.columns if col not in ['ds', 'unique_id']]
+sf_preds[cols] = np.exp(sf_preds[cols]) - 1
+sf_preds.head()
+```
+
+|   | unique_id   | ds         | CrostonClassic | CrostonOptimized | IMAPA | TSB |
+|---|-------------|------------|---------------|-----------------|-------|-----|
+| 0 | FOODS_1_001 | 2016-05-23 | 0.599093      | 0.599093        | 0.445779 | 0.396258 |
+| 1 | FOODS_1_001 | 2016-05-24 | 0.599093      | 0.599093        | 0.445779 | 0.396258 |
+| 2 | FOODS_1_001 | 2016-05-25 | 0.599093      | 0.599093        | 0.445779 | 0.396258 |
+| 3 | FOODS_1_001 | 2016-05-26 | 0.599093      | 0.599093        | 0.445779 | 0.396258 |
+| 4 | FOODS_1_001 | 2016-05-27 | 0.599093      | 0.599093        | 0.445779 | 0.396258 |
+
+Now, let's combine the predictions from all methods and see which performs best.
+
+```python
+test_df = pd.merge(test_df, sf_preds, 'left', ['unique_id', 'ds'])
+test_df.head()
+```
+
+|   | unique_id   | ds         | y | sell_price | event_type_Cultural | event_type_National | event_type_Religious | event_type_Sporting | TimeGPT | TimeGPT-lo-80 | TimeGPT-hi-80 | CrostonClassic | CrostonOptimized | IMAPA | TSB |
+|---|-------------|------------|---|------------|---------------------|---------------------|----------------------|---------------------|---------|---------------|---------------|---------------|-----------------|-------|-----|
+| 0 | FOODS_1_001 | 2016-05-23 | 1.386294 | 2.24 | 0 | 0 | 0 | 0 | 0.286841 | -0.267101 | 1.259465 | 0.599093 | 0.599093 | 0.445779 | 0.396258 |
+| 1 | FOODS_1_001 | 2016-05-24 | 0.000000 | 2.24 | 0 | 0 | 0 | 0 | 0.320482 | -0.241236 | 1.298046 | 0.599093 | 0.599093 | 0.445779 | 0.396258 |
+| 2 | FOODS_1_001 | 2016-05-25 | 0.000000 | 2.24 | 0 | 0 | 0 | 0 | 0.287392 | -0.362250 | 1.598791 | 0.599093 | 0.599093 | 0.445779 | 0.396258 |
+| 3 | FOODS_1_001 | 2016-05-26 | 0.000000 | 2.24 | 0 | 0 | 0 | 0 | 0.295326 | -0.145489 | 0.963542 | 0.599093 | 0.599093 | 0.445779 | 0.396258 |
+| 4 | FOODS_1_001 | 2016-05-27 | 1.945910 | 2.24 | 0 | 0 | 0 | 0 | 0.315868 | -0.166516 | 1.077437 | 0.599093 | 0.599093 | 0.445779 | 0.396258 |
+
+```python
+statistical_models = ["CrostonClassic", "CrostonOptimized", "IMAPA", "TSB"]
+evaluation = evaluate(
+    test_df,
+    metrics=[mae],
+    models=["TimeGPT"] + statistical_models,
+    target_col="y",
+    id_col='unique_id'
+)
+
+average_metrics = evaluation.groupby('metric')[[
+    "TimeGPT"] + statistical_models].mean()
+average_metrics
+```
+
+| metric | TimeGPT  | CrostonClassic | CrostonOptimized | IMAPA    | TSB      |
+|--------|----------|----------------|------------------|----------|----------|
+| mae    | 0.492559 | 0.564563       | 0.580922         | 0.571943 | 0.567178 |
+
+In the table above, we can see that TimeGPT achieves the lowest MAE, achieving a 12.8% improvement over the best performing statistical model.
+
+These results demonstrate TimeGPT's strong performance without additional features. We can further improve accuracy by incorporating exogenous variables, a capability TimeGPT supports but traditional statistical models do not.
+
+### Step 7: Use Exogenous Variables
+
+To forecast with exogenous variables, we need to specify their future values over the forecast horizon. Therefore, let's simply take the types of events, as those dates are known in advance.
+
+```python
+# Include holiday/event data as exogenous features
+futr_exog_df = test_df[['unique_id', 'ds', 'event_type_Cultural', 'event_type_National', 'event_type_Religious', 'event_type_Sporting']]
+futr_exog_df.head()
+```
+
+|   | unique_id   | ds         | event_type_Cultural | event_type_National | event_type_Religious | event_type_Sporting |
+|---|-------------|------------|---------------------|---------------------|----------------------|---------------------|
+| 0 | FOODS_1_001 | 2016-05-23 | 0                   | 0                   | 0                    | 0                   |
+| 1 | FOODS_1_001 | 2016-05-24 | 0                   | 0                   | 0                    | 0                   |
+| 2 | FOODS_1_001 | 2016-05-25 | 0                   | 0                   | 0                    | 0                   |
+| 3 | FOODS_1_001 | 2016-05-26 | 0                   | 0                   | 0                    | 0                   |
+| 4 | FOODS_1_001 | 2016-05-27 | 0                   | 0                   | 0                    | 0                   |
+
+Then, we simply call the `forecast` method and pass the `futr_exog_df` in the `X_df` parameter.
+
+```python
+fcst_df = nixtla_client.forecast(
+    df=input_df,
+    X_df=futr_exog_df,
+    h=28,
+    level=[80],                        # Generate a 80% confidence interval
+    finetune_steps=10,                 # Specify the number of steps for fine-tuning
+    finetune_loss='mae',               # Use the MAE as the loss function for fine-tuning
+    model='timegpt-1-long-horizon',    # Use the model for long-horizon forecasting
+    time_col='ds',
+    target_col='y',
+    id_col='unique_id'
+)
+```
+
+```bash
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Inferred freq: D
+INFO:nixtla.nixtla_client:Using the following exogenous variables: event_type_Cultural, event_type_National, event_type_Religious, event_type_Sporting
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+```
+
+Great! Remember that the predictions are transformed, so we have to inverse the transformation again.
+
+```python
+fcst_df.rename(columns={'TimeGPT': 'TimeGPT_ex'}, inplace=True)
+
+cols = [col for col in fcst_df.columns if col not in ['ds', 'unique_id']]
+fcst_df[cols] = np.exp(fcst_df[cols]) - 1
+
+fcst_df.head()
+```
+
+|   | unique_id   | ds         | TimeGPT_ex | TimeGPT-lo-80 | TimeGPT-hi-80 |
+|---|-------------|------------|------------|---------------|---------------|
+| 0 | FOODS_1_001 | 2016-05-23 | 0.281922   | -0.269902     | 1.250828      |
+| 1 | FOODS_1_001 | 2016-05-24 | 0.313774   | -0.245091     | 1.286372      |
+| 2 | FOODS_1_001 | 2016-05-25 | 0.285639   | -0.363119     | 1.595252      |
+| 3 | FOODS_1_001 | 2016-05-26 | 0.295037   | -0.145679     | 0.963104      |
+| 4 | FOODS_1_001 | 2016-05-27 | 0.315484   | -0.166760     | 1.076830      |
+
+Finally, let's evaluate the performance of TimeGPT with exogenous features.
+
+```python
+test_df['TimeGPT_ex'] = fcst_df['TimeGPT_ex'].values
+test_df.head()
+```
+
+|   | unique_id   | ds         | y | sell_price | event_type_Cultural | event_type_National | event_type_Religious | event_type_Sporting | TimeGPT | TimeGPT-lo-80 | TimeGPT-hi-80 | CrostonClassic | CrostonOptimized | IMAPA | TSB | TimeGPT_ex |
+|---|-------------|------------|---|------------|---------------------|---------------------|----------------------|---------------------|---------|---------------|---------------|---------------|-----------------|-------|-----|------------|
+| 0 | FOODS_1_001 | 2016-05-23 | 1.386294 | 2.24 | 0 | 0 | 0 | 0 | 0.286841 | -0.267101 | 1.259465 | 0.599093 | 0.599093 | 0.445779 | 0.396258 | 0.281922 |
+| 1 | FOODS_1_001 | 2016-05-24 | 0.000000 | 2.24 | 0 | 0 | 0 | 0 | 0.320482 | -0.241236 | 1.298046 | 0.599093 | 0.599093 | 0.445779 | 0.396258 | 0.313774 |
+| 2 | FOODS_1_001 | 2016-05-25 | 0.000000 | 2.24 | 0 | 0 | 0 | 0 | 0.287392 | -0.362250 | 1.598791 | 0.599093 | 0.599093 | 0.445779 | 0.396258 | 0.285639 |
+| 3 | FOODS_1_001 | 2016-05-26 | 0.000000 | 2.24 | 0 | 0 | 0 | 0 | 0.295326 | -0.145489 | 0.963542 | 0.599093 | 0.599093 | 0.445779 | 0.396258 | 0.295037 |
+| 4 | FOODS_1_001 | 2016-05-27 | 1.945910 | 2.24 | 0 | 0 | 0 | 0 | 0.315868 | -0.166516 | 1.077437 | 0.599093 | 0.599093 | 0.445779 | 0.396258 | 0.315484 |
+
+```python
+evaluation = evaluate(
+    test_df,
+    metrics=[mae],
+    models=["TimeGPT", "CrostonClassic", "CrostonOptimized", "IMAPA", "TSB", "TimeGPT_ex"],
+    target_col="y",
+    id_col='unique_id'
+)
+
+average_metrics = evaluation.groupby('metric')[["TimeGPT", "CrostonClassic", "CrostonOptimized", "IMAPA", "TSB", "TimeGPT_ex"]].mean()
+average_metrics
+```
+
+| metric | TimeGPT  | CrostonClassic | CrostonOptimized | IMAPA    | TSB      | TimeGPT_ex |
+|--------|----------|----------------|------------------|----------|----------|------------|
+|mae	   | 0.492559 | 0.564563       | 0.580922         | 0.571943 | 0.567178 | 0.485352   |
+
+
+From the table above, we can see that using exogenous features improved the performance of TimeGPT. Now, it represents a 14% improvement over the best statistical model.
+
+## Conclusion
 
 TimeGPT provides a robust solution for forecasting intermittent demand:
-• ~14% MAE improvement over specialized models
-• Supports exogenous features for enhanced accuracy
+- ~14% MAE improvement over specialized models
+- Supports exogenous features for enhanced accuracy
 
-<Info>
 By leveraging TimeGPT and combining both internal series patterns and external factors, organizations can achieve more reliable forecasts even for challenging intermittent demands.
-</Info>
