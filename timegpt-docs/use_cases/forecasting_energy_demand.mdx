@@ -4,29 +4,31 @@ description: "Learn how TimeGPT accurately predicts electricity consumption patt
 icon: "bolt"
 ---
 
-<Check>
-TimeGPT delivers highly accurate, fast forecasts. In this tutorial, you'll learn how to reproduce a 4-day forecast for in-zone energy demand and see how TimeGPT compares to the deep-learning model N-HiTS.
-</Check>
+## Introduction
 
-This tutorial uses a subset of the [PJM Hourly Energy Consumption dataset](https://www.pjm.com/), focusing on in-zone consumption where electricity is generated and used within the same transmission zone. It contains hourly observations from October 1, 2023, to September 30, 2024, for five representative regions and is an excellent dataset to demonstrate TimeGPT's capabilities.
+Energy demand forecasting is critical for grid operations, resource allocation, and infrastructure planning. Despite advances in methods, predicting consumption remains challenging due to weather, economic activity, and consumer behavior.
 
-<Info>
-With just a few lines of code, TimeGPT can achieve:
-• 18.6% lower MAE compared to N-HiTS
-• 31.1% lower sMAPE compared to N-HiTS
-• 90% faster prediction times
-</Info>
+This tutorial demonstrates how TimeGPT simplifies in-zone electricity forecasting while delivering superior accuracy and speed. We will use the [PJM Hourly Energy Consumption dataset](https://www.pjm.com/) covering five regions from October 2023 to September 2024.
+
+### What You'll Learn
+
+- How to load and prepare energy consumption data
+- How to generate 4-day ahead forecasts with TimeGPT
+- How to evaluate forecast accuracy using MAE and sMAPE
+- How TimeGPT compares to deep learning models like N-HiTS
+
+The procedures in this tutorial apply to many time series forecasting scenarios beyond energy demand.
+
+## How to Use TimeGPT to Forecast Energy Demand
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/3_electricity_demand.ipynb)
 
-## Overview
 
-<Steps>
-  <Step title="Step 1: Initial Setup">
+### Step 1: Initial Setup
 
 Install and import required packages, then create a NixtlaClient instance to interact with TimeGPT.
 
-```python setup
+```python
 import time
 import requests
 import pandas as pd
@@ -39,34 +41,10 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-<Info>
-If you want to connect to Azure AI instead of Nixtla's API, specify **base_url** and **api_key**.
-</Info>
-
-<Tabs>
-  <Tab title="Nixtla API">
-  ```python Nixtla API Initialization
-  nixtla_client = NixtlaClient(
-      api_key='my_api_key_provided_by_nixtla'
-  )
-  ```
-  </Tab>
-  <Tab title="Azure AI">
-  ```python Azure AI Initialization
-  nixtla_client = NixtlaClient(
-      base_url="your_azure_ai_endpoint",
-      api_key="your_api_key"
-  )
-  ```
-  </Tab>
-</Tabs>
-
-  </Step>
-
-  <Step title="Step 2: Read the Data">
+### Step 2: Read the Data
 Load the energy consumption dataset and convert datetime strings to timestamps.
 
-```python Load and Preview Data
+```python
 df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/refs/heads/main/datasets/pjm_in_zone.csv')
 df['ds'] = pd.to_datetime(df['ds'])
 
@@ -74,19 +52,16 @@ df['ds'] = pd.to_datetime(df['ds'])
 df.groupby('unique_id').head(2)
 ```
 
-<CardGroup cols={1}>
-  <Card title="Sample Data">
-    |       | unique_id   | ds                          | y          |
+|       | unique_id   | ds                          | y          |
 | ----- | ----------- | --------------------------- | ---------- |
 | 0     | AP-AP       | 2023-10-01 04:00:00+00:00   | 4042.513   |
 | 1     | AP-AP       | 2023-10-01 05:00:00+00:00   | 3850.067   |
 
-  </Card>
-</CardGroup>
+
 
 Plot the data series to visualize seasonal patterns.
 
-```python Plot Seasonal Patterns
+```python
 nixtla_client.plot(
     df,
     max_insample_length=365
@@ -96,14 +71,13 @@ nixtla_client.plot(
 <Frame caption="Seasonal patterns in energy consumption.">
   ![Seasonal patterns in energy consumption.](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-12-output-1.png)
 </Frame>
-  </Step>
 
-  <Step title="Step 3: Forecast with TimeGPT">
+### Step 3: Forecast with TimeGPT
 We'll split our dataset into:
-• A training/input set for model calibration
-• A testing set (last 4 days) to validate performance
+- A training/input set for model calibration
+- A testing set (last 4 days) to validate performance
 
-```python TimeGPT Forecasting
+```python
 # Prepare test (last 4 days) and input data
 test_df = df.groupby('unique_id').tail(96)
 input_df = df.groupby('unique_id').apply(lambda group: group.iloc[-1104:-96]).reset_index(drop=True)
@@ -139,21 +113,14 @@ nixtla_client.plot(
 )
 ```
 
-<Accordion title="Time Logging Output">
-```bash Time Logging Output
-Time (TimeGPT): {timegpt_duration}
-```
-</Accordion>
-
 <Frame caption="TimeGPT forecast compared to actual values.">
   ![TimeGPT forecast compared to actual values.](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/3_electricity_demand_files/figure-markdown_strict/cell-15-output-1.png)
 </Frame>
-  </Step>
 
-  <Step title="Step 4: Evaluate TimeGPT">
+### Step 4: Evaluate TimeGPT
 Compute accuracy metrics (MAE and sMAPE) for TimeGPT.
 
-```python Evaluate TimeGPT Performance
+```python
 fcst_df['ds'] = pd.to_datetime(fcst_df['ds'])
 test_df = pd.merge(test_df, fcst_df, 'left', ['unique_id', 'ds'])
 
@@ -161,70 +128,53 @@ evaluation = evaluate(test_df, [mae, smape], ["TimeGPT"], "y", "unique_id")
 average_metrics = evaluation.groupby('metric')['TimeGPT'].mean()
 average_metrics
 ```
-  </Step>
 
-  <Step title="Step 5: Forecast with N-HiTS">
+### Step 5: Forecast with N-HiTS
 For comparison, we train and forecast using the deep-learning model N-HiTS.
 
-<AccordionGroup>
-  <Accordion title="N-HiTS Training and Forecast">
-    ```python N-HiTS Forecasting
-    from neuralforecast.core import NeuralForecast
-    from neuralforecast.models import NHITS
+```python
+from neuralforecast.core import NeuralForecast
+from neuralforecast.models import NHITS
 
-    # Prepare training dataset by excluding the last 4 days
-    train_df = df.groupby('unique_id').apply(lambda group: group.iloc[:-96]).reset_index(drop=True)
+# Prepare training dataset by excluding the last 4 days
+train_df = df.groupby('unique_id').apply(lambda group: group.iloc[:-96]).reset_index(drop=True)
 
-    models = [
-        NHITS(h=96, input_size=480, scaler_type='robust', batch_size=16, valid_batch_size=8)
-    ]
+models = [
+    NHITS(h=96, input_size=480, scaler_type='robust', batch_size=16, valid_batch_size=8)
+]
 
-    nf = NeuralForecast(models=models, freq='H')
+nf = NeuralForecast(models=models, freq='H')
 
-    start = time.time()
-    nf.fit(df=train_df)
-    nhits_preds = nf.predict()
+start = time.time()
+nf.fit(df=train_df)
+nhits_preds = nf.predict()
 
-    end = time.time()
+end = time.time()
 
-    print(f"Time (N-HiTS): {end - start}")
-    ```
-  </Accordion>
-</AccordionGroup>
-
-<Accordion title="N-HiTS Time Logging Output">
-```bash N-HiTS Time Output
-Time (N-HiTS): {end - start}
+print(f"Time (N-HiTS): {end - start}")
 ```
-</Accordion>
-  </Step>
 
-  <Step title="Step 6: Evaluate N-HiTS">
+### Step 6: Evaluate N-HiTS
+
 Compute accuracy metrics (MAE and sMAPE) for N-HiTS.
 
-```python Evaluate N-HiTS Performance
+```python
 preds_df = pd.merge(test_df, nhits_preds, 'left', ['unique_id', 'ds'])
 
 evaluation = evaluate(preds_df, [mae, smape], ["NHITS"], "y", "unique_id")
 average_metrics = evaluation.groupby('metric')['NHITS'].mean()
 print(average_metrics)
 ```
-  </Step>
-</Steps>
+
 
 ## Conclusion
 
-<CardGroup cols={1}>
-  <Card title="Key Results">
+TimeGPT demonstrates substantial performance improvements over N-HiTS across key metrics:
 
-      - TimeGPT achieves an MAE of 882.6, compared to 1084.7 from N-HiTS (18.6% improvement).
+- **Accuracy**: 18.6% lower MAE (882.6 vs 1084.7)
+- **Error Rate**: 31.1% lower sMAPE
+- **Speed**: 90% faster predictions (4.3 seconds vs 44 seconds)
 
-      - TimeGPT's sMAPE is 31.1% lower than N-HiTS.
+These results make TimeGPT a powerful tool for forecasting energy consumption and other time-series tasks where both accuracy and speed are critical.
 
-      - TimeGPT generates predictions in roughly 4.3 seconds, which is 90% faster than N-HiTS's 44 seconds.
-
-
-  </Card>
-</CardGroup>
-
-TimeGPT offers substantial benefits in accuracy and speed, making it a powerful tool for forecasting energy consumption and other time-series tasks. Experiment with the parameters to further optimize performance for your specific use case.
+Experiment with the parameters to further optimize performance for your specific use case.
