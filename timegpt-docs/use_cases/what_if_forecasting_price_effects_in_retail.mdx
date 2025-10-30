@@ -4,99 +4,90 @@ description: "Learn how to use TimeGPT to forecast sales scenarios with differen
 icon: "store"
 ---
 
-<Info>
-TimeGPT makes it possible to forecast product demand in the retail sector and evaluate how different pricing scenarios might affect demand. Scenario analysis offers valuable insights for informed decision-making.
-</Info>
+## Introduction
 
-<CardGroup>
-  <Card
-    title="Forecast product demand using price as an exogenous variable"
-    description="Learn how to incorporate price data into demand forecasts to better understand how pricing decisions drive consumer behavior."
-  />
-  <Card
-    title="Evaluate different pricing scenarios"
-    description="Explore how modifying product prices affects demand levels by comparing baseline forecasts to adjusted forecasts."
-  />
-</CardGroup>
+Pricing decisions significantly impact retail demand. TimeGPT makes it possible to forecast product demand while incorporating price as a key factor, enabling retailers to evaluate how different pricing scenarios might affect sales. This approach offers valuable insights for strategic pricing decisions.
+
+This tutorial demonstrates how to use TimeGPT for scenario analysis by forecasting demand under various pricing conditions. You'll learn to incorporate price data into forecasts and compare different pricing strategies to understand their impact on consumer demand.
+
+## How to Forecast Sales with Pricing Scenarios
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/use-cases/5_what_if_pricing_scenarios_in_retail.ipynb)
 
-<Steps>
+### Step 1: Import required packages
 
-<Step title="1. Import required packages">
 Import the packages needed for this tutorial and initialize your Nixtla client:
 
-<CodeGroup>
-```python Import Packages and Initialize NixtlaClient
+```python
 import pandas as pd
 import os
 
 from nixtla import NixtlaClient
-from datasetsforecast.m5 import M5
 ```
-</CodeGroup>
 
-<Tabs>
-  <Tab title="Standard Endpoint">
-    <Info>
-      If you are using Nixtla's standard endpoint, simply provide your API key:
-    </Info>
-    ```python Initialize NixtlaClient with Standard Endpoint
-    nixtla_client = NixtlaClient(
-        api_key='my_api_key_provided_by_nixtla'
-    )
-    ```
-  </Tab>
-  <Tab title="Azure AI Endpoint">
-    <Check>
-      If you have an Azure AI endpoint, configure the `base_url` argument accordingly:
-    </Check>
-    ```python Initialize NixtlaClient with Azure AI Endpoint
-    nixtla_client = NixtlaClient(
-        base_url="your azure ai endpoint",
-        api_key="your_api_key"
-    )
-    ```
-  </Tab>
-</Tabs>
-</Step>
+Initialize the Nixtla client:
 
-<Step title="2. Load the M5 dataset">
-We will use the [M5 dataset](https://nixtlaverse.nixtla.io/datasetsforecast/m5.html), containing product sales data from 10 US retail stores. The data includes:
+```python
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
 
-| DataFrame   | Contents                                                                 |
-| ----------- | ------------------------------------------------------------------------ |
-| `Y_df`      | Historical sales (`y`) for each product (`unique_id`) and date (`ds`).   |
-| `X_df`      | Additional information (exogenous variables) such as `sell_price`.       |
+### Step 2: Load the M5 dataset
 
+Let's see an example on predicting sales of products of the [M5 dataset](https://nixtlaverse.nixtla.io/datasetsforecast/m5.html). The M5 dataset contains daily product demand (sales) for 10 retail stores in the US.
 
+First, we load the data using `datasetsforecast`. This returns:
 
-<Info>
-For a full tutorial on incorporating exogenous variables with TimeGPT, please see the dedicated documentation.
-</Info>
+- `Y_df`, containing the sales (`y` column), for each unique product (`unique_id` column) at every timestamp (`ds` column).
+- `X_df`, containing additional relevant information for each unique product (`unique_id` column) at every timestamp (`ds` column).
 
-<CodeGroup>
-```python Load M5 Dataset
+```python
+from datasetsforecast.m5 import M5
+
 Y_df, X_df, S_df = M5.load(directory=os.getcwd())
 Y_df.head(10)
 ```
-</CodeGroup>
 
-Because we want price-driven demand forecasts, we'll focus on the `sell_price` column:
+| unique_id | ds | y |
+|-----------|------------|-----|
+| FOODS_1_001_CA_1 | 2011-01-29 | 3.0 |
+| FOODS_1_001_CA_1 | 2011-01-30 | 0.0 |
+| FOODS_1_001_CA_1 | 2011-01-31 | 0.0 |
+| FOODS_1_001_CA_1 | 2011-02-01 | 1.0 |
+| FOODS_1_001_CA_1 | 2011-02-02 | 4.0 |
+| FOODS_1_001_CA_1 | 2011-02-03 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-04 | 0.0 |
+| FOODS_1_001_CA_1 | 2011-02-05 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-06 | 0.0 |
+| FOODS_1_001_CA_1 | 2011-02-07 | 0.0 |
 
-<CodeGroup>
-```python Select Sell Price Column
+For this example, we will only keep the additional relevant information from the column `sell_price`. This column shows the selling price of the product, and we expect demand to fluctuate given a different selling price.
+
+```python
 X_df = X_df[['unique_id', 'ds', 'sell_price']]
 X_df.head(10)
 ```
-</CodeGroup>
-</Step>
 
-<Step title="3. Forecast demand using price as an exogenous variable">
+| unique_id | ds | sell_price |
+|-----------|------------|------------|
+| FOODS_1_001_CA_1 | 2011-01-29 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-01-30 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-01-31 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-01 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-02 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-03 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-04 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-05 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-06 | 2.0 |
+| FOODS_1_001_CA_1 | 2011-02-07 | 2.0 |
+
+
+### Step 3: Forecast demand using price as an exogenous variable
+
 In this example, we forecast for a single product (`FOODS_1_129_`) across all 10 stores. This product exhibits frequent price changes, making it ideal for modeling price effects on demand.
 
-<CodeGroup>
-```python Select Products for Forecasting
+```python
 products = [
     'FOODS_1_129_CA_1', 'FOODS_1_129_CA_2', 'FOODS_1_129_CA_3', 'FOODS_1_129_CA_4',
     'FOODS_1_129_TX_1', 'FOODS_1_129_TX_2', 'FOODS_1_129_TX_3',
@@ -106,46 +97,100 @@ products = [
 Y_df_product = Y_df.query('unique_id in @products')
 X_df_product = X_df.query('unique_id in @products')
 ```
-</CodeGroup>
 
 Merge the sales (`y`) and price (`sell_price`) data into one DataFrame:
 
-<CodeGroup>
-```python Merge Sales and Price Data
+```python
 df = Y_df_product.merge(X_df_product)
 df.head(10)
 ```
-</CodeGroup>
 
-Check the historical demand and pricing trends:
+| unique_id | ds | y | sell_price |
+|-----------|------------|-----|------------|
+| FOODS_1_129_CA_1 | 2011-02-01 | 1.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-02 | 0.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-03 | 0.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-04 | 0.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-05 | 1.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-06 | 0.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-07 | 0.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-08 | 0.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-09 | 0.0 | 6.22 |
+| FOODS_1_129_CA_1 | 2011-02-10 | 3.0 | 6.22 |
 
-<CodeGroup>
-```python Plot Historical Demand
+
+Let's investigate how the demand, our target `y`, of these products has evolved in the last year of data. 
+
+```python
 nixtla_client.plot(df, unique_ids=products, max_insample_length=365)
 ```
-</CodeGroup>
 
-<CodeGroup>
-```python Plot Historical Prices
+<Frame caption="Cross-validation forecast plot">
+  ![Historical demand and pricing trends](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-15-output-1.png)
+</Frame>
+
+We see that in the California stores (with a CA_ suffix), the product has sold intermittently, whereas in the other regions (TX and WY) sales where less intermittent. Note that the plot only shows 8 (out of 10) stores.
+
+Next, we look at the `sell_price` of these products across the entire data available.
+
+```python
 nixtla_client.plot(df, unique_ids=products, target_col='sell_price')
 ```
-</CodeGroup>
 
-Now, split the data into:
-• Training data (`df_train`)
-• Future exogenous data (`future_ex_vars_df`)
+<Frame caption="Cross-validation forecast plot">
+  ![Historical pricing trends](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-16-output-1.png)
+</Frame>
 
-<CodeGroup>
-```python Split Data into Train and Future Exogenous
-future_ex_vars_df = df.drop(columns=['y']).query("ds >= '2016-05-23'")
-df_train = df.query("ds < '2016-05-23'")
+We find that there have been relatively few price changes (about 20 in total) over the period 2011 to 2016.
+
+Let's turn to our forecasting task. We will forecast the last 28 days in the dataset.
+
+To use the `sell_price` exogenous variable in TimeGPT, we have to add it as future values. Therefore, we create a future values dataframe, that contains the `unique_id`, the timestamp `ds`, and `sell_price`.
+
+```python
+future_ex_vars_df = df.drop(columns = ['y'])
+future_ex_vars_df = future_ex_vars_df.query("ds >= '2016-05-23'")
+
+future_ex_vars_df.head(10)
 ```
-</CodeGroup>
 
-Generate forecasts using TimeGPT (28 days ahead):
+| unique_id | ds | sell_price |
+|-----------|------------|------------|
+| FOODS_1_129_CA_1 | 2016-05-23 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-24 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-25 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-26 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-27 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-28 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-29 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-30 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-05-31 | 5.74 |
+| FOODS_1_129_CA_1 | 2016-06-01 | 5.74 |
 
-<CodeGroup>
-```python Generate Baseline Forecast
+Next, we limit our input dataframe to all but the 28 forecast days:
+
+```python
+df_train = df.query("ds < '2016-05-23'")
+
+df_train.tail(10)
+```
+
+| unique_id | ds | y | sell_price |
+|-----------|------------|-----|------------|
+| FOODS_1_129_WI_3 | 2016-05-13 | 3.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-14 | 1.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-15 | 2.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-16 | 3.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-17 | 1.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-18 | 2.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-19 | 3.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-20 | 1.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-21 | 0.0 | 7.23 |
+| FOODS_1_129_WI_3 | 2016-05-22 | 0.0 | 7.23 |
+
+Now, we can generate forecasts using TimeGPT (28 days ahead):
+
+```python
 timegpt_fcst_df = nixtla_client.forecast(
     df=df_train,
     X_df=future_ex_vars_df,
@@ -153,30 +198,34 @@ timegpt_fcst_df = nixtla_client.forecast(
 )
 timegpt_fcst_df.head()
 ```
-</CodeGroup>
 
-<Info>
-When using Azure AI endpoints, specify `model="azureai"` in the `forecast` call. Refer to the official tutorials for more details.
-</Info>
+| unique_id | ds | TimeGPT |
+|-----------|------------|------------|
+| FOODS_1_129_CA_1 | 2016-05-23 | 0.875594 |
+| FOODS_1_129_CA_1 | 2016-05-24 | 0.777731 |
+| FOODS_1_129_CA_1 | 2016-05-25 | 0.786871 |
+| FOODS_1_129_CA_1 | 2016-05-26 | 0.828223 |
+| FOODS_1_129_CA_1 | 2016-05-27 | 0.791228 |
 
-Finally, visualize your baseline forecast:
+We plot the forecast, the actuals and the last 28 days before the forecast period:
 
-<CodeGroup>
-```python Plot Baseline Forecast
+```python
 nixtla_client.plot(
     df[['unique_id', 'ds', 'y']],
     timegpt_fcst_df,
     max_insample_length=56
 )
 ```
-</CodeGroup>
-</Step>
 
-<Step title="4. 'What if?' forecasting: exploring price changes">
-We'll now explore ±5% price changes and their impact on demand. Adjust future prices, forecast demand, and compare to the baseline:
+<Frame caption="Cross-validation forecast plot">
+  ![Forecast, actuals and last 28 days before the forecast period](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-20-output-1.png)
+</Frame>
 
-<CodeGroup>
-```python Apply Price Scenarios for Forecasting
+### Step 4: 'What if?' forecasting: exploring price changes
+
+What happens when we change the price of the products in our forecast period? Let's see how our forecast changes when we increase and decrease the `sell_price` by 5%.
+
+```python
 price_change = 0.05
 
 future_ex_vars_df_plus = future_ex_vars_df.copy()
@@ -184,70 +233,60 @@ future_ex_vars_df_plus["sell_price"] *= (1 + price_change)
 
 future_ex_vars_df_minus = future_ex_vars_df.copy()
 future_ex_vars_df_minus["sell_price"] *= (1 - price_change)
+```
 
+Let's create a new set of forecasts with TimeGPT.
+
+```python
 timegpt_fcst_df_plus = nixtla_client.forecast(df_train, future_ex_vars_df_plus, h=28)
 timegpt_fcst_df_minus = nixtla_client.forecast(df_train, future_ex_vars_df_minus, h=28)
 ```
-</CodeGroup>
 
 Rename and combine the scenario forecasts:
 
-<CodeGroup>
-```python Rename and Combine Scenario Forecasts
-timegpt_fcst_df_plus.rename(
-    columns={'TimeGPT': f'TimeGPT+{price_change*100:.0f}%'},
-    inplace=True
-)
+```python
+timegpt_fcst_df_plus = timegpt_fcst_df_plus.rename(columns={'TimeGPT':f'TimeGPT-sell_price_plus_{price_change * 100:.0f}%'})
+timegpt_fcst_df_minus = timegpt_fcst_df_minus.rename(columns={'TimeGPT':f'TimeGPT-sell_price_minus_{price_change * 100:.0f}%'})
 
-timegpt_fcst_df_minus.rename(
-    columns={'TimeGPT': f'TimeGPT-{price_change*100:.0f}%'},
-    inplace=True
-)
+timegpt_fcst_df = pd.concat([timegpt_fcst_df, 
+                             timegpt_fcst_df_plus[f'TimeGPT-sell_price_plus_{price_change * 100:.0f}%'], 
+                             timegpt_fcst_df_minus[f'TimeGPT-sell_price_minus_{price_change * 100:.0f}%']], axis=1)
 
-timegpt_fcst_df = pd.concat(
-    [
-        timegpt_fcst_df,
-        timegpt_fcst_df_plus.iloc[:, -1],
-        timegpt_fcst_df_minus.iloc[:, -1]
-    ],
-    axis=1
-)
+timegpt_fcst_df.head(10)
 ```
-</CodeGroup>
 
-Visualize all three forecasts (baseline, +5%, and –5%):
+| unique_id | ds | TimeGPT | TimeGPT-sell_price_plus_5% | TimeGPT-sell_price_minus_5% |
+|-----------|------------|------------|------------|------------|
+| FOODS_1_129_CA_1 | 2016-05-23 | 0.875594 | 0.847006 | 1.370029 |
+| FOODS_1_129_CA_1 | 2016-05-24 | 0.777731 | 0.749142 | 1.272166 |
+| FOODS_1_129_CA_1 | 2016-05-25 | 0.786871 | 0.758283 | 1.281306 |
+| FOODS_1_129_CA_1 | 2016-05-26 | 0.828223 | 0.799635 | 1.322658 |
+| FOODS_1_129_CA_1 | 2016-05-27 | 0.791228 | 0.762640 | 1.285663 |
+| FOODS_1_129_CA_1 | 2016-05-28 | 0.819133 | 0.790545 | 1.313568 |
+| FOODS_1_129_CA_1 | 2016-05-29 | 0.839992 | 0.811404 | 1.334427 |
+| FOODS_1_129_CA_1 | 2016-05-30 | 0.843070 | 0.814481 | 1.337505 |
+| FOODS_1_129_CA_1 | 2016-05-31 | 0.833089 | 0.804500 | 1.327524 |
+| FOODS_1_129_CA_1 | 2016-06-01 | 0.855032 | 0.826443 | 1.349467 |
 
-<CodeGroup>
-```python Plot Scenario Forecasts Comparison
+As expected, demand increases when we reduce the price and decreases when we increase it. A cheaper product leads to higher sales and vice versa. 
+
+Finally, let's plot the forecasts for our different pricing scenarios, showing how TimeGPT forecasts a different demand when the price of a set of products is changed.
+
+```python
 nixtla_client.plot(
     df[['unique_id', 'ds', 'y']],
     timegpt_fcst_df,
     max_insample_length=56
 )
 ```
-</CodeGroup>
 
-<AccordionGroup>
-  <Accordion title="What is Price Elasticity?">
-    <Info>
-      **Price elasticity** measures demand sensitivity to price changes. For more details, see this
-      [Wikipedia article](https://en.wikipedia.org/wiki/Price_elasticity_of_demand).
-    </Info>
-  </Accordion>
+<Frame caption="Cross-validation forecast plot">
+  ![Forecasts for our different pricing scenarios](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-24-output-1.png)
+</Frame>
 
-  <Accordion title="Important Considerations">
-    <Warning>
+In the graphs we can see that for specific products for certain periods the discount increases expected demand, while during other periods and for other products, price change has a smaller effect on total demand. 
 
-        - Forecasting relies on historical patterns, which may not capture entirely new market conditions.
-
-        - Include additional exogenous variables if you expect them to significantly impact sales.
-
-        - If historical data capture major market shifts, explicitly model them for better accuracy.
-
-
-    </Warning>
-  </Accordion>
-</AccordionGroup>
-</Step>
-
-</Steps>
+<Info>
+- This method assumes that historical demand and price behaviour is predictive of future demand, and omits other factors affecting demand. To include these other factors, use additional exogenous variables that provide the model with more context about the factors influencing demand.
+- This method is sensitive to unmodelled events that affect the demand, such as sudden market shifts. To include those, use additional exogenous variables indicating such sudden shifts if they have been observed in the past too.
+</Info>
