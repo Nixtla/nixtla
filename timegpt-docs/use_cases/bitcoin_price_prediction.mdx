@@ -6,16 +6,17 @@ icon: "bitcoin"
 
 ## Introduction
 
-Forecasting time series is a ubiquitous task in finance, supporting decisions in trading, risk management, and strategic planning. Despite its prevalence, predicting the future prices of financial assets remains a formidable challenge, mainly due to the inherent volatility of financial markets.
-For those who believe in the feasibility of forecasting these assets, or for professionals whose roles require such predictions, TimeGPT is a powerful tool that simplifies the forecasting process.
+Time series forecasting is essential in finance for trading, risk management, and strategic planning. However, predicting financial asset prices remains challenging due to market volatility.
 
-In this tutorial, we will demonstrate how to use TimeGPT for financial time series forecasting, focusing on Bitcoin price prediction. We will also showcase how to use TimeGPT for uncertainty quantification, which is essential for risk management and decision-making.
+Whether you believe financial forecasting is possible or your role requires it, TimeGPT simplifies the process.
+
+This tutorial demonstrates how to use TimeGPT for Bitcoin price prediction and uncertainty quantification for risk management.
 
 ### Why Forecast Bitcoin Prices
 
-Bitcoin (₿) is the first decentralized digital currency and is one of the most popular cryptocurrencies. Transactions are managed and recorded on a public ledger known as the blockchain. Bitcoins are created as a reward for mining, a process that involves solving complex cryptographic tasks to verify transactions. This digital currency can be used as payment for goods and services, traded for other currencies, or held as a store of value.
+Bitcoin (₿), the first decentralized cryptocurrency, records transactions on a blockchain. Bitcoins are mined by solving cryptographic tasks and can be used for payments, trading, or investment.
 
-Bitcoin's high volatility and widespread trading make accurate forecasting a valuable tool for financial analysis, trading strategies, and risk management.
+Bitcoin's volatility and popularity make price forecasting valuable for trading strategies and risk management.
 
 ### What You'll Learn
 
@@ -26,19 +27,13 @@ Bitcoin's high volatility and widespread trading make accurate forecasting a val
 
 The procedures in this tutorial apply to many financial asset forecasting scenarios, not just Bitcoin.
 
-<Info>
-**Quick Summary**: This tutorial covers Bitcoin price prediction using TimeGPT in Python. You'll learn to load cryptocurrency data, generate 7-day forecasts with confidence intervals, detect price anomalies, and understand forecasting limitations for volatile crypto markets.
-</Info>
-
 ## How to Use TimeGPT to Forecast Bitcoin Prices
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/use-cases/2_bitcoin_price_prediction.ipynb)
 
 ### Step 1: Load Bitcoin Price Data
 
-Bitcoin (₿) is the first decentralized digital currency, with transactions recorded on a public ledger called the blockchain. Bitcoins are created through mining—solving cryptographic tasks—and are used for payments, trading, and long-term investment.
-
-For convenience, we'll rename columns to match TimeGPT's expected `ds` (date) and `y` (target) format.
+Start by loading the Bitcoin price data:
 
 ```python
 import pandas as pd
@@ -60,7 +55,9 @@ df.head()
 | 3 | 2020-01-04 | 7410.656738  |
 | 4 | 2020-01-05 | 7411.317383  |
 
-This dataset includes daily Bitcoin closing prices (in USD) from 2020-01-01 to 2023-12-31. While Bitcoin trades continuously, "closing price" here refers to a specific daily time rather than a traditional market close.
+This dataset includes daily Bitcoin closing prices (in USD) from 2020 to 2023. "Closing price" refers to the price at a specific daily time, not a traditional market close.
+
+Next, rename the columns to match TimeGPT's expected `ds` (date) and `y` (target) format.
 
 ```python
 # Rename columns to TimeGPT's expected format (ds=date, y=target value)
@@ -162,7 +159,7 @@ To get a closer look at the predictions, we can zoom in on the plot or specify t
 
 #### Anomaly Detection
 
-Given the volatility of the price of Bitcoin, it can be useful to try to identify anomalies in the data. TimeGPT can be used for this by calling the `detect_anomalies` method from the `NixtlaClient` class. This method evaluates each observation against its context within the series, using statistical measures to determine its likelihood of being an anomaly. By default, it identifies anomalies based on a 99 percent prediction interval. To change this, you can specify the `level` argument.
+Given Bitcoin's volatility, identifying anomalies can be valuable. Use TimeGPT's `detect_anomalies` method to evaluate each observation statistically within its series context. By default, it identifies anomalies using a 99% prediction interval, which you can adjust with the `level` argument.
 
 ```python
 # Detect anomalies in Bitcoin price data
@@ -185,16 +182,16 @@ To learn how to incorporate exogenous variables to TimeGPT, see [Real-time Anoma
 
 #### Add Exogenous Variables
 
-If you have additional information that you believe could help improve the forecast, consider including it as an exogenous variable. For instance, you might add data such as the price of other cryptocurrencies, proprietary information, stock market indices, or the number of transactions in the Bitcoin network.
-
-TimeGPT supports the incorporation of exogenous variables in the `forecast` method. However, keep in mind that you'll need to know the future values of these variables.
+To improve forecasts, include relevant data as exogenous variables, such as other cryptocurrency prices, stock market indices, or Bitcoin network transaction volumes.
 
 To learn how to incorporate exogenous variables to TimeGPT, see [Numeric Features Guide](/forecasting/exogenous-variables/numeric_features).
 
 
-### Step 7: Understand the Model Limitations
+## Understand the Model Limitations
 
-As stated in the introduction, predicting the future prices of financial assets is a challenging task, especially for assets like Bitcoin. The predictions in this tutorial may appear accurate, mainly because they align with recent historical data and the model updates with new values at short intervals, avoiding significant deviations. However, the true challenge lies in forecasting Bitcoin's price for the upcoming days, not just its historical performance. For those who need or want to try to forecast these assets, `TimeGPT` can be an option that simplifies the forecasting process. With just a couple of lines of code, `TimeGPT` can help you: 
+As stated in the introduction, predicting Bitcoin prices is challenging. The predictions here may appear accurate because they use recent data and update frequently, but the real test is forecasting future prices, not historical performance.
+
+For those who need or want to try to forecast these assets, `TimeGPT` can be an option that simplifies the forecasting process. With just a couple of lines of code, `TimeGPT` can help you: 
 
 - Produce point forecasts 
 - Quantify the uncertainty of your predictions 
@@ -204,36 +201,7 @@ As stated in the introduction, predicting the future prices of financial assets 
 
 To learn more about TimeGPT capabilities, see the [TimeGPT Introduction](/introduction/introduction).
 
-## Next Steps in Cryptocurrency Forecasting
-
-You've successfully learned how to forecast Bitcoin prices using TimeGPT with Python. Apply these techniques to other cryptocurrencies like Ethereum, Cardano, or XRP.
-
-Ready to forecast at scale? [Sign up for Nixtla API access](https://dashboard.nixtla.io/) and start predicting cryptocurrency prices today.
-
-
-## Frequently Asked Questions
-
-**How accurate is Bitcoin price prediction with TimeGPT?**
-
-TimeGPT provides probabilistic forecasts with uncertainty intervals, making it suitable for risk-aware trading strategies. Accuracy depends on market volatility and forecast horizon.
-
-**Can TimeGPT predict cryptocurrency crashes?**
-
-TimeGPT includes anomaly detection capabilities that can identify unusual patterns in Bitcoin price data, helping detect potential market disruptions.
-
-**What data do I need for Bitcoin price forecasting?**
-
-You need historical Bitcoin price data with timestamps. This tutorial uses daily closing prices from 2020-2023.
-
-**Does this work for other cryptocurrencies?**
-
-Yes, you can apply these same techniques to forecast Ethereum, Cardano, XRP, or any other cryptocurrency with historical price data.
-
 
 ## References and Additional Material
 
 - [Joaquín Amat Rodrigo and Javier Escobar Ortiz (2022), "Bitcoin price prediction with Python, when the past does not repeat itself"](https://www.cienciadedatos.net/documentos/py41-forecasting-cryptocurrency-bitcoin-machine-learning-python.html)
-
-<Info>
-    Financial time series often exhibit random walk behavior, especially cryptocurrencies. Evaluate your models thoroughly with statistical metrics and domain knowledge to make informed decisions.
-</Info>
