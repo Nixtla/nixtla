@@ -1,14 +1,21 @@
 ---
 title: "What-If Forecasting: Price Effects in Retail"
-description: "Learn how to use TimeGPT to forecast sales scenarios with different pricing strategies."
+description: "Master what-if forecasting with TimeGPT for retail pricing optimization. Learn scenario analysis to predict demand changes from price adjustments using the M5 dataset. Step-by-step Python tutorial."
 icon: "store"
 ---
 
 ## Introduction
 
-Pricing decisions significantly impact retail demand. TimeGPT makes it possible to forecast product demand while incorporating price as a key factor, enabling retailers to evaluate how different pricing scenarios might affect sales. This approach offers valuable insights for strategic pricing decisions.
+Pricing decisions significantly impact retail demand. [TimeGPT](/introduction/about_timegpt) makes it possible to forecast product demand while incorporating price as a key factor, enabling retailers to evaluate how different pricing scenarios might affect sales. This approach offers valuable insights for strategic pricing decisions.
 
 This tutorial demonstrates how to use TimeGPT for scenario analysis by forecasting demand under various pricing conditions. You'll learn to incorporate price data into forecasts and compare different pricing strategies to understand their impact on consumer demand.
+
+### What You'll Learn
+
+- How to forecast retail demand using price as an [exogenous variable](/forecasting/exogenous-variables/numeric_features)
+- How to run what-if scenarios with different pricing strategies
+- How to compare baseline, increased, and decreased price forecasts
+- How to interpret price sensitivity in demand forecasts
 
 ## How to Forecast Sales with Pricing Scenarios
 
@@ -85,7 +92,7 @@ X_df.head(10)
 
 ### Step 3: Forecast demand using price as an exogenous variable
 
-In this example, we forecast for a single product (`FOODS_1_129_`) across all 10 stores. This product exhibits frequent price changes, making it ideal for modeling price effects on demand.
+In this example, we forecast for a single product (`FOODS_1_129_`) across all 10 stores. This product exhibits frequent price changes, making it ideal for modeling price effects on demand. Learn more about using [exogenous variables in TimeGPT](/forecasting/exogenous-variables/numeric_features).
 
 ```python
 products = [
@@ -125,8 +132,8 @@ Let's investigate how the demand, our target `y`, of these products has evolved 
 nixtla_client.plot(df, unique_ids=products, max_insample_length=365)
 ```
 
-<Frame caption="Cross-validation forecast plot">
-  ![Historical demand and pricing trends](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-15-output-1.png)
+<Frame caption="Historical retail demand showing intermittent sales patterns across 10 stores">
+  ![Historical retail demand showing intermittent sales patterns across 10 stores for FOODS_1_129 product](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-15-output-1.png)
 </Frame>
 
 We see that in the California stores (with a CA_ suffix), the product has sold intermittently, whereas in the other regions (TX and WY) sales where less intermittent. Note that the plot only shows 8 (out of 10) stores.
@@ -137,8 +144,8 @@ Next, we look at the `sell_price` of these products across the entire data avail
 nixtla_client.plot(df, unique_ids=products, target_col='sell_price')
 ```
 
-<Frame caption="Cross-validation forecast plot">
-  ![Historical pricing trends](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-16-output-1.png)
+<Frame caption="Historical pricing trends showing price changes over 5 years for retail products">
+  ![Historical pricing trends showing approximately 20 price changes from 2011 to 2016 for retail products](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-16-output-1.png)
 </Frame>
 
 We find that there have been relatively few price changes (about 20 in total) over the period 2011 to 2016.
@@ -217,11 +224,11 @@ nixtla_client.plot(
 )
 ```
 
-<Frame caption="Cross-validation forecast plot">
-  ![Forecast, actuals and last 28 days before the forecast period](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-20-output-1.png)
+<Frame caption="TimeGPT baseline forecast with 28-day ahead predictions for retail demand">
+  ![TimeGPT baseline forecast showing actual demand and 28-day ahead predictions for retail products](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-20-output-1.png)
 </Frame>
 
-### Step 4: 'What if?' forecasting: exploring price changes
+### Step 4: What-If Scenario Forecasting with Price Changes
 
 What happens when we change the price of the products in our forecast period? Let's see how our forecast changes when we increase and decrease the `sell_price` by 5%.
 
@@ -280,13 +287,29 @@ nixtla_client.plot(
 )
 ```
 
-<Frame caption="Cross-validation forecast plot">
-  ![Forecasts for our different pricing scenarios](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-24-output-1.png)
+<Frame caption="What-if scenario comparison showing demand forecasts under different pricing strategies">
+  ![What-if scenario comparison: baseline, +5% price increase, and -5% price decrease demand forecasts](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/5_what_if_pricing_scenarios_in_retail_files/figure-markdown_strict/cell-24-output-1.png)
 </Frame>
 
-In the graphs we can see that for specific products for certain periods the discount increases expected demand, while during other periods and for other products, price change has a smaller effect on total demand. 
+In the graphs we can see that for specific products for certain periods the discount increases expected demand, while during other periods and for other products, price change has a smaller effect on total demand.
 
-<Info>
+## Conclusion
+
+What-if forecasting with TimeGPT enables data-driven pricing decisions by:
+- Modeling demand sensitivity to price changes
+- Comparing multiple pricing scenarios simultaneously
+- Incorporating exogenous variables for realistic predictions
+
+This scenario analysis approach helps retailers optimize pricing strategies and maximize revenue while understanding demand elasticity.
+
+### Next Steps
+
+- Explore [intermittent demand forecasting](/use_cases/forecasting_intermittent_demand) with TimeGPT
+- Learn about [fine-tuning models](/forecasting/fine-tuning/steps) for better accuracy
+- Understand [cross-validation](/forecasting/evaluation/cross_validation) for model evaluation
+- Scale forecasts with [distributed computing](/forecasting/forecasting-at-scale/computing_at_scale)
+
+### Important Considerations
+
 - This method assumes that historical demand and price behaviour is predictive of future demand, and omits other factors affecting demand. To include these other factors, use additional exogenous variables that provide the model with more context about the factors influencing demand.
 - This method is sensitive to unmodelled events that affect the demand, such as sudden market shifts. To include those, use additional exogenous variables indicating such sudden shifts if they have been observed in the past too.
-</Info>
