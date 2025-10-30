@@ -1,18 +1,36 @@
 """Loss functions for model evaluation."""
 
-__all__ = ['mae', 'mse', 'rmse', 'bias', 'cfe', 'pis', 'spis', 'mape', 'smape', 'mase', 'rmae', 'nd', 'msse', 'rmsse',
-           'quantile_loss', 'scaled_quantile_loss', 'mqloss', 'scaled_mqloss', 'coverage', 'calibration', 'scaled_crps',
-           'tweedie_deviance', 'linex']
+__all__ = [
+    "mae",
+    "mse",
+    "rmse",
+    "bias",
+    "cfe",
+    "pis",
+    "spis",
+    "mape",
+    "smape",
+    "mase",
+    "rmae",
+    "nd",
+    "msse",
+    "rmsse",
+    "quantile_loss",
+    "scaled_quantile_loss",
+    "mqloss",
+    "scaled_mqloss",
+    "coverage",
+    "calibration",
+    "scaled_crps",
+    "tweedie_deviance",
+    "linex"
+]
 
+from typing import Callable, Dict, List, Union
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
+import narwhals.stable.v2 as nw
 import numpy as np
-import pandas as pd
-
-import utilsforecast.processing as ufp
-
-from .compat import DataFrame, DFType, pl, pl_DataFrame, pl_Expr
+from narwhals.stable.v2.typing import IntoDataFrameT
 
 
 def _base_docstring(*args, **kwargs) -> Callable:
@@ -36,88 +54,46 @@ def _base_docstring(*args, **kwargs) -> Callable:
     return docstring_decorator(*args, **kwargs)
 
 
-def _pl_agg_expr(
-    df: pl_DataFrame,
-    models: Union[List[str], List[Tuple[str, str]]],
+def _nw_agg_expr(
+    df: IntoDataFrameT,
+    models: Union[list[str], list[tuple[str, str]]],
     id_col: str,
-    gen_expr: Callable[[Any], "pl.Expr"],
+    gen_expr: Callable[[Union[str, tuple[str, str]]], nw.Expr],
     agg: str = "mean",
-) -> pl_DataFrame:
+) -> IntoDataFrameT:
     exprs = [gen_expr(model) for model in models]
-    df = df.select([id_col, *exprs])
-    gb = ufp.group_by(df, id_col, maintain_order=True)
-    if agg == "mean":
-        return gb.mean()
-    else:
-        return gb.sum()
+    return (
+        nw.from_native(df)
+        .select([id_col, *exprs])
+        .group_by(id_col)
+        .agg(getattr(nw.all(), agg)())
+        .sort(id_col)
+        .to_native()
+    )
 
 
 def _scale_loss(
-    loss_df: DFType,
-    scale_type: str,
+    df: IntoDataFrameT,
     models: List[str],
-    seasonality: int,
-    train_df: DFType,
-    id_col: str = "unique_id",
-    target_col: str = "y",
-) -> DFType:
-    """
-    Args:
-        loss_df (pandas or polars DataFrame): Input dataframe with id, actuals, predictions and losses results.
-        scale_type (str): Type of scaling. Possible values are 'absolute_error' or 'squared_error'.
-        models (list of str): Columns that identify the models predictions.
-        seasonality (int): Main frequency of the time series;
-            Hourly 24, Daily 7, Weekly 52, Monthly 12, Quarterly 4, Yearly 1.
-        train_df (pandas or polars DataFrame): Training dataframe with id and actual values. Must be sorted by time.
-        id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
-        target_col (str, optional): Column that contains the target. Defaults to 'y'.
-
-    Returns:
-        pandas or polars DataFrame: dataframe with one row per id and one column per model.
-
-    References:
-        [1] https://robjhyndman.com/papers/mase.pdf
-    """
-
-    if isinstance(train_df, pd.DataFrame):
-        loss_df = loss_df.set_index(id_col)
-        # assume train_df is sorted
-        lagged = train_df.groupby(id_col, observed=True)[target_col].shift(seasonality)
-        if scale_type == "absolute_error":
-            scale = train_df[target_col].sub(lagged).abs()
-        else:
-            scale = train_df[target_col].sub(lagged).pow(2)
-        scale = scale.groupby(train_df[id_col], observed=True).mean()
-        res = loss_df.div(_zero_to_nan(scale), axis=0).fillna(0)
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
-        # assume train_df is sorted
-        lagged = pl.col(target_col).shift(seasonality).over(id_col)
-        if scale_type == "absolute_error":
-            scale_expr = pl.col(target_col).sub(lagged).abs().alias("scale")
-        else:
-            scale_expr = pl.col(target_col).sub(lagged).pow(2).alias("scale")
-        scale = train_df.select([id_col, scale_expr])
-        scale = ufp.group_by(scale, id_col).mean()
-        scale = scale.with_columns(_zero_to_nan(pl.col("scale")))
-
-        def gen_expr(model):
-            return pl.col(model).truediv(pl.col("scale")).fill_nan(0).alias(model)
-
-        full_df = loss_df.join(scale, on=id_col, how="left")
-        res = _pl_agg_expr(full_df, models, id_col, gen_expr)
-
-    return res
+    scales: IntoDataFrameT,
+    id_col: str,
+) -> IntoDataFrameT:
+    exprs = [(nw.col(m) / nw.col("scale")).alias(m) for m in models]
+    return (
+        nw.from_native(df)
+        .join(nw.from_native(scales), on=id_col)
+        .select([id_col, *exprs])
+        .to_native()
+    )
 
 
 @_base_docstring
 def mae(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Mean Absolute Error (MAE)
 
     MAE measures the relative prediction
@@ -125,31 +101,21 @@ def mae(
     deviation of the prediction and the true
     value at a given time and averages these devations
     over the length of the series."""
-    if isinstance(df, pd.DataFrame):
-        res = (
-            (df[models].sub(df[target_col], axis=0))
-            .abs()
-            .groupby(df[id_col], observed=True)
-            .mean()
-        )
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
-
-        def gen_expr(model):
-            return pl.col(target_col).sub(pl.col(model)).abs().alias(model)
-
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=lambda m: (nw.col(target_col) - nw.col(m)).abs().alias(m),
+    )
 
 
 @_base_docstring
 def mse(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Mean Squared Error (MSE)
 
     MSE measures the relative prediction
@@ -157,31 +123,21 @@ def mse(
     squared deviation of the prediction and the true
     value at a given time, and averages these devations
     over the length of the series."""
-    if isinstance(df, pd.DataFrame):
-        res = (
-            (df[models].sub(df[target_col], axis=0))
-            .pow(2)
-            .groupby(df[id_col], observed=True)
-            .mean()
-        )
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
-
-        def gen_expr(model):
-            return pl.col(target_col).sub(pl.col(model)).pow(2).alias(model)
-
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=lambda m: ((nw.col(target_col) - nw.col(m)) ** 2).alias(m),
+    )
 
 
 @_base_docstring
 def rmse(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Root Mean Squared Error (RMSE)
 
     RMSE measures the relative prediction
@@ -192,202 +148,114 @@ def rmse(
     as the original time series so its comparison with other
     series is possible only if they share a common scale.
     RMSE has a direct connection to the L2 norm."""
-    res = mse(df, models, id_col, target_col)
-    if isinstance(res, pd.DataFrame):
-        res[models] = res[models].pow(0.5)
-    else:
-        res = res.with_columns(*[pl.col(c).pow(0.5) for c in models])
-    return res
+    df = mse(df=df, models=models, id_col=id_col, target_col=target_col)
+    return (
+        nw.from_native(df).with_columns(*[nw.col(m).sqrt() for m in models]).to_native()
+    )
 
 
 @_base_docstring
 def bias(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Forecast estimator bias.
 
     Defined as prediction - actual"""
-    if isinstance(df, pd.DataFrame):
-        res = (
-            (df[models].sub(df[target_col], axis=0))
-            .groupby(df[id_col], observed=True)
-            .mean()
-        )
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
-
-        def gen_expr(model):
-            return pl.col(model).sub(pl.col(target_col)).alias(model)
-
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=lambda m: (nw.col(m) - nw.col(target_col)).alias(m),
+    )
 
 
 @_base_docstring
 def cfe(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """
     Cumulative Forecast Error (CFE)
 
     Total signed forecast error per series. Positive values mean under forecast; negative mean over forecast.
     """
-    if isinstance(df, pd.DataFrame):
-        res = (
-            df[models]
-            .sub(df[target_col], axis=0)
-            .groupby(df[id_col], observed=True)
-            .sum()
-        )
-        res.index.name = id_col
-        return res.reset_index()
-    else:
-
-        def gen_expr(model: str) -> pl.Expr:
-            return pl.col(model).sub(pl.col(target_col)).alias(model)
-
-        return _pl_agg_expr(df, models, id_col, gen_expr, agg="sum")
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=lambda m: (nw.col(m) - nw.col(target_col)).alias(m),
+        agg="sum",
+    )
 
 
 @_base_docstring
 def pis(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """
     Compute the raw Absolute Periods In Stock (PIS) for one or multiple models.
 
     The PIS metric sums the absolute forecast errors per series without any scaling,
     yielding a scale-dependent measure of bias.
     """
-    if isinstance(df, pd.DataFrame):
-        res = (
-            df[models]
-            .sub(df[target_col], axis=0)
-            .abs()
-            .groupby(df[id_col], observed=True)
-            .sum()
-        )
-        res.index.name = id_col
-        return res.reset_index()
-    else:
-        return _pl_agg_expr(
-            df,
-            models,
-            id_col,
-            lambda m: pl.col(m).sub(pl.col(target_col)).abs().alias(m),
-            agg="sum",
-        )
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=lambda m: (nw.col(m) - nw.col(target_col)).abs().alias(m),
+        agg="sum",
+    )
 
 
-@_base_docstring
 def spis(
-    df: DFType,
-    train_df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
+    train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """
     Compute the scaled Absolute Periods In Stock (sAPIS) for one or multiple models.
 
     The sPIS metric scales the sum of absolute forecast errors by the mean in-sample demand,
     yielding a scale-independent bias measure that can be aggregated across series.
+
+    Args:
+        df (pandas or polars DataFrame): Input dataframe with id, actuals and predictions.
+        models (list of str): Columns that identify the models predictions.
+        train_df (pandas or polars DataFrame): Training dataframe with id and actual values. Must be sorted by time.
+        id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
+        target_col (str, optional): Column that contains the target. Defaults to 'y'.
+
+    Returns:
+        pandas or polars DataFrame: dataframe with one row per id and one column per model.    
     """
-    if isinstance(df, pd.DataFrame):
-        ins_means = train_df.groupby(id_col)[target_col].mean().rename("insample_mean")
-        abs_err_sum = (
-            (df[models].sub(df[target_col], axis=0))
-            .abs()
-            .groupby(df[id_col], observed=True)
-            .sum()
-        )
-        res = abs_err_sum.div(ins_means, axis=0)
-        res.index.name = id_col
-        return res.reset_index()
-    else:
-        ins_means = train_df.group_by(id_col).agg(
-            pl.col(target_col).mean().alias("insample_mean")
-        )
-        abs_err = _pl_agg_expr(
-            df,
-            models,
-            id_col,
-            lambda m: pl.col(m).sub(pl.col(target_col)).abs().alias(m),
-            agg="sum",
-        )
-        res = (
-            abs_err.join(ins_means, on=id_col, how="left")
-            .with_columns(
-                [(pl.col(m) / pl.col("insample_mean")).alias(m) for m in models]
-            )
-            .drop("insample_mean")
-        )
-        return res
-    
-@_base_docstring
-def linex(
-    df: DFType,
-    models: List[str],
-    id_col: str = "unique_id",
-    target_col: str = "y",
-    a: float = 1.0,
-) -> DFType:
-    """
-    Linex Loss
-
-    The Linex (Linear Exponential) loss penalizes over- and under-forecasting
-    asymmetrically depending on the parameter a.
-
-    - If a > 0, under-forecasting (y > y_hat) is penalized more.
-    - If a < 0, over-forecasting (y_hat > y) is penalized more.
-    - a must not be 0.
-    """
-    if np.isclose(a, 0.0):
-        raise ValueError("Parameter a in Linex loss must be non-zero.")
-
-    if isinstance(df, pd.DataFrame):
-        error = df[models].sub(df[target_col], axis=0)
-        loss = (
-            (np.exp(a * error) - a * error - 1)
-            .groupby(df[id_col], observed=True)
-            .mean()
-        )
-        loss.index.name = id_col
-        return loss.reset_index()
-    else:
-
-        def gen_expr(model):
-            err = pl.col(model).sub(pl.col(target_col))
-            return (err.mul(a).exp().sub(err.mul(a)).sub(1)).alias(model)
-
-        return _pl_agg_expr(df, models, id_col, gen_expr)
+    df = nw.from_native(df)
+    train_df = nw.from_native(train_df)
+    scales = train_df.group_by(id_col).agg(nw.col(target_col).mean().alias("scale"))
+    raw = pis(df=df, models=models, id_col=id_col, target_col=target_col)
+    return _scale_loss(df=raw, models=models, scales=scales, id_col=id_col)
 
 
-def _zero_to_nan(series: Union[pd.Series, "pl.Expr"]) -> Union[pd.Series, "pl.Expr"]:
-    if isinstance(series, pd.Series):
-        res = series.replace(0, np.nan)
-    else:
-        res = pl.when(series == 0).then(float("nan")).otherwise(series.abs())
-    return res
+def _zero_to_nan(series):
+    return nw.when(series == 0).then(float("nan")).otherwise(series)
 
 
 @_base_docstring
 def mape(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Mean Absolute Percentage Error (MAPE)
 
     MAPE measures the relative prediction
@@ -396,36 +264,27 @@ def mape(
     averages these devations over the length of the series.
     The closer to zero an observed value is, the higher penalty MAPE loss
     assigns to the corresponding error."""
-    if isinstance(df, pd.DataFrame):
-        res = (
-            df[models]
-            .sub(df[target_col], axis=0)
-            .abs()
-            .div(_zero_to_nan(df[target_col].abs()), axis=0)
-            .groupby(df[id_col], observed=True)
-            .mean()
-        )
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
 
-        def gen_expr(model):
-            abs_err = pl.col(target_col).sub(pl.col(model)).abs()
-            abs_target = _zero_to_nan(pl.col(target_col))
-            ratio = abs_err.truediv(abs_target).alias(model)
-            return ratio.fill_nan(None)
+    def gen_expr(model):
+        abs_err = (nw.col(target_col) - nw.col(model)).abs()
+        abs_target = _zero_to_nan(nw.col(target_col)).abs()
+        return (abs_err / abs_target).alias(model)
 
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )
 
 
 @_base_docstring
 def smape(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Symmetric Mean Absolute Percentage Error (SMAPE)
 
     SMAPE measures the relative prediction
@@ -436,35 +295,28 @@ def smape(
     of the series. This allows the SMAPE to have bounds between
     0% and 100% which is desirable compared to normal MAPE that
     may be undetermined when the target is zero."""
-    if isinstance(df, pd.DataFrame):
-        delta_y = df[models].sub(df[target_col], axis=0).abs()
-        scale = df[models].abs().add(df[target_col].abs(), axis=0)
-        raw = delta_y.div(scale).fillna(0)
-        res = raw.groupby(df[id_col], observed=True).mean()
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
 
-        def gen_expr(model):
-            abs_err = pl.col(model).sub(pl.col(target_col)).abs()
-            denominator = _zero_to_nan(
-                pl.col(model).abs().add(pl.col(target_col)).abs()
-            )
-            ratio = abs_err.truediv(denominator).alias(model)
-            return ratio.fill_nan(0)
+    def gen_expr(model):
+        abs_err = (nw.col(model) - nw.col(target_col)).abs()
+        denominator = _zero_to_nan(nw.col(model).abs() + nw.col(target_col).abs())
+        return (abs_err / denominator).alias(model).fill_null(0)
 
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )
 
 
 def mase(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     seasonality: int,
-    train_df: DFType,
+    train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Mean Absolute Scaled Error (MASE)
 
     MASE measures the relative prediction
@@ -489,25 +341,33 @@ def mase(
     References:
         [1] https://robjhyndman.com/papers/mase.pdf
     """
-    mean_abs_err = mae(df, models, id_col, target_col)
-    return _scale_loss(
-        loss_df=mean_abs_err,
-        scale_type="absolute_error",
-        models=models,
-        seasonality=seasonality,
-        train_df=train_df,
+
+    def scale_expr(_m):
+        lagged = nw.col(target_col).shift(seasonality).over(id_col)
+        return (nw.col(target_col) - lagged).abs().alias("scale")
+
+    mae_df = mae(df=df, models=models, id_col=id_col, target_col=target_col)
+    scales = _nw_agg_expr(
+        df=train_df,
+        models=["unused"],
         id_col=id_col,
-        target_col=target_col,
+        gen_expr=scale_expr,
+    )
+    return _scale_loss(
+        df=mae_df,
+        models=models,
+        scales=scales,
+        id_col=id_col,
     )
 
 
 def rmae(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     baseline: str,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Relative Mean Absolute Error (RMAE)
 
     Calculates the RAME between two sets of forecasts (from two different forecasting methods).
@@ -524,35 +384,29 @@ def rmae(
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
     """
-    numerator = mae(df, models, id_col, target_col)
-    denominator = mae(df, [baseline], id_col, target_col)
-    if ufp.is_nan(denominator[baseline]).any():
+    df = nw.from_native(df)
+    if df[baseline].is_null().any():
         raise ValueError(f"baseline model ({baseline}) contains NaNs.")
-    denominator = ufp.rename(denominator, {baseline: f"{baseline}_denominator"})
-    res = ufp.join(numerator, denominator, on=id_col)
-    if isinstance(numerator, pd.DataFrame):
-        for model in models:
-            res[model] = (
-                res[model].div(_zero_to_nan(res[f"{baseline}_denominator"])).fillna(0)
-            )
-        res = res[[id_col, *models]]
-    else:
-
-        def gen_expr(model, baseline) -> pl_Expr:
-            denominator = _zero_to_nan(pl.col(f"{baseline}_denominator"))
-            return pl.col(model).truediv(denominator).fill_nan(0).alias(model)
-
-        exprs: List[pl_Expr] = [gen_expr(m, baseline) for m in models]
-        res = res.select([id_col, *exprs])
-    return res
+    mae_df = mae(df, models, id_col, target_col)
+    scales = (
+        nw.from_native(mae(df, [baseline], id_col, target_col))
+        .rename({baseline: "scale"})
+        .with_columns(scale=_zero_to_nan(nw.col("scale")))
+    )
+    return _scale_loss(
+        df=mae_df,
+        models=models,
+        scales=scales,
+        id_col=id_col,
+    )
 
 
 def nd(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Normalized Deviation (ND)
 
     ND measures the relative prediction
@@ -570,50 +424,33 @@ def nd(
     Returns:
         Dataframe with one row per id and one column per model.
     """
-    if isinstance(df, pd.DataFrame):
-        nom = (
-            (df[models].sub(df[target_col], axis=0))
-            .abs()
-            .groupby(df[id_col], observed=True)
-            .sum()
+
+    def gen_expr(model):
+        return ((nw.col(target_col) - nw.col(model)).abs()).alias(model)
+
+    return (
+        nw.from_native(df)
+        .select(
+            id_col,
+            nw.col(target_col).abs().alias("scale"),
+            *[gen_expr(m) for m in models],
         )
-        denom = df[target_col].abs().groupby(df[id_col], observed=True).sum()
-        res = nom.div(denom, axis=0).fillna(0)
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
-
-        def gen_expr_nom(model):
-            return pl.col(target_col).sub(pl.col(model)).abs().alias(model)
-
-        nom = _pl_agg_expr(df, models, id_col, gen_expr_nom, "sum")
-
-        def gen_expr_denom(target_col):
-            return pl.col(target_col).abs().alias(target_col)
-
-        denom = _pl_agg_expr(df, [target_col], id_col, gen_expr_denom, "sum")
-        df = nom.join(denom, on=id_col, how="left")
-        res = df.select(
-            [
-                id_col,
-                *[
-                    pl.col(model).truediv(pl.col(target_col)).fill_nan(0).alias(model)
-                    for model in models
-                ],
-            ]
-        )
-
-    return res
+        .group_by(id_col)
+        .agg(nw.all().sum())
+        .select(id_col, *[nw.col(m) / nw.col("scale") for m in models])
+        .sort(id_col)
+        .to_native()
+    )
 
 
 def msse(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     seasonality: int,
-    train_df: DFType,
+    train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Mean Squared Scaled Error (MSSE)
 
     MSSE measures the relative prediction
@@ -636,26 +473,27 @@ def msse(
     References:
         [1] https://otexts.com/fpp3/accuracy.html
     """
-    mean_sq_err = mse(df=df, models=models, id_col=id_col, target_col=target_col)
+    mse_df = mse(df=df, models=models, id_col=id_col, target_col=target_col)
+    baseline = nw.from_native(train_df).with_columns(
+        scale=nw.col(target_col).shift(seasonality).over(id_col)
+    )
+    scales = mse(df=baseline, models=["scale"], id_col=id_col, target_col=target_col)
     return _scale_loss(
-        loss_df=mean_sq_err,
-        scale_type="squared_error",
+        df=mse_df,
+        scales=scales,
         models=models,
-        seasonality=seasonality,
-        train_df=train_df,
         id_col=id_col,
-        target_col=target_col,
     )
 
 
 def rmsse(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     seasonality: int,
-    train_df: DFType,
+    train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     res = msse(
         df,
         models=models,
@@ -664,11 +502,11 @@ def rmsse(
         id_col=id_col,
         target_col=target_col,
     )
-    if isinstance(res, pd.DataFrame):
-        res[models] = res[models].pow(0.5)
-    else:
-        res = res.with_columns(pl.col(models).pow(0.5))
-    return res
+    return (
+        nw.from_native(res)
+        .with_columns(*[nw.col(m).sqrt() for m in models])
+        .to_native()
+    )
 
 
 rmsse.__doc__ = msse.__doc__.replace(  # type: ignore[union-attr]
@@ -677,12 +515,12 @@ rmsse.__doc__ = msse.__doc__.replace(  # type: ignore[union-attr]
 
 
 def quantile_loss(
-    df: DFType,
+    df: IntoDataFrameT,
     models: Dict[str, str],
     q: float = 0.5,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Quantile Loss (QL)
 
     QL measures the deviation of a quantile forecast.
@@ -700,45 +538,31 @@ def quantile_loss(
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
     """
-    if isinstance(df, pd.DataFrame):
-        res: Optional[pd.DataFrame] = None
-        for model_name, pred_col in models.items():
-            delta_y = df[target_col].sub(df[pred_col], axis=0)
-            model_res = (
-                np.maximum(q * delta_y, (q - 1) * delta_y)
-                .groupby(df[id_col], observed=True)
-                .mean()
-                .rename(model_name)
-                .reset_index()
-            )
-            if res is None:
-                res = model_res
-            else:
-                res[model_name] = model_res[model_name]
-    else:
 
-        def gen_expr(model):
-            model_name, pred_col = model
-            delta_y = pl.col(target_col).sub(pl.col(pred_col))
-            try:
-                col_max = pl.max_horizontal([q * delta_y, (q - 1) * delta_y])
-            except AttributeError:
-                col_max = pl.max([q * delta_y, (q - 1) * delta_y])
-            return col_max.alias(model_name)
+    def gen_expr(model):
+        model_name, pred_col = model
+        delta_y = nw.col(target_col) - nw.col(pred_col)
+        return nw.max_horizontal(
+            (q * delta_y).alias("a"), ((q - 1) * delta_y).alias("b")
+        ).alias(model_name)
 
-        res = _pl_agg_expr(df, list(models.items()), id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=list(models.items()),
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )
 
 
 def scaled_quantile_loss(
-    df: DFType,
+    df: IntoDataFrameT,
     models: Dict[str, str],
     seasonality: int,
-    train_df: DFType,
+    train_df: IntoDataFrameT,
     q: float = 0.5,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Scaled Quantile Loss (SQL)
 
     SQL measures the deviation of a quantile forecast scaled by
@@ -765,27 +589,28 @@ def scaled_quantile_loss(
     References:
         [1] https://www.sciencedirect.com/science/article/pii/S0169207021001722
     """
-    q_loss = quantile_loss(
+    qloss_df = quantile_loss(
         df=df, models=models, q=q, id_col=id_col, target_col=target_col
     )
+    baseline = nw.from_native(train_df).with_columns(
+        scale=nw.col(target_col).shift(seasonality).over(id_col)
+    )
+    scales = mae(df=baseline, models=["scale"], id_col=id_col, target_col=target_col)
     return _scale_loss(
-        loss_df=q_loss,
-        scale_type="absolute_error",
+        df=qloss_df,
+        scales=scales,
         models=list(models.keys()),
-        seasonality=seasonality,
-        train_df=train_df,
         id_col=id_col,
-        target_col=target_col,
     )
 
 
 def mqloss(
-    df: DFType,
+    df: IntoDataFrameT,
     models: Dict[str, List[str]],
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Multi-Quantile loss (MQL)
 
     MQL calculates the average multi-quantile Loss for
@@ -812,32 +637,31 @@ def mqloss(
     References:
         [1] https://www.jstor.org/stable/2629907
     """
-    res: Optional[DataFrame] = None
+    df = nw.from_native(df)
+    losses = {id_col: df[id_col]}
     error = np.empty((df.shape[0], quantiles.size))
     for model, predictions in models.items():
         for j, q_preds in enumerate(predictions):
             error[:, j] = (df[target_col] - df[q_preds]).to_numpy()
         loss = np.maximum(error * quantiles, error * (quantiles - 1)).mean(axis=1)
-        model_res = type(df)({id_col: df[id_col], model: loss})
-        model_res = ufp.group_by_agg(
-            model_res, by=id_col, aggs={model: "mean"}, maintain_order=True
-        )
-        if res is None:
-            res = model_res
-        else:
-            res = ufp.assign_columns(res, model, model_res[model])
-    return res
+        losses[model] = loss
+    return _nw_agg_expr(
+        df=nw.from_dict(losses),
+        models=list(models.keys()),
+        id_col=id_col,
+        gen_expr=lambda m: nw.col(m),
+    )
 
 
 def scaled_mqloss(
-    df: DFType,
+    df: IntoDataFrameT,
     models: Dict[str, List[str]],
     quantiles: np.ndarray,
     seasonality: int,
-    train_df: DFType,
+    train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Scaled Multi-Quantile loss (SMQL)
 
     SMQL calculates the average multi-quantile Loss for
@@ -869,27 +693,28 @@ def scaled_mqloss(
     References:
         [1] https://www.sciencedirect.com/science/article/pii/S0169207021001722
     """
-    mq_loss = mqloss(
+    mql_df = mqloss(
         df=df, models=models, quantiles=quantiles, id_col=id_col, target_col=target_col
     )
+    baseline = nw.from_native(train_df).with_columns(
+        scale=nw.col(target_col).shift(seasonality).over(id_col)
+    )
+    scales = mae(df=baseline, models=["scale"], id_col=id_col, target_col=target_col)
     return _scale_loss(
-        loss_df=mq_loss,
-        scale_type="absolute_error",
+        df=mql_df,
+        scales=scales,
         models=list(models.keys()),
-        seasonality=seasonality,
-        train_df=train_df,
         id_col=id_col,
-        target_col=target_col,
     )
 
 
 def coverage(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     level: int,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Coverage of y with y_hat_lo and y_hat_hi.
 
     Args:
@@ -905,40 +730,28 @@ def coverage(
     References:
         [1] https://www.jstor.org/stable/2629907
     """
-    if isinstance(df, pd.DataFrame):
-        out = np.empty((df.shape[0], len(models)))
-        for j, model in enumerate(models):
-            out[:, j] = df[target_col].between(
-                df[f"{model}-lo-{level}"], df[f"{model}-hi-{level}"]
-            )
-        res = (
-            pd.DataFrame(out, columns=models, index=df.index)
-            .groupby(df[id_col], observed=True)
-            .mean()
+
+    def gen_expr(model):
+        return (
+            nw.col(target_col)
+            .is_between(nw.col(f"{model}-lo-{level}"), nw.col(f"{model}-hi-{level}"))
+            .alias(model)
         )
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
 
-        def gen_expr(model):
-            return (
-                pl.col(target_col)
-                .is_between(
-                    pl.col(f"{model}-lo-{level}"), pl.col(f"{model}-hi-{level}")
-                )
-                .alias(model)
-            )
-
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )
 
 
 def calibration(
-    df: DFType,
+    df: IntoDataFrameT,
     models: Dict[str, str],
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """
     Fraction of y that is lower than the model's predictions.
 
@@ -954,34 +767,26 @@ def calibration(
     References:
         [1] https://www.jstor.org/stable/2629907
     """
-    if isinstance(df, pd.DataFrame):
-        out = np.empty((df.shape[0], len(models)))
-        for j, q_preds in enumerate(models.values()):
-            out[:, j] = df[target_col].le(df[q_preds])
-        res = (
-            pd.DataFrame(out, columns=models.keys(), index=df.index)
-            .groupby(df[id_col], observed=True)
-            .mean()
-        )
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
 
-        def gen_expr(model):
-            model_name, q_preds = model
-            return pl.col(target_col).le(pl.col(q_preds)).alias(model_name)
+    def gen_expr(model):
+        model_name, q_preds = model
+        return (nw.col(target_col) <= nw.col(q_preds)).alias(model_name)
 
-        res = _pl_agg_expr(df, list(models.items()), id_col, gen_expr)
-    return res
+    return _nw_agg_expr(
+        df=df,
+        models=list(models.items()),
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )
 
 
 def scaled_crps(
-    df: DFType,
+    df: IntoDataFrameT,
     models: Dict[str, List[str]],
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """Scaled Continues Ranked Probability Score
 
     Calculates a scaled variation of the CRPS, as proposed by Rangapuram (2021),
@@ -1002,43 +807,41 @@ def scaled_crps(
     References:
         [1] https://proceedings.mlr.press/v139/rangapuram21a.html
     """
-    eps: np.float64 = np.finfo(np.float64).eps
+    df = nw.from_native(df)
+    eps = np.finfo(np.float64).eps
     quantiles = np.asarray(quantiles)
-    loss = mqloss(df, models, quantiles, id_col, target_col)
-    sizes = ufp.counts_by_id(df, id_col)
-    if isinstance(loss, pd.DataFrame):
-        loss = loss.set_index(id_col)
-        sizes = sizes.set_index(id_col)
-        assert isinstance(df, pd.DataFrame)
-        norm = df[target_col].abs().groupby(df[id_col], observed=True).sum()
-        res = 2 * loss.mul(sizes["counts"], axis=0).div(norm + eps, axis=0)
-        res.index.name = id_col
-        res = res.reset_index()
-    else:
+    loss = mqloss(
+        df=df, models=models, quantiles=quantiles, id_col=id_col, target_col=target_col
+    )
 
-        def gen_expr(model):
-            return (
-                2 * pl.col(model) * pl.col("counts") / (pl.col("norm") + eps)
-            ).alias(model)
-
-        grouped_df = ufp.group_by(df, id_col, maintain_order=True)
-        norm = grouped_df.agg(pl.col(target_col).abs().sum().alias("norm"))
-        res = _pl_agg_expr(
-            loss.join(sizes, on=id_col).join(norm, on=id_col),
-            list(models.keys()),
-            id_col,
-            gen_expr,
+    def gen_expr(model):
+        return (2 * nw.col(model) * nw.col("counts") / (nw.col("norm") + eps)).alias(
+            model
         )
-    return res
+
+    stats = (
+        df.with_columns(target_col=nw.col(target_col).abs())
+        .group_by(id_col)
+        .agg(
+            counts=nw.col(id_col).len(),
+            norm=nw.col(target_col).sum(),
+        )
+    )
+    return _nw_agg_expr(
+        df=nw.from_native(loss).join(stats, on=id_col),
+        models=list(models.keys()),
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )
 
 
 def tweedie_deviance(
-    df: DFType,
+    df: IntoDataFrameT,
     models: List[str],
     power: float = 1.5,
     id_col: str = "unique_id",
     target_col: str = "y",
-) -> DFType:
+) -> IntoDataFrameT:
     """
     Compute the Tweedie deviance loss for one or multiple models, grouped by an identifier.
 
@@ -1067,94 +870,100 @@ def tweedie_deviance(
     """
     if power < 0:
         raise ValueError("Power must be non-negative.")
-    elif power >= 2 and np.any(df[[target_col]] <= 0):
+    df = nw.from_native(df)
+    if power >= 2 and (df[target_col] <= 0).any():
         raise ValueError(
             f"Power {power} requires all target values to be strictly positive."
         )
-
-    if np.any(df[models] <= 0):
+    if any((df[m] <= 0).any() for m in models):
         raise ValueError(
             "All predictions must be strictly positive for Tweedie deviance."
         )
 
-    if isinstance(df, pd.DataFrame):
-        y_true = df[target_col]
-        y_pred = df[models]
-        delta_y = y_pred.sub(y_true, axis=0)
-        if power == 0:
-            dev = delta_y.pow(2)
-        elif power == 1:
-            with np.errstate(divide="ignore", invalid="ignore"):
-                dev = np.log(y_pred).sub(np.log(y_true), axis=0)
-                dev = -2 * dev.mul(y_true, axis=0).sub(delta_y, axis=0)
-            zero_mask = y_true == 0
-            dev.loc[zero_mask] = 2 * y_pred[zero_mask]
-        elif power == 2:
-            with np.errstate(divide="ignore", invalid="ignore"):
-                dev = np.log(y_pred).sub(np.log(y_true), axis=0)
-                dev = 2 * (dev.add((1 / y_pred).mul(y_true, axis=0), axis=0) - 1)
-        else:
-            dev1 = y_true.clip(lower=0).pow(2 - power).div((1 - power) * (2 - power))
-            dev2 = -y_pred.pow(1 - power).div(1 - power).mul(y_true, axis=0)
-            dev3 = y_pred.pow(2 - power).div(2 - power)
-            dev = 2 * dev2.add(dev1, axis=0).add(dev3, axis=0)
-        # Group by id_col and calculate mean deviance for each model
-        res = dev.groupby(df[id_col], observed=True).mean()
-        res.index.name = id_col
-        res = res.reset_index()
+    if power == 0:
 
-    else:
-        if power == 0:
+        def gen_expr(model):
+            return ((nw.col(model) - nw.col(target_col)) ** 2).alias(model)
 
-            def gen_expr(model):
-                return (pl.col(model) - pl.col(target_col)).pow(2).alias(model)
+    elif power == 1:
 
-        elif power == 1:
-
-            def gen_expr(model):
-                return (
-                    pl.when(pl.col(target_col) == 0)
-                    .then(2 * pl.col(model))
-                    .otherwise(
-                        2
-                        * (
-                            pl.col(target_col)
-                            * (pl.col(target_col).log() - pl.col(model).log())
-                            - (pl.col(target_col) - pl.col(model))
-                        )
-                    )
-                    .alias(model)
-                )
-
-        elif power == 2:
-
-            def gen_expr(model):
-                return (
-                    2
-                    * (pl.col(model).log() - pl.col(target_col).log())
-                    .add(pl.col(target_col).truediv(pl.col(model)))
-                    .sub(1)
-                ).alias(model)
-
-        else:
-
-            def gen_expr(model):
-                return (
+        def gen_expr(model):
+            return (
+                nw.when(nw.col(target_col) == 0)
+                .then(2 * nw.col(model))
+                .otherwise(
                     2
                     * (
-                        pl.col(target_col)
-                        .clip(0)
-                        .pow(2 - power)
-                        .truediv((1 - power) * (2 - power))
+                        nw.col(target_col)
+                        * (nw.col(target_col).log() - nw.col(model).log())
+                        - (nw.col(target_col) - nw.col(model))
                     )
-                    .sub(
-                        pl.col(target_col)
-                        .mul(pl.col(model).pow(1 - power))
-                        .truediv(1 - power)
-                    )
-                    .add(pl.col(model).pow(2 - power).truediv(2 - power))
-                ).alias(model)
+                )
+                .alias(model)
+            )
 
-        res = _pl_agg_expr(df, models, id_col, gen_expr)
+    elif power == 2:
 
-    return res
+        def gen_expr(model):
+            return (
+                2 * (nw.col(model).log() - nw.col(target_col).log())
+                + (nw.col(target_col) / nw.col(model))
+                - 1
+            ).alias(model)
+
+    else:
+
+        def gen_expr(model):
+            return (
+                2
+                * (
+                    nw.col(target_col).clip(0) ** (2 - power)
+                    / ((1 - power) * (2 - power))
+                )
+                - (nw.col(target_col) * (nw.col(model) ** (1 - power)) / (1 - power))
+                + (nw.col(model) ** (2 - power) / (2 - power))
+            ).alias(model)
+
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )
+
+
+@_base_docstring
+def linex(
+    df: IntoDataFrameT,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
+    a: float = 1.0,
+) -> IntoDataFrameT:
+    """Linex Loss (Linear Exponential)
+
+    The Linex loss penalizes over- and under-forecasting
+    asymmetrically depending on the parameter a.
+
+    - If a > 0, under-forecasting (y > y_hat) is penalized more.
+    - If a < 0, over-forecasting (y_hat > y) is penalized more.
+    - a must not be 0.
+
+    Formula: exp(a·error) - a·error - 1, where error = prediction - actual.
+
+    Args:
+        a (float, optional): Asymmetry parameter. Must be non-zero. Defaults to 1.0.
+    """
+    if np.isclose(a, 0.0):
+        raise ValueError("Parameter a in Linex loss must be non-zero.")
+
+    def gen_expr(model):
+        error = nw.col(model) - nw.col(target_col)
+        return ((error * a).exp() - error * a - 1).alias(model)
+
+    return _nw_agg_expr(
+        df=df,
+        models=models,
+        id_col=id_col,
+        gen_expr=gen_expr,
+    )

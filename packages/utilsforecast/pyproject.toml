@@ -101,4 +101,4 @@ show_missing = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov utilsforecast -vv"
+#addopts = "--cov utilsforecast -vv"
