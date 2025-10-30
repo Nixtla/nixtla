@@ -1,14 +1,14 @@
 ---
 title: "Forecasting Bitcoin Prices"
-description: "Learn how to forecast Bitcoin prices using TimeGPT. Step-by-step tutorial with Python code for cryptocurrency price prediction, anomaly detection, and uncertainty quantification."
+description: "Master Bitcoin price forecasting with TimeGPT. Complete Python tutorial covering cryptocurrency prediction, anomaly detection, uncertainty quantification, and risk management strategies."
 icon: "bitcoin"
 ---
 
 ## Introduction
 
-Time series forecasting is essential in finance for trading, risk management, and strategic planning. However, predicting financial asset prices remains challenging due to market volatility.
+[Time series forecasting](/forecasting/timegpt_quickstart) is essential in finance for trading, risk management, and strategic planning. However, predicting financial asset prices remains challenging due to market volatility.
 
-Whether you believe financial forecasting is possible or your role requires it, TimeGPT simplifies the process.
+Whether you believe financial forecasting is possible or your role requires it, [TimeGPT](/introduction/about_timegpt) simplifies the process.
 
 This tutorial demonstrates how to use TimeGPT for Bitcoin price prediction and uncertainty quantification for risk management.
 
@@ -21,13 +21,13 @@ Bitcoin's volatility and popularity make price forecasting valuable for trading 
 ### What You'll Learn
 
 - How to load and prepare Bitcoin price data
-- How to generate short-term forecasts with TimeGPT
+- How to generate [short-term forecasts](/forecasting/timegpt_quickstart) with TimeGPT
 - How to visualize and interpret forecast results
-- How to detect anomalies and add exogenous variables
+- How to [detect anomalies](/anomaly_detection/real-time/introduction) and add [exogenous variables](/forecasting/exogenous-variables/numeric_features)
 
-The procedures in this tutorial apply to many financial asset forecasting scenarios, not just Bitcoin.
+The procedures in this tutorial apply to many [financial asset forecasting](/use_cases/forecasting_energy_demand) scenarios, not just Bitcoin.
 
-## How to Use TimeGPT to Forecast Bitcoin Prices
+## How to Forecast Bitcoin Prices with TimeGPT
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/use-cases/2_bitcoin_price_prediction.ipynb)
 
@@ -91,8 +91,8 @@ The `plot` method has an `engine` argument that allows you to choose between dif
 nixtla_client.plot(df)
 ```
 
-<Frame caption="Bitcoin Price Data">
-  ![Bitcoin Price Data](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-12-output-1.png)
+<Frame caption="Bitcoin historical price data from 2020-2023 showing price trends and volatility">
+  ![Bitcoin historical price data from 2020-2023 showing upward trends and significant volatility patterns](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-12-output-1.png)
 </Frame>
 
 If you did not rename the columns, specify them explicitly:
@@ -144,14 +144,14 @@ We can pass the forecasts we just generated to the `plot` method to visualize th
 nixtla_client.plot(df, fcst, level=level)
 ```
 
-<Frame caption="Panel view of historical data with future forecasts">
-  ![Panel view of historical data with future forecasts](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-14-output-1.png)
+<Frame caption="Bitcoin price forecast with 7-day predictions and multiple confidence intervals">
+  ![Bitcoin price forecast showing 7-day ahead predictions with 50%, 80%, and 90% confidence intervals using TimeGPT](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-14-output-1.png)
 </Frame>
 
 To get a closer look at the predictions, we can zoom in on the plot or specify the maximum number of in-sample observations to be plotted using the `max_insample_length` argument. Note that setting `max_insample_length=60`, for instance, will display the last 60 historical values along with the complete forecast.
 
-<Frame caption="Zoomed view showing 7-day forecast with 50%, 80%, and 90% confidence intervals">
-  ![Zoomed view showing 7-day forecast with 50%, 80%, and 90% confidence intervals](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-15-output-1.png)
+<Frame caption="Detailed view of Bitcoin 7-day forecast with multiple prediction intervals">
+  ![Detailed zoom showing Bitcoin 7-day price forecast with 50%, 80%, and 90% prediction intervals for uncertainty quantification](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-15-output-1.png)
 </Frame>
 
 
@@ -173,8 +173,8 @@ nixtla_client.plot(
 )
 ```
 
-<Frame caption="Highlighted anomalies in Bitcoin price data">
-  ![Highlighted anomalies in Bitcoin price data](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-19-output-1.png)
+<Frame caption="Bitcoin price anomaly detection highlighting unusual market movements">
+  ![Bitcoin price anomaly detection showing highlighted unusual price movements and volatility spikes identified by TimeGPT](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/use-cases/2_bitcoin_price_prediction_files/figure-markdown_strict/cell-19-output-1.png)
 </Frame>
 
 To learn how to incorporate exogenous variables to TimeGPT, see [Real-time Anomaly Detection](/anomaly_detection/real-time/introduction).
@@ -200,6 +200,23 @@ For those who need or want to try to forecast these assets, `TimeGPT` can be an 
 - Incorporate exogenous variables
 
 To learn more about TimeGPT capabilities, see the [TimeGPT Introduction](/introduction/introduction).
+
+
+## Conclusion
+
+TimeGPT simplifies Bitcoin price forecasting by providing:
+- Accurate short-term predictions with quantified uncertainty
+- Automated anomaly detection for risk management
+- Support for exogenous variables to improve forecast accuracy
+
+This approach applies to various cryptocurrency and financial asset forecasting scenarios, helping traders and analysts make data-driven decisions despite market volatility.
+
+### Next Steps
+
+- Explore [energy demand forecasting](/use_cases/forecasting_energy_demand) with TimeGPT
+- Learn about [cross-validation](/forecasting/evaluation/cross_validation) for model evaluation
+- Understand [fine-tuning](/forecasting/fine-tuning/steps) for improved accuracy
+- Scale forecasts with [distributed computing](/forecasting/forecasting-at-scale/computing_at_scale)
 
 
 ## References and Additional Material
