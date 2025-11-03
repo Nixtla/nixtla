@@ -264,7 +264,7 @@ cross_validation(
     date_features_to_one_hot: Union[bool, list[str]] = False,
     model: str = 'timegpt-1',
     num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
-    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7f1c885a96c0>)] = None
+    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7f704b50d6c0>)] = None
 ) → ~AnyDFType
 ```
 
@@ -578,7 +578,7 @@ forecast(
     model: str = 'timegpt-1',
     num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
     feature_contributions: bool = False,
-    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7f1c885a96c0>)] = None
+    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7f704b50d6c0>)] = None
 ) → ~AnyDFType
 ```
 
