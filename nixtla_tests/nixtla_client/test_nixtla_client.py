@@ -1,15 +1,18 @@
-import httpx
-import pytest
-
-import numpy as np
-import pandas as pd
-import zstandard as zstd
-
 from contextlib import contextmanager
 from copy import deepcopy
+
+import httpx
+import numpy as np
+import pandas as pd
+import pytest
+import zstandard as zstd
+from pydantic import ValidationError
+
 from nixtla_tests.conftest import HYPER_PARAMS_TEST
-from nixtla_tests.helpers.checks import check_num_partitions_same_results
-from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
+from nixtla_tests.helpers.checks import (
+    check_equal_fcsts_add_history,
+    check_num_partitions_same_results,
+)
 
 
 CAPTURED_REQUEST = None
@@ -58,6 +61,47 @@ def test_forecast_with_error(series_with_gaps, nixtla_test_client, df_converter,
         match="missing or duplicate timestamps, or the timestamps do not match",
     ):
         nixtla_test_client.forecast(df=df_converter(series, with_gaps), h=1, freq=freq)
+
+@pytest.mark.parametrize("test_params, expected_exception, expected_error_msg",
+    [
+       ({"model_parameters": None}, None, ""),
+       ({"model_parameters": {"max_q": 1}}, None, ""),
+       ({"model_parameters": {"max_p": None}}, None, ""),
+       ({"model_parameters": {"horizon": [1, 2, 3]}}, None, ""),
+       ({"model_parameters": {"horizon": (1, 2, 3)}}, None, ""),
+       ({"model_parameters": {"horizon": {"nested": "dict"}}}, None, ""),
+       ({"model_parameters": {"horizon": {"nested": None}}}, None, ""),
+       ({"model_parameters": "not a dict"}, ValidationError, "Input should be a valid dictionary"),
+       ({"model_parameters": 123}, ValidationError, "Input should be a valid dictionary"),
+       ({"model_parameters": {"horizon": {"nested_key": [1, 2, 3]}}}, TypeError, "Invalid value type"),
+       ({"model_parameters": {"horizon": {"nested_key": (1, 2, 3)}}}, TypeError, "Invalid value type"),
+       ({"model_parameters": {"horizon": {"nested_key": {1, 2}}}}, TypeError, "Invalid value type"),
+       ({"model_parameters": {"horizon": {"nested_key": {"inner_key": "val"}}}}, TypeError, "Invalid value type"),
+       ({"model_parameters": {"horizon": pd.DataFrame()}}, TypeError, "Invalid value type"),
+    ]
+)
+@pytest.mark.parametrize("endpoint", ["forecast", "cross_validation"])
+def test_model_parameters(nixtla_test_client, air_passengers_df, test_params, expected_exception, expected_error_msg, endpoint):
+    base_params = {
+        "df": air_passengers_df,
+        "h": 12,
+        "time_col": "timestamp",
+        "target_col": "value",
+    }
+    base_params.update(test_params)
+    if expected_exception is None:
+        if endpoint == "forecast":
+            nixtla_test_client.forecast(**base_params)
+        elif endpoint == "cross_validation":
+            nixtla_test_client.cross_validation(**base_params)
+    else:
+        with pytest.raises(expected_exception) as exc_info:
+            if endpoint == "forecast":
+                nixtla_test_client.forecast(**base_params)
+            elif endpoint == "cross_validation":
+                nixtla_test_client.cross_validation(**base_params)
+
+        assert expected_error_msg in str(exc_info.value)
 
 
 def test_cv_forecast_consistency(nixtla_test_client, cv_series_with_features):

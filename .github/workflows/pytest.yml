@@ -3,8 +3,12 @@ name: pytest
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'timegpt-docs/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'timegpt-docs/**'
   workflow_dispatch:
 
 concurrency:
@@ -27,29 +31,28 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, nixtla-linux-large-public, windows-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11"]
         # windows python 3.13 can't install pyreadr
+        # TODO: in 3.12, it doesn't support ray<=2.20
     steps:
       - name: Clone repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Set up python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # 5.4.0
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
         with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pip requirements (Linux Python 3.11)
-        if: runner.os == 'Linux' && matrix.python-version == '3.11'
-        run: pip install uv && uv pip install --system -e ".[dev,distributed]"
+      - name: Setup devenv
+        run: >
+          make devenv
 
       - name: Run tests (Linux Python 3.11)
         if: runner.os == 'Linux' && matrix.python-version == '3.11'
-        run: pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
-
-      - name: Install pip requirements (not Linux Python 3.11)
-        if: runner.os != 'Linux' || matrix.python-version != '3.11'
-        run: pip install uv && uv pip install --system -e ".[dev]"
+        run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
 
       - name: Run tests (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
-        run: pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
+        run: uv run pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
