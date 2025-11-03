@@ -110,3 +110,4 @@ uv run pytest
 - The docs are automatically generated from the docstrings in the utilsforecast folder.
 - To contribute, ensure your docstrings follow the Google style format.
 - Once your docstring is correctly written, the documentation framework will scrape it and regenerate the corresponding `.mdx` files and your changes will then appear in the updated docs.
+- Make an appropriate entry in the `docs/mintlify/mint.json` file.
