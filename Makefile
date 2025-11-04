@@ -1,8 +1,12 @@
 devenv:
-	uv venv
-	. .venv/bin/activate; uv pip install -Ue .[dev,distributed]
-	. .venv/bin/activate; pre-commit install
+	uv sync --quiet --all-groups --all-extras --frozen
+	uv run --no-sync pre-commit install
 
+init_codespace:
+	npm install -g @anthropic-ai/claude-code@1.0.127
+	npm i -g mint
+	git pull || true
+	uv sync --quiet --all-groups --all-extras --frozen
 
 jupyter:
 	mkdir -p tmp
