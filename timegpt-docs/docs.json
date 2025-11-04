@@ -211,6 +211,9 @@
     },
     "posthog": {
       "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82"
+    },
+    "intercom": {
+      "appId": "j7y9c2ep"
     }
   },
   "redirects": [
