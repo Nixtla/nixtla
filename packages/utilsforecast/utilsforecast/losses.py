@@ -405,7 +405,7 @@ def nd(
     df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
-    target_col: str = "y",
+    target_col: str = "y"
 ) -> IntoDataFrameT:
     """Normalized Deviation (ND)
 
@@ -427,7 +427,7 @@ def nd(
 
     def gen_expr(model):
         return ((nw.col(target_col) - nw.col(model)).abs()).alias(model)
-
+    
     return (
         nw.from_native(df)
         .select(
@@ -437,7 +437,7 @@ def nd(
         )
         .group_by(id_col)
         .agg(nw.all().sum())
-        .select(id_col, *[nw.col(m) / nw.col("scale") for m in models])
+        .select(id_col, *[(nw.col(m) / _zero_to_nan(nw.col("scale"))) for m in models])
         .sort(id_col)
         .to_native()
     )
