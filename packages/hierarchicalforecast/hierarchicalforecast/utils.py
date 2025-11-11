@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Optional, Union
 
 import matplotlib.pyplot as plt
-import narwhals as nw
+import narwhals.stable.v2 as nw
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp

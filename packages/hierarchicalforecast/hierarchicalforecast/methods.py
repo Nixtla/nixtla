@@ -9,7 +9,7 @@ from typing import Optional, Union
 
 import clarabel
 import numpy as np
-from quadprog import solve_qp
+from qpsolvers import solve_qp
 from scipy import sparse
 
 from hierarchicalforecast.utils import (
@@ -1234,40 +1234,33 @@ class MinTrace(HReconciler):
                 warnings.warn("Replacing negative forecasts with zero.")
                 y_hat = np.copy(y_hat)
                 y_hat[negatives] = 0.0
-            # Quadratic progamming formulation
-            # here we are solving the quadratic programming problem
-            # formulated in the origial paper
-            # https://robjhyndman.com/publications/nnmint/
-            # The library quadprog was chosen
-            # based on these benchmarks:
-            # https://scaron.info/blog/quadratic-programming-in-python.html
+            
             a = S.T @ W_inv
-            G = a @ S
+            P = a @ S
+            q = -(a @ y_hat)
             try:
-                _ = np.linalg.cholesky(G)
+                _ = np.linalg.cholesky(P)
             except np.linalg.LinAlgError:
                 raise Exception(
                     f"min_trace ({self.method}) is ill-conditioned. Try setting nonnegative=False or use another reconciliation method."
                 )
-            C = np.eye(n_bottom)
-            b = np.zeros(n_bottom)
+            G = -np.eye(n_bottom)
+            h = np.zeros(n_bottom)
             # the quadratic programming problem
             # returns the forecasts of the bottom series
-            if self.num_threads == 1:
-                bottom_fcts = np.apply_along_axis(
-                    lambda y_hat: solve_qp(G=G, a=a @ y_hat, C=C, b=b)[0],
-                    axis=0,
-                    arr=y_hat,
-                )
+            if self.num_threads == 1:   
+                bottom_fcts = np.zeros_like(q)
+                for i in range(y_hat.shape[1]):
+                    bottom_fcts[:, i] = solve_qp(P=P, q=q[:, i], G=G, h=h, solver="clarabel")
             else:
                 futures = []
                 with ThreadPoolExecutor(self.num_threads) as executor:
-                    for j in range(y_hat.shape[1]):
+                    for i in range(y_hat.shape[1]):
                         future = executor.submit(
-                            solve_qp, G=G, a=a @ y_hat[:, j], C=C, b=b
+                            solve_qp, P=P, q=q[:, i], G=G, h=h, solver="clarabel"
                         )
                         futures.append(future)
-                    bottom_fcts = np.hstack([f.result()[0][:, None] for f in futures])
+                    bottom_fcts = np.hstack([f.result()[:, None] for f in futures])
             if not np.all(bottom_fcts > -1e-8):
                 raise Exception("nonnegative optimization failed")
             # remove negative values close to zero

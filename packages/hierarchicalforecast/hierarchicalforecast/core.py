@@ -8,7 +8,7 @@ import time
 from inspect import signature
 from typing import Optional
 
-import narwhals as nw
+import narwhals.stable.v2 as nw
 import numpy as np
 from narwhals.typing import Frame, FrameT
 from scipy import sparse

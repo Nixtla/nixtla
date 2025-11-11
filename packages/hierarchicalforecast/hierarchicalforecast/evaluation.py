@@ -5,7 +5,7 @@ import warnings
 from inspect import signature
 from typing import Callable, Optional, Union
 
-import narwhals as nw
+import narwhals.stable.v2 as nw
 import numpy as np
 import utilsforecast.evaluation as ufe
 from narwhals.typing import Frame, FrameT

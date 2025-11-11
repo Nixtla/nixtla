@@ -29,10 +29,9 @@ dependencies = [
     "numba",
     "pandas>=2.1.0",
     "scikit-learn>=1.2",
-    "quadprog",
-    "clarabel",
     "matplotlib",
-    "narwhals>=1.27.0",
+    "narwhals>=2.0",
+    "qpsolvers[clarabel]",
     "utilsforecast>=0.2.12",
     "intel-cmplr-lib-rt ; platform_system!='Darwin' and platform_machine=='x86_64'"
 ]
