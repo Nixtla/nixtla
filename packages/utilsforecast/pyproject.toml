@@ -57,6 +57,7 @@ dev = [
     "pytest-cov",
     "fugue[dask,spark]>=0.8.1",
     "dask<=2024.12.1",
+    "pip-licenses"
 ]
 
 [project.urls]
