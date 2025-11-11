@@ -50,6 +50,7 @@ dev = [
     "pytest",
     "pytest-benchmark",
     "pytest-cov",
+    "pip-licenses"
 ]
 polars = [
     "polars[numpy]<=1.32.0"

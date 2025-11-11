@@ -29,3 +29,6 @@ clean:
 
 
 all_docs: load_docs_scripts api_docs examples_docs format_docs
+
+licenses:
+	pip-licenses --format=markdown --with-authors --with-urls | grep -E "GPL|AGPL|LGPL|MPL" > THIRD_PARTY_LICENSES.md
