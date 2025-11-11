@@ -5,7 +5,8 @@ permissions: write-all
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-
+    paths-ignore:
+      - 'timegpt-docs/**'
 defaults:
   run:
     shell: bash -l {0}
