@@ -68,6 +68,7 @@ dev = [
     "utilsforecast[plotting]",
     "holidays",
     "pandas_market_calendars",
+    "pip-licenses"
 ]
 distributed = [
     "fugue[dask,ray,spark]>=0.8.7",
