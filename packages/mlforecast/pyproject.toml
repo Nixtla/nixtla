@@ -69,6 +69,7 @@ dev = [
     "pytest",
     "pytest-benchmark",
     "pytest-cov",
+    "pip-licenses"
 ]
 
 [tool.setuptools]
