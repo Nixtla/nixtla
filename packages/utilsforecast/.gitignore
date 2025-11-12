@@ -157,7 +157,6 @@ nbs/_extensions
 # VSCode
 *.code-workspace
 
-docs/*.md
 docs/**/*.mdx
 
 docs-scripts

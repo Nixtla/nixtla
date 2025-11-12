@@ -5,8 +5,7 @@ load_docs_scripts:
 	fi
 
 api_docs:
-	lazydocs .utilsforecast --no-watermark
-	python docs/to_mdx.py
+	python docs/to_mdx.py docs
 
 examples_docs:
 	mkdir -p nbs/_extensions
@@ -24,7 +23,6 @@ preview_docs:
 	cd docs/mintlify && mintlify dev
 
 clean:
-	rm -f docs/*.md
 	find docs/mintlify -name "*.mdx" -exec rm -f {} +
 
 
