@@ -14,6 +14,7 @@ import pandas as pd
 import utilsforecast.processing as ufp
 
 from .compat import AnyDFType, DFType, DistributedDFType, pl, pl_DataFrame
+from .losses import _get_group_cols
 
 
 def _function_name(f: Callable):
@@ -35,6 +36,7 @@ def _quantiles_from_levels(level: List[int]) -> np.ndarray:
 
 
 def _models_from_levels(model_name: str, level: List[int]) -> List[str]:
+    level = sorted(level)
     cols = [f"{model_name}-lo-{lv}" for lv in reversed(level)]
     cols.extend([f"{model_name}-hi-{lv}" for lv in level])
     return cols
@@ -45,11 +47,12 @@ def _get_model_cols(
     id_col: str,
     time_col: str,
     target_col: str,
+    cutoff_col: str,
 ) -> List[str]:
     return [
         c
         for c in cols
-        if c not in [id_col, time_col, target_col]
+        if c not in [id_col, time_col, target_col, cutoff_col]
         and not re.search(r"-(?:lo|hi)-\d+", c)
     ]
 
@@ -62,11 +65,13 @@ def _evaluate_wrapper(
     id_col: str,
     time_col: str,
     target_col: str,
+    cutoff_col: str,
     agg_fn: Optional[str],
 ) -> pd.DataFrame:
+    group_cols = _get_group_cols(df, id_col, cutoff_col)
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
-        train_df = df.loc[in_sample_mask, [id_col, time_col, target_col]]
+        train_df = df.loc[in_sample_mask, [*group_cols, time_col, target_col]]
         df = df.loc[~in_sample_mask].drop(columns="_in_sample")
     else:
         train_df = None
@@ -79,6 +84,7 @@ def _evaluate_wrapper(
         id_col=id_col,
         time_col=time_col,
         target_col=target_col,
+        cutoff_col=cutoff_col,
         agg_fn=agg_fn,
     )
 
@@ -92,6 +98,7 @@ def _distributed_evaluate(
     id_col: str,
     time_col: str,
     target_col: str,
+    cutoff_col: str,
     agg_fn: Optional[str],
 ) -> DistributedDFType:
     import fugue.api as fa
@@ -99,12 +106,12 @@ def _distributed_evaluate(
     if agg_fn is not None:
         raise ValueError("`agg_fn` is not supported in distributed")
     df_cols = fa.get_column_names(df)
+    group_cols: list[str] = _get_group_cols(df, id_col, cutoff_col)
     if train_df is not None:
         # align columns in order to vstack them
         def assign_cols(df: pd.DataFrame, cols) -> pd.DataFrame:
             return df.assign(**cols)
-
-        train_cols = [id_col, time_col, target_col]
+        train_cols = [*group_cols, time_col, target_col]
         extra_cols = [c for c in df_cols if c not in train_cols]
         train_df = fa.select_columns(train_df, train_cols)
         train_df = fa.transform(
@@ -129,11 +136,11 @@ def _distributed_evaluate(
         df = fa.union(train_df, df)
 
     if models is None:
-        model_cols = _get_model_cols(df_cols, id_col, time_col, target_col)
+        model_cols = _get_model_cols(df_cols, id_col, time_col, target_col, cutoff_col)
     else:
         model_cols = models
     models_schema = ",".join(f"{m}:double" for m in model_cols)
-    result_schema = fa.get_schema(df).extract(id_col) + "metric:str" + models_schema
+    result_schema = fa.get_schema(df).extract(*group_cols) + "metric:str" + models_schema
     return fa.transform(
         df,
         using=_evaluate_wrapper,
@@ -145,9 +152,10 @@ def _distributed_evaluate(
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
+            cutoff_col=cutoff_col,
             agg_fn=agg_fn,
         ),
-        partition={"by": id_col, "algo": "coarse"},
+        partition={"by": group_cols, "algo": "coarse"},
     )
 
 
@@ -160,6 +168,7 @@ def evaluate(
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
     agg_fn: Optional[str] = None,
 ) -> AnyDFType:
     """Evaluate forecast using different metrics.
@@ -182,6 +191,8 @@ def evaluate(
             can be timestamps or integers. Defaults to 'ds'.
         target_col (str, optional): Column that contains the target.
             Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for
+            each forecast cross-validation fold. Defaults to 'cutoff'.
         agg_fn (str, optional): Statistic to compute on the scores by id to reduce
             them to a single number. Defaults to None.
 
@@ -200,10 +211,11 @@ def evaluate(
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
+            cutoff_col=cutoff_col,
             agg_fn=agg_fn,
         )
     if models is None:
-        model_cols = _get_model_cols(df.columns, id_col, time_col, target_col)
+        model_cols = _get_model_cols(df.columns, id_col, time_col, target_col, cutoff_col)
     else:
         model_cols = models
 
@@ -259,6 +271,8 @@ def evaluate(
         kwargs = dict(df=df, models=model_cols, id_col=id_col, target_col=target_col)
         if metric_requires_y_train[metric_name]:
             kwargs["train_df"] = train_df
+            kwargs["cutoff_col"] = cutoff_col
+            kwargs["time_col"] = time_col
         metric_params = inspect.signature(metric).parameters
         if "baseline" in metric_params:
             metric_name = f"{metric_name}_{metric_params['baseline'].default}"
@@ -304,13 +318,19 @@ def evaluate(
         df = pd.concat(results_per_metric).reset_index(drop=True)
     else:
         df = pl.concat(results_per_metric, how="diagonal")
-    id_cols = [id_col, "metric"]
+    
+    if cutoff_col in df.columns:
+        id_cols = [id_col, cutoff_col, "metric"]
+    else:
+        id_cols = [id_col, "metric"]
+
     model_cols = [c for c in df.columns if c not in id_cols]
     df = df[id_cols + model_cols]
     if agg_fn is not None:
+        group_cols = id_cols[1:] # exclude id_col
         df = ufp.group_by_agg(
             df,
-            by="metric",
+            by=group_cols,
             aggs={m: agg_fn for m in model_cols},
             maintain_order=True,
         )

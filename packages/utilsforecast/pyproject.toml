@@ -26,6 +26,7 @@ dependencies = [
     "numpy",
     "packaging",
     "pandas>=1.1.1",
+    "narwhals>=2.0",
 ]
 
 [tool.setuptools.dynamic]

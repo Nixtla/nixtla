@@ -33,6 +33,13 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 
 
+def _get_group_cols(df: IntoDataFrameT, id_col: str, cutoff_col: str) -> list[str]:
+    if cutoff_col in df.columns:
+        group_cols = [cutoff_col, id_col]
+    else:
+        group_cols = [id_col]
+    return group_cols
+
 def _base_docstring(*args, **kwargs) -> Callable:
     base_docstring = """
 
@@ -41,6 +48,7 @@ def _base_docstring(*args, **kwargs) -> Callable:
         models (list of str): Columns that identify the models predictions.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -58,34 +66,61 @@ def _nw_agg_expr(
     df: IntoDataFrameT,
     models: Union[list[str], list[tuple[str, str]]],
     id_col: str,
+    cutoff_col: str,
     gen_expr: Callable[[Union[str, tuple[str, str]]], nw.Expr],
     agg: str = "mean",
 ) -> IntoDataFrameT:
     exprs = [gen_expr(model) for model in models]
+    group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
     return (
         nw.from_native(df)
-        .select([id_col, *exprs])
-        .group_by(id_col)
+        .select([*group_cols, *exprs])
+        .group_by(*group_cols)
         .agg(getattr(nw.all(), agg)())
-        .sort(id_col)
+        .sort(*group_cols)
         .to_native()
     )
 
+
+def _create_train_with_cutoffs(
+    train_df: IntoDataFrameT,
+    df: IntoDataFrameT,
+    id_col: str,
+    time_col: str,
+    cutoff_col: str
+) -> IntoDataFrameT:
+    group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
+    train_df = nw.from_native(train_df)
+    
+    if cutoff_col in group_cols:
+        cutoffs_df = (
+            nw.from_native(df)
+            .select(*group_cols)
+            .unique()
+        )
+        train_df = (
+            train_df
+            .join(cutoffs_df, on="unique_id", how="inner")
+            .filter(nw.col(time_col) <= nw.col(cutoff_col))
+        )
+
+    return train_df
 
 def _scale_loss(
     df: IntoDataFrameT,
     models: List[str],
     scales: IntoDataFrameT,
     id_col: str,
+    cutoff_col: str,
 ) -> IntoDataFrameT:
     exprs = [(nw.col(m) / nw.col("scale")).alias(m) for m in models]
+    group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
     return (
         nw.from_native(df)
-        .join(nw.from_native(scales), on=id_col)
-        .select([id_col, *exprs])
+        .join(nw.from_native(scales), on=group_cols)
+        .select([*group_cols, *exprs])
         .to_native()
     )
-
 
 @_base_docstring
 def mae(
@@ -93,6 +128,7 @@ def mae(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Mean Absolute Error (MAE)
 
@@ -105,6 +141,7 @@ def mae(
         df=df,
         models=models,
         id_col=id_col,
+        cutoff_col=cutoff_col,
         gen_expr=lambda m: (nw.col(target_col) - nw.col(m)).abs().alias(m),
     )
 
@@ -115,6 +152,7 @@ def mse(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Mean Squared Error (MSE)
 
@@ -127,6 +165,7 @@ def mse(
         df=df,
         models=models,
         id_col=id_col,
+        cutoff_col=cutoff_col,
         gen_expr=lambda m: ((nw.col(target_col) - nw.col(m)) ** 2).alias(m),
     )
 
@@ -137,6 +176,7 @@ def rmse(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Root Mean Squared Error (RMSE)
 
@@ -148,11 +188,11 @@ def rmse(
     as the original time series so its comparison with other
     series is possible only if they share a common scale.
     RMSE has a direct connection to the L2 norm."""
-    df = mse(df=df, models=models, id_col=id_col, target_col=target_col)
+    
+    df = mse(df=df, models=models, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col)
     return (
         nw.from_native(df).with_columns(*[nw.col(m).sqrt() for m in models]).to_native()
     )
-
 
 @_base_docstring
 def bias(
@@ -160,6 +200,7 @@ def bias(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff"
 ) -> IntoDataFrameT:
     """Forecast estimator bias.
 
@@ -168,6 +209,7 @@ def bias(
         df=df,
         models=models,
         id_col=id_col,
+        cutoff_col=cutoff_col,
         gen_expr=lambda m: (nw.col(m) - nw.col(target_col)).alias(m),
     )
 
@@ -178,6 +220,7 @@ def cfe(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """
     Cumulative Forecast Error (CFE)
@@ -188,6 +231,7 @@ def cfe(
         df=df,
         models=models,
         id_col=id_col,
+        cutoff_col=cutoff_col,
         gen_expr=lambda m: (nw.col(m) - nw.col(target_col)).alias(m),
         agg="sum",
     )
@@ -199,6 +243,7 @@ def pis(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """
     Compute the raw Absolute Periods In Stock (PIS) for one or multiple models.
@@ -210,6 +255,7 @@ def pis(
         df=df,
         models=models,
         id_col=id_col,
+        cutoff_col=cutoff_col,
         gen_expr=lambda m: (nw.col(m) - nw.col(target_col)).abs().alias(m),
         agg="sum",
     )
@@ -221,6 +267,8 @@ def spis(
     train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
+    time_col: str = "ds",
 ) -> IntoDataFrameT:
     """
     Compute the scaled Absolute Periods In Stock (sAPIS) for one or multiple models.
@@ -234,20 +282,29 @@ def spis(
         train_df (pandas or polars DataFrame): Training dataframe with id and actual values. Must be sorted by time.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.    
     """
+    def gen_expr(_m):
+        return nw.col(target_col).alias("scale")
+
     df = nw.from_native(df)
-    train_df = nw.from_native(train_df)
-    scales = train_df.group_by(id_col).agg(nw.col(target_col).mean().alias("scale"))
-    raw = pis(df=df, models=models, id_col=id_col, target_col=target_col)
-    return _scale_loss(df=raw, models=models, scales=scales, id_col=id_col)
+    train_df = _create_train_with_cutoffs(train_df=train_df, df=df, id_col=id_col, time_col=time_col, cutoff_col=cutoff_col)
+    scales = _nw_agg_expr(
+        df=train_df,
+        models=["unused"],
+        id_col=id_col,
+        cutoff_col=cutoff_col,
+        gen_expr=gen_expr
+    )
+    raw = pis(df=df, models=models, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col)
+    return _scale_loss(df=raw, models=models, scales=scales, id_col=id_col, cutoff_col=cutoff_col)
 
 
 def _zero_to_nan(series):
     return nw.when(series == 0).then(float("nan")).otherwise(series)
-
 
 @_base_docstring
 def mape(
@@ -255,6 +312,7 @@ def mape(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Mean Absolute Percentage Error (MAPE)
 
@@ -275,6 +333,7 @@ def mape(
         models=models,
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -284,6 +343,7 @@ def smape(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Symmetric Mean Absolute Percentage Error (SMAPE)
 
@@ -306,8 +366,8 @@ def smape(
         models=models,
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
-
 
 def mase(
     df: IntoDataFrameT,
@@ -316,6 +376,8 @@ def mase(
     train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
+    time_col: str = "ds",
 ) -> IntoDataFrameT:
     """Mean Absolute Scaled Error (MASE)
 
@@ -334,6 +396,7 @@ def mase(
         train_df (pandas or polars DataFrame): Training dataframe with id and actual values. Must be sorted by time.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -341,23 +404,28 @@ def mase(
     References:
         [1] https://robjhyndman.com/papers/mase.pdf
     """
+    group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
 
     def scale_expr(_m):
-        lagged = nw.col(target_col).shift(seasonality).over(id_col)
+        lagged = nw.col(target_col).shift(seasonality).over(group_cols)
         return (nw.col(target_col) - lagged).abs().alias("scale")
 
-    mae_df = mae(df=df, models=models, id_col=id_col, target_col=target_col)
+    mae_df = mae(df=df, models=models, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col)
+    train_df = _create_train_with_cutoffs(train_df=train_df, df=df, id_col=id_col, time_col=time_col, cutoff_col=cutoff_col)
+
     scales = _nw_agg_expr(
         df=train_df,
         models=["unused"],
         id_col=id_col,
         gen_expr=scale_expr,
+        cutoff_col=cutoff_col,
     )
     return _scale_loss(
         df=mae_df,
         models=models,
         scales=scales,
         id_col=id_col,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -367,6 +435,7 @@ def rmae(
     baseline: str,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff"
 ) -> IntoDataFrameT:
     """Relative Mean Absolute Error (RMAE)
 
@@ -380,6 +449,7 @@ def rmae(
         baseline (str): Column that identifies the baseline model predictions.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -387,9 +457,9 @@ def rmae(
     df = nw.from_native(df)
     if df[baseline].is_null().any():
         raise ValueError(f"baseline model ({baseline}) contains NaNs.")
-    mae_df = mae(df, models, id_col, target_col)
+    mae_df = mae(df, models, id_col, target_col, cutoff_col)
     scales = (
-        nw.from_native(mae(df, [baseline], id_col, target_col))
+        nw.from_native(mae(df, [baseline], id_col, target_col, cutoff_col))
         .rename({baseline: "scale"})
         .with_columns(scale=_zero_to_nan(nw.col("scale")))
     )
@@ -398,14 +468,16 @@ def rmae(
         models=models,
         scales=scales,
         id_col=id_col,
+        cutoff_col=cutoff_col,
     )
 
-
+@_base_docstring
 def nd(
     df: IntoDataFrameT,
     models: List[str],
     id_col: str = "unique_id",
-    target_col: str = "y"
+    target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Normalized Deviation (ND)
 
@@ -413,32 +485,24 @@ def nd(
     accuracy of a forecasting method by calculating the
     sum of the absolute deviation of the prediction and the true
     value at a given time and dividing it by the sum of the absolute
-    value of the ground truth.
-
-    Args:
-        df: Input dataframe with id, times, actuals and predictions.
-        models: Columns that identify the models predictions.
-        id_col: Column that identifies each serie. Defaults to 'unique_id'.
-        target_col: Column that contains the target. Defaults to 'y'.
-
-    Returns:
-        Dataframe with one row per id and one column per model.
-    """
+    value of the ground truth."""
 
     def gen_expr(model):
         return ((nw.col(target_col) - nw.col(model)).abs()).alias(model)
-    
+
+    group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
+
     return (
         nw.from_native(df)
         .select(
-            id_col,
+            *group_cols,
             nw.col(target_col).abs().alias("scale"),
             *[gen_expr(m) for m in models],
         )
-        .group_by(id_col)
+        .group_by(*group_cols)
         .agg(nw.all().sum())
-        .select(id_col, *[(nw.col(m) / _zero_to_nan(nw.col("scale"))) for m in models])
-        .sort(id_col)
+        .select(*group_cols, *[(nw.col(m) / _zero_to_nan(nw.col("scale"))) for m in models])
+        .sort(*group_cols)
         .to_native()
     )
 
@@ -450,6 +514,8 @@ def msse(
     train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
+    time_col: str = "ds",
 ) -> IntoDataFrameT:
     """Mean Squared Scaled Error (MSSE)
 
@@ -466,6 +532,7 @@ def msse(
         train_df (pandas or polars DataFrame): Training dataframe with id and actual values. Must be sorted by time.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -473,16 +540,19 @@ def msse(
     References:
         [1] https://otexts.com/fpp3/accuracy.html
     """
-    mse_df = mse(df=df, models=models, id_col=id_col, target_col=target_col)
-    baseline = nw.from_native(train_df).with_columns(
-        scale=nw.col(target_col).shift(seasonality).over(id_col)
+    mse_df = mse(df=df, models=models, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col)
+    train_df = _create_train_with_cutoffs(train_df=train_df, df=df, id_col=id_col, time_col=time_col,cutoff_col=cutoff_col)
+    train_group_cols = _get_group_cols(df=train_df, id_col=id_col, cutoff_col=cutoff_col)
+    baseline = train_df.with_columns(
+        scale=nw.col(target_col).shift(seasonality).over(*train_group_cols)
     )
-    scales = mse(df=baseline, models=["scale"], id_col=id_col, target_col=target_col)
+    scales = mse(df=baseline, models=["scale"], id_col=id_col, target_col=target_col, cutoff_col=cutoff_col)
     return _scale_loss(
         df=mse_df,
         scales=scales,
         models=models,
         id_col=id_col,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -493,6 +563,8 @@ def rmsse(
     train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
+    time_col: str = "ds",
 ) -> IntoDataFrameT:
     res = msse(
         df,
@@ -501,6 +573,8 @@ def rmsse(
         train_df=train_df,
         id_col=id_col,
         target_col=target_col,
+        cutoff_col=cutoff_col,
+        time_col=time_col,
     )
     return (
         nw.from_native(res)
@@ -520,6 +594,7 @@ def quantile_loss(
     q: float = 0.5,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Quantile Loss (QL)
 
@@ -534,6 +609,7 @@ def quantile_loss(
         q (float, optional): Quantile for the predictions' comparison. Defaults to 0.5.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -551,8 +627,8 @@ def quantile_loss(
         models=list(models.items()),
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
-
 
 def scaled_quantile_loss(
     df: IntoDataFrameT,
@@ -562,6 +638,8 @@ def scaled_quantile_loss(
     q: float = 0.5,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
+    time_col: str = "ds",
 ) -> IntoDataFrameT:
     """Scaled Quantile Loss (SQL)
 
@@ -582,6 +660,7 @@ def scaled_quantile_loss(
         q (float, optional): Quantile for the predictions' comparison. Defaults to 0.5.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -590,17 +669,20 @@ def scaled_quantile_loss(
         [1] https://www.sciencedirect.com/science/article/pii/S0169207021001722
     """
     qloss_df = quantile_loss(
-        df=df, models=models, q=q, id_col=id_col, target_col=target_col
+        df=df, models=models, q=q, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col
     )
-    baseline = nw.from_native(train_df).with_columns(
-        scale=nw.col(target_col).shift(seasonality).over(id_col)
+    train_df = _create_train_with_cutoffs(train_df=train_df, df=df, id_col=id_col, time_col=time_col, cutoff_col=cutoff_col)
+    train_group_cols = _get_group_cols(df=train_df, id_col=id_col, cutoff_col=cutoff_col)
+    baseline = train_df.with_columns(
+        scale=nw.col(target_col).shift(seasonality).over(*train_group_cols)
     )
-    scales = mae(df=baseline, models=["scale"], id_col=id_col, target_col=target_col)
+    scales = mae(df=baseline, models=["scale"], id_col=id_col, target_col=target_col, cutoff_col=cutoff_col)
     return _scale_loss(
         df=qloss_df,
         scales=scales,
         models=list(models.keys()),
         id_col=id_col,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -610,6 +692,7 @@ def mqloss(
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """Multi-Quantile loss (MQL)
 
@@ -630,6 +713,7 @@ def mqloss(
         quantiles (numpy array): Quantiles to compare against.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -637,20 +721,41 @@ def mqloss(
     References:
         [1] https://www.jstor.org/stable/2629907
     """
-    df = nw.from_native(df)
-    losses = {id_col: df[id_col]}
-    error = np.empty((df.shape[0], quantiles.size))
-    for model, predictions in models.items():
-        for j, q_preds in enumerate(predictions):
-            error[:, j] = (df[target_col] - df[q_preds]).to_numpy()
-        loss = np.maximum(error * quantiles, error * (quantiles - 1)).mean(axis=1)
-        losses[model] = loss
-    return _nw_agg_expr(
-        df=nw.from_dict(losses),
-        models=list(models.keys()),
-        id_col=id_col,
-        gen_expr=lambda m: nw.col(m),
+
+    group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
+
+    # Not the most efficient implementation
+    # Sort quantiles and reorder forecasts to match
+    # This ensures correct pairing regardless of input order
+    sorted_indices = np.argsort(quantiles)
+    sorted_quantiles = quantiles[sorted_indices]
+
+    # Reorder forecast columns according to sorted quantile indices
+    sorted_models = {
+        model: [forecasts[i] for i in sorted_indices]
+        for model, forecasts in models.items()
+    }
+
+    # Map each sorted quantile to its corresponding forecast column
+    quantile_preds = {}
+    for q, idx in zip(sorted_quantiles, range(len(sorted_quantiles))):
+        quantile_preds[q] = {
+            model: forecasts[idx]
+            for model, forecasts in sorted_models.items()
+        }
+
+    res = (
+        nw.concat(
+            [
+                nw.from_native(quantile_loss(df, models=quantile_preds[q], q=q, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col))
+                for q in sorted_quantiles
+            ]
+        )
     )
+    res = res.group_by(group_cols).agg([nw.col(col).mean().alias(col) for col in res.columns if col not in group_cols])
+    res = res.to_native()
+
+    return res
 
 
 def scaled_mqloss(
@@ -661,6 +766,8 @@ def scaled_mqloss(
     train_df: IntoDataFrameT,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
+    time_col: str = "ds",
 ) -> IntoDataFrameT:
     """Scaled Multi-Quantile loss (SMQL)
 
@@ -686,6 +793,7 @@ def scaled_mqloss(
         train_df (pandas or polars DataFrame): Training dataframe with id and actual values. Must be sorted by time.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -694,17 +802,20 @@ def scaled_mqloss(
         [1] https://www.sciencedirect.com/science/article/pii/S0169207021001722
     """
     mql_df = mqloss(
-        df=df, models=models, quantiles=quantiles, id_col=id_col, target_col=target_col
+        df=df, models=models, quantiles=quantiles, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col
     )
-    baseline = nw.from_native(train_df).with_columns(
-        scale=nw.col(target_col).shift(seasonality).over(id_col)
+    train_df = _create_train_with_cutoffs(train_df=train_df, df=df, id_col=id_col, time_col=time_col,cutoff_col=cutoff_col)
+    train_group_cols = _get_group_cols(df=train_df, id_col=id_col, cutoff_col=cutoff_col)
+    baseline = train_df.with_columns(
+        scale=nw.col(target_col).shift(seasonality).over(*train_group_cols)
     )
-    scales = mae(df=baseline, models=["scale"], id_col=id_col, target_col=target_col)
+    scales = mae(df=baseline, models=["scale"], id_col=id_col, target_col=target_col, cutoff_col=cutoff_col)
     return _scale_loss(
         df=mql_df,
         scales=scales,
         models=list(models.keys()),
         id_col=id_col,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -714,6 +825,7 @@ def coverage(
     level: int,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff"
 ) -> IntoDataFrameT:
     """Coverage of y with y_hat_lo and y_hat_hi.
 
@@ -723,6 +835,7 @@ def coverage(
         level (int): Confidence level used for intervals.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -743,6 +856,7 @@ def coverage(
         models=models,
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -751,6 +865,7 @@ def calibration(
     models: Dict[str, str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff"
 ) -> IntoDataFrameT:
     """
     Fraction of y that is lower than the model's predictions.
@@ -760,6 +875,7 @@ def calibration(
         models (dict from str to str): Mapping from model name to the model predictions.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -777,6 +893,7 @@ def calibration(
         models=list(models.items()),
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -786,6 +903,7 @@ def scaled_crps(
     quantiles: np.ndarray,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff"
 ) -> IntoDataFrameT:
     """Scaled Continues Ranked Probability Score
 
@@ -800,6 +918,7 @@ def scaled_crps(
         quantiles (numpy array): Quantiles to compare against.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: dataframe with one row per id and one column per model.
@@ -811,27 +930,28 @@ def scaled_crps(
     eps = np.finfo(np.float64).eps
     quantiles = np.asarray(quantiles)
     loss = mqloss(
-        df=df, models=models, quantiles=quantiles, id_col=id_col, target_col=target_col
+        df=df, models=models, quantiles=quantiles, id_col=id_col, target_col=target_col, cutoff_col=cutoff_col
     )
 
     def gen_expr(model):
         return (2 * nw.col(model) * nw.col("counts") / (nw.col("norm") + eps)).alias(
             model
         )
-
+    group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
     stats = (
         df.with_columns(target_col=nw.col(target_col).abs())
-        .group_by(id_col)
+        .group_by(*group_cols)
         .agg(
             counts=nw.col(id_col).len(),
             norm=nw.col(target_col).sum(),
         )
     )
     return _nw_agg_expr(
-        df=nw.from_native(loss).join(stats, on=id_col),
+        df=nw.from_native(loss).join(stats, on=group_cols),
         models=list(models.keys()),
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -841,6 +961,7 @@ def tweedie_deviance(
     power: float = 1.5,
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
 ) -> IntoDataFrameT:
     """
     Compute the Tweedie deviance loss for one or multiple models, grouped by an identifier.
@@ -860,6 +981,7 @@ def tweedie_deviance(
         power (float, optional): Tweedie power parameter. Determines the compound distribution. Defaults to 1.5.
         id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
         target_col (str, optional): Column that contains the target. Defaults to 'y'.
+        cutoff_col (str, optional): Column that identifies the cutoff point for each forecast cross-validation fold. Defaults to 'cutoff'.
 
     Returns:
         pandas or polars DataFrame: DataFrame with one row per id and one column per model, containing the mean Tweedie deviance.
@@ -929,6 +1051,7 @@ def tweedie_deviance(
         models=models,
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
 
 
@@ -938,6 +1061,7 @@ def linex(
     models: List[str],
     id_col: str = "unique_id",
     target_col: str = "y",
+    cutoff_col: str = "cutoff",
     a: float = 1.0,
 ) -> IntoDataFrameT:
     """Linex Loss (Linear Exponential)
@@ -948,8 +1072,6 @@ def linex(
     - If a > 0, under-forecasting (y > y_hat) is penalized more.
     - If a < 0, over-forecasting (y_hat > y) is penalized more.
     - a must not be 0.
-
-    Formula: exp(a·error) - a·error - 1, where error = prediction - actual.
 
     Args:
         a (float, optional): Asymmetry parameter. Must be non-zero. Defaults to 1.0.
@@ -966,4 +1088,5 @@ def linex(
         models=models,
         id_col=id_col,
         gen_expr=gen_expr,
+        cutoff_col=cutoff_col,
     )
