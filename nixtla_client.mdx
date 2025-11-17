@@ -264,7 +264,8 @@ cross_validation(
     date_features_to_one_hot: Union[bool, list[str]] = False,
     model: str = 'timegpt-1',
     num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
-    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7fba0d8d9990>)] = None
+    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7f5abdab1990>)] = None,
+    multivariate: bool = False
 ) → ~AnyDFType
 ```
 
@@ -298,12 +299,14 @@ Perform cross validation in your time series using TimeGPT.
  - <b>`date_features`</b> (bool or list[str] or callable, optional):  Features  computed from the dates. Can be pandas date attributes  or functions that will take the dates as input. If True  automatically adds most used date features for the  frequency of `df`. Defaults to False. 
  - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
  - <b>`model`</b> (str):  Model to use as a string. Options are: `timegpt-1`,  and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
- - <b>`model_parameters`</b> (dict):  The dictionary settings that determine  the behavior of the model. Default is None                 
+ - <b>`model_parameters`</b> (dict):  The dictionary settings that determine  the behavior of the model. Default is None.             
+ - <b>`multivariate`</b> (bool):  If True, enables multivariate predictions. 
+ - <b>`Defaults to False. Note`</b>:  multivariate predictions are only supported for a select set of TimeGPT models.  
 
 
 
 **Returns:**
- pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with cross validation forecasts. 
+ pandas, polars, dask or spark DataFrame or ray Dataset: DataFrame with cross validation forecasts. 
 
 ---
 
@@ -349,7 +352,8 @@ detect_anomalies(
     date_features: Union[bool, list[str]] = False,
     date_features_to_one_hot: Union[bool, list[str]] = False,
     model: str = 'timegpt-1',
-    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None
+    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
+    multivariate: bool = False
 ) → ~AnyDFType
 ```
 
@@ -376,11 +380,13 @@ Detect anomalies in your time series using TimeGPT.
  - <b>`model`</b> (str):  str (default='timegpt-1') 
  - <b>`Model to use as a string. Options are`</b>:  `timegpt-1`, and `timegpt-1-long-horizon`. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data. Defaults to 'timegpt-1'. 
  - <b>`num_partitions`</b> (int):  Number of partitions to use. If None, the  number of partitions will be equal to the available parallel  resources in distributed environments. Defaults to None. 
+ - <b>`multivariate`</b> (bool):  If True, enables multivariate predictions. 
+ - <b>`Defaults to False. Note`</b>:  multivariate predictions are only supported for a select set of TimeGPT models.  
 
 
 
 **Returns:**
- pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with anomalies flagged by TimeGPT. 
+ pandas, polars, dask or spark DataFrame or ray Dataset: DataFrame with anomalies flagged by TimeGPT. 
 
 ---
 
@@ -409,7 +415,8 @@ detect_anomalies_online(
     date_features_to_one_hot: Union[bool, list[str]] = False,
     model: str = 'timegpt-1',
     refit: bool = False,
-    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None
+    num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
+    multivariate: bool = False
 ) → ~AnyDFType
 ```
 
@@ -443,11 +450,13 @@ Online anomaly detection in your time series using TimeGPT.
  - <b>`date_features_to_one_hot`</b> (bool or list[str]):  Apply one-hot  encoding to these date features. If  `date_features=True`, then all date features are  one-hot encoded by default. Defaults to False. 
  - <b>`model`</b> (str, optional):  Model to use as a string. Options are:  `timegpt-1`, and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. 
  - <b>`refit`</b> (bool, optional):  Fine-tune the model in each window. If  False, only fine-tunes on the first window. Only used if  finetune_steps > 0. Defaults to False. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
+ - <b>`multivariate`</b> (bool):  If True, enables multivariate predictions. 
+ - <b>`Defaults to False. Note`</b>:  multivariate predictions are only supported for a select set of TimeGPT models. This variable  is different from the `threshold_method` parameter. The latter controls the method used for anomaly detection (univariate vs multivariate) whereas `multivariate` determines how the model  creates the predictions. 
 
 
 
 **Returns:**
- pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with anomalies flagged by TimeGPT. 
+ pandas, polars, dask or spark DataFrame or ray Dataset: DataFrame with anomalies flagged by TimeGPT. 
 
 ---
 
@@ -578,7 +587,8 @@ forecast(
     model: str = 'timegpt-1',
     num_partitions: Optional[Annotated[int, Gt(gt=0)]] = None,
     feature_contributions: bool = False,
-    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7fba0d8d9990>)] = None
+    model_parameters: Annotated[Optional[Dict[str, Any]], AfterValidator(func=<function validate_extra_params at 0x7f5abdab1990>)] = None,
+    multivariate: bool = False
 ) → ~AnyDFType
 ```
 
@@ -613,11 +623,13 @@ Forecast your time series using TimeGPT.
  - <b>`model`</b> (str):  Model to use as a string. Options are: `timegpt-1`,  and `timegpt-1-long-horizon`. We recommend using  `timegpt-1-long-horizon` for forecasting if you want to  predict more than one seasonal period given the frequency of  your data. Defaults to 'timegpt-1'. num_partitions (int):  Number of partitions to use. If None, the number of partitions  will be equal to the available parallel resources in  distributed environments. Defaults to None. 
  - <b>`feature_contributions`</b> (bool):  Compute SHAP values.  Gives access to computed SHAP values to explain the impact  of features on the final predictions. Defaults to False. 
  - <b>`model_parameters`</b> (dict):  The dictionary settings that determine  the behavior of the model. Default is None 
+ - <b>`multivariate`</b> (bool):  If True, enables multivariate predictions. 
+ - <b>`Defaults to False. Note`</b>:  multivariate predictions are only supported for a select set of TimeGPT models.  
 
 
 
 **Returns:**
- pandas, polars, dask or spark DataFrame or ray Dataset:  DataFrame with TimeGPT forecasts for point predictions and  probabilistic predictions (if level is not None). 
+ pandas, polars, dask or spark DataFrame or ray Dataset: DataFrame with TimeGPT forecasts for point predictions and probabilistic predictions (if level is not None). 
 
 ---
 
