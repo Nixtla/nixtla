@@ -1,10 +1,8 @@
-# Third Party Licenses
-
-| Package                   | Version     | License                                                 | Author                                | URL                                                                |
-|---------------------------|-------------|---------------------------------------------------------|---------------------------------------|--------------------------------------------------------------------|
-| certifi                   | 2025.10.5   | Mozilla Public License 2.0 (MPL 2.0)                    | Kenneth Reitz                         | https://github.com/certifi/python-certifi                            |
-| fqdn                      | 1.5.1       | Mozilla Public License 2.0 (MPL 2.0)                    | ypcrts                                | https://github.com/ypcrts/fqdn                                       |
-| pathspec                  | 0.12.1      | Mozilla Public License 2.0 (MPL 2.0)                    | "Caleb P. Burns" <cpburnz@gmail.com>  | UNKNOWN                                                              |
-| pyreadr                   | 0.5.2       | GNU Affero General Public License v3 or later (AGPLv3+) | Otto Fajardo                          | https://github.com/ofajardo/pyreadr                                  |
-| pytest-rerunfailures      | 16.1        | MPL-2.0                                                 | Leah Klearman <lklrmn@gmail.com>      | https://github.com/pytest-dev/pytest-rerunfailures                   |
-| tqdm                      | 4.67.1      | MIT License; Mozilla Public License 2.0 (MPL 2.0)       | UNKNOWN                               | https://tqdm.github.io                                               |
+| Name                 | Version   | License                                                 | Author                               | URL                                                |
+|:---------------------|:----------|:--------------------------------------------------------|:-------------------------------------|:---------------------------------------------------|
+| certifi              | 2025.10.5 | Mozilla Public License 2.0 (MPL 2.0)                    | Kenneth Reitz                        | https://github.com/certifi/python-certifi          |
+| fqdn                 | 1.5.1     | Mozilla Public License 2.0 (MPL 2.0)                    | ypcrts                               | https://github.com/ypcrts/fqdn                     |
+| pathspec             | 0.12.1    | Mozilla Public License 2.0 (MPL 2.0)                    | "Caleb P. Burns" <cpburnz@gmail.com> | UNKNOWN                                            |
+| pyreadr              | 0.5.2     | GNU Affero General Public License v3 or later (AGPLv3+) | Otto Fajardo                         | https://github.com/ofajardo/pyreadr                |
+| pytest-rerunfailures | 16.1      | MPL-2.0                                                 | Leah Klearman <lklrmn@gmail.com>     | https://github.com/pytest-dev/pytest-rerunfailures |
+| tqdm                 | 4.67.1    | MIT License; Mozilla Public License 2.0 (MPL 2.0)       | UNKNOWN                              | https://tqdm.github.io                             |
