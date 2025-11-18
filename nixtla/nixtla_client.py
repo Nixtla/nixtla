@@ -542,7 +542,7 @@ def _forecast_payload_to_in_sample(payload):
     in_sample_payload = {
         k: v
         for k, v in payload.items()
-        if k not in ("h", "finetune_steps", "finetune_loss")
+        if k not in ("h", "finetune_steps", "finetune_loss", "finetune_depth")
     }
     del in_sample_payload["series"]["X_future"]
     return in_sample_payload
@@ -1371,7 +1371,8 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         feature_contributions: bool,
-        model_parameters: _ExtraParamDataType = None,
+        model_parameters: _ExtraParamDataType,
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1432,6 +1433,7 @@ class NixtlaClient:
                 num_partitions=None,
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -1463,6 +1465,7 @@ class NixtlaClient:
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """Forecast your time series using TimeGPT.
 
@@ -1548,6 +1551,9 @@ class NixtlaClient:
                 of features on the final predictions. Defaults to False.
             model_parameters (dict): The dictionary settings that determine
                 the behavior of the model. Default is None
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. 
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -1581,6 +1587,7 @@ class NixtlaClient:
                 num_partitions=num_partitions,
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
+                multivariate=multivariate,
             )
         self.__dict__.pop("weights_x", None)
         self.__dict__.pop("feature_contributions", None)
@@ -1667,6 +1674,7 @@ class NixtlaClient:
             "finetune_loss": finetune_loss,
             "finetuned_model_id": finetuned_model_id,
             "feature_contributions": feature_contributions and X is not None,
+            "multivariate": multivariate,
         }
         if model_parameters is not None:
             payload.update({"model_parameters": model_parameters})
@@ -1762,6 +1770,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         num_partitions: Optional[int],
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1793,6 +1802,7 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=None,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -1814,6 +1824,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """Detect anomalies in your time series using TimeGPT.
 
@@ -1870,6 +1881,9 @@ class NixtlaClient:
             num_partitions (int): Number of partitions to use. If None, the
                 number of partitions will be equal to the available parallel
                 resources in distributed environments. Defaults to None.
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. 
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -1890,6 +1904,7 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=num_partitions,
+                multivariate=multivariate,
             )
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
@@ -1937,6 +1952,7 @@ class NixtlaClient:
             "finetuned_model_id": finetuned_model_id,
             "clean_ex_first": clean_ex_first,
             "level": level,
+            "multivariate": multivariate,
         }
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -1985,6 +2001,7 @@ class NixtlaClient:
         model: _Model,
         refit: bool,
         num_partitions: Optional[int],
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2023,6 +2040,7 @@ class NixtlaClient:
                 model=model,
                 refit=refit,
                 num_partitions=None,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -2051,6 +2069,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """
         Online anomaly detection in your time series using TimeGPT.
@@ -2128,6 +2147,13 @@ class NixtlaClient:
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. This variable 
+                is different from the `threshold_method` parameter. The latter
+                controls the method used for anomaly detection (univariate vs
+                multivariate) whereas `multivariate` determines how the model 
+                creates the predictions.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2155,6 +2181,7 @@ class NixtlaClient:
                 model=model,
                 refit=refit,
                 num_partitions=num_partitions,
+                multivariate=multivariate,
             )
         if (
             threshold_method == "multivariate"
@@ -2223,6 +2250,7 @@ class NixtlaClient:
             "finetune_depth": finetune_depth,
             "refit": refit,
             "hist_exog": hist_exog,
+            "multivariate": multivariate,
         }
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -2279,6 +2307,7 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         model_parameters: _ExtraParamDataType,
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2320,6 +2349,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=None,
                 model_parameters=model_parameters,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -2351,6 +2381,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
         model_parameters: _ExtraParamDataType = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """Perform cross validation in your time series using TimeGPT.
 
@@ -2435,7 +2466,10 @@ class NixtlaClient:
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
             model_parameters (dict): The dictionary settings that determine
-                the behavior of the model. Default is None                
+                the behavior of the model. Default is None.            
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. 
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2467,6 +2501,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=num_partitions,
                 model_parameters=model_parameters,
+                multivariate=multivariate,
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2539,6 +2574,7 @@ class NixtlaClient:
             "finetune_loss": finetune_loss,
             "finetuned_model_id": finetuned_model_id,
             "refit": refit,
+            "multivariate": multivariate,
         }
         if model_parameters is not None:
             payload.update({"model_parameters": model_parameters})        
@@ -2933,7 +2969,8 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
-    model_parameters:_ExtraParamDataType = None,
+    model_parameters:_ExtraParamDataType,
+    multivariate: bool,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
@@ -2965,6 +3002,7 @@ def _forecast_wrapper(
         num_partitions=num_partitions,
         feature_contributions=feature_contributions,
         model_parameters=model_parameters,
+        multivariate=multivariate,
     )
 
 
@@ -2983,6 +3021,7 @@ def _detect_anomalies_wrapper(
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
+    multivariate: bool
 ) -> pd.DataFrame:
     return client.detect_anomalies(
         df=df,
@@ -2998,6 +3037,7 @@ def _detect_anomalies_wrapper(
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
         num_partitions=num_partitions,
+        multivariate=multivariate,
     )
 
 
@@ -3023,6 +3063,7 @@ def _detect_anomalies_online_wrapper(
     model: _Model,
     refit: bool,
     num_partitions: Optional[_PositiveInt],
+    multivariate: bool
 ) -> pd.DataFrame:
     return client.detect_anomalies_online(
         df=df,
@@ -3045,6 +3086,7 @@ def _detect_anomalies_online_wrapper(
         model=model,
         refit=refit,
         num_partitions=num_partitions,
+        multivariate=multivariate,
     )
 
 
@@ -3073,6 +3115,7 @@ def _cross_validation_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     model_parameters: _ExtraParamDataType,
+    multivariate: bool,
 ) -> pd.DataFrame:
     return client.cross_validation(
         df=df,
@@ -3098,6 +3141,7 @@ def _cross_validation_wrapper(
         model=model,
         num_partitions=num_partitions,
         model_parameters=model_parameters,
+        multivariate=multivariate,
     )
 
 
