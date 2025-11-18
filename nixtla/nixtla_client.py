@@ -97,12 +97,12 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
+
 def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Validate that the dictionary doesn't contain complex structures."""
     primitives = (str, int, float, bool, type(None))
     if value is None:
         return value
-
 
     for _, v in value.items():
         if isinstance(v, dict):
@@ -118,9 +118,12 @@ def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str,
             raise TypeError(f"Invalid value type: {type(v).__name__}")
     return value
 
+
 _PositiveInt = Annotated[int, annotated_types.Gt(0)]
 _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
-_ExtraParamDataType = Annotated[Optional[Dict[str, Any]], AfterValidator(validate_extra_params)]
+_ExtraParamDataType = Annotated[
+    Optional[Dict[str, Any]], AfterValidator(validate_extra_params)
+]
 extra_param_checker = TypeAdapter(_ExtraParamDataType)
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = str
@@ -542,7 +545,7 @@ def _forecast_payload_to_in_sample(payload):
     in_sample_payload = {
         k: v
         for k, v in payload.items()
-        if k not in ("h", "finetune_steps", "finetune_loss")
+        if k not in ("h", "finetune_steps", "finetune_loss", "finetune_depth")
     }
     del in_sample_payload["series"]["X_future"]
     return in_sample_payload
@@ -2435,7 +2438,7 @@ class NixtlaClient:
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
             model_parameters (dict): The dictionary settings that determine
-                the behavior of the model. Default is None                
+                the behavior of the model. Default is None
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2541,7 +2544,7 @@ class NixtlaClient:
             "refit": refit,
         }
         if model_parameters is not None:
-            payload.update({"model_parameters": model_parameters})        
+            payload.update({"model_parameters": model_parameters})
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
@@ -2933,7 +2936,7 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
-    model_parameters:_ExtraParamDataType = None,
+    model_parameters: _ExtraParamDataType = None,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
