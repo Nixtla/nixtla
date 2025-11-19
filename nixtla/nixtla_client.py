@@ -97,12 +97,12 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
+
 def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Validate that the dictionary doesn't contain complex structures."""
     primitives = (str, int, float, bool, type(None))
     if value is None:
         return value
-
 
     for _, v in value.items():
         if isinstance(v, dict):
@@ -118,9 +118,12 @@ def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str,
             raise TypeError(f"Invalid value type: {type(v).__name__}")
     return value
 
+
 _PositiveInt = Annotated[int, annotated_types.Gt(0)]
 _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
-_ExtraParamDataType = Annotated[Optional[Dict[str, Any]], AfterValidator(validate_extra_params)]
+_ExtraParamDataType = Annotated[
+    Optional[Dict[str, Any]], AfterValidator(validate_extra_params)
+]
 extra_param_checker = TypeAdapter(_ExtraParamDataType)
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = str
@@ -2577,7 +2580,7 @@ class NixtlaClient:
             "multivariate": multivariate,
         }
         if model_parameters is not None:
-            payload.update({"model_parameters": model_parameters})        
+            payload.update({"model_parameters": model_parameters})
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
