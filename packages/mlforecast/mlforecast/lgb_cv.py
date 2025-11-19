@@ -1,4 +1,4 @@
-__all__ = ['LightGBMCV']
+__all__ = ["LightGBMCV"]
 
 
 import copy
@@ -170,7 +170,7 @@ class LightGBMCV:
         else:
             if metric not in _metric2fn:
                 raise ValueError(
-                    f'{metric} is not one of the implemented metrics: ({", ".join(_metric2fn.keys())})'
+                    f"{metric} is not one of the implemented metrics: ({', '.join(_metric2fn.keys())})"
                 )
             self.metric_fn = _metric2fn[metric]
             self.metric_name = metric

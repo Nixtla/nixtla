@@ -1,11 +1,21 @@
-__all__ = ['MLForecast']
+__all__ = ["MLForecast"]
 
 
 import copy
 import re
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import cloudpickle
 import fsspec
@@ -116,7 +126,7 @@ def _get_conformal_method(method: str):
     if method not in available_methods.keys():
         raise ValueError(
             f"prediction intervals method {method} not supported "
-            f'please choose one of {", ".join(available_methods.keys())}'
+            f"please choose one of {', '.join(available_methods.keys())}"
         )
     return available_methods[method]
 
@@ -165,7 +175,7 @@ class MLForecast:
 
     def __repr__(self):
         return (
-            f'{self.__class__.__name__}(models=[{", ".join(self.models.keys())}], '
+            f"{self.__class__.__name__}(models=[{', '.join(self.models.keys())}], "
             f"freq={self.freq}, "
             f"lag_features={list(self.ts.transforms.keys())}, "
             f"date_features={self.ts.date_features}, "
@@ -241,6 +251,7 @@ class MLForecast:
         self,
         X: Union[DataFrame, np.ndarray],
         y: np.ndarray,
+        models_fit_kwargs: Optional[dict[str, dict[str, Any]]] = None,
     ) -> "MLForecast":
         """Manually train models. Use this if you called `MLForecast.preprocess` beforehand.
 
@@ -251,9 +262,19 @@ class MLForecast:
         Returns:
             MLForecast: Forecast object with trained models.
         """
+        models_fit_kwargs = models_fit_kwargs or {}
+        # Check that all keys in models_fit_kwargs match known models
+        unknown_models = set(models_fit_kwargs) - set(self.models)
+        if unknown_models:
+            raise ValueError(
+                f"The following model names in `model_fit_kwargs` are not recognized: {unknown_models}. "
+                f"Valid model names are: {list(self.models)}."
+            )
 
-        def fit_model(model, X, y, weight_col):
-            fit_kwargs = {}
+        def fit_model(
+            model, X, y, weight_col, model_fit_kwargs: Optional[dict[str, Any]]
+        ):
+            fit_kwargs = model_fit_kwargs or {}
             if weight_col is not None:
                 if isinstance(X, np.ndarray):
                     fit_kwargs["sample_weight"] = X[:, 0]
@@ -265,6 +286,7 @@ class MLForecast:
 
         self.models_: Dict[str, Union[BaseEstimator, List[BaseEstimator]]] = {}
         for name, model in self.models.items():
+            model_fit_kwargs = models_fit_kwargs.get(name, None)
             if y.ndim == 2 and y.shape[1] > 1:
                 self.models_[name] = []
                 for col in range(y.shape[1]):
@@ -272,10 +294,18 @@ class MLForecast:
                     Xh = ufp.filter_with_mask(X, keep)
                     yh = y[keep, col]
                     self.models_[name].append(
-                        fit_model(model, Xh, yh, self.ts.weight_col)
+                        fit_model(
+                            model,
+                            Xh,
+                            yh,
+                            self.ts.weight_col,
+                            model_fit_kwargs,
+                        )
                     )
             else:
-                self.models_[name] = fit_model(model, X, y, self.ts.weight_col)
+                self.models_[name] = fit_model(
+                    model, X, y, self.ts.weight_col, model_fit_kwargs
+                )
         return self
 
     def _conformity_scores(
@@ -451,6 +481,7 @@ class MLForecast:
         fitted: bool = False,
         as_numpy: bool = False,
         weight_col: Optional[str] = None,
+        models_fit_kwargs: Optional[dict[str, dict[str, Any]]] = None,
     ) -> "MLForecast":
         """Apply the feature engineering and train the models.
 
@@ -511,7 +542,7 @@ class MLForecast:
             if as_numpy:
                 X = ufp.to_numpy(X)
             del prep
-        self.fit_models(X, y)
+        self.fit_models(X, y, models_fit_kwargs)
         if fitted:
             fitted_values = self._compute_fitted_values(
                 base=base,

@@ -1,4 +1,4 @@
-__all__ = ['RayLGBMForecast']
+__all__ = ["RayLGBMForecast"]
 
 
 import lightgbm as lgb

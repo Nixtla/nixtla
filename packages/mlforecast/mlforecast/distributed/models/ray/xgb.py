@@ -1,4 +1,4 @@
-__all__ = ['RayXGBForecast']
+__all__ = ["RayXGBForecast"]
 
 
 import xgboost as xgb

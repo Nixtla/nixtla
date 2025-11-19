@@ -1,4 +1,4 @@
-__all__ = ['DaskXGBForecast']
+__all__ = ["DaskXGBForecast"]
 
 
 import xgboost as xgb

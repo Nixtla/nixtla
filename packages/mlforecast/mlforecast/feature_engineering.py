@@ -1,4 +1,4 @@
-__all__ = ['transform_exog']
+__all__ = ["transform_exog"]
 
 
 from typing import Optional

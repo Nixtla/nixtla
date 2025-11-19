@@ -1,4 +1,4 @@
-__all__ = ['SparkXGBForecast']
+__all__ = ["SparkXGBForecast"]
 
 
 import xgboost as xgb

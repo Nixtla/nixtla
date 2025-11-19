@@ -1,7 +1,23 @@
-__all__ = ['RollingMean', 'RollingStd', 'RollingMin', 'RollingMax', 'RollingQuantile', 'SeasonalRollingMean',
-           'SeasonalRollingStd', 'SeasonalRollingMin', 'SeasonalRollingMax', 'SeasonalRollingQuantile', 'ExpandingMean',
-           'ExpandingStd', 'ExpandingMin', 'ExpandingMax', 'ExpandingQuantile', 'ExponentiallyWeightedMean', 'Offset',
-           'Combine']
+__all__ = [
+    "RollingMean",
+    "RollingStd",
+    "RollingMin",
+    "RollingMax",
+    "RollingQuantile",
+    "SeasonalRollingMean",
+    "SeasonalRollingStd",
+    "SeasonalRollingMin",
+    "SeasonalRollingMax",
+    "SeasonalRollingQuantile",
+    "ExpandingMean",
+    "ExpandingStd",
+    "ExpandingMin",
+    "ExpandingMax",
+    "ExpandingQuantile",
+    "ExponentiallyWeightedMean",
+    "Offset",
+    "Combine",
+]
 
 
 import copy
@@ -75,7 +91,6 @@ class _BaseLagTransform(BaseEstimator):
 
 
 class Lag(_BaseLagTransform):
-
     def __init__(self, lag: int):
         self.lag = lag
         self._core_tfm = core_tfms.Lag(lag=lag)

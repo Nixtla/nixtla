@@ -1,4 +1,4 @@
-__all__ = ['DaskLGBMForecast']
+__all__ = ["DaskLGBMForecast"]
 
 
 import warnings

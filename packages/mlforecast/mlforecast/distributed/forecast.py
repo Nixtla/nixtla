@@ -1,4 +1,4 @@
-__all__ = ['DistributedMLForecast']
+__all__ = ["DistributedMLForecast"]
 
 
 import copy
@@ -122,7 +122,7 @@ class DistributedMLForecast:
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__}(models=[{", ".join(self.models.keys())}], '
+            f"{self.__class__.__name__}(models=[{', '.join(self.models.keys())}], "
             f"freq={self._base_ts.freq}, "
             f"lag_features={list(self._base_ts.transforms.keys())}, "
             f"date_features={self._base_ts.date_features}, "

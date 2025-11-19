@@ -1,4 +1,4 @@
-__all__ = ['SparkLGBMForecast']
+__all__ = ["SparkLGBMForecast"]
 
 
 import lightgbm as lgb
@@ -30,6 +30,3 @@ class SparkLGBMForecast(LightGBMRegressor):
         model_str = trained_model.getNativeModel()
         local_model = lgb.Booster(model_str=model_str)
         return local_model
-
-
-
