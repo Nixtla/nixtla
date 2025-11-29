@@ -1755,7 +1755,6 @@ class NixtlaClient:
             id_col=id_col,
             time_col=time_col,
         )
-        # assert 1==2, f"Debugging: {resp["mean"].shape}, {out.shape}"
         out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
         out = _maybe_add_intervals(out, resp["intervals"])
         if add_history:
