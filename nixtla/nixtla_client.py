@@ -1719,7 +1719,7 @@ class NixtlaClient:
                         model_input_size,
                     )
                     in_sample_payload = _forecast_payload_to_in_sample(payload, insample_h, n_windows)
-                    logger.info("Calling Cross Validation Endpoint...")
+                    logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_request_with_retries(
                         client, "v2/cross_validation", in_sample_payload
                     )
@@ -1738,7 +1738,7 @@ class NixtlaClient:
                     in_sample_payloads = [
                         _forecast_payload_to_in_sample(p, insample_h, n_windows) for p in payloads
                     ]
-                    logger.info("Calling Cross Validation Endpoint...")
+                    logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
                         client, "v2/cross_validation", in_sample_payloads
                     )
