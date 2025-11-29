@@ -25,7 +25,12 @@ pytest_plugins = [
 # note that scope="session" will result in failed test
 @pytest.fixture(scope="module")
 def nixtla_test_client():
-    client = NixtlaClient()
+    # client = NixtlaClient()
+    client = NixtlaClient(
+        base_url="http://localhost:8000",
+        api_key="12345",
+        timeout=600,
+    )
     yield client
 
     try:

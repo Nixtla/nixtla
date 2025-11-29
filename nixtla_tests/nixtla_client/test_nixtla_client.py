@@ -255,19 +255,19 @@ def test_forecast_quantiles_output(
         ("cross_validation", {"h": 7, "n_windows": 2}, False),
         ("forecast", {"h": 7, "add_history": True}, False),
         ("detect_anomalies", {"level": 98}, True),
-        ("cross_validation", {"h": 7, "n_windows": 2}, False),
-        ("forecast", {"h": 7, "add_history": True}, False),
+        ("cross_validation", {"h": 7, "n_windows": 2}, True),
+        ("forecast", {"h": 7, "add_history": True}, True),
     ],
 )
 def test_num_partitions_same_results_parametrized(
     nixtla_test_client, df_freq_generator, method_name, method_kwargs, freq, exog
 ):
-    mathod_mapper = {
+    method_mapper = {
         "detect_anomalies": nixtla_test_client.detect_anomalies,
         "cross_validation": nixtla_test_client.cross_validation,
         "forecast": nixtla_test_client.forecast,
     }
-    method = mathod_mapper[method_name]
+    method = method_mapper[method_name]
 
     df_freq = df_freq_generator(n_series=10, min_length=500, max_length=550, freq=freq)
     df_freq["ds"] = df_freq.groupby("unique_id", observed=True)["ds"].transform(
