@@ -567,13 +567,20 @@ def _get_in_sample_horizon_and_windows(
     sizes: np.ndarray,
     model_horizon: int,
     model_input_size: int,
+    clean_ex_first: bool,
+    level: Optional[list[Union[int, float]]],
 ) -> tuple[int, int]:
 
     # in-sample horizon and number of windows
     min_size = min(sizes)
     h = min(model_horizon, min_size - 1)
-    n_windows = max((min_size - model_input_size) // model_horizon, 1)
-
+    if clean_ex_first:
+        n_windows = max((min_size - model_input_size) // model_horizon, 1)
+    else:
+        n_windows = max((min_size - (model_input_size + model_horizon + 2 * h)) // model_horizon, 1)
+    # In case of multiple windows, we reduce one to avoid errors when running with level argument
+    if level is not None and n_windows > 1:
+        n_windows -= 1
     return h, n_windows
 
 def _maybe_add_intervals(
@@ -1714,9 +1721,11 @@ class NixtlaClient:
                 resp = self._make_request_with_retries(client, "v2/forecast", payload)
                 if add_history:
                     insample_h, n_windows = _get_in_sample_horizon_and_windows(
-                        sizes,
-                        model_horizon,
-                        model_input_size,
+                        sizes=sizes,
+                        model_horizon=model_horizon,
+                        model_input_size=model_input_size,
+                        clean_ex_first=clean_ex_first,
+                        level=level,
                     )
                     in_sample_payload = _forecast_payload_to_in_sample(payload, insample_h, n_windows)
                     logger.info("Calling Historical Forecast Endpoint...")
@@ -1731,9 +1740,11 @@ class NixtlaClient:
                 resp = self._make_partitioned_requests(client, "v2/forecast", payloads)
                 if add_history:
                     insample_h, n_windows = _get_in_sample_horizon_and_windows(
-                        sizes,
-                        model_horizon,
-                        model_input_size,
+                        sizes=sizes,
+                        model_horizon=model_horizon,
+                        model_input_size=model_input_size,
+                        clean_ex_first=clean_ex_first,
+                        level=level,
                     )
                     in_sample_payloads = [
                         _forecast_payload_to_in_sample(p, insample_h, n_windows) for p in payloads
