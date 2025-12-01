@@ -1,54 +1,49 @@
-project:
-  type: website
-
 format:
-  html:
-    theme: cosmo
-    fontsize: 1em
-    linestretch: 1.7
-    css: styles.css
-    toc: true
-
+  mintlify-md:
+    code-fold: true
+metadata-files:
+- nbdev.yml
+- sidebar.yml
+project:
+  type: mintlify
 website:
-  twitter-card: true
-  open-graph: true
-  google-analytics: "G-NXJNCVR18L"
-  repo-actions: [issue]
+  body-footer: 'If you find the code useful, please ⭐ us on [Github](https://github.com/nixtla/hierarchicalforecast)
+
+    '
   favicon: favicon_png.png
+  google-analytics: G-NXJNCVR18L
   navbar:
     background: primary
-    search: true
     collapse-below: lg
     left:
-      - text: "Get Started"
-        href: examples/TourismSmall.ipynb
-      - text: "NixtlaVerse"
-        menu:
-          - text: "MLForecast 🤖"
-            href: https://github.com/nixtla/mlforecast
-          - text: "NeuralForecast 🧠"
-            href: https://github.com/nixtla/neuralforecast
-          - text: "StatsForecast ⚡️"
-            href: https://github.com/nixtla/statsforecast
-
-      - text: "Help"
-        menu:
-          - text: "Report an Issue"
-            icon: bug
-            href: https://github.com/nixtla/hierarchicalforecast/issues/new/choose
-          - text: "Join our Slack"
-            icon: chat-right-text
-            href: https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1kd5m5db7-7OOfy0xVNf1PcvCiAPWvPw
+    - href: examples/TourismSmall.ipynb
+      text: Get Started
+    - menu:
+      - href: https://github.com/nixtla/mlforecast
+        text: MLForecast 🤖
+      - href: https://github.com/nixtla/neuralforecast
+        text: NeuralForecast 🧠
+      - href: https://github.com/nixtla/statsforecast
+        text: StatsForecast ⚡️
+      text: NixtlaVerse
+    - menu:
+      - href: https://github.com/nixtla/hierarchicalforecast/issues/new/choose
+        icon: bug
+        text: Report an Issue
+      - href: https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1kd5m5db7-7OOfy0xVNf1PcvCiAPWvPw
+        icon: chat-right-text
+        text: Join our Slack
+      text: Help
     right:
-      - icon: github
-        href: "https://github.com/nixtla/hierarchicalforecast"
-      - icon: twitter
-        href: https://twitter.com/nixtlainc
-        aria-label: Nixtla Twitter
-
+    - href: https://github.com/nixtla/hierarchicalforecast
+      icon: github
+    - aria-label: Nixtla Twitter
+      href: https://twitter.com/nixtlainc
+      icon: twitter
+    search: true
+  open-graph: true
+  repo-actions:
+  - issue
   sidebar:
     style: floating
-  body-footer: |
-    If you find the code useful, please ⭐ us on [Github](https://github.com/nixtla/hierarchicalforecast)
-
-metadata-files: [nbdev.yml, sidebar.yml]
+  twitter-card: true

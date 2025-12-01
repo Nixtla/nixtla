@@ -22,15 +22,15 @@
   "navigation": [
     {
       "group": "",
-      "pages": ["index"]
+      "pages": ["index.html"]
     },
     {
       "group": "Getting Started",
       "pages": [
-        "examples/Installation",
-        "examples/TourismSmall",
-        "examples/TourismSmallPolars",
-        "examples/Introduction"
+        "examples/installation.html",
+        "examples/tourismsmall.html",
+        "examples/tourismsmallpolars.html",
+        "examples/introduction.html"
       ]
     },
     {
@@ -39,41 +39,41 @@
         {
           "group": "Point Reconciliation",
           "pages": [
-            "examples/AustralianDomesticTourism",
-            "examples/AustralianPrisonPopulation",
-            "examples/NonNegativeReconciliation",
-            "examples/AustralianDomesticTourism-Multimodel"
+            "examples/australiandomestictourism.html",
+            "examples/australianprisonpopulation.html",
+            "examples/nonnegativereconciliation.html",
+            "examples/australiandomestictourism-multimodel.html"
           ]
         },
         {
           "group": "Probabilistic Reconciliation",
           "pages": [
-            "examples/AustralianDomesticTourism-Intervals",
-            "examples/AustralianDomesticTourism-Bootstraped-Intervals",
-            "examples/AustralianDomesticTourism-Permbu-Intervals",
-            "examples/TourismLarge-Evaluation"
+            "examples/australiandomestictourism-intervals.html",
+            "examples/australiandomestictourism-bootstraped-intervals.html",
+            "examples/australiandomestictourism-permbu-intervals.html",
+            "examples/tourismlarge-evaluation.html"
           ]
         },
         {
           "group": "Temporal Reconciliation",
           "pages": [
-            "examples/AustralianDomesticTourismTemporal",
-            "examples/AustralianDomesticTourismCrossTemporal",
-            "examples/M3withThief",
-            "examples/LocalGlobalAggregation"
+            "examples/australiandomestictourismtemporal.html",
+            "examples/australiandomestictourismcrosstemporal.html",
+            "examples/m3withthief.html",
+            "examples/localglobalaggregation.html"
           ]
         },
-        "examples/MLFrameworksExample"
+        "examples/mlframeworksexample.html"
       ]
     },
     {
       "group": "API Reference",
       "pages": [
-        "core",
-        "methods",
-        "probabilistic_methods",
-        "evaluation",
-        "utils"
+        "core.html",
+        "methods.html",
+        "probabilistic_methods.html",
+        "evaluation.html",
+        "utils.html"
       ]
     }
   ]

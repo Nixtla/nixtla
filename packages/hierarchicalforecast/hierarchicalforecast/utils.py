@@ -137,7 +137,7 @@ def aggregate(
     target_cols: Sequence[str] = ("y",),
 ) -> tuple[FrameT, FrameT, dict]:
     """Utils Aggregation Function.
-    
+
     Aggregates bottom level series contained in the DataFrame `df` according
     to levels defined in the `spec` list.
 
@@ -345,7 +345,7 @@ def aggregate_temporal(
     aggregation_type: str = "local",
 ) -> tuple[FrameT, FrameT, dict]:
     """Utils Aggregation Function for Temporal aggregations.
-    
+
     Aggregates bottom level timesteps contained in the DataFrame `df` according
     to temporal levels defined in the `spec` list.
 
@@ -566,7 +566,7 @@ class HierarchicalPlot:
         constraints matrix $\mathbf{S}$.
 
         Returns:
-            matplotlib.figure.Figure: figure object containing the plot of the summing matrix.
+            fig (matplotlib.figure.Figure): figure object containing the plot of the summing matrix.
         """
         fig = plt.figure(num=1, figsize=(4, 6), dpi=80, facecolor="w")
         plt.spy(self.S[self.S_cols_ex_id_col].to_numpy())
@@ -596,7 +596,7 @@ class HierarchicalPlot:
             target_col (str, optional): column that contains the target. Default is 'y'.
 
         Returns:
-            matplotlib.figure.Figure: figure object containing the plot of the single series.
+            fig (matplotlib.figure.Figure): figure object containing the plot of the single series.
         """
         Y_nw = nw.from_native(Y_df)
 
@@ -678,7 +678,7 @@ class HierarchicalPlot:
             target_col (str, optional): column that contains the target. Default is 'y'.
 
         Returns:
-            matplotlib.figure.Figure: figure object containing the plots of the hierarchilly linked series.
+            fig (matplotlib.figure.Figure): figure object containing the plots of the hierarchilly linked series.
         """
         Y_nw = nw.from_native(Y_df)
 
@@ -774,7 +774,7 @@ class HierarchicalPlot:
             target_col (str, optional): column that contains the target. Default is 'y'.
 
         Returns:
-            matplotlib.figure.Figure: figure object containing the plot of the aggregated predictions at different levels of the hierarchical structure.
+            fig (matplotlib.figure.Figure): figure object containing the plot of the aggregated predictions at different levels of the hierarchical structure.
         """
         Y_nw = nw.from_native(Y_df)
 

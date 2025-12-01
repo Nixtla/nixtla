@@ -330,7 +330,7 @@ class HierarchicalReconciliation:
         temporal: bool = False,
         S: Frame = None,  # For compatibility with the old API, S_df is now S
     ) -> FrameT:
-        """Hierarchical Reconciliation Method.
+        r"""Hierarchical Reconciliation Method.
 
         The `reconcile` method is analogous to SKLearn `fit_predict` method, it
         applies different reconciliation techniques instantiated in the `reconcilers` list.
@@ -338,12 +338,23 @@ class HierarchicalReconciliation:
         Most reconciliation methods can be described by the following convenient
         linear algebra notation:
 
-        $$\\tilde{\mathbf{y}}_{[a,b],\\tau} = \mathbf{S}_{[a,b][b]} \mathbf{P}_{[b][a,b]} \hat{\mathbf{y}}_{[a,b],\\tau}$$
+        ```math
+        \tilde{\mathbf{y}}_{[a,b],\\tau} = \mathbf{S}_{[a,b][b]} \mathbf{P}_{[b][a,b]} \hat{\mathbf{y}}_{[a,b],\\tau}
+        ```
 
         where $a, b$ represent the aggregate and bottom levels, $\mathbf{S}_{[a,b][b]}$ contains
         the hierarchical aggregation constraints, and $\mathbf{P}_{[b][a,b]}$ varies across
-        reconciliation methods. The reconciled predictions are $\\tilde{\mathbf{y}}_{[a,b],\\tau}$, and the
-        base predictions $\hat{\mathbf{y}}_{[a,b],\\tau}$.
+        reconciliation methods. The reconciled predictions are
+
+        ```math
+        \tilde{\mathbf{y}}_{[a,b],\tau}
+        ```
+
+        and the base predictions
+
+        ```math
+        \hat{\mathbf{y}}_{[a,b],\tau}
+        ```
 
         Args:
             Y_hat_df (Frame): DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.
@@ -361,7 +372,7 @@ class HierarchicalReconciliation:
             target_col (str, optional): column that contains the target. Default is "y".
 
         Returns:
-            FrameT: DataFrame, with reconciled predictions.
+            (FrameT): DataFrame, with reconciled predictions.
         """
         # Handle deprecated S parameter
         if S is not None:
@@ -603,7 +614,7 @@ class HierarchicalReconciliation:
             target_col (str, optional): column that contains the target. Default is "y".
 
         Returns:
-            FrameT: DataFrame, with bootstraped reconciled predictions.
+            (FrameT): DataFrame, with bootstraped reconciled predictions.
         """
         # Bootstrap reconciled predictions
         Y_tilde_list = []

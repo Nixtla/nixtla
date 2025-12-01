@@ -112,7 +112,7 @@ class HReconciler:
             level (Optional[list[int]], optional): float list 0-100, confidence levels for prediction intervals. Default is None.
 
         Returns:
-            dict: y_tilde: Reconciliated predictions.
+            y_tilde (dict): Reconciliated predictions.
         """
         if not self.fitted:
             raise Exception("This model instance is not fitted yet, Call fit method.")
@@ -133,7 +133,7 @@ class HReconciler:
             num_samples (int): number of samples generated from coherent distribution.
 
         Returns:
-            np.ndarray: samples: Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+            samples (np.ndarray): Coherent samples of size (`num_series`, `horizon`, `num_samples`).
         """
         if not self.fitted:
             raise Exception("This model instance is not fitted yet, Call fit method.")
@@ -157,20 +157,21 @@ class HReconciler:
 
 
 class BottomUp(HReconciler):
-    """Bottom Up Reconciliation Class.
+    r"""Bottom Up Reconciliation Class.
 
     The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for
     the first time by Orcutt in 1968.
     The corresponding hierarchical \"projection\" matrix is defined as:
-    $$
+    ```math
     \mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]
-    $$
+    ```
 
     Args:
         None
 
     References:
-        - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). "Data aggregation and information loss". The American Economic Review, 58 , 773(787)](http://www.jstor.org/stable/1815532).
+    - [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). "Data aggregation and
+    information loss". The American Economic Review, 58 , 773(787)](http://www.jstor.org/stable/1815532).
     """
 
     insample = False
@@ -212,7 +213,7 @@ class BottomUp(HReconciler):
             tags (Optional[dict[str, np.ndarray]], optional): Tags for hierarchical structure. Default is None.
 
         Returns:
-            BottomUp: object, fitted reconciler.
+            BottomUp (object): fitted reconciler.
         """
         self.intervals_method = intervals_method
         self.P, self.W = self._get_PW_matrices(S=S, idx_bottom=idx_bottom)
@@ -262,7 +263,7 @@ class BottomUp(HReconciler):
             tags (Optional[dict[str, np.ndarray]], optional): Tags for hierarchical structure. Default is None.
 
         Returns:
-            dict: y_tilde: Reconciliated y_hat using the Bottom Up approach.
+            y_tilde (dict): Reconciliated y_hat using the Bottom Up approach.
         """
         # Fit creates P, W and sampler attributes
         self.fit(
@@ -359,20 +360,22 @@ def _reconcile_fcst_proportions(
 
 
 class TopDown(HReconciler):
-    """Top Down Reconciliation Class.
+    r"""Top Down Reconciliation Class.
 
     The Top Down hierarchical reconciliation method, distributes the total aggregate predictions and decomposes
     it down the hierarchy using proportions $\mathbf{p}_{\mathrm{[b]}}$ that can be actual historical values
     or estimated.
 
-    $$\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]$$
+    ```math
+    \mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]
+    ```
 
     Args:
-        method: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.
+        method (str): One of `forecast_proportions`, `average_proportions` and `proportion_averages`.
 
     References:
-        - [CW. Gross (1990). "Disaggregation methods to expedite product line forecasting". Journal of Forecasting, 9 , 233-254. doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).
-        - [G. Fliedner (1999). "An investigation of aggregate variable time series forecast strategies with specific subaggregate time series statistical correlation". Computers and Operations Research, 26 , 1133-1149. doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
+    - [CW. Gross (1990). "Disaggregation methods to expedite product line forecasting". Journal of Forecasting, 9 , 233-254. doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).
+    - [G. Fliedner (1999). "An investigation of aggregate variable time series forecast strategies with specific subaggregate time series statistical correlation". Computers and Operations Research, 26 , 1133-1149. doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
     """
 
     is_strictly_hierarchical = False
@@ -457,19 +460,19 @@ class TopDown(HReconciler):
         """TopDown Fit Method.
 
         Args:
-            S: Summing matrix of size (`base`, `bottom`).
-            y_hat: Forecast values of size (`base`, `horizon`).
-            y_insample: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
-            y_hat_insample: Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
-            sigmah: Estimated standard deviation of the conditional marginal distribution.
-            interval_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
-            num_samples: Number of samples for probabilistic coherent distribution.
-            seed: Seed for reproducibility.
-            tags: Each key is a level and each value its `S` indices.
-            idx_bottom: Indices corresponding to the bottom level of `S`, size (`bottom`).
+            S (np.ndarray): Summing matrix of size (`base`, `bottom`).
+            y_hat (np.ndarray): Forecast values of size (`base`, `horizon`).
+            y_insample (np.ndarray): Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
+            y_hat_insample (np.ndarray): Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
+            sigmah (np.ndarray): Estimated standard deviation of the conditional marginal distribution.
+            interval_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
+            num_samples (int): Number of samples for probabilistic coherent distribution.
+            seed (int): Seed for reproducibility.
+            tags (dict[str, np.ndarray]): Each key is a level and each value its `S` indices.
+            idx_bottom (np.ndarray): Indices corresponding to the bottom level of `S`, size (`bottom`).
 
         Returns:
-            self: object, fitted reconciler.
+            TopDown (object): fitted reconciler.
         """
         self.intervals_method = intervals_method
         self.P, self.W = self._get_PW_matrices(
@@ -508,20 +511,20 @@ class TopDown(HReconciler):
         """Top Down Reconciliation Method.
 
         Args:
-            S: Summing matrix of size (`base`, `bottom`).
-            y_hat: Forecast values of size (`base`, `horizon`).
-            tags: Each key is a level and each value its `S` indices.
-            idx_bottom: Indices corresponding to the bottom level of `S`, size (`bottom`).
-            y_insample: Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
-            y_hat_insample: Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
-            sigmah: Estimated standard deviation of the conditional marginal distribution.
-            level: float list 0-100, confidence levels for prediction intervals.
-            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
-            num_samples: Number of samples for probabilistic coherent distribution.
-            seed: Seed for reproducibility.
+            S (np.ndarray): Summing matrix of size (`base`, `bottom`).
+            y_hat (np.ndarray): Forecast values of size (`base`, `horizon`).
+            tags (dict[str, np.ndarray]): Each key is a level and each value its `S` indices.
+            idx_bottom (np.ndarray): Indices corresponding to the bottom level of `S`, size (`bottom`). Default is None.
+            y_insample (np.ndarray): Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. Default is None.
+            y_hat_insample (np.ndarray): Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. Default is None.
+            sigmah (np.ndarray): Estimated standard deviation of the conditional marginal distribution. Default is None.
+            level (list[int]): float list 0-100, confidence levels for prediction intervals. Default is None.
+            intervals_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is None.
+            num_samples (int): Number of samples for probabilistic coherent distribution. Default is None.
+            seed (int): Seed for reproducibility.
 
         Returns:
-            y_tilde: Reconciliated y_hat using the Top Down approach.
+            y_tilde (np.ndarray): Reconciliated y_hat using the Top Down approach.
         """
         if self.method == "forecast_proportions":
             if not self.is_strictly_hierarchical:
@@ -734,7 +737,9 @@ class MiddleOut(HReconciler):
         top_down_method: One of `forecast_proportions`, `average_proportions` and `proportion_averages`.
 
     References:
-        - [Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting: principles and practice, 3rd edition: Chapter 11: Forecasting hierarchical and grouped series". OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
+    - [Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting: principles and
+    practice, 3rd edition: Chapter 11: Forecasting hierarchical and grouped series".
+    OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
     """
 
     def __init__(self, middle_level: str, top_down_method: str):
@@ -778,16 +783,16 @@ class MiddleOut(HReconciler):
         """Middle Out Reconciliation Method.
 
         Args:
-            S: Summing matrix of size (`base`, `bottom`).
-            y_hat: Forecast values of size (`base`, `horizon`).
-            tags: Each key is a level and each value its `S` indices.
-            y_insample: Insample values of size (`base`, `insample_size`). Only used for `forecast_proportions`
-            y_hat_insample: In-sample forecast values of size (`base`, `insample_size`).
-            sigmah: Estimated standard deviation of the conditional marginal distribution.
-            level: float list 0-100, confidence levels for prediction intervals.
-            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
-            num_samples: Number of samples for probabilistic coherent distribution.
-            seed: Seed for reproducibility.
+            S (np.ndarray): Summing matrix of size (`base`, `bottom`).
+            y_hat (np.ndarray): Forecast values of size (`base`, `horizon`).
+            tags (dict[str, np.ndarray]): Each key is a level and each value its `S` indices.
+            y_insample (np.ndarray): Insample values of size (`base`, `insample_size`). Only used for `forecast_proportions`. Default is None.
+            y_hat_insample (np.ndarray): In-sample forecast values of size (`base`, `insample_size`). Only used for `forecast_proportions`. Default is None.
+            sigmah (np.ndarray): Estimated standard deviation of the conditional marginal distribution. Default is None.
+            level (list[int]): Confidence levels for prediction intervals. Default is None.
+            intervals_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is None.
+            num_samples (int): Number of samples for probabilistic coherent distribution. Default is None.
+            seed (int): Seed for reproducibility. Default is None.
 
         Returns:
             y_tilde: Reconciliated y_hat using the Middle Out approach.
@@ -1042,27 +1047,26 @@ class MiddleOutSparse(MiddleOut):
 
 
 class MinTrace(HReconciler):
-    """MinTrace Reconciliation Class.
+    r"""MinTrace Reconciliation Class.
 
     This reconciliation algorithm proposed by Wickramasuriya et al. depends on a generalized least squares estimator
     and an estimator of the covariance matrix of the coherency errors $\mathbf{W}_{h}$. The Min Trace algorithm
     minimizes the squared errors for the coherent forecasts under an unbiasedness assumption; the solution has a
-    closed form.<br>
+    closed form.
 
-    $$
-    \mathbf{P}_{\\text{MinT}}=\\left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S}\\right)^{-1}
-    \mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}
-    $$
+    ```math
+    \mathbf{P}_{\text{MinT}}=\left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S}\right)^{-1}\mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}
+    ```
 
     Args:
-        method: str, one of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.
-        nonnegative: bool, reconciled forecasts should be nonnegative?
-        mint_shr_ridge: float=2e-8, ridge numeric protection to MinTrace-shr covariance estimator.
-        num_threads: int=1, number of threads to use for solving the optimization problems (when nonnegative=True).
+        method (str): One of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.
+        nonnegative (bool): Reconciled forecasts should be nonnegative?
+        mint_shr_ridge (float): Ridge numeric protection to MinTrace-shr covariance estimator.
+        num_threads (int): Number of threads to use for solving the optimization problems (when nonnegative=True).
 
     References:
-        - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). "Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization". Journal of the American Statistical Association, 114 , 804-819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
-        - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
+    - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). "Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization". Journal of the American Statistical Association, 114 , 804-819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
+    - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
 
     def __init__(
@@ -1234,7 +1238,7 @@ class MinTrace(HReconciler):
                 warnings.warn("Replacing negative forecasts with zero.")
                 y_hat = np.copy(y_hat)
                 y_hat[negatives] = 0.0
-            
+
             a = S.T @ W_inv
             P = a @ S
             q = -(a @ y_hat)
@@ -1248,7 +1252,7 @@ class MinTrace(HReconciler):
             h = np.zeros(n_bottom)
             # the quadratic programming problem
             # returns the forecasts of the bottom series
-            if self.num_threads == 1:   
+            if self.num_threads == 1:
                 bottom_fcts = np.zeros_like(q)
                 for i in range(y_hat.shape[1]):
                     bottom_fcts[:, i] = solve_qp(P=P, q=q[:, i], G=G, h=h, solver="clarabel")

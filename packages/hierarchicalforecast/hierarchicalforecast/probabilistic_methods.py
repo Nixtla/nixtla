@@ -13,21 +13,23 @@ from .utils import is_strictly_hierarchical
 
 
 class Normality:
-    """Normality Probabilistic Reconciliation Class.
+    r"""Normality Probabilistic Reconciliation Class.
 
     The Normality method leverages the Gaussian Distribution linearity, to
     generate hierarchically coherent prediction distributions. This class is
     meant to be used as the `sampler` input as other `HierarchicalForecast` [reconciliation classes](./methods).
 
     Given base forecasts under a normal distribution:
-    $$\hat{y}_{h} \sim \mathrm{N}(\hat{\\boldsymbol{\\mu}}, \hat{\mathbf{W}}_{h})$$
+    ```math
+    \hat{y}_{h} \sim \mathrm{N}(\hat{\boldsymbol{\mu}}, \hat{\mathbf{W}}_{h})
+    ```
 
     The reconciled forecasts are also normally distributed:
 
-    $$
-    \\tilde{y}_{h} \sim \mathrm{N}(\mathbf{S}\mathbf{P}\hat{\\boldsymbol{\\mu}},
+    ```math
+    \tilde{y}_{h} \sim \mathrm{N}(\mathbf{S}\mathbf{P}\hat{\boldsymbol{\mu}},
     \mathbf{S}\mathbf{P}\hat{\mathbf{W}}_{h} \mathbf{P}^{\intercal} \mathbf{S}^{\intercal})
-    $$
+    ```
 
     Args:
         S (Union[np.ndarray, sp.spmatrix]): np.array, summing matrix of size (`base`, `bottom`).
@@ -95,7 +97,7 @@ class Normality:
             num_samples (int): number of samples generated from coherent distribution.
 
         Returns:
-            np.ndarray: samples: Coherent samples of size (`base`, `horizon`, `num_samples`).
+            samples (np.ndarray): Coherent samples of size (`base`, `horizon`, `num_samples`).
         """
         rng = np.random.default_rng(self.seed)
         n_series, n_horizon = self.y_hat.shape
@@ -153,7 +155,7 @@ class Normality:
 
 
 class Bootstrap:
-    """Bootstrap Probabilistic Reconciliation Class.
+    r"""Bootstrap Probabilistic Reconciliation Class.
 
     This method goes beyond the normality assumption for the base forecasts,
     the technique simulates future sample paths and uses them to generate
@@ -163,10 +165,14 @@ class Bootstrap:
     input as other `HierarchicalForecast` [reconciliation classes](./methods).
 
     Given a boostraped set of simulated sample paths:
-    $$(\hat{\mathbf{y}}^{[1]}_{\\tau}, \dots ,\hat{\mathbf{y}}^{[B]}_{\\tau})$$
+    ```math
+    \hat{\mathbf{y}}^{[1]}_{\\tau}, \dots ,\hat{\mathbf{y}}^{[B]}_{\\tau})
+    ```
 
     The reconciled sample paths allow for reconciled distributional forecasts:
-    $$(\mathbf{S}\mathbf{P}\hat{\mathbf{y}}^{[1]}_{\\tau}, \dots ,\mathbf{S}\mathbf{P}\hat{\mathbf{y}}^{[B]}_{\\tau})$$
+    ```math
+    (\mathbf{S}\mathbf{P}\hat{\mathbf{y}}^{[1]}_{\\tau}, \dots ,\mathbf{S}\mathbf{P}\hat{\mathbf{y}}^{[B]}_{\\tau})
+    ```
 
     Args:
         S: np.array, summing matrix of size (`base`, `bottom`).
@@ -252,31 +258,31 @@ class Bootstrap:
 
 
 class PERMBU:
-    """PERMBU Probabilistic Reconciliation Class.
+    r"""PERMBU Probabilistic Reconciliation Class.
 
     The PERMBU method leverages empirical bottom-level marginal distributions
     with empirical copula functions (describing bottom-level dependencies) to
     generate the distribution of aggregate-level distributions using BottomUp
     reconciliation. The sample reordering technique in the PERMBU method reinjects
-    multivariate dependencies into independent bottom-level samples.
+    multivariate dependencies into independent bottom-level samples. $\hat{\epsilon}_{i,t}$
 
-        Algorithm:
-        1.   For all series compute conditional marginals distributions.
-        2.   Compute residuals $\hat{\epsilon}_{i,t}$ and obtain rank permutations.
-        2.   Obtain K-sample from the bottom-level series predictions.
-        3.   Apply recursively through the hierarchical structure:<br>
-            3.1.   For a given aggregate series $i$ and its children series:<br>
-            3.2.   Obtain children's empirical joint using sample reordering copula.<br>
-            3.2.   From the children's joint obtain the aggregate series's samples.
+    Algorithm:
+    1.   For all series compute conditional marginals distributions.
+    2.   Compute residuals $\hat{\epsilon}_{i,t}$ and obtain rank permutations.
+    3.   Obtain K-sample from the bottom-level series predictions.
+    4.   Apply recursively through the hierarchical structure:
+        4.1.   For a given aggregate series $i$ and its children series:
+        4.2.   Obtain children's empirical joint using sample reordering copula.
+        4.2.   From the children's joint obtain the aggregate series's samples.
 
     Args:
-        S: np.array, summing matrix of size (`base`, `bottom`).
-        tags: Each key is a level and each value its `S` indices.
-        y_insample: Insample values of size (`base`, `insample_size`).
-        y_hat_insample: Insample point forecasts of size (`base`, `insample_size`).
-        sigmah: np.array, forecast standard dev. of size (`base`, `horizon`).
-        num_samples: int, number of normal prediction samples generated.
-        seed: int, random seed for numpy generator's replicability.
+        S (np.array): summing matrix of size (`base`, `bottom`).
+        tags (dict[str, np.ndarray]): Each key is a level and each value its `S` indices.
+        y_insample (np.array): Insample values of size (`base`, `insample_size`).
+        y_hat_insample (np.array): Insample point forecasts of size (`base`, `insample_size`).
+        sigmah (np.array): forecast standard dev. of size (`base`, `horizon`).
+        num_samples (int): number of normal prediction samples generated. Default is None
+        seed (int): random seed for numpy generator's replicability. Default is 0.
 
     References:
         - [Taieb, Souhaib Ben and Taylor, James W and Hyndman, Rob J. (2017). "Coherent probabilistic forecasts for hierarchical time series. International conference on machine learning ICML."](https://proceedings.mlr.press/v70/taieb17a.html)
@@ -387,10 +393,10 @@ class PERMBU:
         aggregation to the new samples.
 
         Args:
-            num_samples: int, number of samples generated from coherent distribution.
+            num_samples (int): number of samples generated from coherent distribution.
 
         Returns:
-            samples: Coherent samples of size (`base`, `horizon`, `num_samples`).
+            samples (np.ndarray): Coherent samples of size (`base`, `horizon`, `num_samples`).
         """
         # Compute residuals and rank permutations
         residuals = self.y_insample - self.y_hat_insample
