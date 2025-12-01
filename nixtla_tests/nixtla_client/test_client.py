@@ -5,7 +5,7 @@ import pandas as pd
 
 from nixtla_tests.helpers.client_helper import delete_env_var
 
-from nixtla.nixtla_client import NixtlaClient
+from nixtla.nixtla_client import NixtlaClient, ApiError
 
 def test_custom_business_hours(
     business_hours_series, custom_business_hours
@@ -112,13 +112,14 @@ def test_forecast_warning(nixtla_test_client, air_passengers_df, caplog):
 )
 def test_forecast_error(nixtla_test_client, air_passengers_df, kwargs):
     with pytest.raises(
-        ValueError, match="Some series are too short. Please make sure that each series"
+        ApiError, match="Minimum required samples for computing prediction intervals"
     ):
         nixtla_test_client.forecast(
             df=air_passengers_df.tail(3),
             h=12,
             time_col="timestamp",
             target_col="value",
+            level=[90, 95],
             **kwargs,
         )
 
