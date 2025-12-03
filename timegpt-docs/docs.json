@@ -11,6 +11,11 @@
     "light": "#FFF",
     "dark": "#161616"
   },
+  "seo": {
+    "metatags": {
+        "canonical": "https://nixtla.io/docs"
+    }
+  },
   "favicon": "/favicon.ico",
   "ignore": [
     "utils/**",
