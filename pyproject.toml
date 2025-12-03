@@ -32,7 +32,7 @@ dependencies = [
     "pydantic>=1.10",
     "tenacity",
     "tqdm",
-    "utilsforecast>=0.2.8",
+    "utilsforecast>=0.2.15",
 ]
 
 [tool.setuptools.dynamic]
