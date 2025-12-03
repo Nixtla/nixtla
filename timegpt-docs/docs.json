@@ -140,7 +140,8 @@
           "/use_cases/bitcoin_price_prediction",
           "/use_cases/forecasting_energy_demand",
           "/use_cases/forecasting_intermittent_demand",
-          "/use_cases/what_if_forecasting_price_effects_in_retail"
+          "/use_cases/what_if_forecasting_price_effects_in_retail",
+          "/use_cases/logging_and_serving_with_mlflow"
         ]
       },
       {
