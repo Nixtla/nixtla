@@ -104,19 +104,8 @@ class Experiment:
                 id_col=self.id_col,
                 time_col=self.time_col,
                 target_col=self.target_col,
-                cutoff_col="cutoff"
-        )
-        # eval_df = cv_df.apply(
-        #     lambda df_cutoff: evaluate(
-        #         df_cutoff,
-        #         metrics=metrics,
-        #         models=[model],
-        #         id_col=self.id_col,
-        #         time_col=self.time_col,
-        #         target_col=self.target_col,
-        #     )
-        # )
-        eval_df = eval_df.reset_index().drop(columns="level_1")
+                cutoff_col="cutoff",
+            )
         eval_df = eval_df.groupby(["metric"]).mean(numeric_only=True)
         eval_df = eval_df.reset_index()
         if len(eval_df) != len(metrics):
