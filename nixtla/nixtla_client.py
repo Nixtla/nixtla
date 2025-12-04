@@ -693,17 +693,6 @@ def _process_exog_features(
     return X, hist_exog
 
 
-def _model_in_list(model: str, model_list: tuple[Any]) -> bool:
-    for m in model_list:
-        if isinstance(m, str):
-            if m == model:
-                return True
-        elif isinstance(m, re.Pattern):
-            if m.fullmatch(model):
-                return True
-    return False
-
-
 class AuditDataSeverity(Enum):
     """Enum class to indicate audit data severity levels"""
 
@@ -889,7 +878,6 @@ class NixtlaClient:
         )
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
-        self.supported_models: list[Any] = [re.compile("^timegpt-.+$"), "azureai", "chronos-2", "timesfm-2.5", "tirex"]
 
     def _make_request(
         self,
@@ -1122,8 +1110,6 @@ class NixtlaClient:
     ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email support@nixtla.io")
-        if not _model_in_list(model, tuple(self.supported_models)):
-            raise ValueError(f"unsupported model: {model}.")
         drop_id = id_col not in df.columns
         if drop_id:
             df = ufp.copy_if_pandas(df, deep=False)

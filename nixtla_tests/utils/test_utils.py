@@ -13,22 +13,6 @@ from nixtla.nixtla_client import AuditDataSeverity
 from nixtla.date_features import SpecialDates
 
 
-@pytest.mark.parametrize(
-    "name, patterns, expected",
-    [
-        ("a", ("a", "b"), True),
-        ("a", ("b", "c"), False),
-        ("axb", ("x", re.compile("a.*b")), True),
-        ("axb", ("x", re.compile("^a.*b$")), True),
-        ("a-b", ("x", re.compile("^a-.*b$")), True),
-        ("a-dfdfb", ("x", re.compile("^a-.*b$")), True),
-        ("abc", ("x", re.compile("ab"), re.compile("abcd")), False),
-    ],
-)
-def test_model_in_list(name, patterns, expected):
-    assert _model_in_list(name, patterns) is expected
-
-
 def test_audit_duplicate_rows_pass(df_no_duplicates):
     audit, duplicates = _audit_duplicate_rows(df_no_duplicates)
     assert audit == AuditDataSeverity.PASS
