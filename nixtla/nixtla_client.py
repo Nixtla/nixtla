@@ -889,7 +889,7 @@ class NixtlaClient:
         )
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
-        self.supported_models: list[Any] = [re.compile("^timegpt-.+$"), "azureai"]
+        self.supported_models: list[Any] = [re.compile("^timegpt-.+$"), "azureai", "chronos-2", "timesfm-2.5", "tirex"]
 
     def _make_request(
         self,
