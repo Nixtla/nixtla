@@ -347,7 +347,7 @@ def _maybe_add_date_features(
     else:
         date_features = _date_features_by_freq.get(freq, [])
         if not date_features:
-            warnings.warn(
+            logger.warning(
                 f"Non default date features for {freq} "
                 "please provide a list of date features"
             )
@@ -404,7 +404,7 @@ def _validate_exog(
         # all exogs must be historic
         ignored_exogs = [c for c in exogs if c not in hist_exog]
         if ignored_exogs:
-            warnings.warn(
+            logger.warning(
                 f"`df` contains the following exogenous features: {ignored_exogs}, "
                 "but `X_df` was not provided and they were not declared in `hist_exog_list`. "
                 "They will be ignored."
@@ -418,7 +418,7 @@ def _validate_exog(
     declared_exogs = {*hist_exog, *futr_exog}
     ignored_exogs = [c for c in exogs if c not in declared_exogs]
     if ignored_exogs:
-        warnings.warn(
+        logger.warning(
             f"`df` contains the following exogenous features: {ignored_exogs}, "
             "but they were not found in `X_df` nor declared in `hist_exog_list`. "
             "They will be ignored."
@@ -435,7 +435,7 @@ def _validate_exog(
     # features are provided through X_df but declared as historic
     futr_and_hist = set(futr_exog) & set(hist_exog)
     if futr_and_hist:
-        warnings.warn(
+        logger.warning(
             "The following features were declared as historic but found in `X_df`: "
             f"{futr_and_hist}, they will be considered as historic."
         )
@@ -541,15 +541,47 @@ def _preprocess(
     return processed, X_future, x_cols, futr_cols
 
 
-def _forecast_payload_to_in_sample(payload):
-    in_sample_payload = {
-        k: v
-        for k, v in payload.items()
-        if k not in ("h", "finetune_steps", "finetune_loss", "finetune_depth")
-    }
-    del in_sample_payload["series"]["X_future"]
-    return in_sample_payload
+def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dict:
+    # No finetuning for in-sample
+    payload["finetune_steps"] = 0
 
+    # historic exogenous features
+    hist_exog = None
+    if payload["series"]["X"] is not None:
+        n_features = len(payload["series"]["X"])
+        hist_exog = list(range(n_features))
+        if payload["series"]["X_future"] is not None:
+            n_futr_exog = len(payload["series"]["X_future"])
+            hist_exog = hist_exog[n_futr_exog:]
+    payload["hist_exog"] = hist_exog
+    del payload["series"]["X_future"]
+
+    # in-sample horizon and number of windows
+    payload["h"] = h
+    payload["step_size"] = h
+    payload["n_windows"] = n_windows
+
+    return payload
+
+def _get_in_sample_horizon_and_windows(
+    sizes: np.ndarray,
+    model_horizon: int,
+    model_input_size: int,
+    clean_ex_first: bool,
+    level: Optional[list[Union[int, float]]],
+) -> tuple[int, int]:
+
+    # in-sample horizon and number of windows
+    min_size = min(sizes)
+    h = min(model_horizon, min_size - 1)
+    if clean_ex_first:
+        n_windows = max((min_size - model_input_size) // model_horizon, 1)
+    else:
+        n_windows = max((min_size - (model_input_size + model_horizon + 2 * h)) // model_horizon, 1)
+    # In case of multiple windows, we reduce one to avoid errors when running with level argument
+    if level is not None and n_windows > 1:
+        n_windows -= 1
+    return h, n_windows
 
 def _maybe_add_intervals(
     df: DFType,
@@ -1007,7 +1039,7 @@ class NixtlaClient:
 
     def _maybe_override_model(self, model: _Model) -> _Model:
         if self._is_azure and model != "azureai":
-            warnings.warn("Azure endpoint detected, setting `model` to 'azureai'.")
+            logger.warning("Azure endpoint detected, setting `model` to 'azureai'.")
             model = "azureai"
         return model
 
@@ -1059,7 +1091,7 @@ class NixtlaClient:
             return
         if "feature_contributions" not in resp:
             if self._is_azure:
-                warnings.warn("feature_contributions aren't implemented in Azure yet.")
+                logger.warning("feature_contributions aren't implemented in Azure yet.")
                 return
             else:
                 raise RuntimeError(
@@ -1633,7 +1665,7 @@ class NixtlaClient:
         if finetune_steps > 0:
             _validate_input_size(processed, 1, 1)
         if add_history:
-            _validate_input_size(processed, model_input_size, model_horizon)
+            _validate_input_size(processed, 1, 1)
         if h > model_horizon:
             logger.warning(
                 'The specified horizon "h" exceeds the model horizon, '
@@ -1660,10 +1692,11 @@ class NixtlaClient:
             X = None
 
         logger.info("Calling Forecast Endpoint...")
+        sizes = np.diff(processed.indptr)
         payload = {
             "series": {
                 "y": processed.data[:, 0],
-                "sizes": np.diff(processed.indptr),
+                "sizes": sizes,
                 "X": X,
                 "X_future": X_future,
             },
@@ -1687,10 +1720,17 @@ class NixtlaClient:
             if num_partitions is None:
                 resp = self._make_request_with_retries(client, "v2/forecast", payload)
                 if add_history:
-                    in_sample_payload = _forecast_payload_to_in_sample(payload)
+                    insample_h, n_windows = _get_in_sample_horizon_and_windows(
+                        sizes=sizes,
+                        model_horizon=model_horizon,
+                        model_input_size=model_input_size,
+                        clean_ex_first=clean_ex_first,
+                        level=level,
+                    )
+                    in_sample_payload = _forecast_payload_to_in_sample(payload, insample_h, n_windows)
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_request_with_retries(
-                        client, "v2/historic_forecast", in_sample_payload
+                        client, "v2/cross_validation", in_sample_payload
                     )
                     insample_feat_contributions = in_sample_resp.get(
                         "feature_contributions", None
@@ -1699,12 +1739,19 @@ class NixtlaClient:
                 payloads = _partition_series(payload, num_partitions, h)
                 resp = self._make_partitioned_requests(client, "v2/forecast", payloads)
                 if add_history:
+                    insample_h, n_windows = _get_in_sample_horizon_and_windows(
+                        sizes=sizes,
+                        model_horizon=model_horizon,
+                        model_input_size=model_input_size,
+                        clean_ex_first=clean_ex_first,
+                        level=level,
+                    )
                     in_sample_payloads = [
-                        _forecast_payload_to_in_sample(p) for p in payloads
+                        _forecast_payload_to_in_sample(p, insample_h, n_windows) for p in payloads
                     ]
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
-                        client, "v2/historic_forecast", in_sample_payloads
+                        client, "v2/cross_validation", in_sample_payloads
                     )
                     insample_feat_contributions = in_sample_resp.get(
                         "feature_contributions", None

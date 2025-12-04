@@ -97,17 +97,15 @@ class Experiment:
         metrics = [mae, mse, mape]
         if not self.has_id_col:
             cv_df = cv_df.assign(unique_id="ts_0")
-        eval_df = cv_df.groupby("cutoff").apply(
-            lambda df_cutoff: evaluate(
-                df_cutoff,
+        eval_df = evaluate(
+                cv_df,
                 metrics=metrics,
                 models=[model],
                 id_col=self.id_col,
                 time_col=self.time_col,
                 target_col=self.target_col,
+                cutoff_col="cutoff",
             )
-        )
-        eval_df = eval_df.reset_index().drop(columns="level_1")
         eval_df = eval_df.groupby(["metric"]).mean(numeric_only=True)
         eval_df = eval_df.reset_index()
         if len(eval_df) != len(metrics):
