@@ -4,7 +4,6 @@ import datetime
 import logging
 import math
 import os
-import re
 import warnings
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed

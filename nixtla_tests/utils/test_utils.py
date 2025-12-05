@@ -1,4 +1,3 @@
-import re
 import pandas as pd
 import pytest
 
@@ -7,7 +6,6 @@ from nixtla.nixtla_client import _audit_categorical_variables
 from nixtla.nixtla_client import _audit_leading_zeros
 from nixtla.nixtla_client import _audit_missing_dates
 from nixtla.nixtla_client import _audit_negative_values
-from nixtla.nixtla_client import _model_in_list
 from nixtla.nixtla_client import _maybe_add_date_features
 from nixtla.nixtla_client import AuditDataSeverity
 from nixtla.date_features import SpecialDates
