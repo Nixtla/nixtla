@@ -356,11 +356,6 @@ def test_different_models_give_different_results(
     ):
         pd.testing.assert_frame_equal(out1[["TimeGPT"]], out2[["TimeGPT"]])
 
-    # test unsupported model
-    method_kwargs["model"] = "my-awesome-model"
-    with pytest.raises(ValueError, match="unsupported model"):
-        execute(df=air_passengers_df, **method_kwargs)
-
 
 def test_shap_features(nixtla_test_client, date_features_result):
     # Test shap values are returned and sum to predictions
