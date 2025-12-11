@@ -99,7 +99,7 @@ timegpt_fcst_df = nixtla_client.forecast(
 )
 ```
 
-### Plot the forecast:
+### Plot the forecast
 
 ```python
 nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
@@ -108,3 +108,12 @@ nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value'
 <Frame caption="TimeGPT 12-month forecast visualization with confidence intervals for AirPassengers dataset">
   ![Forecasted Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-15-output-1.png)
 </Frame>
+
+## Summary
+
+Using the TimeGPT-2 family of models is similar to using the TimeGPT-1 family with the following changes. In order to use TimeGPT-2 family of models
+- Make sure that your account has access to these models
+- Install the latest Nixtla client (>= 0.7.0)
+- Make sure you use the right `base_url` while instantiating the client along with your API key.
+
+Happy forecasting!
