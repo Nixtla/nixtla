@@ -52,7 +52,7 @@ dev = [
     "fastcore<=1.7.29",
     "gitpython",
     "holidays<0.21",
-    "lightgbm<4.6",
+    "lightgbm>=4.6",
     "matplotlib",
     "mlflow>=2.10.0",
     "mypy",
