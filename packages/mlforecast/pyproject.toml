@@ -69,7 +69,8 @@ dev = [
     "pytest",
     "pytest-benchmark",
     "pytest-cov",
-    "pip-licenses"
+    "pip-licenses",
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@main"
 ]
 
 [tool.setuptools]

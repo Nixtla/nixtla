@@ -447,17 +447,17 @@ class LightGBMCV:
 
         Args:
             h (int): Forecast horizon.
-            before_predict_callback (callable, optional): Function to call on the features before computing the predictions.
+            before_predict_callback (callable): Function to call on the features before computing the predictions.
                 This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure.
                 The series identifier is on the index. Defaults to None.
-            after_predict_callback (callable, optional): Function to call on the predictions before updating the targets.
+            after_predict_callback (callable): Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index. Defaults to None.
-            X_df (pandas DataFrame, optional): Dataframe with the future exogenous features. Should have the id column and the time column.
+            X_df (pd.DataFrame): Dataframe with the future exogenous features. Should have the id column and the time column.
                 Defaults to None.
 
         Returns:
-            (pandas DataFrame): Predictions for each serie and timestep, with one column per window.
+            (pd.DataFrame): Predictions for each serie and timestep, with one column per window.
         """
         return self.ts.predict(
             self.cv_models_,

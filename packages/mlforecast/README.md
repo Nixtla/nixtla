@@ -32,15 +32,14 @@ data using remote clusters.
 `conda install -c conda-forge mlforecast`
 
 For more detailed instructions you can refer to the [installation
-page](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/install).
+page](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/install.html).
 
 ## Quick Start
 
-**Get Started with this [quick
-guide](https://nixtlaverse.github.io/mlforecast/docs/getting-started/quick_start_local.html).**
-
-**Follow this [end-to-end
-walkthrough](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/end_to_end_walkthrough)
+1. **Get Started with this [quick
+guide](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/quick_start_local.html).**
+2. **Follow this [end-to-end
+walkthrough](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/end_to_end_walkthrough.html)
 for best practices.**
 
 ### Videos
@@ -61,7 +60,7 @@ for best practices.**
 Current Python alternatives for machine learning models are slow,
 inaccurate and don’t scale well. So we created a library that can be
 used to forecast in production environments.
-[`MLForecast`](https://nixtlaverse.nixtla.io/mlforecast/forecast#class-mlforecast)
+[`MLForecast`](https://nixtlaverse.nixtla.io/mlforecast/forecast.html#mlforecast)
 includes efficient feature engineering to train any machine learning
 model (with `fit` and `predict` methods such as
 [`sklearn`](https://scikit-learn.org/stable/)) to fit millions of time
@@ -200,7 +199,9 @@ To compute the features and train the models call `fit` on your
 fcst.fit(series)
 ```
 
-    MLForecast(models=[LGBMRegressor, LinearRegression], freq=D, lag_features=['lag7', 'lag14', 'expanding_mean_lag1', 'rolling_mean_lag7_window_size28'], date_features=['dayofweek'], num_threads=1)
+```
+MLForecast(models=[LGBMRegressor, LinearRegression], freq=D, lag_features=['lag7', 'lag14', 'expanding_mean_lag1', 'rolling_mean_lag7_window_size28'], date_features=['dayofweek'], num_threads=1)
+```
 
 ### Predicting
 

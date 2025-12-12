@@ -84,7 +84,7 @@ uv run pytest
 
 #### 4. Viewing documentation locally
 
-The new documentation pipeline relies on `quarto`, `mintlify` and `lazydocs`.
+The new documentation pipeline relies on `quarto`, `mintlify` and `griffe2md`.
 
 #### install quarto
 
@@ -102,7 +102,7 @@ npm i -g mint
 For additional instructions, you can read about it &rarr; [this link](https://mintlify.com/docs/installation).
 
 ```sh
-uv pip install -e '.[dev]' lazydocs
+uv pip install -e '.[dev]'
 make all_docs
 ```
 
