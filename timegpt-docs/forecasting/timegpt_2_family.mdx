@@ -1,0 +1,119 @@
+---
+title: "Quickstart (TimeGPT-2)"
+description: "Learn how to use TimeGPT-2 family of time series forecasting models"
+icon: "chart-line"
+---
+
+## TimeGPT-2 Family of Foundation Models
+
+[TimeGPT-2](https://www.nixtla.io/blog/timegpt-2-announcement) and [TimeGPT-2.1](https://www.nixtla.io/blog/timegpt-2-1-announcement) are the latest versions of our enterprise-grade models, built to reliably solve mission-critical time-series problems. The TimeGPT-2 family of models is optimized for enterprise needs, prioritizing accuracy and stability with a privacy-first approach and full support for self-hosted and on-premises deployments.
+
+
+## Set Up TimeGPT-2 family of models for Python Time Series Forecasting
+
+### Step 1: Confirm Access and get an API Key
+
+- Confirm with support@nixtla.io that your account has access to these latest models.
+- Get your API key from [dashboard.nixtla.io](https://dashboard.nixtla.io). Note that you can also use your existing keys as long as your account has access to these latest models (Step 1 above).
+  - Sign in using Google, GitHub, or your email.
+  - Navigate to **API Keys** in the menu and select **Create New API Key**.
+  - Your new API key will appear on the screen. Copy this key and save it in a safe place for use later.
+
+<Frame caption="TimeGPT dashboard showing API key management interface for Python forecasting">
+  ![Dashboard for TimeGPT API keys](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
+</Frame>
+
+### Step 2: Install Nixtla
+
+Install the Nixtla library in your preferred Python environment. In order to use the TimeGPT-2 family of models, the client version must be >= 0.7.0.
+
+```bash
+pip install nixtla>=0.7.0
+```
+
+You can verify the client version installed using the following code. It should return a version >= 0.7.0
+
+```python
+from nixtla import __version__
+print(__version__)
+```
+
+```bash
+0.7.2
+```
+
+### Step 3: Import the Nixtla TimeGPT client
+
+Import the Nixtla client and instantiate it with your API key and base URL for TimeGPT-2 family:
+
+```python
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    base_url = 'https://api-preview.nixtla.io',  # Needed for TimeGPT-2 family
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+Verify the status and validity of your API key:
+
+```python
+nixtla_client.validate_api_key()
+```
+
+```bash
+True
+```
+
+## Forecasting with TimeGPT-2 family
+
+### Load your time series data
+
+```python
+import pandas as pd
+
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv')
+df.head()
+```
+
+|   | timestamp  | value |
+| --- | ---------- | ----- |
+| 0 | 1949-01-01 | 112   |
+| 1 | 1949-02-01 | 118   |
+| 2 | 1949-03-01 | 132   |
+| 3 | 1949-04-01 | 129   |
+| 4 | 1949-05-01 | 121   |
+
+
+### Generate the forecast
+
+Forecast the next 12 months using the SDK's `forecast` method. You can switch the model to any of the TimeGPT-2 family of models - `timegpt-2-pro`, `timegpt-2-lab`, `timegpt-2-mini`, `timegpt-2.1`
+
+```python
+timegpt_fcst_df = nixtla_client.forecast(
+    df,
+    h=12,
+    time_col="timestamp",
+    target_col="value",
+    model="timegpt-2.1",
+)
+```
+
+### Plot the forecast
+
+```python
+nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value')
+```
+
+<Frame caption="TimeGPT 12-month forecast visualization with confidence intervals for AirPassengers dataset">
+  ![Forecasted Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/getting-started/2_quickstart_files/figure-markdown_strict/cell-15-output-1.png)
+</Frame>
+
+## Summary
+
+Using the TimeGPT-2 family of models is similar to using the TimeGPT-1 family with the following changes. In order to use TimeGPT-2 family of models
+- Make sure that your account has access to these models
+- Install the latest Nixtla client (>= 0.7.0)
+- Make sure you use the right `base_url` while instantiating the client along with your API key.
+
+Happy forecasting!

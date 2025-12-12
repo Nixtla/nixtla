@@ -1,10 +1,10 @@
 ---
-title: "Quickstart Guide"
+title: "Quickstart (TimeGPT-1)"
 description: "Learn how to use TimeGPT for accurate time series forecasting"
 icon: "chart-line"
 ---
 
-## TimeGPT - Foundation Model for Time Series Forecasting
+## TimeGPT-1 Family - Foundation Models for Time Series Forecasting
 
 TimeGPT is a production-ready generative pretrained transformer for time series forecasting and predictions. It delivers accurate forecasts for retail sales, electricity demand, financial markets, and IoT sensor data with just a few lines of Python code. This quickstart guide will have you making your first forecast in under 5 minutes!
 
@@ -13,9 +13,9 @@ TimeGPT is a production-ready generative pretrained transformer for time series 
 ### Step 1: Get an API Key
 
 - Visit [dashboard.nixtla.io](https://dashboard.nixtla.io) to activate your free trial and create an account.
-- Sign in using Google, GitHub, or your email.
-- Navigate to **API Keys** in the menu and select **Create New API Key**.
-- Your new API key will appear on the screen. Copy this key using the button on the right.
+  - Sign in using Google, GitHub, or your email.
+  - Navigate to **API Keys** in the menu and select **Create New API Key**.
+  - Your new API key will appear on the screen. Copy this key and save it in a safe place for use later.
 
 <Frame caption="TimeGPT dashboard showing API key management interface for Python forecasting">
   ![Dashboard for TimeGPT API keys](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
@@ -41,17 +41,7 @@ nixtla_client = NixtlaClient(
 )
 ```
 
-### Step 4: Load your time series data
-
-Import the Nixtla client and instantiate it with your API key:
-
-```python
-from nixtla import NixtlaClient
-
-nixtla_client = NixtlaClient(
-    api_key='my_api_key_provided_by_nixtla'
-)
-```
+### Step 4: Verify your API key
 
 Verify the status and validity of your API key:
 

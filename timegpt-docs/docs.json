@@ -13,7 +13,7 @@
   },
   "seo": {
     "metatags": {
-        "canonical": "https://nixtla.io/docs"
+      "canonical": "https://nixtla.io/docs"
     }
   },
   "favicon": "/favicon.ico",
@@ -56,6 +56,7 @@
         "group": "FORECASTING",
         "pages": [
           "/forecasting/timegpt_quickstart",
+          "/forecasting/timegpt_2_family",
           {
             "group": "Exogenous variables",
             "pages": [
