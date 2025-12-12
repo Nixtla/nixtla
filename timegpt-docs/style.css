@@ -96,21 +96,21 @@ a.card svg {
 }
 
 #banner a {
-  color: var(--primary-dark);
+  color: black !important;
 }
 
 #banner a:hover {
   opacity: 0.8;
 }
 
-#banner p {
-  color: var(--primary-dark);
+#banner p span{
+  color: black !important;
   margin: 0;
   font-size: medium;
 }
 
 #banner strong {
-  color: #000;
+  color: #000 !important;
   font-size: medium;
 }
 
@@ -128,7 +128,7 @@ html.dark a.font-semibold {
   background: #000;
   border: 1px solid var(--gray);
   outline-color: var(--gray);
-  color: #fff;
+  color: black;
 }
 
 html.dark a.font-semibold svg {
@@ -150,26 +150,26 @@ html.dark a.card svg {
 
 /* Dark mode banner */
 html.dark #banner {
-  background-color: wheat;
+  background-color: #03dac6;
   border-color: #000;
-  color: #000;
-  border-bottom: 1px solid #000 !important;
+  /* color: #000; */
 }
 
 html.dark #banner a {
-  color: #000;
+  color: black !important;
 }
 
 html.dark #banner a:hover {
   opacity: 0.8;
 }
 
-html.dark #banner p {
-  color: #000;
+html.dark #banner p span {
+  color: black !important;
+  margin: 0;
   font-size: medium;
 }
 
 html.dark #banner strong {
-  color: #000;
+  color: black !important;
   font-size: medium;
 }

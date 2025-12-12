@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "banner": {
-    "content": "🚀  **TimeGPT-2** is here, the next generation of foundation models for time series forecasting! [Read the full announcement](https://www.nixtla.io/blog/timegpt-2-announcement)",
+    "content": "**TimeGPT-2.1 is here!** [Read the announcement →](https://www.nixtla.io/blog/timegpt-2-1-announcement)",
     "dismissible": true
   },
   "theme": "mint",
