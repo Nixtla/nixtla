@@ -78,7 +78,7 @@
           {
             "group": "Distributed",
             "pages": [
-              "distributed.forecast",
+              "distributed.forecast.html",
               {
                 "group": "Models",
                 "pages": [
