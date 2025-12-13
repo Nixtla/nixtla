@@ -1,0 +1,44 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Nixtla",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": " ",
+        "pages": [
+          "index"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "grouped_array",
+          "lag_transforms",
+          "scalers",
+          "differences",
+          "seasonal",
+          "rolling",
+          "expanding",
+          "exponentially_weighted"
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/light.png",
+    "dark": "/dark.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Nixtla/coreforecast"
+    }
+  }
+}

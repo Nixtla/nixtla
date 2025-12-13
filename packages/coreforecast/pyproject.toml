@@ -21,7 +21,13 @@ readme = "README.md"
 keywords = ["forecasting", "time-series"]
 
 [project.optional-dependencies]
-dev = ["pandas", "pre-commit", "pytest", "pip-licenses"]
+dev = [
+    "pandas",
+    "pre-commit",
+    "pytest",
+    "pip-licenses",
+    "mkdocstrings-parser@git+https://github.com/Nixtla/mkdocstrings-parser.git",
+]
 
 [project.urls]
 homepage = "https://nixtla.github.io/coreforecast"
