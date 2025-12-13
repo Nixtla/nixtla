@@ -1,0 +1,109 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Nixtla",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": " ",
+        "pages": [
+          "index.html"
+        ]
+      },
+      {
+        "group": "Getting Started",
+        "pages": [
+          "docs/getting-started/install.html",
+          "docs/getting-started/quick_start_local.html",
+          "docs/getting-started/quick_start_distributed.html",
+          "docs/getting-started/end_to_end_walkthrough.html"
+        ]
+      },
+      {
+        "group": "How-to guides",
+        "pages": [
+          "docs/how-to-guides/exogenous_features.html",
+          "docs/how-to-guides/lag_transforms_guide.html",
+          "docs/how-to-guides/hyperparameter_optimization.html",
+          "docs/how-to-guides/sklearn_pipelines.html",
+          "docs/how-to-guides/sample_weights.html",
+          "docs/how-to-guides/cross_validation.html",
+          "docs/how-to-guides/prediction_intervals.html",
+          "docs/how-to-guides/target_transforms_guide.html",
+          "docs/how-to-guides/analyzing_models.html",
+          "docs/how-to-guides/mlflow.html",
+          "docs/how-to-guides/transforming_exog.html",
+          "docs/how-to-guides/custom_training.html",
+          "docs/how-to-guides/training_with_numpy.html",
+          "docs/how-to-guides/one_model_per_horizon.html",
+          "docs/how-to-guides/custom_date_features.html",
+          "docs/how-to-guides/predict_callbacks.html",
+          "docs/how-to-guides/predict_subset.html",
+          "docs/how-to-guides/transfer_learning.html"
+        ]
+      },
+      {
+        "group": "Tutorials",
+        "pages": [
+          "docs/tutorials/m4.html",
+          "docs/tutorials/electricity_load_forecasting.html",
+          "docs/tutorials/electricity_peak_forecasting.html",
+          "docs/tutorials/prediction_intervals_in_forecasting_models.html"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          {
+            "group": "Local",
+            "pages": [
+              "forecast.html",
+              "auto.html",
+              "lgb_cv.html",
+              "optimization.html",
+              "utils.html",
+              "core.html",
+              "target_transforms.html",
+              "lag_transforms.html",
+              "feature_engineering.html",
+              "callbacks.html"
+            ]
+          },
+          {
+            "group": "Distributed",
+            "pages": [
+              "distributed.forecast",
+              {
+                "group": "Models",
+                "pages": [
+                  "distributed.models.dask.lgb.html",
+                  "distributed.models.dask.xgb.html",
+                  "distributed.models.ray.lgb.html",
+                  "distributed.models.ray.xgb.html",
+                  "distributed.models.spark.lgb.html",
+                  "distributed.models.spark.xgb.html"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/light.png",
+    "dark": "/dark.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Nixtla/mlforecast"
+    }
+  }
+}
