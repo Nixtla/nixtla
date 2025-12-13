@@ -1,0 +1,83 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Nixtla",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": " ",
+        "pages": [
+          "index.html"
+        ]
+      },
+      {
+        "group": "Getting Started",
+        "pages": [
+          "examples/installation.html",
+          "examples/tourismsmall.html",
+          "examples/tourismsmallpolars.html",
+          "examples/introduction.html"
+        ]
+      },
+      {
+        "group": "Tutorials",
+        "pages": [
+          {
+            "group": "Point Reconciliation",
+            "pages": [
+              "examples/australiandomestictourism.html",
+              "examples/australianprisonpopulation.html",
+              "examples/nonnegativereconciliation.html",
+              "examples/australiandomestictourism-multimodel.html"
+            ]
+          },
+          {
+            "group": "Probabilistic Reconciliation",
+            "pages": [
+              "examples/australiandomestictourism-intervals.html",
+              "examples/australiandomestictourism-bootstraped-intervals.html",
+              "examples/australiandomestictourism-permbu-intervals.html",
+              "examples/tourismlarge-evaluation.html"
+            ]
+          },
+          {
+            "group": "Temporal Reconciliation",
+            "pages": [
+              "examples/australiandomestictourismtemporal.html",
+              "examples/australiandomestictourismcrosstemporal.html",
+              "examples/m3withthief.html",
+              "examples/localglobalaggregation.html"
+            ]
+          },
+          "examples/mlframeworksexample.html"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "core.html",
+          "methods.html",
+          "probabilistic_methods.html",
+          "evaluation.html",
+          "utils.html"
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/light.png",
+    "dark": "/dark.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Nixtla/hierarchicalforecast"
+    }
+  }
+}
