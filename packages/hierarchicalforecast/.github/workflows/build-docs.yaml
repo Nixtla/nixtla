@@ -6,6 +6,16 @@ on:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "The environment to deploy to"
+        required: true
+        type: choice
+        default: "staging"
+        options:
+          - staging
+          - production
 
 jobs:
   build-docs:
