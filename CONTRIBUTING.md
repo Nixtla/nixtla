@@ -90,7 +90,7 @@ If you're working on the local interface you can just use `pytest nixtla_tests`
 
 ## Do you want to contribute to the documentation?
 
-You can add new tutorials, how-to-guides, examples, or improve existing ones. The documentation is built using Jupyter Notebooks.
+You can add new tutorials, how-to-guides, examples, or improve existing ones.
 
 ### Modifying an existing doc
 
@@ -103,15 +103,6 @@ You can add new tutorials, how-to-guides, examples, or improve existing ones. Th
 
 1. Find the relevant notebook.
 2. Make your changes.
-    * Do not rename the document.
-    * Do not change the first header (title). The first header is used in Readme.com to create the filename. For example, a first header of `TimeGPT Subscription Plans and Pricing` in folder `getting-started` will result in the following online link to the document: `https://docs.nixtla.io/docs/getting-started-timegpt_subscription_plans_and_pricing`.
 3. Run all cells.
 4. Add, commit and push the changes.
 5. Open a PR.
-6. Follow the steps under 'Publishing documentation'
-
-### Do's and don'ts
-
-* Don't rename documents! The filename is used statically in various files to properly index the file in the correct (sub)folder. If you rename, you're effectively creating a new document. Follow the correct procedure for creating a new document (above), and check every other document (yes, every single one) in our documentation whether there's a link now breaking to the doc you renamed.
-* Check the changes / new document online in both [Readme.com](https://docs.nixtla.io/) and [Mintlify](https://nixtlaverse.nixtla.io/nixtla/docs/getting-started/introduction.html).
-* Screwed up? You can hide a document in Readme.com in the Admin console, under `Guides`. Make sure to unhide it again after you've fixed your misstakes.
