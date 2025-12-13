@@ -30,7 +30,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install -e '.[dev]' griffe2md pyyaml
+        run: pip install uv && uv pip install --system '.[dev]'
 
       # setup quarto for rendering example/tutorial nbs
       - uses: quarto-dev/quarto-actions/setup@v2
@@ -71,7 +71,7 @@ jobs:
             await github.rest.actions.createWorkflowDispatch({
               owner: 'nixtla',
               repo: 'docs',
-              workflow_id: 'mintlify-action-preview.yml',
+              workflow_id: 'preview.yml',
               ref: 'main',
             });
 
@@ -84,6 +84,6 @@ jobs:
             await github.rest.actions.createWorkflowDispatch({
               owner: 'nixtla',
               repo: 'docs',
-              workflow_id: 'mintlify-action.yml',
+              workflow_id: 'production.yml',
               ref: 'main',
             });

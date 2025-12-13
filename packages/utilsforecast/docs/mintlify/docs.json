@@ -1,0 +1,42 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Nixtla",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": " ",
+        "pages": [
+          "index.html"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "preprocessing.html",
+          "feature_engineering.html",
+          "evaluation.html",
+          "losses.html",
+          "plotting.html",
+          "data.html"
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/light.png",
+    "dark": "/dark.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Nixtla/utilsforecast"
+    }
+  }
+}
