@@ -7,12 +7,16 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Install Git
+          command: |
+            apt-get update && apt-get install -y git
+      - run:
           name: Install dependencies
           command: |
             pip install uv
             uv venv --python 3.10
       - run:
-          name: Run nbdev tests
+          name: Run tests
           command: |
             source .venv/bin/activate
             uv pip install -e ".[dev,polars]"
@@ -33,6 +37,10 @@ jobs:
       - image: python:3.10-slim
     steps:
       - checkout
+      - run:
+          name: Install Git
+          command: |
+            apt-get update && apt-get install -y git
       - run:
           name: Install dependencies
           command: |
@@ -57,6 +65,10 @@ jobs:
       - image: python:3.10-slim
     steps:
       - checkout
+      - run:
+          name: Install Git
+          command: |
+            apt-get update && apt-get install -y git
       - run:
           name: Install dependencies
           command: |
