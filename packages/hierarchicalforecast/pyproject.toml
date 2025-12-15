@@ -46,7 +46,6 @@ dev = [
     "scipy",
     "pre-commit",
     "ruff",
-    "black",
     "pytest",
     "pytest-benchmark",
     "pytest-cov",
