@@ -430,12 +430,6 @@ class HierarchicalReconciliation:
         S_nw_cols_ex_id_col = S_nw.columns
         S_nw_cols_ex_id_col.remove(id_col)
         if any_sparse:
-            if not nw.dependencies.is_pandas_dataframe(
-                Y_hat_df
-            ) or not nw.dependencies.is_pandas_dataframe(S_df):
-                raise ValueError(
-                    "You have one or more sparse reconciliation methods. Please convert `S_df` and `Y_hat_df` to a pandas DataFrame."
-                )
             try:
                 S_for_sparse = sparse.csr_matrix(
                     S_nw.select(nw.col(S_nw_cols_ex_id_col)).to_native().sparse.to_coo()
@@ -448,10 +442,6 @@ class HierarchicalReconciliation:
                 )
 
         if Y_nw is not None:
-            if any_sparse and not nw.dependencies.is_pandas_dataframe(Y_df):
-                raise ValueError(
-                    "You have one or more sparse reconciliation methods. Please convert `Y_df` to a pandas DataFrame."
-                )
             y_insample = self._prepare_Y(
                 Y_nw=Y_nw,
                 S_nw=S_nw,
