@@ -76,6 +76,53 @@ def test_automlforecast_pipeline(weekly_data):
     assert not preds.empty
     fitted_vals = auto_mlf.forecast_fitted_values(level=[95])
     assert not fitted_vals.empty
+    
+def test_automlforecast_weight_col(weekly_data):
+
+    def custom_loss(val_df, train_df, weight_col):
+        error = (val_df['y'] - val_df['model']).abs()
+        indices = val_df.index
+        weights = train.loc[indices, weight_col].values
+        weighted_sum = sum(e * w for e, w in zip(error, weights))
+        total_weight = sum(weights)
+
+        weighted_error = weighted_sum / total_weight if total_weight != 0 else float('inf')
+        return weighted_error
+
+    train, valid, info = weekly_data
+    h = info.horizon
+    season_length = info.seasonality
+
+    train['weights'] = 1
+
+    auto_ridge = AutoModel(
+        Ridge(),
+        lambda trial: {
+            'alpha': trial.suggest_float('alpha', 0.0, 1.0)  
+        }
+    )
+
+    auto_mlf = AutoMLForecast(
+        freq=1,
+        season_length=season_length,
+        models={"ridge": auto_ridge},  
+        fit_config=lambda trial: {'static_features': []}
+    )
+
+    auto_mlf.fit(
+        df=train,
+        n_windows=2,
+        h=h,
+        num_samples=2,  
+        loss=custom_loss, 
+        weight_col='weights',  
+        fitted=True
+    )
+
+    preds = auto_mlf.predict(h)
+    assert not preds.empty
+    fitted_vals = auto_mlf.forecast_fitted_values(level=[95])
+    assert not fitted_vals.empty
 
 
 def test_automlforecast_errors_and_warnings():

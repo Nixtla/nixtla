@@ -443,6 +443,7 @@ class AutoMLForecast:
         optimize_kwargs: Optional[Dict[str, Any]] = None,
         fitted: bool = False,
         prediction_intervals: Optional[PredictionIntervals] = None,
+        weight_col: Optional[np.ndarray] = None
     ) -> "AutoMLForecast":
         """Carry out the optimization process.
         Each model is optimized independently and the best one is trained on all data
@@ -485,9 +486,7 @@ class AutoMLForecast:
                 min_samples=min_train_size,
                 min_value=df[target_col].min(),
             )
-
         if loss is None:
-
             def loss(df, train_df):  # noqa: ARG001
                 return smape(
                     df,
@@ -495,7 +494,6 @@ class AutoMLForecast:
                     id_col=id_col,
                     target_col=target_col,
                 )["model"].mean()
-
         if study_kwargs is None:
             study_kwargs = {}
         if "sampler" not in study_kwargs:
@@ -517,7 +515,6 @@ class AutoMLForecast:
                     },
                     "mlf_fit_params": self.fit_config(trial),
                 }
-
             objective = mlforecast_objective(
                 df=df,
                 config_fn=config_fn,
@@ -532,6 +529,7 @@ class AutoMLForecast:
                 id_col=id_col,
                 time_col=time_col,
                 target_col=target_col,
+                weight_col=weight_col
             )
             study = optuna.create_study(direction="minimize", **study_kwargs)
             study.optimize(objective, n_trials=num_samples, **optimize_kwargs)
@@ -552,6 +550,7 @@ class AutoMLForecast:
                 freq=self.freq,
                 **best_config["mlf_init_params"],
             )
+            
             self.models_[name].fit(
                 df,
                 fitted=fitted,
@@ -559,6 +558,7 @@ class AutoMLForecast:
                 id_col=id_col,
                 time_col=time_col,
                 target_col=target_col,
+                weight_col=weight_col,
                 **best_config["mlf_fit_params"],
             )
         return self
