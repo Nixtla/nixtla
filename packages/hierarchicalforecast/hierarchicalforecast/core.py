@@ -245,10 +245,35 @@ class HierarchicalReconciliation:
 
         # Assert S is an identity matrix at the bottom
         S_nw_cols.remove(id_col)
-        if not np.allclose(S_nw[S_nw_cols][-len(S_nw_cols) :], np.eye(len(S_nw_cols))):
-            raise ValueError(
-                f"The bottom {S_nw.shape[1]}x{S_nw.shape[1]} part of S must be an identity matrix."
+        # Check if S_nw is backed by a sparse pandas DataFrame (check value columns only)
+        S_bottom_nw = S_nw[S_nw_cols][-len(S_nw_cols) :]
+        S_bottom = S_bottom_nw.to_native()
+        is_sparse_df = hasattr(S_bottom, "sparse") and hasattr(S_bottom, "dtypes") and all(
+            str(dtype).startswith("Sparse") for dtype in S_bottom.dtypes
+        )
+        if is_sparse_df:
+            # Sparse-aware identity check: verify diagonal is 1 and off-diagonal is 0
+            # by checking nnz equals n and all non-zero values are 1
+            S_bottom_coo = S_bottom.sparse.to_coo()
+            n = S_bottom_coo.shape[0]
+            is_identity = (
+                S_bottom_coo.shape[0] == S_bottom_coo.shape[1]
+                and S_bottom_coo.nnz == n
+                and np.allclose(S_bottom_coo.data, 1.0)
+                and np.array_equal(S_bottom_coo.row, S_bottom_coo.col)  # diagonal only
             )
+            if not is_identity:
+                raise ValueError(
+                    f"The bottom {n}x{n} part of S must be an identity matrix."
+                )
+        else:
+            # Dense path (original)
+            if not np.allclose(
+                S_bottom_nw, np.eye(len(S_nw_cols))
+            ):
+                raise ValueError(
+                    f"The bottom {S_nw.shape[1]}x{S_nw.shape[1]} part of S must be an identity matrix."
+                )
 
         # Check Y_hat_df\S_df series difference
         # TODO: this logic should be method specific
@@ -441,7 +466,6 @@ class HierarchicalReconciliation:
                     .to_numpy()
                     .astype(np.float64, copy=False)
                 )
-
         if Y_nw is not None:
             y_insample = self._prepare_Y(
                 Y_nw=Y_nw,
