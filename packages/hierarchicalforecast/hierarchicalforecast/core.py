@@ -1,7 +1,6 @@
 __all__ = ['HierarchicalReconciliation']
 
 
-import copy
 import re
 import reprlib
 import time
@@ -19,15 +18,18 @@ from .methods import HReconciler
 
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
-    func_params = fn.__dict__
+    # Use _init_params if available, otherwise fall back to __dict__ for backwards compatibility
+    func_params = getattr(fn, "_init_params", None)
+    if func_params is None:
+        func_params = fn.__dict__
 
     # Take default parameter out of names
     args_to_remove = ["insample", "num_threads"]
     if not func_params.get("nonnegative", False):
         args_to_remove.append("nonnegative")
 
-    if fn_name == "MinTrace" and func_params["method"] == "mint_shrink":
-        if func_params["mint_shr_ridge"] == 2e-8:
+    if fn_name == "MinTrace" and func_params.get("method") == "mint_shrink":
+        if func_params.get("mint_shr_ridge") == 2e-8:
             args_to_remove.append("mint_shr_ridge")
 
     func_params = [
@@ -106,7 +108,6 @@ class HierarchicalReconciliation:
 
     def __init__(self, reconcilers: list[HReconciler]):
         self.reconcilers = reconcilers
-        self.orig_reconcilers = copy.deepcopy(reconcilers)  # TODO: elegant solution
 
     def _prepare_fit(
         self,
@@ -134,7 +135,7 @@ class HierarchicalReconciliation:
                     "Temporal reconciliation requires `Y_df` to be None."
                 )
             # If Y_nw is None, we need to check if the reconcilers are not insample methods
-            for reconciler in self.orig_reconcilers:
+            for reconciler in self.reconcilers:
                 if reconciler.insample:
                     reconciler_name = _build_fn_name(reconciler)
                     raise NotImplementedError(
@@ -196,7 +197,7 @@ class HierarchicalReconciliation:
 
         # Check absence of Y_nw for insample reconcilers
         if Y_nw is None:
-            for reconciler in self.orig_reconcilers:
+            for reconciler in self.reconcilers:
                 if reconciler.insample:
                     reconciler_name = _build_fn_name(reconciler)
                     raise ValueError(
@@ -456,8 +457,8 @@ class HierarchicalReconciliation:
         self.execution_times = {}
         self.level_names = {}
         self.sample_names = {}
-        for reconciler, name_copy in zip(self.reconcilers, self.orig_reconcilers):
-            reconcile_fn_name = _build_fn_name(name_copy)
+        for reconciler in self.reconcilers:
+            reconcile_fn_name = _build_fn_name(reconciler)
 
             if reconciler.is_sparse_method:
                 reconciler_args["S"] = S_for_sparse
