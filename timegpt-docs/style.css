@@ -95,10 +95,6 @@ a.card svg {
   border-bottom: 1px solid var(--primary-dark) !important;
 }
 
-#banner a {
-  color: black !important;
-}
-
 #banner a:hover {
   opacity: 0.8;
 }
