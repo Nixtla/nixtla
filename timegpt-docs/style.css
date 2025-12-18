@@ -114,7 +114,7 @@ a.card svg {
   font-size: medium;
 }
 
-#banner svg {
+#banner svg path {
   color: #000 !important;
 }
 
