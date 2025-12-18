@@ -89,21 +89,17 @@ a.card svg {
 /* Banner styling for theme support */
 #banner {
   /* background-color: var(--primary-light); # original  */
-  background-color: wheat;
+  background-color: #22c55e;
   border-color: var(--primary-light);
   color: var(--primary-dark);
   border-bottom: 1px solid var(--primary-dark) !important;
-}
-
-#banner a {
-  color: black !important;
 }
 
 #banner a:hover {
   opacity: 0.8;
 }
 
-#banner p span{
+#banner p span {
   color: black !important;
   margin: 0;
   font-size: medium;
@@ -114,6 +110,9 @@ a.card svg {
   font-size: medium;
 }
 
+#banner svg path {
+  color: #000 !important;
+}
 
 /* dark mode */
 html.dark > body {
@@ -146,30 +145,4 @@ html.dark #topbar-cta-button svg {
 
 html.dark a.card svg {
   background: var(--primary-light);
-}
-
-/* Dark mode banner */
-html.dark #banner {
-  background-color: #03dac6;
-  border-color: #000;
-  /* color: #000; */
-}
-
-html.dark #banner a {
-  color: black !important;
-}
-
-html.dark #banner a:hover {
-  opacity: 0.8;
-}
-
-html.dark #banner p span {
-  color: black !important;
-  margin: 0;
-  font-size: medium;
-}
-
-html.dark #banner strong {
-  color: black !important;
-  font-size: medium;
 }
