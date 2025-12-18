@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "banner": {
-    "content": "**TimeGPT-2.1 is here!** [Read the announcement →](https://www.nixtla.io/blog/timegpt-2-1-announcement)",
+    "content": "**Nixtla AI is here!** [Read the announcement →](https://www.nixtla.io/blog/genai-announcement)",
     "dismissible": true
   },
   "theme": "mint",
@@ -17,11 +17,7 @@
     }
   },
   "favicon": "/favicon.ico",
-  "ignore": [
-    "utils/**",
-    "depracted-docs/**",
-    "pending_content/**"
-  ],
+  "ignore": ["utils/**", "depracted-docs/**", "pending_content/**"],
   "navigation": {
     "groups": [
       {
@@ -86,9 +82,7 @@
           },
           {
             "group": "Model versions",
-            "pages": [
-              "/forecasting/model-version/longhorizon_model"
-            ]
+            "pages": ["/forecasting/model-version/longhorizon_model"]
           },
           {
             "group": "Evaluation",
@@ -286,11 +280,6 @@
     }
   ],
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude"
-    ]
+    "options": ["copy", "view", "chatgpt", "claude"]
   }
 }
