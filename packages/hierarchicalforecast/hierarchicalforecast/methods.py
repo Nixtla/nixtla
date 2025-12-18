@@ -5,7 +5,6 @@ __all__ = ['BottomUp', 'BottomUpSparse', 'TopDown', 'TopDownSparse', 'MiddleOut'
 import warnings
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional, Union
 
 import clarabel
 import numpy as np
@@ -31,7 +30,7 @@ class HReconciler:
     insample = False
     P = None
     sampler = None
-    _init_params: Optional[dict] = None  # Stores initialization parameters for naming
+    _init_params: dict | None = None  # Stores initialization parameters for naming
 
     def _get_sampler(
         self,
@@ -81,8 +80,8 @@ class HReconciler:
         P: np.ndarray,
         y_hat: np.ndarray,
         SP: np.ndarray = None,
-        level: Optional[list[int]] = None,
-        sampler: Optional[Union[Normality, PERMBU, Bootstrap]] = None,
+        level: list[int] | None = None,
+        sampler: Normality | PERMBU | Bootstrap | None = None,
     ):
 
         # Mean reconciliation
@@ -101,7 +100,7 @@ class HReconciler:
         return res
 
     def predict(
-        self, S: np.ndarray, y_hat: np.ndarray, level: Optional[list[int]] = None
+        self, S: np.ndarray, y_hat: np.ndarray, level: list[int] | None = None
     ):
         """Predict using reconciler.
 
@@ -194,13 +193,13 @@ class BottomUp(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         idx_bottom: np.ndarray,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
     ):
         """Bottom Up Fit Method.
 
@@ -242,14 +241,14 @@ class BottomUp(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         idx_bottom: np.ndarray,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        level: Optional[list[int]] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        level: list[int] | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
     ):
         """BottomUp Reconciliation Method.
 
@@ -318,7 +317,7 @@ class BottomUpSparse(BottomUp):
 
 
 def _get_child_nodes(
-    S: Union[np.ndarray, sparse.csr_matrix], tags: dict[str, np.ndarray]
+    S: np.ndarray | sparse.csr_matrix, tags: dict[str, np.ndarray]
 ):
     if isinstance(S, sparse.spmatrix):
         S = S.toarray()
@@ -405,7 +404,7 @@ class TopDown(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         y_insample: np.ndarray,
-        tags: Optional[dict[str, np.ndarray]] = None,
+        tags: dict[str, np.ndarray] | None = None,
     ):
 
         n_hiers, n_bottom = S.shape
@@ -457,13 +456,13 @@ class TopDown(HReconciler):
         S,
         y_hat,
         y_insample: np.ndarray,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
-        idx_bottom: Optional[np.ndarray] = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
+        idx_bottom: np.ndarray | None = None,
     ):
         """TopDown Fit Method.
 
@@ -508,13 +507,13 @@ class TopDown(HReconciler):
         y_hat: np.ndarray,
         tags: dict[str, np.ndarray],
         idx_bottom: np.ndarray = None,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        level: Optional[list[int]] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        level: list[int] | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
     ):
         """Top Down Reconciliation Method.
 
@@ -603,7 +602,7 @@ class TopDownSparse(TopDown):
         S: sparse.csr_matrix,
         y_hat: np.ndarray,
         y_insample: np.ndarray,
-        tags: Optional[dict[str, np.ndarray]] = None,
+        tags: dict[str, np.ndarray] | None = None,
     ):
         # Avoid a redundant check during middle-out reconciliation.
         if not self.is_strictly_hierarchical:
@@ -658,13 +657,13 @@ class TopDownSparse(TopDown):
         y_hat: np.ndarray,
         tags: dict[str, np.ndarray],
         idx_bottom: np.ndarray = None,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        level: Optional[list[int]] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        level: list[int] | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
     ) -> dict[str, np.ndarray]:
         if self.method == "forecast_proportions":
             # Check if probabilistic reconciliation is required.
@@ -781,13 +780,13 @@ class MiddleOut(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         tags: dict[str, np.ndarray],
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        level: Optional[list[int]] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        level: list[int] | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
     ):
         """Middle Out Reconciliation Method.
 
@@ -866,7 +865,7 @@ class MiddleOut(HReconciler):
             leaf_idx = np.flatnonzero(S[cut_node])
             # Find all the nodes in the subgraph for the cut node.
             sub_idx = np.hstack(
-                (cut_node, cut_idx + np.flatnonzero((np.any(S[cut_idx:, leaf_idx], 1))))
+                (cut_node, cut_idx + np.flatnonzero(np.any(S[cut_idx:, leaf_idx], 1)))
             )
 
             # Construct the "tags" argument for the cut node.
@@ -934,13 +933,13 @@ class MiddleOutSparse(MiddleOut):
         S: np.ndarray,
         y_hat: np.ndarray,
         tags: dict[str, np.ndarray],
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        level: Optional[list[int]] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        level: list[int] | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
     ) -> dict[str, np.ndarray]:
         # Check if the middle level exists in the level to nodes mapping.
         if self.middle_level not in tags.keys():
@@ -1007,7 +1006,7 @@ class MiddleOutSparse(MiddleOut):
             leaf_idx = np.flatnonzero(S[cut_node])
             # Find all the nodes in the subgraph for the cut node.
             sub_idx = np.hstack(
-                (cut_node, cut_idx + np.flatnonzero((np.any(S[cut_idx:, leaf_idx], 1))))
+                (cut_node, cut_idx + np.flatnonzero(np.any(S[cut_idx:, leaf_idx], 1)))
             )
 
             # Construct the "tags" argument for the cut node.
@@ -1082,7 +1081,7 @@ class MinTrace(HReconciler):
         self,
         method: str,
         nonnegative: bool = False,
-        mint_shr_ridge: Optional[float] = 2e-8,
+        mint_shr_ridge: float | None = 2e-8,
         num_threads: int = 1,
     ):
         if method not in ["ols", "wls_struct", "wls_var", "mint_cov", "mint_shrink"]:
@@ -1106,9 +1105,9 @@ class MinTrace(HReconciler):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        idx_bottom: Optional[list[int]] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        idx_bottom: list[int] | None = None,
     ):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
@@ -1208,14 +1207,14 @@ class MinTrace(HReconciler):
         self,
         S,
         y_hat,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
-        idx_bottom: Optional[np.ndarray] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
+        idx_bottom: np.ndarray | None = None,
     ):
         """MinTrace Fit Method.
 
@@ -1308,14 +1307,14 @@ class MinTrace(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         idx_bottom: np.ndarray = None,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        level: Optional[list[int]] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        level: list[int] | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
     ):
         """MinTrace Reconciliation Method.
 
@@ -1405,11 +1404,11 @@ class MinTraceSparse(MinTrace):
 
     def _get_PW_matrices(
         self,
-        S: Union[np.ndarray, sparse.spmatrix],
+        S: np.ndarray | sparse.spmatrix,
         y_hat: np.ndarray,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        idx_bottom: Optional[list[int]] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        idx_bottom: list[int] | None = None,
     ):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
@@ -1493,14 +1492,14 @@ class MinTraceSparse(MinTrace):
         self,
         S: sparse.csr_matrix,
         y_hat: np.ndarray,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
-        idx_bottom: Optional[np.ndarray] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
+        idx_bottom: np.ndarray | None = None,
     ) -> "MinTraceSparse":
         """MinTraceSparse Fit Method.
 
@@ -1586,7 +1585,7 @@ class MinTraceSparse(MinTrace):
                     cones: list,
                     settings: clarabel.DefaultSettings,
                     n_b: int,
-                ) -> tuple[bool, Optional[np.ndarray]]:
+                ) -> tuple[bool, np.ndarray | None]:
                     # Get the linear coefficients, i.e., the cost vector.
                     q = P @ -y
                     # Set up the Clarabel solver.
@@ -1696,7 +1695,7 @@ class MinTraceSparse(MinTrace):
 
 
 class OptimalCombination(MinTrace):
-    """Optimal Combination Reconciliation Class.
+    r"""Optimal Combination Reconciliation Class.
 
     This reconciliation algorithm was proposed by Hyndman et al. 2011, the method uses generalized least squares
     estimator using the coherency errors covariance matrix. Consider the covariance of the base forecast
@@ -1729,7 +1728,7 @@ class OptimalCombination(MinTrace):
 
 
 class ERM(HReconciler):
-    """Empirical Risk Minimization Reconciliation Class.
+    r"""Empirical Risk Minimization Reconciliation Class.
 
     The Empirical Risk Minimization reconciliation strategy relaxes the unbiasedness assumptions from
     previous reconciliation methods like MinT and optimizes square errors between the reconciled predictions
@@ -1827,12 +1826,12 @@ class ERM(HReconciler):
         y_hat,
         y_insample,
         y_hat_insample,
-        sigmah: Optional[np.ndarray] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
-        idx_bottom: Optional[np.ndarray] = None,
+        sigmah: np.ndarray | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
+        idx_bottom: np.ndarray | None = None,
     ):
         """ERM Fit Method.
 
@@ -1879,14 +1878,14 @@ class ERM(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         idx_bottom: np.ndarray = None,
-        y_insample: Optional[np.ndarray] = None,
-        y_hat_insample: Optional[np.ndarray] = None,
-        sigmah: Optional[np.ndarray] = None,
-        level: Optional[list[int]] = None,
-        intervals_method: Optional[str] = None,
-        num_samples: Optional[int] = None,
-        seed: Optional[int] = None,
-        tags: Optional[dict[str, np.ndarray]] = None,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+        sigmah: np.ndarray | None = None,
+        level: list[int] | None = None,
+        intervals_method: str | None = None,
+        num_samples: int | None = None,
+        seed: int | None = None,
+        tags: dict[str, np.ndarray] | None = None,
     ):
         """ERM Reconciliation Method.
 

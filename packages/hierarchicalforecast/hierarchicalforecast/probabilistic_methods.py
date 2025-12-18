@@ -2,7 +2,6 @@ __all__ = ['Normality']
 
 
 import warnings
-from typing import Optional, Union
 
 import numpy as np
 import scipy.sparse as sp
@@ -45,11 +44,11 @@ class Normality:
 
     def __init__(
         self,
-        S: Union[np.ndarray, sp.spmatrix],
-        P: Union[np.ndarray, sp.spmatrix],
+        S: np.ndarray | sp.spmatrix,
+        P: np.ndarray | sp.spmatrix,
         y_hat: np.ndarray,
         sigmah: np.ndarray,
-        W: Union[np.ndarray, sp.spmatrix],
+        W: np.ndarray | sp.spmatrix,
         seed: int = 0,
     ):
         self.S = S
@@ -130,7 +129,7 @@ class Normality:
         res["sigmah"] = self.sigmah_rec
         level = np.asarray(level)
         z = norm.ppf(0.5 + level / 200)
-        for zs, lv in zip(z, level):
+        for zs, lv in zip(z, level, strict=False):
             res[f"lo-{lv}"] = res["mean"] - zs * self.sigmah_rec
             res[f"hi-{lv}"] = res["mean"] + zs * self.sigmah_rec
         return res
@@ -190,14 +189,14 @@ class Bootstrap:
 
     def __init__(
         self,
-        S: Union[np.ndarray, sp.spmatrix],
-        P: Union[np.ndarray, sp.spmatrix],
+        S: np.ndarray | sp.spmatrix,
+        P: np.ndarray | sp.spmatrix,
         y_hat: np.ndarray,
         y_insample: np.ndarray,
         y_hat_insample: np.ndarray,
         num_samples: int = 100,
         seed: int = 0,
-        W: Union[np.ndarray, sp.spmatrix] = None,
+        W: np.ndarray | sp.spmatrix = None,
     ):
         self.S = S
         self.P = P
@@ -290,15 +289,15 @@ class PERMBU:
 
     def __init__(
         self,
-        S: Union[np.ndarray, sp.spmatrix],
+        S: np.ndarray | sp.spmatrix,
         tags: dict[str, np.ndarray],
         y_hat: np.ndarray,
         y_insample: np.ndarray,
         y_hat_insample: np.ndarray,
         sigmah: np.ndarray,
-        num_samples: Optional[int] = None,
+        num_samples: int | None = None,
         seed: int = 0,
-        P: Union[np.ndarray, sp.spmatrix] = None,
+        P: np.ndarray | sp.spmatrix = None,
     ):
         # PERMBU only works for strictly hierarchical structures
         if not is_strictly_hierarchical(S, tags):
@@ -384,7 +383,7 @@ class PERMBU:
         nnz_per_row = int(M[0, :].sum())
         return nonzeros.reshape(-1, nnz_per_row)
 
-    def get_samples(self, num_samples: Optional[int] = None):
+    def get_samples(self, num_samples: int | None = None):
         """PERMBU Sample Reconciliation Method.
 
         Applies PERMBU reconciliation method as defined by Taieb et. al 2017.
@@ -422,7 +421,7 @@ class PERMBU:
         base_samples = np.array(
             [
                 rng.normal(loc=m, scale=s, size=num_samples)
-                for m, s in zip(self.y_hat.flatten(), self.sigmah.flatten())
+                for m, s in zip(self.y_hat.flatten(), self.sigmah.flatten(), strict=False)
             ]
         )
         base_samples = base_samples.reshape(n_series, n_horizon, num_samples)

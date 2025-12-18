@@ -1,15 +1,11 @@
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "hierarchicalforecast"
-dynamic = ["version"]
-description = "Hierarchical Methods Time series forecasting"
-readme = {file = "README.md", content-type = "text/markdown"}
-license = {text = "Apache Software License 2.0"}
+version = "1.3.1"
+description = "Hierarchical Methods Time Series Forecasting"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "Apache Software License 2.0" }
 authors = [
-    {name = "Nixtla", email = "business@nixtla.io"}
+    { name = "Nixtla", email = "business@nixtla.io" }
 ]
 keywords = ["time-series", "forecasting", "datasets", "hierarchical"]
 classifiers = [
@@ -17,13 +13,12 @@ classifiers = [
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10,<4.0"
 dependencies = [
     "numpy",
     "numba",
@@ -36,7 +31,12 @@ dependencies = [
     "intel-cmplr-lib-rt ; platform_system!='Darwin' and platform_machine=='x86_64'"
 ]
 
-[project.optional-dependencies]
+[project.urls]
+Homepage = "https://github.com/Nixtla/hierarchicalforecast/"
+Repository = "https://github.com/Nixtla/hierarchicalforecast/"
+Documentation = "https://nixtlaverse.nixtla.io/hierarchicalforecast/"
+
+[dependency-groups]
 dev = [
     "datasetsforecast",
     "fire",
@@ -56,26 +56,47 @@ polars = [
     "polars[numpy]<=1.32.0"
 ]
 
-[project.urls]
-Homepage = "https://github.com/Nixtla/hierarchicalforecast/"
-Repository = "https://github.com/Nixtla/hierarchicalforecast/"
-Documentation = "https://nixtlaverse.nixtla.io/hierarchicalforecast/"
+[build-system]
+requires = ["uv_build>=0.7.19,<1.0.0"]
+build-backend = "uv_build"
 
-[tool.setuptools.dynamic]
-version = {attr = "hierarchicalforecast.__version__"}
+[tool.uv.build-backend]
+module-root = "."
 
-[tool.setuptools]
-include-package-data = true
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["hierarchicalforecast*"]
+[tool.ruff]
+fix = true
+indent-width = 4
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.format]
+docstring-code-format = true
 
 [tool.ruff.lint]
 select = [
-    "F",  # pyflakes
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # Pyflakes
+    "I", # isort
+    "B", # flake8-bugbear
+    "UP", # pyupgrade
+    "YTT", # flake8-2020
 ]
 
+# TODO: address, then remove the below ignore clauses` eventually:
+ignore = [
+    "E402", # module level import not at top of file
+    "E501", # line too long
+    'B028',
+]
+
+[tool.ruff.lint.per-file-ignores]
+"hierarchicalforecast/utils.py" = ["B904", "E741"]
+"hierarchicalforecast/methods.py" = ["B007", "B904"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = [

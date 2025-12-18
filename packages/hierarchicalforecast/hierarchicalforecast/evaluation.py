@@ -2,8 +2,8 @@ __all__ = ['evaluate']
 
 
 import warnings
+from collections.abc import Callable
 from inspect import signature
-from typing import Callable, Optional, Union
 
 import narwhals.stable.v2 as nw
 import numpy as np
@@ -20,7 +20,7 @@ def _loss_deprecation_notice(loss):
 
 
 def _metric_protections(
-    y: np.ndarray, y_hat: np.ndarray, weights: Optional[np.ndarray]
+    y: np.ndarray, y_hat: np.ndarray, weights: np.ndarray | None
 ) -> None:
     if not ((weights is None) or (np.sum(weights) > 0)):
         raise Exception("Sum of `weights` cannot be 0")
@@ -33,10 +33,10 @@ def _metric_protections(
 def mse(
     y: np.ndarray,
     y_hat: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
-    """Mean Squared Error
+    weights: np.ndarray | None = None,
+    axis: int | None = None,
+) -> float | np.ndarray:
+    r"""Mean Squared Error
 
     Calculates Mean Squared Error between
     `y` and `y_hat`. MSE measures the relative prediction
@@ -73,10 +73,10 @@ def mqloss(
     y: np.ndarray,
     y_hat: np.ndarray,
     quantiles: np.ndarray,
-    weights: Optional[np.ndarray] = None,
-    axis: Optional[int] = None,
-) -> Union[float, np.ndarray]:
-    """Multi-Quantile Loss
+    weights: np.ndarray | None = None,
+    axis: int | None = None,
+) -> float | np.ndarray:
+    r"""Multi-Quantile Loss
 
     Calculates the Multi-Quantile loss (MQL) between `y` and `y_hat`.
     MQL calculates the average multi-quantile Loss for
@@ -131,7 +131,7 @@ def mqloss(
 
 
 def rel_mse(y, y_hat, y_train, mask=None):
-    """Relative Mean Squared Error
+    r"""Relative Mean Squared Error
 
     Computes Relative mean squared error (RelMSE), as proposed by Hyndman & Koehler (2006)
     as an alternative to percentage errors, to avoid measure unstability.
@@ -207,7 +207,7 @@ def msse(y, y_hat, y_train, mask=None):
 
 
 def scaled_crps(y, y_hat, quantiles):
-    """Scaled Continues Ranked Probability Score
+    r"""Scaled Continues Ranked Probability Score
 
     Calculates a scaled variation of the CRPS, as proposed by Rangapuram (2021),
     to measure the accuracy of predicted quantiles `y_hat` compared to the observation `y`.
@@ -246,7 +246,7 @@ def scaled_crps(y, y_hat, quantiles):
 
 
 def energy_score(y, y_sample1, y_sample2, beta=2):
-    """Energy Score
+    r"""Energy Score
 
     Calculates Gneiting's Energy Score sample approximation for
     `y` and independent multivariate samples `y_sample1` and `y_sample2`.
@@ -254,7 +254,7 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
 
     $$
     \mathrm{ES}(\\mathbf{y}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}, \\mathbf{\hat{y}}_{\\tau}')
-    = \\frac{1}{2} \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{\hat{y}}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}'||^{\\beta} \\right] -  
+    = \\frac{1}{2} \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{\hat{y}}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}'||^{\\beta} \\right] -
     \mathbb{E}_{\hat{P}} \\left[ ||\\mathbf{y}_{\\tau} - \\mathbf{\hat{y}}_{\\tau}||^{\\beta} \\right]
     \quad \\beta \in (0,2]
     $$
@@ -289,7 +289,7 @@ def energy_score(y, y_sample1, y_sample2, beta=2):
 
 
 def log_score(y, y_hat, cov, allow_singular=True):
-    """Log Score.
+    r"""Log Score.
 
     One of the simplest multivariate probability scoring rules,
     it evaluates the negative density at the value of the realisation.
@@ -363,8 +363,8 @@ class HierarchicalEvaluation:
         Y_hat_df: Frame,
         Y_test_df: Frame,
         tags: dict[str, np.ndarray],
-        Y_df: Optional[Frame] = None,
-        benchmark: Optional[str] = None,
+        Y_df: Frame | None = None,
+        benchmark: str | None = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -470,7 +470,7 @@ class HierarchicalEvaluation:
                     "level": evaluation_index_np[:, 0],
                     "metric": evaluation_index_np[:, 1],
                 },
-                **dict(zip(model_names, evaluation_np.T)),
+                **dict(zip(model_names, evaluation_np.T, strict=False)),
             },
             backend=native_namespace,
         )
@@ -484,14 +484,14 @@ def evaluate(
     df: FrameT,
     metrics: list[Callable],
     tags: dict[str, np.ndarray],
-    models: Optional[list[str]] = None,
-    train_df: Optional[FrameT] = None,
-    level: Optional[list[int]] = None,
+    models: list[str] | None = None,
+    train_df: FrameT | None = None,
+    level: list[int] | None = None,
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
-    agg_fn: Optional[str] = "mean",
-    benchmark: Optional[str] = None,
+    agg_fn: str | None = "mean",
+    benchmark: str | None = None,
 ) -> FrameT:
     """Evaluate hierarchical forecast using different metrics.
 

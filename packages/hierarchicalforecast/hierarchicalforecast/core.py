@@ -5,7 +5,6 @@ import re
 import reprlib
 import time
 from inspect import signature
-from typing import Optional
 
 import narwhals.stable.v2 as nw
 import numpy as np
@@ -51,7 +50,7 @@ def _reverse_engineer_sigmah(
     target_col: str = "y",
     num_samples: int = 200,
 ) -> np.ndarray:
-    """Reverse engineer sigma_h from prediction intervals.
+    r"""Reverse engineer sigma_h from prediction intervals.
 
     This function assumes that the model creates prediction intervals
     under a normality with the following the Equation:
@@ -80,7 +79,7 @@ def _reverse_engineer_sigmah(
 
     pi_col = pi_model_name[0]
     sign = -1 if "lo" in pi_col else 1
-    level_cols = re.findall("[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+", pi_col)
+    level_cols = re.findall(r"[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+", pi_col)
     level_col = float(level_cols[-1])
     z = norm.ppf(0.5 + level_col / num_samples)
     sigmah = Y_hat_df[pi_col].to_numpy().reshape(n_series, -1)
@@ -90,7 +89,7 @@ def _reverse_engineer_sigmah(
 
 
 class HierarchicalReconciliation:
-    """Hierarchical Reconciliation Class.
+    r"""Hierarchical Reconciliation Class.
 
     The `core.HierarchicalReconciliation` class allows you to efficiently fit multiple
     HierarchicaForecast methods for a collection of time series and base predictions stored in
@@ -113,9 +112,9 @@ class HierarchicalReconciliation:
         self,
         Y_hat_nw: Frame,
         S_nw: Frame,
-        Y_nw: Optional[Frame],
+        Y_nw: Frame | None,
         tags: dict[str, np.ndarray],
-        level: Optional[list[int]] = None,
+        level: list[int] | None = None,
         intervals_method: str = "normality",
         id_col: str = "unique_id",
         time_col: str = "ds",
@@ -343,8 +342,8 @@ class HierarchicalReconciliation:
         Y_hat_df: Frame,
         tags: dict[str, np.ndarray],
         S_df: Frame = None,
-        Y_df: Optional[Frame] = None,
-        level: Optional[list[int]] = None,
+        Y_df: Frame | None = None,
+        level: list[int] | None = None,
         intervals_method: str = "normality",
         num_samples: int = -1,
         seed: int = 0,
@@ -575,7 +574,7 @@ class HierarchicalReconciliation:
                         fcsts_model["quantiles"], (len(Y_tilde_nw), -1)
                     )
                     y_tilde = dict(
-                        zip(self.level_names[recmodel_name], sorted_quantiles.T)
+                        zip(self.level_names[recmodel_name], sorted_quantiles.T, strict=False)
                     )
                     Y_tilde_nw = Y_tilde_nw.with_columns(**y_tilde)
 
@@ -585,7 +584,7 @@ class HierarchicalReconciliation:
                             f"{recmodel_name}-sample-{i}" for i in range(num_samples)
                         ]
                         samples = np.reshape(samples, (len(Y_tilde_nw), -1))
-                        y_tilde = dict(zip(self.sample_names[recmodel_name], samples.T))
+                        y_tilde = dict(zip(self.sample_names[recmodel_name], samples.T, strict=False))
                         Y_tilde_nw = Y_tilde_nw.with_columns(**y_tilde)
 
                 end = time.time()
@@ -600,8 +599,8 @@ class HierarchicalReconciliation:
         Y_hat_df: Frame,
         S_df: Frame,
         tags: dict[str, np.ndarray],
-        Y_df: Optional[Frame] = None,
-        level: Optional[list[int]] = None,
+        Y_df: Frame | None = None,
+        level: list[int] | None = None,
         intervals_method: str = "normality",
         num_samples: int = -1,
         num_seeds: int = 1,

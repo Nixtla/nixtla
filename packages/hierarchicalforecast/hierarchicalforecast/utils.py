@@ -6,7 +6,6 @@ import reprlib
 import sys
 import timeit
 from collections.abc import Sequence
-from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import narwhals.stable.v2 as nw
@@ -40,7 +39,7 @@ class CodeTimer:
             print(
                 "Code block"
                 + self.name
-                + " took:\t{0:.5f}".format(self.took)
+                + f" took:\t{self.took:.5f}"
                 + " seconds"
             )
 
@@ -129,11 +128,11 @@ def _to_upper_hierarchy(
 def aggregate(
     df: Frame,
     spec: list[list[str]],
-    exog_vars: Optional[dict[str, Union[str, list[str]]]] = None,
+    exog_vars: dict[str, str | list[str]] | None = None,
     sparse_s: bool = False,
     id_col: str = "unique_id",
     time_col: str = "ds",
-    id_time_col: Optional[str] = None,
+    id_time_col: str | None = None,
     target_cols: Sequence[str] = ("y",),
 ) -> tuple[FrameT, FrameT, dict]:
     """Utils Aggregation Function.
@@ -175,9 +174,7 @@ def aggregate(
 
     # Checks
     # Generate order-preserving list of unique cols based on spec
-    seen = set()
-    spec_cols = [col for cols in spec for col in cols if col not in seen and not seen.add(col)]  # type: ignore[func-returns-value]
-
+    spec_cols = list(dict.fromkeys([col for cols in spec for col in cols]))
     # Check if last level in spec contains all levels
     missing_cols_in_bottom_spec = set(spec_cols) - set(spec[-1])
     if missing_cols_in_bottom_spec and not temporal_agg:
@@ -204,7 +201,7 @@ def aggregate(
 
     # Prepare the aggregation dictionary
     agg_dict = dict(
-        zip(target_cols, tuple(zip(target_cols, len(target_cols) * ["sum"])))
+        zip(target_cols, tuple(zip(target_cols, len(target_cols) * ["sum"], strict=False)), strict=False)
     )
 
     # Check if exog_vars are present in df & add to the aggregation dictionary if it is not None
@@ -318,7 +315,7 @@ def aggregate(
         S_nw = nw.from_dict(
             {
                 **{_id_col: category_list},
-                **dict(zip(tags[level_name], S_dum)),
+                **dict(zip(tags[level_name], S_dum, strict=False)),
             },
             backend=backend,
         )
@@ -336,7 +333,7 @@ def aggregate(
 def aggregate_temporal(
     df: Frame,
     spec: dict[str, int],
-    exog_vars: Optional[dict[str, Union[str, list[str]]]] = None,
+    exog_vars: dict[str, str | list[str]] | None = None,
     sparse_s: bool = False,
     id_col: str = "unique_id",
     time_col: str = "ds",
@@ -454,7 +451,7 @@ def aggregate_temporal(
 
 def make_future_dataframe(
     df: Frame,
-    freq: Union[str, int],
+    freq: str | int,
     h: int,
     id_col: str = "unique_id",
     time_col: str = "ds",
@@ -500,7 +497,7 @@ def get_cross_temporal_tags(
         tags_cs (dict[str, np.ndarray]): Tags for the cross-sectional hierarchies.
         tags_te (dict[str, np.ndarray]): Tags for the temporal hierarchies.
         sep (str, optional): Separator for the cross-temporal tags. Default is "//".
-        id_col (str, optional): Column that identifies each serie. Default is 'unique_id'.
+        id_col (str, optional): Column that identifies each series. Default is 'unique_id'.
         id_time_col (str, optional): Column that identifies each (aggregated) timestep. Default is 'temporal_id'.
         cross_temporal_id_col (str, optional): Column that will identify each cross-temporal aggregation. Default is 'cross_temporal_id'.
 
@@ -534,7 +531,7 @@ def get_cross_temporal_tags(
 
 
 class HierarchicalPlot:
-    """Hierarchical Plot
+    r"""Hierarchical Plot
 
     This class contains a collection of matplotlib visualization methods, suited for small
     to medium sized hierarchical series.
@@ -560,7 +557,7 @@ class HierarchicalPlot:
         self.tags = tags
 
     def plot_summing_matrix(self):
-        """Summation Constraints plot
+        r"""Summation Constraints plot
 
         This method simply plots the hierarchical aggregation
         constraints matrix $\mathbf{S}$.
@@ -577,13 +574,13 @@ class HierarchicalPlot:
         self,
         series: str,
         Y_df: Frame,
-        models: Optional[list[str]] = None,
-        level: Optional[list[int]] = None,
+        models: list[str] | None = None,
+        level: list[int] | None = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
     ):
-        """Single Series plot
+        r"""Single Series plot
 
         Args:
             series (str): string identifying the `'unique_id'` any-level series to plot.
@@ -591,7 +588,7 @@ class HierarchicalPlot:
                     It contains columns `['unique_id', 'ds', 'y']`, it may have `'models'`.
             models (Optional[list[str]], optional): string identifying filtering model columns. Default is None.
             level (Optional[list[int]], optional): confidence levels for prediction intervals available in `Y_df`. Default is None.
-            id_col (str, optional): column that identifies each serie. Default is 'unique_id'.
+            id_col (str, optional): column that identifies each series. Default is 'unique_id'.
             time_col (str, optional): column that identifies each timestep, its values can be timestamps or integers. Default is 'ds'.
             target_col (str, optional): column that contains the target. Default is 'y'.
 
@@ -617,7 +614,7 @@ class HierarchicalPlot:
         except AttributeError:
             cmap = plt.cm.get_cmap("tab10", 10)
         cmap = [cmap(i) for i in range(10)][: len(cols_wo_levels)]
-        cmap_dict = dict(zip(cols_wo_levels, cmap))
+        cmap_dict = dict(zip(cols_wo_levels, cmap, strict=False))
         for col in cols_wo_levels:
             ax.plot(
                 df_plot[time_col].to_numpy(),
@@ -659,13 +656,13 @@ class HierarchicalPlot:
         self,
         bottom_series: str,
         Y_df: Frame,
-        models: Optional[list[str]] = None,
-        level: Optional[list[int]] = None,
+        models: list[str] | None = None,
+        level: list[int] | None = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
     ):
-        """Hierarchically Linked Series plot
+        r"""Hierarchically Linked Series plot
 
         Args:
             bottom_series (str): string identifying the `'unique_id'` bottom-level series to plot.
@@ -673,12 +670,12 @@ class HierarchicalPlot:
                     It contains columns ['unique_id', 'ds', 'y'] and models.
             models (Optional[list[str]], optional): string identifying filtering model columns. Default is None.
             level (Optional[list[int]], optional): confidence levels for prediction intervals available in `Y_df`. Default is None.
-            id_col (str, optional): column that identifies each serie. Default is 'unique_id'.
+            id_col (str, optional): column that identifies each series. Default is 'unique_id'.
             time_col (str, optional): column that identifies each timestep, its values can be timestamps or integers. Default is 'ds'.
             target_col (str, optional): column that contains the target. Default is 'y'.
 
         Returns:
-            fig (matplotlib.figure.Figure): figure object containing the plots of the hierarchilly linked series.
+            fig (matplotlib.figure.Figure): figure object containing the plots of the hierarchically linked series.
         """
         Y_nw = nw.from_native(Y_df)
 
@@ -703,7 +700,7 @@ class HierarchicalPlot:
         ]
         cmap = plt.cm.get_cmap("tab10", 10)
         cmap = [cmap(i) for i in range(10)][: len(cols_wo_levels)]
-        cmap_dict = dict(zip(cols_wo_levels, cmap))
+        cmap_dict = dict(zip(cols_wo_levels, cmap, strict=False))
         for idx, series in enumerate(linked_series):
             df_plot = Y_nw.filter(nw.col(id_col) == series)
             for col in cols_wo_levels:
@@ -746,7 +743,7 @@ class HierarchicalPlot:
         kwargs = dict(
             loc="lower center", prop={"size": 10}, bbox_to_anchor=(0, 0.05, 1, 1)
         )
-        if sys.version_info.minor > 7:
+        if sys.version_info.minor > 7:  # noqa: YTT204
             kwargs["ncols"] = np.max([2, np.ceil(len(labels) / 2)])
         fig.legend(handles, labels, **kwargs)
         return fig
@@ -754,14 +751,14 @@ class HierarchicalPlot:
     def plot_hierarchical_predictions_gap(
         self,
         Y_df: Frame,
-        models: Optional[list[str]] = None,
-        xlabel: Optional[str] = None,
-        ylabel: Optional[str] = None,
+        models: list[str] | None = None,
+        xlabel: str | None = None,
+        ylabel: str | None = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
     ):
-        """Hierarchically Predictions Gap plot
+        r"""Hierarchically Predictions Gap plot
 
         Args:
             Y_df (Frame): hierarchically structured series ($\mathbf{y}_{[a,b]}$).
@@ -769,7 +766,7 @@ class HierarchicalPlot:
             models (Optional[list[str]], optional): string identifying filtering model columns. Default is None.
             xlabel (Optional[str], optional): string for the plot's x axis label. Default is None.
             ylabel (Optional[str], optional): string for the plot's y axis label. Default is None.
-            id_col (str, optional): column that identifies each serie. Default is 'unique_id'.
+            id_col (str, optional): column that identifies each series. Default is 'unique_id'.
             time_col (str, optional): column that identifies each timestep, its values can be timestamps or integers. Default is 'ds'.
             target_col (str, optional): column that contains the target. Default is 'y'.
 
@@ -877,8 +874,8 @@ def samples_to_quantiles_df(
     samples: np.ndarray,
     unique_ids: Sequence[str],
     dates: list[str],
-    quantiles: Optional[list[float]] = None,
-    level: Optional[list[int]] = None,
+    quantiles: list[float] | None = None,
+    level: list[int] | None = None,
     model_name: str = "model",
     id_col: str = "unique_id",
     time_col: str = "ds",
@@ -950,7 +947,7 @@ def samples_to_quantiles_df(
     df_nw = nw.from_dict(
         {
             **{id_col: unique_ids, time_col: ds, model_name: forecasts_mean},
-            **dict(zip(col_names, forecasts_quantiles.T)),
+            **dict(zip(col_names, forecasts_quantiles.T, strict=False)),
         },
         backend=backend,
     )
@@ -1169,7 +1166,7 @@ def _lasso(
     beta_changes = np.zeros(feats, dtype=np.float64)
     residuals = y.copy()
 
-    for it in range(max_iters):
+    for _it in range(max_iters):
         for i in range(feats):
             norms_i = norms[i]
             # is feature is close to zero, we
