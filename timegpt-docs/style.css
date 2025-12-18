@@ -150,29 +150,3 @@ html.dark #topbar-cta-button svg {
 html.dark a.card svg {
   background: var(--primary-light);
 }
-
-/* Dark mode banner */
-html.dark #banner {
-  background-color: #03dac6;
-  border-color: #000;
-  /* color: #000; */
-}
-
-html.dark #banner a {
-  color: black !important;
-}
-
-html.dark #banner a:hover {
-  opacity: 0.8;
-}
-
-html.dark #banner p span {
-  color: black !important;
-  margin: 0;
-  font-size: medium;
-}
-
-html.dark #banner strong {
-  color: black !important;
-  font-size: medium;
-}
