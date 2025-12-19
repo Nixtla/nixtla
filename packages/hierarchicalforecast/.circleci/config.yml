@@ -11,16 +11,10 @@ jobs:
           command: |
             apt-get update && apt-get install -y git
       - run:
-          name: Install dependencies
+          name: Install dependencies & run tests
           command: |
-            pip install uv
-            uv venv --python 3.10
-      - run:
-          name: Run tests
-          command: |
-            source .venv/bin/activate
-            uv pip install -e ".[dev,polars]"
-            pytest
+            pip install uv && uv sync --group dev
+            uv run pytest
   test-model-performance:
     parameters:
       hierarchy:
@@ -50,7 +44,7 @@ jobs:
           name: Run model performance tests
           command: |
             source .venv/bin/activate
-            uv pip install ".[dev,polars]"
+            uv sync --group dev
             cd ./action_files/test_models/
             uv pip install -r requirements.txt
             python -m src.models << parameters.hierarchy >> << parameters.forecast_type >> << parameters.engine >>
@@ -78,7 +72,7 @@ jobs:
           name: Run model performance tests
           command: |
             source .venv/bin/activate
-            uv pip install ".[dev,polars]"
+            uv sync --group dev
             cd ./action_files/test_models/
             uv pip install -r requirements.txt
             python -m src.models_temporal

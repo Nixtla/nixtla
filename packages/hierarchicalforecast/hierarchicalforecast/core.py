@@ -15,6 +15,110 @@ from scipy.stats import norm
 from .methods import HReconciler
 
 
+def _compute_coherence_residual(
+    y: np.ndarray,
+    S: np.ndarray,
+    idx_bottom: np.ndarray,
+) -> np.ndarray:
+    """Compute coherence residual: y - S @ y_bottom.
+
+    The coherence residual measures how much the forecasts violate
+    the hierarchical aggregation constraint. For coherent forecasts,
+    this should be zero (or near-zero due to numerical precision).
+
+    Args:
+        y: Forecasts array of shape (n_series,) or (n_series, horizon).
+        S: Summing matrix of shape (n_series, n_bottom).
+        idx_bottom: Indices of bottom-level series.
+
+    Returns:
+        Coherence residual array with same shape as y.
+    """
+    y_bottom = y[idx_bottom]
+    y_implied = S @ y_bottom
+    return y - y_implied
+
+
+def _compute_diagnostics_for_level(
+    y_before: np.ndarray,
+    y_after: np.ndarray,
+    residual_before: np.ndarray,
+    residual_after: np.ndarray,
+    level_indices: np.ndarray,
+) -> dict[str, float]:
+    """Compute all diagnostic metrics for a single hierarchical level.
+
+    Args:
+        y_before: Base forecasts array of shape (n_series, horizon).
+        y_after: Reconciled forecasts array of shape (n_series, horizon).
+        residual_before: Coherence residuals before reconciliation.
+        residual_after: Coherence residuals after reconciliation.
+        level_indices: Indices of series belonging to this level.
+
+    Returns:
+        Dictionary of metric names to values.
+    """
+    # Extract level data
+    y_before_level = y_before[level_indices].flatten()
+    y_after_level = y_after[level_indices].flatten()
+    residual_before_level = residual_before[level_indices].flatten()
+    residual_after_level = residual_after[level_indices].flatten()
+
+    # Adjustments
+    adjustment = y_after_level - y_before_level
+
+    metrics = {
+        "coherence_residual_mae_before": np.mean(np.abs(residual_before_level), dtype=np.float64),
+        "coherence_residual_rmse_before": np.sqrt(np.mean(residual_before_level**2), dtype=np.float64),
+        "coherence_residual_mae_after": np.mean(np.abs(residual_after_level), dtype=np.float64),
+        "coherence_residual_rmse_after": np.sqrt(np.mean(residual_after_level**2), dtype=np.float64),
+        "adjustment_mae": np.mean(np.abs(adjustment), dtype=np.float64),
+        "adjustment_rmse": np.sqrt(np.mean(adjustment**2), dtype=np.float64),
+        "adjustment_max": np.max(np.abs(adjustment, dtype=np.float64)),
+        "adjustment_mean": np.mean(adjustment, dtype=np.float64),
+        "negative_count_before": np.sum(y_before_level < 0, dtype=np.int64),
+        "negative_count_after": np.sum(y_after_level < 0, dtype=np.int64),
+        "negative_introduced": np.sum((y_before_level >= 0) & (y_after_level < 0), dtype=np.int64),
+        "negative_removed": np.sum((y_before_level < 0) & (y_after_level >= 0), dtype=np.int64),
+    }
+    return metrics
+
+
+def _aggregate_diagnostics(
+    diagnostics_per_model: dict[str, dict[str, dict[str, float]]],
+    backend,
+) -> Frame:
+    """Aggregate per-model, per-level diagnostics into a DataFrame.
+
+    Args:
+        diagnostics_per_model: Nested dict {model_name: {level: {metric: value}}}.
+        backend: Narwhals backend for DataFrame creation.
+
+    Returns:
+        DataFrame with columns [level, metric, model1, model2, ...].
+    """
+    models = list(diagnostics_per_model.keys())
+    first_model_data = next(iter(diagnostics_per_model.values()))
+    levels = list(first_model_data.keys())
+
+    # Build output data - iterate through each level's metrics since
+    # different levels may have different metrics (e.g., is_coherent only for Overall)
+    data: dict[str, list] = {"level": [], "metric": []}
+    for model in models:
+        data[model] = []
+
+    for level in levels:
+        level_metrics = list(first_model_data[level].keys())
+        for metric in level_metrics:
+            data["level"].append(level)
+            data["metric"].append(metric)
+            for model in models:
+                data[model].append(diagnostics_per_model[model][level][metric])
+
+    df = nw.from_dict(data, backend=backend)
+    return df.to_native()
+
+
 def _build_fn_name(fn) -> str:
     fn_name = type(fn).__name__
     # Use _init_params if available, otherwise fall back to __dict__ for backwards compatibility
@@ -354,6 +458,8 @@ class HierarchicalReconciliation:
         id_time_col: str = "temporal_id",
         temporal: bool = False,
         S: Frame = None,  # For compatibility with the old API, S_df is now S
+        diagnostics: bool = False,
+        diagnostics_atol: float = 1e-6,
     ) -> FrameT:
         r"""Hierarchical Reconciliation Method.
 
@@ -395,9 +501,20 @@ class HierarchicalReconciliation:
             id_col (str, optional): column that identifies each serie. Default is "unique_id".
             time_col (str, optional): column that identifies each timestep, its values can be timestamps or integers. Default is "ds".
             target_col (str, optional): column that contains the target. Default is "y".
+            diagnostics (bool, optional): if True, compute coherence diagnostics and store in `self.diagnostics`. Default is False.
+            diagnostics_atol (float, optional): absolute tolerance for numerical coherence check. Default is 1e-6.
 
         Returns:
             (FrameT): DataFrame, with reconciled predictions.
+
+        Note:
+            When `diagnostics=True`, after reconciliation completes, `self.diagnostics` will contain
+            a DataFrame with coherence metrics per hierarchical level, including:
+            - `coherence_residual_mae_before/after`: Mean absolute coherence residual before/after reconciliation
+            - `adjustment_mae/rmse/max/mean`: Statistics on the adjustments made by reconciliation
+            - `negative_count_before/after`: Count of negative values before/after reconciliation
+            - `is_coherent`: Whether reconciled forecasts satisfy aggregation constraints (Overall level only)
+            - `coherence_max_violation`: Maximum coherence violation (Overall level only)
         """
         # Handle deprecated S parameter
         if S is not None:
@@ -589,6 +706,75 @@ class HierarchicalReconciliation:
 
                 end = time.time()
                 self.execution_times[f"{model_name}/{reconcile_fn_name}"] = end - start
+
+        # Compute diagnostics if requested
+        if diagnostics:
+            native_namespace = nw.get_native_namespace(Y_hat_nw)
+
+            # Prepare S matrix as dense numpy array for diagnostics
+            S_numpy = (
+                S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                .to_numpy()
+                .astype(np.float64, copy=False)
+            )
+
+            # Get indices - note: S_numpy has shape (n_series, n_bottom)
+            # idx_bottom should refer to the last n_bottom rows of y
+            n_series = S_numpy.shape[0]
+            n_bottom = S_numpy.shape[1]
+            idx_bottom_diag = np.arange(n_series)[-n_bottom:]
+            tags_numeric = reconciler_args["tags"]
+
+            # Add "Overall" level
+            tags_with_overall = {
+                **tags_numeric,
+                "Overall": np.arange(n_series),
+            }
+
+            diagnostics_per_model: dict[str, dict[str, dict[str, float]]] = {}
+
+            for recmodel_name in self.execution_times.keys():
+                # Extract base model name
+                base_model_name = recmodel_name.split("/")[0]
+
+                # Get base forecasts as numpy array (n_series, horizon)
+                y_before = (
+                    Y_hat_nw[base_model_name].to_numpy().reshape(n_series, -1)
+                )
+                # Get reconciled forecasts
+                y_after = (
+                    Y_tilde_nw[recmodel_name].to_numpy().reshape(n_series, -1)
+                )
+
+                # Compute coherence residuals for the entire array
+                residual_before = _compute_coherence_residual(y_before, S_numpy, idx_bottom_diag)
+                residual_after = _compute_coherence_residual(y_after, S_numpy, idx_bottom_diag)
+
+                model_diagnostics: dict[str, dict[str, float]] = {}
+
+                for level_name, level_indices in tags_with_overall.items():
+                    level_metrics = _compute_diagnostics_for_level(
+                        y_before=y_before,
+                        y_after=y_after,
+                        residual_before=residual_before,
+                        residual_after=residual_after,
+                        level_indices=level_indices,
+                    )
+                    model_diagnostics[level_name] = level_metrics
+
+                # Add overall coherence check metrics
+                max_violation = float(np.max(np.abs(residual_after)))
+                is_coherent = float(max_violation <= diagnostics_atol)
+                model_diagnostics["Overall"]["is_coherent"] = is_coherent
+                model_diagnostics["Overall"]["coherence_max_violation"] = max_violation
+
+                diagnostics_per_model[recmodel_name] = model_diagnostics
+
+            self.diagnostics = _aggregate_diagnostics(
+                diagnostics_per_model, backend=native_namespace
+            )
+        else:
+            self.diagnostics = None
 
         Y_tilde_df = Y_tilde_nw.to_native()
 

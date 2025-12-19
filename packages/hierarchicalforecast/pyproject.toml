@@ -44,6 +44,7 @@ dev = [
     "statsforecast>=1.0.0",
     "requests",
     "scipy",
+    "polars[numpy]<=1.32.0",
     "pre-commit",
     "ruff",
     "pytest",
