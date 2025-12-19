@@ -27,9 +27,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
+      - name: Install dependencies (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         run: |
           pip install uv pytest && uv pip install --system ".[dev]" fugue[dask,spark]>=0.8.1 "dask<=2024.12.1"
+
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pip install uv pytest && uv pip install --system ".[dev]" fugue[dask]>=0.8.1 "dask<=2024.12.1"
 
       - name: Install lightgbm on macOS
         if: matrix.os == 'macos-latest'
