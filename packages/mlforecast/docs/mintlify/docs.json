@@ -54,7 +54,8 @@
           "docs/tutorials/m4.html",
           "docs/tutorials/electricity_load_forecasting.html",
           "docs/tutorials/electricity_peak_forecasting.html",
-          "docs/tutorials/prediction_intervals_in_forecasting_models.html"
+          "docs/tutorials/prediction_intervals_in_forecasting_models.html",
+          "docs/tutorials/incremental_forecasting.html"
         ]
       },
       {
