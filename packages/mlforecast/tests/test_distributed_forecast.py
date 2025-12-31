@@ -14,7 +14,7 @@ warnings.simplefilter("ignore", FutureWarning)
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests are not supported on Windows")
 @pytest.mark.skipif(sys.version_info <= (3, 9), reason="Distributed tests are not supported on Python < 3.10")
-def test_distributed_forecast():
+def test_dask_distributed_forecast():
     series = generate_daily_series(
         100, equal_ends=True, min_length=500, max_length=1_000
     )

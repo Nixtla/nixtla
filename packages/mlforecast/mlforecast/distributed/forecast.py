@@ -372,8 +372,10 @@ class DistributedMLForecast:
                 trained_model = clone(model).fit(X, y)
                 self.models_[name] = trained_model.model_
         elif RAY_INSTALLED and isinstance(data, RayDataset):
+            # Need to materialize
+            prep_selected = prep.select_columns(cols=features + [target_col]).materialize()
             X = RayDMatrix(
-                prep.select_columns(cols=features + [target_col]),
+                prep_selected,
                 label=target_col,
             )
             for name, model in self.models.items():
@@ -782,7 +784,13 @@ class DistributedMLForecast:
             ]
             out = {}
             for name, partition_tfms in by_transform:
-                out[name] = partition_tfms[0].stack(partition_tfms)
+                # Check if transform has _core_tfm before stacking
+                if hasattr(partition_tfms[0], '_core_tfm'):
+                    # Standard transforms with state - need to stack
+                    out[name] = partition_tfms[0].stack(partition_tfms)
+                else:
+                    # Composite transforms like Combine - already configured, use first instance
+                    out[name] = partition_tfms[0]
             return out
 
         uids = possibly_concat_indices([ts.uids for ts in all_ts])
