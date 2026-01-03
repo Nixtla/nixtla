@@ -83,6 +83,11 @@ date_extras = [
     "holidays",
     "pandas_market_calendars",
 ]
+snowflake = [
+    "snowflake-snowpark-python",
+    "fire",
+    "rich",
+]
 
 [project.urls]
 Homepage = "https://github.com/Nixtla/nixtla/"
