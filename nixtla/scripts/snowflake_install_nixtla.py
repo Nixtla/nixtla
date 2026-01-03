@@ -1,6 +1,4 @@
 """
-Refactored version of snowflake_install_nixtla.py with improved readability and modularity.
-
 This script deploys Nixtla forecasting components to Snowflake:
 - External access integrations for API calls
 - Python UDTFs for batch forecasting and evaluation
@@ -9,7 +7,7 @@ This script deploys Nixtla forecasting components to Snowflake:
 - Example datasets
 
 Usage:
-    python -m nixtla.scripts.snowflake_deploy_refactored [OPTIONS]
+    python -m nixtla.scripts.snowflake_install_nixtla [OPTIONS]
 
 Options:
     --connection_name: Snowflake connection name (default: "default")
@@ -120,6 +118,34 @@ BEGIN
   res := (SELECT b.* FROM
     (SELECT MOD(HASH(unique_id), :MAX_BATCHES) AS gp, unique_id, ds, y, object_construct(*) AS obj FROM TABLE(:INPUT_DATA)) a,
     TABLE(nixtla_evaluate_batch(:METRICS, obj) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
+  RETURN TABLE(res);
+END;
+$$
+;
+
+//<br>
+
+CREATE OR REPLACE PROCEDURE {ds_prefix}NIXTLA_DETECT_ANOMALIES(
+    "INPUT_DATA" VARCHAR,
+    "PARAMS" OBJECT DEFAULT OBJECT_CONSTRUCT(),
+    "MAX_BATCHES" NUMBER(38,0) DEFAULT 1000
+)
+RETURNS TABLE (
+  UNIQUE_ID VARCHAR, DS TIMESTAMP, Y DOUBLE, TIMEGPT DOUBLE, ANOMALY VARCHAR, TIMEGPT_LO DOUBLE, TIMEGPT_HI DOUBLE
+)
+LANGUAGE SQL AS
+$$
+DECLARE
+  res RESULTSET;
+BEGIN
+  res := (SELECT b.* FROM
+    (SELECT
+        MOD(HASH($1), :MAX_BATCHES) AS gp,
+        TO_VARCHAR($1) AS unique_id,
+        $2::TIMESTAMP_NTZ AS ds,
+        TO_DOUBLE($3) AS y
+     FROM TABLE(:INPUT_DATA)) a,
+    TABLE(nixtla_detect_anomalies_batch(:PARAMS, unique_id, ds, y) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
   RETURN TABLE(res);
 END;
 $$
@@ -406,7 +432,7 @@ def setup_stage(session: Session, stage_path_arg: Optional[str]) -> Optional[str
         Name of the stage, or None if setup failed
     """
     stage = ask_with_defaults(
-        "Stage path (without @) for the artifact: ",
+        "Stage path (without @) for the artifact",
         lambda: stage_path_arg,
     )
 
@@ -694,6 +720,71 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
 
         end_partition._sf_vectorized_input = pd.DataFrame  # type: ignore
 
+    # Anomaly Detection UDTF
+    @udtf(
+        input_types=[MapType(), StringType(), TimestampType(), DoubleType()],
+        output_schema=StructType([
+            StructField("unique_id", StringType()),
+            StructField("ds", TimestampType()),
+            StructField("y", DoubleType()),
+            StructField("TimeGPT", DoubleType()),
+            StructField("anomaly", StringType()),
+            StructField("TimeGPT_lo", DoubleType()),
+            StructField("TimeGPT_hi", DoubleType()),
+        ]),
+        name="nixtla_detect_anomalies_batch",
+        **security_params,
+        **common_params,
+    )
+    class AnomalyDetectionUDTF:
+        def __init__(self):
+            import _snowflake
+            from nixtla import NixtlaClient
+
+            token = _snowflake.get_generic_secret_string("nixtla_api_key")
+            self.client = NixtlaClient(api_key=token)
+
+        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
+            input_df = pd.DataFrame({
+                "unique_id": df.iloc[:, 1],
+                "ds": df.iloc[:, 2],
+                "y": df.iloc[:, 3],
+            })
+
+            config = df.iloc[0, 0]
+
+            # Extract level from config (default 99)
+            level = config.get("level", 99)
+
+            # Detect anomalies
+            anomalies = self.client.detect_anomalies(df=input_df, **config)
+
+            # Prepare output columns
+            result_cols = ["unique_id", "ds", "y", "TimeGPT", "anomaly"]
+
+            # Find the confidence interval columns
+            lo_col = f"TimeGPT-lo-{level}"
+            hi_col = f"TimeGPT-hi-{level}"
+
+            if lo_col in anomalies.columns and hi_col in anomalies.columns:
+                result_cols.extend([lo_col, hi_col])
+                result = anomalies[result_cols].copy()
+            else:
+                # If confidence intervals not present, use None
+                result = anomalies[["unique_id", "ds", "y", "TimeGPT", "anomaly"]].copy()
+                result[lo_col] = None
+                result[hi_col] = None
+
+            # Convert anomaly boolean to string for Snowflake compatibility
+            result["anomaly"] = result["anomaly"].astype(str)
+
+            # Rename columns to match output schema
+            result.columns = ["unique_id", "ds", "y", "TimeGPT", "anomaly", "TimeGPT_lo", "TimeGPT_hi"]
+
+            return result
+
+        end_partition._sf_vectorized_input = pd.DataFrame  # type: ignore
+
     print("[green]UDTFs created![/green]")
 
 
@@ -786,6 +877,77 @@ def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
 # ============================================================================
 
 
+def show_example_usage_scripts(session: Session) -> None:
+    """
+    Display sample SQL scripts showing how to use the example datasets.
+
+    Args:
+        session: Active Snowflake session
+    """
+    # Get current database and schema
+    try:
+        current_db = session.get_current_database()
+        current_schema = session.get_current_schema()
+        prefix = f"{current_db}.{current_schema}."
+    except Exception:
+        prefix = ""
+
+    sample_scripts = f"""
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        📚 SAMPLE USAGE SCRIPTS                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Copy and paste these SQL scripts to test your Nixtla deployment!
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 1️⃣  TEST FORECASTING with EXAMPLE_TRAIN                                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+-- Forecast 14 days ahead with confidence intervals
+CALL {prefix}NIXTLA_FORECAST(
+    INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
+    PARAMS => OBJECT_CONSTRUCT(
+        'h', 14,                              -- Forecast 14 days ahead
+        'freq', 'D',                          -- Daily frequency
+        'level', ARRAY_CONSTRUCT(80, 95)      -- 80% and 95% confidence intervals
+    )
+);
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 2️⃣  TEST EVALUATION with EXAMPLE_ALL_DATA                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+-- Evaluate forecast accuracy using multiple metrics
+CALL {prefix}NIXTLA_EVALUATE(
+    INPUT_DATA => '{prefix}EXAMPLE_ALL_DATA',
+    METRICS => ARRAY_CONSTRUCT('MAPE', 'MAE', 'MSE')
+);
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 3️⃣  TEST ANOMALY DETECTION with EXAMPLE_ANOMALY_DATA                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+-- Detect anomalies with 95% confidence level
+CALL {prefix}NIXTLA_DETECT_ANOMALIES(
+    INPUT_DATA => '{prefix}EXAMPLE_ANOMALY_DATA',
+    PARAMS => OBJECT_CONSTRUCT(
+        'level', 95,                          -- 95% confidence level
+        'freq', 'D'                           -- Daily frequency
+    )
+);
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    🎉 Ready to start forecasting!                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+"""
+
+    print(sample_scripts)
+
+
 def load_example_datasets(session: Session) -> None:
     """
     Load example datasets for testing.
@@ -793,19 +955,29 @@ def load_example_datasets(session: Session) -> None:
     Args:
         session: Active Snowflake session
     """
-    # Load and upload all_data
-    all_data = pd.read_parquet("all_data.parquet")
-    all_data.columns = all_data.columns.str.upper()
-    session.write_pandas(
-        all_data,
-        "EXAMPLE_ALL_DATA",
-        auto_create_table=True,
-        overwrite=True,
-        use_logical_type=True,
-    )
+    import numpy as np
 
-    # Load and upload train
-    train = pd.read_parquet("train.parquet")
+    # Generate sample training data
+    print("[cyan]Generating sample training data...[/cyan]")
+
+    dates = pd.date_range(start='2020-01-01', periods=365, freq='D')
+    series_ids = ['series_1', 'series_2', 'series_3']
+
+    train_data = []
+    for series_id in series_ids:
+        for i, date in enumerate(dates[:330]):  # 330 days for training
+            # Generate synthetic data with trend and seasonality
+            trend = i * 0.5
+            seasonal = 10 * np.sin(2 * np.pi * i / 7)  # Weekly seasonality
+            noise = np.random.normal(0, 2)
+            value = 100 + trend + seasonal + noise
+            train_data.append({
+                'unique_id': series_id,
+                'ds': date,
+                'y': value
+            })
+
+    train = pd.DataFrame(train_data)
     train.columns = train.columns.str.upper()
     session.write_pandas(
         train,
@@ -815,7 +987,124 @@ def load_example_datasets(session: Session) -> None:
         use_logical_type=True,
     )
 
-    print("[green]Example datasets (EXAMPLE_ALL_DATA and EXAMPLE_TRAIN) created![/green]")
+    # Generate all_data (training + some forecasts for evaluation)
+    all_data = []
+    for series_id in series_ids:
+        for i, date in enumerate(dates):  # All 365 days
+            trend = i * 0.5
+            seasonal = 10 * np.sin(2 * np.pi * i / 7)
+            noise = np.random.normal(0, 2)
+            value = 100 + trend + seasonal + noise
+
+            # Add forecasted column for last 35 days (simulated forecast)
+            if i >= 330:
+                forecast_value = value + np.random.normal(0, 3)
+            else:
+                forecast_value = None
+
+            all_data.append({
+                'unique_id': series_id,
+                'ds': date,
+                'y': value,
+                'TimeGPT': forecast_value
+            })
+
+    all_data_df = pd.DataFrame(all_data)
+    all_data_df.columns = all_data_df.columns.str.upper()
+    session.write_pandas(
+        all_data_df,
+        "EXAMPLE_ALL_DATA",
+        auto_create_table=True,
+        overwrite=True,
+        use_logical_type=True,
+    )
+
+    # Generate anomaly detection example data with injected anomalies
+    print("[cyan]Generating anomaly detection example data...[/cyan]")
+
+    anomaly_dates = pd.date_range(start='2020-01-01', periods=180, freq='D')
+    anomaly_data = []
+
+    # Series 1: Few extreme spikes and drops
+    for i, date in enumerate(anomaly_dates):
+        trend = i * 0.3
+        seasonal = 15 * np.sin(2 * np.pi * i / 7)
+        noise = np.random.normal(0, 2)
+        value = 150 + trend + seasonal + noise
+
+        # Inject anomalies at specific dates
+        if i == 30:  # Day 30: Large spike
+            value += 50
+        elif i == 60:  # Day 60: Large drop
+            value -= 40
+        elif i == 120:  # Day 120: Another spike
+            value += 45
+
+        anomaly_data.append({
+            'unique_id': 'sensor_1',
+            'ds': date,
+            'y': value
+        })
+
+    # Series 2: Cluster of anomalies
+    for i, date in enumerate(anomaly_dates):
+        trend = i * 0.2
+        seasonal = 10 * np.cos(2 * np.pi * i / 7)
+        noise = np.random.normal(0, 1.5)
+        value = 200 + trend + seasonal + noise
+
+        # Inject cluster of anomalies (consecutive days)
+        if 90 <= i <= 95:  # Days 90-95: Consecutive spikes
+            value += 35
+        elif i == 150:  # Day 150: Single drop
+            value -= 30
+
+        anomaly_data.append({
+            'unique_id': 'sensor_2',
+            'ds': date,
+            'y': value
+        })
+
+    # Series 3: Subtle anomalies
+    for i, date in enumerate(anomaly_dates):
+        trend = i * 0.4
+        seasonal = 12 * np.sin(2 * np.pi * i / 7)
+        noise = np.random.normal(0, 3)
+        value = 180 + trend + seasonal + noise
+
+        # Inject subtle anomalies
+        if i == 45:  # Day 45: Moderate spike
+            value += 25
+        elif i == 100:  # Day 100: Moderate drop
+            value -= 20
+
+        anomaly_data.append({
+            'unique_id': 'sensor_3',
+            'ds': date,
+            'y': value
+        })
+
+    anomaly_df = pd.DataFrame(anomaly_data)
+    anomaly_df.columns = anomaly_df.columns.str.upper()
+    session.write_pandas(
+        anomaly_df,
+        "EXAMPLE_ANOMALY_DATA",
+        auto_create_table=True,
+        overwrite=True,
+        use_logical_type=True,
+    )
+
+    print("[green]Example datasets created successfully![/green]")
+    print("[cyan]  - EXAMPLE_TRAIN: 3 series × 330 days = 990 rows (for forecasting)[/cyan]")
+    print("[cyan]  - EXAMPLE_ALL_DATA: 3 series × 365 days = 1095 rows (for evaluation)[/cyan]")
+    print("[cyan]  - EXAMPLE_ANOMALY_DATA: 3 series × 180 days = 540 rows (with injected anomalies)[/cyan]")
+    print("\n[yellow]Injected anomalies in EXAMPLE_ANOMALY_DATA:[/yellow]")
+    print("[yellow]  - sensor_1: Spikes on days 30, 120; Drop on day 60[/yellow]")
+    print("[yellow]  - sensor_2: Cluster of spikes on days 90-95; Drop on day 150[/yellow]")
+    print("[yellow]  - sensor_3: Moderate spike on day 45; Moderate drop on day 100[/yellow]")
+
+    # Show sample usage scripts
+    show_example_usage_scripts(session)
 
 
 # ============================================================================
