@@ -51,6 +51,7 @@ PACKAGES = [
     "snowflake-snowpark-python",
     "requests",
     "narwhals",
+    "rich",
 ]
 
 TEMPLATE_ACCESS_INTEGRATION = """
@@ -89,12 +90,12 @@ DECLARE
 BEGIN
   res := (SELECT b.* FROM
     (SELECT
-        MOD(HASH($1), :MAX_BATCHES) AS gp,
-        TO_VARCHAR($1) AS unique_id,
-        $2::TIMESTAMP_NTZ AS ds,
-        TO_DOUBLE($3) AS y
+        MOD(HASH(unique_id), :MAX_BATCHES) AS gp,
+        unique_id,
+        ds,
+        OBJECT_CONSTRUCT_KEEP_NULL(*) AS data_obj
      FROM TABLE(:INPUT_DATA)) a,
-    TABLE(nixtla_forecast_batch(:PARAMS, unique_id, ds, y) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
+    TABLE(nixtla_forecast_batch(:PARAMS, data_obj) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
   RETURN TABLE(res);
 END;
 $$
@@ -116,7 +117,7 @@ DECLARE
   res RESULTSET;
 BEGIN
   res := (SELECT b.* FROM
-    (SELECT MOD(HASH(unique_id), :MAX_BATCHES) AS gp, unique_id, ds, y, object_construct(*) AS obj FROM TABLE(:INPUT_DATA)) a,
+    (SELECT MOD(HASH(unique_id), :MAX_BATCHES) AS gp, unique_id, ds, y, OBJECT_CONSTRUCT_KEEP_NULL(*) AS obj FROM TABLE(:INPUT_DATA)) a,
     TABLE(nixtla_evaluate_batch(:METRICS, obj) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
   RETURN TABLE(res);
 END;
@@ -615,9 +616,9 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
         "stage_location": config.stage,
     }
 
-    # Forecast UDTF
+    # Forecast UDTF (with exogenous variables support)
     @udtf(
-        input_types=[MapType(), StringType(), TimestampType(), DoubleType()],
+        input_types=[MapType(), MapType()],
         output_schema=StructType([
             StructField("unique_id", StringType()),
             StructField("ds", TimestampType()),
@@ -636,27 +637,67 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             self.client = NixtlaClient(api_key=token)
 
         def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
-            input_df = pd.DataFrame({
-                "unique_id": df.iloc[:, 1],
-                "ds": df.iloc[:, 2],
-                "y": df.iloc[:, 3],
-            })
-
             config = df.iloc[0, 0]
             if config.get("finetune_steps", 0) > 0:
                 raise ValueError("Finetuning is not allowed during forecasting")
 
-            forecast = self.client.forecast(df=input_df, **config)
+            # Convert data objects to DataFrame
+            data = pd.DataFrame(df.iloc[:, 1].tolist())
+            data.columns = data.columns.str.lower()
+            data = data.sort_values(by=["unique_id", "ds"])
+            data["ds"] = pd.to_datetime(data["ds"])
 
-            # Find forecast column
+            # Identify exogenous columns (any column not in base columns)
+            base_cols = ["unique_id", "ds", "y"]
+            extra_cols = [col for col in data.columns if col not in base_cols]
+
+            # Get explicitly declared exogenous variables from config
+            hist_exog_list = config.get("hist_exog_list")
+
+            # Normalize hist_exog_list to lowercase to match data columns
+            if hist_exog_list:
+                hist_exog_list = [col.lower() for col in hist_exog_list]
+
+            # Prepare forecast parameters
+            forecast_params = dict(config)
+
+            # Only use exogenous variables if explicitly declared
+            if hist_exog_list:
+                # Validate that declared columns exist in data
+                missing_cols = [col for col in hist_exog_list if col not in data.columns]
+                if missing_cols:
+                    raise ValueError(
+                        f"Columns specified in hist_exog_list not found in data: {missing_cols}"
+                        f". Available columns: {list(data.columns)}"
+                    )
+                forecast_params["hist_exog_list"] = hist_exog_list
+            elif extra_cols:
+                # Warn user about unused columns (via print, visible in query logs)
+                print(
+                    f"Warning: Found extra columns {extra_cols} in input data. "
+                    f"To use them as exogenous variables, add 'hist_exog_list' to PARAMS: "
+                    f"PARAMS => OBJECT_CONSTRUCT('h', <value>, 'hist_exog_list', ARRAY_CONSTRUCT({', '.join(repr(c) for c in extra_cols)}))"
+                )
+
+            # Call TimeGPT forecast
+            forecast = self.client.forecast(df=data, **forecast_params)
+
+            # Find forecast column (prefer model name over TimeGPT)
             forecast_col = None
             for col in forecast.columns:
-                if col.lower() not in ["unique_id", "ds", "y"]:
+                if col.lower() not in ["unique_id", "ds", "y"] and not col.startswith("TimeGPT"):
                     forecast_col = col
                     break
 
+            # If no model column found, try TimeGPT
             if forecast_col is None:
-                raise ValueError("No valid column found for forecast")
+                for col in forecast.columns:
+                    if col.startswith("TimeGPT") and "-lo-" not in col and "-hi-" not in col:
+                        forecast_col = col
+                        break
+
+            if forecast_col is None:
+                raise ValueError("No valid forecast column found in output")
 
             return forecast[["unique_id", "ds", forecast_col]].rename(
                 columns={forecast_col: "forecast"}
@@ -940,6 +981,24 @@ CALL {prefix}NIXTLA_DETECT_ANOMALIES(
 );
 
 
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 4️⃣  TEST EXOGENOUS VARIABLES with EXAMPLE_TRAIN                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+-- Forecast using exogenous (external) variables to improve accuracy
+CALL {prefix}NIXTLA_FORECAST(
+    INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
+    PARAMS => OBJECT_CONSTRUCT(
+        'h', 14,                              -- Forecast 14 days ahead
+        'freq', 'D',                          -- Daily frequency
+        'hist_exog_list', ARRAY_CONSTRUCT(    -- Declare exogenous variables
+            'temperature',
+            'is_weekend',
+            'promotion'
+        )
+    )
+);
+
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                    🎉 Ready to start forecasting!                            ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -957,25 +1016,68 @@ def load_example_datasets(session: Session) -> None:
     """
     import numpy as np
 
-    # Generate sample training data
-    print("[cyan]Generating sample training data...[/cyan]")
+    # Generate sample training data with exogenous variables
+    print("[cyan]Generating sample training data with exogenous variables...[/cyan]")
 
     dates = pd.date_range(start='2020-01-01', periods=365, freq='D')
-    series_ids = ['series_1', 'series_2', 'series_3']
-
     train_data = []
-    for series_id in series_ids:
-        for i, date in enumerate(dates[:330]):  # 330 days for training
-            # Generate synthetic data with trend and seasonality
-            trend = i * 0.5
-            seasonal = 10 * np.sin(2 * np.pi * i / 7)  # Weekly seasonality
-            noise = np.random.normal(0, 2)
-            value = 100 + trend + seasonal + noise
-            train_data.append({
-                'unique_id': series_id,
-                'ds': date,
-                'y': value
-            })
+
+    # Series 1: Basic series without exogenous variables (for basic examples)
+    for i, date in enumerate(dates[:330]):  # 330 days for training
+        trend = i * 0.5
+        seasonal = 10 * np.sin(2 * np.pi * i / 7)  # Weekly seasonality
+        noise = np.random.normal(0, 2)
+        value = 100 + trend + seasonal + noise
+        train_data.append({
+            'unique_id': 'series_1',
+            'ds': date,
+            'y': value,
+            'temperature': None,
+            'is_weekend': None,
+            'promotion': None,
+        })
+
+    # Series 2: With exogenous variables (temperature, is_weekend, promotion)
+    for i, date in enumerate(dates[:330]):
+        trend = i * 0.5
+        seasonal = 10 * np.sin(2 * np.pi * i / 7)
+        noise = np.random.normal(0, 2)
+
+        # Exogenous variables
+        temperature = 20 + 10 * np.sin(2 * np.pi * i / 365) + np.random.normal(0, 2)
+        is_weekend = 1 if date.dayofweek >= 5 else 0
+        promotion = 1 if i % 14 == 0 else 0  # Promotion every 2 weeks
+
+        # Value influenced by exogenous factors
+        temp_effect = (temperature - 20) * 0.5
+        weekend_effect = 5 if is_weekend else 0
+        promo_effect = 8 if promotion else 0
+
+        value = 100 + trend + seasonal + temp_effect + weekend_effect + promo_effect + noise
+
+        train_data.append({
+            'unique_id': 'series_2',
+            'ds': date,
+            'y': value,
+            'temperature': temperature,
+            'is_weekend': is_weekend,
+            'promotion': promotion,
+        })
+
+    # Series 3: Basic series without exogenous variables (for comparison)
+    for i, date in enumerate(dates[:330]):
+        trend = i * 0.5
+        seasonal = 10 * np.sin(2 * np.pi * i / 7)
+        noise = np.random.normal(0, 2)
+        value = 100 + trend + seasonal + noise
+        train_data.append({
+            'unique_id': 'series_3',
+            'ds': date,
+            'y': value,
+            'temperature': None,
+            'is_weekend': None,
+            'promotion': None,
+        })
 
     train = pd.DataFrame(train_data)
     train.columns = train.columns.str.upper()
@@ -989,6 +1091,7 @@ def load_example_datasets(session: Session) -> None:
 
     # Generate all_data (training + some forecasts for evaluation)
     all_data = []
+    series_ids = ['series_1', 'series_2', 'series_3']
     for series_id in series_ids:
         for i, date in enumerate(dates):  # All 365 days
             trend = i * 0.5
@@ -1095,9 +1198,13 @@ def load_example_datasets(session: Session) -> None:
     )
 
     print("[green]Example datasets created successfully![/green]")
-    print("[cyan]  - EXAMPLE_TRAIN: 3 series × 330 days = 990 rows (for forecasting)[/cyan]")
+    print("[cyan]  - EXAMPLE_TRAIN: 3 series × 330 days = 990 rows[/cyan]")
     print("[cyan]  - EXAMPLE_ALL_DATA: 3 series × 365 days = 1095 rows (for evaluation)[/cyan]")
     print("[cyan]  - EXAMPLE_ANOMALY_DATA: 3 series × 180 days = 540 rows (with injected anomalies)[/cyan]")
+    print("\n[yellow]Exogenous variables in EXAMPLE_TRAIN:[/yellow]")
+    print("[yellow]  - series_1: No exogenous variables (for basic forecasting examples)[/yellow]")
+    print("[yellow]  - series_2: temperature, is_weekend, promotion (for exogenous examples)[/yellow]")
+    print("[yellow]  - series_3: No exogenous variables (for comparison)[/yellow]")
     print("\n[yellow]Injected anomalies in EXAMPLE_ANOMALY_DATA:[/yellow]")
     print("[yellow]  - sensor_1: Spikes on days 30, 120; Drop on day 60[/yellow]")
     print("[yellow]  - sensor_2: Cluster of spikes on days 90-95; Drop on day 150[/yellow]")
