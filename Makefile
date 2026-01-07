@@ -58,3 +58,7 @@ lint:
 format:
 	@echo "Running black formatter on staged files..."
 	@git diff --cached --name-only --diff-filter=ACMR | grep '\.py$$' | xargs -r uv run black
+
+install-snowflake-stored-procedures:
+	@echo "Installing Nixtla stored procedures in Snowflake..."
+	python -m nixtla.scripts.snowflake_install_nixtla

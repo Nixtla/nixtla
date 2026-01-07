@@ -520,7 +520,7 @@ def package_and_upload_nixtla(session: Session, stage: str) -> None:
             f"nixtla=={nixtla_version}",
             "utilsforecast",
             "httpx",
-            "--no-deps",
+            "--no-deps",  # Avoid pulling in heavy things like pandas/numpy into the ZIP
         ]
 
         subprocess.run(install_args, check=True)
