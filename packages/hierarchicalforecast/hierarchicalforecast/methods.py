@@ -1465,7 +1465,7 @@ class MinTrace(HReconciler):
             S=S,
             P=self.P,
             W=self.W,
-            y_hat=y_hat,
+            y_hat=self.y_hat,  # self.y_hat contains nonnegative-constrained forecasts when nonnegative=True
             y_insample=y_insample,
             y_hat_insample=y_hat_insample,
             sigmah=sigmah,

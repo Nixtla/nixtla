@@ -240,3 +240,187 @@ def test_reconcile_raises_on_invalid_level(grouped_data, lib, level, method):
             Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags,
             level=level, intervals_method=method
         )
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+@pytest.mark.parametrize("method", ['bootstrap', 'permbu'])
+def test_mintrace_nonnegative_raises_on_intervals_method(grouped_data, lib, method):
+    """Test that MinTrace with nonnegative=True raises error for bootstrap and permbu intervals.
+
+    Nonnegative reconciliation is not compatible with bootstrap and permbu probabilistic
+    forecasts because these methods generate samples based on historical residuals which
+    may not respect the nonnegative constraint.
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    # Add prediction intervals (required for permbu method)
+    Y_hat_nw = nw.from_native(Y_hat)
+    Y_hat_with_intervals = Y_hat_nw.with_columns([
+        (nw.col('y_model') * 0.9).alias('y_model-lo-90'),
+        (nw.col('y_model') * 1.1).alias('y_model-hi-90')
+    ])
+
+    hrec = HierarchicalReconciliation([MinTrace(method="mint_shrink", nonnegative=True)])
+    with pytest.raises(ValueError, match="nonnegative reconciliation is not compatible"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_with_intervals,
+            Y_df=Y_train,
+            S_df=S,
+            tags=tags,
+            level=[90],
+            intervals_method=method,
+            num_samples=1000,
+            seed=1,
+        )
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_mintrace_nonnegative_with_normality_intervals(grouped_data, lib):
+    """Test MinTrace nonnegative reconciliation with normality intervals via HierarchicalReconciliation.
+
+    This integration test verifies that:
+    1. Nonnegative reconciliation works through the reconcile() API
+    2. Reconciled forecasts are non-negative
+    3. Samples are generated and have the correct shape
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    # Add prediction intervals to Y_hat_df (required for normality intervals)
+    Y_hat_nw = nw.from_native(Y_hat)
+    Y_hat_with_intervals = Y_hat_nw.with_columns([
+        (nw.col('y_model') * 0.9).alias('y_model-lo-90'),
+        (nw.col('y_model') * 1.1).alias('y_model-hi-90')
+    ])
+
+    hrec = HierarchicalReconciliation([MinTrace(method="ols", nonnegative=True)])
+    reconciled = hrec.reconcile(
+        Y_hat_df=Y_hat_with_intervals,
+        Y_df=Y_train,
+        S_df=S,
+        tags=tags,
+        level=[90],
+        intervals_method="normality",
+        num_samples=100,
+        seed=42,
+        diagnostics=True,
+    )
+
+    reconciled_nw = nw.from_native(reconciled)
+
+    # Verify reconciled mean forecasts exist
+    assert "y_model/MinTrace_method-ols_nonnegative-True" in reconciled_nw.columns
+
+    # Verify prediction intervals exist
+    assert "y_model/MinTrace_method-ols_nonnegative-True-lo-90" in reconciled_nw.columns
+    assert "y_model/MinTrace_method-ols_nonnegative-True-hi-90" in reconciled_nw.columns
+
+    # Verify samples were generated
+    sample_cols = [c for c in reconciled_nw.columns if "sample-" in c]
+    assert len(sample_cols) == 100, f"Expected 100 sample columns, got {len(sample_cols)}"
+
+    # Verify reconciled forecasts are non-negative (within numerical tolerance)
+    mean_col = reconciled_nw["y_model/MinTrace_method-ols_nonnegative-True"].to_numpy()
+    assert np.all(mean_col >= -1e-6), "Reconciled forecasts should be non-negative"
+
+    # Verify coherency using diagnostics
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/MinTrace_method-ols_nonnegative-True"].to_list()[0]
+    assert is_coherent == 1.0, "Reconciled forecasts should be coherent"
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_mintrace_nonnegative_without_intervals(grouped_data, lib):
+    """Test MinTrace nonnegative reconciliation without probabilistic intervals.
+
+    Verifies that nonnegative reconciliation works when level=None (no intervals).
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    hrec = HierarchicalReconciliation([MinTrace(method="ols", nonnegative=True)])
+    reconciled = hrec.reconcile(
+        Y_hat_df=Y_hat,
+        Y_df=Y_train,
+        S_df=S,
+        tags=tags,
+        level=None,  # No intervals
+        diagnostics=True,
+    )
+
+    reconciled_nw = nw.from_native(reconciled)
+
+    # Verify reconciled mean forecasts exist
+    assert "y_model/MinTrace_method-ols_nonnegative-True" in reconciled_nw.columns
+
+    # Verify no prediction intervals or samples were generated
+    interval_cols = [c for c in reconciled_nw.columns if "-lo-" in c or "-hi-" in c]
+    sample_cols = [c for c in reconciled_nw.columns if "sample-" in c]
+    assert len(interval_cols) == 0, "Should not have interval columns when level=None"
+    assert len(sample_cols) == 0, "Should not have sample columns when level=None"
+
+    # Verify reconciled forecasts are non-negative
+    mean_col = reconciled_nw["y_model/MinTrace_method-ols_nonnegative-True"].to_numpy()
+    assert np.all(mean_col >= -1e-6), "Reconciled forecasts should be non-negative"
+
+    # Verify coherency using diagnostics
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/MinTrace_method-ols_nonnegative-True"].to_list()[0]
+    assert is_coherent == 1.0, "Reconciled forecasts should be coherent"
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_mintrace_nonnegative_samples_use_constrained_forecasts(grouped_data, lib):
+    """Integration test verifying sampler uses nonnegative-constrained forecasts.
+
+    This is a regression test for the bug where _get_sampler() was initialized with
+    original y_hat instead of the nonnegative-constrained self.y_hat.
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    # Add prediction intervals to Y_hat_df (required for normality intervals)
+    Y_hat_nw = nw.from_native(Y_hat)
+    Y_hat_with_intervals = Y_hat_nw.with_columns([
+        (nw.col('y_model') * 0.9).alias('y_model-lo-90'),
+        (nw.col('y_model') * 1.1).alias('y_model-hi-90')
+    ])
+
+    # Use nonnegative reconciliation
+    reconciler = MinTrace(method="ols", nonnegative=True)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    reconciled = hrec.reconcile( # noqa: F841
+        Y_hat_df=Y_hat_with_intervals,
+        Y_df=Y_train,
+        S_df=S,
+        tags=tags,
+        level=[90],
+        intervals_method="normality",
+        num_samples=100,
+        seed=42,
+        diagnostics=True,
+    )
+
+    # Verify the reconciler's sampler was initialized with the constrained y_hat
+    assert reconciler.fitted, "Reconciler should be fitted"
+    assert reconciler.sampler is not None, "Sampler should be initialized"
+
+    # KEY ASSERTION: The sampler y_hat should match the reconciler's y_hat
+    # (which contains the nonnegative-constrained forecasts)
+    np.testing.assert_array_equal(
+        reconciler.sampler.y_hat,
+        reconciler.y_hat,
+        err_msg="Sampler y_hat should match nonnegative-constrained y_hat"
+    )
+
+    # Verify coherency using diagnostics
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/MinTrace_method-ols_nonnegative-True"].to_list()[0]
+    assert is_coherent == 1.0, "Reconciled forecasts should be coherent"

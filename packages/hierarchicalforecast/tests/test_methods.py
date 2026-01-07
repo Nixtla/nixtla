@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from typing import Dict, List
 
 import numpy as np
 import pytest
+from scipy import sparse
 
 from hierarchicalforecast.methods import (
     ERM,
@@ -16,7 +16,6 @@ from hierarchicalforecast.methods import (
     TopDownSparse,
     _is_strictly_hierarchical,
     is_strictly_hierarchical,
-    sparse,
 )
 from hierarchicalforecast.utils import _construct_adjacency_matrix
 
@@ -29,8 +28,8 @@ class HierarchicalTestData:
     y_bottom: np.ndarray  # Bottom level historical data
     y_hat_bottom: np.ndarray  # Bottom level forecasts
     y_hat_bottom_insample: np.ndarray  # Bottom level insample forecasts
-    idx_bottom: List[int]  # Indices of bottom level series
-    tags: Dict[str, np.ndarray]  # Hierarchy level tags
+    idx_bottom: list[int]  # Indices of bottom level series
+    tags: dict[str, np.ndarray]  # Hierarchy level tags
 
 @pytest.fixture
 def hierarchical_data():
@@ -733,3 +732,190 @@ def test_coherent_sample_shapes(hierarchical_data, intervals_method):
     # If we have multiple shapes, compare them
     if len(test_coherent_sample_shapes.shapes) > 1:
         assert test_coherent_sample_shapes.shapes[0] == test_coherent_sample_shapes.shapes[-1]
+
+
+def test_mintrace_nonnegative_samples_use_constrained_forecasts(hierarchical_data):
+    """Test that MinTrace nonnegative samples are based on constrained forecasts.
+
+    This is a regression test for the bug where _get_sampler() was called with
+    the original y_hat instead of the nonnegative-constrained self.y_hat,
+    causing samples to potentially contain negative values even when
+    nonnegative=True.
+    """
+    data = hierarchical_data
+
+    # Create base forecasts with NEGATIVE values to trigger nonnegative constraint
+    y_hat_base = data.S @ data.y_hat_bottom
+    # Make some forecasts negative - use large negative values to make the bug obvious
+    y_hat_with_negatives = y_hat_base.copy()
+    y_hat_with_negatives[0, :] = -10.0  # Make total negative
+    y_hat_with_negatives[1, :] = -5.0   # Make group 1 negative
+
+    # Create in-sample data
+    y_base = data.S @ data.y_bottom
+    y_hat_base_insample = data.S @ data.y_hat_bottom_insample
+
+    # Compute sigmah - use small values to reduce sampling variance
+    sigmah = np.ones((data.S.shape[0], data.h)) * 0.5
+
+    # Use MinTrace with nonnegative=True and normality intervals
+    # (bootstrap/permbu are not compatible with nonnegative)
+    cls_min_trace = MinTrace(method="ols", nonnegative=True)
+
+    result = cls_min_trace.fit_predict(
+        S=data.S,
+        y_hat=y_hat_with_negatives,
+        y_insample=y_base,
+        y_hat_insample=y_hat_base_insample,
+        sigmah=sigmah,
+        level=[80, 90],
+        intervals_method="normality",
+        num_samples=200,
+        seed=42,
+        tags=data.tags,
+        idx_bottom=data.idx_bottom,
+    )
+
+    # Verify the mean reconciled forecasts are non-negative
+    assert np.all(result["mean"] >= 0), "Mean forecasts should be non-negative"
+
+    # KEY ASSERTION: Verify the sampler was initialized with the nonnegative-constrained y_hat
+    # This is the core fix - previously the sampler was initialized with original y_hat
+    assert cls_min_trace.sampler is not None, "Sampler should be initialized"
+    np.testing.assert_array_equal(
+        cls_min_trace.sampler.y_hat,
+        cls_min_trace.y_hat,
+        err_msg="Sampler y_hat should match the nonnegative-constrained y_hat"
+    )
+
+    # Verify sampler y_hat is non-negative (since we used nonnegative=True)
+    assert np.all(cls_min_trace.sampler.y_hat >= -1e-6), (
+        "Sampler y_hat should be non-negative when nonnegative=True"
+    )
+
+    # Generate samples - if the bug existed, samples would be centered around
+    # the original negative values (-10, -5) instead of the constrained values
+    samples = cls_min_trace.sample(num_samples=500)
+    sample_means = np.mean(samples, axis=2)
+
+    # With the bug fixed, sample means should be close to the non-negative reconciled mean.
+    # Tolerance explanation: With sigmah=0.5 and 500 samples, the standard error of the mean
+    # is approximately sigmah/sqrt(500) ≈ 0.022. We use atol=0.3 to account for the
+    # coherent covariance structure which can increase variance.
+    np.testing.assert_allclose(
+        sample_means,
+        result["mean"],
+        atol=0.3,
+        err_msg="Sample means should be close to non-negative reconciled forecasts"
+    )
+
+
+def test_mintrace_nonnegative_without_intervals(hierarchical_data):
+    """Test MinTrace with nonnegative=True but without probabilistic intervals."""
+    data = hierarchical_data
+
+    y_hat_base = data.S @ data.y_hat_bottom
+    y_hat_with_negatives = y_hat_base.copy()
+    y_hat_with_negatives[0, :] = -10.0
+
+    y_base = data.S @ data.y_bottom
+    y_hat_base_insample = data.S @ data.y_hat_bottom_insample
+
+    cls_min_trace = MinTrace(method="ols", nonnegative=True)
+
+    # Should work without intervals (level=None, intervals_method=None)
+    result = cls_min_trace.fit_predict(
+        S=data.S,
+        y_hat=y_hat_with_negatives,
+        y_insample=y_base,
+        y_hat_insample=y_hat_base_insample,
+        sigmah=None,
+        level=None,
+        intervals_method=None,
+        num_samples=None,
+        seed=None,
+        tags=data.tags,
+        idx_bottom=data.idx_bottom,
+    )
+
+    # Verify the mean reconciled forecasts are non-negative
+    assert np.all(result["mean"] >= 0), "Mean forecasts should be non-negative"
+    # Should not have quantiles since level=None
+    assert "quantiles" not in result or result["quantiles"] is None
+
+
+@pytest.mark.parametrize("method", ["ols", "wls_struct"])
+def test_mintrace_sparse_nonnegative_sampler_initialization(hierarchical_data, method):
+    """Test that MinTraceSparse with nonnegative=True correctly initializes sampler."""
+    data = hierarchical_data
+
+    # Convert S to sparse matrix as required by MinTraceSparse
+    S_sparse = sparse.csr_matrix(data.S)
+
+    y_hat_base = data.S @ data.y_hat_bottom
+    y_hat_with_negatives = y_hat_base.copy()
+    y_hat_with_negatives[0, :] = -10.0
+
+    y_base = data.S @ data.y_bottom
+    y_hat_base_insample = data.S @ data.y_hat_bottom_insample
+    sigmah = np.ones((data.S.shape[0], data.h)) * 0.5
+
+    cls_min_trace = MinTraceSparse(method=method, nonnegative=True)
+
+    result = cls_min_trace.fit_predict(
+        S=S_sparse,
+        y_hat=y_hat_with_negatives,
+        y_insample=y_base,
+        y_hat_insample=y_hat_base_insample,
+        sigmah=sigmah,
+        level=[80, 90],
+        intervals_method="normality",
+        num_samples=200,
+        seed=42,
+        tags=data.tags,
+        idx_bottom=data.idx_bottom,
+    )
+
+    # Verify the mean reconciled forecasts are non-negative
+    assert np.all(result["mean"] >= 0), "Mean forecasts should be non-negative"
+
+    # Verify sampler uses the constrained y_hat
+    assert cls_min_trace.sampler is not None
+    np.testing.assert_array_equal(
+        cls_min_trace.sampler.y_hat,
+        cls_min_trace.y_hat,
+        err_msg="MinTraceSparse sampler y_hat should match nonnegative-constrained y_hat"
+    )
+
+
+@pytest.mark.parametrize("intervals_method", ["bootstrap", "permbu"])
+def test_mintrace_nonnegative_raises_on_bootstrap_permbu(hierarchical_data, intervals_method):
+    """Test that MinTrace with nonnegative=True raises error for bootstrap/permbu.
+
+    Nonnegative reconciliation is not compatible with bootstrap or permbu probabilistic
+    forecasts because these methods generate samples from historical residuals which
+    do not respect the nonnegative constraint applied during reconciliation.
+    """
+    data = hierarchical_data
+
+    y_hat_base = data.S @ data.y_hat_bottom
+    y_base = data.S @ data.y_bottom
+    y_hat_base_insample = data.S @ data.y_hat_bottom_insample
+    sigmah = np.ones((data.S.shape[0], data.h)) * 0.5
+
+    cls_min_trace = MinTrace(method="ols", nonnegative=True)
+
+    with pytest.raises(ValueError, match="nonnegative reconciliation is not compatible"):
+        cls_min_trace.fit_predict(
+            S=data.S,
+            y_hat=y_hat_base,
+            y_insample=y_base,
+            y_hat_insample=y_hat_base_insample,
+            sigmah=sigmah,
+            level=[90],
+            intervals_method=intervals_method,
+            num_samples=200,
+            seed=42,
+            tags=data.tags,
+            idx_bottom=data.idx_bottom,
+        )

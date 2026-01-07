@@ -662,17 +662,20 @@ class HierarchicalReconciliation:
                 ]
                 kwargs = {key: reconciler_args[key] for key in kwargs_ls}
 
-                if (level is not None) and (num_samples > 0):
-                    # Store reconciler's memory to generate samples
-                    reconciler = reconciler.fit(**kwargs)
-                    fcsts_model = reconciler.predict(
-                        S=reconciler_args["S"],
-                        y_hat=reconciler_args["y_hat"],
-                        level=level,
-                    )
-                else:
-                    # Memory efficient reconciler's fit_predict
-                    fcsts_model = reconciler(**kwargs, level=level)
+                fcsts_model = reconciler(**kwargs, level=level)
+
+                # Validate reconciler state for sampling (fail fast before processing results)
+                if num_samples > 0 and level is not None:
+                    if not getattr(reconciler, "fitted", False):
+                        raise ValueError(
+                            f"Reconciler {reconcile_fn_name} does not support sampling. "
+                            "Set num_samples=0 or use a different reconciler."
+                        )
+                    if getattr(reconciler, "sampler", None) is None:
+                        raise ValueError(
+                            f"Reconciler {reconcile_fn_name} does not have a sampler configured. "
+                            "Ensure intervals_method is set correctly."
+                        )
 
                 # Parse final outputs
                 Y_tilde_nw = Y_tilde_nw.with_columns(
