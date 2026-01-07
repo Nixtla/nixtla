@@ -93,7 +93,7 @@ CREATE OR REPLACE PROCEDURE {ds_prefix}NIXTLA_FORECAST(
     "MAX_BATCHES" NUMBER(38,0) DEFAULT 1000
 )
 RETURNS TABLE (
-  UNIQUE_ID VARCHAR, DS TIMESTAMP, FORECAST DOUBLE
+  UNIQUE_ID VARCHAR, DS TIMESTAMP, FORECAST DOUBLE, CONFIDENCE_INTERVALS VARIANT
 )
 LANGUAGE SQL AS
 $$
@@ -200,6 +200,19 @@ class DeploymentConfig:
             },
             "external_access_integrations": [self.integration_name],
         }
+
+
+@dataclass
+class ExampleTestCase:
+    """Test case definition for validating Snowflake deployment examples."""
+
+    name: str
+    description: str
+    sql_query: str
+    input_table: str
+    nixtla_method: str  # 'forecast', 'detect_anomalies', 'cross_validation'
+    nixtla_params: dict
+    compare_columns: list[str]  # Columns to compare between Snowflake and direct client
 
 
 # ============================================================================
@@ -572,19 +585,29 @@ def package_and_upload_nixtla(session: Session, stage: str) -> None:
 # ============================================================================
 
 
-def create_security_integration(session: Session, config: DeploymentConfig) -> None:
+def create_security_integration(
+    session: Session,
+    config: DeploymentConfig,
+    api_key: Optional[str] = None,
+    skip_confirmation: bool = False,
+) -> None:
     """
     Create network rules, secrets, and external access integration.
 
     Args:
         session: Active Snowflake session
         config: Deployment configuration
+        api_key: Nixtla API key (if None, will prompt or use env var)
+        skip_confirmation: If True, skip interactive confirmation prompts
     """
-    nixtla_api_key = ask_with_defaults(
-        "Nixtla API key: ",
-        lambda: os.environ.get("NIXTLA_API_KEY"),
-        password=True,
-    )
+    if api_key is None:
+        nixtla_api_key = ask_with_defaults(
+            "Nixtla API key: ",
+            lambda: os.environ.get("NIXTLA_API_KEY"),
+            password=True,
+        )
+    else:
+        nixtla_api_key = api_key
 
     # Clean and escape the API key
     # Strip whitespace and quotes that might have been accidentally entered
@@ -601,11 +624,17 @@ def create_security_integration(session: Session, config: DeploymentConfig) -> N
         base_url=config.base_url,
     )
 
-    print(Markdown(f"```sql\n{script}\n```"))
+    if not skip_confirmation:
+        print(Markdown(f"```sql\n{script}\n```"))
 
-    if Confirm.ask("Do you want to run the script now?", default=False):
+    if skip_confirmation or Confirm.ask(
+        "Do you want to run the script now?", default=False
+    ):
         execute_sql_script(session, script)
-        print(f"[green]Access integration '{config.integration_name}' created![/green]")
+        if not skip_confirmation:
+            print(
+                f"[green]Access integration '{config.integration_name}' created![/green]"
+            )
 
 
 # ============================================================================
@@ -631,6 +660,7 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
         StructField,
         StructType,
         TimestampType,
+        VariantType,
     )
 
     security_params = config.get_security_params()
@@ -653,6 +683,7 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
                 StructField("unique_id", StringType()),
                 StructField("ds", TimestampType()),
                 StructField("forecast", DoubleType()),
+                StructField("confidence_intervals", VariantType()),
             ]
         ),
         name="nixtla_forecast_batch",
@@ -739,9 +770,56 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             if forecast_col is None:
                 raise ValueError("No valid forecast column found in output")
 
-            return forecast[["unique_id", "ds", forecast_col]].rename(
-                columns={forecast_col: "forecast"}
-            )
+            # Build base result with forecast
+            result = forecast[["unique_id", "ds", forecast_col]].copy()
+            result = result.rename(columns={forecast_col: "forecast"})
+
+            # Extract confidence interval columns and structure them
+            # Look for columns matching pattern: *-lo-<level> and *-hi-<level>
+            import re
+
+            interval_pattern = re.compile(r"^.*-(lo|hi)-(\d+)$", re.IGNORECASE)
+            interval_cols = {}  # Maps (level, bound) -> column_name
+
+            for col in forecast.columns:
+                match = interval_pattern.match(col)
+                if match:
+                    bound_type = match.group(1).lower()  # "lo" or "hi"
+                    level = match.group(2)  # "80", "95", etc.
+                    interval_cols[(level, bound_type)] = col
+
+            # Build confidence_intervals structure for each row
+            if interval_cols:
+                # Group levels
+                levels = sorted(set(level for level, _ in interval_cols.keys()))
+
+                def build_interval_dict(row):
+                    """Build nested dict structure for a single row."""
+                    intervals = {}
+                    for level in levels:
+                        level_data = {}
+                        lo_col = interval_cols.get((level, "lo"))
+                        hi_col = interval_cols.get((level, "hi"))
+                        if lo_col:
+                            val = row[lo_col]
+                            # Convert to float to ensure proper type
+                            level_data["lo"] = float(val) if pd.notna(val) else None
+                        if hi_col:
+                            val = row[hi_col]
+                            level_data["hi"] = float(val) if pd.notna(val) else None
+                        if level_data:
+                            intervals[level] = level_data
+                    # Return as Python dict - Snowflake VARIANT will handle serialization
+                    return intervals if intervals else None
+
+                result["confidence_intervals"] = forecast.apply(
+                    build_interval_dict, axis=1
+                )
+            else:
+                # No confidence intervals found
+                result["confidence_intervals"] = None
+
+            return result[["unique_id", "ds", "forecast", "confidence_intervals"]]
 
         end_partition._sf_vectorized_input = pd.DataFrame  # type: ignore
 
@@ -892,20 +970,28 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
 # ============================================================================
 
 
-def create_stored_procedures(session: Session, config: DeploymentConfig) -> None:
+def create_stored_procedures(
+    session: Session, config: DeploymentConfig, skip_confirmation: bool = False
+) -> None:
     """
     Deploy SQL stored procedures for inference and evaluation.
 
     Args:
         session: Active Snowflake session
         config: Deployment configuration
+        skip_confirmation: If True, skip interactive confirmation prompts
     """
     script = TEMPLATE_SP.format(ds_prefix=config.prefix)
-    print(Markdown(f"```sql\n{script}\n```"))
 
-    if Confirm.ask("Do you want to run the script now?", default=False):
+    if not skip_confirmation:
+        print(Markdown(f"```sql\n{script}\n```"))
+
+    if skip_confirmation or Confirm.ask(
+        "Do you want to run the script now?", default=False
+    ):
         execute_sql_script(session, script)
-        print("[green]Stored procedures created![/green]")
+        if not skip_confirmation:
+            print("[green]Stored procedures created![/green]")
 
 
 def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
@@ -977,101 +1063,190 @@ def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
 # ============================================================================
 
 
-def show_example_usage_scripts(session: Session) -> None:
+def show_example_usage_scripts(config: DeploymentConfig) -> None:
     """
     Display sample SQL scripts showing how to use the example datasets.
 
+    Uses test case definitions from get_example_test_cases() to ensure
+    displayed examples match what's tested.
+
     Args:
-        session: Active Snowflake session
+        config: Deployment configuration containing database, schema, etc.
     """
-    # Get current database and schema
-    try:
-        current_db = session.get_current_database()
-        current_schema = session.get_current_schema()
-        prefix = f"{current_db}.{current_schema}."
-    except Exception:
-        prefix = ""
+    # Get test cases using the deployment config
+    test_cases = get_example_test_cases(config)
 
-    sample_scripts = f"""
+    # Map of test case names to display in the UI (filtering and ordering)
+    display_cases = [
+        "basic_forecast",
+        "cross_validation",
+        "anomaly_detection",
+        "forecast_with_exog",
+    ]
 
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                        📚 SAMPLE USAGE SCRIPTS                               ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+    # Number emojis
+    numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
-Copy and paste these SQL scripts to test your Nixtla deployment!
+    # Header
+    print(
+        "\n╔══════════════════════════════════════════════════════════════════════════════╗"
+    )
+    print(
+        "║                        📚 SAMPLE USAGE SCRIPTS                               ║"
+    )
+    print(
+        "╚══════════════════════════════════════════════════════════════════════════════╝\n"
+    )
+    print("Copy and paste these SQL scripts to test your Nixtla deployment!\n")
 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ 1️⃣  TEST FORECASTING with EXAMPLE_TRAIN                                     │
-└──────────────────────────────────────────────────────────────────────────────┘
+    # Display each test case
+    for idx, case_name in enumerate(display_cases):
+        test_case = next((tc for tc in test_cases if tc.name == case_name), None)
+        if not test_case:
+            continue
 
--- Forecast 14 days ahead with confidence intervals
-CALL {prefix}NIXTLA_FORECAST(
+        print(
+            "┌──────────────────────────────────────────────────────────────────────────────┐"
+        )
+        print(f"│ {numbers[idx]}  {test_case.description.upper():<74} │")
+        print(
+            "└──────────────────────────────────────────────────────────────────────────────┘\n"
+        )
+        print(test_case.sql_query)
+        print("\n")
+
+    # Footer
+    print(
+        "╔══════════════════════════════════════════════════════════════════════════════╗"
+    )
+    print(
+        "║                    🎉 Ready to start forecasting!                            ║"
+    )
+    print(
+        "╚══════════════════════════════════════════════════════════════════════════════╝"
+    )
+
+
+def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
+    """
+    Get structured test case definitions for validating Snowflake deployment.
+
+    These test cases can be used to:
+    1. Execute SQL queries via Snowflake UDTFs/stored procedures
+    2. Execute equivalent operations with NixtlaClient on DataFrames
+    3. Compare results to validate deployment correctness
+
+    Args:
+        config: Deployment configuration with database, schema, etc.
+
+    Returns:
+        List of ExampleTestCase objects defining test scenarios
+    """
+    prefix = config.prefix
+
+    return [
+        ExampleTestCase(
+            name="basic_forecast",
+            description="Forecast 14 days with confidence intervals (80%, 95%)",
+            sql_query=f"""CALL {prefix}NIXTLA_FORECAST(
     INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
     PARAMS => OBJECT_CONSTRUCT(
-        'h', 14,                              -- Forecast 14 days ahead
-        'freq', 'D',                          -- Daily frequency
-        'level', ARRAY_CONSTRUCT(80, 95)      -- 80% and 95% confidence intervals
+        'h', 14,
+        'freq', 'D',
+        'level', ARRAY_CONSTRUCT(80, 95)
     )
-);
-
-
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ 2️⃣  TEST EVALUATION with EXAMPLE_ALL_DATA                                   │
-└──────────────────────────────────────────────────────────────────────────────┘
-
--- Evaluate forecast accuracy using multiple metrics
-CALL {prefix}NIXTLA_EVALUATE(
-    INPUT_DATA => '{prefix}EXAMPLE_ALL_DATA',
-    METRICS => ARRAY_CONSTRUCT('MAPE', 'MAE', 'MSE')
-);
-
-
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ 3️⃣  TEST ANOMALY DETECTION with EXAMPLE_ANOMALY_DATA                        │
-└──────────────────────────────────────────────────────────────────────────────┘
-
--- Detect anomalies with 95% confidence level
-CALL {prefix}NIXTLA_DETECT_ANOMALIES(
+)""",
+            input_table="train",
+            nixtla_method="forecast",
+            nixtla_params={"h": 14, "freq": "D", "level": [80, 95]},
+            compare_columns=["unique_id", "ds", "TimeGPT"],
+        ),
+        ExampleTestCase(
+            name="forecast_without_intervals",
+            description="Forecast 7 days without confidence intervals",
+            sql_query=f"""CALL {prefix}NIXTLA_FORECAST(
+    INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
+    PARAMS => OBJECT_CONSTRUCT(
+        'h', 7,
+        'freq', 'D'
+    )
+)""",
+            input_table="train",
+            nixtla_method="forecast",
+            nixtla_params={"h": 7, "freq": "D"},
+            compare_columns=["unique_id", "ds", "TimeGPT"],
+        ),
+        ExampleTestCase(
+            name="anomaly_detection",
+            description="Detect anomalies with 95% confidence level",
+            sql_query=f"""CALL {prefix}NIXTLA_DETECT_ANOMALIES(
     INPUT_DATA => '{prefix}EXAMPLE_ANOMALY_DATA',
     PARAMS => OBJECT_CONSTRUCT(
-        'level', 95,                          -- 95% confidence level
-        'freq', 'D'                           -- Daily frequency
+        'level', 95,
+        'freq', 'D'
     )
-);
-
-
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ 4️⃣  TEST EXOGENOUS VARIABLES with EXAMPLE_TRAIN                             │
-└──────────────────────────────────────────────────────────────────────────────┘
-
--- Forecast using exogenous (external) variables to improve accuracy
-CALL {prefix}NIXTLA_FORECAST(
+)""",
+            input_table="anomaly",
+            nixtla_method="detect_anomalies",
+            nixtla_params={"level": 95, "freq": "D"},
+            compare_columns=["unique_id", "ds", "y", "anomaly"],
+        ),
+        ExampleTestCase(
+            name="forecast_with_exog",
+            description="Forecast with exogenous variables (temperature, is_weekend, promotion)",
+            sql_query=f"""CALL {prefix}NIXTLA_FORECAST(
     INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
     PARAMS => OBJECT_CONSTRUCT(
-        'h', 14,                              -- Forecast 14 days ahead
-        'freq', 'D',                          -- Daily frequency
-        'hist_exog_list', ARRAY_CONSTRUCT(    -- Declare exogenous variables
-            'temperature',
-            'is_weekend',
-            'promotion'
-        )
+        'h', 14,
+        'freq', 'D',
+        'hist_exog_list', ARRAY_CONSTRUCT('temperature', 'is_weekend', 'promotion')
     )
-);
+)""",
+            input_table="train",
+            nixtla_method="forecast",
+            nixtla_params={
+                "h": 14,
+                "freq": "D",
+                "X_df": None,  # Will be set dynamically in tests based on data
+            },
+            compare_columns=["unique_id", "ds", "TimeGPT"],
+        ),
+        ExampleTestCase(
+            name="cross_validation",
+            description="Cross-validation with 3 windows, 7-day horizon",
+            sql_query=f"""CALL {prefix}NIXTLA_EVALUATE(
+    INPUT_DATA => '{prefix}EXAMPLE_ALL_DATA',
+    METRICS => ARRAY_CONSTRUCT('MAPE', 'MAE', 'MSE')
+)""",
+            input_table="all_data",
+            nixtla_method="cross_validation",
+            nixtla_params={
+                # Note: The stored procedure uses fixed parameters internally
+                # These are for reference/documentation
+                "h": 7,
+                "n_windows": 3,
+                "step_size": 7,
+            },
+            compare_columns=["unique_id", "cutoff", "TimeGPT"],
+        ),
+    ]
 
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                    🎉 Ready to start forecasting!                            ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-"""
 
-    print(sample_scripts)
-
-
-def load_example_datasets(session: Session) -> None:
+def load_example_datasets(
+    session: Session,
+    config: DeploymentConfig,
+    return_dataframes: bool = False,
+) -> Optional[dict[str, pd.DataFrame]]:
     """
     Load example datasets for testing.
 
     Args:
         session: Active Snowflake session
+        config: Deployment configuration (used for displaying example scripts)
+        return_dataframes: If True, return the generated DataFrames before upload
+
+    Returns:
+        If return_dataframes=True, dict with keys: 'train', 'all_data', 'anomaly'
     """
     import numpy as np
 
@@ -1280,12 +1455,89 @@ def load_example_datasets(session: Session) -> None:
     )
 
     # Show sample usage scripts
-    show_example_usage_scripts(session)
+    show_example_usage_scripts(config)
+
+    # Return DataFrames if requested (before they were uppercased for Snowflake)
+    if return_dataframes:
+        # Need to return lowercase versions for NixtlaClient compatibility
+        train_df = train.copy()
+        train_df.columns = train_df.columns.str.lower()
+
+        all_data_copy = all_data_df.copy()
+        all_data_copy.columns = all_data_copy.columns.str.lower()
+
+        anomaly_copy = anomaly_df.copy()
+        anomaly_copy.columns = anomaly_copy.columns.str.lower()
+
+        return {
+            "train": train_df,
+            "all_data": all_data_copy,
+            "anomaly": anomaly_copy,
+        }
+
+    return None
 
 
 # ============================================================================
 # Main Deployment Flow
 # ============================================================================
+
+
+def deploy_snowflake_core(
+    session: Session,
+    config: DeploymentConfig,
+    api_key: str,
+    deploy_security: bool = True,
+    deploy_package: bool = True,
+    deploy_udtfs: bool = True,
+    deploy_procedures: bool = True,
+    deploy_finetune: bool = True,
+    deploy_examples: bool = True,
+) -> DeploymentConfig:
+    """
+    Core deployment logic without user interaction.
+
+    This function contains the pure deployment logic and can be called
+    programmatically or from tests. It does not perform any interactive
+    prompts or confirmations.
+
+    Args:
+        session: Active Snowflake session
+        config: Deployment configuration with database, schema, stage, etc.
+        api_key: Nixtla API key for authentication
+        deploy_security: Whether to deploy security integration (network rules, secrets)
+        deploy_package: Whether to package and upload Nixtla client
+        deploy_udtfs: Whether to create UDTFs
+        deploy_procedures: Whether to create stored procedures
+        deploy_finetune: Whether to create finetune stored procedure
+        deploy_examples: Whether to load example datasets
+
+    Returns:
+        DeploymentConfig that was used for deployment
+    """
+    # Set API key in environment for the deployment functions
+    os.environ["NIXTLA_API_KEY"] = api_key
+
+    # Deploy components based on flags
+    if deploy_security:
+        create_security_integration(session, config, api_key, skip_confirmation=True)
+
+    if deploy_package:
+        package_and_upload_nixtla(session, config.stage)
+
+    if deploy_udtfs:
+        create_udtfs(session, config)
+
+    if deploy_procedures:
+        create_stored_procedures(session, config, skip_confirmation=True)
+
+    if deploy_finetune:
+        create_finetune_sproc(session, config)
+
+    if deploy_examples:
+        load_example_datasets(session, config)
+
+    return config
 
 
 def deploy_snowflake(
@@ -1364,38 +1616,49 @@ def deploy_snowflake(
         print(f"[cyan]Using integration: {config.integration_name}[/cyan]")
         print(f"[cyan]Using API endpoint: {config.base_url}[/cyan]")
 
-        # Deploy components (each step is optional)
-        if Confirm.ask("Do you want to generate the security script?", default=False):
-            create_security_integration(session, config)
-
-        if Confirm.ask("Do you want to (re)package the Nixtla client?", default=False):
-            package_and_upload_nixtla(session, config.stage)
-
-        if Confirm.ask("Do you want to (re)create the UDTFs?", default=False):
-            create_udtfs(session, config)
-
-        if Confirm.ask(
+        # Ask user which components to deploy
+        deploy_security = Confirm.ask(
+            "Do you want to generate the security script?", default=False
+        )
+        deploy_package = Confirm.ask(
+            "Do you want to (re)package the Nixtla client?", default=False
+        )
+        deploy_udtfs = Confirm.ask(
+            "Do you want to (re)create the UDTFs?", default=False
+        )
+        deploy_procedures = Confirm.ask(
             "Do you want to generate the stored procedures script for inference and evaluation?",
             default=False,
-        ):
-            create_stored_procedures(session, config)
-
-        if Confirm.ask(
+        )
+        deploy_finetune = Confirm.ask(
             "Do you want to (re)create the stored procedure for finetuning?",
             default=False,
-        ):
-            create_finetune_sproc(session, config)
-
-        if Confirm.ask(
+        )
+        deploy_examples = Confirm.ask(
             "Do you want to (re)create the example datasets?",
             default=False,
-        ):
-            load_example_datasets(session)
+        )
 
+        # Get API key
+        nixtla_api_key = ask_with_defaults(
+            "Nixtla API key: ",
+            lambda: os.environ.get("NIXTLA_API_KEY"),
+            password=True,
+        )
 
-def main():
-    Fire(deploy_snowflake)
+        # Call core deployment function
+        deploy_snowflake_core(
+            session=session,
+            config=config,
+            api_key=nixtla_api_key,
+            deploy_security=deploy_security,
+            deploy_package=deploy_package,
+            deploy_udtfs=deploy_udtfs,
+            deploy_procedures=deploy_procedures,
+            deploy_finetune=deploy_finetune,
+            deploy_examples=deploy_examples,
+        )
 
 
 if __name__ == "__main__":
-    main()
+    Fire(deploy_snowflake)
