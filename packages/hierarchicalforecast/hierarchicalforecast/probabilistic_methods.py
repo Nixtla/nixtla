@@ -1,14 +1,41 @@
-__all__ = ['Normality']
+__all__ = ['Normality', 'CovarianceType']
 
 
 import warnings
+from enum import Enum
 
 import numpy as np
 import scipy.sparse as sp
 from scipy.stats import norm
 from sklearn.preprocessing import OneHotEncoder
 
-from .utils import is_strictly_hierarchical
+from .utils import (
+    _ma_cov,
+    _shrunk_covariance_schaferstrimmer_no_nans,
+    _shrunk_covariance_schaferstrimmer_with_nans,
+    is_strictly_hierarchical,
+)
+
+
+class CovarianceType(str, Enum):
+    """Covariance estimation method for Normality probabilistic reconciliation.
+
+    Attributes:
+        DIAGONAL: Uses the W matrix diagonal with correlation scaling.
+            This is the default and backward-compatible option.
+            The W matrix is required.
+        FULL: Uses full empirical covariance computed from residuals.
+            Requires the `residuals` parameter. The W matrix is ignored.
+            Warning: May produce non-positive-definite matrices when
+            n_series > n_observations.
+        SHRINK: Uses Schäfer-Strimmer shrinkage estimator for better numerical
+            stability. Requires the `residuals` parameter. The W matrix is ignored.
+            Recommended when n_series is large relative to n_observations.
+    """
+
+    DIAGONAL = "diagonal"
+    FULL = "full"
+    SHRINK = "shrink"
 
 
 class Normality:
@@ -31,16 +58,83 @@ class Normality:
     ```
 
     Args:
-        S (Union[np.ndarray, sp.spmatrix]): np.array, summing matrix of size (`base`, `bottom`).
-        P (Union[np.ndarray, sp.spmatrix]): np.array, reconciliation matrix of size (`bottom`, `base`).
+        S (Union[np.ndarray, sp.spmatrix]): Summing matrix of size (`base`, `bottom`).
+        P (Union[np.ndarray, sp.spmatrix]): Reconciliation matrix of size (`bottom`, `base`).
         y_hat (np.ndarray): Point forecasts values of size (`base`, `horizon`).
-        W (Union[np.ndarray, sp.spmatrix]): np.array, hierarchical covariance matrix of size (`base`, `base`).
-        sigmah (np.ndarray): np.array, forecast standard dev. of size (`base`, `horizon`).
-        seed (int, optional): int, random seed for numpy generator's replicability. Default is 0.
+        sigmah (np.ndarray): Forecast standard dev. of size (`base`, `horizon`).
+        W (Union[np.ndarray, sp.spmatrix], optional): Hierarchical covariance matrix of size
+            (`base`, `base`). Required when `covariance_type='diagonal'` (default).
+            **Ignored** when `covariance_type` is `'full'` or `'shrink'` (covariance is
+            computed from residuals instead). Default is None.
+        seed (int, optional): Random seed for numpy generator's replicability. Default is 0.
+        covariance_type (Union[str, CovarianceType], optional): Type of covariance estimator.
+            Can be a string or CovarianceType enum. Options are:
+
+            - `'diagonal'` / `CovarianceType.DIAGONAL`: Uses the W matrix diagonal with
+              correlation scaling (default, backward compatible). W is required.
+            - `'full'` / `CovarianceType.FULL`: Uses full empirical covariance from residuals.
+              W is ignored. Warning: may be non-positive-definite if n_series > n_observations.
+            - `'shrink'` / `CovarianceType.SHRINK`: Uses Schäfer-Strimmer shrinkage estimator.
+              W is ignored. Recommended for numerical stability with many series.
+
+            Default is `'diagonal'`.
+        residuals (np.ndarray, optional): Insample residuals of size (`base`, `obs`).
+            Required when `covariance_type` is `'full'` or `'shrink'`. Default is None.
+        shrinkage_ridge (float, optional): Ridge parameter for shrinkage covariance estimator.
+            Only used when `covariance_type='shrink'`. A warning is issued if provided
+            with other covariance types. Default is 2e-8.
+
+    Raises:
+        ValueError: If `covariance_type` is invalid.
+        ValueError: If `covariance_type='diagonal'` and `W` is None.
+        ValueError: If `covariance_type` is `'full'` or `'shrink'` and `residuals` is None.
+        ValueError: If `residuals` shape doesn't match expected (`base`, `obs`).
+        ValueError: If `residuals` has fewer than 2 observations.
+        ValueError: If `residuals` is empty.
+        ValueError: If any series in `residuals` has all NaN values.
+
+    Warnings:
+        UserWarning: If `shrinkage_ridge` is provided but `covariance_type` is not `'shrink'`.
+        UserWarning: If `W` is provided but `covariance_type` is not `'diagonal'` (W is ignored).
+        UserWarning: If any series has zero or near-zero variance (may affect correlation estimates).
+        UserWarning: If `covariance_type='full'` and n_series > n_observations (non-PSD risk).
 
     References:
-        - [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022). "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation". European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+        - [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022).
+          "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation".
+          European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+        - [Schäfer, Juliane, and Korbinian Strimmer. "A Shrinkage Approach to Large-Scale
+          Covariance Matrix Estimation". Statistical Applications in Genetics and Molecular
+          Biology 4, no. 1 (2005).](https://doi.org/10.2202/1544-6115.1175)
+
+    Examples:
+        >>> # Using diagonal covariance (default, backward compatible)
+        >>> normality = Normality(S=S, P=P, y_hat=y_hat, sigmah=sigmah, W=W)
+        >>> samples = normality.get_samples(num_samples=100)
+
+        >>> # Using full empirical covariance from residuals
+        >>> normality = Normality(
+        ...     S=S, P=P, y_hat=y_hat, sigmah=sigmah,
+        ...     covariance_type="full", residuals=residuals
+        ... )
+
+        >>> # Using shrinkage covariance (recommended for stability)
+        >>> normality = Normality(
+        ...     S=S, P=P, y_hat=y_hat, sigmah=sigmah,
+        ...     covariance_type=CovarianceType.SHRINK, residuals=residuals
+        ... )
     """
+
+    # Numerical stability constants
+    # Minimum standard deviation threshold to avoid division by zero when
+    # converting covariance to correlation. Values below this are clamped.
+    # Chosen as sqrt(machine epsilon) for float64 ≈ 1.5e-8, rounded to 1e-8.
+    _MIN_STD_THRESHOLD: float = 1e-8
+
+    # Default ridge parameter for shrinkage covariance estimator.
+    # Provides numerical stability by ensuring diagonal elements are bounded away from zero.
+    # Based on Schäfer-Strimmer (2005) recommendations for genomic data.
+    _DEFAULT_SHRINKAGE_RIDGE: float = 2e-8
 
     def __init__(
         self,
@@ -48,12 +142,145 @@ class Normality:
         P: np.ndarray | sp.spmatrix,
         y_hat: np.ndarray,
         sigmah: np.ndarray,
-        W: np.ndarray | sp.spmatrix,
+        W: np.ndarray | sp.spmatrix | None = None,
         seed: int = 0,
+        covariance_type: str | CovarianceType = "diagonal",
+        residuals: np.ndarray | None = None,
+        shrinkage_ridge: float = _DEFAULT_SHRINKAGE_RIDGE,
     ):
+        # Normalize covariance_type to CovarianceType enum
+        if isinstance(covariance_type, str):
+            covariance_type_lower = covariance_type.lower()
+            try:
+                covariance_type = CovarianceType(covariance_type_lower)
+            except ValueError as e:
+                valid_types = [t.value for t in CovarianceType]
+                raise ValueError(
+                    f"Unknown covariance_type `{covariance_type}`. "
+                    f"Choose from {valid_types} or use CovarianceType enum."
+                ) from e
+        elif not isinstance(covariance_type, CovarianceType):
+            raise ValueError(
+                f"covariance_type must be a string or CovarianceType enum, "
+                f"got {type(covariance_type).__name__}."
+            )
+
+        # Get number of series from S matrix
+        n_series = S.shape[0]
+
+        # Validate W for diagonal covariance type
+        if covariance_type == CovarianceType.DIAGONAL:
+            if W is None:
+                raise ValueError(
+                    "covariance_type='diagonal' requires `W` parameter. "
+                    "Provide hierarchical covariance matrix of size (`base`, `base`), "
+                    "or use covariance_type='full' or 'shrink' with residuals."
+                )
+            # Check W has valid diagonal
+            w_diag = W.diagonal() if hasattr(W, 'diagonal') else np.diag(W)
+            if np.any(w_diag <= 0):
+                raise ValueError(
+                    "W matrix has non-positive diagonal elements. "
+                    "Covariance diagonal must be strictly positive."
+                )
+            if np.any(np.isnan(w_diag)):
+                raise ValueError("W matrix contains NaN values on the diagonal.")
+
+        # Warn if W is provided but will be ignored
+        if covariance_type != CovarianceType.DIAGONAL and W is not None:
+            warnings.warn(
+                f"W parameter is ignored when covariance_type='{covariance_type.value}'. "
+                "Covariance will be computed from residuals instead.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Warn if shrinkage_ridge is provided but not used
+        if covariance_type != CovarianceType.SHRINK and shrinkage_ridge != self._DEFAULT_SHRINKAGE_RIDGE:
+            warnings.warn(
+                f"shrinkage_ridge parameter is only used when covariance_type='shrink'. "
+                f"Current covariance_type='{covariance_type.value}', shrinkage_ridge will be ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Validate residuals for full/shrink types
+        if covariance_type in (CovarianceType.FULL, CovarianceType.SHRINK):
+            if residuals is None:
+                raise ValueError(
+                    f"covariance_type='{covariance_type.value}' requires `residuals` parameter. "
+                    "Provide insample residuals of size (`base`, `obs`)."
+                )
+
+            # Validate residuals is a 2D array
+            if residuals.ndim != 2:
+                raise ValueError(
+                    f"residuals must be a 2D array of shape (`base`, `obs`), "
+                    f"got {residuals.ndim}D array with shape {residuals.shape}."
+                )
+
+            # Validate residuals shape matches number of series
+            if residuals.shape[0] != n_series:
+                raise ValueError(
+                    f"residuals shape mismatch: first dimension ({residuals.shape[0]}) "
+                    f"must match number of series in S ({n_series}). "
+                    f"Expected residuals shape: ({n_series}, obs)."
+                )
+
+            # Validate residuals has enough observations
+            if residuals.shape[1] == 0:
+                raise ValueError(
+                    "residuals is empty (0 observations). "
+                    "Provide residuals with at least 2 observations."
+                )
+
+            if residuals.shape[1] < 2:
+                raise ValueError(
+                    f"residuals has only {residuals.shape[1]} observation(s). "
+                    "At least 2 observations are required to compute covariance."
+                )
+
+            # Check for all-NaN series
+            nan_mask = np.isnan(residuals)
+            nan_counts_per_series = nan_mask.sum(axis=1)
+            all_nan_series = nan_counts_per_series == residuals.shape[1]
+            if np.any(all_nan_series):
+                all_nan_indices = np.where(all_nan_series)[0]
+                raise ValueError(
+                    f"residuals contains series with all NaN values at indices: "
+                    f"{all_nan_indices.tolist()}. Each series must have at least "
+                    "2 non-NaN observations."
+                )
+
+            # Check for series with insufficient non-NaN observations
+            non_nan_counts = residuals.shape[1] - nan_counts_per_series
+            insufficient_obs = non_nan_counts < 2
+            if np.any(insufficient_obs):
+                insufficient_indices = np.where(insufficient_obs)[0]
+                raise ValueError(
+                    f"residuals contains series with fewer than 2 non-NaN observations "
+                    f"at indices: {insufficient_indices.tolist()}. Each series must have "
+                    "at least 2 non-NaN observations to compute covariance."
+                )
+
+            # Warn about n_series > n_observations for full covariance
+            n_obs = residuals.shape[1] - nan_counts_per_series.max()
+            if covariance_type == CovarianceType.FULL and n_series > n_obs:
+                warnings.warn(
+                    f"covariance_type='full' with n_series ({n_series}) > n_observations ({n_obs}) "
+                    "may produce a non-positive-definite covariance matrix. "
+                    "Consider using covariance_type='shrink' for better numerical stability.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
         self.S = S
         self.P = P
         self.y_hat = y_hat
+        self.covariance_type = covariance_type
+        self.residuals = residuals
+        self.shrinkage_ridge = shrinkage_ridge
+
         if isinstance(P, sp.linalg.LinearOperator) and sp.issparse(S):
             self.SP = sp.linalg.aslinearoperator(self.S) @ self.P
         else:
@@ -62,10 +289,11 @@ class Normality:
         self.sigmah = sigmah
         self.seed = seed
 
-        # Base Normality Errors assume independence/diagonal covariance
-        # Calculate correlation matrix from covariance matrix
-        std_ = np.sqrt(self.W.diagonal())
-        R1 = self.W / np.outer(std_, std_)
+        # Compute correlation matrix based on covariance_type
+        R1 = self._compute_correlation_matrix(covariance_type, W, residuals, shrinkage_ridge)
+
+        # Store for potential inspection
+        self._correlation_matrix = R1
 
         # Using elementwise multiplication
         cov_recs = []
@@ -82,10 +310,134 @@ class Normality:
                 cov_matrix = R1 * sigma_matrix
                 cov_rec = self.SP @ cov_matrix @ self.SP.T
             cov_recs.append(cov_rec)
-            sigmah_recs.append(np.sqrt(cov_rec.diagonal()))
+            diag_cov = cov_rec.diagonal()
+            if np.any(diag_cov < 0):
+                n_neg = np.count_nonzero(diag_cov < 0)
+                warnings.warn(
+                    f"Detected {n_neg} negative variance value(s) in reconciled covariance "
+                    "matrix diagonal. This indicates a non-positive-definite covariance "
+                    "matrix. Negative variances will be clamped to zero.",
+                    RuntimeWarning,
+                )
+            sigmah_recs.append(np.sqrt(np.maximum(diag_cov, 0)))
 
         self.sigmah_rec = np.hstack(sigmah_recs).reshape(-1, self.sigmah.shape[0]).T
         self.cov_rec = cov_recs
+
+    def _compute_correlation_matrix(
+        self,
+        covariance_type: CovarianceType,
+        W: np.ndarray | sp.spmatrix | None,
+        residuals: np.ndarray | None,
+        shrinkage_ridge: float,
+    ) -> np.ndarray:
+        """Compute correlation matrix based on covariance type.
+
+        Args:
+            covariance_type: The covariance estimation method to use.
+            W: Hierarchical covariance matrix (used for diagonal type).
+            residuals: Insample residuals (used for full/shrink types).
+            shrinkage_ridge: Ridge parameter for shrinkage estimator.
+
+        Returns:
+            Correlation matrix of size (n_series, n_series).
+        """
+        if covariance_type == CovarianceType.DIAGONAL and W is not None:
+            # Original behavior: use W diagonal with correlation scaling
+            diag = W.diagonal() if hasattr(W, "diagonal") else np.diag(W)
+            std_ = np.sqrt(diag)
+            R1 = W / np.outer(std_, std_)
+        elif covariance_type == CovarianceType.FULL:
+            R1 = self._compute_full_correlation(residuals)
+        elif covariance_type == CovarianceType.SHRINK:
+            R1 = self._compute_shrink_correlation(residuals, shrinkage_ridge)
+
+        return R1
+
+    def _compute_full_correlation(self, residuals: np.ndarray) -> np.ndarray:
+        """Compute full empirical correlation matrix from residuals.
+
+        Args:
+            residuals: Insample residuals of size (n_series, n_obs).
+
+        Returns:
+            Correlation matrix of size (n_series, n_series).
+        """
+        nan_mask = np.isnan(residuals)
+        if np.any(nan_mask):
+            cov_matrix = _ma_cov(residuals, ~nan_mask)
+        else:
+            cov_matrix = np.cov(residuals)
+
+        # Handle edge case: np.cov returns scalar for single series
+        if cov_matrix.ndim == 0:
+            cov_matrix = np.array([[cov_matrix]])
+
+        return self._covariance_to_correlation(cov_matrix)
+
+    def _compute_shrink_correlation(
+        self, residuals: np.ndarray, shrinkage_ridge: float
+    ) -> np.ndarray:
+        """Compute shrinkage correlation matrix using Schäfer-Strimmer method.
+
+        Args:
+            residuals: Insample residuals of size (n_series, n_obs).
+            shrinkage_ridge: Ridge parameter for numerical stability.
+
+        Returns:
+            Correlation matrix of size (n_series, n_series).
+        """
+        nan_mask = np.isnan(residuals)
+        if np.any(nan_mask):
+            cov_matrix = _shrunk_covariance_schaferstrimmer_with_nans(
+                residuals, ~nan_mask, shrinkage_ridge
+            )
+        else:
+            cov_matrix = _shrunk_covariance_schaferstrimmer_no_nans(
+                residuals, shrinkage_ridge
+            )
+
+        return self._covariance_to_correlation(cov_matrix)
+
+    def _covariance_to_correlation(self, cov_matrix: np.ndarray) -> np.ndarray:
+        """Convert covariance matrix to correlation matrix with numerical safeguards.
+
+        Args:
+            cov_matrix: Covariance matrix of size (n_series, n_series).
+
+        Returns:
+            Correlation matrix of size (n_series, n_series).
+
+        Warns:
+            UserWarning: If any series has zero or near-zero variance.
+        """
+        std_ = np.sqrt(np.diag(cov_matrix))
+
+        # Check for zero/near-zero variance series
+        low_variance_mask = std_ < self._MIN_STD_THRESHOLD
+        if np.any(low_variance_mask):
+            low_variance_indices = np.where(low_variance_mask)[0]
+            warnings.warn(
+                f"Series at indices {low_variance_indices.tolist()} have zero or "
+                f"near-zero variance (std < {self._MIN_STD_THRESHOLD}). "
+                "Correlation estimates for these series may be unreliable. "
+                "Consider removing constant series or using regularization.",
+                UserWarning,
+                stacklevel=4,
+            )
+            # Clamp to minimum threshold to avoid division by zero
+            std_[low_variance_mask] = self._MIN_STD_THRESHOLD
+
+        # Convert to correlation
+        correlation = cov_matrix / np.outer(std_, std_)
+
+        # Ensure diagonal is exactly 1.0 (numerical precision fix)
+        np.fill_diagonal(correlation, 1.0)
+
+        # Clamp off-diagonal to [-1, 1] for numerical stability
+        correlation = np.clip(correlation, -1.0, 1.0)
+
+        return correlation
 
     def get_samples(self, num_samples: int):
         """Normality Coherent Samples.
