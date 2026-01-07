@@ -574,6 +574,94 @@ def test_top_down_intervals(interval_reconciler_args, method, intervals_method):
     assert result is not None
 
 
+def test_top_down_forecast_proportions_intervals(hierarchical_data):
+    """Test TopDown forecast_proportions with prediction intervals."""
+    data = hierarchical_data
+    y_hat = data.S @ data.y_hat_bottom
+    y_insample = data.S @ data.y_bottom
+    y_hat_insample = data.S @ data.y_hat_bottom_insample
+
+    cls_top_down = TopDown(method="forecast_proportions")
+    result = cls_top_down(
+        S=data.S,
+        y_hat=y_hat,
+        tags=data.tags,
+        y_insample=y_insample,
+        y_hat_insample=y_hat_insample,
+        level=[80, 90],
+        intervals_method="bootstrap",
+        num_samples=100,
+        seed=42,
+    )
+
+    # Check mean shape
+    assert result["mean"].shape == y_hat.shape
+    # Check quantiles shape: (n_series, horizon, 4) for levels [80, 90]
+    assert result["quantiles"].shape == (y_hat.shape[0], y_hat.shape[1], 4)
+    # Check quantiles are ordered (lower bounds < upper bounds)
+    assert np.all(result["quantiles"][:, :, 0] <= result["quantiles"][:, :, 1])
+    assert np.all(result["quantiles"][:, :, 2] <= result["quantiles"][:, :, 3])
+
+
+def test_top_down_forecast_proportions_intervals_missing_insample(hierarchical_data):
+    """Test TopDown forecast_proportions raises error when insample data missing."""
+    data = hierarchical_data
+    y_hat = data.S @ data.y_hat_bottom
+
+    cls_top_down = TopDown(method="forecast_proportions")
+    with pytest.raises(ValueError, match="require.*y_insample.*y_hat_insample"):
+        cls_top_down(
+            S=data.S,
+            y_hat=y_hat,
+            tags=data.tags,
+            level=[80, 90],
+        )
+
+
+def test_top_down_sparse_forecast_proportions_intervals(hierarchical_data):
+    """Test TopDownSparse forecast_proportions with prediction intervals."""
+    data = hierarchical_data
+    y_hat = data.S @ data.y_hat_bottom
+    y_insample = data.S @ data.y_bottom
+    y_hat_insample = data.S @ data.y_hat_bottom_insample
+
+    cls_top_down = TopDownSparse(method="forecast_proportions")
+    result = cls_top_down(
+        S=sparse.csr_matrix(data.S),
+        y_hat=y_hat,
+        tags=data.tags,
+        y_insample=y_insample,
+        y_hat_insample=y_hat_insample,
+        level=[80, 90],
+        intervals_method="bootstrap",
+        num_samples=100,
+        seed=42,
+    )
+
+    # Check mean shape
+    assert result["mean"].shape == y_hat.shape
+    # Check quantiles shape: (n_series, horizon, 4) for levels [80, 90]
+    assert result["quantiles"].shape == (y_hat.shape[0], y_hat.shape[1], 4)
+    # Check quantiles are ordered
+    assert np.all(result["quantiles"][:, :, 0] <= result["quantiles"][:, :, 1])
+    assert np.all(result["quantiles"][:, :, 2] <= result["quantiles"][:, :, 3])
+
+
+def test_top_down_sparse_forecast_proportions_intervals_missing_insample(hierarchical_data):
+    """Test TopDownSparse forecast_proportions raises error when insample data missing."""
+    data = hierarchical_data
+    y_hat = data.S @ data.y_hat_bottom
+
+    cls_top_down = TopDownSparse(method="forecast_proportions")
+    with pytest.raises(ValueError, match="require.*y_insample.*y_hat_insample"):
+        cls_top_down(
+            S=sparse.csr_matrix(data.S),
+            y_hat=y_hat,
+            tags=data.tags,
+            level=[80, 90],
+        )
+
+
 @pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var", "mint_shrink"])
 @pytest.mark.parametrize("intervals_method", ["normality", "bootstrap", "permbu"])
 def test_min_trace_intervals(interval_reconciler_args, method, intervals_method):

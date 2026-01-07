@@ -365,6 +365,154 @@ def _reconcile_fcst_proportions(
     return reconciled
 
 
+def _reconcile_fcst_proportions_bootstrap(
+    S: np.ndarray | sparse.csr_matrix,
+    y_hat: np.ndarray,
+    tags: dict[str, np.ndarray],
+    y_insample: np.ndarray,
+    y_hat_insample: np.ndarray,
+    num_samples: int,
+    seed: int,
+    level: list[int],
+    nodes: dict[str, dict[int, np.ndarray]] | None = None,
+    idxs_top: np.ndarray | None = None,
+    A: sparse.csr_matrix | None = None,
+):
+    """Generate prediction intervals for forecast_proportions using bootstrap.
+
+    This function generates bootstrap samples by adding resampled residuals to
+    the base forecasts, then reconciles each sample using forecast proportions.
+    Supports both dense and sparse summing matrices.
+
+    Args:
+        S: Summing matrix of size (`base`, `bottom`). Can be dense or sparse.
+        y_hat: Forecast values of size (`base`, `horizon`).
+        tags: Each key is a level and each value its `S` indices.
+        y_insample: Insample values of size (`base`, `insample_size`).
+        y_hat_insample: Insample forecast values of size (`base`, `insample_size`).
+        num_samples: Number of bootstrap samples.
+        seed: Random seed for reproducibility.
+        level: Confidence levels for prediction intervals.
+        nodes: Child nodes structure from _get_child_nodes (required for dense S).
+        idxs_top: Indices of top-level nodes (required for dense S).
+        A: Adjacency matrix (required for sparse S).
+
+    Returns:
+        quantiles: Array of shape (`base`, `horizon`, `num_quantiles`).
+    """
+    is_sparse = sparse.issparse(S)
+
+    # Compute residuals
+    residuals = y_insample - y_hat_insample
+    h = y_hat.shape[1]
+
+    # Remove NaN columns from residuals
+    residuals = residuals[:, np.isnan(residuals).sum(axis=0) == 0]
+
+    # Get valid sample indices
+    sample_idx = np.arange(residuals.shape[1] - h)
+    rng = np.random.default_rng(seed)
+
+    # Generate bootstrap samples
+    samples_idx = rng.choice(sample_idx, size=num_samples)
+    bootstrap_samples = []
+
+    for idx in samples_idx:
+        # Add residual block to forecasts
+        y_hat_sample = y_hat + residuals[:, idx : (idx + h)]
+
+        if is_sparse:
+            # Reconcile the bootstrap sample using sparse forecast proportions
+            reconciled_sample = _reconcile_fcst_proportions_sparse(
+                S=S,
+                y_hat=y_hat_sample,
+                A=A,
+                tags=tags,
+            )
+        else:
+            # Reconcile the bootstrap sample using dense forecast proportions
+            reconciled_sample = np.hstack(
+                [
+                    _reconcile_fcst_proportions(
+                        S=S,
+                        y_hat=y_hat_sample_col[:, None],
+                        tags=tags,
+                        nodes=nodes, # type: ignore[arg-type]
+                        idxs_top=idxs_top,
+                    )
+                    for y_hat_sample_col in y_hat_sample.T
+                ]
+            )
+        bootstrap_samples.append(reconciled_sample)
+
+    # Stack samples: [num_samples, n_series, horizon]
+    samples = np.stack(bootstrap_samples)
+    # Transpose to [n_series, horizon, num_samples]
+    samples = samples.transpose((1, 2, 0))
+
+    # Compute quantiles
+    quantiles = np.concatenate(
+        [[(100 - lv) / 200, ((100 - lv) / 200) + lv / 100] for lv in level]
+    )
+    quantiles = np.sort(quantiles)
+
+    # [Q, N, H] -> [N, H, Q]
+    sample_quantiles = np.quantile(samples, quantiles, axis=2)
+    return sample_quantiles.transpose((1, 2, 0))
+
+
+def _reconcile_fcst_proportions_sparse(
+    S: sparse.csr_matrix,
+    y_hat: np.ndarray,
+    A: sparse.csr_matrix,
+    tags: dict[str, np.ndarray],
+):
+    """Reconcile forecasts using sparse forecast proportions.
+
+    This is a helper that implements the sparse forecast proportions reconciliation
+    for a single forecast matrix.
+
+    Args:
+        S: Sparse summing matrix of size (`base`, `bottom`).
+        y_hat: Forecast values of size (`base`, `horizon`).
+        A: Adjacency matrix.
+        tags: Each key is a level and each value its `S` indices.
+
+    Returns:
+        y_tilde: Reconciled forecasts of size (`base`, `horizon`).
+    """
+    # Make a copy to avoid modifying the original
+    y_hat = y_hat.copy()
+    # As we may have zero sibling sums, replace any zeroes with eps.
+    y_hat[y_hat == 0.0] = np.finfo(np.float64).eps
+    # Calculate the relative proportions for each node.
+    with np.errstate(divide="ignore"):
+        P = y_hat / ((A.T @ A) @ y_hat)
+    # Get the number of root nodes.
+    n = len(next(iter(tags.values())))
+    # Set the relative proportion(s) of the root node(s).
+    P[:n, :] = 1.0
+    # Precompute the transpose of the summing matrix.
+    S_T = S.T
+    # Propagate the relative proportions for the nodes along each leaf
+    # node's disaggregation pathway.
+    y_tilde = np.array(
+        [
+            S
+            @ (
+                S_T[:, :n].multiply(
+                    np.prod(
+                        np.vstack(S_T.multiply(P[:, i]).tolil().data), 1
+                    ).reshape(-1, 1)
+                )
+                @ y_hat[:n, i]
+            )
+            for i in range(y_hat.shape[1])
+        ]
+    ).T
+    return y_tilde
+
+
 class TopDown(HReconciler):
     r"""Top Down Reconciliation Class.
 
@@ -547,10 +695,6 @@ class TopDown(HReconciler):
             else:
                 idxs_top = np.array([np.argmax(S_sum)])
             levels_ = dict(sorted(tags.items(), key=lambda x: len(x[1])))
-            if level is not None:
-                raise ValueError(
-                    "Prediction intervals not implemented for `forecast_proportions`"
-                )
             nodes = _get_child_nodes(S=S, tags=levels_)
             reconciled = [
                 _reconcile_fcst_proportions(
@@ -563,7 +707,37 @@ class TopDown(HReconciler):
                 for y_hat_ in y_hat.T
             ]
             reconciled = np.hstack(reconciled)
-            return {"mean": reconciled}
+            res = {"mean": reconciled}
+
+            # Compute prediction intervals using bootstrap if requested
+            if level is not None:
+                if y_insample is None or y_hat_insample is None:
+                    raise ValueError(
+                        "Prediction intervals for `forecast_proportions` require "
+                        "`y_insample` and `y_hat_insample`."
+                    )
+                if intervals_method != "bootstrap":
+                    raise ValueError(
+                        "Only `bootstrap` intervals_method is implemented for "
+                        "`forecast_proportions`."
+                    )
+                if num_samples is None:
+                    num_samples = 100
+                if seed is None:
+                    seed = 0
+                res["quantiles"] = _reconcile_fcst_proportions_bootstrap(
+                    S=S,
+                    y_hat=y_hat,
+                    tags=levels_,
+                    y_insample=y_insample,
+                    y_hat_insample=y_hat_insample,
+                    num_samples=num_samples,
+                    seed=seed,
+                    level=level,
+                    nodes=nodes,
+                    idxs_top=idxs_top,
+                )
+            return res
         else:
             # Fit creates P, W and sampler attributes
             self.fit(
@@ -666,11 +840,6 @@ class TopDownSparse(TopDown):
         seed: int | None = None,
     ) -> dict[str, np.ndarray]:
         if self.method == "forecast_proportions":
-            # Check if probabilistic reconciliation is required.
-            if level is not None:
-                raise NotImplementedError(
-                    "Prediction intervals are not implemented for `forecast_proportions`."
-                )
             # Construct the adjacency matrix.
             A = _construct_adjacency_matrix(S, tags)
             # Avoid a redundant check during middle-out reconciliation.
@@ -680,37 +849,43 @@ class TopDownSparse(TopDown):
                     raise ValueError(
                         "Top-down reconciliation requires strictly hierarchical structures."
                     )
-            # As we may have zero sibling sums, replace any zeroes with eps.
-            y_hat[y_hat == 0.0] = np.finfo(np.float64).eps
-            # Calculate the relative proportions for each node.
-            with np.errstate(divide="ignore"):
-                P = y_hat / ((A.T @ A) @ y_hat)
-            # Get the number of root nodes.
-            n = len(next(iter(tags.values())))
-            # Set the relative proportion(s) of the root node(s).
-            P[:n, :] = 1.0
-            # Precompute the transpose of the summing matrix.
-            S_T = S.T
-            # Propagate the relative proportions for the nodes along each leaf
-            # node's disaggregation pathway, convert the resultant sparse
-            # matrix to a LIL matrix for an efficient dense conversion, stack
-            # the lists, calculate the row-wise product to get the forecast
-            # proportions, and use these to reconcile the forecasts.
-            y_tilde = np.array(
-                [
-                    S
-                    @ (
-                        S_T[:, :n].multiply(
-                            np.prod(
-                                np.vstack(S_T.multiply(P[:, i]).tolil().data), 1
-                            ).reshape(-1, 1)
-                        )
-                        @ y_hat[:n, i]
+            # Reconcile point forecasts using sparse forecast proportions
+            y_tilde = _reconcile_fcst_proportions_sparse(
+                S=S,
+                y_hat=y_hat,
+                A=A,
+                tags=tags,
+            )
+            res = {"mean": y_tilde}
+
+            # Compute prediction intervals using bootstrap if requested
+            if level is not None:
+                if y_insample is None or y_hat_insample is None:
+                    raise ValueError(
+                        "Prediction intervals for `forecast_proportions` require "
+                        "`y_insample` and `y_hat_insample`."
                     )
-                    for i in range(y_hat.shape[1])
-                ]
-            ).T
-            return {"mean": y_tilde}
+                if intervals_method != "bootstrap":
+                    raise ValueError(
+                        "Only `bootstrap` intervals_method is implemented for "
+                        "`forecast_proportions` with sparse matrices."
+                    )
+                if num_samples is None:
+                    num_samples = 100
+                if seed is None:
+                    seed = 0
+                res["quantiles"] = _reconcile_fcst_proportions_bootstrap(
+                    S=S,
+                    y_hat=y_hat,
+                    tags=tags,
+                    y_insample=y_insample,
+                    y_hat_insample=y_hat_insample,
+                    num_samples=num_samples,
+                    seed=seed,
+                    level=level,
+                    A=A,
+                )
+            return res
         else:
             # Fit creates the P, W, and sampler attributes.
             self.fit(
