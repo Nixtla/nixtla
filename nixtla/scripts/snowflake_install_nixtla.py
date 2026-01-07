@@ -14,15 +14,21 @@ Options:
     --database: Database name (optional, will prompt)
     --schema: Schema name (optional, will prompt)
     --stage_path: Stage path (optional, will prompt)
+    --integration_name: External access integration name (optional, default: "nixtla_access_integration")
+    --base_url: Nixtla API base URL (optional, will prompt)
+        - https://api.nixtla.io (default, TimeGPT)
+        - https://tsmp.nixtla.io (TimeGPT-2, supports all models)
 """
 
 import os
 import shutil
 import subprocess
 import sys
+
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 from typing import Optional
+from urllib.parse import urlparse
 
 import pandas as pd
 from fire import Fire
@@ -58,7 +64,7 @@ TEMPLATE_ACCESS_INTEGRATION = """
 CREATE OR REPLACE NETWORK RULE {ds_prefix}nixtla_network_rule
 MODE = EGRESS
 TYPE = HOST_PORT
-VALUE_LIST = ('api.nixtla.io');
+VALUE_LIST = ('{api_host}');
 
 //<br>
 
@@ -68,9 +74,15 @@ CREATE OR REPLACE SECRET {ds_prefix}nixtla_api_key
 
 //<br>
 
+CREATE OR REPLACE SECRET {ds_prefix}nixtla_base_url
+  TYPE = GENERIC_STRING
+  SECRET_STRING = '{base_url}';
+
+//<br>
+
 CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION {integration_name}
   ALLOWED_NETWORK_RULES = ({ds_prefix}nixtla_network_rule)
-  ALLOWED_AUTHENTICATION_SECRETS = ({ds_prefix}nixtla_api_key)
+  ALLOWED_AUTHENTICATION_SECRETS = ({ds_prefix}nixtla_api_key, {ds_prefix}nixtla_base_url)
   ENABLED = true;
 """
 
@@ -167,16 +179,25 @@ class DeploymentConfig:
     schema: str
     stage: str
     integration_name: str = "nixtla_access_integration"
+    base_url: str = "https://api.nixtla.io"
 
     @property
     def prefix(self) -> str:
         """Return fully qualified prefix for Snowflake objects."""
         return f"{self.database}.{self.schema}."
 
+    @property
+    def api_host(self) -> str:
+        """Extract hostname from base_url for network rules."""
+        return urlparse(self.base_url).netloc
+
     def get_security_params(self) -> dict:
         """Generate security parameters for UDTFs and stored procedures."""
         return {
-            "secrets": {"nixtla_api_key": "nixtla_api_key"},
+            "secrets": {
+                "nixtla_api_key": "nixtla_api_key",
+                "nixtla_base_url": "nixtla_base_url",
+            },
             "external_access_integrations": [self.integration_name],
         }
 
@@ -263,7 +284,9 @@ def ensure_snowflake_object_exists(
         return True
     except Exception:
         print(f"[yellow]{object_type} '{name}' does not exist.[/yellow]")
-        if not Confirm.ask(f"Do you want to create {object_type.lower()} '{name}'?", default=True):
+        if not Confirm.ask(
+            f"Do you want to create {object_type.lower()} '{name}'?", default=True
+        ):
             return False
 
         try:
@@ -275,7 +298,9 @@ def ensure_snowflake_object_exists(
             return False
 
 
-def execute_sql_script(session: Session, script: str, separator: str = "//<br>") -> None:
+def execute_sql_script(
+    session: Session, script: str, separator: str = "//<br>"
+) -> None:
     """
     Execute a multi-statement SQL script.
 
@@ -312,7 +337,9 @@ def create_snowflake_session(connection_name: str) -> Session:
     except Exception as e:
         if "MFA with TOTP is required" in str(e) or "250001" in str(e):
             print("[yellow]MFA authentication required[/yellow]")
-            passcode = Prompt.ask("Enter your MFA code from authenticator app", password=False)
+            passcode = Prompt.ask(
+                "Enter your MFA code from authenticator app", password=False
+            )
             return session_builder.config("passcode", passcode).create()
         raise
 
@@ -570,6 +597,8 @@ def create_security_integration(session: Session, config: DeploymentConfig) -> N
         ds_prefix=config.prefix,
         nixtla_api_key=nixtla_api_key_escaped,
         integration_name=config.integration_name,
+        api_host=config.api_host,
+        base_url=config.base_url,
     )
 
     print(Markdown(f"```sql\n{script}\n```"))
@@ -619,11 +648,13 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
     # Forecast UDTF (with exogenous variables support)
     @udtf(
         input_types=[MapType(), MapType()],
-        output_schema=StructType([
-            StructField("unique_id", StringType()),
-            StructField("ds", TimestampType()),
-            StructField("forecast", DoubleType()),
-        ]),
+        output_schema=StructType(
+            [
+                StructField("unique_id", StringType()),
+                StructField("ds", TimestampType()),
+                StructField("forecast", DoubleType()),
+            ]
+        ),
         name="nixtla_forecast_batch",
         **security_params,
         **common_params,
@@ -634,7 +665,8 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string("nixtla_api_key")
-            self.client = NixtlaClient(api_key=token)
+            base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
+            self.client = NixtlaClient(api_key=token, base_url=base_url)
 
         def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
             config = df.iloc[0, 0]
@@ -664,7 +696,9 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             # Only use exogenous variables if explicitly declared
             if hist_exog_list:
                 # Validate that declared columns exist in data
-                missing_cols = [col for col in hist_exog_list if col not in data.columns]
+                missing_cols = [
+                    col for col in hist_exog_list if col not in data.columns
+                ]
                 if missing_cols:
                     raise ValueError(
                         f"Columns specified in hist_exog_list not found in data: {missing_cols}"
@@ -685,14 +719,20 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             # Find forecast column (prefer model name over TimeGPT)
             forecast_col = None
             for col in forecast.columns:
-                if col.lower() not in ["unique_id", "ds", "y"] and not col.startswith("TimeGPT"):
+                if col.lower() not in ["unique_id", "ds", "y"] and not col.startswith(
+                    "TimeGPT"
+                ):
                     forecast_col = col
                     break
 
             # If no model column found, try TimeGPT
             if forecast_col is None:
                 for col in forecast.columns:
-                    if col.startswith("TimeGPT") and "-lo-" not in col and "-hi-" not in col:
+                    if (
+                        col.startswith("TimeGPT")
+                        and "-lo-" not in col
+                        and "-hi-" not in col
+                    ):
                         forecast_col = col
                         break
 
@@ -708,12 +748,14 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
     # Evaluate UDTF
     @udtf(
         input_types=[ArrayType(), MapType()],
-        output_schema=StructType([
-            StructField("unique_id", StringType()),
-            StructField("forecaster", StringType()),
-            StructField("metric", StringType()),
-            StructField("value", DoubleType()),
-        ]),
+        output_schema=StructType(
+            [
+                StructField("unique_id", StringType()),
+                StructField("forecaster", StringType()),
+                StructField("metric", StringType()),
+                StructField("value", DoubleType()),
+            ]
+        ),
         name="nixtla_evaluate_batch",
         **common_params,
     )
@@ -728,7 +770,8 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             data["ds"] = pd.to_datetime(data["ds"])
 
             forecasters = [
-                col for col in data.columns
+                col
+                for col in data.columns
                 if col.lower() not in ["unique_id", "ds", "y"]
             ]
 
@@ -764,15 +807,17 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
     # Anomaly Detection UDTF
     @udtf(
         input_types=[MapType(), StringType(), TimestampType(), DoubleType()],
-        output_schema=StructType([
-            StructField("unique_id", StringType()),
-            StructField("ds", TimestampType()),
-            StructField("y", DoubleType()),
-            StructField("TimeGPT", DoubleType()),
-            StructField("anomaly", StringType()),
-            StructField("TimeGPT_lo", DoubleType()),
-            StructField("TimeGPT_hi", DoubleType()),
-        ]),
+        output_schema=StructType(
+            [
+                StructField("unique_id", StringType()),
+                StructField("ds", TimestampType()),
+                StructField("y", DoubleType()),
+                StructField("TimeGPT", DoubleType()),
+                StructField("anomaly", StringType()),
+                StructField("TimeGPT_lo", DoubleType()),
+                StructField("TimeGPT_hi", DoubleType()),
+            ]
+        ),
         name="nixtla_detect_anomalies_batch",
         **security_params,
         **common_params,
@@ -783,14 +828,17 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string("nixtla_api_key")
-            self.client = NixtlaClient(api_key=token)
+            base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
+            self.client = NixtlaClient(api_key=token, base_url=base_url)
 
         def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
-            input_df = pd.DataFrame({
-                "unique_id": df.iloc[:, 1],
-                "ds": df.iloc[:, 2],
-                "y": df.iloc[:, 3],
-            })
+            input_df = pd.DataFrame(
+                {
+                    "unique_id": df.iloc[:, 1],
+                    "ds": df.iloc[:, 2],
+                    "y": df.iloc[:, 3],
+                }
+            )
 
             config = df.iloc[0, 0]
 
@@ -812,7 +860,9 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
                 result = anomalies[result_cols].copy()
             else:
                 # If confidence intervals not present, use None
-                result = anomalies[["unique_id", "ds", "y", "TimeGPT", "anomaly"]].copy()
+                result = anomalies[
+                    ["unique_id", "ds", "y", "TimeGPT", "anomaly"]
+                ].copy()
                 result[lo_col] = None
                 result[hi_col] = None
 
@@ -820,7 +870,15 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             result["anomaly"] = result["anomaly"].astype(str)
 
             # Rename columns to match output schema
-            result.columns = ["unique_id", "ds", "y", "TimeGPT", "anomaly", "TimeGPT_lo", "TimeGPT_hi"]
+            result.columns = [
+                "unique_id",
+                "ds",
+                "y",
+                "TimeGPT",
+                "anomaly",
+                "TimeGPT_lo",
+                "TimeGPT_hi",
+            ]
 
             return result
 
@@ -886,7 +944,8 @@ def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
             params = {}
 
         token = _snowflake.get_generic_secret_string("nixtla_api_key")
-        client = NixtlaClient(api_key=token)
+        base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
+        client = NixtlaClient(api_key=token, base_url=base_url)
 
         input_table = session.table(input_data)
         ids = (
@@ -1019,7 +1078,7 @@ def load_example_datasets(session: Session) -> None:
     # Generate sample training data with exogenous variables
     print("[cyan]Generating sample training data with exogenous variables...[/cyan]")
 
-    dates = pd.date_range(start='2020-01-01', periods=365, freq='D')
+    dates = pd.date_range(start="2020-01-01", periods=365, freq="D")
     train_data = []
 
     # Series 1: Basic series without exogenous variables (for basic examples)
@@ -1028,14 +1087,16 @@ def load_example_datasets(session: Session) -> None:
         seasonal = 10 * np.sin(2 * np.pi * i / 7)  # Weekly seasonality
         noise = np.random.normal(0, 2)
         value = 100 + trend + seasonal + noise
-        train_data.append({
-            'unique_id': 'series_1',
-            'ds': date,
-            'y': value,
-            'temperature': None,
-            'is_weekend': None,
-            'promotion': None,
-        })
+        train_data.append(
+            {
+                "unique_id": "series_1",
+                "ds": date,
+                "y": value,
+                "temperature": None,
+                "is_weekend": None,
+                "promotion": None,
+            }
+        )
 
     # Series 2: With exogenous variables (temperature, is_weekend, promotion)
     for i, date in enumerate(dates[:330]):
@@ -1053,16 +1114,20 @@ def load_example_datasets(session: Session) -> None:
         weekend_effect = 5 if is_weekend else 0
         promo_effect = 8 if promotion else 0
 
-        value = 100 + trend + seasonal + temp_effect + weekend_effect + promo_effect + noise
+        value = (
+            100 + trend + seasonal + temp_effect + weekend_effect + promo_effect + noise
+        )
 
-        train_data.append({
-            'unique_id': 'series_2',
-            'ds': date,
-            'y': value,
-            'temperature': temperature,
-            'is_weekend': is_weekend,
-            'promotion': promotion,
-        })
+        train_data.append(
+            {
+                "unique_id": "series_2",
+                "ds": date,
+                "y": value,
+                "temperature": temperature,
+                "is_weekend": is_weekend,
+                "promotion": promotion,
+            }
+        )
 
     # Series 3: Basic series without exogenous variables (for comparison)
     for i, date in enumerate(dates[:330]):
@@ -1070,14 +1135,16 @@ def load_example_datasets(session: Session) -> None:
         seasonal = 10 * np.sin(2 * np.pi * i / 7)
         noise = np.random.normal(0, 2)
         value = 100 + trend + seasonal + noise
-        train_data.append({
-            'unique_id': 'series_3',
-            'ds': date,
-            'y': value,
-            'temperature': None,
-            'is_weekend': None,
-            'promotion': None,
-        })
+        train_data.append(
+            {
+                "unique_id": "series_3",
+                "ds": date,
+                "y": value,
+                "temperature": None,
+                "is_weekend": None,
+                "promotion": None,
+            }
+        )
 
     train = pd.DataFrame(train_data)
     train.columns = train.columns.str.upper()
@@ -1091,7 +1158,7 @@ def load_example_datasets(session: Session) -> None:
 
     # Generate all_data (training + some forecasts for evaluation)
     all_data = []
-    series_ids = ['series_1', 'series_2', 'series_3']
+    series_ids = ["series_1", "series_2", "series_3"]
     for series_id in series_ids:
         for i, date in enumerate(dates):  # All 365 days
             trend = i * 0.5
@@ -1105,12 +1172,14 @@ def load_example_datasets(session: Session) -> None:
             else:
                 forecast_value = None
 
-            all_data.append({
-                'unique_id': series_id,
-                'ds': date,
-                'y': value,
-                'TimeGPT': forecast_value
-            })
+            all_data.append(
+                {
+                    "unique_id": series_id,
+                    "ds": date,
+                    "y": value,
+                    "TimeGPT": forecast_value,
+                }
+            )
 
     all_data_df = pd.DataFrame(all_data)
     all_data_df.columns = all_data_df.columns.str.upper()
@@ -1125,7 +1194,7 @@ def load_example_datasets(session: Session) -> None:
     # Generate anomaly detection example data with injected anomalies
     print("[cyan]Generating anomaly detection example data...[/cyan]")
 
-    anomaly_dates = pd.date_range(start='2020-01-01', periods=180, freq='D')
+    anomaly_dates = pd.date_range(start="2020-01-01", periods=180, freq="D")
     anomaly_data = []
 
     # Series 1: Few extreme spikes and drops
@@ -1143,11 +1212,7 @@ def load_example_datasets(session: Session) -> None:
         elif i == 120:  # Day 120: Another spike
             value += 45
 
-        anomaly_data.append({
-            'unique_id': 'sensor_1',
-            'ds': date,
-            'y': value
-        })
+        anomaly_data.append({"unique_id": "sensor_1", "ds": date, "y": value})
 
     # Series 2: Cluster of anomalies
     for i, date in enumerate(anomaly_dates):
@@ -1162,11 +1227,7 @@ def load_example_datasets(session: Session) -> None:
         elif i == 150:  # Day 150: Single drop
             value -= 30
 
-        anomaly_data.append({
-            'unique_id': 'sensor_2',
-            'ds': date,
-            'y': value
-        })
+        anomaly_data.append({"unique_id": "sensor_2", "ds": date, "y": value})
 
     # Series 3: Subtle anomalies
     for i, date in enumerate(anomaly_dates):
@@ -1181,11 +1242,7 @@ def load_example_datasets(session: Session) -> None:
         elif i == 100:  # Day 100: Moderate drop
             value -= 20
 
-        anomaly_data.append({
-            'unique_id': 'sensor_3',
-            'ds': date,
-            'y': value
-        })
+        anomaly_data.append({"unique_id": "sensor_3", "ds": date, "y": value})
 
     anomaly_df = pd.DataFrame(anomaly_data)
     anomaly_df.columns = anomaly_df.columns.str.upper()
@@ -1199,16 +1256,28 @@ def load_example_datasets(session: Session) -> None:
 
     print("[green]Example datasets created successfully![/green]")
     print("[cyan]  - EXAMPLE_TRAIN: 3 series × 330 days = 990 rows[/cyan]")
-    print("[cyan]  - EXAMPLE_ALL_DATA: 3 series × 365 days = 1095 rows (for evaluation)[/cyan]")
-    print("[cyan]  - EXAMPLE_ANOMALY_DATA: 3 series × 180 days = 540 rows (with injected anomalies)[/cyan]")
+    print(
+        "[cyan]  - EXAMPLE_ALL_DATA: 3 series × 365 days = 1095 rows (for evaluation)[/cyan]"
+    )
+    print(
+        "[cyan]  - EXAMPLE_ANOMALY_DATA: 3 series × 180 days = 540 rows (with injected anomalies)[/cyan]"
+    )
     print("\n[yellow]Exogenous variables in EXAMPLE_TRAIN:[/yellow]")
-    print("[yellow]  - series_1: No exogenous variables (for basic forecasting examples)[/yellow]")
-    print("[yellow]  - series_2: temperature, is_weekend, promotion (for exogenous examples)[/yellow]")
+    print(
+        "[yellow]  - series_1: No exogenous variables (for basic forecasting examples)[/yellow]"
+    )
+    print(
+        "[yellow]  - series_2: temperature, is_weekend, promotion (for exogenous examples)[/yellow]"
+    )
     print("[yellow]  - series_3: No exogenous variables (for comparison)[/yellow]")
     print("\n[yellow]Injected anomalies in EXAMPLE_ANOMALY_DATA:[/yellow]")
     print("[yellow]  - sensor_1: Spikes on days 30, 120; Drop on day 60[/yellow]")
-    print("[yellow]  - sensor_2: Cluster of spikes on days 90-95; Drop on day 150[/yellow]")
-    print("[yellow]  - sensor_3: Moderate spike on day 45; Moderate drop on day 100[/yellow]")
+    print(
+        "[yellow]  - sensor_2: Cluster of spikes on days 90-95; Drop on day 150[/yellow]"
+    )
+    print(
+        "[yellow]  - sensor_3: Moderate spike on day 45; Moderate drop on day 100[/yellow]"
+    )
 
     # Show sample usage scripts
     show_example_usage_scripts(session)
@@ -1225,6 +1294,7 @@ def deploy_snowflake(
     schema: Optional[str] = None,
     stage_path: Optional[str] = None,
     integration_name: Optional[str] = None,
+    base_url: Optional[str] = None,
 ) -> None:
     """
     Deploy Nixtla to Snowflake with interactive prompts.
@@ -1235,6 +1305,9 @@ def deploy_snowflake(
         schema: Schema name (optional, will prompt if not provided)
         stage_path: Stage path (optional, will prompt if not provided)
         integration_name: External access integration name (optional, default: nixtla_access_integration)
+        base_url: Nixtla API base URL (optional, will prompt if not provided)
+            - https://api.nixtla.io (default, TimeGPT)
+            - https://tsmp.nixtla.io (TimeGPT-2, supports all models)
     """
     # Create session
     session = create_snowflake_session(connection_name)
@@ -1263,15 +1336,33 @@ def deploy_snowflake(
             lambda: "nixtla_access_integration",
         )
 
+        # Ask for base URL if not provided
+        base_url_options = {
+            "1": "https://api.nixtla.io",
+            "2": "https://tsmp.nixtla.io",
+        }
+        print("\n[cyan]Available Nixtla API endpoints:[/cyan]")
+        print("  [1] https://api.nixtla.io (default, TimeGPT)")
+        print("  [2] https://tsmp.nixtla.io (TimeGPT-2, supports all models)")
+        _base_url_input = ask_with_defaults(
+            "Nixtla API base URL (enter 1, 2, or full URL): ",
+            lambda: base_url,
+            lambda: "1",
+        )
+        # Map shorthand to full URL
+        _base_url = base_url_options.get(_base_url_input, _base_url_input)
+
         # Create config object
         config = DeploymentConfig(
             database=db,
             schema=sch,
             stage=stage,
             integration_name=_integration_name,
+            base_url=_base_url,
         )
 
         print(f"[cyan]Using integration: {config.integration_name}[/cyan]")
+        print(f"[cyan]Using API endpoint: {config.base_url}[/cyan]")
 
         # Deploy components (each step is optional)
         if Confirm.ask("Do you want to generate the security script?", default=False):
