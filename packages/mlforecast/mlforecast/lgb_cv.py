@@ -6,6 +6,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+import warnings
 
 import lightgbm as lgb
 import numpy as np
@@ -22,14 +23,43 @@ from mlforecast.core import (
 )
 
 
-def _mape(y_true, y_pred, ids, _dates):
-    abs_pct_err = abs(y_true - y_pred) / y_true
-    return abs_pct_err.groupby(ids, observed=True).mean().mean()
+def _mape(y_true, y_pred, ids, _dates, weight_series=None):
+    abs_pct_err = (y_true - y_pred).abs() / y_true.abs()  # safer
+    grouped = abs_pct_err.groupby(ids, observed=True)
+    
+    if weight_series is None:
+        return grouped.mean().mean()
+
+    w_by_id = weight_series.groupby(ids, observed=True).sum()
+    mape_by_id = grouped.mean()
+
+    weight_sum = w_by_id.sum()
+    if weight_sum <= 0:
+        warnings.warn("Total weight is zero, cannot compute weighted MAPE.", UserWarning)
+        return float("nan")
+
+    return (mape_by_id * w_by_id).sum() / weight_sum
 
 
-def _rmse(y_true, y_pred, ids, _dates):
+def _rmse(y_true, y_pred, ids, _dates, weight_series=None):
     sq_err = (y_true - y_pred) ** 2
-    return sq_err.groupby(ids, observed=True).mean().pow(0.5).mean()
+    mse_by_id = sq_err.groupby(ids, observed=True).mean()
+
+    if weight_series is None:
+        return np.sqrt(mse_by_id.mean())
+
+    w_by_id = weight_series.groupby(ids, observed=True).sum()
+    weight_sum = w_by_id.sum()
+
+    if weight_sum <= 0:
+        warnings.warn(
+            "Warning: Total weight is zero, cannot compute weighted RMSE.",
+            UserWarning,
+        )
+        return float("nan")
+
+    weighted_mse = (mse_by_id * w_by_id).sum() / weight_sum
+    return np.sqrt(weighted_mse)
 
 
 _metric2fn = {"mape": _mape, "rmse": _rmse}
@@ -40,11 +70,13 @@ def _update(bst, n):
         bst.update()
 
 
-def _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback):
+def _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback, weight_col):
     static = ts.static_features_.columns.drop(ts.id_col).tolist()
-    dynamic = valid.columns.drop(static + [ts.id_col, ts.time_col, ts.target_col])
+    dynamic = valid.columns.drop(static + [ts.id_col, ts.time_col, ts.target_col, weight_col], 
+                errors="ignore") # drops weight_col if present amongst other cols
     if not dynamic.empty:
-        X_df = valid.drop(columns=static + [ts.target_col])
+        X_df = valid.drop(columns=static + [ts.target_col, weight_col],
+                errors="ignore") # drops weight_col if present amongst other cols)
     else:
         X_df = None
     preds = ts.predict(
@@ -52,16 +84,16 @@ def _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback)
         horizon=h,
         before_predict_callback=before_predict_callback,
         after_predict_callback=after_predict_callback,
-        X_df=X_df,
+        X_df=X_df
     )
     return valid.merge(preds, on=[ts.id_col, ts.time_col], how="left")
 
 
 def _update_and_predict(
-    ts, bst, valid, n, h, before_predict_callback, after_predict_callback
+    ts, bst, valid, n, h, before_predict_callback, after_predict_callback, weight_col
 ):
     _update(bst, n)
-    return _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback)
+    return _predict(ts, bst, valid, h, before_predict_callback, after_predict_callback, weight_col)
 
 
 CVResult = Tuple[int, float]
@@ -131,6 +163,7 @@ class LightGBMCV:
         weights: Optional[Sequence[float]] = None,
         metric: Union[str, Callable] = "mape",
         input_size: Optional[int] = None,
+        weight_col: Optional[str] = None,
     ):
         """Initialize internal data structures to iteratively train the boosters. Use this before calling partial_fit.
 
@@ -154,7 +187,8 @@ class LightGBMCV:
             metric (str or callable): Metric used to assess the performance of the models and perform early stopping. Defaults to 'mape'.
             input_size (int, optional): Maximum training samples per serie in each window. If None, will use an expanding window.
                 Defaults to None.
-
+            weight_col (str, optional):Column containing sample weights. Higher weights increase the influence of those samples during fitting and evaluation.
+                
         Returns:
             (LightGBMCV): CV object with internal data structures for partial_fit.
         """
@@ -190,21 +224,28 @@ class LightGBMCV:
             step_size=step_size,
             input_size=input_size,
         )
+        
         for _, train, valid in splits:
             ts = copy.deepcopy(self.ts)
             prep = ts.fit_transform(
-                train,
-                id_col,
-                time_col,
-                target_col,
-                static_features,
-                dropna,
-                keep_last_n,
+                data=train,
+                id_col=id_col,
+                time_col=time_col,
+                target_col=target_col,
+                static_features=static_features,
+                dropna=dropna,
+                keep_last_n=keep_last_n,
+                weight_col=weight_col,
             )
             assert isinstance(prep, pd.DataFrame)
-            ds = lgb.Dataset(
-                prep.drop(columns=[id_col, time_col, target_col]), prep[target_col]
-            ).construct()
+
+            if weight_col is not None:
+                current_weights = prep[weight_col].values 
+            else:
+                current_weights = None           
+            ds = lgb.Dataset(prep.drop(columns=[id_col, time_col, target_col, weight_col], errors="ignore"), 
+            prep[target_col], weight=current_weights).construct()
+                
             bst = lgb.Booster({**self.params, "num_threads": self.bst_threads}, ds)
             bst.predict = partial(bst.predict, num_threads=self.bst_threads)
             self.items.append((ts, bst, valid))
@@ -216,6 +257,7 @@ class LightGBMCV:
         num_iterations,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        weight_col: Optional[str] = None
     ):
         for j, (ts, bst, valid) in enumerate(self.items):
             preds = _update_and_predict(
@@ -226,13 +268,21 @@ class LightGBMCV:
                 h=self.h,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
+                weight_col=weight_col
             )
-            metric_values[j] = self.metric_fn(
-                preds[self.target_col],
-                preds["Booster"],
-                preds[self.id_col],
-                preds[self.time_col],
-            )
+            if weight_col is not None:
+                metric_values[j] = self.metric_fn(
+                    preds[self.target_col],
+                    preds["Booster"],
+                    preds[self.id_col],
+                    preds[self.time_col],
+                    weight_series=preds[weight_col])
+            else:
+                metric_values[j] = self.metric_fn(
+                    preds[self.target_col],
+                    preds["Booster"],
+                    preds[self.id_col],
+                    preds[self.time_col])
 
     def _multithreaded_partial_fit(
         self,
@@ -240,6 +290,7 @@ class LightGBMCV:
         num_iterations,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        weight_col: Optional[str] = None
     ):
         with ThreadPoolExecutor(self.num_threads) as executor:
             futures = []
@@ -253,24 +304,39 @@ class LightGBMCV:
                     h=self.h,
                     before_predict_callback=before_predict_callback,
                     after_predict_callback=after_predict_callback,
+                    weight_col=weight_col
                 )
                 futures.append(future)
             cv_preds = [f.result() for f in futures]
-        metric_values[:] = [
-            self.metric_fn(
-                preds[self.target_col],
-                preds["Booster"],
-                preds[self.id_col],
-                preds[self.time_col],
-            )
-            for preds in cv_preds
-        ]
+        if weight_col:
+            metric_values[:] = [
+                self.metric_fn(
+                    preds[self.target_col],
+                    preds["Booster"],
+                    preds[self.id_col],
+                    preds[self.time_col],
+                    weight_series=preds[weight_col].values
+                )
+                for preds in cv_preds
+            ]
+        else:
+            metric_values[:] = [
+                self.metric_fn(
+                    preds[self.target_col],
+                    preds["Booster"],
+                    preds[self.id_col],
+                    preds[self.time_col]
+                )
+                for preds in cv_preds
+            ]
+            
 
     def partial_fit(
         self,
         num_iterations: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
+        weight_col: Optional[str] = None,
     ) -> float:
         """Train the boosters for some iterations.
 
@@ -293,6 +359,7 @@ class LightGBMCV:
                 num_iterations,
                 before_predict_callback,
                 after_predict_callback,
+                weight_col
             )
         else:
             self._multithreaded_partial_fit(
@@ -300,6 +367,7 @@ class LightGBMCV:
                 num_iterations,
                 before_predict_callback,
                 after_predict_callback,
+                weight_col
             )
         return metric_values @ self.weights
 
@@ -341,6 +409,7 @@ class LightGBMCV:
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         input_size: Optional[int] = None,
+        weight_col: Optional[str] = None,
     ) -> List[CVResult]:
         """Train boosters simultaneously and assess their performance on the complete forecasting window.
 
@@ -395,11 +464,12 @@ class LightGBMCV:
             keep_last_n=keep_last_n,
             weights=weights,
             metric=metric,
+            weight_col=weight_col,
         )
         hist = []
         for i in range(0, num_iterations, eval_every):
             metric_value = self.partial_fit(
-                eval_every, before_predict_callback, after_predict_callback
+                eval_every, before_predict_callback, after_predict_callback, weight_col=weight_col
             )
             rounds = eval_every + i
             hist.append((rounds, metric_value))
@@ -427,12 +497,13 @@ class LightGBMCV:
                         h=self.h,
                         before_predict_callback=before_predict_callback,
                         after_predict_callback=after_predict_callback,
+                        weight_col=weight_col
                     )
                     futures.append(future)
                 self.cv_preds_ = pd.concat(
                     [f.result().assign(window=i) for i, f in enumerate(futures)]
                 )
-        self.ts._fit(df, id_col, time_col, target_col, static_features, keep_last_n)
+        self.ts._fit(df, id_col, time_col, target_col, static_features, keep_last_n, weight_col)
         self.ts.as_numpy = False
         return hist
 
