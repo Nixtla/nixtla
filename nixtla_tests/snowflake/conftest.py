@@ -10,14 +10,19 @@ Required environment variables:
     NIXTLA_API_KEY: Nixtla API key for authentication
 
 Optional test resource configuration:
-    SF_TEST_DATABASE: Test database name (default: "NIXTLA_TESTDB")
-    SF_TEST_SCHEMA: Test schema name (default: "NIXTLA_SCHEMA")
-    SF_TEST_STAGE: Test stage name (default: "nixtla_stage")
+    SF_TEST_DATABASE: Base database name (default: "NIXTLA_TESTDB")
+    SF_TEST_SCHEMA: Base schema name (default: "NIXTLA_SCHEMA")
+    SF_TEST_STAGE: Base stage name (default: "NIXTLA_STAGE")
+
+All Snowflake assets (database, schema, stage, network rule, integration)
+are namespaced with a short UUID-based suffix to avoid conflicts when
+tests run concurrently across different environments.
 
 Note: Tests will be skipped if required environment variables are not set.
 """
 
 import os
+import uuid
 from dataclasses import dataclass
 from typing import Generator
 
@@ -47,6 +52,7 @@ class SnowflakeTestConfig:
     schema: str
     stage: str
     api_key: str
+    namespace: str
 
 
 # ============================================================================
@@ -70,11 +76,19 @@ def test_config() -> SnowflakeTestConfig:
     assert isinstance(api_key, str) and len(api_key) > 0, (
         "NIXTLA_API_KEY must be a non-empty string"
     )
+    ns = uuid.uuid4().hex[:8].upper()
+
+    # Base names from env (if provided), then namespace them
+    base_db = os.getenv("SF_TEST_DATABASE", "NIXTLA_TESTDB").upper()
+    base_schema = os.getenv("SF_TEST_SCHEMA", "NIXTLA_SCHEMA").upper()
+    base_stage = os.getenv("SF_TEST_STAGE", "NIXTLA_STAGE").upper()
+
     return SnowflakeTestConfig(
-        database=os.getenv("SF_TEST_DATABASE", "NIXTLA_TESTDB"),
-        schema=os.getenv("SF_TEST_SCHEMA", "NIXTLA_SCHEMA"),
-        stage=os.getenv("SF_TEST_STAGE", "nixtla_stage"),
+        database=f"{base_db}_{ns}",
+        schema=f"{base_schema}_{ns}",
+        stage=f"{base_stage}_{ns}",
         api_key=api_key,
+        namespace=ns,
     )
 
 
@@ -253,9 +267,9 @@ def deployment_config_api_nixtla(
         database=test_config.database,
         schema=test_config.schema,
         stage=test_config.stage,
-        integration_name="nixtla_test_integration_api",
+        integration_name=f"nixtla_test_integration_api_{test_config.namespace}",
         base_url="https://api.nixtla.io",
-        network_rule_name="nixtla_network_rule_api",
+        network_rule_name=f"nixtla_network_rule_api_{test_config.namespace}",
     )
 
 
@@ -276,9 +290,9 @@ def deployment_config_tsmp_nixtla(
         database=test_config.database,
         schema=test_config.schema,
         stage=test_config.stage,
-        integration_name="nixtla_test_integration_tsmp",
+        integration_name=f"nixtla_test_integration_tsmp_{test_config.namespace}",
         base_url="https://tsmp.nixtla.io",
-        network_rule_name="nixtla_network_rule_tsmp",
+        network_rule_name=f"nixtla_network_rule_tsmp_{test_config.namespace}",
     )
 
 
