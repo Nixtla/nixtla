@@ -67,7 +67,9 @@ def test_config() -> SnowflakeTestConfig:
     if not api_key:
         pytest.skip("NIXTLA_API_KEY not set, skipping Snowflake tests")
 
-    assert isinstance(api_key, str) and len(api_key) > 0, "NIXTLA_API_KEY must be a non-empty string"
+    assert isinstance(api_key, str) and len(api_key) > 0, (
+        "NIXTLA_API_KEY must be a non-empty string"
+    )
     return SnowflakeTestConfig(
         database=os.getenv("SF_TEST_DATABASE", "NIXTLA_TESTDB"),
         schema=os.getenv("SF_TEST_SCHEMA", "NIXTLA_SCHEMA"),
@@ -77,7 +79,9 @@ def test_config() -> SnowflakeTestConfig:
 
 
 @pytest.fixture(scope="session")
-def snowflake_session(test_config: SnowflakeTestConfig) -> Generator[Session, None, None]:
+def snowflake_session(
+    test_config: SnowflakeTestConfig,
+) -> Generator[Session, None, None]:
     """
     Create a Snowflake session for testing.
 
@@ -303,6 +307,10 @@ def deployed_with_api_endpoint(
     """
     config = deployment_config_api_nixtla
 
+    # Ensure session is using the correct database and schema context
+    snowflake_session.use_database(config.database)
+    snowflake_session.use_schema(config.schema)
+
     # Deploy all components using core function
     # Note: deploy_examples=False because we'll load examples separately
     # to capture the DataFrames
@@ -357,6 +365,10 @@ def deployed_with_tsmp_endpoint(
         Drops integration, secrets, and network rules
     """
     config = deployment_config_tsmp_nixtla
+
+    # Ensure session is using the correct database and schema context
+    snowflake_session.use_database(config.database)
+    snowflake_session.use_schema(config.schema)
 
     # Deploy all components using core function
     # Note: deploy_examples=False because example loading is handled separately

@@ -28,6 +28,10 @@ from nixtla_tests.snowflake.conftest import (
 
 def _verify_full_deployment(session: Session, config: DeploymentConfig) -> None:
     """Helper to verify all deployment components exist."""
+    # Ensure session is using the correct database and schema context
+    session.use_database(config.database)
+    session.use_schema(config.schema)
+
     assert verify_network_rule_exists(session, config), (
         f"Network rule not created with {config.api_host}"
     )
@@ -62,6 +66,11 @@ class TestSnowflakeDeployment:
         """Test that example datasets were loaded with correct data."""
         # example_dataframes fixture ensures data is loaded
         config = deployed_with_api_endpoint
+
+        # Ensure session is using the correct database and schema context
+        snowflake_session.use_database(config.database)
+        snowflake_session.use_schema(config.schema)
+
         example_tables = ["EXAMPLE_TRAIN", "EXAMPLE_ALL_DATA", "EXAMPLE_ANOMALY_DATA"]
 
         for table in example_tables:
@@ -188,6 +197,10 @@ class TestExampleScripts:
         Returns:
             (snowflake_df, client_df)
         """
+        # Ensure session is using the correct database and schema context
+        session.use_database(config.database)
+        session.use_schema(config.schema)
+
         # Get test case
         test_cases = get_example_test_cases(config)
         test_case = next(tc for tc in test_cases if tc.name == case_name)

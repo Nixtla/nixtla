@@ -211,8 +211,8 @@ class DeploymentConfig:
         """Generate security parameters for UDTFs and stored procedures."""
         return {
             "secrets": {
-                SECRET_API_KEY: SECRET_API_KEY,
-                SECRET_BASE_URL: SECRET_BASE_URL,
+                SECRET_API_KEY: f"{self.prefix}{SECRET_API_KEY}",
+                SECRET_BASE_URL: f"{self.prefix}{SECRET_BASE_URL}",
             },
             "external_access_integrations": [self.integration_name],
         }
@@ -616,6 +616,10 @@ def create_security_integration(
         api_key: Nixtla API key (if None, will prompt or use env var)
         skip_confirmation: If True, skip interactive confirmation prompts
     """
+    # Ensure session is using the correct database and schema context
+    session.use_database(config.database)
+    session.use_schema(config.schema)
+
     if api_key is None:
         nixtla_api_key = ask_with_defaults(
             "Nixtla API key: ",
@@ -667,6 +671,10 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
         session: Active Snowflake session
         config: Deployment configuration with stage and integration name
     """
+    # Ensure session is using the correct database and schema context
+    session.use_database(config.database)
+    session.use_schema(config.schema)
+
     import pandas as pd
     from snowflake.snowpark.functions import udtf
     from snowflake.snowpark.types import (
@@ -1046,6 +1054,10 @@ def create_stored_procedures(
         config: Deployment configuration
         skip_confirmation: If True, skip interactive confirmation prompts
     """
+    # Ensure session is using the correct database and schema context
+    session.use_database(config.database)
+    session.use_schema(config.schema)
+
     script = TEMPLATE_SP.format(ds_prefix=config.prefix)
 
     if not skip_confirmation:
@@ -1067,6 +1079,10 @@ def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
         session: Active Snowflake session
         config: Deployment configuration with stage and integration name
     """
+    # Ensure session is using the correct database and schema context
+    session.use_database(config.database)
+    session.use_schema(config.schema)
+
     from snowflake.snowpark.functions import sproc
 
     security_params = config.get_security_params()
