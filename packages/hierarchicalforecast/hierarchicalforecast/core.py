@@ -225,6 +225,7 @@ class HierarchicalReconciliation:
         target_col: str = "y",
         id_time_col: str = "temporal_id",
         temporal: bool = False,
+        temporal_spec: dict[str, int] | None = None,
     ) -> tuple[FrameT, FrameT, FrameT, list[str], str]:
         """Performs preliminary wrangling and protections."""
         Y_hat_nw_cols = Y_hat_nw.columns
@@ -249,6 +250,19 @@ class HierarchicalReconciliation:
                 raise NotImplementedError(
                     f"Temporal reconciliation is not supported for intervals_method=`{intervals_method}`."
                 )
+
+            # Validate horizon against temporal_spec if provided
+            if temporal_spec is not None:
+                max_agg_factor = max(temporal_spec.values())
+                # Compute horizon: number of unique timestamps per unique_id
+                # This represents the number of bottom-level periods available for reconciliation
+                horizon = Y_hat_nw.group_by(id_col).agg(nw.col(time_col).n_unique().alias("count"))["count"].max()
+                if horizon < max_agg_factor:
+                    raise ValueError(
+                        f"The forecast horizon ({horizon}) must be greater than or equal to "
+                        f"the maximum aggregation factor in temporal_spec ({max_agg_factor}). "
+                        f"Ensure you have at least {max_agg_factor} forecast periods."
+                    )
 
             missing_cols_temporal = set([id_col, time_col, id_time_col]) - set(
                 Y_hat_nw_cols
@@ -457,6 +471,7 @@ class HierarchicalReconciliation:
         target_col: str = "y",
         id_time_col: str = "temporal_id",
         temporal: bool = False,
+        temporal_spec: dict[str, int] | None = None,
         S: Frame = None,  # For compatibility with the old API, S_df is now S
         diagnostics: bool = False,
         diagnostics_atol: float = 1e-6,
@@ -501,6 +516,9 @@ class HierarchicalReconciliation:
             id_col (str, optional): column that identifies each serie. Default is "unique_id".
             time_col (str, optional): column that identifies each timestep, its values can be timestamps or integers. Default is "ds".
             target_col (str, optional): column that contains the target. Default is "y".
+            id_time_col (str, optional): column that identifies each temporal aggregation level (required when `temporal=True`). Default is "temporal_id".
+            temporal (bool, optional): if True, perform temporal reconciliation. Default is False.
+            temporal_spec (Optional[dict[str, int]], optional): Dictionary mapping temporal aggregation level names to their aggregation factors. Each key is a descriptive name for the temporal level, and each value is the number of base periods to aggregate (e.g., for quarterly data: {"year": 4, "quarter": 1}, for monthly data: {"year": 12, "quarter": 3, "month": 1}). The value 1 represents the bottom level (no aggregation).
             diagnostics (bool, optional): if True, compute coherence diagnostics and store in `self.diagnostics`. Default is False.
             diagnostics_atol (float, optional): absolute tolerance for numerical coherence check. Default is 1e-6.
 
@@ -553,6 +571,7 @@ class HierarchicalReconciliation:
             target_col=target_col,
             id_time_col=id_time_col,
             temporal=temporal,
+            temporal_spec=temporal_spec,
         )
 
         # Initialize reconciler arguments

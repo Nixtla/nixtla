@@ -13,7 +13,7 @@ from hierarchicalforecast.methods import (
     MinTrace,
     TopDown,
 )
-from hierarchicalforecast.utils import aggregate
+from hierarchicalforecast.utils import aggregate, aggregate_temporal
 
 
 @pytest.fixture(scope="module")
@@ -241,6 +241,46 @@ def test_reconcile_raises_on_invalid_level(grouped_data, lib, level, method):
             level=level, intervals_method=method
         )
 
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_temporal_reconcile_raises_on_insufficient_horizon(lib):
+    """Tests that temporal reconciliation fails when horizon < max aggregation factor in spec."""
+    # Create a simple dataset with 2 series and 8 quarterly periods
+    df = pd.DataFrame({
+        'unique_id': ['A'] * 8 + ['B'] * 8,
+        'ds': pd.date_range('2020-01-01', periods=8, freq='QS').tolist() * 2,
+        'y': list(range(10, 90, 10)) + list(range(100, 180, 10)),
+    })
+
+    # Define temporal spec where max aggregation = 4 (year aggregates 4 quarters)
+    spec_temporal = {"year": 4, "quarter": 1}
+
+    # Aggregate temporally - this gives us 8 quarters and 2 years per unique_id
+    Y_df, S_df, tags = aggregate_temporal(df, spec_temporal)
+    Y_hat_df = Y_df.rename(columns={'y': 'y_model'})
+
+    # Filter to keep only 2 unique timestamps (less than max aggregation factor of 4)
+    # This simulates having only 2 forecast periods
+    first_two_ds = sorted(Y_hat_df['ds'].unique())[:2]
+    Y_hat_df = Y_hat_df[Y_hat_df['ds'].isin(first_two_ds)]
+
+    # Convert to polars if needed
+    if lib == "polars":
+        Y_hat_df = pl.from_pandas(Y_hat_df)
+        S_df = pl.from_pandas(S_df)
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+
+    # Should raise ValueError because horizon (2) < max_agg_factor (4)
+    with pytest.raises(ValueError, match=r"forecast horizon.*must be greater than or equal to.*maximum aggregation factor"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_df,
+            S_df=S_df,
+            tags=tags,
+            temporal=True,
+            temporal_spec=spec_temporal,
+        )
+
 @pytest.mark.parametrize("lib", ["pandas", "polars"])
 @pytest.mark.parametrize("method", ['bootstrap', 'permbu'])
 def test_mintrace_nonnegative_raises_on_intervals_method(grouped_data, lib, method):
@@ -273,6 +313,44 @@ def test_mintrace_nonnegative_raises_on_intervals_method(grouped_data, lib, meth
             seed=1,
         )
 
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_temporal_reconcile_succeeds_with_sufficient_horizon(lib):
+    """Tests that temporal reconciliation succeeds when horizon >= max aggregation factor in spec."""
+    # Create a simple dataset with 2 series and 8 quarterly periods
+    df = pd.DataFrame({
+        'unique_id': ['A'] * 8 + ['B'] * 8,
+        'ds': pd.date_range('2020-01-01', periods=8, freq='QS').tolist() * 2,
+        'y': list(range(10, 90, 10)) + list(range(100, 180, 10)),
+    })
+
+    # Define temporal spec where max aggregation = 4 (year aggregates 4 quarters)
+    spec_temporal = {"year": 4, "quarter": 1}
+
+    # Aggregate temporally
+    Y_df, S_df, tags = aggregate_temporal(df, spec_temporal)
+    Y_hat_df = Y_df.rename(columns={'y': 'y_model'})
+
+    # Convert to polars if needed
+    if lib == "polars":
+        Y_hat_df = pl.from_pandas(Y_hat_df)
+        S_df = pl.from_pandas(S_df)
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+
+    # Should succeed because we have 8 quarters which is >= max_agg_factor (4)
+    result = hrec.reconcile(
+        Y_hat_df=Y_hat_df,
+        S_df=S_df,
+        tags=tags,
+        temporal=True,
+        temporal_spec=spec_temporal,
+    )
+
+    # Verify reconciliation completed
+    assert result is not None
+    result_nw = nw.from_native(result)
+    assert 'y_model/BottomUp' in result_nw.columns
 
 @pytest.mark.parametrize("lib", ["pandas", "polars"])
 def test_mintrace_nonnegative_with_normality_intervals(grouped_data, lib):
