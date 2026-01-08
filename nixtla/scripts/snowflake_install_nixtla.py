@@ -36,6 +36,7 @@ from rich import print
 from rich.markdown import Markdown
 from rich.prompt import Confirm, Prompt
 from snowflake.snowpark import Session
+from pathlib import Path
 
 # ============================================================================
 # Constants
@@ -585,9 +586,14 @@ def package_and_upload_nixtla(session: Session, stage: str) -> None:
         shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", tmpdir)
         zip_path = os.path.join(tmpdir, "nixtla.zip")
 
-        # Upload to stage
+        # Upload to stage (normalize path for Windows and quote file URI)
+        zip_posix = Path(zip_path).resolve().as_posix()
+        # On Windows, file URIs conventionally start with file:///C:/...
+        file_uri = (
+            f"file:///{zip_posix}" if os.name == "nt" else f"file://{zip_posix}"
+        )
         result = session.sql(
-            f"PUT file://{zip_path} @{stage} AUTO_COMPRESS=FALSE OVERWRITE=TRUE"
+            f"PUT '{file_uri}' @{stage} AUTO_COMPRESS=FALSE OVERWRITE=TRUE"
         ).collect()
 
         if result[0]["status"].lower() != "uploaded":
