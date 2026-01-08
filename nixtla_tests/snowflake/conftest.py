@@ -7,7 +7,7 @@ Required environment variables:
     SF_PASSWORD: Snowflake password
     SF_WAREHOUSE: Snowflake warehouse (optional)
     SF_ROLE: Snowflake role (optional)
-    NIXTLA_API_KEY: Nixtla API key for authentication
+    NIXTLA_API_KEY_FOR_SF: Nixtla API key for authentication
 
 Optional test resource configuration:
     SF_TEST_DATABASE: Base database name (default: "NIXTLA_TESTDB")
@@ -68,13 +68,13 @@ def test_config() -> SnowflakeTestConfig:
     Returns:
         SnowflakeTestConfig with database, schema, stage, and API key
     """
-    api_key = os.getenv("NIXTLA_API_KEY")
+    api_key = os.getenv("NIXTLA_API_KEY_FOR_SF")
 
     if not api_key:
-        pytest.skip("NIXTLA_API_KEY not set, skipping Snowflake tests")
+        pytest.skip("NIXTLA_API_KEY_FOR_SF not set, skipping Snowflake tests")
 
     assert isinstance(api_key, str) and len(api_key) > 0, (
-        "NIXTLA_API_KEY must be a non-empty string"
+        "NIXTLA_API_KEY_FOR_SF must be a non-empty string"
     )
     ns = uuid.uuid4().hex[:8].upper()
 
