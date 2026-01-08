@@ -27,7 +27,7 @@ import sys
 
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
-from typing import Optional
+from typing import Mapping, Optional
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -41,6 +41,7 @@ from snowflake.snowpark import Session
 # Constants
 # ============================================================================
 
+# Python packages required for Snowflake UDTFs
 PACKAGES = [
     "annotated-types",
     "anyio",
@@ -59,6 +60,20 @@ PACKAGES = [
     "narwhals",
     "rich",
 ]
+
+# Data column names
+BASE_COLUMNS = ["unique_id", "ds", "y"]
+FORECAST_COLUMN = "forecast"
+ANOMALY_COLUMN = "anomaly"
+
+# Secret identifiers
+SECRET_API_KEY = "nixtla_api_key"
+SECRET_BASE_URL = "nixtla_base_url"
+
+# Example data parameters
+TRAINING_DAYS = 330  # Days of training data
+TOTAL_DAYS = 365  # Total days including forecast period
+ANOMALY_DAYS = 180  # Days for anomaly detection examples
 
 TEMPLATE_ACCESS_INTEGRATION = """
 CREATE OR REPLACE NETWORK RULE {ds_prefix}nixtla_network_rule
@@ -195,8 +210,8 @@ class DeploymentConfig:
         """Generate security parameters for UDTFs and stored procedures."""
         return {
             "secrets": {
-                "nixtla_api_key": "nixtla_api_key",
-                "nixtla_base_url": "nixtla_base_url",
+                SECRET_API_KEY: SECRET_API_KEY,
+                SECRET_BASE_URL: SECRET_BASE_URL,
             },
             "external_access_integrations": [self.integration_name],
         }
@@ -695,129 +710,159 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             import _snowflake
             from nixtla import NixtlaClient
 
-            token = _snowflake.get_generic_secret_string("nixtla_api_key")
-            base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
+            token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
+            base_url = _snowflake.get_generic_secret_string(SECRET_BASE_URL)
             self.client = NixtlaClient(api_key=token, base_url=base_url)
 
-        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
-            config = df.iloc[0, 0]
-            if config.get("finetune_steps", 0) > 0:
-                raise ValueError("Finetuning is not allowed during forecasting")
+        @staticmethod
+        def _find_forecast_column(forecast_df: pd.DataFrame) -> str:
+            """
+            Find the main forecast column from the forecast result.
 
-            # Convert data objects to DataFrame
-            data = pd.DataFrame(df.iloc[:, 1].tolist())
-            data.columns = data.columns.str.lower()
-            data = data.sort_values(by=["unique_id", "ds"])
-            data["ds"] = pd.to_datetime(data["ds"])
+            Prefers custom model names over 'TimeGPT', excluding interval columns.
 
-            # Identify exogenous columns (any column not in base columns)
-            base_cols = ["unique_id", "ds", "y"]
-            extra_cols = [col for col in data.columns if col not in base_cols]
+            Args:
+                forecast_df: DataFrame returned from forecast API
 
-            # Get explicitly declared exogenous variables from config
-            hist_exog_list = config.get("hist_exog_list")
+            Returns:
+                Name of the forecast column
 
-            # Normalize hist_exog_list to lowercase to match data columns
-            if hist_exog_list:
-                hist_exog_list = [col.lower() for col in hist_exog_list]
+            Raises:
+                ValueError: If no valid forecast column is found
+            """
+            base_cols = set(BASE_COLUMNS)
 
-            # Prepare forecast parameters
-            forecast_params = dict(config)
+            # First, try to find custom model column (not TimeGPT, not intervals)
+            for col in forecast_df.columns:
+                col_lower = col.lower()
+                if col_lower not in base_cols and not col.startswith("TimeGPT"):
+                    return col
 
-            # Only use exogenous variables if explicitly declared
-            if hist_exog_list:
-                # Validate that declared columns exist in data
-                missing_cols = [
-                    col for col in hist_exog_list if col not in data.columns
-                ]
-                if missing_cols:
-                    raise ValueError(
-                        f"Columns specified in hist_exog_list not found in data: {missing_cols}"
-                        f". Available columns: {list(data.columns)}"
-                    )
-                forecast_params["hist_exog_list"] = hist_exog_list
-            elif extra_cols:
-                # Warn user about unused columns (via print, visible in query logs)
-                print(
-                    f"Warning: Found extra columns {extra_cols} in input data. "
-                    f"To use them as exogenous variables, add 'hist_exog_list' to PARAMS: "
-                    f"PARAMS => OBJECT_CONSTRUCT('h', <value>, 'hist_exog_list', ARRAY_CONSTRUCT({', '.join(repr(c) for c in extra_cols)}))"
-                )
-
-            # Call TimeGPT forecast
-            forecast = self.client.forecast(df=data, **forecast_params)
-
-            # Find forecast column (prefer model name over TimeGPT)
-            forecast_col = None
-            for col in forecast.columns:
-                if col.lower() not in ["unique_id", "ds", "y"] and not col.startswith(
-                    "TimeGPT"
+            # Fall back to TimeGPT main forecast column (not intervals)
+            for col in forecast_df.columns:
+                if (
+                    col.startswith("TimeGPT")
+                    and "-lo-" not in col
+                    and "-hi-" not in col
                 ):
-                    forecast_col = col
-                    break
+                    return col
 
-            # If no model column found, try TimeGPT
-            if forecast_col is None:
-                for col in forecast.columns:
-                    if (
-                        col.startswith("TimeGPT")
-                        and "-lo-" not in col
-                        and "-hi-" not in col
-                    ):
-                        forecast_col = col
-                        break
+            raise ValueError("No valid forecast column found in output")
 
-            if forecast_col is None:
-                raise ValueError("No valid forecast column found in output")
+        @staticmethod
+        def _extract_confidence_intervals(forecast_df: pd.DataFrame) -> pd.Series:
+            """
+            Extract confidence intervals from forecast result into VARIANT format.
 
-            # Build base result with forecast
-            result = forecast[["unique_id", "ds", forecast_col]].copy()
-            result = result.rename(columns={forecast_col: "forecast"})
+            Looks for columns matching pattern: *-lo-<level> and *-hi-<level>
+            Returns nested dict structure: {"80": {"lo": val, "hi": val}, "95": {...}}
 
-            # Extract confidence interval columns and structure them
-            # Look for columns matching pattern: *-lo-<level> and *-hi-<level>
+            Args:
+                forecast_df: DataFrame returned from forecast API
+
+            Returns:
+                Series containing dict/None for each row's confidence intervals
+            """
             import re
 
+            # Find all interval columns using regex
             interval_pattern = re.compile(r"^.*-(lo|hi)-(\d+)$", re.IGNORECASE)
             interval_cols = {}  # Maps (level, bound) -> column_name
 
-            for col in forecast.columns:
+            for col in forecast_df.columns:
                 match = interval_pattern.match(col)
                 if match:
                     bound_type = match.group(1).lower()  # "lo" or "hi"
                     level = match.group(2)  # "80", "95", etc.
                     interval_cols[(level, bound_type)] = col
 
-            # Build confidence_intervals structure for each row
-            if interval_cols:
-                # Group levels
-                levels = sorted(set(level for level, _ in interval_cols.keys()))
-
-                def build_interval_dict(row):
-                    """Build nested dict structure for a single row."""
-                    intervals = {}
-                    for level in levels:
-                        level_data = {}
-                        lo_col = interval_cols.get((level, "lo"))
-                        hi_col = interval_cols.get((level, "hi"))
-                        if lo_col:
-                            val = row[lo_col]
-                            # Convert to float to ensure proper type
-                            level_data["lo"] = float(val) if pd.notna(val) else None
-                        if hi_col:
-                            val = row[hi_col]
-                            level_data["hi"] = float(val) if pd.notna(val) else None
-                        if level_data:
-                            intervals[level] = level_data
-                    # Return as Python dict - Snowflake VARIANT will handle serialization
-                    return intervals if intervals else None
-
-                result["confidence_intervals"] = forecast.apply(
-                    build_interval_dict, axis=1
-                )
-            else:
+            if not interval_cols:
                 # No confidence intervals found
-                result["confidence_intervals"] = None
+                return pd.Series([None] * len(forecast_df))
+
+            # Extract unique levels and sort them
+            levels = sorted(set(level for level, _ in interval_cols.keys()))
+
+            def build_interval_dict(row):
+                """Build nested dict structure for a single row."""
+                intervals = {}
+                for level in levels:
+                    level_data = {}
+
+                    # Extract lo and hi values for this level
+                    lo_col = interval_cols.get((level, "lo"))
+                    hi_col = interval_cols.get((level, "hi"))
+
+                    if lo_col and lo_col in row.index:
+                        val = row[lo_col]
+                        level_data["lo"] = float(val) if pd.notna(val) else None
+                    if hi_col and hi_col in row.index:
+                        val = row[hi_col]
+                        level_data["hi"] = float(val) if pd.notna(val) else None
+
+                    if level_data:
+                        intervals[level] = level_data
+
+                # Return as Python dict - Snowflake VARIANT will handle serialization
+                return intervals if intervals else None
+
+            return forecast_df.apply(build_interval_dict, axis=1)
+
+        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
+            """Execute forecast for a partition of data."""
+            # Extract configuration and validate
+            config = df.iloc[0, 0]
+            if config.get("finetune_steps", 0) > 0:
+                raise ValueError("Finetuning is not allowed during forecasting")
+
+            # Prepare input data
+            data = pd.DataFrame(df.iloc[:, 1].tolist())
+            data.columns = data.columns.str.lower()
+            data = data.sort_values(by=["unique_id", "ds"])
+            data["ds"] = pd.to_datetime(data["ds"])
+
+            # Handle exogenous variables
+            extra_cols = [col for col in data.columns if col not in BASE_COLUMNS]
+            hist_exog_list = config.get("hist_exog_list")
+
+            forecast_params = dict(config)
+
+            if hist_exog_list:
+                # Normalize and validate declared exogenous variables
+                hist_exog_list = [col.lower() for col in hist_exog_list]
+                missing_cols = [
+                    col for col in hist_exog_list if col not in data.columns
+                ]
+
+                if missing_cols:
+                    raise ValueError(
+                        f"Columns specified in hist_exog_list not found in data: {missing_cols}. "
+                        f"Available columns: {list(data.columns)}"
+                    )
+
+                forecast_params["hist_exog_list"] = hist_exog_list
+
+            elif extra_cols:
+                # Warn about unused columns
+                exog_example = ", ".join(repr(c) for c in extra_cols)
+                print(
+                    f"Warning: Found extra columns {extra_cols} in input data. "
+                    f"To use them as exogenous variables, add 'hist_exog_list' to PARAMS: "
+                    f"PARAMS => OBJECT_CONSTRUCT('h', <value>, 'hist_exog_list', ARRAY_CONSTRUCT({exog_example}))"
+                )
+
+            # Execute forecast
+            forecast = self.client.forecast(df=data, **forecast_params)
+
+            # Extract forecast column and build result
+            forecast_col = self._find_forecast_column(forecast)
+            result = forecast[["unique_id", "ds", forecast_col]].copy()
+            result = result.rename(columns={forecast_col: FORECAST_COLUMN})
+
+            # Extract confidence intervals
+            result["confidence_intervals"] = self._extract_confidence_intervals(
+                forecast
+            )
 
             return result[["unique_id", "ds", "forecast", "confidence_intervals"]]
 
@@ -838,30 +883,43 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
         **common_params,
     )
     class EvaluateUDTF:
-        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
-            from utilsforecast.evaluation import evaluate
-
-            metrics = list(self._parse_metrics(df.iloc[0, 0]))
+        @staticmethod
+        def _prepare_input_data(df: pd.DataFrame) -> pd.DataFrame:
+            """Extract and prepare evaluation data from UDTF input."""
             data = pd.DataFrame(df.iloc[:, 1].tolist())
             data.columns = data.columns.str.lower()
             data = data.sort_values(by=["unique_id", "ds"])
             data["ds"] = pd.to_datetime(data["ds"])
+            return data
 
-            forecasters = [
-                col
-                for col in data.columns
-                if col.lower() not in ["unique_id", "ds", "y"]
-            ]
+        @staticmethod
+        def _find_forecaster_columns(data: pd.DataFrame) -> list[str]:
+            """Find all forecaster columns (non-base columns)."""
+            return [col for col in data.columns if col.lower() not in BASE_COLUMNS]
 
-            result = evaluate(data, metrics=metrics, models=forecasters, train_df=data)
-            result = pd.melt(
+        @staticmethod
+        def _format_evaluation_results(result: pd.DataFrame) -> pd.DataFrame:
+            """Melt evaluation results to match output schema."""
+            melted = pd.melt(
                 result,
                 id_vars=["unique_id", "metric"],
                 var_name="forecaster",
                 value_name="value",
             )
+            return melted[["unique_id", "forecaster", "metric", "value"]]
 
-            return result[["unique_id", "forecaster", "metric", "value"]]
+        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
+            """Execute evaluation for a partition of data."""
+            from utilsforecast.evaluation import evaluate
+
+            # Extract config and prepare data
+            metrics = list(self._parse_metrics(df.iloc[0, 0]))
+            data = self._prepare_input_data(df)
+            forecasters = self._find_forecaster_columns(data)
+
+            # Evaluate and format results
+            result = evaluate(data, metrics=metrics, models=forecasters, train_df=data)
+            return self._format_evaluation_results(result)
 
         def _parse_metrics(self, metrics):
             """Parse metric names to metric functions."""
@@ -905,12 +963,14 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             import _snowflake
             from nixtla import NixtlaClient
 
-            token = _snowflake.get_generic_secret_string("nixtla_api_key")
-            base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
+            token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
+            base_url = _snowflake.get_generic_secret_string(SECRET_BASE_URL)
             self.client = NixtlaClient(api_key=token, base_url=base_url)
 
-        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
-            input_df = pd.DataFrame(
+        @staticmethod
+        def _prepare_input_data(df: pd.DataFrame) -> pd.DataFrame:
+            """Extract anomaly detection input from UDTF DataFrame."""
+            return pd.DataFrame(
                 {
                     "unique_id": df.iloc[:, 1],
                     "ds": df.iloc[:, 2],
@@ -918,36 +978,24 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
                 }
             )
 
-            config = df.iloc[0, 0]
-
-            # Extract level from config (default 99)
-            level = config.get("level", 99)
-
-            # Detect anomalies
-            anomalies = self.client.detect_anomalies(df=input_df, **config)
-
-            # Prepare output columns
-            result_cols = ["unique_id", "ds", "y", "TimeGPT", "anomaly"]
-
-            # Find the confidence interval columns
+        @staticmethod
+        def _extract_confidence_bounds(
+            anomalies: pd.DataFrame, level: int
+        ) -> pd.DataFrame:
+            """Extract and rename confidence interval columns."""
             lo_col = f"TimeGPT-lo-{level}"
             hi_col = f"TimeGPT-hi-{level}"
 
+            result_cols = ["unique_id", "ds", "y", "TimeGPT", "anomaly"]
+
             if lo_col in anomalies.columns and hi_col in anomalies.columns:
-                result_cols.extend([lo_col, hi_col])
-                result = anomalies[result_cols].copy()
+                result = anomalies[result_cols + [lo_col, hi_col]].copy()
             else:
-                # If confidence intervals not present, use None
-                result = anomalies[
-                    ["unique_id", "ds", "y", "TimeGPT", "anomaly"]
-                ].copy()
+                result = anomalies[result_cols].copy()
                 result[lo_col] = None
                 result[hi_col] = None
 
-            # Convert anomaly boolean to string for Snowflake compatibility
-            result["anomaly"] = result["anomaly"].astype(str)
-
-            # Rename columns to match output schema
+            # Rename to match output schema
             result.columns = [
                 "unique_id",
                 "ds",
@@ -957,6 +1005,21 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
                 "TimeGPT_lo",
                 "TimeGPT_hi",
             ]
+            return result
+
+        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
+            """Execute anomaly detection for a partition."""
+            # Prepare inputs
+            input_df = self._prepare_input_data(df)
+            config = df.iloc[0, 0]
+            level = config.get("level", 99)
+
+            # Detect anomalies
+            anomalies = self.client.detect_anomalies(df=input_df, **config)
+
+            # Extract bounds and format output
+            result = self._extract_confidence_bounds(anomalies, level)
+            result[ANOMALY_COLUMN] = result[ANOMALY_COLUMN].astype(str)
 
             return result
 
@@ -1232,6 +1295,101 @@ def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
     ]
 
 
+def _generate_time_series(
+    series_id: str,
+    dates: pd.DatetimeIndex,
+    include_exog: bool = False,
+    anomalies: Optional[Mapping[int, float]] = None,
+    forecast_start_idx: Optional[int] = None,
+    trend_rate: float = 0.5,
+    seasonal_amplitude: float = 10.0,
+    seasonal_type: str = "sin",
+    base_value: float = 100.0,
+    noise_std: float = 2.0,
+) -> list[dict]:
+    """
+    Generate a single time series with optional exogenous variables and anomalies.
+
+    Args:
+        series_id: Unique identifier for the series
+        dates: Date range for the series
+        include_exog: Whether to include exogenous variables (temperature, is_weekend, promotion)
+        anomalies: Dict mapping day_index -> anomaly_value to inject into the series
+        forecast_start_idx: If provided, add a 'TimeGPT' forecast column for indices >= this value
+        trend_rate: Rate of linear trend growth per time step (default: 0.5)
+        seasonal_amplitude: Amplitude of seasonal component (default: 10.0)
+        seasonal_type: Type of seasonality - 'sin' or 'cos' (default: 'sin')
+        base_value: Base value for the series (default: 100.0)
+        noise_std: Standard deviation of random noise (default: 2.0)
+
+    Returns:
+        List of row dicts with columns: unique_id, ds, y, [exog columns], [TimeGPT]
+    """
+    import numpy as np
+
+    data = []
+    for i, date in enumerate(dates):
+        # Base pattern: trend + seasonality + noise
+        trend = i * trend_rate
+        if seasonal_type == "cos":
+            seasonal = seasonal_amplitude * np.cos(2 * np.pi * i / 7)
+        else:  # default to sin
+            seasonal = seasonal_amplitude * np.sin(2 * np.pi * i / 7)
+        noise = np.random.normal(0, noise_std)
+        value = base_value + trend + seasonal + noise
+
+        row = {
+            "unique_id": series_id,
+            "ds": date,
+            "y": value,
+        }
+
+        # Add exogenous variables if requested
+        if include_exog:
+            temperature = 20 + 10 * np.sin(2 * np.pi * i / 365) + np.random.normal(0, 2)
+            is_weekend = 1 if date.dayofweek >= 5 else 0
+            promotion = 1 if i % 14 == 0 else 0  # Promotion every 2 weeks
+
+            # Add exogenous effects to value
+            temp_effect = (temperature - 20) * 0.5
+            weekend_effect = 5 if is_weekend else 0
+            promo_effect = 8 if promotion else 0
+            row["y"] += temp_effect + weekend_effect + promo_effect
+
+            row.update(
+                {
+                    "temperature": temperature,
+                    "is_weekend": is_weekend,
+                    "promotion": promotion,
+                }
+            )
+        else:
+            row.update(
+                {
+                    "temperature": None,
+                    "is_weekend": None,
+                    "promotion": None,
+                }
+            )
+
+        # Inject anomalies if specified
+        if anomalies and i in anomalies:
+            row["y"] += anomalies[i]
+
+        # Add forecast column if requested (for evaluation examples)
+        if forecast_start_idx is not None:
+            if i >= forecast_start_idx:
+                # Simulated forecast with slightly more noise
+                forecast_value = value + np.random.normal(0, 3)
+                row["TimeGPT"] = forecast_value
+            else:
+                row["TimeGPT"] = None
+
+        data.append(row)
+
+    return data
+
+
 def load_example_datasets(
     session: Session,
     config: DeploymentConfig,
@@ -1248,80 +1406,19 @@ def load_example_datasets(
     Returns:
         If return_dataframes=True, dict with keys: 'train', 'all_data', 'anomaly'
     """
-    import numpy as np
-
     # Generate sample training data with exogenous variables
     print("[cyan]Generating sample training data with exogenous variables...[/cyan]")
 
-    dates = pd.date_range(start="2020-01-01", periods=365, freq="D")
-    train_data = []
+    dates = pd.date_range(start="2020-01-01", periods=TOTAL_DAYS, freq="D")
+    training_dates = dates[:TRAINING_DAYS]
 
-    # Series 1: Basic series without exogenous variables (for basic examples)
-    for i, date in enumerate(dates[:330]):  # 330 days for training
-        trend = i * 0.5
-        seasonal = 10 * np.sin(2 * np.pi * i / 7)  # Weekly seasonality
-        noise = np.random.normal(0, 2)
-        value = 100 + trend + seasonal + noise
-        train_data.append(
-            {
-                "unique_id": "series_1",
-                "ds": date,
-                "y": value,
-                "temperature": None,
-                "is_weekend": None,
-                "promotion": None,
-            }
-        )
+    # Generate three series using helper function
+    series_1 = _generate_time_series("series_1", training_dates, include_exog=False)
+    series_2 = _generate_time_series("series_2", training_dates, include_exog=True)
+    series_3 = _generate_time_series("series_3", training_dates, include_exog=False)
 
-    # Series 2: With exogenous variables (temperature, is_weekend, promotion)
-    for i, date in enumerate(dates[:330]):
-        trend = i * 0.5
-        seasonal = 10 * np.sin(2 * np.pi * i / 7)
-        noise = np.random.normal(0, 2)
-
-        # Exogenous variables
-        temperature = 20 + 10 * np.sin(2 * np.pi * i / 365) + np.random.normal(0, 2)
-        is_weekend = 1 if date.dayofweek >= 5 else 0
-        promotion = 1 if i % 14 == 0 else 0  # Promotion every 2 weeks
-
-        # Value influenced by exogenous factors
-        temp_effect = (temperature - 20) * 0.5
-        weekend_effect = 5 if is_weekend else 0
-        promo_effect = 8 if promotion else 0
-
-        value = (
-            100 + trend + seasonal + temp_effect + weekend_effect + promo_effect + noise
-        )
-
-        train_data.append(
-            {
-                "unique_id": "series_2",
-                "ds": date,
-                "y": value,
-                "temperature": temperature,
-                "is_weekend": is_weekend,
-                "promotion": promotion,
-            }
-        )
-
-    # Series 3: Basic series without exogenous variables (for comparison)
-    for i, date in enumerate(dates[:330]):
-        trend = i * 0.5
-        seasonal = 10 * np.sin(2 * np.pi * i / 7)
-        noise = np.random.normal(0, 2)
-        value = 100 + trend + seasonal + noise
-        train_data.append(
-            {
-                "unique_id": "series_3",
-                "ds": date,
-                "y": value,
-                "temperature": None,
-                "is_weekend": None,
-                "promotion": None,
-            }
-        )
-
-    train = pd.DataFrame(train_data)
+    # Combine all series
+    train = pd.DataFrame(series_1 + series_2 + series_3)
     train.columns = train.columns.str.upper()
     session.write_pandas(
         train,
@@ -1332,31 +1429,18 @@ def load_example_datasets(
     )
 
     # Generate all_data (training + some forecasts for evaluation)
-    all_data = []
-    series_ids = ["series_1", "series_2", "series_3"]
-    for series_id in series_ids:
-        for i, date in enumerate(dates):  # All 365 days
-            trend = i * 0.5
-            seasonal = 10 * np.sin(2 * np.pi * i / 7)
-            noise = np.random.normal(0, 2)
-            value = 100 + trend + seasonal + noise
+    # Include forecast column for days after training period
+    all_series_1 = _generate_time_series(
+        "series_1", dates, include_exog=False, forecast_start_idx=TRAINING_DAYS
+    )
+    all_series_2 = _generate_time_series(
+        "series_2", dates, include_exog=False, forecast_start_idx=TRAINING_DAYS
+    )
+    all_series_3 = _generate_time_series(
+        "series_3", dates, include_exog=False, forecast_start_idx=TRAINING_DAYS
+    )
 
-            # Add forecasted column for last 35 days (simulated forecast)
-            if i >= 330:
-                forecast_value = value + np.random.normal(0, 3)
-            else:
-                forecast_value = None
-
-            all_data.append(
-                {
-                    "unique_id": series_id,
-                    "ds": date,
-                    "y": value,
-                    "TimeGPT": forecast_value,
-                }
-            )
-
-    all_data_df = pd.DataFrame(all_data)
+    all_data_df = pd.DataFrame(all_series_1 + all_series_2 + all_series_3)
     all_data_df.columns = all_data_df.columns.str.upper()
     session.write_pandas(
         all_data_df,
@@ -1369,57 +1453,58 @@ def load_example_datasets(
     # Generate anomaly detection example data with injected anomalies
     print("[cyan]Generating anomaly detection example data...[/cyan]")
 
-    anomaly_dates = pd.date_range(start="2020-01-01", periods=180, freq="D")
-    anomaly_data = []
+    anomaly_dates = pd.date_range(start="2020-01-01", periods=ANOMALY_DAYS, freq="D")
 
     # Series 1: Few extreme spikes and drops
-    for i, date in enumerate(anomaly_dates):
-        trend = i * 0.3
-        seasonal = 15 * np.sin(2 * np.pi * i / 7)
-        noise = np.random.normal(0, 2)
-        value = 150 + trend + seasonal + noise
-
-        # Inject anomalies at specific dates
-        if i == 30:  # Day 30: Large spike
-            value += 50
-        elif i == 60:  # Day 60: Large drop
-            value -= 40
-        elif i == 120:  # Day 120: Another spike
-            value += 45
-
-        anomaly_data.append({"unique_id": "sensor_1", "ds": date, "y": value})
+    sensor_1_anomalies = {
+        30: 50,  # Day 30: Large spike
+        60: -40,  # Day 60: Large drop
+        120: 45,  # Day 120: Another spike
+    }
+    sensor_1 = _generate_time_series(
+        series_id="sensor_1",
+        dates=anomaly_dates,
+        anomalies=sensor_1_anomalies,
+        trend_rate=0.3,
+        seasonal_amplitude=15.0,
+        seasonal_type="sin",
+        base_value=150.0,
+        noise_std=2.0,
+    )
 
     # Series 2: Cluster of anomalies
-    for i, date in enumerate(anomaly_dates):
-        trend = i * 0.2
-        seasonal = 10 * np.cos(2 * np.pi * i / 7)
-        noise = np.random.normal(0, 1.5)
-        value = 200 + trend + seasonal + noise
-
-        # Inject cluster of anomalies (consecutive days)
-        if 90 <= i <= 95:  # Days 90-95: Consecutive spikes
-            value += 35
-        elif i == 150:  # Day 150: Single drop
-            value -= 30
-
-        anomaly_data.append({"unique_id": "sensor_2", "ds": date, "y": value})
+    sensor_2_anomalies = {
+        **{i: 35 for i in range(90, 96)},  # Days 90-95: Consecutive spikes
+        150: -30,  # Day 150: Single drop
+    }
+    sensor_2 = _generate_time_series(
+        series_id="sensor_2",
+        dates=anomaly_dates,
+        anomalies=sensor_2_anomalies,
+        trend_rate=0.2,
+        seasonal_amplitude=10.0,
+        seasonal_type="cos",
+        base_value=200.0,
+        noise_std=1.5,
+    )
 
     # Series 3: Subtle anomalies
-    for i, date in enumerate(anomaly_dates):
-        trend = i * 0.4
-        seasonal = 12 * np.sin(2 * np.pi * i / 7)
-        noise = np.random.normal(0, 3)
-        value = 180 + trend + seasonal + noise
+    sensor_3_anomalies = {
+        45: 25,  # Day 45: Moderate spike
+        100: -20,  # Day 100: Moderate drop
+    }
+    sensor_3 = _generate_time_series(
+        series_id="sensor_3",
+        dates=anomaly_dates,
+        anomalies=sensor_3_anomalies,
+        trend_rate=0.4,
+        seasonal_amplitude=12.0,
+        seasonal_type="sin",
+        base_value=180.0,
+        noise_std=3.0,
+    )
 
-        # Inject subtle anomalies
-        if i == 45:  # Day 45: Moderate spike
-            value += 25
-        elif i == 100:  # Day 100: Moderate drop
-            value -= 20
-
-        anomaly_data.append({"unique_id": "sensor_3", "ds": date, "y": value})
-
-    anomaly_df = pd.DataFrame(anomaly_data)
+    anomaly_df = pd.DataFrame(sensor_1 + sensor_2 + sensor_3)
     anomaly_df.columns = anomaly_df.columns.str.upper()
     session.write_pandas(
         anomaly_df,

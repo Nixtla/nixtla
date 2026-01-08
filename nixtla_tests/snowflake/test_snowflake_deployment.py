@@ -357,6 +357,10 @@ class TestExampleScripts:
                 var_name="forecaster",
                 value_name="value",
             )
+
+            # Convert value column to float64 to match Snowflake dtype
+            result["value"] = result["value"].astype(float)
+
             return result[["unique_id", "forecaster", "metric", "value"]]
 
         sf_df, client_df = self._execute_and_compare(
