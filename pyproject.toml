@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
     "annotated-types",
     "httpx[zstd]",
+    "narwhals>=2.11.0",
     "orjson",
     "pandas",
     "pydantic>=1.10",

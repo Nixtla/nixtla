@@ -3689,11 +3689,11 @@ wheels = [
 
 [[package]]
 name = "narwhals"
-version = "2.9.0"
+version = "2.15.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b7/95/aa46616f5e567ff5d262f4c207d5ca79cb2766010c786c351b8e7f930ef4/narwhals-2.9.0.tar.gz", hash = "sha256:d8cde40a6a8a7049d8e66608b7115ab19464acc6f305d136a8dc8ba396c4acfe", size = 584098, upload-time = "2025-10-20T12:19:16.893Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/6d/b57c64e5038a8cf071bce391bb11551657a74558877ac961e7fa905ece27/narwhals-2.15.0.tar.gz", hash = "sha256:a9585975b99d95084268445a1fdd881311fa26ef1caa18020d959d5b2ff9a965", size = 603479, upload-time = "2026-01-06T08:10:13.27Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/13/34/00c7ae8194074ed82b64e0bb7c24220eac5f77ac90c16e23cf0d2cfd2a03/narwhals-2.9.0-py3-none-any.whl", hash = "sha256:c59f7de4763004ae81691ce16df71b4e55aead0ead7ccde8c8f2ef8c9559c765", size = 422255, upload-time = "2025-10-20T12:19:15.228Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/2e/cf2ffeb386ac3763526151163ad7da9f1b586aac96d2b4f7de1eaebf0c61/narwhals-2.15.0-py3-none-any.whl", hash = "sha256:cbfe21ca19d260d9fd67f995ec75c44592d1f106933b03ddd375df7ac841f9d6", size = 432856, upload-time = "2026-01-06T08:10:11.511Z" },
 ]
 
 [[package]]
@@ -3830,6 +3830,7 @@ source = { editable = "." }
 dependencies = [
     { name = "annotated-types" },
     { name = "httpx", extra = ["zstd"] },
+    { name = "narwhals" },
     { name = "orjson" },
     { name = "pandas" },
     { name = "pydantic" },
@@ -3911,6 +3912,7 @@ requires-dist = [
     { name = "jupyterlab", marker = "extra == 'dev'" },
     { name = "lightgbm", marker = "extra == 'dev'" },
     { name = "mlforecast", marker = "extra == 'dev'" },
+    { name = "narwhals", specifier = ">=2.11.0" },
     { name = "neuralforecast", marker = "extra == 'dev'" },
     { name = "numpy", marker = "extra == 'dev'", specifier = "<2" },
     { name = "orjson" },
