@@ -2,7 +2,7 @@ __all__ = ['mlforecast_objective']
 
 
 import copy
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,7 @@ from .compat import CatBoostRegressor
 from .core import Freq
 
 _TrialToConfig = Callable[[optuna.Trial], Dict[str, Any]]
+CVSplit = Tuple[DataFrame, DataFrame, DataFrame]
 
 
 def mlforecast_objective(
@@ -32,7 +33,8 @@ def mlforecast_objective(
     id_col: str = "unique_id",
     time_col: str = "ds",
     target_col: str = "y",
-    weight_col: Optional[str] = None
+    weight_col: Optional[str] = None,
+    cv_splits: Optional[List[CVSplit]] = None
 ) -> Callable[[optuna.Trial], float]:
     """optuna objective function for the MLForecast class
 
@@ -58,45 +60,41 @@ def mlforecast_objective(
         time_col (str): Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'.
         target_col (str): Column that contains the target. Defaults to 'y'.
         weight_col (str): Column that contains sample weights. Defaults to None.
+        cv_splits (List[Tuple[DataFrame, DataFrame, DataFrame]] | None): Optional cached CV splits (cutoffs, train, valid) to 
+            reuse across trials. If None, backtest splits are generated on each trial.
 
     Returns:
         (Callable[[optuna.Trial], float]): optuna objective function
     """
-
     def objective(trial: optuna.Trial) -> float:
         config = config_fn(trial)
         trial.set_user_attr("config", copy.deepcopy(config))
-        if all(
-            config["mlf_init_params"].get(k, None) is None
-            for k in ["lags", "lag_transforms", "date_features"]
-        ):
-            # no features
-            return np.inf
-        splits = ufp.backtest_splits(
-            df,
-            n_windows=n_windows,
-            h=h,
-            id_col=id_col,
-            time_col=time_col,
-            freq=freq,
-            step_size=step_size,
-            input_size=input_size,
-        )
+        
         model_copy = clone(model)
         model_params = config["model_params"]
-        if config["mlf_fit_params"].get("static_features", []) and isinstance(
-            model, CatBoostRegressor
-        ):
-            # catboost needs the categorical features in the init signature
-            # we assume all statics are categoricals
+        if config["mlf_fit_params"].get("static_features", []) and isinstance(model, CatBoostRegressor):
             model_params["cat_features"] = config["mlf_fit_params"]["static_features"]
-        model_copy.set_params(**config["model_params"])
-        metrics = []
+        model_copy.set_params(**model_params)
         mlf = MLForecast(
-            models={"model": model_copy},
+            models={"model": model_copy}, 
             freq=freq,
             **config["mlf_init_params"],
         )
+        splits = cv_splits
+        if splits is None:
+            splits = ufp.backtest_splits(
+                df,
+                n_windows=n_windows,
+                h=h,
+                id_col=id_col,
+                time_col=time_col,
+                freq=freq,
+                step_size=step_size,
+                input_size=input_size,
+            )
+        elif not isinstance(splits, list):
+            splits = list(splits)
+        metrics = []
         for i, (_, train, valid) in enumerate(splits):
             should_fit = i == 0 or (refit > 0 and i % refit == 0)
             if should_fit:

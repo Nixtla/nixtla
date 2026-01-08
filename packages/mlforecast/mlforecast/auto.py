@@ -244,6 +244,8 @@ class AutoMLForecast:
         fit_config (callable, optional): Function that takes an optuna trial and produces a configuration passed to the MLForecast fit method.
             Defaults to None.
         num_threads (int): Number of threads to use when computing the features. Defaults to 1.
+        reuse_cv_splits (bool): Creates splits for cv once and re-uses them for tuning instead of generating the splits in each tuning round.
+            Default is set to False.
     """
 
     def __init__(
@@ -254,6 +256,7 @@ class AutoMLForecast:
         init_config: Optional[_TrialToConfig] = None,
         fit_config: Optional[_TrialToConfig] = None,
         num_threads: int = 1,
+        reuse_cv_splits: bool = False,
     ):
         self.freq = freq
         if season_length is None and init_config is None:
@@ -279,6 +282,7 @@ class AutoMLForecast:
         else:
             models_with_names = models
         self.models = models_with_names
+        self.reuse_cv_splits = reuse_cv_splits
 
     def __repr__(self):
         return f"AutoMLForecast(models={self.models})"
@@ -501,11 +505,23 @@ class AutoMLForecast:
             study_kwargs["sampler"] = optuna.samplers.TPESampler(seed=0)
         if optimize_kwargs is None:
             optimize_kwargs = {}
-
         self.results_ = {}
         self.models_ = {}
+        cv_splits = None
+        if self.reuse_cv_splits:
+            cv_splits = list(
+                ufp.backtest_splits(
+                    df,
+                    n_windows=n_windows,
+                    h=h,
+                    id_col=id_col,
+                    time_col=time_col,
+                    freq=self.freq,
+                    step_size=step_size,
+                    input_size=input_size,
+                )
+            )
         for name, auto_model in self.models.items():
-
             def config_fn(trial: optuna.Trial) -> Dict[str, Any]:
                 return {
                     "model_params": auto_model.config(trial),
@@ -529,7 +545,8 @@ class AutoMLForecast:
                 id_col=id_col,
                 time_col=time_col,
                 target_col=target_col,
-                weight_col=weight_col
+                weight_col=weight_col,
+                cv_splits=cv_splits,
             )
             study = optuna.create_study(direction="minimize", **study_kwargs)
             study.optimize(objective, n_trials=num_samples, **optimize_kwargs)

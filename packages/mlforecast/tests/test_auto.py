@@ -270,3 +270,47 @@ def test_input_size_speedup(weekly_data):
     time_with_limit = time.perf_counter() - start
 
     assert time_with_limit < time_no_limit
+    
+
+def test_reuse_cv_splits_same_predictions(weekly_data):
+    train, valid, info = weekly_data
+    h = info.horizon
+    n_windows = 2
+    num_samples = 5 
+    
+    def ridge_config(trial):  
+        return {"alpha": 1.0, "fit_intercept": True, "solver": "svd"}
+    def fit_config(trial):  
+        return {"dropna": True}
+    def init_config(trial):  
+        return {
+            "lags": [1, 2, 3],
+        }
+    ridge_auto = AutoModel(model=Ridge(), config=ridge_config)
+
+    common_kwargs = dict(
+        models={"ridge": ridge_auto},
+        freq=1,
+        fit_config=fit_config,
+        init_config=init_config,
+    )
+
+    automl_a = AutoMLForecast(**common_kwargs, reuse_cv_splits=False).fit(
+        train,
+        n_windows=n_windows,
+        h=h,
+        num_samples=num_samples,
+    )
+
+    automl_b = AutoMLForecast(**common_kwargs, reuse_cv_splits=True).fit(
+        train,
+        n_windows=n_windows,
+        h=h,
+        num_samples=num_samples,
+    )
+
+    preds_a = automl_a.predict(h=h)
+    preds_b = automl_b.predict(h=h)
+
+    assert preds_a.columns.tolist() == preds_b.columns.tolist()
+    assert (preds_a["ridge"].to_numpy() == preds_b["ridge"].to_numpy()).all()
