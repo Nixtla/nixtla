@@ -110,6 +110,7 @@ markers = [
     "distributed_run: mark test as requiring distributed run, such as those depending on Ray, Spark frameworks",
     "spark_run: mark test execution related to Spark framework",
     "ray_run: mark test execution related to Ray framework",
+    "snowflake: mark test as requiring Snowflake connection and API key",
 ]
 testpaths = ["nixtla_tests"]
 addopts = [

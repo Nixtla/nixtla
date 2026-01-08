@@ -17,7 +17,7 @@ from nixtla.scripts.snowflake_install_nixtla import (
     load_example_datasets,
 )
 from nixtla_tests.snowflake.conftest import (
-    TestConfig,
+    SnowflakeTestConfig,
     verify_integration_exists,
     verify_network_rule_exists,
     verify_procedures_exist,
@@ -143,7 +143,7 @@ def example_dataframes(
 
 
 @pytest.fixture(scope="module")
-def nixtla_client(test_config: TestConfig) -> NixtlaClient:
+def nixtla_client(test_config: SnowflakeTestConfig) -> NixtlaClient:
     """Create NixtlaClient for comparison tests."""
     return NixtlaClient(
         api_key=test_config.api_key,
@@ -318,7 +318,7 @@ class TestExampleScripts:
         for col in expected_interval_cols:
             compare_columns(col, col, f"Confidence interval {col}")
 
-    def test_cross_validation_script(
+    def test_evaluation_metrics_script(
         self,
         snowflake_session: Session,
         deployed_with_api_endpoint: DeploymentConfig,
@@ -327,8 +327,8 @@ class TestExampleScripts:
     ):
         """Test: Evaluation metrics (MAPE, MAE, MSE).
 
-        Note: This test is named 'cross_validation' but actually tests the EVALUATE
-        stored procedure which computes forecast accuracy metrics.
+        Tests the EVALUATE stored procedure which computes forecast accuracy metrics
+        on existing predictions.
         """
 
         def compare_evaluate(test_case, data):
@@ -367,7 +367,7 @@ class TestExampleScripts:
             snowflake_session,
             deployed_with_api_endpoint,
             example_dataframes,
-            "cross_validation",
+            "evaluation_metrics",
             compare_evaluate,
         )
 

@@ -46,7 +46,7 @@ load_dotenv(override=True)
 
 
 @dataclass
-class TestConfig:
+class SnowflakeTestConfig:
     """Configuration for test resources."""
 
     database: str
@@ -61,12 +61,12 @@ class TestConfig:
 
 
 @pytest.fixture(scope="session")
-def test_config() -> TestConfig:
+def test_config() -> SnowflakeTestConfig:
     """
     Load test configuration from environment variables.
 
     Returns:
-        TestConfig with database, schema, stage, and API key
+        SnowflakeTestConfig with database, schema, stage, and API key
     """
     api_key = os.getenv("NIXTLA_API_KEY")
 
@@ -74,7 +74,7 @@ def test_config() -> TestConfig:
         pytest.skip("NIXTLA_API_KEY not set, skipping Snowflake tests")
 
     assert isinstance(api_key, str) and len(api_key) > 0, "NIXTLA_API_KEY must be a non-empty string"
-    return TestConfig(
+    return SnowflakeTestConfig(
         database=os.getenv("SF_TEST_DATABASE", "NIXTLA_TESTDB"),
         schema=os.getenv("SF_TEST_SCHEMA", "NIXTLA_SCHEMA"),
         stage=os.getenv("SF_TEST_STAGE", "nixtla_stage"),
@@ -83,7 +83,7 @@ def test_config() -> TestConfig:
 
 
 @pytest.fixture(scope="session")
-def snowflake_session(test_config: TestConfig) -> Generator[Session, None, None]:
+def snowflake_session(test_config: SnowflakeTestConfig) -> Generator[Session, None, None]:
     """
     Create a Snowflake session for testing.
 
@@ -150,7 +150,7 @@ def snowflake_session(test_config: TestConfig) -> Generator[Session, None, None]
 
 @pytest.fixture(scope="session")
 def ensure_test_database(
-    snowflake_session: Session, test_config: TestConfig
+    snowflake_session: Session, test_config: SnowflakeTestConfig
 ) -> Generator[str, None, None]:
     """
     Ensure test database exists.
@@ -175,7 +175,7 @@ def ensure_test_database(
 @pytest.fixture(scope="session")
 def ensure_test_schema(
     snowflake_session: Session,
-    test_config: TestConfig,
+    test_config: SnowflakeTestConfig,
     ensure_test_database: str,
 ) -> Generator[str, None, None]:
     """
@@ -201,7 +201,7 @@ def ensure_test_schema(
 @pytest.fixture(scope="session")
 def ensure_test_stage(
     snowflake_session: Session,
-    test_config: TestConfig,
+    test_config: SnowflakeTestConfig,
     ensure_test_schema: str,
 ) -> Generator[str, None, None]:
     """
@@ -230,7 +230,7 @@ def ensure_test_stage(
 
 @pytest.fixture(scope="module")
 def deployment_config_api_nixtla(
-    test_config: TestConfig,
+    test_config: SnowflakeTestConfig,
     ensure_test_database: str,
     ensure_test_schema: str,
     ensure_test_stage: str,
@@ -247,12 +247,13 @@ def deployment_config_api_nixtla(
         stage=test_config.stage,
         integration_name="nixtla_test_integration_api",
         base_url="https://api.nixtla.io",
+        network_rule_name="nixtla_network_rule_api",
     )
 
 
 @pytest.fixture(scope="module")
 def deployment_config_tsmp_nixtla(
-    test_config: TestConfig,
+    test_config: SnowflakeTestConfig,
     ensure_test_database: str,
     ensure_test_schema: str,
     ensure_test_stage: str,
@@ -269,6 +270,7 @@ def deployment_config_tsmp_nixtla(
         stage=test_config.stage,
         integration_name="nixtla_test_integration_tsmp",
         base_url="https://tsmp.nixtla.io",
+        network_rule_name="nixtla_network_rule_tsmp",
     )
 
 
@@ -281,7 +283,7 @@ def deployment_config_tsmp_nixtla(
 def deployed_with_api_endpoint(
     snowflake_session: Session,
     deployment_config_api_nixtla: DeploymentConfig,
-    test_config: TestConfig,
+    test_config: SnowflakeTestConfig,
 ) -> Generator[DeploymentConfig, None, None]:
     """
     Deploy Nixtla components with api.nixtla.io endpoint.
@@ -326,7 +328,7 @@ def deployed_with_api_endpoint(
             f"DROP SECRET IF EXISTS {config.prefix}nixtla_base_url"
         ).collect()
         snowflake_session.sql(
-            f"DROP NETWORK RULE IF EXISTS {config.prefix}nixtla_network_rule"
+            f"DROP NETWORK RULE IF EXISTS {config.prefix}{config.network_rule_name}"
         ).collect()
     except Exception as e:
         print(f"Warning: Failed to cleanup integration resources: {e}")
@@ -336,7 +338,7 @@ def deployed_with_api_endpoint(
 def deployed_with_tsmp_endpoint(
     snowflake_session: Session,
     deployment_config_tsmp_nixtla: DeploymentConfig,
-    test_config: TestConfig,
+    test_config: SnowflakeTestConfig,
 ) -> Generator[DeploymentConfig, None, None]:
     """
     Deploy Nixtla components with tsmp.nixtla.io endpoint.
@@ -380,7 +382,7 @@ def deployed_with_tsmp_endpoint(
             f"DROP SECRET IF EXISTS {config.prefix}nixtla_base_url"
         ).collect()
         snowflake_session.sql(
-            f"DROP NETWORK RULE IF EXISTS {config.prefix}nixtla_network_rule"
+            f"DROP NETWORK RULE IF EXISTS {config.prefix}{config.network_rule_name}"
         ).collect()
     except Exception as e:
         print(f"Warning: Failed to cleanup integration resources: {e}")
@@ -434,12 +436,10 @@ def verify_network_rule_exists(session: Session, config: DeploymentConfig) -> bo
         True if network rule exists and has correct host
     """
     try:
-        rule_name = f"{config.prefix}nixtla_network_rule"
+        rule_name = f"{config.prefix}{config.network_rule_name}"
         rule_details = session.sql(f"DESC NETWORK RULE {rule_name}").collect()
-        value_list = next(
-            (row["value"] for row in rule_details if row["name"] == "VALUE_LIST"), None
-        )
-        return value_list is not None and config.api_host in value_list
+        value_list = [row["value_list"] for row in rule_details]
+        return bool(value_list) and config.api_host in value_list[0]
     except Exception:
         return False
 
@@ -494,18 +494,20 @@ def verify_udtfs_exist(session: Session, config: DeploymentConfig) -> bool:
     Returns:
         True if all UDTFs exist
     """
+    # Each UDTF has a specific signature
     udtfs = [
-        "nixtla_forecast_batch",
-        "nixtla_evaluate_batch",
-        "nixtla_detect_anomalies_batch",
+        ("nixtla_forecast_batch", "OBJECT, OBJECT"),
+        ("nixtla_evaluate_batch", "ARRAY, OBJECT"),
+        ("nixtla_detect_anomalies_batch", "OBJECT, STRING, TIMESTAMP_NTZ, FLOAT"),
     ]
 
     try:
-        for udtf_name in udtfs:
+        for udtf_name, signature in udtfs:
             full_name = f"{config.prefix}{udtf_name}"
-            session.sql(f"DESC FUNCTION {full_name}(OBJECT, OBJECT)").collect()
+            session.sql(f"DESC FUNCTION {full_name}({signature})").collect()
         return True
-    except Exception:
+    except Exception as e:
+        print(f"UDTF verification failed: {e}")
         return False
 
 
@@ -520,13 +522,19 @@ def verify_procedures_exist(session: Session, config: DeploymentConfig) -> bool:
     Returns:
         True if all procedures exist
     """
-    procedures = ["NIXTLA_FORECAST", "NIXTLA_EVALUATE", "NIXTLA_DETECT_ANOMALIES"]
+    # Each procedure has specific signatures with default parameters
+    procedures = [
+        ("NIXTLA_FORECAST", "VARCHAR, OBJECT, NUMBER"),
+        ("NIXTLA_EVALUATE", "VARCHAR, ARRAY, NUMBER"),
+        ("NIXTLA_DETECT_ANOMALIES", "VARCHAR, OBJECT, NUMBER"),
+    ]
 
     try:
-        for proc_name in procedures:
+        for proc_name, signature in procedures:
             full_name = f"{config.prefix}{proc_name}"
-            # Try to describe the procedure
-            session.sql(f"DESC PROCEDURE {full_name}(VARCHAR, OBJECT)").collect()
+            # Try to describe the procedure with full signature
+            session.sql(f"DESC PROCEDURE {full_name}({signature})").collect()
         return True
-    except Exception:
+    except Exception as e:
+        print(f"Procedure verification failed: {e}")
         return False

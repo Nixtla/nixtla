@@ -76,7 +76,7 @@ TOTAL_DAYS = 365  # Total days including forecast period
 ANOMALY_DAYS = 180  # Days for anomaly detection examples
 
 TEMPLATE_ACCESS_INTEGRATION = """
-CREATE OR REPLACE NETWORK RULE {ds_prefix}nixtla_network_rule
+CREATE OR REPLACE NETWORK RULE {ds_prefix}{network_rule_name}
 MODE = EGRESS
 TYPE = HOST_PORT
 VALUE_LIST = ('{api_host}');
@@ -96,7 +96,7 @@ CREATE OR REPLACE SECRET {ds_prefix}nixtla_base_url
 //<br>
 
 CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION {integration_name}
-  ALLOWED_NETWORK_RULES = ({ds_prefix}nixtla_network_rule)
+  ALLOWED_NETWORK_RULES = ({ds_prefix}{network_rule_name})
   ALLOWED_AUTHENTICATION_SECRETS = ({ds_prefix}nixtla_api_key, {ds_prefix}nixtla_base_url)
   ENABLED = true;
 """
@@ -195,6 +195,7 @@ class DeploymentConfig:
     stage: str
     integration_name: str = "nixtla_access_integration"
     base_url: str = "https://api.nixtla.io"
+    network_rule_name: str = "nixtla_network_rule"
 
     @property
     def prefix(self) -> str:
@@ -225,7 +226,7 @@ class ExampleTestCase:
     description: str
     sql_query: str
     input_table: str
-    nixtla_method: str  # 'forecast', 'detect_anomalies', 'cross_validation'
+    nixtla_method: str  # 'forecast', 'detect_anomalies', 'evaluation'
     nixtla_params: dict
     compare_columns: list[str]  # Columns to compare between Snowflake and direct client
 
@@ -637,6 +638,7 @@ def create_security_integration(
         integration_name=config.integration_name,
         api_host=config.api_host,
         base_url=config.base_url,
+        network_rule_name=config.network_rule_name,
     )
 
     if not skip_confirmation:
@@ -1142,7 +1144,7 @@ def show_example_usage_scripts(config: DeploymentConfig) -> None:
     # Map of test case names to display in the UI (filtering and ordering)
     display_cases = [
         "basic_forecast",
-        "cross_validation",
+        "evaluation_metrics",
         "anomaly_detection",
         "forecast_with_exog",
     ]
@@ -1275,22 +1277,19 @@ def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
             compare_columns=["unique_id", "ds", "TimeGPT"],
         ),
         ExampleTestCase(
-            name="cross_validation",
-            description="Cross-validation with 3 windows, 7-day horizon",
+            name="evaluation_metrics",
+            description="Evaluation metrics (MAPE, MAE, MSE)",
             sql_query=f"""CALL {prefix}NIXTLA_EVALUATE(
     INPUT_DATA => '{prefix}EXAMPLE_ALL_DATA',
     METRICS => ARRAY_CONSTRUCT('MAPE', 'MAE', 'MSE')
 )""",
             input_table="all_data",
-            nixtla_method="cross_validation",
+            nixtla_method="evaluation",
             nixtla_params={
-                # Note: The stored procedure uses fixed parameters internally
-                # These are for reference/documentation
-                "h": 7,
-                "n_windows": 3,
-                "step_size": 7,
+                # Note: The stored procedure evaluates existing predictions
+                # in the data (e.g., the 'timegpt' column in EXAMPLE_ALL_DATA)
             },
-            compare_columns=["unique_id", "cutoff", "TimeGPT"],
+            compare_columns=["unique_id", "forecaster", "metric", "value"],
         ),
     ]
 
