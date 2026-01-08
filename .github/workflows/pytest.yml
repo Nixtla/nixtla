@@ -21,6 +21,12 @@ env:
   NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
   NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
   API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
+  # Snowflake credentials for integration tests
+  SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+  SF_USER: ${{ secrets.SF_USER }}
+  SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+  SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
+  SF_ROLE: ${{ secrets.SF_ROLE }}
 
 
 jobs:

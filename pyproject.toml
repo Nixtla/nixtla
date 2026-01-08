@@ -119,3 +119,8 @@ addopts = [
     "--cov-report=html",
     "--cov-fail-under=80"
 ]
+
+[tool.coverage.run]
+omit = [
+    "nixtla/scripts/snowflake_install_nixtla.py",  # Deployment script, not core library
+]
