@@ -1,17 +1,12 @@
 """
 Pytest fixtures for Snowflake integration tests.
 
-Environment variables for connection (Option 1 - Recommended for CI/CD):
+Required environment variables:
     SF_ACCOUNT: Snowflake account identifier (e.g., "myorg-account123")
     SF_USER: Snowflake username
     SF_PASSWORD: Snowflake password
     SF_WAREHOUSE: Snowflake warehouse (optional)
     SF_ROLE: Snowflake role (optional)
-
-Environment variables for connection (Option 2 - Using config file):
-    SNOWFLAKE_CONNECTION_NAME: Connection name from ~/.snowflake/config.toml (default: "default")
-
-Required for both options:
     NIXTLA_API_KEY: Nixtla API key for authentication
 
 Optional test resource configuration:
@@ -19,7 +14,7 @@ Optional test resource configuration:
     SF_TEST_SCHEMA: Test schema name (default: "NIXTLA_SCHEMA")
     SF_TEST_STAGE: Test stage name (default: "nixtla_stage")
 
-Connection priority: Environment variables (Option 1) take precedence over config file (Option 2).
+Note: Tests will be skipped if required environment variables are not set.
 """
 
 import os
@@ -33,7 +28,6 @@ from snowflake.snowpark import Session
 
 from nixtla.scripts.snowflake_install_nixtla import (
     DeploymentConfig,
-    create_snowflake_session,
     deploy_snowflake_core,
 )
 
@@ -87,9 +81,12 @@ def snowflake_session(test_config: SnowflakeTestConfig) -> Generator[Session, No
     """
     Create a Snowflake session for testing.
 
-    Supports both config file and environment variables:
-    - If SF_ACCOUNT, SF_USER, SF_PASSWORD env vars are set, use them directly
-    - Otherwise, fall back to SNOWFLAKE_CONNECTION_NAME from config file
+    Requires environment variables:
+    - SF_ACCOUNT: Snowflake account identifier
+    - SF_USER: Snowflake username
+    - SF_PASSWORD: Snowflake password
+    - SF_WAREHOUSE: Snowflake warehouse (optional)
+    - SF_ROLE: Snowflake role (optional)
 
     Yields:
         Active Snowflake session
@@ -97,37 +94,44 @@ def snowflake_session(test_config: SnowflakeTestConfig) -> Generator[Session, No
     Cleanup:
         Closes session and drops test database at end of session
     """
-    # Try environment variables first (for CI/CD)
+    # Check required environment variables
     account = os.getenv("SF_ACCOUNT")
     user = os.getenv("SF_USER")
     password = os.getenv("SF_PASSWORD")
     warehouse = os.getenv("SF_WAREHOUSE")
     role = os.getenv("SF_ROLE")
 
-    session = None
+    # Check which env vars are missing
+    missing_vars = []
+    if not account:
+        missing_vars.append("SF_ACCOUNT")
+    if not user:
+        missing_vars.append("SF_USER")
+    if not password:
+        missing_vars.append("SF_PASSWORD")
+
+    if missing_vars:
+        pytest.skip(
+            f"Snowflake credentials not configured. "
+            f"Missing environment variables: {', '.join(missing_vars)}"
+        )
+
+    # Build connection from env vars
+    connection_params = {
+        "account": account,
+        "user": user,
+        "password": password,
+    }
+    if warehouse:
+        connection_params["warehouse"] = warehouse
+    if role:
+        connection_params["role"] = role
+
+    print(f"Connecting to Snowflake with account: {account}")
+    session = Session.builder.configs(connection_params).create()
+
     try:
-        if account and user and password:
-            # Use direct connection from env vars
-            connection_params = {
-                "account": account,
-                "user": user,
-                "password": password,
-            }
-            if warehouse:
-                connection_params["warehouse"] = warehouse
-            if role:
-                connection_params["role"] = role
-
-            print(f"Connecting to Snowflake with account: {account}")
-            session = Session.builder.configs(connection_params).create()
-        else:
-            # Fall back to config file
-            connection_name = os.getenv("SNOWFLAKE_CONNECTION_NAME", "default")
-            print(f"Connecting to Snowflake with connection: {connection_name}")
-            session = create_snowflake_session(connection_name)
-
         yield session
-
     finally:
         # Cleanup: Drop test database
         if session:
