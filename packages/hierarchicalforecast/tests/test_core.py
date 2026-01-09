@@ -8,10 +8,16 @@ import pytest
 
 from hierarchicalforecast.core import HierarchicalReconciliation, _build_fn_name
 from hierarchicalforecast.methods import (
+    ERM,
     BottomUp,
+    BottomUpSparse,
     MiddleOut,
+    MiddleOutSparse,
     MinTrace,
+    MinTraceSparse,
+    OptimalCombination,
     TopDown,
+    TopDownSparse,
 )
 from hierarchicalforecast.utils import aggregate, aggregate_temporal
 
@@ -169,7 +175,7 @@ def test_topdown_raises_on_non_strict_hierarchy(grouped_data, lib):
     Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
     hrec = HierarchicalReconciliation([TopDown(method='average_proportions')])
 
-    with pytest.raises(ValueError, match='Top-down reconciliation requires strictly hierarchical structures'):
+    with pytest.raises(ValueError, match='require[s]? a strictly hierarchical structure'):
         hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
 
 @pytest.mark.parametrize("lib", ["polars"])
@@ -502,3 +508,417 @@ def test_mintrace_nonnegative_samples_use_constrained_forecasts(grouped_data, li
         (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
     )["y_model/MinTrace_method-ols_nonnegative-True"].to_list()[0]
     assert is_coherent == 1.0, "Reconciled forecasts should be coherent"
+
+# ==============================================================================
+# Tests for strictly hierarchical structure validation
+# ==============================================================================
+# These tests verify that:
+# 1. Methods requiring strictly hierarchical structures (TopDown, TopDownSparse,
+#    MiddleOut, MiddleOutSparse) raise appropriate errors when used with grouped
+#    (non-strictly hierarchical) data.
+# 2. Methods that support any hierarchy structure (BottomUp, BottomUpSparse,
+#    MinTrace, MinTraceSparse, OptimalCombination, ERM) work correctly with
+#    grouped data.
+# ==============================================================================
+
+@pytest.fixture(scope="module")
+def common_test_data(tourism_df, hiers_grouped, hiers_strictly):
+    """Prepares test data for both grouped and strictly hierarchical structures."""
+    df = copy.deepcopy(tourism_df)
+    df['ds'] = pd.to_datetime(df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True))
+
+    # Prepare grouped (non-strictly hierarchical) data
+    Y_df_grouped, S_df_grouped, tags_grouped = aggregate(df, hiers_grouped)
+    Y_df_grouped['y_model'] = Y_df_grouped['y']
+    Y_hat_df_grouped = Y_df_grouped.groupby('unique_id').tail(12).copy()
+    ds_h = Y_hat_df_grouped['ds'].unique() # noqa: F841
+    Y_train_df_grouped = Y_df_grouped.query('~(ds in @ds_h)').copy()
+    Y_train_df_grouped['y_model'] += np.random.uniform(-1, 1, len(Y_train_df_grouped))
+
+    # Prepare strictly hierarchical data
+    Y_df_strict, S_df_strict, tags_strict = aggregate(df, hiers_strictly)
+    Y_df_strict['y_model'] = Y_df_strict['y']
+    Y_hat_df_strict = Y_df_strict.groupby('unique_id').tail(12).copy()
+    ds_h_strict = Y_hat_df_strict['ds'].unique() # noqa: F841
+    Y_train_df_strict = Y_df_strict.query('~(ds in @ds_h_strict)').copy()
+    Y_train_df_strict['y_model'] += np.random.uniform(-1, 1, len(Y_train_df_strict))
+
+    return {
+        "grouped": {
+            "Y_hat_df": Y_hat_df_grouped,
+            "Y_train_df": Y_train_df_grouped,
+            "S_df": S_df_grouped,
+            "tags": tags_grouped
+        },
+        "strict": {
+            "Y_hat_df": Y_hat_df_strict,
+            "Y_train_df": Y_train_df_strict,
+            "S_df": S_df_strict,
+            "tags": tags_strict
+        }
+    }
+
+
+# Tests for methods that REQUIRE strictly hierarchical structures
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_raises_error_on_grouped_hierarchy_all_methods(common_test_data, method):
+    """Test that TopDown raises an error when used with grouped (non-strictly hierarchical) data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDown(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        if reconciler.insample:
+            hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+        else:
+            hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_sparse_raises_error_on_grouped_hierarchy(common_test_data, method):
+    """Test that TopDownSparse raises an error when used with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDownSparse(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        if reconciler.insample:
+            hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+        else:
+            hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+
+def test_middleout_raises_error_on_grouped_hierarchy(common_test_data):
+    """Test that MiddleOut raises an error when used with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags
+    middle_level = list(tags.keys())[1]  # Use second level as middle
+
+    reconciler = MiddleOut(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+
+def test_middleout_sparse_raises_error_on_grouped_hierarchy(common_test_data):
+    """Test that MiddleOutSparse raises an error when used with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags
+    middle_level = list(tags.keys())[1]  # Use second level as middle
+
+    reconciler = MiddleOutSparse(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+
+# Tests for methods that SUPPORT grouped hierarchies
+
+
+def test_bottomup_works_with_grouped_hierarchy(common_test_data):
+    """Test that BottomUp works correctly with grouped (non-strictly hierarchical) data."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = BottomUp()
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/BottomUp' in reconciled.columns
+
+
+def test_bottomup_sparse_works_with_grouped_hierarchy(common_test_data):
+    """Test that BottomUpSparse works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = BottomUpSparse()
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/BottomUpSparse' in reconciled.columns
+
+
+@pytest.mark.parametrize("method", ["ols", "wls_struct"])
+def test_mintrace_works_with_grouped_hierarchy(common_test_data, method):
+    """Test that MinTrace works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = MinTrace(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/MinTrace_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+@pytest.mark.parametrize("method", ["ols", "wls_struct"])
+def test_mintrace_sparse_works_with_grouped_hierarchy(common_test_data, method):
+    """Test that MinTraceSparse works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = MinTraceSparse(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    # Check for the reconciled column - it will have the model name in it
+    assert any('y_model/' in col and method in col for col in reconciled.columns)
+
+
+@pytest.mark.parametrize("method", ["ols", "wls_struct"])
+def test_optimal_combination_works_with_grouped_hierarchy(common_test_data, method):
+    """Test that OptimalCombination works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = OptimalCombination(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/OptimalCombination_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+def test_erm_works_with_grouped_hierarchy(common_test_data):
+    """Test that ERM works correctly with grouped data.
+
+    Note: Only testing 'closed' method as 'reg' and 'reg_bu' are computationally expensive.
+    """
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    method = "closed"
+    reconciler = ERM(method=method, lambda_reg=1e-2)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/ERM_method-{method}_lambda_reg-0.01'
+    assert expected_col in reconciled.columns
+
+
+# Tests for methods that require strictly hierarchical structures working with strict data
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_works_with_strict_hierarchy_all_methods(common_test_data, method):
+    """Test that TopDown works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDown(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/TopDown_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_sparse_works_with_strict_hierarchy(common_test_data, method):
+    """Test that TopDownSparse works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDownSparse(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/TopDownSparse_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+def test_middleout_works_with_strict_hierarchy_new(common_test_data):
+    """Test that MiddleOut works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags (use second level)
+    middle_level = list(tags.keys())[1]
+
+    reconciler = MiddleOut(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/MiddleOut_middle_level-{middle_level}_top_down_method-forecast_proportions'
+    assert expected_col in reconciled.columns
+
+
+def test_middleout_sparse_works_with_strict_hierarchy(common_test_data):
+    """Test that MiddleOutSparse works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags (use second level)
+    middle_level = list(tags.keys())[1]
+
+    reconciler = MiddleOutSparse(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/MiddleOutSparse_middle_level-{middle_level}_top_down_method-forecast_proportions'
+    assert expected_col in reconciled.columns
+
+
+# Test that verifies the error message is informative
+
+
+def test_error_message_is_informative(common_test_data):
+    """Test that the error message provides helpful information to users."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDown(method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError) as excinfo:
+        hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    error_msg = str(excinfo.value)
+    # Check that the error message contains key information
+    assert "requires a strictly hierarchical structure" in error_msg or "require a strictly hierarchical structure" in error_msg
+    assert "grouped structure" in error_msg
+    assert "BottomUp" in error_msg or "MinTrace" in error_msg or "ERM" in error_msg
+
+
+def test_multiple_strict_methods_error_message(common_test_data):
+    """Test that error message correctly lists multiple strict methods."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Use two strict methods
+    middle_level = list(tags.keys())[1]
+    reconcilers = [
+        TopDown(method="forecast_proportions"),
+        MiddleOut(middle_level=middle_level, top_down_method="forecast_proportions")
+    ]
+    hrec = HierarchicalReconciliation(reconcilers)
+
+    with pytest.raises(ValueError) as excinfo:
+        hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    error_msg = str(excinfo.value)
+    # Both methods should be mentioned in the error
+    assert "TopDown" in error_msg
+    assert "MiddleOut" in error_msg
+
+
+def test_mixed_sparse_dense_strict_methods(common_test_data):
+    """Test that mixed sparse/dense strict methods are handled correctly."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"] # noqa: F841
+
+    # Mix of sparse and dense strict methods
+    reconcilers = [
+        TopDown(method="forecast_proportions"),  # Dense
+        TopDownSparse(method="forecast_proportions")  # Sparse
+    ]
+    hrec = HierarchicalReconciliation(reconcilers)
+
+    # Should not raise an error for valid strict hierarchy
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/TopDown_method-forecast_proportions' in reconciled.columns
+    assert 'y_model/TopDownSparse_method-forecast_proportions' in reconciled.columns
+
+
+def test_mixed_strict_and_non_strict_methods(common_test_data):
+    """Test that mixing strict and non-strict methods works correctly."""
+    data = common_test_data["strict"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    # Mix of strict and non-strict methods
+    reconcilers = [
+        BottomUp(),  # Non-strict
+        TopDown(method="forecast_proportions"),  # Strict
+        MinTrace(method="ols")  # Non-strict
+    ]
+    hrec = HierarchicalReconciliation(reconcilers)
+
+    # Should work fine with strict hierarchy
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/BottomUp' in reconciled.columns
+    assert 'y_model/TopDown_method-forecast_proportions' in reconciled.columns
+    assert 'y_model/MinTrace_method-ols' in reconciled.columns
+
+
+def test_fails_fast_before_reconciliation(common_test_data):
+    """Test that validation fails before any reconciliation work starts."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    # Create a reconciler and track if it was called
+    class TrackingTopDown(TopDown):
+        fit_called = False
+
+        def fit(self, *args, **kwargs):
+            TrackingTopDown.fit_called = True
+            return super().fit(*args, **kwargs)
+
+    reconciler = TrackingTopDown(method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should raise error without calling fit
+    with pytest.raises(ValueError):
+        hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    # Verify fit was never called
+    assert not TrackingTopDown.fit_called, "Validation should fail before fit() is called"

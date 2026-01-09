@@ -13,6 +13,11 @@ from scipy import sparse
 from scipy.stats import norm
 
 from .methods import HReconciler
+from .utils import (
+    _construct_adjacency_matrix,
+    _is_strictly_hierarchical,
+    is_strictly_hierarchical,
+)
 
 
 def _compute_coherence_residual(
@@ -611,6 +616,43 @@ class HierarchicalReconciliation:
                 target_col=target_col,
             )
             reconciler_args["y_insample"] = y_insample
+
+        # Check if any reconciler requires a strictly hierarchical structure (fail fast)
+        # Single traversal to collect all strict reconcilers
+        strict_reconcilers = [
+            r for r in self.reconcilers
+            if getattr(r, 'is_strictly_hierarchical', False)
+        ]
+
+        if strict_reconcilers:
+            # Check if any strict reconciler uses sparse methods
+            has_sparse_strict_method = any(r.is_sparse_method for r in strict_reconcilers)
+
+            # Perform the appropriate hierarchy validation
+            is_valid_hierarchy = False
+            if has_sparse_strict_method:
+                # Use sparse check with adjacency matrix
+                A = _construct_adjacency_matrix(S_for_sparse, reconciler_args["tags"])
+                is_valid_hierarchy = _is_strictly_hierarchical(A, reconciler_args["tags"])
+            else:
+                # Use dense check with summing matrix
+                S_numpy = (
+                    S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                    .to_numpy()
+                    .astype(np.float64, copy=False)
+                )
+                is_valid_hierarchy = is_strictly_hierarchical(S_numpy, reconciler_args["tags"])
+
+            # Raise error if hierarchy is not valid
+            if not is_valid_hierarchy:
+                strict_method_names = [_build_fn_name(r) for r in strict_reconcilers]
+                methods_str = "', '".join(strict_method_names)
+                raise ValueError(
+                    f"The reconciliation method(s) '{methods_str}' require a strictly hierarchical structure. "
+                    f"The provided hierarchy contains nodes with multiple parents (grouped structure), "
+                    f"which is not supported by these methods. Please use a different reconciliation method "
+                    f"(e.g., BottomUp, MinTrace, or ERM) that supports grouped hierarchies."
+                )
 
         Y_tilde_nw = nw.maybe_reset_index(Y_hat_nw.clone())
         self.execution_times = {}

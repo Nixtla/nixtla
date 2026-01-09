@@ -25,9 +25,25 @@ from .probabilistic_methods import PERMBU, Bootstrap, Normality
 
 
 class HReconciler:
+    """Base class for hierarchical forecast reconciliation methods.
+
+    Class Attributes:
+        fitted (bool): Whether the reconciler has been fitted to data.
+        is_sparse_method (bool): Whether this method uses sparse matrix operations.
+        insample (bool): Whether this method requires insample data.
+        is_strictly_hierarchical (bool): Whether this method requires a strictly
+            hierarchical structure (tree-like) or supports grouped hierarchies.
+            - True: Method requires each node to have exactly one parent (e.g., TopDown, MiddleOut)
+            - False: Method works with any hierarchy structure, including grouped hierarchies
+              where nodes can have multiple parents (e.g., BottomUp, MinTrace, ERM)
+        P (np.ndarray | None): Projection matrix computed by the reconciliation method.
+        sampler: Probabilistic sampler for generating prediction intervals.
+        _init_params (dict | None): Stores initialization parameters for method naming.
+    """
     fitted = False
     is_sparse_method = False
     insample = False
+    is_strictly_hierarchical = False  # Default: supports grouped hierarchies
     P = None
     sampler = None
     _init_params: dict | None = None  # Stores initialization parameters for naming
@@ -175,6 +191,7 @@ class BottomUp(HReconciler):
     """
 
     insample = False
+    is_strictly_hierarchical = False
 
     def __init__(self):
         self._init_params = {}
@@ -302,6 +319,7 @@ class BottomUpSparse(BottomUp):
     """
 
     is_sparse_method = True
+    is_strictly_hierarchical = False
 
     def __init__(self):
         self._init_params = {}
@@ -532,7 +550,7 @@ class TopDown(HReconciler):
     - [G. Fliedner (1999). "An investigation of aggregate variable time series forecast strategies with specific subaggregate time series statistical correlation". Computers and Operations Research, 26 , 1133-1149. doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
     """
 
-    is_strictly_hierarchical = False
+    is_strictly_hierarchical = True
 
     def __init__(self, method: str):
         if method not in [
@@ -682,7 +700,7 @@ class TopDown(HReconciler):
             y_tilde (np.ndarray): Reconciliated y_hat using the Top Down approach.
         """
         if self.method == "forecast_proportions":
-            if not self.is_strictly_hierarchical:
+            if not getattr(self, '_hierarchy_validated', False):
                 # Check if the data structure is strictly hierarchical.
                 if tags is not None and not is_strictly_hierarchical(S, tags):
                     raise ValueError(
@@ -769,7 +787,7 @@ class TopDownSparse(TopDown):
     """
 
     is_sparse_method = True
-    is_strictly_hierarchical = False
+    is_strictly_hierarchical = True
 
     def _get_PW_matrices(
         self,
@@ -779,7 +797,7 @@ class TopDownSparse(TopDown):
         tags: dict[str, np.ndarray] | None = None,
     ):
         # Avoid a redundant check during middle-out reconciliation.
-        if not self.is_strictly_hierarchical:
+        if not getattr(self, '_hierarchy_validated', False):
             # Check if the data structure is strictly hierarchical.
             if tags is not None and not _is_strictly_hierarchical(
                 _construct_adjacency_matrix(S, tags), tags
@@ -843,7 +861,7 @@ class TopDownSparse(TopDown):
             # Construct the adjacency matrix.
             A = _construct_adjacency_matrix(S, tags)
             # Avoid a redundant check during middle-out reconciliation.
-            if not self.is_strictly_hierarchical:
+            if not getattr(self, '_hierarchy_validated', False):
                 # Check if the data structure is strictly hierarchical.
                 if tags is not None and not _is_strictly_hierarchical(A, tags):
                     raise ValueError(
@@ -923,6 +941,8 @@ class MiddleOut(HReconciler):
     practice, 3rd edition: Chapter 11: Forecasting hierarchical and grouped series".
     OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
     """
+
+    is_strictly_hierarchical = True
 
     def __init__(self, middle_level: str, top_down_method: str):
         if top_down_method not in [
@@ -1032,7 +1052,7 @@ class MiddleOut(HReconciler):
 
         # Set up the reconciler for top-down reconciliation.
         cls_top_down = TopDown(self.top_down_method)
-        cls_top_down.is_strictly_hierarchical = True
+        cls_top_down._hierarchy_validated = True # type: ignore[attr-defined]
 
         # Perform top-down reconciliation from the middle level.
         for cut_node in cut_nodes:
@@ -1102,6 +1122,7 @@ class MiddleOutSparse(MiddleOut):
     # prior to bottom-up and top-down reconciliation, we can avoid a redundant
     # conversion.
     is_sparse_method = False
+    is_strictly_hierarchical = True
 
     def fit_predict(
         self,
@@ -1173,7 +1194,7 @@ class MiddleOutSparse(MiddleOut):
 
         # Set up the reconciler for top-down reconciliation.
         cls_top_down = TopDownSparse(self.top_down_method)
-        cls_top_down.is_strictly_hierarchical = True
+        cls_top_down._hierarchy_validated = True # type: ignore[attr-defined]
 
         # Perform sparse top-down reconciliation from the middle level.
         for cut_node in cut_nodes:
@@ -1251,6 +1272,8 @@ class MinTrace(HReconciler):
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). "Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization". Journal of the American Statistical Association, 114 , 804-819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
     - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
+
+    is_strictly_hierarchical = False
 
     def __init__(
         self,
@@ -1558,6 +1581,7 @@ class MinTraceSparse(MinTrace):
     """
 
     is_sparse_method = True
+    is_strictly_hierarchical = False
 
     def __init__(
         self,
@@ -1889,6 +1913,8 @@ class OptimalCombination(MinTrace):
         - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
     """
 
+    is_strictly_hierarchical = False
+
     def __init__(self, method: str, nonnegative: bool = False, num_threads: int = 1):
         if method not in ["ols", "wls_struct"]:
             raise ValueError(
@@ -1923,6 +1949,8 @@ class ERM(HReconciler):
     References:
         - [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining KDD '19 (p. 1337-1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).
     """
+
+    is_strictly_hierarchical = False
 
     def __init__(self, method: str, lambda_reg: float = 1e-2):
         if method not in ["closed", "reg", "reg_bu"]:

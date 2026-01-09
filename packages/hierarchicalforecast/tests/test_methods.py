@@ -196,8 +196,11 @@ def test_top_down_forecast_recovery(hierarchical_data, method):
 def test_top_down_sparse_hierarchical_error(S_non_hier, tags_non_hier):
     """Test TopDownSparse raises error for non-hierarchical structures."""
     cls_top_down = TopDownSparse(method="average_proportions")
+    # Create dummy data
+    y_hat = np.ones((S_non_hier.shape[0], 2))
+    y_insample = np.ones((S_non_hier.shape[0], 5))
     with pytest.raises(Exception, match="Top-down reconciliation requires strictly hierarchical structures"):
-        cls_top_down(sparse.csr_matrix(S_non_hier), None, tags_non_hier)
+        cls_top_down(S=sparse.csr_matrix(S_non_hier), y_hat=y_hat, y_insample=y_insample, tags=tags_non_hier)
 
 
 @pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
