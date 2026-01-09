@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -271,3 +273,58 @@ def test_mlforecast_polars(mlforecast_setup):
     pd_preds = fcst_pd.fit(series_pd).predict(5)
 
     pd.testing.assert_frame_equal(pd_preds, pl_preds.to_pandas())
+
+
+def test_autoseasonality_and_differences_validation():
+    """Test validation logic for AutoSeasonalityAndDifferences safety guard."""
+
+    # Test 1: ValueError when series has insufficient data for STL after differencing
+    # With max_diffs=12, we need at least 12 + 4 = 16 observations per series
+    # Create a series with only 15 observations (too short)
+    sc = AutoSeasonalityAndDifferences(max_season_length=12, max_diffs=12, n_seasons=3)
+    ga_short = GroupedArray(np.arange(15, dtype=float), np.array([0, 15]))
+
+    with pytest.raises(ValueError) as exc_info:
+        sc.fit_transform(ga_short)
+    error_msg = str(exc_info.value)
+    assert "Insufficient data" in error_msg
+    assert "requires at least 16 observations" in error_msg
+    assert "[15]" in error_msg  # Shows the actual length
+
+    # Test 2: Success when series has sufficient data
+    # Create a series with 20 observations (sufficient for max_diffs=12)
+    ga_long = GroupedArray(np.arange(20, dtype=float), np.array([0, 20]))
+    transformed = sc.fit_transform(ga_long)
+    assert transformed.data is not None
+
+    # Test 3: Multiple series - some too short
+    # Series 1: 20 obs (ok), Series 2: 15 obs (too short), Series 3: 25 obs (ok)
+    data = np.concatenate([np.arange(20, dtype=float), np.arange(15, dtype=float), np.arange(25, dtype=float)])
+    indptr = np.array([0, 20, 35, 60])
+    ga_mixed = GroupedArray(data, indptr)
+
+    with pytest.raises(ValueError) as exc_info:
+        sc.fit_transform(ga_mixed)
+    error_msg = str(exc_info.value)
+    assert "Insufficient data in 1 series" in error_msg
+    assert "[15]" in error_msg
+
+    # Test 4: No validation error with longer series even if shorter than max_season_length * n_seasons
+    # The safeguard only checks series_length >= max_diffs + 4, not the n_seasons constraint
+    sc_lenient = AutoSeasonalityAndDifferences(max_season_length=12, max_diffs=1, n_seasons=10)
+    ga_medium = GroupedArray(np.arange(20, dtype=float), np.array([0, 20]))
+    # Should not raise even though 20 < 12 * 10 = 120, because 20 >= 1 + 4 = 5
+    transformed = sc_lenient.fit_transform(ga_medium)
+    assert transformed.data is not None
+
+    # Test 5: Edge case - exactly the minimum required length
+    sc_exact = AutoSeasonalityAndDifferences(max_season_length=10, max_diffs=1, n_seasons=2)
+    ga_exact = GroupedArray(np.arange(5, dtype=float), np.array([0, 5]))  # Exactly max_diffs + 4 = 5
+    transformed = sc_exact.fit_transform(ga_exact)
+    assert transformed.data is not None
+
+    # One observation short should fail
+    ga_one_short = GroupedArray(np.arange(4, dtype=float), np.array([0, 4]))  # 4 < 5
+    with pytest.raises(ValueError) as exc_info:
+        sc_exact.fit_transform(ga_one_short)
+    assert "requires at least 5 observations" in str(exc_info.value)

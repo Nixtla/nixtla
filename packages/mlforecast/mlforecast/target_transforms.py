@@ -233,16 +233,44 @@ class AutoSeasonalityAndDifferences(AutoDifferences):
         n_seasons (int, optional): Number of seasons to use to determine the number of differences. Defaults to 10.
             If `None` will use all samples, otherwise `max_season_length` * `n_seasons samples` will be used for the test.
             Smaller values will be faster but could be less accurate.
+
+    Raises:
+        ValueError: If any series has fewer than `max_diffs + 4` observations. This ensures that after differencing,
+            there are at least 4 observations remaining for STL decomposition (minimum 2 periods × minimum period of 2).
     """
 
     def __init__(
         self, max_season_length: int, max_diffs: int, n_seasons: Optional[int] = 10
     ):
+        self.max_diffs = max_diffs
         self.scaler_ = core_scalers.AutoSeasonalityAndDifferences(
             max_season_length=max_season_length,
             max_diffs=max_diffs,
             n_seasons=n_seasons,
         )
+
+    def fit_transform(self, ga: GroupedArray) -> GroupedArray:
+        # Validate that each series has enough data for STL decomposition
+        # STL requires at least 2 periods of the detected seasonal period after differencing.
+        # Since the minimum detectable period is 2, we need at least 4 observations after differencing.
+        series_lengths = np.diff(ga.indptr)
+        min_required = self.max_diffs + 4
+        short_series = series_lengths < min_required
+
+        if short_series.any():
+            short_indices = np.where(short_series)[0]
+            short_lengths = series_lengths[short_series]
+            raise ValueError(
+                f"Insufficient data in {len(short_indices)} series for seasonality detection. "
+                f"With max_diffs={self.max_diffs}, each series requires at least {min_required} observations "
+                f"to ensure STL decomposition can run (need 4+ observations after differencing). "
+                f"Found series with lengths: {short_lengths[:5].tolist()}"
+                f"{'...' if len(short_lengths) > 5 else ''}. "
+                f"Either filter out short series, decrease max_diffs, or use a different transformation."
+            )
+
+        # Call parent's fit_transform
+        return super().fit_transform(ga)
 
 
 class _BaseLocalScaler(_BaseGroupedArrayTargetTransform):
