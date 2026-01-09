@@ -25,11 +25,22 @@ Bug fixes and features are added through pull requests (PRs).
 
 ## Local setup for working on a PR
 
-### Clone the repository
+### Fork and Clone the repository
 
-* HTTPS: `git clone https://github.com/Nixtla/hierarchicalforecast.git`
-* SSH: `git clone git@github.com:Nixtla/hierarchicalforecast.git`
-* GitHub CLI: `gh repo clone Nixtla/hierarchicalforecast`
+Start by creating your own copy of the repository:
+
+1. Fork the repository on GitHub to your personal account
+2. Clone your fork locally using one of these methods:
+   * HTTPS: `git clone https://github.com/YOUR_USERNAME/hierarchicalforecast.git`
+   * SSH: `git clone git@github.com:YOUR_USERNAME/hierarchicalforecast.git`
+   * GitHub CLI: `gh repo clone YOUR_USERNAME/hierarchicalforecast`
+
+3. Add the upstream repository reference:
+
+```sh
+cd hierarchicalforecast
+git remote add upstream https://github.com/Nixtla/hierarchicalforecast.git
+```
 
 ### Set Up a Virtual Environment with `uv`
 
@@ -53,6 +64,28 @@ source .venv/bin/activate
 .\.venv\Scripts\activate
 ```
 
+### Create a Feature Branch
+
+Before starting work, create a descriptive branch for your changes. Use these naming conventions:
+
+* **Features**: `feature/descriptive-name` (e.g., `feature/new-model`)
+* **Fixes**: `fix/descriptive-name` (e.g., `fix/memory-leak`)
+* **Issues**: `issue/issue-number` or `issue/description` (e.g., `issue/123`)
+
+```sh
+git checkout -b feature/your-feature-name
+```
+
+### Synchronize with Upstream
+
+Before starting work, sync your fork with the main repository to ensure you have the latest changes:
+
+```sh
+git fetch upstream
+git checkout main
+git merge upstream/main
+```
+
 ### Install the library
 
 Install the library in editable mode:
@@ -72,9 +105,9 @@ pre-commit run --files hierarchicalforecast/*
 
 ## Viewing documentation locally
 
-The new documentation pipeline relies on `mintlify` and `lazydocs`.
+The new documentation pipeline relies on `mintlify` and `griffe2md`.
 
-### install mintlify
+### Install Mintlify
 
 > [!NOTE]
 > Please install Node.js before proceeding.
@@ -84,6 +117,8 @@ npm i -g mint
 ```
 
 For additional instructions, you can read about it [here](https://mintlify.com/docs/installation).
+
+To build documentation 
 
 ```sh
 make all_docs
@@ -109,4 +144,4 @@ uv run pytest
 * To contribute, ensure your docstrings follow the Google style format.
 * Once your docstring is correctly written, the documentation framework will scrape it and regenerate the corresponding `.mdx` files and your changes will then appear in the updated docs.
 * To contribute, examples/how-to-guides, make sure you submit clean notebooks, with cleared formatted LaTeX, links and images.
-* Make an appropriate entry in the `mint.json` file.
+* Make an appropriate entry in the `docs/mintlify/docs.json` file.
