@@ -1263,7 +1263,7 @@ class MinTrace(HReconciler):
     ```
 
     Args:
-        method (str): One of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`.
+        method (str): One of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`, `emint`.
         nonnegative (bool): Reconciled forecasts should be nonnegative?
         mint_shr_ridge (float): Ridge numeric protection to MinTrace-shr covariance estimator.
         num_threads (int): Number of threads to use for solving the optimization problems (when nonnegative=True).
@@ -1271,6 +1271,8 @@ class MinTrace(HReconciler):
     References:
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). "Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization". Journal of the American Statistical Association, 114 , 804-819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
     - [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
+    - [Wickramasuriya, S.L. (2021). Properties of point forecast reconciliation approaches. arXiv:2103.11129](https://arxiv.org/abs/2103.11129).
+    - [Wang, X., Hyndman, R.J., & Wickramasuriya, S.L. (2025). Optimal forecast reconciliation with time series selection. European Journal of Operational Research, 323, 455-470.](https://doi.org/10.1016/j.ejor.2024.12.004)
     """
 
     is_strictly_hierarchical = False
@@ -1282,13 +1284,13 @@ class MinTrace(HReconciler):
         mint_shr_ridge: float | None = 2e-8,
         num_threads: int = 1,
     ):
-        if method not in ["ols", "wls_struct", "wls_var", "mint_cov", "mint_shrink"]:
+        if method not in ["ols", "wls_struct", "wls_var", "mint_cov", "mint_shrink", "emint"]:
             raise ValueError(
-                f"Unknown method `{method}`. Choose from `ols`, `wls_struct`, `wls_var`, `mint_cov`, `mint_shrink`."
+                f"Unknown method `{method}`. Choose from `ols`, `wls_struct`, `wls_var`, `mint_cov`, `mint_shrink`, `emint`."
             )
         self.method = method
         self.nonnegative = nonnegative
-        self.insample = method in ["wls_var", "mint_cov", "mint_shrink"]
+        self.insample = method in ["wls_var", "mint_cov", "mint_shrink", "emint"]
         if method == "mint_shrink":
             self.mint_shr_ridge = mint_shr_ridge
         self.num_threads = num_threads
@@ -1307,6 +1309,16 @@ class MinTrace(HReconciler):
         y_hat_insample: np.ndarray | None = None,
         idx_bottom: list[int] | None = None,
     ):
+        # Handle emint method separately
+        if self.method == "emint":
+            return self._get_PW_matrices_emint(
+                S=S,
+                y_hat=y_hat,
+                y_insample=y_insample,
+                y_hat_insample=y_hat_insample,
+                idx_bottom=idx_bottom,
+            )
+
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
         if self.method in res_methods and (
@@ -1401,6 +1413,65 @@ class MinTrace(HReconciler):
 
         return P, W
 
+    def _get_PW_matrices_emint(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        y_insample: np.ndarray,
+        y_hat_insample: np.ndarray,
+        idx_bottom: np.ndarray | None = None,
+    ):
+        """Compute the projection matrix P and weight matrix W for EMinT.
+
+        Args:
+            S: Summing matrix of size (base, bottom).
+            y_hat: Forecast values of size (base, horizon).
+            y_insample: In-sample values of size (base, insample_size).
+            y_hat_insample: In-sample fitted values of size (base, insample_size).
+            idx_bottom: Indices corresponding to the bottom level of S.
+
+        Returns:
+            P: Projection matrix of size (bottom, base).
+            W: Weight matrix (identity for EMinT).
+        """
+        n_hiers, n_bottom = S.shape
+
+        if y_insample is None or y_hat_insample is None:
+            raise ValueError(
+                "Check `Y_df`. For method `emint` you need to pass insample predictions and insample values."
+            )
+
+        # Infer idx_bottom if not provided
+        if idx_bottom is None:
+            idx_bottom = list(range(n_hiers - n_bottom, n_hiers))
+
+        # Remove observations with nan values
+        nan_idx = np.isnan(y_hat_insample).any(axis=0)
+        # Raise warning if any nan values are found
+        if np.any(nan_idx):
+            warnings.warn(
+                f"Found {np.sum(nan_idx)} out of {y_hat_insample.shape[1]} insample observations with NaN values. These will be ignored when computing the EMinT projection matrix."
+            )
+        y_insample_clean = y_insample[:, ~nan_idx]
+        y_hat_insample_clean = y_hat_insample[:, ~nan_idx]
+
+        # Extract bottom-level observations (use ALL available data)
+        # Note: G-matrix computed once for h=1 holds for all h > 1
+        # B_h shape: (T, n_bottom)
+        B_h = y_insample_clean[idx_bottom, :].T
+
+        # Y_hat_h shape: (T, n_hiers)
+        Y_hat_h = y_hat_insample_clean.T
+
+        # Compute P = B_h^T @ Y_hat_h @ (Y_hat_h^T @ Y_hat_h)^(-1)
+        # P shape: (n_bottom, n_hiers)
+        P = B_h.T @ Y_hat_h @ np.linalg.pinv(Y_hat_h.T @ Y_hat_h)
+
+        # Weight matrix is identity for EMinT
+        W = np.eye(n_hiers, dtype=np.float64)
+
+        return P, W
+
     def fit(
         self,
         S,
@@ -1431,7 +1502,6 @@ class MinTrace(HReconciler):
         Returns:
             self: object, fitted reconciler.
         """
-        self.y_hat = y_hat
         self.P, self.W = self._get_PW_matrices(
             S=S,
             y_hat=y_hat,
@@ -1439,6 +1509,7 @@ class MinTrace(HReconciler):
             y_hat_insample=y_hat_insample,
             idx_bottom=idx_bottom,
         )
+        self.y_hat = y_hat
 
         if self.nonnegative:
             _, n_bottom = S.shape
@@ -1968,7 +2039,7 @@ class ERM(HReconciler):
         y_hat: np.ndarray,
         y_insample: np.ndarray,
         y_hat_insample: np.ndarray,
-        idx_bottom: np.ndarray,
+        idx_bottom: np.ndarray | None = None,
     ):
         n_hiers, n_bottom = S.shape
         # y_hat_insample shape (n_hiers, obs)
@@ -1976,13 +2047,22 @@ class ERM(HReconciler):
             raise ValueError(
                 "Check `Y_df`. For method `ERM` you need to pass insample predictions and insample values."
             )
+
+        # Infer idx_bottom if not provided
+        if idx_bottom is None:
+            idx_bottom = list(range(n_hiers - n_bottom, n_hiers))
+
         # remove obs with nan values
         nan_idx = np.isnan(y_hat_insample).any(axis=0)
+        # Raise warning if any nan values are found
+        if np.any(nan_idx):
+            warnings.warn(
+                f"Found {np.sum(nan_idx)} out of {y_hat_insample.shape[1]} insample observations with NaN values. These will be ignored when computing the EMinT projection matrix."
+            )
         y_insample = y_insample[:, ~nan_idx]
         y_hat_insample = y_hat_insample[:, ~nan_idx]
         # only using h validation steps to avoid
         # computational burden
-        # print(y_hat.shape)
         h = min(y_hat.shape[1], y_hat_insample.shape[1])
         y_hat_insample = y_hat_insample[:, -h:]  # shape (h, n_hiers)
         y_insample = y_insample[:, -h:]

@@ -1,37 +1,43 @@
 import os
+import pickle
+
 import fire
 import pandas as pd
-import pickle
 import polars as pl
+from src.data import get_tourism
+from statsforecast.core import StatsForecast
+from statsforecast.models import AutoETS
 
 from hierarchicalforecast.core import HierarchicalReconciliation
 from hierarchicalforecast.methods import (
-    BottomUp, BottomUpSparse, TopDown, TopDownSparse, MiddleOut, MiddleOutSparse, 
-    MinTrace, 
-    MinTraceSparse, 
-    OptimalCombination,
     ERM,
+    BottomUp,
+    BottomUpSparse,
+    MiddleOut,
+    MiddleOutSparse,
+    MinTrace,
+    MinTraceSparse,
+    OptimalCombination,
+    TopDown,
+    TopDownSparse,
 )
 from hierarchicalforecast.utils import aggregate
-from src.data import get_tourism
-from statsforecast.models import AutoETS
-from statsforecast.core import StatsForecast
 
 SPECS = {
         "strict": [
                     ['Country'],
-                    ['Country', 'State'], 
-                    ['Country', 'State', 'Region'], 
+                    ['Country', 'State'],
+                    ['Country', 'State', 'Region'],
                     ['Country', 'State', 'Region', 'Purpose']
                     ],
         "non-strict": [
                     ['Country'],
-                    ['Country', 'State'], 
-                    ['Country', 'Purpose'], 
-                    ['Country', 'State', 'Region'], 
-                    ['Country', 'State', 'Purpose'], 
-                    ['Country', 'State', 'Region', 'Purpose']     
-                    ],               
+                    ['Country', 'State'],
+                    ['Country', 'Purpose'],
+                    ['Country', 'State', 'Region'],
+                    ['Country', 'State', 'Purpose'],
+                    ['Country', 'State', 'Region', 'Purpose']
+                    ],
                     }
 
 
@@ -71,11 +77,12 @@ def main(hierarchy: str = "non-strict", type: str = "point", engine: str = 'pand
                    MinTrace(method='wls_struct'),
                    MinTrace(method='wls_var'),
                    MinTrace(method='mint_shrink'),
+                   MinTrace(method='emint'),
                    OptimalCombination(method='ols'),
                    OptimalCombination(method='wls_struct'),
                    ERM(method='closed'),
     ]
-    
+
     # Add reconcilers that handle strict hierarchies only
     if hierarchy == "strict":
         reconcilers += [
@@ -90,7 +97,7 @@ def main(hierarchy: str = "non-strict", type: str = "point", engine: str = 'pand
         if level is None:
             reconcilers += [
                     TopDown(method="forecast_proportions"),
-            ]    
+            ]
             if engine == 'pandas':
                 reconcilers += [
                     TopDownSparse(method="forecast_proportions"),
@@ -114,11 +121,11 @@ def main(hierarchy: str = "non-strict", type: str = "point", engine: str = 'pand
                     MinTraceSparse(method='wls_struct'),
                     MinTraceSparse(method='wls_var'),
             ]
-    
+
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
     Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df,
-                               Y_df=Y_fitted_df, 
-                               S_df=S_df, 
+                               Y_df=Y_fitted_df,
+                               S_df=S_df,
                                tags=tags,
                                level=level)
 
@@ -135,7 +142,7 @@ def main(hierarchy: str = "non-strict", type: str = "point", engine: str = 'pand
     Y_train_df.to_csv('./data/Y_train.csv', index=False)
     execution_times.to_csv('./data/execution_times.csv', index=False)
     with open('./data/tags.pickle', 'wb') as handle:
-        pickle.dump(tags, handle, protocol=pickle.HIGHEST_PROTOCOL)    
+        pickle.dump(tags, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == '__main__':
     fire.Fire(main)

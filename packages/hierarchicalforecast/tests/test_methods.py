@@ -357,7 +357,7 @@ def test_middle_out_vs_sparse_equivalence(hierarchical_data, method):
     np.testing.assert_allclose(result_dense, result_sparse, tolerance)
 
 
-@pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var", "mint_shrink"])
+@pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var", "mint_shrink", "emint"])
 @pytest.mark.parametrize("nonnegative", [False, True])
 def test_min_trace_forecast_recovery(hierarchical_data, method, nonnegative):
     """Test MinTrace methods can recover forecasts and nonnegative behavior."""
@@ -367,7 +367,7 @@ def test_min_trace_forecast_recovery(hierarchical_data, method, nonnegative):
     assert cls_min_trace.nonnegative is nonnegative
 
     if cls_min_trace.insample:
-        assert method in ["wls_var", "mint_cov", "mint_shrink"]
+        assert method in ["wls_var", "mint_cov", "mint_shrink", "emint"]
         result = cls_min_trace(
             S=data.S,
             y_hat=data.S @ data.y_hat_bottom,
@@ -382,7 +382,15 @@ def test_min_trace_forecast_recovery(hierarchical_data, method, nonnegative):
             idx_bottom=data.idx_bottom if nonnegative else None,
         )["mean"]
 
-    np.testing.assert_allclose(result, data.S @ data.y_hat_bottom)
+    # EMinT without nonnegative only guarantees coherence, not exact recovery
+    # (when nonnegative=True, it uses BottomUp which does have exact recovery)
+    if method == "emint" and not nonnegative:
+        # Check coherence instead of exact recovery
+        bottom_forecasts = result[data.idx_bottom, :]
+        aggregated = data.S @ bottom_forecasts
+        np.testing.assert_allclose(result, aggregated, rtol=1e-10)
+    else:
+        np.testing.assert_allclose(result, data.S @ data.y_hat_bottom)
 
 
 def test_min_trace_threading(hierarchical_data):
@@ -437,7 +445,7 @@ def test_min_trace_shrink_covariance_stress(hierarchical_data):
     assert result_min_trace is not None
 
 
-@pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var", "mint_shrink"])
+@pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var", "mint_shrink", "emint"])
 @pytest.mark.parametrize("nonnegative", [False, True])
 def test_min_trace_levels(hierarchical_data, method, nonnegative):
     """Test MinTrace with all levels."""
@@ -452,7 +460,15 @@ def test_min_trace_levels(hierarchical_data, method, nonnegative):
         idx_bottom=data.idx_bottom if nonnegative else None,
     )["mean"]
 
-    np.testing.assert_allclose(result, data.S @ data.y_hat_bottom)
+    # EMinT without nonnegative only guarantees coherence, not exact recovery
+    # (when nonnegative=True, it uses BottomUp which does have exact recovery)
+    if method == "emint" and not nonnegative:
+        # Check coherence instead of exact recovery
+        bottom_forecasts = result[data.idx_bottom, :]
+        aggregated = data.S @ bottom_forecasts
+        np.testing.assert_allclose(result, aggregated, rtol=1e-10)
+    else:
+        np.testing.assert_allclose(result, data.S @ data.y_hat_bottom)
 
 
 @pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var"])
@@ -664,7 +680,7 @@ def test_top_down_sparse_forecast_proportions_intervals_missing_insample(hierarc
         )
 
 
-@pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var", "mint_shrink"])
+@pytest.mark.parametrize("method", ["ols", "wls_struct", "wls_var", "mint_shrink", "emint"])
 @pytest.mark.parametrize("intervals_method", ["normality", "bootstrap", "permbu"])
 def test_min_trace_intervals(interval_reconciler_args, method, intervals_method):
     """Test MinTrace with different interval methods."""
@@ -910,6 +926,197 @@ def test_mintrace_nonnegative_raises_on_bootstrap_permbu(hierarchical_data, inte
 
     with pytest.raises(ValueError, match="nonnegative reconciliation is not compatible"):
         cls_min_trace.fit_predict(
+            S=data.S,
+            y_hat=y_hat_base,
+            y_insample=y_base,
+            y_hat_insample=y_hat_base_insample,
+            sigmah=sigmah,
+            level=[90],
+            intervals_method=intervals_method,
+            num_samples=200,
+            seed=42,
+            tags=data.tags,
+            idx_bottom=data.idx_bottom,
+        )
+
+
+@pytest.mark.parametrize("nonnegative", [False, True])
+def test_emint_forecast_reconciliation(hierarchical_data, nonnegative):
+    """Test EMinT method produces coherent forecasts."""
+    data = hierarchical_data
+
+    cls_emint = MinTrace(method='emint', nonnegative=nonnegative)
+    result = cls_emint(
+        S=data.S,
+        y_hat=data.S @ data.y_hat_bottom,
+        y_insample=data.S @ data.y_bottom,
+        y_hat_insample=data.S @ data.y_hat_bottom_insample,
+        idx_bottom=data.idx_bottom,
+    )["mean"]
+
+    # Check that result is coherent (satisfies aggregation constraints)
+    # Bottom level forecasts should aggregate to upper levels
+    bottom_forecasts = result[data.idx_bottom, :]
+    aggregated = data.S @ bottom_forecasts
+
+    np.testing.assert_allclose(result, aggregated, rtol=1e-10)
+
+    # If nonnegative=True, verify all forecasts are non-negative
+    if nonnegative:
+        assert np.all(result >= -1e-6), "Forecasts should be non-negative when nonnegative=True"
+
+
+def test_emint_fit_predict_pattern(hierarchical_data):
+    """Test EMinT with fit -> predict pattern."""
+    data = hierarchical_data
+
+    cls_emint = MinTrace(method='emint')
+    cls_emint.fit(
+        S=data.S,
+        y_hat=data.S @ data.y_hat_bottom,
+        y_insample=data.S @ data.y_bottom,
+        y_hat_insample=data.S @ data.y_hat_bottom_insample,
+        idx_bottom=data.idx_bottom,
+    )
+    result = cls_emint.predict(S=data.S, y_hat=data.S @ data.y_hat_bottom)["mean"]
+
+    # Check coherence
+    bottom_forecasts = result[data.idx_bottom, :]
+    aggregated = data.S @ bottom_forecasts
+
+    np.testing.assert_allclose(result, aggregated, rtol=1e-10)
+
+
+def test_emint_requires_insample_data(hierarchical_data):
+    """Test EMinT raises error when insample data is missing."""
+    data = hierarchical_data
+
+    cls_emint = MinTrace(method='emint')
+
+    with pytest.raises(ValueError, match="insample predictions and insample values"):
+        cls_emint(
+            S=data.S,
+            y_hat=data.S @ data.y_hat_bottom,
+            idx_bottom=data.idx_bottom,
+        )
+
+
+@pytest.mark.parametrize("method_class,kwargs", [
+    (MinTrace, {"method": "emint"}),
+])
+def test_insample_methods_coherence(hierarchical_data, method_class, kwargs):
+    """Test that EMinT produces coherent forecasts."""
+    data = hierarchical_data
+
+    reconciler = method_class(**kwargs)
+    result = reconciler(
+        S=data.S,
+        y_hat=data.S @ data.y_hat_bottom,
+        y_insample=data.S @ data.y_bottom,
+        y_hat_insample=data.S @ data.y_hat_bottom_insample,
+        idx_bottom=data.idx_bottom,
+    )["mean"]
+
+    # Verify coherence: S @ bottom = all
+    bottom_forecasts = result[data.idx_bottom, :]
+    aggregated = data.S @ bottom_forecasts
+
+    np.testing.assert_allclose(result, aggregated, rtol=1e-10)
+
+    # Verify shape
+    assert result.shape == (data.S.shape[0], data.h)
+
+
+def test_emint_nonnegative_with_negative_forecasts(hierarchical_data):
+    """Test EMinT with nonnegative=True handles negative base forecasts."""
+    data = hierarchical_data
+
+    # Create base forecasts with NEGATIVE values
+    y_hat_base = data.S @ data.y_hat_bottom
+    y_hat_with_negatives = y_hat_base.copy()
+    y_hat_with_negatives[0, :] = -10.0  # Make total negative
+    y_hat_with_negatives[1, :] = -5.0   # Make group 1 negative
+
+    y_base = data.S @ data.y_bottom
+    y_hat_base_insample = data.S @ data.y_hat_bottom_insample
+
+    cls_emint = MinTrace(method='emint', nonnegative=True)
+
+    result = cls_emint.fit_predict(
+        S=data.S,
+        y_hat=y_hat_with_negatives,
+        y_insample=y_base,
+        y_hat_insample=y_hat_base_insample,
+        idx_bottom=data.idx_bottom,
+    )
+
+    # Verify the mean reconciled forecasts are non-negative
+    assert np.all(result["mean"] >= -1e-6), "Mean forecasts should be non-negative"
+
+    # Verify coherence
+    bottom_forecasts = result["mean"][data.idx_bottom, :]
+    aggregated = data.S @ bottom_forecasts
+    np.testing.assert_allclose(result["mean"], aggregated, rtol=1e-10)
+
+
+def test_emint_nonnegative_sampler_initialization(hierarchical_data):
+    """Test that EMinT with nonnegative=True correctly initializes sampler with constrained forecasts."""
+    data = hierarchical_data
+
+    y_hat_base = data.S @ data.y_hat_bottom
+    y_hat_with_negatives = y_hat_base.copy()
+    y_hat_with_negatives[0, :] = -10.0
+
+    y_base = data.S @ data.y_bottom
+    y_hat_base_insample = data.S @ data.y_hat_bottom_insample
+    sigmah = np.ones((data.S.shape[0], data.h)) * 0.5
+
+    cls_emint = MinTrace(method='emint', nonnegative=True)
+
+    result = cls_emint.fit_predict(
+        S=data.S,
+        y_hat=y_hat_with_negatives,
+        y_insample=y_base,
+        y_hat_insample=y_hat_base_insample,
+        sigmah=sigmah,
+        level=[80, 90],
+        intervals_method="normality",
+        num_samples=200,
+        seed=42,
+        tags=data.tags,
+        idx_bottom=data.idx_bottom,
+    )
+
+    # Verify the mean reconciled forecasts are non-negative
+    assert np.all(result["mean"] >= -1e-6), "Mean forecasts should be non-negative"
+
+    # Verify the sampler was initialized with the nonnegative-constrained y_hat
+    np.testing.assert_array_equal(
+        cls_emint.sampler.y_hat,
+        cls_emint.y_hat,
+        err_msg="Sampler y_hat should match the nonnegative-constrained y_hat"
+    )
+
+    # Verify sampler y_hat is non-negative
+    assert np.all(cls_emint.sampler.y_hat >= -1e-6), (
+        "Sampler y_hat should be non-negative when nonnegative=True"
+    )
+
+
+@pytest.mark.parametrize("intervals_method", ["bootstrap", "permbu"])
+def test_emint_nonnegative_raises_on_bootstrap_permbu(hierarchical_data, intervals_method):
+    """Test that EMinT with nonnegative=True raises error for bootstrap/permbu."""
+    data = hierarchical_data
+
+    y_hat_base = data.S @ data.y_hat_bottom
+    y_base = data.S @ data.y_bottom
+    y_hat_base_insample = data.S @ data.y_hat_bottom_insample
+    sigmah = np.ones((data.S.shape[0], data.h)) * 0.5
+
+    cls_emint = MinTrace(method='emint', nonnegative=True)
+
+    with pytest.raises(ValueError, match="nonnegative reconciliation is not compatible"):
+        cls_emint.fit_predict(
             S=data.S,
             y_hat=y_hat_base,
             y_insample=y_base,

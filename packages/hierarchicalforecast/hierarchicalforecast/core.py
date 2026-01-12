@@ -581,7 +581,7 @@ class HierarchicalReconciliation:
 
         # Initialize reconciler arguments
         reconciler_args = dict(
-            idx_bottom=np.arange(len(S_nw))[-S_nw.shape[1] :],
+            idx_bottom=np.arange(len(S_nw))[-S_nw.shape[1] + 1:],
             tags={
                 key: S_nw.with_columns(nw.col(id_col).is_in(val).alias("in_cols"))[
                     "in_cols"

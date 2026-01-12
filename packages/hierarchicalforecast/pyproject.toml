@@ -41,6 +41,7 @@ dev = [
     "datasetsforecast",
     "fire",
     "ipython<=8.32.0",
+    "ipykernel<7.0.0",
     "statsforecast>=1.0.0",
     "requests",
     "scipy",
