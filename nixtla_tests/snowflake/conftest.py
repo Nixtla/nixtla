@@ -554,7 +554,7 @@ def verify_procedures_exist(session: Session, config: DeploymentConfig) -> bool:
     """
     # Each procedure has specific signatures with default parameters
     procedures = [
-        ("NIXTLA_FORECAST", "VARCHAR, OBJECT, NUMBER"),
+        ("NIXTLA_FORECAST", "VARCHAR, OBJECT, NUMBER, VARCHAR"),
         ("NIXTLA_EVALUATE", "VARCHAR, ARRAY, NUMBER"),
         ("NIXTLA_DETECT_ANOMALIES", "VARCHAR, OBJECT, NUMBER"),
     ]
