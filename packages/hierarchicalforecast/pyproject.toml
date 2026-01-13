@@ -1,6 +1,6 @@
 [project]
 name = "hierarchicalforecast"
-version = "1.3.1"
+version = "1.4.0"
 description = "Hierarchical Methods Time Series Forecasting"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "Apache Software License 2.0" }
@@ -9,7 +9,7 @@ authors = [
 ]
 keywords = ["time-series", "forecasting", "datasets", "hierarchical"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "License :: OSI Approved :: Apache Software License",
@@ -17,6 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 requires-python = ">=3.10,<4.0"
 dependencies = [

@@ -16,7 +16,7 @@ jobs:
       - name: Set up python
         uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # 6.1.0
         with:
-          python-version: 3.9
+          python-version: "3.10"
 
       - name: Install dependencies
         run: pip install uv && uv pip install --system pre-commit
