@@ -196,7 +196,7 @@ class BottomUp(HReconciler):
     def __init__(self):
         self._init_params = {}
 
-    def _get_PW_matrices(self, S, idx_bottom):
+    def _get_PW_matrices(self, S):
         n_hiers, n_bottom = S.shape
         P = np.eye(n_bottom, n_hiers, n_hiers - n_bottom, np.float64)
         if getattr(self, "intervals_method", False) is None:
@@ -209,7 +209,6 @@ class BottomUp(HReconciler):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        idx_bottom: np.ndarray,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
         sigmah: np.ndarray | None = None,
@@ -223,7 +222,6 @@ class BottomUp(HReconciler):
         Args:
             S (np.ndarray): Summing matrix of size (`base`, `bottom`).
             y_hat (np.ndarray): Forecast values of size (`base`, `horizon`).
-            idx_bottom (np.ndarray): Indices corresponding to the bottom level of `S`, size (`bottom`).
             y_insample (Optional[np.ndarray], optional): In-sample values of size (`base`, `horizon`). Default is None.
             y_hat_insample (Optional[np.ndarray], optional): In-sample forecast values of size (`base`, `horizon`). Default is None.
             sigmah (Optional[np.ndarray], optional): Estimated standard deviation of the conditional marginal distribution. Default is None.
@@ -236,7 +234,7 @@ class BottomUp(HReconciler):
             BottomUp (object): fitted reconciler.
         """
         self.intervals_method = intervals_method
-        self.P, self.W = self._get_PW_matrices(S=S, idx_bottom=idx_bottom)
+        self.P, self.W = self._get_PW_matrices(S=S)
         self.sampler = self._get_sampler(
             S=S,
             P=self.P,
@@ -257,7 +255,6 @@ class BottomUp(HReconciler):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        idx_bottom: np.ndarray,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
         sigmah: np.ndarray | None = None,
@@ -272,7 +269,6 @@ class BottomUp(HReconciler):
         Args:
             S (np.ndarray): Summing matrix of size (`base`, `bottom`).
             y_hat (np.ndarray): Forecast values of size (`base`, `horizon`).
-            idx_bottom (np.ndarray): Indices corresponding to the bottom level of `S`, size (`bottom`).
             y_insample (Optional[np.ndarray], optional): In-sample values of size (`base`, `insample_size`). Default is None.
             y_hat_insample (Optional[np.ndarray], optional): In-sample forecast values of size (`base`, `insample_size`). Default is None.
             sigmah (Optional[np.ndarray], optional): Estimated standard deviation of the conditional marginal distribution. Default is None.
@@ -296,7 +292,6 @@ class BottomUp(HReconciler):
             num_samples=num_samples,
             seed=seed,
             tags=tags,
-            idx_bottom=idx_bottom,
         )
 
         return self._reconcile(
@@ -324,7 +319,7 @@ class BottomUpSparse(BottomUp):
     def __init__(self):
         self._init_params = {}
 
-    def _get_PW_matrices(self, S, idx_bottom):
+    def _get_PW_matrices(self, S):
         n_hiers, n_bottom = S.shape
         P = sparse.eye(n_bottom, n_hiers, n_hiers - n_bottom, np.float64, "csr")
         if getattr(self, "intervals_method", False) is None:
@@ -628,7 +623,6 @@ class TopDown(HReconciler):
         num_samples: int | None = None,
         seed: int | None = None,
         tags: dict[str, np.ndarray] | None = None,
-        idx_bottom: np.ndarray | None = None,
     ):
         """TopDown Fit Method.
 
@@ -642,7 +636,6 @@ class TopDown(HReconciler):
             num_samples (int): Number of samples for probabilistic coherent distribution.
             seed (int): Seed for reproducibility.
             tags (dict[str, np.ndarray]): Each key is a level and each value its `S` indices.
-            idx_bottom (np.ndarray): Indices corresponding to the bottom level of `S`, size (`bottom`).
 
         Returns:
             TopDown (object): fitted reconciler.
@@ -672,7 +665,6 @@ class TopDown(HReconciler):
         S: np.ndarray,
         y_hat: np.ndarray,
         tags: dict[str, np.ndarray],
-        idx_bottom: np.ndarray = None,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
         sigmah: np.ndarray | None = None,
@@ -687,7 +679,6 @@ class TopDown(HReconciler):
             S (np.ndarray): Summing matrix of size (`base`, `bottom`).
             y_hat (np.ndarray): Forecast values of size (`base`, `horizon`).
             tags (dict[str, np.ndarray]): Each key is a level and each value its `S` indices.
-            idx_bottom (np.ndarray): Indices corresponding to the bottom level of `S`, size (`bottom`). Default is None.
             y_insample (np.ndarray): Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. Default is None.
             y_hat_insample (np.ndarray): Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. Default is None.
             sigmah (np.ndarray): Estimated standard deviation of the conditional marginal distribution. Default is None.
@@ -768,7 +759,6 @@ class TopDown(HReconciler):
                 num_samples=num_samples,
                 seed=seed,
                 tags=tags,
-                idx_bottom=idx_bottom,
             )
             return self._reconcile(
                 S=S, P=self.P, y_hat=y_hat, level=level, sampler=self.sampler
@@ -848,7 +838,6 @@ class TopDownSparse(TopDown):
         S: sparse.csr_matrix,
         y_hat: np.ndarray,
         tags: dict[str, np.ndarray],
-        idx_bottom: np.ndarray = None,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
         sigmah: np.ndarray | None = None,
@@ -916,7 +905,6 @@ class TopDownSparse(TopDown):
                 num_samples=num_samples,
                 seed=seed,
                 tags=tags,
-                idx_bottom=idx_bottom,
             )
             return self._reconcile(
                 S=S, P=self.P, y_hat=y_hat, level=level, sampler=self.sampler
@@ -1027,7 +1015,6 @@ class MiddleOut(HReconciler):
         bu = BottomUp().fit_predict(
             S=np.fliplr(np.unique(S[:cut_idx], axis=1)),
             y_hat=y_hat[:cut_idx],
-            idx_bottom=None,
             y_insample=y_insample[:cut_idx] if y_insample is not None else None,
             y_hat_insample=(
                 y_hat_insample[:cut_idx] if y_hat_insample is not None else None
@@ -1169,7 +1156,6 @@ class MiddleOutSparse(MiddleOut):
         bu_sparse = BottomUpSparse().fit_predict(
             S=sparse.csr_matrix(np.fliplr(np.unique(S[:cut_idx], axis=1))),
             y_hat=y_hat[:cut_idx],
-            idx_bottom=None,
             y_insample=y_insample[:cut_idx] if y_insample is not None else None,
             y_hat_insample=(
                 y_hat_insample[:cut_idx] if y_hat_insample is not None else None
@@ -1307,7 +1293,6 @@ class MinTrace(HReconciler):
         y_hat: np.ndarray,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
-        idx_bottom: list[int] | None = None,
     ):
         # Handle emint method separately
         if self.method == "emint":
@@ -1316,7 +1301,6 @@ class MinTrace(HReconciler):
                 y_hat=y_hat,
                 y_insample=y_insample,
                 y_hat_insample=y_hat_insample,
-                idx_bottom=idx_bottom,
             )
 
         # shape residuals_insample (n_hiers, obs)
@@ -1419,7 +1403,6 @@ class MinTrace(HReconciler):
         y_hat: np.ndarray,
         y_insample: np.ndarray,
         y_hat_insample: np.ndarray,
-        idx_bottom: np.ndarray | None = None,
     ):
         """Compute the projection matrix P and weight matrix W for EMinT.
 
@@ -1428,7 +1411,6 @@ class MinTrace(HReconciler):
             y_hat: Forecast values of size (base, horizon).
             y_insample: In-sample values of size (base, insample_size).
             y_hat_insample: In-sample fitted values of size (base, insample_size).
-            idx_bottom: Indices corresponding to the bottom level of S.
 
         Returns:
             P: Projection matrix of size (bottom, base).
@@ -1441,9 +1423,8 @@ class MinTrace(HReconciler):
                 "Check `Y_df`. For method `emint` you need to pass insample predictions and insample values."
             )
 
-        # Infer idx_bottom if not provided
-        if idx_bottom is None:
-            idx_bottom = list(range(n_hiers - n_bottom, n_hiers))
+        # Infer bottom level indices as last n_bottom rows
+        idx_bottom = list(range(n_hiers - n_bottom, n_hiers))
 
         # Remove observations with nan values
         nan_idx = np.isnan(y_hat_insample).any(axis=0)
@@ -1483,7 +1464,6 @@ class MinTrace(HReconciler):
         num_samples: int | None = None,
         seed: int | None = None,
         tags: dict[str, np.ndarray] | None = None,
-        idx_bottom: np.ndarray | None = None,
     ):
         """MinTrace Fit Method.
 
@@ -1497,7 +1477,6 @@ class MinTrace(HReconciler):
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
-            idx_bottom: Indices corresponding to the bottom level of `S`, size (`bottom`).
 
         Returns:
             self: object, fitted reconciler.
@@ -1507,7 +1486,6 @@ class MinTrace(HReconciler):
             y_hat=y_hat,
             y_insample=y_insample,
             y_hat_insample=y_hat_insample,
-            idx_bottom=idx_bottom,
         )
         self.y_hat = y_hat
 
@@ -1553,7 +1531,7 @@ class MinTrace(HReconciler):
             self.y_hat = S @ bottom_fcts  # Hack
 
             # Overwrite P, W and sampler attributes with BottomUp's
-            self.P, self.W = BottomUp()._get_PW_matrices(S=S, idx_bottom=idx_bottom)
+            self.P, self.W = BottomUp()._get_PW_matrices(S=S)
 
         self.sampler = self._get_sampler(
             S=S,
@@ -1575,7 +1553,6 @@ class MinTrace(HReconciler):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        idx_bottom: np.ndarray = None,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
         sigmah: np.ndarray | None = None,
@@ -1590,7 +1567,6 @@ class MinTrace(HReconciler):
         Args:
             S: Summing matrix of size (`base`, `bottom`).
             y_hat: Forecast values of size (`base`, `horizon`).
-            idx_bottom: Indices corresponding to the bottom level of `S`, size (`bottom`).
             y_insample: Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`
             y_hat_insample: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`
             sigmah: Estimated standard deviation of the conditional marginal distribution.
@@ -1608,10 +1584,6 @@ class MinTrace(HReconciler):
                 raise ValueError(
                     "nonnegative reconciliation is not compatible with bootstrap or permbu forecasts"
                 )
-            if idx_bottom is None:
-                raise ValueError(
-                    "`idx_bottom` cannot be None with nonnegative reconciliation"
-                )
 
         # Fit creates P, W and sampler attributes
         self.fit(
@@ -1624,7 +1596,6 @@ class MinTrace(HReconciler):
             num_samples=num_samples,
             seed=seed,
             tags=tags,
-            idx_bottom=idx_bottom,
         )
 
         return self._reconcile(
@@ -1678,7 +1649,6 @@ class MinTraceSparse(MinTrace):
         y_hat: np.ndarray,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
-        idx_bottom: list[int] | None = None,
     ):
         # shape residuals_insample (n_hiers, obs)
         res_methods = ["wls_var", "mint_cov", "mint_shrink"]
@@ -1769,7 +1739,6 @@ class MinTraceSparse(MinTrace):
         num_samples: int | None = None,
         seed: int | None = None,
         tags: dict[str, np.ndarray] | None = None,
-        idx_bottom: np.ndarray | None = None,
     ) -> "MinTraceSparse":
         """MinTraceSparse Fit Method.
 
@@ -1783,7 +1752,6 @@ class MinTraceSparse(MinTrace):
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
-            idx_bottom: Indices corresponding to the bottom level of `S`, size (`bottom`).
 
         Returns:
             self: object, fitted reconciler.
@@ -1902,7 +1870,7 @@ class MinTraceSparse(MinTrace):
                 # Overwrite the attributes for the P and W matrices with those
                 # for bottom-up reconciliation to force projection onto the
                 # non-negative coherent subspace.
-                self.P, self.W = BottomUpSparse()._get_PW_matrices(S=S, idx_bottom=None)
+                self.P, self.W = BottomUpSparse()._get_PW_matrices(S=S)
             else:
                 # Get the reconciliation matrices.
                 self.P, self.W = self._get_PW_matrices(
@@ -1910,7 +1878,6 @@ class MinTraceSparse(MinTrace):
                     y_hat=self.y_hat,
                     y_insample=y_insample,
                     y_hat_insample=y_hat_insample,
-                    idx_bottom=idx_bottom,
                 )
                 # Although it is now sufficient to ensure that all of the
                 # entries in P are positive, as it is implemented as a linear
@@ -1931,9 +1898,7 @@ class MinTraceSparse(MinTrace):
                     # Overwrite the attributes for the P and W matrices with
                     # those for bottom-up reconciliation to force projection
                     # onto the non-negative coherent subspace.
-                    self.P, self.W = BottomUpSparse()._get_PW_matrices(
-                        S=S, idx_bottom=None
-                    )
+                    self.P, self.W = BottomUpSparse()._get_PW_matrices(S=S)
         else:
             # Get the reconciliation matrices.
             self.y_hat = y_hat
@@ -1942,7 +1907,6 @@ class MinTraceSparse(MinTrace):
                 y_hat=self.y_hat,
                 y_insample=y_insample,
                 y_hat_insample=y_hat_insample,
-                idx_bottom=idx_bottom,
             )
 
         # Get the sampler for probabilistic reconciliation.
@@ -2039,7 +2003,6 @@ class ERM(HReconciler):
         y_hat: np.ndarray,
         y_insample: np.ndarray,
         y_hat_insample: np.ndarray,
-        idx_bottom: np.ndarray | None = None,
     ):
         n_hiers, n_bottom = S.shape
         # y_hat_insample shape (n_hiers, obs)
@@ -2048,9 +2011,8 @@ class ERM(HReconciler):
                 "Check `Y_df`. For method `ERM` you need to pass insample predictions and insample values."
             )
 
-        # Infer idx_bottom if not provided
-        if idx_bottom is None:
-            idx_bottom = list(range(n_hiers - n_bottom, n_hiers))
+        # Infer bottom level indices as last n_bottom rows
+        idx_bottom = list(range(n_hiers - n_bottom, n_hiers))
 
         # remove obs with nan values
         nan_idx = np.isnan(y_hat_insample).any(axis=0)
@@ -2114,7 +2076,6 @@ class ERM(HReconciler):
         num_samples: int | None = None,
         seed: int | None = None,
         tags: dict[str, np.ndarray] | None = None,
-        idx_bottom: np.ndarray | None = None,
     ):
         """ERM Fit Method.
 
@@ -2128,7 +2089,6 @@ class ERM(HReconciler):
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
-            idx_bottom: Indices corresponding to the bottom level of `S`, size (`bottom`).
 
         Returns:
             self: object, fitted reconciler.
@@ -2138,7 +2098,6 @@ class ERM(HReconciler):
             y_hat=y_hat,
             y_insample=y_insample,
             y_hat_insample=y_hat_insample,
-            idx_bottom=idx_bottom,
         )
         self.sampler = self._get_sampler(
             S=S,
@@ -2160,7 +2119,6 @@ class ERM(HReconciler):
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
-        idx_bottom: np.ndarray = None,
         y_insample: np.ndarray | None = None,
         y_hat_insample: np.ndarray | None = None,
         sigmah: np.ndarray | None = None,
@@ -2175,7 +2133,6 @@ class ERM(HReconciler):
         Args:
             S: Summing matrix of size (`base`, `bottom`).
             y_hat: Forecast values of size (`base`, `horizon`).
-            idx_bottom: Indices corresponding to the bottom level of `S`, size (`bottom`).
             y_insample: Train values of size (`base`, `insample_size`).
             y_hat_insample: Insample train predictions of size (`base`, `insample_size`).
             sigmah: Estimated standard deviation of the conditional marginal distribution.
@@ -2199,7 +2156,6 @@ class ERM(HReconciler):
             num_samples=num_samples,
             seed=seed,
             tags=tags,
-            idx_bottom=idx_bottom,
         )
 
         return self._reconcile(

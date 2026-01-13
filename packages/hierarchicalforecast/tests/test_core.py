@@ -284,7 +284,6 @@ def test_temporal_reconcile_raises_on_insufficient_horizon(lib):
             S_df=S_df,
             tags=tags,
             temporal=True,
-            temporal_spec=spec_temporal,
         )
 
 @pytest.mark.parametrize("lib", ["pandas", "polars"])
@@ -350,7 +349,6 @@ def test_temporal_reconcile_succeeds_with_sufficient_horizon(lib):
         S_df=S_df,
         tags=tags,
         temporal=True,
-        temporal_spec=spec_temporal,
     )
 
     # Verify reconciliation completed
