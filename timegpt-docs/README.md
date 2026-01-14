@@ -1,13 +1,10 @@
 ## Introduction
 
-This repository contains the documentation for Nixtla TimeGPT.
-It is the third iteration of the docs:
+This repository contains the documentation for Nixtla TimeGPT. It is the third iteration of the docs:
 
-- First version was hosted in readme.com and still visible there for reference. [https://timegpt.readme.io/](https://timegpt.readme.io/) and in this same doc in the [migration to mintlify](#migration-from-readmeio-to-mintlify) section you can see some details about the migration.
-
-- Second version has exactly this same content but it's in the same repo as the website, which isn't ideal for collaborators, currently visible at [https://nixtla.io/docs/](https://nixtla.io/docs/) and hosted in mintlify.
-
-- This is iteration will also be hosted in mintlify.
+- First version was hosted in readme.com and still visible there for reference. https://timegpt.readme.io/ and in this same doc in the [migration to mintlify](#migration-from-readmeio-to-mintlify) section you can see some details about the migration.
+- Second version has exactly this same content but it's in the same repo as the website, which isn't ideal for collaborators, currently visible at https://nixtla.io/docs/ and hosted in mintlify.
+- This iteration will also be hosted in mintlify.
 
 ## Contributing
 
@@ -29,7 +26,6 @@ If you prefer to work locally, this repository is configured with GitHub Codespa
    ```bash
    mintlify dev
    ```
-
 5. Click on the "Ports" tab and open port 3000 in your browser to view the documentation
 
 For more information about the Codespace setup, see the `.devcontainer` directory.
@@ -44,14 +40,14 @@ When a PR is merged to main branch, the docs are deployed to production automati
 
 ### Technical
 
-- [ ] Add support for .ipynb files, so that we can run the notebooks and output the results in the docs.
-- [ ] Implement Nixtla branding on the docs.
-- [ ] Organize the docs in subfolders.
+- Add support for .ipynb files, so that we can run the notebooks and output the results in the docs.
+- Implement Nixtla branding on the docs.
+- Organize the docs in subfolders.
 
 ### Content
 
-- [ ] Rethink how we welcome non technical users into the docs, currently we start the into with "Welcome to TimeGPT - The foundational model for time series forecasting and anomaly detection" which sounds very overwhelming for a non technical user. It would be nice to add content for people who are just starting to work with time series forecasting and anomaly detection.
-- [ ] ????
+- Rethink how we welcome non technical users into the docs, currently we start the into with "Welcome to TimeGPT - The foundational model for time series forecasting and anomaly detection" which sounds very overwhelming for a non technical user. It would be nice to add content for people who are just starting to work with time series forecasting and anomaly detection.
+- ????
 
 ## Migration from Readme.io to Mintlify
 
@@ -68,13 +64,11 @@ The conversion was done using a Node.js script located at `/docs/utils/convert-l
    ```bash
    npm install glob
    ```
-
 2. Change to the docs directory:
 
    ```bash
    cd docs
    ```
-
 3. Run the script:
 
    ```bash
@@ -108,7 +102,6 @@ The conversion was performed using a more advanced Node.js script at `/docs/util
 To run the script:
 
 1. Change to the docs directory: `cd docs`
-
 2. Run the script:
 
 ```bash
@@ -145,7 +138,6 @@ To run the script:
    ```
    cd docs
    ```
-
 2. Run the script:
 
    ```
@@ -183,13 +175,11 @@ To run the script:
    ```
    cd docs
    ```
-
 2. Check for issues without making changes:
 
    ```
    node utils/check-card-titles.js
    ```
-
 3. Automatically fix issues:
 
    ```
@@ -227,13 +217,11 @@ To run the script:
    ```
    cd docs
    ```
-
 2. Check for tables without making changes:
 
    ```
    node utils/convert-tables.js
    ```
-
 3. Automatically convert all tables:
 
    ```

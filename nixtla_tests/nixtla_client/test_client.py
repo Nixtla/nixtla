@@ -1,10 +1,11 @@
+import logging
 import os
 import pytest
 import pandas as pd
-import warnings
 
 from nixtla_tests.helpers.client_helper import delete_env_var
-from nixtla.nixtla_client import NixtlaClient
+
+from nixtla.nixtla_client import NixtlaClient, ApiError
 
 def test_custom_business_hours(
     business_hours_series, custom_business_hours
@@ -106,19 +107,19 @@ def test_forecast_warning(nixtla_test_client, air_passengers_df, caplog):
     "kwargs",
     [
         {"add_history": True},
-        {"finetune_steps": 10, "finetune_loss": "mae"},
     ],
-    ids=["short horizon with add_history", "short horizon with finetuning"],
+    ids=["short horizon with add_history"],
 )
 def test_forecast_error(nixtla_test_client, air_passengers_df, kwargs):
     with pytest.raises(
-        ValueError, match="Some series are too short. Please make sure that each series"
+        ApiError, match="Minimum required samples for computing prediction intervals"
     ):
         nixtla_test_client.forecast(
             df=air_passengers_df.tail(3),
             h=12,
             time_col="timestamp",
             target_col="value",
+            level=[90, 95],
             **kwargs,
         )
 
@@ -130,7 +131,7 @@ def test_large_request_partition_error(nixtla_test_client, large_series):
 
 
 def test_forecast_exogenous_warnings(
-    nixtla_test_client, two_short_series_with_time_features_train_future
+    nixtla_test_client, two_short_series_with_time_features_train_future, caplog
 ):
     train, future = two_short_series_with_time_features_train_future
 
@@ -141,21 +142,23 @@ def test_forecast_exogenous_warnings(
         "but `X_df` was not provided and they were not declared in `hist_exog_list`. "
         "They will be ignored."
     )
-    with warnings.catch_warnings(record=True) as w:
+
+    with caplog.at_level(logging.WARNING):
         nixtla_test_client.forecast(train, h=5)
-        assert any(expected_warning in str(warning.message) for warning in w)
+        assert expected_warning in caplog.text
 
     # features in df not set as historic nor in X_df
+    caplog.clear()
     expected_warning = (
         "`df` contains the following exogenous features: ['month'], "
         "but they were not found in `X_df` nor declared in `hist_exog_list`. "
         "They will be ignored."
     )
-    with warnings.catch_warnings(record=True) as w:
+    with caplog.at_level(logging.WARNING):
         nixtla_test_client.forecast(
             train, h=5, X_df=future[["unique_id", "ds", "year"]]
         )
-        assert any(expected_warning in str(warning.message) for warning in w)
+        assert expected_warning in caplog.text
 
 
 def test_features_not_in_df_error(

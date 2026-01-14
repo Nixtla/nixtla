@@ -1,5 +1,9 @@
 {
   "$schema": "https://mintlify.com/docs.json",
+  "banner": {
+    "content": "[Announcement](https://www.nixtla.io/blog/genai-announcement): Nixtla Enterprise now offers top foundation models, MCP, and agentic capabilities: [join the waitlist](https://www.nixtla.io?waitlistSheet=true)",
+    "dismissible": true
+  },
   "theme": "mint",
   "name": "TimeGPT Foundational model for time series forecasting and anomaly detection",
   "colors": {
@@ -7,12 +11,13 @@
     "light": "#FFF",
     "dark": "#161616"
   },
+  "seo": {
+    "metatags": {
+      "canonical": "https://nixtla.io/docs"
+    }
+  },
   "favicon": "/favicon.ico",
-  "ignore": [
-    "utils/**",
-    "depracted-docs/**",
-    "pending_content/**"
-  ],
+  "ignore": ["utils/**", "depracted-docs/**", "pending_content/**"],
   "navigation": {
     "groups": [
       {
@@ -47,6 +52,7 @@
         "group": "FORECASTING",
         "pages": [
           "/forecasting/timegpt_quickstart",
+          "/forecasting/timegpt_2_family",
           {
             "group": "Exogenous variables",
             "pages": [
@@ -76,9 +82,7 @@
           },
           {
             "group": "Model versions",
-            "pages": [
-              "/forecasting/model-version/longhorizon_model"
-            ]
+            "pages": ["/forecasting/model-version/longhorizon_model"]
           },
           {
             "group": "Evaluation",
@@ -131,7 +135,8 @@
           "/use_cases/bitcoin_price_prediction",
           "/use_cases/forecasting_energy_demand",
           "/use_cases/forecasting_intermittent_demand",
-          "/use_cases/what_if_forecasting_price_effects_in_retail"
+          "/use_cases/what_if_forecasting_price_effects_in_retail",
+          "/use_cases/logging_and_serving_with_mlflow"
         ]
       },
       {
@@ -207,6 +212,9 @@
     },
     "posthog": {
       "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82"
+    },
+    "intercom": {
+      "appId": "j7y9c2ep"
     }
   },
   "redirects": [
@@ -272,11 +280,6 @@
     }
   ],
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude"
-    ]
+    "options": ["copy", "view", "chatgpt", "claude"]
   }
 }

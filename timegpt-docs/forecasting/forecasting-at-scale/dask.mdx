@@ -1,65 +1,68 @@
 ---
-title: "Dask"
-description: "Run TimeGPT in a distributed manner using Dask for scalable forecasting."
+title: "Time Series Forecasting with Dask"
+description: "Scale pandas workflows with Dask and TimeGPT for distributed time series forecasting. Learn to process 10M+ time series in Python with minimal code changes."
 icon: "server"
 ---
 
-<Info>Run TimeGPT in a distributed manner using Dask.</Info>
+## Overview
+
+[Dask](https://www.dask.org/) is an open-source parallel computing library for Python that scales pandas workflows seamlessly. This guide explains how to use TimeGPT from Nixtla with Dask for distributed forecasting tasks.
+
+Dask is ideal when you're already using pandas and need to scale beyond single-machine memory limits—typically for datasets with 10-100 million observations across multiple time series. Unlike Spark, Dask requires minimal code changes from your existing pandas workflow.
+
+## Why Use Dask for Time Series Forecasting?
+
+Dask offers unique advantages for scaling time series forecasting:
+
+- **Pandas-like API**: Minimal code changes from your existing pandas workflows
+- **Easy scaling**: Convert pandas DataFrames to Dask with a single line of code
+- **Python-native**: Pure Python implementation, no JVM required (unlike Spark)
+- **Flexible deployment**: Run on your laptop or scale to a cluster
+- **Memory efficiency**: Process datasets larger than RAM through intelligent chunking
+
+Choose Dask when you need to scale from 10 million to 100 million observations and want the smoothest transition from pandas.
+
+**What you'll learn:**
+
+- Simplify distributed computing with Fugue
+- Run TimeGPT at scale on a Dask cluster
+- Seamlessly convert pandas DataFrames to Dask
+
+## Prerequisites
+
+Before proceeding, make sure you have an [API key from Nixtla](/setup/setting_up_your_api_key).
+
+## How to Use TimeGPT with Dask
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/17_computing_at_scale_dask_distributed.ipynb)
 
-Dask is an open-source parallel computing library for Python. This guide explains how to use TimeGPT from Nixtla with Dask for distributed forecasting tasks.
+### Step 1: Install Fugue and Dask
 
-<Warning>Before proceeding, make sure you have an API key from Nixtla.</Warning>
+Fugue provides an easy-to-use interface for distributed computing over frameworks like Dask.
 
-<CardGroup cols={1}>
-  <Card title="Highlights">
-    • Simplify distributed computing with Fugue.
-    • Run TimeGPT at scale on a Dask cluster.
-    • Seamlessly convert pandas DataFrames to Dask.
-  </Card>
-</CardGroup>
+You can install Fugue with:
 
-## Outline
+```bash
+pip install fugue[dask]
+```
 
-1. [Installation](#installation)
-2. [Load Your Data](#load-your-data)
-3. [Import Dask](#import-dask)
-4. [Use TimeGPT on Dask](#use-timegpt-on-dask)
+If running on a distributed Dask cluster, ensure the `nixtla` library is installed on all worker nodes.
 
-<Steps>
-  <Step title="Step 1: Installation" id="installation">
-    <AccordionGroup>
-      <Accordion title="Install Fugue and Dask">
-        Fugue provides an easy-to-use interface for distributed computing over frameworks like Dask.
+### Step 2: Load Your Data
 
-        <Info>
-          You can install `fugue` with:
-        </Info>
+You can start by loading data into a pandas DataFrame. In this example, we use hourly electricity prices from multiple markets:
 
-        ```shell Install Fugue and Dask
-        pip install fugue[dask]
-        ```
+```python
+import pandas as pd
 
-        If running on a distributed Dask cluster, ensure the `nixtla` library is installed on all worker nodes.
-      </Accordion>
-    </AccordionGroup>
-  </Step>
+df = pd.read_csv(
+    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv',
+    parse_dates=['ds'],
+)
+df.head()
+```
 
-  <Step title="Step 2: Load Your Data" id="load-your-data">
-    You can start by loading data into a pandas DataFrame. In this example, we use hourly electricity prices from multiple markets:
-
-    ```python Load Electricity Data
-    import pandas as pd
-
-    df = pd.read_csv(
-        'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short.csv',
-        parse_dates=['ds'],
-    )
-    df.head()
-    ```
-
-    <Info>Example pandas DataFrame:</Info>
+Example pandas DataFrame:
 
     |       | unique_id   | ds                    | y       |
 | ----- | ----------- | --------------------- | ------- |
@@ -69,65 +72,43 @@ Dask is an open-source parallel computing library for Python. This guide explain
 | 3     | BE          | 2016-10-22 03:00:00   | 44.75   |
 | 4     | BE          | 2016-10-22 04:00:00   | 37.10   |
 
+### Step 3: Import Dask
 
-  </Step>
+Convert the pandas DataFrame into a Dask DataFrame for parallel processing.
 
-  <Step title="Step 3: Import Dask" id="import-dask">
-    Convert the pandas DataFrame into a Dask DataFrame for parallel processing.
+```python
+import dask.dataframe as dd
 
-    ```python Convert to Dask DataFrame
-    import dask.dataframe as dd
+dask_df = dd.from_pandas(df, npartitions=2)
+dask_df
+```
 
-    dask_df = dd.from_pandas(df, npartitions=2)
-    dask_df
+When converting to a Dask DataFrame, you can specify the number of partitions based on your data size or system resources.
+
+### Step 4: Use TimeGPT on Dask
+
+To use TimeGPT with Dask, provide a Dask DataFrame to Nixtla's client methods instead of a pandas DataFrame.
+
+
+Instantiate the `NixtlaClient` class to interact with Nixtla's API:
+
+```python
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key='my_api_key_provided_by_nixtla'
+)
+```
+
+You can use any method from the `NixtlaClient`, such as `forecast` or `cross_validation`.
+
+<Tabs>
+  <Tab title="Forecast Example">
+    ```python Forecast with TimeGPT and Dask
+    fcst_df = nixtla_client.forecast(dask_df, h=12)
+    fcst_df.compute().head()
     ```
-
-    <Info>
-      When converting to a Dask DataFrame, you can specify the number of partitions based on your data size or system resources.
-    </Info>
-  </Step>
-
-  <Step title="Step 4: Use TimeGPT on Dask" id="use-timegpt-on-dask">
-    To use TimeGPT with Dask, provide a Dask DataFrame to Nixtla's client methods instead of a pandas DataFrame.
-
-    <Card title="Important Concept: NixtlaClient">
-      Instantiate the `NixtlaClient` class to interact with Nixtla’s API.
-    </Card>
-
-    ```python Initialize NixtlaClient
-    from nixtla import NixtlaClient
-
-    nixtla_client = NixtlaClient(
-        api_key='my_api_key_provided_by_nixtla'
-    )
-    ```
-
-    <AccordionGroup>
-      <Accordion title="Using an Azure AI endpoint">
-        <Check>
-          To use Azure AI, set the `base_url` parameter:
-        </Check>
-
-        ```python Azure AI Endpoint Setup
-        nixtla_client = NixtlaClient(
-            base_url="your Azure AI endpoint",
-            api_key="your api_key"
-        )
-        ```
-      </Accordion>
-    </AccordionGroup>
-
-    <Info>
-      You can use any method from the `NixtlaClient`, such as `forecast` or `cross_validation`.
-    </Info>
-
-    <Tabs>
-      <Tab title="Forecast Example">
-        ```python Forecast with TimeGPT and Dask
-        fcst_df = nixtla_client.forecast(dask_df, h=12)
-        fcst_df.compute().head()
-        ```
-        |       | unique_id   | ds                    | TimeGPT     |
+    |       | unique_id   | ds                    | TimeGPT     |
 | ----- | ----------- | --------------------- | ----------- |
 | 0     | BE          | 2016-12-31 00:00:00   | 45.190453   |
 | 1     | BE          | 2016-12-31 01:00:00   | 43.244446   |
@@ -136,18 +117,18 @@ Dask is an open-source parallel computing library for Python. This guide explain
 | 4     | BE          | 2016-12-31 04:00:00   | 39.204533   |
 
 
-      </Tab>
-      <Tab title="Cross-validation Example">
-        ```python Cross-validation with TimeGPT and Dask
-        cv_df = nixtla_client.cross_validation(
-            dask_df,
-            h=12,
-            n_windows=5,
-            step_size=2
-        )
-        cv_df.compute().head()
-        ```
-        |       | unique_id   | ds                    | cutoff                | TimeGPT     |
+  </Tab>
+  <Tab title="Cross-validation Example">
+    ```python Cross-validation with TimeGPT and Dask
+    cv_df = nixtla_client.cross_validation(
+        dask_df,
+        h=12,
+        n_windows=5,
+        step_size=2
+    )
+    cv_df.compute().head()
+    ```
+    |       | unique_id   | ds                    | cutoff                | TimeGPT     |
 | ----- | ----------- | --------------------- | --------------------- | ----------- |
 | 0     | BE          | 2016-12-30 04:00:00   | 2016-12-30 03:00:00   | 39.375439   |
 | 1     | BE          | 2016-12-30 05:00:00   | 2016-12-30 03:00:00   | 40.039215   |
@@ -156,29 +137,20 @@ Dask is an open-source parallel computing library for Python. This guide explain
 | 4     | BE          | 2016-12-30 08:00:00   | 2016-12-30 03:00:00   | 50.316650   |
 
 
-      </Tab>
-    </Tabs>
+  </Tab>
+</Tabs>
 
-    <AccordionGroup>
-      <Accordion title="Azure AI Models">
-        <Info>
-          When using an Azure AI endpoint, set `model` to `"azureai"`:
-        </Info>
 
-        ```python Azure AI Model Usage
-        nixtla_client.forecast(..., model="azureai")
-        ```
 
-        For the public API, two models are available:
-        • `timegpt-1` (default)
-        • `timegpt-1-long-horizon`
+## Working with Exogenous Variables
 
-        See the [Long Horizon Forecasting Tutorial](https://docs.nixtla.io/docs/tutorials-long_horizon_forecasting) for details on `timegpt-1-long-horizon`.
-      </Accordion>
-    </AccordionGroup>
+TimeGPT with Dask also supports exogenous variables. Refer to the [Exogenous Variables Tutorial](/forecasting/exogenous-variables/numeric_features) for details. Simply substitute pandas DataFrames with Dask DataFrames—the API remains identical.
 
-    <Check>
-      TimeGPT with Dask also supports exogenous variables. Refer to the [Exogenous Variables Tutorial](/forecasting/exogenous-variables/numeric_features) for details. Substitute pandas DataFrames with Dask DataFrames as needed.
-    </Check>
-  </Step>
-</Steps>
+## Related Resources
+
+Explore more distributed forecasting options:
+- [Distributed Computing Overview](/forecasting/forecasting-at-scale/computing_at_scale) - Compare Spark, Dask, and Ray
+- [Spark Integration](/forecasting/forecasting-at-scale/spark) - For datasets with 100M+ observations
+- [Ray Integration](/forecasting/forecasting-at-scale/ray) - For ML pipeline integration
+- [Fine-tuning TimeGPT](/forecasting/fine-tuning/steps) - Improve accuracy at scale
+- [Cross-Validation](/forecasting/evaluation/cross_validation) - Validate distributed forecasts

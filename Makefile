@@ -1,8 +1,12 @@
 devenv:
-	uv venv
-	. .venv/bin/activate; uv pip install -Ue .[dev,distributed]
-	. .venv/bin/activate; pre-commit install
+	uv sync --quiet --all-groups --all-extras --frozen
+	uv run --no-sync pre-commit install
 
+init_codespace:
+	npm install -g @anthropic-ai/claude-code@1.0.127
+	npm i -g mint
+	git pull || true
+	uv sync --quiet --all-groups --all-extras --frozen
 
 jupyter:
 	mkdir -p tmp
@@ -40,3 +44,9 @@ clean:
 
 
 all_docs: load_docs_scripts api_docs examples_docs format_docs
+
+licenses:
+	pip-licenses --format=csv --with-authors --with-urls > third_party_licenses.csv
+	python scripts/filter_licenses.py
+	rm -f third_party_licenses.csv
+	@echo "✓ THIRD_PARTY_LICENSES.md updated"

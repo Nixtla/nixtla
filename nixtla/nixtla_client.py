@@ -4,7 +4,6 @@ import datetime
 import logging
 import math
 import os
-import re
 import warnings
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -97,24 +96,33 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
-def validate_no_nested_dict(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Validate that the dictionary doesn't contain nested structures."""
+
+def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Validate that the dictionary doesn't contain complex structures."""
+    primitives = (str, int, float, bool, type(None))
     if value is None:
         return value
 
-    if not isinstance(value, dict):
-        raise TypeError("Value must be a dictionary")
-
-    for k, v in value.items():
-        if isinstance(v, (dict, list, tuple, set)):
-            raise TypeError(f"Nested structures not allowed (found {type(v).__name__})")
-        if not isinstance(v, (str, int, float, bool, type(None))):
+    for _, v in value.items():
+        if isinstance(v, dict):
+            for _, nv in v.items():
+                # nested structure allowed but they can support primitive values only
+                if not isinstance(nv, primitives):
+                    raise TypeError(f"Invalid value type: {type(nv).__name__}")
+        elif isinstance(v, (dict, list, tuple, set)):
+            for nv in v:
+                if not isinstance(nv, primitives):
+                    raise TypeError(f"Invalid value type: {type(nv).__name__}")
+        elif not isinstance(v, primitives):
             raise TypeError(f"Invalid value type: {type(v).__name__}")
     return value
 
+
 _PositiveInt = Annotated[int, annotated_types.Gt(0)]
 _NonNegativeInt = Annotated[int, annotated_types.Ge(0)]
-_ExtraParamDataType = Annotated[Optional[Dict[str, Any]], AfterValidator(validate_no_nested_dict)]
+_ExtraParamDataType = Annotated[
+    Optional[Dict[str, Any]], AfterValidator(validate_extra_params)
+]
 extra_param_checker = TypeAdapter(_ExtraParamDataType)
 _Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
 _Model = str
@@ -338,7 +346,7 @@ def _maybe_add_date_features(
     else:
         date_features = _date_features_by_freq.get(freq, [])
         if not date_features:
-            warnings.warn(
+            logger.warning(
                 f"Non default date features for {freq} "
                 "please provide a list of date features"
             )
@@ -395,7 +403,7 @@ def _validate_exog(
         # all exogs must be historic
         ignored_exogs = [c for c in exogs if c not in hist_exog]
         if ignored_exogs:
-            warnings.warn(
+            logger.warning(
                 f"`df` contains the following exogenous features: {ignored_exogs}, "
                 "but `X_df` was not provided and they were not declared in `hist_exog_list`. "
                 "They will be ignored."
@@ -409,7 +417,7 @@ def _validate_exog(
     declared_exogs = {*hist_exog, *futr_exog}
     ignored_exogs = [c for c in exogs if c not in declared_exogs]
     if ignored_exogs:
-        warnings.warn(
+        logger.warning(
             f"`df` contains the following exogenous features: {ignored_exogs}, "
             "but they were not found in `X_df` nor declared in `hist_exog_list`. "
             "They will be ignored."
@@ -426,7 +434,7 @@ def _validate_exog(
     # features are provided through X_df but declared as historic
     futr_and_hist = set(futr_exog) & set(hist_exog)
     if futr_and_hist:
-        warnings.warn(
+        logger.warning(
             "The following features were declared as historic but found in `X_df`: "
             f"{futr_and_hist}, they will be considered as historic."
         )
@@ -532,15 +540,47 @@ def _preprocess(
     return processed, X_future, x_cols, futr_cols
 
 
-def _forecast_payload_to_in_sample(payload):
-    in_sample_payload = {
-        k: v
-        for k, v in payload.items()
-        if k not in ("h", "finetune_steps", "finetune_loss")
-    }
-    del in_sample_payload["series"]["X_future"]
-    return in_sample_payload
+def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dict:
+    # No finetuning for in-sample
+    payload["finetune_steps"] = 0
 
+    # historic exogenous features
+    hist_exog = None
+    if payload["series"]["X"] is not None:
+        n_features = len(payload["series"]["X"])
+        hist_exog = list(range(n_features))
+        if payload["series"]["X_future"] is not None:
+            n_futr_exog = len(payload["series"]["X_future"])
+            hist_exog = hist_exog[n_futr_exog:]
+    payload["hist_exog"] = hist_exog
+    del payload["series"]["X_future"]
+
+    # in-sample horizon and number of windows
+    payload["h"] = h
+    payload["step_size"] = h
+    payload["n_windows"] = n_windows
+
+    return payload
+
+def _get_in_sample_horizon_and_windows(
+    sizes: np.ndarray,
+    model_horizon: int,
+    model_input_size: int,
+    clean_ex_first: bool,
+    level: Optional[list[Union[int, float]]],
+) -> tuple[int, int]:
+
+    # in-sample horizon and number of windows
+    min_size = min(sizes)
+    h = min(model_horizon, min_size - 1)
+    if clean_ex_first:
+        n_windows = max((min_size - model_input_size) // model_horizon, 1)
+    else:
+        n_windows = max((min_size - (model_input_size + model_horizon + 2 * h)) // model_horizon, 1)
+    # In case of multiple windows, we reduce one to avoid errors when running with level argument
+    if level is not None and n_windows > 1:
+        n_windows -= 1
+    return h, n_windows
 
 def _maybe_add_intervals(
     df: DFType,
@@ -650,17 +690,6 @@ def _process_exog_features(
             logger.info(f"Using historical exogenous features: {hist_exog_list}")
 
     return X, hist_exog
-
-
-def _model_in_list(model: str, model_list: tuple[Any]) -> bool:
-    for m in model_list:
-        if isinstance(m, str):
-            if m == model:
-                return True
-        elif isinstance(m, re.Pattern):
-            if m.fullmatch(model):
-                return True
-    return False
 
 
 class AuditDataSeverity(Enum):
@@ -848,7 +877,6 @@ class NixtlaClient:
         )
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
-        self.supported_models: list[Any] = [re.compile("^timegpt-.+$"), "azureai"]
 
     def _make_request(
         self,
@@ -998,7 +1026,7 @@ class NixtlaClient:
 
     def _maybe_override_model(self, model: _Model) -> _Model:
         if self._is_azure and model != "azureai":
-            warnings.warn("Azure endpoint detected, setting `model` to 'azureai'.")
+            logger.warning("Azure endpoint detected, setting `model` to 'azureai'.")
             model = "azureai"
         return model
 
@@ -1050,7 +1078,7 @@ class NixtlaClient:
             return
         if "feature_contributions" not in resp:
             if self._is_azure:
-                warnings.warn("feature_contributions aren't implemented in Azure yet.")
+                logger.warning("feature_contributions aren't implemented in Azure yet.")
                 return
             else:
                 raise RuntimeError(
@@ -1081,8 +1109,6 @@ class NixtlaClient:
     ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email support@nixtla.io")
-        if not _model_in_list(model, tuple(self.supported_models)):
-            raise ValueError(f"unsupported model: {model}.")
         drop_id = id_col not in df.columns
         if drop_id:
             df = ufp.copy_if_pandas(df, deep=False)
@@ -1265,8 +1291,7 @@ class NixtlaClient:
             target_col=target_col,
         )
         standard_freq = _standardize_freq(freq, processed)
-        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
-        _validate_input_size(processed, 1, model_horizon)
+        _validate_input_size(processed, 1, 1)
         logger.info("Calling Fine-tune Endpoint...")
         payload = {
             "series": {
@@ -1366,7 +1391,8 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         feature_contributions: bool,
-        model_parameters: Optional[Dict[str, Any]] = None,
+        model_parameters: _ExtraParamDataType,
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1427,6 +1453,7 @@ class NixtlaClient:
                 num_partitions=None,
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -1458,6 +1485,7 @@ class NixtlaClient:
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """Forecast your time series using TimeGPT.
 
@@ -1543,6 +1571,9 @@ class NixtlaClient:
                 of features on the final predictions. Defaults to False.
             model_parameters (dict): The dictionary settings that determine
                 the behavior of the model. Default is None
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. 
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -1576,6 +1607,7 @@ class NixtlaClient:
                 num_partitions=num_partitions,
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
+                multivariate=multivariate,
             )
         self.__dict__.pop("weights_x", None)
         self.__dict__.pop("feature_contributions", None)
@@ -1616,9 +1648,9 @@ class NixtlaClient:
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if finetune_steps > 0:
-            _validate_input_size(processed, 1, model_horizon)
+            _validate_input_size(processed, 1, 1)
         if add_history:
-            _validate_input_size(processed, model_input_size, model_horizon)
+            _validate_input_size(processed, 1, 1)
         if h > model_horizon:
             logger.warning(
                 'The specified horizon "h" exceeds the model horizon, '
@@ -1645,10 +1677,11 @@ class NixtlaClient:
             X = None
 
         logger.info("Calling Forecast Endpoint...")
+        sizes = np.diff(processed.indptr)
         payload = {
             "series": {
                 "y": processed.data[:, 0],
-                "sizes": np.diff(processed.indptr),
+                "sizes": sizes,
                 "X": X,
                 "X_future": X_future,
             },
@@ -1662,6 +1695,7 @@ class NixtlaClient:
             "finetune_loss": finetune_loss,
             "finetuned_model_id": finetuned_model_id,
             "feature_contributions": feature_contributions and X is not None,
+            "multivariate": multivariate,
         }
         if model_parameters is not None:
             payload.update({"model_parameters": model_parameters})
@@ -1671,10 +1705,17 @@ class NixtlaClient:
             if num_partitions is None:
                 resp = self._make_request_with_retries(client, "v2/forecast", payload)
                 if add_history:
-                    in_sample_payload = _forecast_payload_to_in_sample(payload)
+                    insample_h, n_windows = _get_in_sample_horizon_and_windows(
+                        sizes=sizes,
+                        model_horizon=model_horizon,
+                        model_input_size=model_input_size,
+                        clean_ex_first=clean_ex_first,
+                        level=level,
+                    )
+                    in_sample_payload = _forecast_payload_to_in_sample(payload, insample_h, n_windows)
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_request_with_retries(
-                        client, "v2/historic_forecast", in_sample_payload
+                        client, "v2/cross_validation", in_sample_payload
                     )
                     insample_feat_contributions = in_sample_resp.get(
                         "feature_contributions", None
@@ -1683,12 +1724,19 @@ class NixtlaClient:
                 payloads = _partition_series(payload, num_partitions, h)
                 resp = self._make_partitioned_requests(client, "v2/forecast", payloads)
                 if add_history:
+                    insample_h, n_windows = _get_in_sample_horizon_and_windows(
+                        sizes=sizes,
+                        model_horizon=model_horizon,
+                        model_input_size=model_input_size,
+                        clean_ex_first=clean_ex_first,
+                        level=level,
+                    )
                     in_sample_payloads = [
-                        _forecast_payload_to_in_sample(p) for p in payloads
+                        _forecast_payload_to_in_sample(p, insample_h, n_windows) for p in payloads
                     ]
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
-                        client, "v2/historic_forecast", in_sample_payloads
+                        client, "v2/cross_validation", in_sample_payloads
                     )
                     insample_feat_contributions = in_sample_resp.get(
                         "feature_contributions", None
@@ -1757,6 +1805,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         num_partitions: Optional[int],
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1788,6 +1837,7 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=None,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -1809,6 +1859,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """Detect anomalies in your time series using TimeGPT.
 
@@ -1865,6 +1916,9 @@ class NixtlaClient:
             num_partitions (int): Number of partitions to use. If None, the
                 number of partitions will be equal to the available parallel
                 resources in distributed environments. Defaults to None.
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. 
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -1885,6 +1939,7 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=num_partitions,
+                multivariate=multivariate,
             )
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
@@ -1932,6 +1987,7 @@ class NixtlaClient:
             "finetuned_model_id": finetuned_model_id,
             "clean_ex_first": clean_ex_first,
             "level": level,
+            "multivariate": multivariate,
         }
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -1980,6 +2036,7 @@ class NixtlaClient:
         model: _Model,
         refit: bool,
         num_partitions: Optional[int],
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2018,6 +2075,7 @@ class NixtlaClient:
                 model=model,
                 refit=refit,
                 num_partitions=None,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -2046,6 +2104,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """
         Online anomaly detection in your time series using TimeGPT.
@@ -2123,6 +2182,13 @@ class NixtlaClient:
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. This variable 
+                is different from the `threshold_method` parameter. The latter
+                controls the method used for anomaly detection (univariate vs
+                multivariate) whereas `multivariate` determines how the model 
+                creates the predictions.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2150,6 +2216,7 @@ class NixtlaClient:
                 model=model,
                 refit=refit,
                 num_partitions=num_partitions,
+                multivariate=multivariate,
             )
         if (
             threshold_method == "multivariate"
@@ -2218,6 +2285,7 @@ class NixtlaClient:
             "finetune_depth": finetune_depth,
             "refit": refit,
             "hist_exog": hist_exog,
+            "multivariate": multivariate,
         }
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
@@ -2273,6 +2341,8 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
         num_partitions: Optional[int],
+        model_parameters: _ExtraParamDataType,
+        multivariate: bool,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2313,6 +2383,8 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=None,
+                model_parameters=model_parameters,
+                multivariate=multivariate,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -2343,6 +2415,8 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
+        model_parameters: _ExtraParamDataType = None,
+        multivariate: bool = False,
     ) -> AnyDFType:
         """Perform cross validation in your time series using TimeGPT.
 
@@ -2426,11 +2500,17 @@ class NixtlaClient:
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
+            model_parameters (dict): The dictionary settings that determine
+                the behavior of the model. Default is None.            
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. 
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with cross validation forecasts.
         """
+        extra_param_checker.validate_python(model_parameters)
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_cross_validation(
                 df=df,
@@ -2455,6 +2535,8 @@ class NixtlaClient:
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
                 num_partitions=num_partitions,
+                model_parameters=model_parameters,
+                multivariate=multivariate,
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2527,7 +2609,10 @@ class NixtlaClient:
             "finetune_loss": finetune_loss,
             "finetuned_model_id": finetuned_model_id,
             "refit": refit,
+            "multivariate": multivariate,
         }
+        if model_parameters is not None:
+            payload.update({"model_parameters": model_parameters})
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
@@ -2919,7 +3004,8 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
-    model_parameters: Optional[Dict[str, Any]] = None,
+    model_parameters:_ExtraParamDataType,
+    multivariate: bool,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
@@ -2951,6 +3037,7 @@ def _forecast_wrapper(
         num_partitions=num_partitions,
         feature_contributions=feature_contributions,
         model_parameters=model_parameters,
+        multivariate=multivariate,
     )
 
 
@@ -2969,6 +3056,7 @@ def _detect_anomalies_wrapper(
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
+    multivariate: bool
 ) -> pd.DataFrame:
     return client.detect_anomalies(
         df=df,
@@ -2984,6 +3072,7 @@ def _detect_anomalies_wrapper(
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
         num_partitions=num_partitions,
+        multivariate=multivariate,
     )
 
 
@@ -3009,6 +3098,7 @@ def _detect_anomalies_online_wrapper(
     model: _Model,
     refit: bool,
     num_partitions: Optional[_PositiveInt],
+    multivariate: bool
 ) -> pd.DataFrame:
     return client.detect_anomalies_online(
         df=df,
@@ -3031,6 +3121,7 @@ def _detect_anomalies_online_wrapper(
         model=model,
         refit=refit,
         num_partitions=num_partitions,
+        multivariate=multivariate,
     )
 
 
@@ -3058,6 +3149,8 @@ def _cross_validation_wrapper(
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
+    model_parameters: _ExtraParamDataType,
+    multivariate: bool,
 ) -> pd.DataFrame:
     return client.cross_validation(
         df=df,
@@ -3082,6 +3175,8 @@ def _cross_validation_wrapper(
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
         num_partitions=num_partitions,
+        model_parameters=model_parameters,
+        multivariate=multivariate,
     )
 
 

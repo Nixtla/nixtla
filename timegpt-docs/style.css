@@ -86,6 +86,34 @@ a.card svg {
   opacity: 0.8;
 }
 
+/* Banner styling for theme support */
+#banner {
+  /* background-color: var(--primary-light); # original  */
+  background-color: #22c55e;
+  border-color: var(--primary-light);
+  color: var(--primary-dark);
+  border-bottom: 1px solid var(--primary-dark) !important;
+}
+
+#banner a:hover {
+  opacity: 0.8;
+}
+
+#banner p span {
+  color: black !important;
+  margin: 0;
+  font-size: medium;
+}
+
+#banner strong {
+  color: #000 !important;
+  font-size: medium;
+}
+
+#banner svg path {
+  color: #000 !important;
+}
+
 /* dark mode */
 html.dark > body {
   background-color: #161616;
@@ -99,7 +127,7 @@ html.dark a.font-semibold {
   background: #000;
   border: 1px solid var(--gray);
   outline-color: var(--gray);
-  color: #fff;
+  color: black;
 }
 
 html.dark a.font-semibold svg {

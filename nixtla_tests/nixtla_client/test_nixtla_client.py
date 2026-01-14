@@ -1,16 +1,18 @@
-import httpx
-import pytest
-
-import numpy as np
-import pandas as pd
-import zstandard as zstd
-
 from contextlib import contextmanager
 from copy import deepcopy
-from nixtla_tests.conftest import HYPER_PARAMS_TEST
-from nixtla_tests.helpers.checks import check_num_partitions_same_results
-from nixtla_tests.helpers.checks import check_equal_fcsts_add_history
+
+import httpx
+import numpy as np
+import pandas as pd
+import pytest
+import zstandard as zstd
 from pydantic import ValidationError
+
+from nixtla_tests.conftest import HYPER_PARAMS_TEST
+from nixtla_tests.helpers.checks import (
+    check_equal_fcsts_add_history,
+    check_num_partitions_same_results,
+)
 
 
 CAPTURED_REQUEST = None
@@ -65,16 +67,21 @@ def test_forecast_with_error(series_with_gaps, nixtla_test_client, df_converter,
        ({"model_parameters": None}, None, ""),
        ({"model_parameters": {"max_q": 1}}, None, ""),
        ({"model_parameters": {"max_p": None}}, None, ""),
+       ({"model_parameters": {"horizon": [1, 2, 3]}}, None, ""),
+       ({"model_parameters": {"horizon": (1, 2, 3)}}, None, ""),
+       ({"model_parameters": {"horizon": {"nested": "dict"}}}, None, ""),
+       ({"model_parameters": {"horizon": {"nested": None}}}, None, ""),
        ({"model_parameters": "not a dict"}, ValidationError, "Input should be a valid dictionary"),
        ({"model_parameters": 123}, ValidationError, "Input should be a valid dictionary"),
-       ({"model_parameters": {"horizon": [1, 2, 3]}}, TypeError, "Nested structures not allowed"),
-       ({"model_parameters": {"horizon": (1, 2, 3)}}, TypeError, "Nested structures not allowed"),
-       ({"model_parameters": {"horizon": {1, 2}}}, TypeError, "Nested structures not allowed"),
-       ({"model_parameters": {"horizon": {"nested": "dict"}}}, TypeError, "Nested structures not allowed"),
+       ({"model_parameters": {"horizon": {"nested_key": [1, 2, 3]}}}, TypeError, "Invalid value type"),
+       ({"model_parameters": {"horizon": {"nested_key": (1, 2, 3)}}}, TypeError, "Invalid value type"),
+       ({"model_parameters": {"horizon": {"nested_key": {1, 2}}}}, TypeError, "Invalid value type"),
+       ({"model_parameters": {"horizon": {"nested_key": {"inner_key": "val"}}}}, TypeError, "Invalid value type"),
        ({"model_parameters": {"horizon": pd.DataFrame()}}, TypeError, "Invalid value type"),
     ]
 )
-def test_forecast_unexpected_params(nixtla_test_client, air_passengers_df, test_params, expected_exception, expected_error_msg):
+@pytest.mark.parametrize("endpoint", ["forecast", "cross_validation"])
+def test_model_parameters(nixtla_test_client, air_passengers_df, test_params, expected_exception, expected_error_msg, endpoint):
     base_params = {
         "df": air_passengers_df,
         "h": 12,
@@ -83,10 +90,16 @@ def test_forecast_unexpected_params(nixtla_test_client, air_passengers_df, test_
     }
     base_params.update(test_params)
     if expected_exception is None:
-        nixtla_test_client.forecast(**base_params)
+        if endpoint == "forecast":
+            nixtla_test_client.forecast(**base_params)
+        elif endpoint == "cross_validation":
+            nixtla_test_client.cross_validation(**base_params)
     else:
         with pytest.raises(expected_exception) as exc_info:
-            nixtla_test_client.forecast(**base_params)
+            if endpoint == "forecast":
+                nixtla_test_client.forecast(**base_params)
+            elif endpoint == "cross_validation":
+                nixtla_test_client.cross_validation(**base_params)
 
         assert expected_error_msg in str(exc_info.value)
 
@@ -242,19 +255,19 @@ def test_forecast_quantiles_output(
         ("cross_validation", {"h": 7, "n_windows": 2}, False),
         ("forecast", {"h": 7, "add_history": True}, False),
         ("detect_anomalies", {"level": 98}, True),
-        ("cross_validation", {"h": 7, "n_windows": 2}, False),
-        ("forecast", {"h": 7, "add_history": True}, False),
+        ("cross_validation", {"h": 7, "n_windows": 2}, True),
+        ("forecast", {"h": 7, "add_history": True}, True),
     ],
 )
 def test_num_partitions_same_results_parametrized(
     nixtla_test_client, df_freq_generator, method_name, method_kwargs, freq, exog
 ):
-    mathod_mapper = {
+    method_mapper = {
         "detect_anomalies": nixtla_test_client.detect_anomalies,
         "cross_validation": nixtla_test_client.cross_validation,
         "forecast": nixtla_test_client.forecast,
     }
-    method = mathod_mapper[method_name]
+    method = method_mapper[method_name]
 
     df_freq = df_freq_generator(n_series=10, min_length=500, max_length=550, freq=freq)
     df_freq["ds"] = df_freq.groupby("unique_id", observed=True)["ds"].transform(
@@ -309,7 +322,6 @@ def test_forecast_models_different_results(
             "forecast",
             dict(
                 h=12,
-                level=[90, 95],
                 add_history=True,
                 time_col="timestamp",
                 target_col="value",
@@ -325,12 +337,12 @@ def test_forecast_models_different_results(
 def test_different_models_give_different_results(
     air_passengers_df, nixtla_test_client, method, method_kwargs
 ):
-    mathod_mapper = {
+    method_mapper = {
         "detect_anomalies": nixtla_test_client.detect_anomalies,
         "cross_validation": nixtla_test_client.cross_validation,
         "forecast": nixtla_test_client.forecast,
     }
-    execute = mathod_mapper[method]
+    execute = method_mapper[method]
 
     # Run with first model
     out1 = execute(df=air_passengers_df, model="timegpt-1", **method_kwargs)
@@ -343,11 +355,6 @@ def test_different_models_give_different_results(
         AssertionError, match=r'\(column name="TimeGPT"\) are different'
     ):
         pd.testing.assert_frame_equal(out1[["TimeGPT"]], out2[["TimeGPT"]])
-
-    # test unsupported model
-    method_kwargs["model"] = "my-awesome-model"
-    with pytest.raises(ValueError, match="unsupported model"):
-        execute(df=air_passengers_df, **method_kwargs)
 
 
 def test_shap_features(nixtla_test_client, date_features_result):

@@ -32,7 +32,7 @@ dependencies = [
     "pydantic>=1.10",
     "tenacity",
     "tqdm",
-    "utilsforecast>=0.2.8",
+    "utilsforecast>=0.2.15",
 ]
 
 [tool.setuptools.dynamic]
@@ -68,6 +68,7 @@ dev = [
     "utilsforecast[plotting]",
     "holidays",
     "pandas_market_calendars",
+    "pip-licenses"
 ]
 distributed = [
     "fugue[dask,ray,spark]>=0.8.7",
