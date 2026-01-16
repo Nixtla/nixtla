@@ -1,1 +1,3 @@
-__version__ = "0.0.16"
+from importlib.metadata import version
+
+__version__ = version("coreforecast")

@@ -1,6 +1,6 @@
 [project]
 name = "coreforecast"
-version = "0.0.16"
+version = "0.0.17"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.20.0"]
 license = { text = "Apache-2.0" }
