@@ -10,36 +10,45 @@ py::array_t<T> ExpandingOp(Func f, const py::array_t<T> data, Args... args) {
   return out;
 }
 
-template <typename T> py::array_t<T> ExpandingMean(const py::array_t<T> data) {
+template <typename T>
+py::array_t<T> ExpandingMean(const py::array_t<T> data, bool skipna = false) {
   T tmp;
-  return ExpandingOp(expanding::MeanTransform<T>, data, &tmp);
-}
-
-template <typename T> py::array_t<T> ExpandingStd(const py::array_t<T> data) {
-  T tmp;
-  return ExpandingOp(rolling::StdTransformWithStats<T>, data, &tmp, false,
-                     data.size(), 2);
-}
-
-template <typename T> py::array_t<T> ExpandingMin(const py::array_t<T> data) {
-  return ExpandingOp(expanding::MinTransform<T>, data);
-}
-
-template <typename T> py::array_t<T> ExpandingMax(const py::array_t<T> data) {
-  return ExpandingOp(expanding::MaxTransform<T>, data);
+  return ExpandingOp(expanding::MeanTransform<T>, data, &tmp, skipna);
 }
 
 template <typename T>
-py::array_t<T> ExpandingQuantile(const py::array_t<T> data, T p) {
-  return ExpandingOp(expanding::QuantileTransform<T>, data, p);
+py::array_t<T> ExpandingStd(const py::array_t<T> data, bool skipna = false) {
+  T tmp[3];
+  return ExpandingOp(expanding::StdTransform<T>, data, tmp, skipna);
+}
+
+template <typename T>
+py::array_t<T> ExpandingMin(const py::array_t<T> data, bool skipna = false) {
+  return ExpandingOp(expanding::MinTransform<T>, data, skipna);
+}
+
+template <typename T>
+py::array_t<T> ExpandingMax(const py::array_t<T> data, bool skipna = false) {
+  return ExpandingOp(expanding::MaxTransform<T>, data, skipna);
+}
+
+template <typename T>
+py::array_t<T> ExpandingQuantile(const py::array_t<T> data, T p,
+                                 bool skipna = false) {
+  return ExpandingOp(expanding::QuantileTransform<T>, data, p, skipna);
 }
 
 template <typename T> void init_exp_fns(py::module_ &m) {
-  m.def("expanding_mean", &ExpandingMean<T>);
-  m.def("expanding_std", &ExpandingStd<T>);
-  m.def("expanding_min", &ExpandingMin<T>);
-  m.def("expanding_max", &ExpandingMax<T>);
-  m.def("expanding_quantile", &ExpandingQuantile<T>);
+  m.def("expanding_mean", &ExpandingMean<T>, py::arg("data"),
+        py::arg("skipna") = false);
+  m.def("expanding_std", &ExpandingStd<T>, py::arg("data"),
+        py::arg("skipna") = false);
+  m.def("expanding_min", &ExpandingMin<T>, py::arg("data"),
+        py::arg("skipna") = false);
+  m.def("expanding_max", &ExpandingMax<T>, py::arg("data"),
+        py::arg("skipna") = false);
+  m.def("expanding_quantile", &ExpandingQuantile<T>, py::arg("data"),
+        py::arg("p"), py::arg("skipna") = false);
 }
 
 void init_exp(py::module_ &m) {

@@ -6,6 +6,7 @@ import pytest
 def rng():
     return np.random.default_rng(seed=0)
 
+
 @pytest.fixture
 def indptr(rng):
     lengths = rng.integers(low=200, high=300, size=200)

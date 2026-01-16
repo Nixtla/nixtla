@@ -10,7 +10,7 @@ namespace py = pybind11;
 
 template <typename T> inline indptr_t FirstNotNaN(const T *data, indptr_t n) {
   indptr_t i = 0;
-  while (std::isnan(data[i]) && i < n) {
+  while (i < n && std::isnan(data[i])) {
     ++i;
   }
   return i;
@@ -19,7 +19,7 @@ template <typename T> inline indptr_t FirstNotNaN(const T *data, indptr_t n) {
 template <typename T>
 inline indptr_t FirstNotNaN(const T *data, indptr_t n, T *out) {
   indptr_t i = 0;
-  while (std::isnan(data[i]) && i < n) {
+  while (i < n && std::isnan(data[i])) {
     out[i++] = std::numeric_limits<T>::quiet_NaN();
   }
   return i;

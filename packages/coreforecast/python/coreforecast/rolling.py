@@ -23,10 +23,11 @@ def _rolling_stat(
     stat: str,
     window_size: int,
     min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
     if min_samples is None:
         min_samples = window_size
-    return getattr(_rolling, f"rolling_{stat}")(x, window_size, min_samples)
+    return getattr(_rolling, f"rolling_{stat}")(x, window_size, min_samples, skipna)
 
 
 def _seasonal_rolling_stat(
@@ -35,11 +36,12 @@ def _seasonal_rolling_stat(
     season_length: int,
     window_size: int,
     min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
     if min_samples is None:
         min_samples = window_size
     return getattr(_rolling, f"seasonal_rolling_{stat}")(
-        x, season_length, window_size, min_samples
+        x, season_length, window_size, min_samples, skipna
     )
 
 
@@ -51,6 +53,10 @@ def _rolling_docstring(*args, **kwargs) -> Callable:
         window_size (int): The size of the rolling window.
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
+        skipna (bool, optional): Exclude NaN values from calculations. When False (default),
+            any NaN value in the window causes the result to be NaN. When True, NaN values
+            are ignored and statistics are computed on remaining valid values in the window.
+            Defaults to False for backwards compatibility.
 
     Returns:
         np.ndarray: Array with the rolling statistic
@@ -72,6 +78,10 @@ def _seasonal_rolling_docstring(*args, **kwargs) -> Callable:
         window_size (int): The size of the rolling window.
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
+        skipna (bool, optional): Exclude NaN values from calculations. When False (default),
+            any NaN value in the window causes the result to be NaN. When True, NaN values
+            are ignored and statistics are computed on remaining valid values in the window.
+            Defaults to False for backwards compatibility.
 
     Returns:
         np.ndarray: Array with the seasonal rolling statistic
@@ -86,50 +96,70 @@ def _seasonal_rolling_docstring(*args, **kwargs) -> Callable:
 
 @_rolling_docstring
 def rolling_mean(
-    x: np.ndarray, window_size: int, min_samples: Optional[int] = None
+    x: np.ndarray,
+    window_size: int,
+    min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _rolling_stat(x, "mean", window_size, min_samples)
+    return _rolling_stat(x, "mean", window_size, min_samples, skipna)
 
 
 @_rolling_docstring
 def rolling_std(
-    x: np.ndarray, window_size: int, min_samples: Optional[int] = None
+    x: np.ndarray,
+    window_size: int,
+    min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _rolling_stat(x, "std", window_size, min_samples)
+    return _rolling_stat(x, "std", window_size, min_samples, skipna)
 
 
 @_rolling_docstring
 def rolling_min(
-    x: np.ndarray, window_size: int, min_samples: Optional[int] = None
+    x: np.ndarray,
+    window_size: int,
+    min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _rolling_stat(x, "min", window_size, min_samples)
+    return _rolling_stat(x, "min", window_size, min_samples, skipna)
 
 
 @_rolling_docstring
 def rolling_max(
-    x: np.ndarray, window_size: int, min_samples: Optional[int] = None
+    x: np.ndarray,
+    window_size: int,
+    min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _rolling_stat(x, "max", window_size, min_samples)
+    return _rolling_stat(x, "max", window_size, min_samples, skipna)
 
 
 def rolling_quantile(
-    x: np.ndarray, p: float, window_size: int, min_samples: Optional[int] = None
+    x: np.ndarray,
+    p: float,
+    window_size: int,
+    min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
     """Compute the rolling_quantile of the input array.
 
     Args:
         x (np.ndarray): Input array.
-        q (float): Quantile to compute.
+        p (float): Quantile to compute.
         window_size (int): The size of the rolling window.
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
+        skipna (bool, optional): Exclude NaN values from calculations. When False (default),
+            any NaN value in the window causes the result to be NaN. When True, NaN values
+            are ignored and statistics are computed on remaining valid values in the window.
+            Defaults to False for backwards compatibility.
 
     Returns:
         np.ndarray: Array with rolling statistic
     """
     if min_samples is None:
         min_samples = window_size
-    return _rolling.rolling_quantile(x, window_size, min_samples, p)
+    return _rolling.rolling_quantile(x, window_size, min_samples, p, skipna)
 
 
 @_seasonal_rolling_docstring
@@ -138,8 +168,11 @@ def seasonal_rolling_mean(
     season_length: int,
     window_size: int,
     min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "mean", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(
+        x, "mean", season_length, window_size, min_samples, skipna
+    )
 
 
 @_seasonal_rolling_docstring
@@ -148,8 +181,11 @@ def seasonal_rolling_std(
     season_length: int,
     window_size: int,
     min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "std", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(
+        x, "std", season_length, window_size, min_samples, skipna
+    )
 
 
 @_seasonal_rolling_docstring
@@ -158,8 +194,11 @@ def seasonal_rolling_min(
     season_length: int,
     window_size: int,
     min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "min", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(
+        x, "min", season_length, window_size, min_samples, skipna
+    )
 
 
 @_seasonal_rolling_docstring
@@ -168,8 +207,11 @@ def seasonal_rolling_max(
     season_length: int,
     window_size: int,
     min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
-    return _seasonal_rolling_stat(x, "max", season_length, window_size, min_samples)
+    return _seasonal_rolling_stat(
+        x, "max", season_length, window_size, min_samples, skipna
+    )
 
 
 def seasonal_rolling_quantile(
@@ -178,16 +220,21 @@ def seasonal_rolling_quantile(
     season_length: int,
     window_size: int,
     min_samples: Optional[int] = None,
+    skipna: bool = False,
 ) -> np.ndarray:
     """Compute the seasonal_rolling_quantile of the input array.
 
     Args:
         x (np.ndarray): Input array.
-        q (float): Quantile to compute.
+        p (float): Quantile to compute.
         season_length (int): The length of the seasonal period.
         window_size (int): The size of the rolling window.
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
+        skipna (bool, optional): Exclude NaN values from calculations. When False (default),
+            any NaN value in the window causes the result to be NaN. When True, NaN values
+            are ignored and statistics are computed on remaining valid values in the window.
+            Defaults to False for backwards compatibility.
 
     Returns:
         np.ndarray: Array with rolling statistic
@@ -195,5 +242,5 @@ def seasonal_rolling_quantile(
     if min_samples is None:
         min_samples = window_size
     return _rolling.seasonal_rolling_quantile(
-        x, season_length, window_size, min_samples, p
+        x, season_length, window_size, min_samples, p, skipna
     )

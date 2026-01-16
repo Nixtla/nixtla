@@ -118,6 +118,7 @@ def _validate_scaler_size(stats: np.ndarray, ga: "GroupedArrayT") -> None:
 
 class _BaseLocalScaler:
     _scaler_type: str
+    skipna: bool = False
 
     def fit(self, ga: "GroupedArrayT") -> "_BaseLocalScaler":
         """Compute the statistics for each group.
@@ -127,7 +128,7 @@ class _BaseLocalScaler:
 
         Returns:
             self: The fitted scaler object."""
-        self.stats_ = getattr(ga, f"_{self._scaler_type}_stats")()
+        self.stats_ = getattr(ga, f"_{self._scaler_type}_stats")(self.skipna)
         return self
 
     def transform(self, ga: "GroupedArrayT") -> np.ndarray:
@@ -175,15 +176,29 @@ class _BaseLocalScaler:
 
 
 class LocalMinMaxScaler(_BaseLocalScaler):
-    """Scale each group to the [0, 1] interval"""
+    """Scale each group to the [0, 1] interval
+
+    Args:
+        skipna (bool): If True, exclude NaN values when computing statistics.
+            When False (default), NaN values are included and may result in NaN statistics."""
 
     _scaler_type = "minmax"
 
+    def __init__(self, skipna: bool = False):
+        self.skipna = skipna
+
 
 class LocalStandardScaler(_BaseLocalScaler):
-    """Scale each group to have zero mean and unit variance"""
+    """Scale each group to have zero mean and unit variance
+
+    Args:
+        skipna (bool): If True, exclude NaN values when computing statistics.
+            When False (default), NaN values are included and may result in NaN statistics."""
 
     _scaler_type = "standard"
+
+    def __init__(self, skipna: bool = False):
+        self.skipna = skipna
 
 
 class LocalRobustScaler(_BaseLocalScaler):
@@ -192,13 +207,16 @@ class LocalRobustScaler(_BaseLocalScaler):
     Args:
         scale (str): Type of robust scaling to use. Valid options are 'iqr' and 'mad'.
             If 'iqr' will use the inter quartile range as the scale.
-            If 'mad' will use median absolute deviation as the scale."""
+            If 'mad' will use median absolute deviation as the scale.
+        skipna (bool): If True, exclude NaN values when computing statistics.
+            When False (default), NaN values are included and may result in NaN statistics."""
 
-    def __init__(self, scale: str):
+    def __init__(self, scale: str, skipna: bool = False):
         if scale == "iqr":
             self._scaler_type = "robust_iqr"
         else:
             self._scaler_type = "robust_mad"
+        self.skipna = skipna
 
 
 class LocalBoxCoxScaler(_BaseLocalScaler):

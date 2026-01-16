@@ -21,41 +21,128 @@ inline T CommonScalerInverseTransform(T data, T offset, T scale) {
 }
 
 template <typename T>
-inline void MinMaxScalerStats(const T *data, int n, T *stats) {
-  auto [min, max] = std::ranges::minmax(std::ranges::subrange(data, data + n));
-  stats[0] = min;
-  stats[1] = max - min;
+inline void MinMaxScalerStats(const T *data, int n, T *stats,
+                              bool skipna = false) {
+  if (!skipna) {
+    auto [min, max] =
+        std::ranges::minmax(std::ranges::subrange(data, data + n));
+    stats[0] = min;
+    stats[1] = max - min;
+  } else {
+    std::vector<T> valid_data;
+    for (int i = 0; i < n; ++i) {
+      if (!std::isnan(data[i])) {
+        valid_data.push_back(data[i]);
+      }
+    }
+    if (valid_data.empty()) {
+      stats[0] = std::numeric_limits<T>::quiet_NaN();
+      stats[1] = std::numeric_limits<T>::quiet_NaN();
+    } else {
+      auto [min, max] = std::ranges::minmax(valid_data);
+      stats[0] = min;
+      stats[1] = max - min;
+    }
+  }
 }
 
 template <typename T>
-inline void StandardScalerStats(const T *data, int n, T *stats) {
-  const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(data, n);
-  auto double_v = v.template cast<double>().array();
-  double mean = double_v.mean();
-  double std = std::sqrt((double_v - mean).square().mean());
-  stats[0] = static_cast<T>(mean);
-  stats[1] = static_cast<T>(std);
+inline void StandardScalerStats(const T *data, int n, T *stats,
+                                bool skipna = false) {
+  if (!skipna) {
+    const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(data, n);
+    auto double_v = v.template cast<double>().array();
+    double mean = double_v.mean();
+    double std = std::sqrt((double_v - mean).square().mean());
+    stats[0] = static_cast<T>(mean);
+    stats[1] = static_cast<T>(std);
+  } else {
+    std::vector<T> valid_data;
+    for (int i = 0; i < n; ++i) {
+      if (!std::isnan(data[i])) {
+        valid_data.push_back(data[i]);
+      }
+    }
+    if (valid_data.empty()) {
+      stats[0] = std::numeric_limits<T>::quiet_NaN();
+      stats[1] = std::numeric_limits<T>::quiet_NaN();
+    } else {
+      const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(
+          valid_data.data(), valid_data.size());
+      auto double_v = v.template cast<double>().array();
+      double mean = double_v.mean();
+      double std = std::sqrt((double_v - mean).square().mean());
+      stats[0] = static_cast<T>(mean);
+      stats[1] = static_cast<T>(std);
+    }
+  }
 }
 
 template <typename T>
-inline void RobustScalerIqrStats(const T *data, int n, T *stats) {
-  std::vector<T> buffer(data, data + n);
-  const T q1 = stats::Quantile(buffer.begin(), buffer.end(), T{0.25});
-  const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
-  const T q3 = stats::Quantile(buffer.begin(), buffer.end(), T{0.75});
-  stats[0] = median;
-  stats[1] = q3 - q1;
+inline void RobustScalerIqrStats(const T *data, int n, T *stats,
+                                 bool skipna = false) {
+  if (!skipna) {
+    std::vector<T> buffer(data, data + n);
+    const T q1 = stats::Quantile(buffer.begin(), buffer.end(), T{0.25});
+    const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
+    const T q3 = stats::Quantile(buffer.begin(), buffer.end(), T{0.75});
+    stats[0] = median;
+    stats[1] = q3 - q1;
+  } else {
+    std::vector<T> valid_data;
+    for (int i = 0; i < n; ++i) {
+      if (!std::isnan(data[i])) {
+        valid_data.push_back(data[i]);
+      }
+    }
+    if (valid_data.empty()) {
+      stats[0] = std::numeric_limits<T>::quiet_NaN();
+      stats[1] = std::numeric_limits<T>::quiet_NaN();
+    } else {
+      const T q1 =
+          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.25});
+      const T median =
+          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.5});
+      const T q3 =
+          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.75});
+      stats[0] = median;
+      stats[1] = q3 - q1;
+    }
+  }
 }
 
 template <typename T>
-inline void RobustScalerMadStats(const T *data, int n, T *stats) {
-  std::vector<T> buffer(data, data + n);
-  const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
-  std::transform(buffer.begin(), buffer.end(), buffer.begin(),
-                 [median](auto x) { return std::abs(x - median); });
-  const T mad = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
-  stats[0] = median;
-  stats[1] = mad;
+inline void RobustScalerMadStats(const T *data, int n, T *stats,
+                                 bool skipna = false) {
+  if (!skipna) {
+    std::vector<T> buffer(data, data + n);
+    const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
+    std::transform(buffer.begin(), buffer.end(), buffer.begin(),
+                   [median](auto x) { return std::abs(x - median); });
+    const T mad = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
+    stats[0] = median;
+    stats[1] = mad;
+  } else {
+    std::vector<T> valid_data;
+    for (int i = 0; i < n; ++i) {
+      if (!std::isnan(data[i])) {
+        valid_data.push_back(data[i]);
+      }
+    }
+    if (valid_data.empty()) {
+      stats[0] = std::numeric_limits<T>::quiet_NaN();
+      stats[1] = std::numeric_limits<T>::quiet_NaN();
+    } else {
+      const T median =
+          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.5});
+      std::transform(valid_data.begin(), valid_data.end(), valid_data.begin(),
+                     [median](auto x) { return std::abs(x - median); });
+      const T mad =
+          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.5});
+      stats[0] = median;
+      stats[1] = mad;
+    }
+  }
 }
 
 template <typename T>
@@ -112,7 +199,11 @@ void BoxCoxLambdaGuerrero(const T *x, int n, T *out, int period, T lower,
       x_mean[i] += x_mat[i * period + j];
       x_n[i]++;
     }
-    x_mean[i] /= x_n[i];
+    if (x_n[i] == 0) {
+      x_mean[i] = std::numeric_limits<T>::quiet_NaN();
+    } else {
+      x_mean[i] /= x_n[i];
+    }
   }
   // stds of subseries
   auto x_std = std::vector<T>(x_mean.size(), 0.0);
