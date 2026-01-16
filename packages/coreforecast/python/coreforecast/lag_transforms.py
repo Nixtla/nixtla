@@ -89,22 +89,20 @@ class Lag(_BaseLagTransform):
         return ga._index_from_end(self.lag - 1)
 
 
-_rolling_base_docstring = """Rolling {stat_name}
-
-    Args:
-        lag (int): Number of periods to offset by before applying the transformation.
-        window_size (int): Length of the rolling window.
-        min_samples (int, optional): Minimum number of samples required to compute the statistic.
-            If None, defaults to window_size."""
-
-
 class _RollingBase(_BaseLagTransform):
     stat_name: str
     lag: int
     window_size: int
     min_samples: int
+    skipna: bool
 
-    def __init__(self, lag: int, window_size: int, min_samples: Optional[int] = None):
+    def __init__(
+        self,
+        lag: int,
+        window_size: int,
+        min_samples: Optional[int] = None,
+        skipna: bool = False,
+    ):
         self.lag = lag
         if min_samples is None:
             min_samples = window_size
@@ -112,44 +110,73 @@ class _RollingBase(_BaseLagTransform):
             min_samples = window_size
         self.window_size = window_size
         self.min_samples = min_samples
+        self.skipna = skipna
 
     def transform(self, ga: "GroupedArray") -> np.ndarray:
         return getattr(ga, f"_rolling_{self.stat_name}")(
-            self.lag, self.window_size, self.min_samples
+            self.lag, self.window_size, self.min_samples, self.skipna
         )
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
         return getattr(ga, f"_rolling_{self.stat_name}_update")(
-            self.lag - 1, self.window_size, self.min_samples
+            self.lag - 1, self.window_size, self.min_samples, self.skipna
         )
 
 
 class RollingMean(_RollingBase):
+    """Rolling Mean
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation.
+        window_size (int): Length of the rolling window.
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "mean"
 
 
-RollingMean.__doc__ = _rolling_base_docstring.format(stat_name="Mean")
-
-
 class RollingStd(_RollingBase):
+    """Rolling Standard Deviation
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation.
+        window_size (int): Length of the rolling window.
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "std"
 
 
-RollingStd.__doc__ = _rolling_base_docstring.format(stat_name="Standard Deviation")
-
-
 class RollingMin(_RollingBase):
+    """Rolling Minimum
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation.
+        window_size (int): Length of the rolling window.
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "min"
 
 
-RollingMin.__doc__ = _rolling_base_docstring.format(stat_name="Minimum")
-
-
 class RollingMax(_RollingBase):
+    """Rolling Maximum
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation.
+        window_size (int): Length of the rolling window.
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "max"
-
-
-RollingMax.__doc__ = _rolling_base_docstring.format(stat_name="Maximum")
 
 
 class RollingQuantile(_RollingBase):
@@ -160,33 +187,32 @@ class RollingQuantile(_RollingBase):
         p (float): Quantile to compute
         window_size (int): Length of the rolling window
         min_samples (int, optional): Minimum number of samples required to compute the statistic.
-            If None, defaults to window_size."""
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
 
     def __init__(
-        self, lag: int, p: float, window_size: int, min_samples: Optional[int] = None
+        self,
+        lag: int,
+        p: float,
+        window_size: int,
+        min_samples: Optional[int] = None,
+        skipna: bool = False,
     ):
-        super().__init__(lag=lag, window_size=window_size, min_samples=min_samples)
+        super().__init__(
+            lag=lag, window_size=window_size, min_samples=min_samples, skipna=skipna
+        )
         self.p = p
 
     def transform(self, ga: "GroupedArray") -> np.ndarray:
         return ga._rolling_quantile(
-            self.lag, self.p, self.window_size, self.min_samples
+            self.lag, self.p, self.window_size, self.min_samples, self.skipna
         )
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
         return ga._rolling_quantile_update(
-            self.lag - 1, self.p, self.window_size, self.min_samples
+            self.lag - 1, self.p, self.window_size, self.min_samples, self.skipna
         )
-
-
-_seasonal_rolling_docstring = """Seasonal rolling {stat_name}
-
-    Args:
-        lag (int): Number of periods to offset by before applying the transformation
-        season_length (int): Length of the seasonal period, e.g. 7 for weekly data
-        window_size (int): Length of the rolling window
-        min_samples (int, optional): Minimum number of samples required to compute the statistic.
-            If None, defaults to window_size."""
 
 
 class _SeasonalRollingBase(_RollingBase):
@@ -198,8 +224,9 @@ class _SeasonalRollingBase(_RollingBase):
         season_length: int,
         window_size: int,
         min_samples: Optional[int] = None,
+        skipna: bool = False,
     ):
-        super().__init__(lag, window_size, min_samples)
+        super().__init__(lag, window_size, min_samples, skipna)
         self.season_length = season_length
 
     def transform(self, ga: "GroupedArray") -> np.ndarray:
@@ -208,6 +235,7 @@ class _SeasonalRollingBase(_RollingBase):
             self.season_length,
             self.window_size,
             self.min_samples,
+            self.skipna,
         )
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
@@ -216,37 +244,68 @@ class _SeasonalRollingBase(_RollingBase):
             self.season_length,
             self.window_size,
             self.min_samples,
+            self.skipna,
         )
 
 
 class SeasonalRollingMean(_SeasonalRollingBase):
+    """Seasonal rolling Mean
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        season_length (int): Length of the seasonal period, e.g. 7 for weekly data
+        window_size (int): Length of the rolling window
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "mean"
 
 
-SeasonalRollingMean.__doc__ = _seasonal_rolling_docstring.format(stat_name="Mean")
-
-
 class SeasonalRollingStd(_SeasonalRollingBase):
+    """Seasonal rolling Standard Deviation
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        season_length (int): Length of the seasonal period, e.g. 7 for weekly data
+        window_size (int): Length of the rolling window
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "std"
 
 
-SeasonalRollingStd.__doc__ = _seasonal_rolling_docstring.format(
-    stat_name="Standard Deviation"
-)
-
-
 class SeasonalRollingMin(_SeasonalRollingBase):
+    """Seasonal rolling Minimum
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        season_length (int): Length of the seasonal period, e.g. 7 for weekly data
+        window_size (int): Length of the rolling window
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "min"
 
 
-SeasonalRollingMin.__doc__ = _seasonal_rolling_docstring.format(stat_name="Minimum")
-
-
 class SeasonalRollingMax(_SeasonalRollingBase):
+    """Seasonal rolling Maximum
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        season_length (int): Length of the seasonal period, e.g. 7 for weekly data
+        window_size (int): Length of the rolling window
+        min_samples (int, optional): Minimum number of samples required to compute the statistic.
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat_name = "max"
-
-
-SeasonalRollingMax.__doc__ = _seasonal_rolling_docstring.format(stat_name="Maximum")
 
 
 class SeasonalRollingQuantile(_SeasonalRollingBase):
@@ -258,7 +317,9 @@ class SeasonalRollingQuantile(_SeasonalRollingBase):
         season_length (int): Length of the seasonal period, e.g. 7 for weekly data
         window_size (int): Length of the rolling window
         min_samples (int, optional): Minimum number of samples required to compute the statistic.
-            If None, defaults to window_size."""
+            If None, defaults to window_size.
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
 
     def __init__(
         self,
@@ -267,12 +328,14 @@ class SeasonalRollingQuantile(_SeasonalRollingBase):
         season_length: int,
         window_size: int,
         min_samples: Optional[int] = None,
+        skipna: bool = False,
     ):
         super().__init__(
             lag=lag,
             season_length=season_length,
             window_size=window_size,
             min_samples=min_samples,
+            skipna=skipna,
         )
         self.p = p
 
@@ -283,6 +346,7 @@ class SeasonalRollingQuantile(_SeasonalRollingBase):
             self.season_length,
             self.window_size,
             self.min_samples,
+            self.skipna,
         )
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
@@ -292,30 +356,34 @@ class SeasonalRollingQuantile(_SeasonalRollingBase):
             self.season_length,
             self.window_size,
             self.min_samples,
+            self.skipna,
         )
-
-
-_expanding_docstring = """Expanding {stat_name}
-
-    Args:
-        lag (int): Number of periods to offset by before applying the transformation"""
 
 
 class _ExpandingBase(_BaseLagTransform):
     stats_: np.ndarray
+    skipna: bool
 
-    def __init__(self, lag: int):
+    def __init__(self, lag: int, skipna: bool = False):
         self.lag = lag
+        self.skipna = skipna
 
     def take(self, idxs: np.ndarray) -> "_ExpandingBase":
-        out = self.__class__(self.lag)
+        out = self.__class__(self.lag, self.skipna)
         out.stats_ = self.stats_[idxs].copy()
         return out
 
 
 class ExpandingMean(_ExpandingBase):
+    """Expanding Mean
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     def transform(self, ga: "GroupedArray") -> np.ndarray:
-        out, n = ga._expanding_mean(self.lag)
+        out, n = ga._expanding_mean(self.lag, self.skipna)
         cumsum = n * out[ga.indptr[1:] - 1]
         self.stats_ = np.hstack([n[:, None], cumsum[:, None]])
         return out
@@ -326,12 +394,16 @@ class ExpandingMean(_ExpandingBase):
         return self.stats_[:, 1] / self.stats_[:, 0]
 
 
-ExpandingMean.__doc__ = _expanding_docstring.format(stat_name="Mean")
-
-
 class ExpandingStd(_ExpandingBase):
+    """Expanding Standard Deviation
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     def transform(self, ga: "GroupedArray") -> np.ndarray:
-        out, self.stats_ = ga._expanding_std(self.lag)
+        out, self.stats_ = ga._expanding_std(self.lag, self.skipna)
         return out
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
@@ -345,15 +417,12 @@ class ExpandingStd(_ExpandingBase):
         return np.sqrt(self.stats_[:, 2] / (n - 1))
 
 
-ExpandingStd.__doc__ = _expanding_docstring.format(stat_name="Standard Deviation")
-
-
 class _ExpandingComp(_ExpandingBase):
     stat: str
     _comp_fn: Callable
 
     def transform(self, ga: "GroupedArray") -> np.ndarray:
-        out = getattr(ga, f"_expanding_{self.stat}")(self.lag)
+        out = getattr(ga, f"_expanding_{self.stat}")(self.lag, self.skipna)
         self.stats_ = out[ga.indptr[1:] - 1]
         return out
 
@@ -363,19 +432,27 @@ class _ExpandingComp(_ExpandingBase):
 
 
 class ExpandingMin(_ExpandingComp):
+    """Expanding Minimum
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat = "min"
     _comp_fn = np.minimum
 
 
-ExpandingMin.__doc__ = _expanding_docstring.format(stat_name="Minimum")
-
-
 class ExpandingMax(_ExpandingComp):
+    """Expanding Maximum
+
+    Args:
+        lag (int): Number of periods to offset by before applying the transformation
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
+
     stat = "max"
     _comp_fn = np.maximum
-
-
-ExpandingMax.__doc__ = _expanding_docstring.format(stat_name="Maximum")
 
 
 class ExpandingQuantile(_BaseLagTransform):
@@ -385,17 +462,20 @@ class ExpandingQuantile(_BaseLagTransform):
         lag (int):
             Number of periods to offset by before applying the transformation
         p (float):
-            Quantile to compute"""
+            Quantile to compute
+        skipna (bool): If True, exclude NaN values from calculations.
+            When False (default), NaN values propagate through the calculation."""
 
-    def __init__(self, lag: int, p: float):
+    def __init__(self, lag: int, p: float, skipna: bool = False):
         self.lag = lag
         self.p = p
+        self.skipna = skipna
 
     def transform(self, ga: "GroupedArray") -> np.ndarray:
-        return ga._expanding_quantile(self.lag, self.p)
+        return ga._expanding_quantile(self.lag, self.p, self.skipna)
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
-        return ga._expanding_quantile_update(self.lag - 1, self.p)
+        return ga._expanding_quantile_update(self.lag - 1, self.p, self.skipna)
 
 
 class ExponentiallyWeightedMean(_BaseLagTransform):
@@ -403,14 +483,17 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
 
     Args:
         lag (int): Number of periods to offset by before applying the transformation
-        alpha (float): Smoothing factor"""
+        alpha (float): Smoothing factor
+        skipna (bool): If True, exclude NaN values from calculations using forward-fill behavior.
+            When False (default), NaN values propagate through the calculation."""
 
-    def __init__(self, lag: int, alpha: float):
+    def __init__(self, lag: int, alpha: float, skipna: bool = False):
         self.lag = lag
         self.alpha = alpha
+        self.skipna = skipna
 
     def transform(self, ga: "GroupedArray") -> np.ndarray:
-        out = ga._exponentially_weighted_mean(self.lag, self.alpha)
+        out = ga._exponentially_weighted_mean(self.lag, self.alpha, self.skipna)
         self.stats_ = out[ga.indptr[1:] - 1]
         return out
 

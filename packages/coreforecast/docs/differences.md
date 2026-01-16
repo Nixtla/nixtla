@@ -5,7 +5,7 @@ description: Find the optimal number of differences
 
 ##
 
-::: coreforecast.differences.num_diffs
+::: coreforecast.differences.num_seas_diffs
     handler: python
     options:
       docstring_style: google
