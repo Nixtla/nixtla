@@ -106,8 +106,7 @@ TEMPLATE_SP = """
 CREATE OR REPLACE PROCEDURE {ds_prefix}NIXTLA_FORECAST(
     "INPUT_DATA" VARCHAR,
     "PARAMS" OBJECT,
-    "MAX_BATCHES" NUMBER(38,0) DEFAULT 1000,
-    "FUTURE_EXOG_DATA" VARCHAR DEFAULT NULL
+    "MAX_BATCHES" NUMBER(38,0) DEFAULT 1000
 )
 RETURNS TABLE (
   UNIQUE_ID VARCHAR, DS TIMESTAMP, FORECAST DOUBLE, CONFIDENCE_INTERVALS VARIANT
@@ -117,49 +116,14 @@ $$
 DECLARE
   res RESULTSET;
 BEGIN
-  -- Build query based on whether future exog data is provided
-  IF (:FUTURE_EXOG_DATA IS NOT NULL) THEN
-    -- Combine historical data with future exog data using IDENTIFIER()
-    res := (
-      WITH historical AS (
-        SELECT *, FALSE AS _is_future_exog
-        FROM IDENTIFIER(:INPUT_DATA)
-      ),
-      future_exog AS (
-        SELECT
-          unique_id,
-          ds,
-          CAST(NULL AS DOUBLE) AS y,
-          * EXCLUDE (unique_id, ds),
-          TRUE AS _is_future_exog
-        FROM IDENTIFIER(:FUTURE_EXOG_DATA)
-      ),
-      combined AS (
-        SELECT * FROM historical
-        UNION ALL
-        SELECT * FROM future_exog
-      )
-      SELECT b.* FROM
-        (SELECT
-            MOD(HASH(unique_id), :MAX_BATCHES) AS gp,
-            unique_id,
-            ds,
-            OBJECT_CONSTRUCT_KEEP_NULL(*) AS data_obj
-         FROM combined) a,
-        TABLE(nixtla_forecast_batch(:PARAMS, data_obj) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b
-    );
-  ELSE
-    -- Original behavior without future exog
-    res := (SELECT b.* FROM
-      (SELECT
-          MOD(HASH(unique_id), :MAX_BATCHES) AS gp,
-          unique_id,
-          ds,
-          OBJECT_CONSTRUCT_KEEP_NULL(*) AS data_obj
-       FROM IDENTIFIER(:INPUT_DATA)) a,
-      TABLE(nixtla_forecast_batch(:PARAMS, data_obj) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
-  END IF;
-
+  res := (SELECT b.* FROM
+    (SELECT
+        MOD(HASH(unique_id), :MAX_BATCHES) AS gp,
+        unique_id,
+        ds,
+        OBJECT_CONSTRUCT_KEEP_NULL(*) AS data_obj
+      FROM IDENTIFIER(:INPUT_DATA)) a,
+    TABLE(nixtla_forecast_batch(:PARAMS, data_obj) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
   RETURN TABLE(res);
 END;
 $$
@@ -865,50 +829,49 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             if config.get("finetune_steps", 0) > 0:
                 raise ValueError("Finetuning is not allowed during forecasting")
 
+            h = config.get("h")
+            if h is None:
+                raise ValueError("Parameter 'h' (forecast horizon) is required")
+
             # Prepare input data
             data = pd.DataFrame(df.iloc[:, 1].tolist())
             data.columns = data.columns.str.lower()
-            data = data.sort_values(by=["unique_id", "ds"])
+            data = data.sort_values(by=["unique_id", "ds"]).reset_index(drop=True)
             data["ds"] = pd.to_datetime(data["ds"])
 
-            # Check if future exogenous data is present
-            has_future_exog = "_is_future_exog" in data.columns
+            # Check for future exogenous variables
+            futr_exog_list = config.get("futr_exog_list")
             X_df = None
 
-            if has_future_exog:
-                # Split historical data from future exogenous data
-                hist_data = data[~data["_is_future_exog"]].copy()
-                future_exog_data = data[data["_is_future_exog"]].copy()
+            if futr_exog_list:
+                futr_exog_list = [col.lower() for col in futr_exog_list]
 
-                # Remove the marker column
-                hist_data = hist_data.drop(columns=["_is_future_exog"])
-                future_exog_data = future_exog_data.drop(columns=["_is_future_exog"])
+                # Separate historical and future exog data based on h parameter
+                # For each series, the last h rows are future exog data
+                future_mask = data.groupby("unique_id").cumcount(ascending=False) < h
+                hist_data = data[~future_mask].copy()
+                future_exog_data = data[future_mask].copy()
 
-                # Auto-detect future exogenous columns (exclude unique_id, ds, y)
-                futr_exog_cols = [
-                    col for col in future_exog_data.columns if col not in BASE_COLUMNS
-                ]
-
-                if futr_exog_cols:
+                if not future_exog_data.empty:
                     # Prepare X_df with unique_id, ds, and future exog columns
-                    X_df = future_exog_data[["unique_id", "ds"] + futr_exog_cols].copy()
+                    X_df = future_exog_data[["unique_id", "ds"] + futr_exog_list].copy()
                     print(
-                        f"Using future exogenous variables: {futr_exog_cols} "
+                        f"Using future exogenous variables: {futr_exog_list} "
                         f"({len(X_df)} rows for {X_df['unique_id'].nunique()} series)"
                     )
 
-                # Use historical data for forecasting
                 data = hist_data
             else:
-                # Remove marker column if it exists (for backward compatibility)
-                if "_is_future_exog" in data.columns:
-                    data = data.drop(columns=["_is_future_exog"])
+                # No future exog list - filter out any rows where y is null
+                data = data[data["y"].notna()].copy()
 
             # Handle historical exogenous variables
             extra_cols = [col for col in data.columns if col not in BASE_COLUMNS]
             hist_exog_list = config.get("hist_exog_list")
 
             forecast_params = dict(config)
+            # Remove futr_exog_list from params - we've already processed it to create X_df
+            forecast_params.pop("futr_exog_list", None)
 
             if hist_exog_list:
                 # Normalize and validate declared exogenous variables
@@ -926,14 +889,13 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
                 forecast_params["hist_exog_list"] = hist_exog_list
 
             elif extra_cols:
-                # Warn about unused columns (only if no future exog)
-                if not has_future_exog:
-                    exog_example = ", ".join(repr(c) for c in extra_cols)
-                    print(
-                        f"Warning: Found extra columns {extra_cols} in input data. "
-                        f"To use them as exogenous variables, add 'hist_exog_list' to PARAMS: "
-                        f"PARAMS => OBJECT_CONSTRUCT('h', <value>, 'hist_exog_list', ARRAY_CONSTRUCT({exog_example}))"
-                    )
+                # Warn about unused columns
+                exog_example = ", ".join(repr(c) for c in extra_cols)
+                print(
+                    f"Warning: Found extra columns {extra_cols} in input data. "
+                    f"To use them as exogenous variables, add 'hist_exog_list' to PARAMS: "
+                    f"PARAMS => OBJECT_CONSTRUCT('h', <value>, 'hist_exog_list', ARRAY_CONSTRUCT({exog_example}))"
+                )
 
             # Add future exogenous data if available
             if X_df is not None:
@@ -1351,26 +1313,6 @@ def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
             compare_columns=["unique_id", "ds", "y", "anomaly"],
         ),
         ExampleTestCase(
-            name="forecast_with_exog",
-            description="Forecast with exogenous variables (temperature, is_weekend, promotion)",
-            sql_query=f"""CALL {prefix}NIXTLA_FORECAST(
-    INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
-    PARAMS => OBJECT_CONSTRUCT(
-        'h', 14,
-        'freq', 'D',
-        'hist_exog_list', ARRAY_CONSTRUCT('temperature', 'is_weekend', 'promotion')
-    )
-)""",
-            input_table="train",
-            nixtla_method="forecast",
-            nixtla_params={
-                "h": 14,
-                "freq": "D",
-                "X_df": None,  # Will be set dynamically in tests based on data
-            },
-            compare_columns=["unique_id", "ds", "TimeGPT"],
-        ),
-        ExampleTestCase(
             name="forecast_with_future_exog",
             description="Forecast with historical and future exogenous variables",
             sql_query=f"""CALL {prefix}NIXTLA_FORECAST(
@@ -1378,10 +1320,10 @@ def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
     PARAMS => OBJECT_CONSTRUCT(
         'h', 14,
         'freq', 'D',
-        'hist_exog_list', ARRAY_CONSTRUCT('temperature', 'is_weekend', 'promotion')
+        'hist_exog_list', ARRAY_CONSTRUCT('temperature'),
+        'futr_exog_list', ARRAY_CONSTRUCT('is_weekend', 'promotion')
     ),
-    MAX_BATCHES => 1000,
-    FUTURE_EXOG_DATA => '{prefix}EXAMPLE_FUTURE_EXOG'
+    MAX_BATCHES => 1000
 )""",
             input_table="train",
             nixtla_method="forecast",
@@ -1534,6 +1476,35 @@ def load_example_datasets(
 
     # Combine all series
     train = pd.DataFrame(series_1 + series_2 + series_3)
+
+    # Generate and append future exogenous data
+    future_dates = dates[TRAINING_DAYS : TRAINING_DAYS + 14]
+    future_exog_data = []
+    for i, date in enumerate(future_dates):
+        import numpy as np
+
+        # Calculate day index relative to original series
+        day_idx = TRAINING_DAYS + i
+
+        temperature = (
+            20 + 10 * np.sin(2 * np.pi * day_idx / 365) + np.random.normal(0, 2)
+        )
+        is_weekend = 1 if date.dayofweek >= 5 else 0
+        promotion = 1 if day_idx % 14 == 0 else 0
+
+        future_exog_data.append(
+            {
+                "unique_id": "series_2",
+                "ds": date,
+                "y": None,
+                "temperature": temperature,
+                "is_weekend": is_weekend,
+                "promotion": promotion,
+            }
+        )
+    future_exog_df = pd.DataFrame(future_exog_data)
+    train = pd.concat([train, future_exog_df]).reset_index(drop=True)
+
     train.columns = train.columns.str.upper()
     session.write_pandas(
         train,
@@ -1629,56 +1600,15 @@ def load_example_datasets(
         use_logical_type=True,
     )
 
-    # Generate future exogenous data for forecasting with future exog example
-    print("[cyan]Generating future exogenous data...[/cyan]")
-
-    # Future dates (14 days after training period)
-    future_dates = dates[TRAINING_DAYS : TRAINING_DAYS + 14]
-
-    # Generate future exogenous data for series_2 (which has exog in training)
-    future_exog_data = []
-    for i, date in enumerate(future_dates):
-        import numpy as np
-
-        # Calculate day index relative to original series
-        day_idx = TRAINING_DAYS + i
-
-        temperature = (
-            20 + 10 * np.sin(2 * np.pi * day_idx / 365) + np.random.normal(0, 2)
-        )
-        is_weekend = 1 if date.dayofweek >= 5 else 0
-        promotion = 1 if day_idx % 14 == 0 else 0
-
-        future_exog_data.append(
-            {
-                "unique_id": "series_2",
-                "ds": date,
-                "temperature": temperature,
-                "is_weekend": is_weekend,
-                "promotion": promotion,
-            }
-        )
-
-    future_exog_df = pd.DataFrame(future_exog_data)
-    future_exog_df.columns = future_exog_df.columns.str.upper()
-    session.write_pandas(
-        future_exog_df,
-        "EXAMPLE_FUTURE_EXOG",
-        auto_create_table=True,
-        overwrite=True,
-        use_logical_type=True,
-    )
-
     print("[green]Example datasets created successfully![/green]")
-    print("[cyan]  - EXAMPLE_TRAIN: 3 series × 330 days = 990 rows[/cyan]")
+    print(
+        "[cyan]  - EXAMPLE_TRAIN: 3 series × 330 days + 14 future points = 990 + 14 rows[/cyan]"
+    )
     print(
         "[cyan]  - EXAMPLE_ALL_DATA: 3 series × 365 days = 1095 rows (for evaluation)[/cyan]"
     )
     print(
         "[cyan]  - EXAMPLE_ANOMALY_DATA: 3 series × 180 days = 540 rows (with injected anomalies)[/cyan]"
-    )
-    print(
-        "[cyan]  - EXAMPLE_FUTURE_EXOG: 1 series × 14 days = 14 rows (future exog for series_2)[/cyan]"
     )
     print("\n[yellow]Exogenous variables in EXAMPLE_TRAIN:[/yellow]")
     print(
@@ -1688,10 +1618,6 @@ def load_example_datasets(
         "[yellow]  - series_2: temperature, is_weekend, promotion (for exogenous examples)[/yellow]"
     )
     print("[yellow]  - series_3: No exogenous variables (for comparison)[/yellow]")
-    print("\n[yellow]Future exogenous variables in EXAMPLE_FUTURE_EXOG:[/yellow]")
-    print(
-        "[yellow]  - series_2: temperature, is_weekend, promotion (14 days ahead)[/yellow]"
-    )
     print("\n[yellow]Injected anomalies in EXAMPLE_ANOMALY_DATA:[/yellow]")
     print("[yellow]  - sensor_1: Spikes on days 30, 120; Drop on day 60[/yellow]")
     print(

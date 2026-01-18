@@ -75,7 +75,6 @@ class TestSnowflakeDeployment:
             "EXAMPLE_TRAIN",
             "EXAMPLE_ALL_DATA",
             "EXAMPLE_ANOMALY_DATA",
-            "EXAMPLE_FUTURE_EXOG",
         ]
 
         for table in example_tables:
@@ -234,7 +233,11 @@ class TestExampleScripts:
         """Test: Forecast 14 days with confidence intervals (80%, 95%)."""
 
         def compare_forecast(test_case, data):
-            client_result = nixtla_client.forecast(df=data, **test_case.nixtla_params)
+            # Filter out future exog rows (where y is null) for basic forecast
+            hist_data = data[data["y"].notna()].copy()
+            client_result = nixtla_client.forecast(
+                df=hist_data, **test_case.nixtla_params
+            )
             return client_result
 
         sf_df, client_df = self._execute_and_compare(
@@ -480,79 +483,6 @@ class TestExampleScripts:
             obj="Anomaly flags",
         )
 
-    def test_forecast_with_exog_script(
-        self,
-        snowflake_session: Session,
-        deployed_with_api_endpoint: DeploymentConfig,
-        nixtla_client: NixtlaClient,
-        example_dataframes: dict[str, pd.DataFrame],
-    ):
-        """Test: Forecast with exogenous variables (temperature, is_weekend, promotion)."""
-
-        def compare_forecast_exog(test_case, data):
-            # For exogenous forecasting, we need to filter to series_2 which has exog vars
-            # Snowflake uses hist_exog_list, so we match that approach
-            data_series2 = data[data["unique_id"] == "series_2"].copy()
-
-            # Include exogenous variables in the historical data
-            # and declare them with hist_exog_list (historical exogenous only)
-            exog_cols = ["temperature", "is_weekend", "promotion"]
-
-            # Forecast using hist_exog_list (same as Snowflake)
-            client_result = nixtla_client.forecast(
-                df=data_series2,  # Include all columns including exogenous
-                h=14,
-                freq="D",
-                hist_exog_list=exog_cols,  # Declare historical exogenous variables
-            )
-            return client_result
-
-        sf_df, client_df = self._execute_and_compare(
-            snowflake_session,
-            deployed_with_api_endpoint,
-            example_dataframes,
-            "forecast_with_exog",
-            compare_forecast_exog,
-        )
-
-        # Normalize column names to lowercase
-        sf_df.columns = sf_df.columns.str.lower()
-        client_df.columns = client_df.columns.str.lower()
-
-        # Validate structure
-        assert len(sf_df) > 0, "Forecast with exog returned no results"
-        assert len(client_df) > 0, "Client forecast with exog returned no results"
-
-        # Check required columns
-        for col in ["timegpt", "forecast"]:
-            if col in sf_df.columns or col in client_df.columns:
-                break
-        else:
-            assert False, "Missing forecast column in results"
-
-        # Determine forecast column name (normalize to 'forecast')
-        sf_forecast_col = "forecast" if "forecast" in sf_df.columns else "timegpt"
-        client_forecast_col = (
-            "forecast" if "forecast" in client_df.columns else "timegpt"
-        )
-
-        # Filter to series_2 for comparison (only series_2 has exog vars)
-        sf_series2 = sf_df[sf_df["unique_id"] == "series_2"].copy()
-        client_series2 = client_df[client_df["unique_id"] == "series_2"].copy()
-
-        # Sort and compare
-        sf_sorted = sf_series2.sort_values(["ds"]).reset_index(drop=True)
-        client_sorted = client_series2.sort_values(["ds"]).reset_index(drop=True)
-
-        pd.testing.assert_series_equal(
-            sf_sorted[sf_forecast_col],
-            client_sorted[client_forecast_col],
-            check_names=False,
-            rtol=1e-3,
-            atol=1e-3,
-            obj="Forecast with exogenous variables",
-        )
-
     def test_forecast_with_future_exog_script(
         self,
         snowflake_session: Session,
@@ -566,26 +496,23 @@ class TestExampleScripts:
             # For future exogenous forecasting, we need series_2 which has exog vars
             data_series2 = data[data["unique_id"] == "series_2"].copy()
 
-            # Load future exogenous data from Snowflake
-            config = deployed_with_api_endpoint
-            snowflake_session.use_database(config.database)
-            snowflake_session.use_schema(config.schema)
-
-            future_exog_result = snowflake_session.sql(
-                f"SELECT * FROM {config.prefix}EXAMPLE_FUTURE_EXOG"
-            ).collect()
-            future_exog_df = pd.DataFrame(future_exog_result)
-            future_exog_df.columns = future_exog_df.columns.str.lower()
+            hist_data = data_series2[data_series2["y"].notna()]
+            futr_data = data_series2[data_series2["y"].isna()]
 
             # Forecast using both hist_exog_list and X_df (future exog)
-            exog_cols = ["temperature", "is_weekend", "promotion"]
+            hist_exog_cols = ["temperature"]
+            futr_exog_cols = ["is_weekend", "promotion"]
+
+            # X_df should only contain unique_id, ds, and the future exog columns
+            # This matches what the Snowflake UDTF does internally
+            X_df = futr_data[["unique_id", "ds"] + futr_exog_cols].copy()
 
             client_result = nixtla_client.forecast(
-                df=data_series2,
+                df=hist_data,
                 h=14,
                 freq="D",
-                hist_exog_list=exog_cols,  # Historical exogenous
-                X_df=future_exog_df,  # Future exogenous
+                hist_exog_list=hist_exog_cols,  # Historical exogenous
+                X_df=X_df,  # Future exogenous (only required columns)
             )
             return client_result
 
