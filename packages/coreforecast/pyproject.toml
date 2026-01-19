@@ -20,13 +20,15 @@ authors = [{ name = "Jose Morales", email = "jmoralz92@gmail.com" }]
 readme = "README.md"
 keywords = ["forecasting", "time-series"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pandas",
     "pre-commit",
     "pytest",
+    "pytest-cov",
     "pip-licenses",
     "mkdocstrings-parser@git+https://github.com/Nixtla/mkdocstrings-parser.git",
+    "pytest-codspeed",
 ]
 
 [project.urls]
@@ -52,7 +54,7 @@ wheel.packages = ["python/coreforecast"]
 [tool.cibuildwheel]
 archs = "all"
 build-verbosity = 3
-test-extras = "dev"
+build-frontend = "build[uv]"
 
 [tool.pyright]
 venvPath = "."
