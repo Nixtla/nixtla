@@ -561,6 +561,381 @@ def test_ts_update(series):
     last7 = ts.ga.take_from_groups(slice(-7, None)).data
     assert 0 < np.abs(last7 / orig_last7 - 1).mean() < 0.5
 
+
+def _generate_series_with_freq(n_series, freq_name, n_static_features, engine):
+    """Helper to generate series with specific frequency."""
+    from utilsforecast.data import generate_series
+    from math import ceil, log10
+
+    max_length = 200 if freq_name == "yearly" else 500
+    freq_map = {
+        "hourly": "h",
+        "daily": "D",
+        "weekly": "W",
+        "monthly": "MS",
+        "yearly": "YS",
+    }
+
+    series = generate_series(
+        n_series=n_series,
+        freq=freq_map[freq_name],
+        min_length=50,
+        max_length=max_length,
+        n_static_features=n_static_features,
+        equal_ends=False,
+        static_as_categorical=True,
+        with_trend=False,
+        seed=0,
+        engine=engine,
+    )
+
+    n_digits = ceil(log10(n_series))
+    if engine == "pandas":
+        series["unique_id"] = (
+            "id_" + series["unique_id"].astype(str).str.rjust(n_digits, "0")
+        ).astype("category")
+    else:
+        try:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.pad_start(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
+        except AttributeError:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.rjust(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
+    return series
+
+
+def _get_freq_config(freq_name, engine):
+    """Get frequency configuration for pandas and polars."""
+    freq_configs = {
+        "hourly": {
+            "pandas_freq": "h",
+            "polars_freq": "1h",
+            "polars_offset1": "1h",
+            "polars_offset2": "2h",
+            "polars_offset3": "3h",
+            "polars_offset_misaligned": "30m",
+            "pandas_offset1": pd.offsets.Hour(),
+            "pandas_offset2": pd.offsets.Hour(2),
+            "pandas_offset3": pd.offsets.Hour(3),
+            "pandas_offset_misaligned": pd.offsets.Minute(30),
+        },
+        "daily": {
+            "pandas_freq": "D",
+            "polars_freq": "1d",
+            "polars_offset1": "1d",
+            "polars_offset2": "2d",
+            "polars_offset3": "3d",
+            "polars_offset_misaligned": "12h",
+            "pandas_offset1": pd.offsets.Day(),
+            "pandas_offset2": pd.offsets.Day(2),
+            "pandas_offset3": pd.offsets.Day(3),
+            "pandas_offset_misaligned": pd.offsets.Hour(12),
+        },
+        "weekly": {
+            "pandas_freq": "W",
+            "polars_freq": "1w",
+            "polars_offset1": "1w",
+            "polars_offset2": "2w",
+            "polars_offset3": "3w",
+            "polars_offset_misaligned": "3d",
+            "pandas_offset1": pd.offsets.Week(),
+            "pandas_offset2": pd.offsets.Week(2),
+            "pandas_offset3": pd.offsets.Week(3),
+            "pandas_offset_misaligned": pd.offsets.Day(3),
+        },
+        "monthly": {
+            "pandas_freq": "MS",
+            "polars_freq": "1mo",
+            "polars_offset1": "1mo",
+            "polars_offset2": "2mo",
+            "polars_offset3": "3mo",
+            "polars_offset_misaligned": "15d",
+            "pandas_offset1": pd.offsets.MonthBegin(),
+            "pandas_offset2": pd.offsets.MonthBegin(2),
+            "pandas_offset3": pd.offsets.MonthBegin(3),
+            "pandas_offset_misaligned": pd.offsets.Day(15),
+        },
+        "yearly": {
+            "pandas_freq": "YS",
+            "polars_freq": "1y",
+            "polars_offset1": "1y",
+            "polars_offset2": "2y",
+            "polars_offset3": "3y",
+            "polars_offset_misaligned": "6mo",
+            "pandas_offset1": pd.offsets.YearBegin(),
+            "pandas_offset2": pd.offsets.YearBegin(2),
+            "pandas_offset3": pd.offsets.YearBegin(3),
+            "pandas_offset_misaligned": pd.offsets.MonthBegin(6),
+        },
+    }
+
+    config = freq_configs[freq_name]
+    return (
+        config["polars_freq"] if engine == "polars" else config["pandas_freq"],
+        config,
+    )
+
+
+def _make_valid_update(series, engine, freq_config):
+    """Create a valid update dataframe with correct frequency alignment."""
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update1 = last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"]))
+        update2 = last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset2"]))
+        update = pl.concat([update1, update2])
+        return update.with_columns((pl.col("y") + 1).alias("y"))
+    last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+    update1 = last_vals.copy()
+    update2 = last_vals.copy()
+    update1["ds"] += freq_config["pandas_offset1"]
+    update2["ds"] += freq_config["pandas_offset2"]
+    update = pd.concat([update1, update2], ignore_index=True)
+    update["y"] = update["y"] + 1
+    return update
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+def test_update_validation_valid_continuous(engine, freq_name):
+    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    update = _make_valid_update(series, engine, freq_config)
+    ts.update(update, validate_input=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+def test_update_validation_invalid_gap(engine, freq_name):
+    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update = pl.concat(
+            [
+                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
+                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset3"])),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        update = pd.concat(
+            [
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"]),
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset3"]),
+            ],
+            ignore_index=True,
+        )
+    with pytest.raises(ValueError, match="gaps or duplicate"):
+        ts.update(update, validate_input=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+def test_update_validation_invalid_start(engine, freq_name):
+    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update = pl.concat(
+            [
+                last_vals,
+                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        update = pd.concat(
+            [
+                last_vals,
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"]),
+            ],
+            ignore_index=True,
+        )
+    with pytest.raises(ValueError, match="invalid start"):
+        ts.update(update, validate_input=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+def test_update_validation_new_series(engine, freq_name):
+    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    update = _make_valid_update(series, engine, freq_config)
+
+    # Create new series with proper timestamps for the frequency
+    if engine == "polars":
+        if freq_name == "hourly":
+            dates = [datetime.datetime(2020, 1, 1, 0, 0), datetime.datetime(2020, 1, 1, 1, 0)]
+        elif freq_name == "daily":
+            dates = [datetime.datetime(2020, 1, 1), datetime.datetime(2020, 1, 2)]
+        elif freq_name == "weekly":
+            dates = [datetime.datetime(2020, 1, 5), datetime.datetime(2020, 1, 12)]
+        elif freq_name == "monthly":
+            dates = [datetime.datetime(2020, 1, 1), datetime.datetime(2020, 2, 1)]
+        else:  # yearly
+            dates = [datetime.datetime(2020, 1, 1), datetime.datetime(2021, 1, 1)]
+
+        new_series = pl.DataFrame(
+            {
+                "unique_id": ["new_0", "new_0"],
+                "ds": dates,
+                "y": [1.0, 2.0],
+                "static_0": [0, 0],
+                "static_1": [1, 1],
+            }
+        ).with_columns(
+            pl.col("ds").dt.cast_time_unit("ns"),
+            pl.col("unique_id").cast(pl.Categorical),
+        )
+        cast_exprs = []
+        for col, dtype in update.schema.items():
+            if dtype == pl.Categorical and new_series.schema[col] != pl.Categorical:
+                cast_exprs.append(
+                    pl.col(col).cast(pl.Utf8).cast(pl.Categorical).alias(col)
+                )
+            else:
+                cast_exprs.append(pl.col(col).cast(dtype).alias(col))
+        new_series = new_series.with_columns(cast_exprs)
+        update = pl.concat([update, new_series])
+    else:
+        if freq_name == "hourly":
+            dates = pd.date_range("2020-01-01", periods=2, freq="h")
+        elif freq_name == "daily":
+            dates = pd.date_range("2020-01-01", periods=2, freq="D")
+        elif freq_name == "weekly":
+            dates = pd.date_range("2020-01-05", periods=2, freq="W")
+        elif freq_name == "monthly":
+            dates = pd.date_range("2020-01-01", periods=2, freq="MS")
+        else:  # yearly
+            dates = pd.date_range("2020-01-01", periods=2, freq="YS")
+
+        new_series = pd.DataFrame(
+            {
+                "unique_id": ["new_0", "new_0"],
+                "ds": dates,
+                "y": [1.0, 2.0],
+                "static_0": [0, 0],
+                "static_1": [1, 1],
+            }
+        )
+        update = pd.concat([update, new_series], ignore_index=True)
+    ts.update(update, validate_input=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+def test_update_validation_frequency_mismatch(engine, freq_name):
+    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        # Create one properly aligned timestamp and one misaligned
+        update = pl.concat(
+            [
+                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
+                last_vals.with_columns(
+                    pl.col("ds")
+                    .dt.offset_by(freq_config["polars_offset1"])
+                    .dt.offset_by(freq_config["polars_offset_misaligned"])
+                ),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        # Create one properly aligned timestamp and one misaligned
+        update = pd.concat(
+            [
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"]),
+                last_vals.assign(
+                    ds=last_vals["ds"]
+                    + freq_config["pandas_offset1"]
+                    + freq_config["pandas_offset_misaligned"]
+                ),
+            ],
+            ignore_index=True,
+        )
+    with pytest.raises(ValueError, match="gaps or duplicate"):
+        ts.update(update, validate_input=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("freq_name", ["hourly", "daily"])
+def test_update_validation_misaligned_intermediate_timestamp(engine, freq_name):
+    """Test that misaligned intermediate timestamps are caught even when min/max are aligned.
+
+    This is a critical bug: the current validation only checks min and max timestamps,
+    so it misses misaligned intermediate values. For example, with hourly data:
+    [12:00, 13:30, 14:00] should FAIL because 13:30 is not aligned, but currently
+    it passes because min (12:00) and max (14:00) are both aligned.
+    """
+    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+
+    # Create update with aligned min/max but misaligned middle timestamp
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        # Create: [last+1h, last+1.5h, last+2h] for hourly (1.5h is misaligned)
+        # or [last+1d, last+1.5d, last+2d] for daily (1.5d is misaligned)
+        update = pl.concat(
+            [
+                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
+                last_vals.with_columns(
+                    pl.col("ds")
+                    .dt.offset_by(freq_config["polars_offset1"])
+                    .dt.offset_by(freq_config["polars_offset_misaligned"])
+                ),
+                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset2"])),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        # Create three timestamps: aligned, misaligned, aligned
+        df1 = last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"])
+        df2 = last_vals.assign(
+            ds=last_vals["ds"]
+            + freq_config["pandas_offset1"]
+            + freq_config["pandas_offset_misaligned"]
+        )
+        df3 = last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset2"])
+        update = pd.concat([df1, df2, df3], ignore_index=True)
+
+    with pytest.raises(ValueError, match="aligned|gaps or duplicate"):
+        ts.update(update, validate_input=True)
+
+
 def test_ts_polars():
     two_series = generate_daily_series(2, n_static_features=2, engine="polars")
     ts = TimeSeries(freq="1d", lags=[1], date_features=["weekday"])
