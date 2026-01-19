@@ -277,6 +277,50 @@
     {
       "source": "/tutorials-uncertainty_quantification-tutorials-prediction_intervals",
       "destination": "/forecasting/probabilistic/introduction#uncertainty-quantification-with-timegpt"
+    },
+    {
+      "source": "/introduction/introduction/introduction/use_cases/use_cases/use_cases/bitcoin_price_prediction",
+      "destination": "/use_cases/bitcoin_price_prediction"
+    },
+    {
+      "source": "/introduction/introduction/introduction/introduction/introduction/introduction/introduction/why_timegpt",
+      "destination": "/introduction/why_timegpt"
+    },
+    {
+      "source": "/introduction/introduction/introduction/introduction/why_timegpt#why-timegpt-2",
+      "destination": "/introduction/why_timegpt#why-timegpt-2"
+    },
+    {
+      "source": "/introduction/introduction/introduction/introduction/introduction/about_timegpt#about-timegpt",
+      "destination": "/introduction/about_timegpt"
+    },
+    {
+      "source": "/about-key-concepts",
+      "destination": "/about/key-concepts"
+    },
+    {
+      "source": "/tutorials-special_topics-tutorials-missing_values",
+      "destination": "/data_requirements/missing_values"
+    },
+    {
+      "source": "/reference-timegpt_excel_add_in_beta_",
+      "destination": "/reference/timegpt_excel_add_in_beta_"
+    },
+    {
+      "source": "/getting-started-about_timegpt",
+      "destination": "/introduction/about_timegpt"
+    },
+    {
+      "source": "/capabilities-historical-anomaly-detection-quickstart",
+      "destination": "/anomaly_detection/historical_anomaly_detection"
+    },
+    {
+      "source": "/capabilities-historical-anomaly-detection-add_exogenous_variables",
+      "destination": "/anomaly_detection/exogenous_variables"
+    },
+    {
+      "source": "/exogenous-variables/forecasting/exogenous-variables/data_requirements/multiple_series#exogenous-variables",
+      "destination": "/data_requirements/multiple_series#exogenous-variables"
     }
   ],
   "contextual": {
