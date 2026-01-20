@@ -4,19 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlforecast"
-dynamic = ["version"]
+version = "1.0.3.dev0"
 description = "Scalable machine learning based time series forecasting"
 authors = [{name = "José Morales", email = "jmoralz92@gmail.com"}]
 license = {text = "Apache Software License 2.0"}
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["python", "forecast", "forecasting", "machine-learning", "dask"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -38,7 +37,7 @@ Repository = "https://github.com/Nixtla/mlforecast"
 Documentation = "https://nixtlaverse.nixtla.io/mlforecast/"
 
 
-[project.optional-dependencies]
+[dependency-groups]
 dask = ["fugue[dask]>=0.9.4", "dask[complete]<=2024.12.1", "lightgbm", "xgboost"]
 ray = ["fugue[ray]>=0.9.4", "lightgbm_ray", "xgboost_ray>=0.1.19", "xgboost>=2.0.0,<2.1.0"]
 spark = ["fugue[spark]>=0.9.4", "pyspark>=3.3", "lightgbm", "xgboost"]
@@ -70,6 +69,8 @@ dev = [
     "pytest-benchmark",
     "pytest-cov",
     "pip-licenses",
+    "pytest-xdist",
+    "pytest-codspeed",
     "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@main"
 ]
 
