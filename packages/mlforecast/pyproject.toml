@@ -38,7 +38,7 @@ Documentation = "https://nixtlaverse.nixtla.io/mlforecast/"
 
 
 [dependency-groups]
-dask = ["fugue[dask]>=0.9.4", "dask[complete]<=2024.12.1", "lightgbm", "xgboost"]
+dask = ["fugue[dask]>=0.9.4", "dask[complete]", "lightgbm", "xgboost"]
 ray = ["fugue[ray]>=0.9.4", "lightgbm_ray", "xgboost_ray>=0.1.19", "xgboost>=2.0.0,<2.1.0"]
 spark = ["fugue[spark]>=0.9.4", "pyspark>=3.3", "lightgbm", "xgboost"]
 aws = ["fsspec[s3]"]
