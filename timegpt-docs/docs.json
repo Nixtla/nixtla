@@ -204,9 +204,6 @@
     }
   },
   "integrations": {
-    "amplitude": {
-      "apiKey": "799ca210229ab5f1a23493c6302eaae1"
-    },
     "gtm": {
       "tagId": "GTM-TBJ64S3X"
     },
