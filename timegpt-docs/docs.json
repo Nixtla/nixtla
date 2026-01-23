@@ -167,12 +167,12 @@
         {
           "anchor": "Home",
           "href": "https://www.nixtla.io",
-          "icon": "book-open-cover"
+          "icon": "book-open"
         },
         {
           "anchor": "Get in touch",
           "href": "https://share.hsforms.com/2kPRkvHcfRHO5m4Qqc9wKqArbxr6",
-          "icon": "envelope"
+          "icon": "mail"
         },
         {
           "anchor": "Meet with us",
