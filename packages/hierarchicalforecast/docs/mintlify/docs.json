@@ -55,7 +55,8 @@
               "examples/localglobalaggregation.html"
             ]
           },
-          "examples/mlframeworksexample.html"
+          "examples/mlframeworksexample.html",
+          "examples/reconciliationdiagnostics.html"
         ]
       },
       {
