@@ -16,6 +16,9 @@
       "canonical": "https://nixtla.io/docs"
     }
   },
+  "icons":{
+    "library":"lucide"
+  },
   "favicon": "/favicon.ico",
   "ignore": ["utils/**", "depracted-docs/**", "pending_content/**"],
   "navigation": {
