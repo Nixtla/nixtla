@@ -21,12 +21,12 @@ class Moirai(GluonTSForecaster):
         model = MoiraiForecast(
             module=MoiraiModule.from_pretrained(self.repo_id),
             prediction_length=prediction_length,
-            context_length=200,
-            patch_size="auto",
+            context_length=1000,
+            patch_size=32,
             num_samples=100,
             target_dim=1,
             feat_dynamic_real_dim=0,
             past_feat_dynamic_real_dim=0,
         )
-        predictor = model.create_predictor(batch_size=32)
+        predictor = model.create_predictor(batch_size=512)
         return predictor
