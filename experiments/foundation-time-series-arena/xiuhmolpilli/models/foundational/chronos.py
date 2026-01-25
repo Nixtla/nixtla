@@ -1,4 +1,4 @@
-from typing import Iterable, List
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -29,23 +29,13 @@ class TimeSeriesDataset:
 
     @classmethod
     def from_df(cls, df: pd.DataFrame, batch_size: int):
-        num_unique_ids = df["unique_id"].nunique()
-        max_series_length = df["unique_id"].value_counts().max()
-        padded_tensor = torch.full(
-            size=(num_unique_ids, max_series_length),
-            fill_value=torch.nan,
-            dtype=torch.bfloat16,
-        )  # type: ignore
+        tensors = []
         df_sorted = df.sort_values(by=["unique_id", "ds"])
-        for idx, (_, group) in enumerate(df_sorted.groupby("unique_id")):
-            series_length = len(group)
-            padded_tensor[idx, -series_length:] = torch.tensor(
-                group["y"].values,
-                dtype=torch.bfloat16,
-            )
+        for _, group in df_sorted.groupby("unique_id"):
+            tensors.append(torch.tensor(group["y"].values))
         uids = df_sorted["unique_id"].unique()
         last_times = df_sorted.groupby("unique_id")["ds"].tail(1)
-        return cls(padded_tensor, uids, last_times, batch_size)
+        return cls(tensors, uids, last_times, batch_size)
 
     def __len__(self):
         return self.n_batches
