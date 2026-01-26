@@ -13,7 +13,7 @@ import utilsforecast.processing as ufp
 import xgboost as xgb
 from sklearn import set_config
 from sklearn.linear_model import LinearRegression
-from utilsforecast.feature_engineering import time_features
+from utilsforecast.feature_engineering import fourier, time_features
 from utilsforecast.processing import match_if_categorical
 
 from mlforecast import MLForecast
@@ -29,6 +29,7 @@ from mlforecast.utils import (
     PredictionIntervals,
     generate_daily_series,
     generate_prices_for_series,
+    generate_series,
 )
 
 set_config(display='text')
@@ -812,20 +813,149 @@ def test_save_load():
 
 # direct approach requires only one timestamp and produces same results for two models
 def test_direct_approach_single_timestamp():
-    """Test direct approach requires only one timestamp and produces same results for two models."""
+    """Test direct approach works with partial X_df (backward compatibility)."""
     series = generate_daily_series(5)
     h = 5
     freq = 'D'
     train, future = time_features(series, freq=freq, features=['day'], h=h)
     models = [LinearRegression(), lgb.LGBMRegressor(n_estimators=5)]
 
+    # Test 1: Full features work correctly
     fcst1 = MLForecast(models=models, freq=freq, date_features=['dayofweek'])
     fcst1.fit(train, max_horizon=h, static_features=[])
-    preds1 = fcst1.predict(h=h, X_df=future)  # extra timestamps
+    preds1 = fcst1.predict(h=h, X_df=future)  # full timestamps
 
+    # Test 2: Partial features work (backward compatibility)
     fcst2 = MLForecast(models=models[::-1], freq=freq, date_features=['dayofweek'])
     fcst2.fit(train, max_horizon=h, static_features=[])
     X_df_one = future.groupby('unique_id', observed=True).head(1)
-    preds2 = fcst2.predict(h=h, X_df=X_df_one)  # only needed timestamp
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        preds2 = fcst2.predict(h=h, X_df=X_df_one)  # single timestamp (reused)
+        # Verify warning was raised
+        assert len(w) == 1
+        assert 'missing horizon steps' in str(w[0].message)
 
-    pd.testing.assert_frame_equal(preds1, preds2[preds1.columns])
+    # Shape validation
+    assert preds1.shape[0] == len(series['unique_id'].unique()) * h
+    assert preds2.shape[0] == len(series['unique_id'].unique()) * h
+
+    # Sanity checks for partial-feature predictions (preds2)
+    model_cols = [col for col in preds2.columns if col not in ['unique_id', 'ds']]
+    for col in model_cols:
+        # 1. No NaN/Inf values
+        assert not preds2[col].isna().any(), f"{col} contains NaN values"
+        assert not np.isinf(preds2[col]).any(), f"{col} contains Inf values"
+
+        # 2. Values within reasonable bounds (based on training data statistics)
+        lower_bound = train['y'].min()
+        upper_bound = train['y'].max()
+        assert preds2[col].min() >= lower_bound, \
+            f"{col} has values below training data bound: {preds2[col].min()} < {lower_bound}"
+        assert preds2[col].max() <= upper_bound, \
+            f"{col} has values above training data bound: {preds2[col].max()} > {upper_bound}"
+
+    # First period predictions should be identical (same features used)
+    first_preds1 = preds1.groupby('unique_id', observed=True).head(1)
+    first_preds2 = preds2.groupby('unique_id', observed=True).head(1)
+    pd.testing.assert_frame_equal(first_preds1, first_preds2[first_preds1.columns])
+
+    # Full predictions should be highly correlated
+    for col in model_cols:
+        correlation = np.corrcoef(preds1[col], preds2[col])[0, 1]
+        assert correlation > 0.95, \
+            f"{col} predictions have low correlation: {correlation:.3f}"
+
+
+def test_direct_forecasting_exogenous_alignment():
+    """Test that direct forecasting correctly aligns exogenous features to each horizon.
+
+    This test reproduces the bug reported in issue #496 where direct forecasting
+    only uses exogenous features from horizon 1 for all horizons. The test creates
+    two versions of exogenous data:
+    1. test_X_df: Correct Fourier features for all horizons
+    2. test_X_df_zeros: Fourier features zeroed out for horizon > 1
+
+    Before fix: Predictions are identical (bug - only horizon 1 features used)
+    After fix: Predictions differ (correct - each horizon uses its aligned features)
+    """
+    H = 3
+    df = generate_series(3, freq="W", min_length=104, n_static_features=1)
+    df, _ = fourier(df, freq="W", season_length=52, k=1, h=H)
+
+    # Train/test split
+    test = df.groupby("unique_id").tail(H)
+    train = df.drop(test.index)
+    test_X_df = test.drop(columns=["static_0", "y"])
+
+    # Create version with zeros for horizon > 1
+    test_X_df_zeros = test_X_df.copy()
+    test_X_df_zeros["is_first_ds"] = test_X_df_zeros.groupby("unique_id")["ds"].transform(
+        lambda x: x == x.min()
+    )
+    test_X_df_zeros.loc[~test_X_df_zeros["is_first_ds"], ["sin1_52", "cos1_52"]] = 0
+    test_X_df_zeros = test_X_df_zeros.drop(columns="is_first_ds")
+
+    # Fit and predict
+    fcst = MLForecast(
+        models=lgb.LGBMRegressor(random_state=0, verbosity=-1),
+        freq="W",
+        lags=[1],
+        date_features=["month"],
+    )
+    fcst.fit(train, static_features=["static_0"], max_horizon=H)
+
+    preds_correct = fcst.predict(h=H, X_df=test_X_df)
+    preds_zeros = fcst.predict(h=H, X_df=test_X_df_zeros)
+
+    # After fix: predictions should be DIFFERENT
+    # (before fix they are identical, proving the bug)
+    assert not np.allclose(
+        preds_correct["LGBMRegressor"].values,
+        preds_zeros["LGBMRegressor"].values
+    )
+
+
+def test_direct_forecasting_perfect_exogenous_fit():
+    """Test that direct forecasting correctly uses exogenous features for each horizon.
+
+    This test validates that when a model is trained with a perfect linear relationship
+    between the target and an exogenous feature (y = X), the predictions at each horizon
+    correctly use the aligned exogenous features from X_df. If properly implemented,
+    predictions should equal the exogenous feature values.
+    """
+    H = 3
+
+    # Create simple training data where y = X (perfect linear relationship)
+    df = pd.DataFrame({
+        "ds": np.arange(7),
+        "X": np.arange(7),
+        "unique_id": "ex",
+        "y": np.arange(7),
+    })
+
+    # Create test dataframe with exogenous features for prediction
+    test_df = pd.DataFrame({
+        "ds": np.arange(7, 10),
+        "X": np.arange(7, 10),
+        "unique_id": "ex",
+    })
+
+    # Fit with max_horizon to enable direct forecasting
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq=1,
+    )
+    fcst.fit(df, static_features=[], max_horizon=H)
+
+    # Predict using exogenous features
+    individual_preds = fcst.predict(h=H, X_df=test_df)
+
+    # Validation: predictions should equal the exogenous feature values
+    # This proves each horizon model uses the correct aligned features
+    np.testing.assert_allclose(
+        individual_preds['LinearRegression'].values,
+        test_df['X'].values,
+        rtol=1e-10,
+        err_msg="Direct forecasting predictions do not match expected exogenous feature values"
+    )
