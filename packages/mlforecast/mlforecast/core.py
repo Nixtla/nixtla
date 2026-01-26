@@ -26,11 +26,12 @@ import fsspec
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
-from sklearn.base import BaseEstimator, clone
+from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
 from utilsforecast.compat import (
     DataFrame,
     DFType,
+    Series,
     pl,
     pl_DataFrame,
     pl_Series,
@@ -155,7 +156,7 @@ def _parse_transforms(
         for tfm in lag_transforms[lag]:
             if isinstance(tfm, _BaseLagTransform):
                 tfm_name = namer(tfm, lag)
-                transforms[tfm_name] = clone(tfm)._set_core_tfm(lag)
+                transforms[tfm_name] = copy.deepcopy(tfm)._set_core_tfm(lag)
             else:
                 tfm, *args = _as_tuple(tfm)
                 assert callable(tfm)
@@ -214,6 +215,51 @@ class TimeSeries:
             k: v for k, v in self.transforms.items() if isinstance(v, _BaseLagTransform)
         }
 
+    def _get_global_tfms(self) -> Dict[str, _BaseLagTransform]:
+        return {
+            k: v
+            for k, v in self.transforms.items()
+            if isinstance(v, _BaseLagTransform) and getattr(v, "global_", False)
+        }
+
+    def _get_group_tfms(self) -> Dict[Tuple[str, ...], Dict[str, _BaseLagTransform]]:
+        grouped: Dict[Tuple[str, ...], Dict[str, _BaseLagTransform]] = {}
+        for name, tfm in self.transforms.items():
+            if not isinstance(tfm, _BaseLagTransform):
+                continue
+            groupby = getattr(tfm, "groupby", None)
+            if not groupby:
+                continue
+            key = tuple(groupby)
+            grouped.setdefault(key, {})[name] = tfm
+        return grouped
+
+    def _get_local_tfms(
+        self,
+        transforms: Mapping[str, Union[Tuple[Any, ...], _BaseLagTransform]],
+    ) -> Dict[str, Union[Tuple[Any, ...], _BaseLagTransform]]:
+        local = {}
+        for name, tfm in transforms.items():
+            if isinstance(tfm, _BaseLagTransform) and getattr(tfm, "global_", False):
+                continue
+            if isinstance(tfm, _BaseLagTransform) and getattr(tfm, "groupby", None):
+                continue
+            local[name] = tfm
+        return local
+
+    def _check_aligned_ends(self) -> None:
+        """Check that all series end at the same timestamp when using global/group transforms."""
+        if not (self._get_global_tfms() or self._get_group_tfms()):
+            return
+        if isinstance(self.last_dates, pd.Index):
+            aligned = self.last_dates.nunique() == 1
+        else:
+            aligned = self.last_dates.n_unique() == 1
+        if not aligned:
+            raise ValueError(
+                "Global and group lag transforms require all series to end at the same timestamp."
+            )
+
     @property
     def _date_feature_names(self):
         return [f.__name__ if callable(f) else f for f in self.date_features]
@@ -269,6 +315,7 @@ class TimeSeries:
         else:
             self.uids = uids
             self.last_dates = pl_Series(times)
+        self._check_aligned_ends()
         if self._sort_idxs is not None:
             self._restore_idxs: Optional[np.ndarray] = np.empty(
                 df.shape[0], dtype=np.int32
@@ -293,6 +340,24 @@ class TimeSeries:
                     tfm.set_column_names(id_col, time_col, target_col)
                     sorted_df = tfm.fit_transform(sorted_df)
                     ga.data = sorted_df[target_col].to_numpy()
+        self._global_ga: Optional[GroupedArray] = None
+        self._global_times: Optional[Union[Series, pd.Index]] = None
+        if self._get_global_tfms():
+            global_df = ufp.group_by_agg(
+                sorted_df[[time_col, target_col]],
+                time_col,
+                {target_col: "sum"},
+                maintain_order=True,
+            )
+            global_df = ufp.sort(global_df, by=time_col)
+            global_values = global_df[target_col].to_numpy().astype(ga.data.dtype)
+            self._global_ga = GroupedArray(
+                global_values, np.array([0, global_values.size], dtype=np.int32)
+            )
+            if isinstance(global_df, pd.DataFrame):
+                self._global_times = pd.Index(global_df[time_col])
+            else:
+                self._global_times = global_df[time_col]
         to_drop = [id_col, time_col, target_col]
         if static_features is None:
             static_features = [c for c in df.columns if c not in [time_col, target_col]]
@@ -327,6 +392,84 @@ class TimeSeries:
         self.features_order_ = [c for c in df.columns if c not in to_drop] + [
             f for f in self.features if f not in df.columns
         ]
+        self._group_states: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+        group_tfms = self._get_group_tfms()
+        if group_tfms:
+            if self.target_transforms is not None:
+                transformed_target = ga.data
+                if self._restore_idxs is not None:
+                    transformed_target = transformed_target[self._restore_idxs]
+                df_for_group = ufp.assign_columns(df, target_col, transformed_target)
+            else:
+                df_for_group = df
+
+            def _add_group_id(data, cols):
+                if isinstance(data, pd.DataFrame):
+                    groups = data[cols].drop_duplicates().reset_index(drop=True)
+                    groups["_group_id"] = np.arange(len(groups), dtype=np.int64)
+                    data = data.merge(groups, on=cols, how="left")
+                else:
+                    groups = data.select(cols).unique(maintain_order=True)
+                    groups = groups.with_row_index(name="_group_id")
+                    data = data.join(groups, on=cols, how="left")
+                return data, groups
+
+            def _map_group_id(data, groups, cols):
+                if isinstance(data, pd.DataFrame):
+                    joined = data[cols].merge(groups, on=cols, how="left")
+                    return joined["_group_id"].to_numpy()
+                joined = data.select(cols).join(groups, on=cols, how="left")
+                return joined["_group_id"].to_numpy()
+
+            for group_cols, tfms in group_tfms.items():
+                for col in group_cols:
+                    if col not in df.columns:
+                        raise ValueError(f"Groupby column '{col}' not found in dataframe.")
+                group_cols_list = list(group_cols)
+                missing = [c for c in group_cols_list if c not in self.static_features_.columns]
+                if missing:
+                    raise ValueError(
+                        "Groupby columns must be static features. "
+                        f"Missing from static_features: {missing}."
+                    )
+                group_df = ufp.group_by_agg(
+                    df_for_group[group_cols_list + [time_col, target_col]],
+                    group_cols_list + [time_col],
+                    {target_col: "sum"},
+                    maintain_order=True,
+                )
+                group_df = ufp.sort(group_df, by=group_cols_list + [time_col])
+                group_df, groups = _add_group_id(group_df, group_cols_list)
+                group_df = ufp.drop_index_if_pandas(group_df)
+                groups = ufp.drop_index_if_pandas(groups)
+                if isinstance(group_df, pd.DataFrame):
+                    process_df = group_df[["_group_id", time_col, target_col]]
+                else:
+                    process_df = group_df.select(["_group_id", time_col, target_col])
+                processed = ufp.process_df(
+                    process_df,
+                    id_col="_group_id",
+                    time_col=time_col,
+                    target_col=target_col,
+                )
+                if processed.sort_idxs is not None:
+                    group_df = ufp.take_rows(group_df, processed.sort_idxs)
+                group_df = ufp.drop_index_if_pandas(group_df)
+                group_values = processed.data[:, 0]
+                ga = GroupedArray(group_values, processed.indptr)
+                group_uids = processed.uids
+                series_group_id = _map_group_id(
+                    self.static_features_, groups, group_cols_list
+                )
+                group_idx = series_group_id.astype(np.int64, copy=False)
+                self._group_states[group_cols] = {
+                    "ga": ga,
+                    "df": group_df,
+                    "group_cols": group_cols_list,
+                    "groups": groups,
+                    "group_uids": group_uids,
+                    "group_idx": group_idx,
+                }
         return self
 
     def _compute_transforms(
@@ -337,6 +480,9 @@ class TimeSeries:
         """Compute the transformations defined in the constructor.
 
         If `self.num_threads > 1` these are computed using multithreading."""
+        transforms = self._get_local_tfms(transforms)
+        if not transforms:
+            return {}
         if self.num_threads == 1 or len(transforms) == 1:
             out = self.ga.apply_transforms(
                 transforms=transforms, updates_only=updates_only
@@ -383,6 +529,55 @@ class TimeSeries:
         features = self._compute_transforms(
             transforms=self.transforms, updates_only=False
         )
+        global_tfms = self._get_global_tfms()
+        if global_tfms:
+            assert self._global_ga is not None
+            assert self._global_times is not None
+            global_vals = self._global_ga.apply_transforms(
+                transforms=global_tfms, updates_only=False
+            )
+            if isinstance(df, pd.DataFrame):
+                for name, vals in global_vals.items():
+                    mapped = pd.Series(vals, index=self._global_times)
+                    features[name] = df[self.time_col].map(mapped).to_numpy()
+            else:
+                global_df = pl_DataFrame({self.time_col: self._global_times})
+                for name, vals in global_vals.items():
+                    global_df = global_df.with_columns(
+                        pl.Series(name=name, values=vals)
+                    )
+                joined = df.select(self.time_col).join(
+                    global_df, on=self.time_col, how="left"
+                )
+                for name in global_vals.keys():
+                    features[name] = joined[name].to_numpy()
+        group_tfms = self._get_group_tfms()
+        if group_tfms:
+            for group_cols, tfms in group_tfms.items():
+                state = self._group_states[group_cols]
+                group_df = state["df"]
+                ga = state["ga"]
+                group_vals = ga.apply_transforms(transforms=tfms, updates_only=False)
+                group_cols_list = state["group_cols"]
+                feature_cols = list(group_vals.keys())
+                if isinstance(df, pd.DataFrame):
+                    join_df = group_df[group_cols_list + [self.time_col]].copy()
+                    for name, vals in group_vals.items():
+                        join_df[name] = vals
+                    joined = df[group_cols_list + [self.time_col]].merge(
+                        join_df, on=group_cols_list + [self.time_col], how="left"
+                    )
+                    for name in feature_cols:
+                        features[name] = joined[name].to_numpy()
+                else:
+                    join_df = group_df.select(group_cols_list + [self.time_col])
+                    for name, vals in group_vals.items():
+                        join_df = join_df.with_columns(pl.Series(name=name, values=vals))
+                    joined = df.select(group_cols_list + [self.time_col]).join(
+                        join_df, on=group_cols_list + [self.time_col], how="left"
+                    )
+                    for name in feature_cols:
+                        features[name] = joined[name].to_numpy()
         # filter out the features that already exist in df to avoid overwriting them
         features = {k: v for k, v in features.items() if k not in df}
         if self._restore_idxs is not None:
@@ -553,6 +748,31 @@ class TimeSeries:
         self.y_pred.append(new)
         new_arr = np.asarray(new)
         self.ga = self.ga.append(new_arr)
+        global_tfms = self._get_global_tfms()
+        if global_tfms:
+            assert self._global_ga is not None
+            new_val = np.array([new_arr.sum()], dtype=self.ga.data.dtype)
+            combined = np.concatenate([self._global_ga.data, new_val])
+            indptr = np.array([0, combined.size], dtype=np.int32)
+            self._global_ga = GroupedArray(combined, indptr)
+            if self._global_times is not None:
+                if isinstance(self._global_times, pl_Series):
+                    self._global_times = pl.concat(
+                        [self._global_times, pl.Series([self.curr_dates[0]])]
+                    )
+                else:
+                    self._global_times = self._global_times.append(
+                        pd.Index([self.curr_dates[0]])
+                    )
+        group_tfms = self._get_group_tfms()
+        if group_tfms:
+            for group_cols, _tfms in group_tfms.items():
+                state = self._group_states[group_cols]
+                group_idx = state["group_idx"]
+                n_groups = len(state["group_uids"])
+                group_sums = np.zeros(n_groups, dtype=self.ga.data.dtype)
+                np.add.at(group_sums, group_idx, new_arr)
+                state["ga"] = state["ga"].append(group_sums)
 
     def _update_features(self) -> DataFrame:
         """Compute the current values of all the features using the latest values of the time series."""
@@ -562,6 +782,23 @@ class TimeSeries:
         self.test_dates.append(self.curr_dates)
 
         features = self._compute_transforms(self.transforms, updates_only=True)
+        global_tfms = self._get_global_tfms()
+        if global_tfms:
+            assert self._global_ga is not None
+            global_updates = self._global_ga.apply_transforms(
+                transforms=global_tfms, updates_only=True
+            )
+            n_series = len(self.uids)
+            for name, vals in global_updates.items():
+                features[name] = np.full(n_series, vals[0])
+        group_tfms = self._get_group_tfms()
+        if group_tfms:
+            for group_cols, tfms in group_tfms.items():
+                state = self._group_states[group_cols]
+                updates = state["ga"].apply_transforms(transforms=tfms, updates_only=True)
+                group_idx = state["group_idx"]
+                for name, vals in updates.items():
+                    features[name] = vals[group_idx]
 
         for feature in self.date_features:
             feat_name, feat_vals = self._compute_date_feature(self.curr_dates, feature)
@@ -632,11 +869,19 @@ class TimeSeries:
         ga = copy.copy(self.ga)
         # if these save state (like ExpandingMean) they'll get modified by the updates
         lag_tfms = copy.deepcopy(self.transforms)
+        group_states = copy.deepcopy(getattr(self, "_group_states", {}))
+        global_ga = copy.copy(getattr(self, "_global_ga", None))
+        global_times = copy.copy(getattr(self, "_global_times", None))
         try:
             yield
         finally:
             self.ga = ga
             self.transforms = lag_tfms
+            if global_ga is not None or global_times is not None:
+                self._global_ga = global_ga
+                self._global_times = global_times
+            if group_states:
+                self._group_states = group_states
 
     def _predict_setup(self) -> None:
         # TODO: move to utils
@@ -761,6 +1006,12 @@ class TimeSeries:
         X_df: Optional[DFType] = None,
         ids: Optional[List[str]] = None,
     ) -> DFType:
+        if ids is not None and (self._get_global_tfms() or self._get_group_tfms()):
+            raise ValueError(
+                "Cannot use `ids` with global or group lag transforms. "
+                "These transforms require forecasting all series together."
+            )
+        self._check_aligned_ends()
         if ids is not None:
             unseen = set(ids) - set(self.uids)
             if unseen:
@@ -965,6 +1216,29 @@ class TimeSeries:
         df = ufp.sort(df, by=[self.id_col, self.time_col])
         values = df[self.target_col].to_numpy()
         values = values.astype(self.ga.data.dtype, copy=False)
+        self._check_aligned_ends()
+        if self._get_global_tfms() or self._get_group_tfms():
+            if isinstance(df, pd.DataFrame):
+                expected_ids = pd.Index(uids).union(pd.Index(new_ids))
+                expected_count = len(expected_ids)
+                counts = df.groupby(self.time_col, observed=True)[self.id_col].nunique()
+                bad_times = counts[counts != expected_count]
+                if not bad_times.empty:
+                    raise ValueError(
+                        "Global and group lag transforms require updates to include all series for each timestamp."
+                    )
+            else:
+                expected_ids = pl.concat([pl.Series(uids), pl.Series(new_ids)]).unique()
+                expected_count = expected_ids.len()
+                counts = (
+                    df.group_by(self.time_col)
+                    .agg(pl.col(self.id_col).n_unique().alias("_n_ids"))
+                )
+                bad_times = counts.filter(pl.col("_n_ids") != expected_count)
+                if bad_times.height:
+                    raise ValueError(
+                        "Global and group lag transforms require updates to include all series for each timestamp."
+                    )
         if validate_input:   
             self._validate_new_df(df=df) 
         id_counts = ufp.counts_by_id(df, self.id_col)
@@ -1017,3 +1291,121 @@ class TimeSeries:
             new_values=values,
             new_groups=new_groups.to_numpy(),
         )
+        global_tfms = self._get_global_tfms()
+        if global_tfms:
+            global_df = ufp.group_by_agg(
+                df[[self.time_col, self.target_col]],
+                self.time_col,
+                {self.target_col: "sum"},
+                maintain_order=True,
+            )
+            global_df = ufp.sort(global_df, by=self.time_col)
+            global_values = global_df[self.target_col].to_numpy().astype(
+                self.ga.data.dtype
+            )
+            if self._global_ga is None:
+                self._global_ga = GroupedArray(
+                    global_values,
+                    np.array([0, global_values.size], dtype=np.int32),
+                )
+            else:
+                combined = np.concatenate([self._global_ga.data, global_values])
+                indptr = np.array([0, combined.size], dtype=np.int32)
+                self._global_ga = GroupedArray(combined, indptr)
+            if self._global_times is None:
+                if isinstance(global_df, pd.DataFrame):
+                    self._global_times = pd.Index(global_df[self.time_col])
+                else:
+                    self._global_times = global_df[self.time_col]
+            else:
+                if isinstance(self._global_times, pl_Series):
+                    self._global_times = pl.concat(
+                        [self._global_times, global_df[self.time_col]]
+                    )
+                else:
+                    self._global_times = self._global_times.append(
+                        pd.Index(global_df[self.time_col])
+                    )
+        group_tfms = self._get_group_tfms()
+        if group_tfms:
+            def _attach_group_id(data, groups, cols):
+                if isinstance(data, pd.DataFrame):
+                    return data.merge(groups, on=cols, how="left")
+                return data.join(groups, on=cols, how="left")
+
+            for group_cols in group_tfms.keys():
+                state = self._group_states[group_cols]
+                group_cols_list = state["group_cols"]
+                group_df = ufp.group_by_agg(
+                    df[group_cols_list + [self.time_col, self.target_col]],
+                    group_cols_list + [self.time_col],
+                    {self.target_col: "sum"},
+                    maintain_order=True,
+                )
+                group_df = ufp.sort(group_df, by=group_cols_list + [self.time_col])
+                groups = state["groups"]
+                group_df = _attach_group_id(group_df, groups, group_cols_list)
+                if isinstance(group_df, pd.DataFrame):
+                    missing = group_df["_group_id"].isna()
+                    if missing.any():
+                        new_groups = group_df.loc[missing, group_cols_list].drop_duplicates()
+                        new_groups = new_groups.reset_index(drop=True)
+                        start = len(groups)
+                        new_groups["_group_id"] = np.arange(
+                            start, start + len(new_groups), dtype=np.int64
+                        )
+                        groups = pd.concat([groups, new_groups], ignore_index=True)
+                        group_df = group_df.drop(columns="_group_id").merge(
+                            groups, on=group_cols_list, how="left"
+                        )
+                else:
+                    missing = group_df["_group_id"].is_null()
+                    if missing.any():
+                        new_groups = (
+                            group_df.filter(missing)
+                            .select(group_cols_list)
+                            .unique(maintain_order=True)
+                        )
+                        start = groups.height
+                        new_groups = new_groups.with_row_index(
+                            name="_group_id", offset=start
+                        )
+                        groups = pl.concat([groups, new_groups], how="vertical")
+                        group_df = group_df.drop("_group_id").join(
+                            groups, on=group_cols_list, how="left"
+                        )
+                state["groups"] = groups
+                id_counts = ufp.counts_by_id(group_df, "_group_id")
+                uids = state["group_uids"]
+                if isinstance(uids, pd.Index):
+                    uids = pd.Series(uids)
+                uids, new_ids = ufp.match_if_categorical(uids, group_df["_group_id"])
+                group_df = ufp.assign_columns(group_df, "_group_id", new_ids)
+                group_df = ufp.sort(group_df, by=["_group_id", self.time_col])
+                values = group_df[self.target_col].to_numpy().astype(self.ga.data.dtype, copy=False)
+                try:
+                    sizes = ufp.join(uids, id_counts, on="_group_id", how="outer_coalesce")
+                except (KeyError, ValueError):
+                    sizes = ufp.join(uids, id_counts, on="_group_id", how="outer")
+                sizes = ufp.fill_null(sizes, {"counts": 0})
+                sizes = ufp.sort(sizes, by="_group_id")
+                new_groups = ~ufp.is_in(sizes["_group_id"], uids)
+                state["ga"] = state["ga"].append_several(
+                    new_sizes=sizes["counts"].to_numpy().astype(np.int32),
+                    new_values=values,
+                    new_groups=new_groups.to_numpy(),
+                )
+                state["group_uids"] = ufp.sort(sizes["_group_id"])
+                if isinstance(self.static_features_, pd.DataFrame):
+                    series_group_id = self.static_features_[group_cols_list].merge(
+                        groups, on=group_cols_list, how="left"
+                    )["_group_id"].to_numpy()
+                    state["group_idx"] = series_group_id.astype(np.int64, copy=False)
+                else:
+                    series_group_id = (
+                        self.static_features_
+                        .select(group_cols_list)
+                        .join(groups, on=group_cols_list, how="left")["_group_id"]
+                        .to_numpy()
+                    )
+                    state["group_idx"] = series_group_id.astype(np.int64, copy=False)

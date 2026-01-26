@@ -28,11 +28,22 @@ from typing import Callable, Optional, Sequence
 import coreforecast.lag_transforms as core_tfms
 import numpy as np
 from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
-from sklearn.base import BaseEstimator, clone
+from sklearn.base import BaseEstimator
 
 
 def _pascal2camel(pascal_str: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_str).lower()
+
+def _normalize_groupby(groupby):
+    if groupby is None:
+        return None
+    if isinstance(groupby, str):
+        groupby = [groupby]
+    else:
+        groupby = list(groupby)
+    if not groupby:
+        return None
+    return groupby
 
 
 class _BaseLagTransform(BaseEstimator):
@@ -40,11 +51,14 @@ class _BaseLagTransform(BaseEstimator):
         return {
             k: v
             for k, v in inspect.signature(self.__class__.__init__).parameters.items()
-            if k != "self"
+            if k != "self" and v.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
         }
 
     def _set_core_tfm(self, lag: int) -> "_BaseLagTransform":
         init_args = {k: getattr(self, k) for k in self._get_init_signature()}
+        init_args.pop("global_", None)
+        init_args.pop("global", None)
+        init_args.pop("groupby", None)
         self._core_tfm = getattr(core_tfms, self.__class__.__name__)(
             lag=lag, **init_args
         )
@@ -52,11 +66,19 @@ class _BaseLagTransform(BaseEstimator):
 
     def _get_name(self, lag: int) -> str:
         init_params = self._get_init_signature()
-        result = f"{_pascal2camel(self.__class__.__name__)}_lag{lag}"
+        prefix = ""
+        groupby = getattr(self, "groupby", None)
+        if getattr(self, "global_", False):
+            prefix = "global_"
+        elif groupby:
+            group_str = "__".join(groupby)
+            prefix = f"groupby_{group_str}_"
+        result = f"{prefix}{_pascal2camel(self.__class__.__name__)}_lag{lag}"
         changed_params = [
             f"{name}{getattr(self, name)}"
             for name, arg in init_params.items()
             if arg.default != getattr(self, name)
+            and name not in {"global_", "groupby"}
         ]
         if changed_params:
             result += "_" + "_".join(changed_params)
@@ -112,15 +134,36 @@ class Lag(_BaseLagTransform):
 class _RollingBase(_BaseLagTransform):
     "Rolling statistic"
 
-    def __init__(self, window_size: int, min_samples: Optional[int] = None):
+    def __init__(
+        self,
+        window_size: int,
+        min_samples: Optional[int] = None,
+        global_: bool = False,
+        groupby: Optional[Sequence[str]] = None,
+        **kwargs,
+    ):
         """
         Args:
             window_size (int): Number of samples in the window.
             min_samples (int, optional): Minimum samples required to output the statistic.
                 If `None`, will be set to `window_size`. Defaults to None.
+            global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
+                Requires all series to end at the same timestamp. Defaults to False.
+            groupby (Sequence[str], optional): Column names to group by before computing the statistic.
+                Columns must be static features. Mutually exclusive with `global_`. Defaults to None.
         """
+        if "global" in kwargs:
+            global_ = kwargs.pop("global")
+        if "groupby" in kwargs:
+            groupby = kwargs.pop("groupby")
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
         self.window_size = window_size
         self.min_samples = min_samples
+        self.global_ = global_
+        self.groupby = _normalize_groupby(groupby)
+        if self.global_ and self.groupby:
+            raise ValueError("`global_` and `groupby` can't be used together.")
 
     @property
     def update_samples(self) -> int:
@@ -140,8 +183,22 @@ class RollingMax(_RollingBase): ...
 
 
 class RollingQuantile(_RollingBase):
-    def __init__(self, p: float, window_size: int, min_samples: Optional[int] = None):
-        super().__init__(window_size=window_size, min_samples=min_samples)
+    def __init__(
+        self,
+        p: float,
+        window_size: int,
+        min_samples: Optional[int] = None,
+        global_: bool = False,
+        groupby: Optional[Sequence[str]] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            window_size=window_size,
+            min_samples=min_samples,
+            global_=global_,
+            groupby=groupby,
+            **kwargs,
+        )
         self.p = p
 
     def _set_core_tfm(self, lag: int):
@@ -158,7 +215,13 @@ class _Seasonal_RollingBase(_BaseLagTransform):
     """Rolling statistic over seasonal periods"""
 
     def __init__(
-        self, season_length: int, window_size: int, min_samples: Optional[int] = None
+        self,
+        season_length: int,
+        window_size: int,
+        min_samples: Optional[int] = None,
+        global_: bool = False,
+        groupby: Optional[Sequence[str]] = None,
+        **kwargs,
     ):
         """
         Args:
@@ -166,10 +229,24 @@ class _Seasonal_RollingBase(_BaseLagTransform):
             window_size (int): Number of samples in the window.
             min_samples (int, optional): Minimum samples required to output the statistic.
                 If `None`, will be set to `window_size`. Defaults to None.
+            global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
+                Requires all series to end at the same timestamp. Defaults to False.
+            groupby (Sequence[str], optional): Column names to group by before computing the statistic.
+                Columns must be static features. Mutually exclusive with `global_`. Defaults to None.
         """
+        if "global" in kwargs:
+            global_ = kwargs.pop("global")
+        if "groupby" in kwargs:
+            groupby = kwargs.pop("groupby")
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
         self.season_length = season_length
         self.window_size = window_size
         self.min_samples = min_samples
+        self.global_ = global_
+        self.groupby = _normalize_groupby(groupby)
+        if self.global_ and self.groupby:
+            raise ValueError("`global_` and `groupby` can't be used together.")
 
     @property
     def update_samples(self) -> int:
@@ -195,19 +272,47 @@ class SeasonalRollingQuantile(_Seasonal_RollingBase):
         season_length: int,
         window_size: int,
         min_samples: Optional[int] = None,
+        global_: bool = False,
+        groupby: Optional[Sequence[str]] = None,
+        **kwargs,
     ):
         super().__init__(
             season_length=season_length,
             window_size=window_size,
             min_samples=min_samples,
+            global_=global_,
+            groupby=groupby,
+            **kwargs,
         )
         self.p = p
 
 
 class _ExpandingBase(_BaseLagTransform):
-    """Expanding statistic"""
+    """Expanding statistic
 
-    def __init__(self): ...
+    Args:
+        global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
+            Requires all series to end at the same timestamp. Defaults to False.
+        groupby (Sequence[str], optional): Column names to group by before computing the statistic.
+            Columns must be static features. Mutually exclusive with `global_`. Defaults to None.
+    """
+
+    def __init__(
+        self,
+        global_: bool = False,
+        groupby: Optional[Sequence[str]] = None,
+        **kwargs,
+    ):
+        if "global" in kwargs:
+            global_ = kwargs.pop("global")
+        if "groupby" in kwargs:
+            groupby = kwargs.pop("groupby")
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
+        self.global_ = global_
+        self.groupby = _normalize_groupby(groupby)
+        if self.global_ and self.groupby:
+            raise ValueError("`global_` and `groupby` can't be used together.")
 
     @property
     def update_samples(self) -> int:
@@ -227,7 +332,14 @@ class ExpandingMax(_ExpandingBase): ...
 
 
 class ExpandingQuantile(_ExpandingBase):
-    def __init__(self, p: float):
+    def __init__(
+        self,
+        p: float,
+        global_: bool = False,
+        groupby: Optional[Sequence[str]] = None,
+        **kwargs,
+    ):
+        super().__init__(global_=global_, groupby=groupby, **kwargs)
         self.p = p
 
     @property
@@ -240,10 +352,30 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
 
     Args:
         alpha (float): Smoothing factor.
+        global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
+            Requires all series to end at the same timestamp. Defaults to False.
+        groupby (Sequence[str], optional): Column names to group by before computing the statistic.
+            Columns must be static features. Mutually exclusive with `global_`. Defaults to None.
     """
 
-    def __init__(self, alpha: float):
+    def __init__(
+        self,
+        alpha: float,
+        global_: bool = False,
+        groupby: Optional[Sequence[str]] = None,
+        **kwargs,
+    ):
+        if "global" in kwargs:
+            global_ = kwargs.pop("global")
+        if "groupby" in kwargs:
+            groupby = kwargs.pop("groupby")
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
         self.alpha = alpha
+        self.global_ = global_
+        self.groupby = _normalize_groupby(groupby)
+        if self.global_ and self.groupby:
+            raise ValueError("`global_` and `groupby` can't be used together.")
 
     @property
     def update_samples(self) -> int:
@@ -261,12 +393,14 @@ class Offset(_BaseLagTransform):
     def __init__(self, tfm: _BaseLagTransform, n: int):
         self.tfm = tfm
         self.n = n
+        self.global_ = getattr(tfm, "global_", False)
+        self.groupby = getattr(tfm, "groupby", None)
 
     def _get_name(self, lag: int) -> str:
         return self.tfm._get_name(lag + self.n)
 
     def _set_core_tfm(self, lag: int) -> "Offset":
-        self.tfm = clone(self.tfm)._set_core_tfm(lag + self.n)
+        self.tfm = copy.deepcopy(self.tfm)._set_core_tfm(lag + self.n)
         self._core_tfm = self.tfm._core_tfm
         return self
 
@@ -290,10 +424,20 @@ class Combine(_BaseLagTransform):
         self.tfm1 = tfm1
         self.tfm2 = tfm2
         self.operator = operator
+        global_1 = getattr(tfm1, "global_", False)
+        global_2 = getattr(tfm2, "global_", False)
+        groupby_1 = getattr(tfm1, "groupby", None)
+        groupby_2 = getattr(tfm2, "groupby", None)
+        if global_1 != global_2:
+            raise ValueError("Can't combine transforms with different global_ settings.")
+        if (groupby_1 or groupby_2) and groupby_1 != groupby_2:
+            raise ValueError("Can't combine transforms with different groupby settings.")
+        self.global_ = global_1
+        self.groupby = groupby_1
 
     def _set_core_tfm(self, lag: int) -> "Combine":
-        self.tfm1 = clone(self.tfm1)._set_core_tfm(lag)
-        self.tfm2 = clone(self.tfm2)._set_core_tfm(lag)
+        self.tfm1 = copy.deepcopy(self.tfm1)._set_core_tfm(lag)
+        self.tfm2 = copy.deepcopy(self.tfm2)._set_core_tfm(lag)
         return self
 
     def _get_name(self, lag: int) -> str:
