@@ -433,6 +433,54 @@ def test_cv_no_refit(setup_forecast_data):
     # The forecasts should be different for the second window when refit=True vs refit=False
     assert not no_refit_other_windows['LGBMRegressor'].equals(refit_other_windows['LGBMRegressor'])
 
+
+@pytest.mark.parametrize("refit", [True, False])
+def test_cv_weight_col(refit):
+    """Test that cross_validation works with weight_col and weights are used.
+
+    When refit=False, this is a regression test for issue #497 where the
+    second CV window would fail because weight_col was not passed to new_ts._fit().
+    Also verifies that weights actually affect predictions.
+    """
+    from sklearn.linear_model import Ridge
+
+    series = generate_daily_series(2, min_length=100, max_length=100)
+
+    fcst = MLForecast(
+        models={'lr': Ridge()},
+        freq='D',
+        lags=[1],
+        date_features=['dayofweek'],
+    )
+
+    # Run with uniform weights
+    series['weight'] = 1.0
+    result_uniform = fcst.cross_validation(
+        series,
+        weight_col='weight',
+        static_features=[],
+        n_windows=2,
+        h=7,
+        refit=refit,
+    )
+
+    # Run with skewed weights (higher weight on recent samples)
+    series['weight'] = np.arange(len(series), dtype=float)
+    result_skewed = fcst.cross_validation(
+        series,
+        weight_col='weight',
+        static_features=[],
+        n_windows=2,
+        h=7,
+        refit=refit,
+    )
+
+    assert result_uniform.shape[0] == 2 * 2 * 7  # 2 series * 2 windows * 7 horizon
+    assert result_skewed.shape[0] == 2 * 2 * 7
+    # Predictions should differ when weights change, proving weights are used
+    assert not np.allclose(result_uniform['lr'].values, result_skewed['lr'].values)
+
+
 def test_cv_input_size(setup_forecast_data, fcst):
     _, train, _ = setup_forecast_data
     horizon = 48

@@ -856,6 +856,7 @@ class MLForecast:
                 target_col=self.ts.target_col,
                 static_features=self.ts.static_features,
                 keep_last_n=self.ts.keep_last_n,
+                weight_col=self.ts.weight_col,
             )
             core_tfms = new_ts._get_core_lag_tfms()
             if core_tfms:
