@@ -9,7 +9,7 @@ description = "Forecasting utilities"
 authors = [{name = "Nixtla", email = "business@nixtla.io"}]
 license = {text = "Apache Software License 2.0"}
 readme = "README.md"
-requires-python=">=3.9"
+requires-python=">=3.10"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -25,34 +25,32 @@ keywords = ["time-series", "analysis", "forecasting"]
 dependencies = [
     "numpy",
     "packaging",
-    "pandas>=1.1.1",
+    "pandas<3.0.0",
     "narwhals>=2.0",
 ]
 
 [tool.setuptools.dynamic]
 version = {attr = "utilsforecast.__version__"}
 
-[project.optional-dependencies]
+[dependency-groups]
 plotting = [
-    "pandas[plot]",
+    "pandas[plot]<3.0.0",
     "plotly",
-    "plotly-resampler",
+    "plotly-resampler; python_version < '3.14'",
 ]
 polars = [
     "polars[numpy]<=1.31",
 ]
 dev = [
-    "black",
     "datasetsforecast==0.0.8",
-    "nbformat",
     "numba>=0.58.0",
     "pip",
     "pre-commit",
     "pyarrow",
     "scipy",
-    "pandas[plot]",
+    "pandas[plot]<3.0.0",
     "plotly",
-    "plotly-resampler",
+    "plotly-resampler; python_version < '3.14'",
     "polars[numpy]",
     "pytest",
     "pytest-cov",
@@ -104,4 +102,4 @@ show_missing = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-#addopts = "--cov utilsforecast -vv"
+addopts = "--cov utilsforecast -vv"
