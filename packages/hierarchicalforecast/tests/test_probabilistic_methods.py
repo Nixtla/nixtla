@@ -1,9 +1,11 @@
 import warnings
 
+import narwhals.stable.v2 as nw
 import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from hierarchicalforecast.core import HierarchicalReconciliation
 from hierarchicalforecast.evaluation import (
     energy_score,
     log_score,
@@ -15,6 +17,7 @@ from hierarchicalforecast.methods import BottomUp
 from hierarchicalforecast.probabilistic_methods import (
     PERMBU,
     Bootstrap,
+    Conformal,
     CovarianceType,
     Normality,
 )
@@ -980,3 +983,194 @@ def test_quantile_loss_protections(test_data, samplers):
         scaled_crps(test_data["y_test"], bootstrap_quantiles, invalid_quantiles)
 
     assert "between 0 and 1" in str(exc_info.value)
+
+
+class TestConformal:
+    """Tests for Conformal class."""
+
+    def test_conformal_basic_functionality(self, test_data):
+        """Test basic conformal reconciliation functionality."""
+        cls_bottom_up = BottomUp()
+        P, W = cls_bottom_up._get_PW_matrices(S=test_data["S"])
+
+        conformal = Conformal(
+            S=test_data["S"],
+            P=P,
+            y_hat=test_data["y_hat_base"],
+            y_cal=test_data["y_base"],
+            y_hat_cal=test_data["y_hat_base_insample"],
+        )
+        samples = conformal.get_samples(num_samples=50)
+        assert samples.shape == (test_data["S"].shape[0], test_data["h"], 50)
+
+    def test_conformal_prediction_levels(self, test_data):
+        """Test that prediction levels are computed correctly."""
+        cls_bottom_up = BottomUp()
+        P, W = cls_bottom_up._get_PW_matrices(S=test_data["S"])
+
+        conformal = Conformal(
+            S=test_data["S"],
+            P=P,
+            y_hat=test_data["y_hat_base"],
+            y_cal=test_data["y_base"],
+            y_hat_cal=test_data["y_hat_base_insample"],
+        )
+
+        res = {"mean": conformal.y_hat_rec}
+        res = conformal.get_prediction_levels(res, level=[90, 95])
+
+        assert "lo-90" in res
+        assert "hi-90" in res
+        assert "lo-95" in res
+        assert "hi-95" in res
+        assert np.all(res["hi-90"] >= res["lo-90"])
+        assert np.all(res["hi-95"] >= res["lo-95"])
+
+    def test_conformal_insufficient_calibration(self, test_data):
+        """Test that insufficient calibration observations raises ValueError."""
+        cls_bottom_up = BottomUp()
+        P, W = cls_bottom_up._get_PW_matrices(S=test_data["S"])
+
+        with pytest.raises(ValueError) as exc_info:
+            Conformal(
+                S=test_data["S"],
+                P=P,
+                y_hat=test_data["y_hat_base"],
+                y_cal=np.random.randn(7, 1),
+                y_hat_cal=np.random.randn(7, 1),
+            )
+        assert "At least 2 observations are required" in str(exc_info.value)
+
+    def test_conformal_reproducibility_with_seed(self, test_data):
+        """Test that setting seed produces reproducible samples."""
+        cls_bottom_up = BottomUp()
+        P, W = cls_bottom_up._get_PW_matrices(S=test_data["S"])
+
+        conformal1 = Conformal(
+            S=test_data["S"],
+            P=P,
+            y_hat=test_data["y_hat_base"],
+            y_cal=test_data["y_base"],
+            y_hat_cal=test_data["y_hat_base_insample"],
+            seed=42,
+        )
+
+        conformal2 = Conformal(
+            S=test_data["S"],
+            P=P,
+            y_hat=test_data["y_hat_base"],
+            y_cal=test_data["y_base"],
+            y_hat_cal=test_data["y_hat_base_insample"],
+            seed=42,
+        )
+
+        samples1 = conformal1.get_samples(num_samples=50)
+        samples2 = conformal2.get_samples(num_samples=50)
+        np.testing.assert_array_equal(samples1, samples2)
+
+    def test_reconciliation_coherency_via_diagnostics(self, strict_hierarchy_data):
+        """Test that reconciliation produces coherent forecasts using diagnostics.
+
+        Uses the coherency diagnostics infrastructure to verify that reconciled
+        forecasts satisfy the hierarchical constraints: S @ bottom = all.
+        This follows the established pattern in test_core.py.
+        """
+        Y_hat_df = strict_hierarchy_data["Y_hat_df"]
+        Y_train_df = strict_hierarchy_data["Y_train_df"]
+        S_df = strict_hierarchy_data["S_df"]
+        tags = strict_hierarchy_data["tags"]
+
+        hrec = HierarchicalReconciliation(reconcilers=[BottomUp()])
+        reconciled = hrec.reconcile(
+            Y_hat_df=Y_hat_df,
+            Y_df=Y_train_df,
+            S_df=S_df,
+            tags=tags,
+            diagnostics=True,
+        )
+
+        # Verify reconciliation completed
+        reconciled_nw = nw.from_native(reconciled)
+        assert "y_model/BottomUp" in reconciled_nw.columns
+
+        # Verify coherency using diagnostics (consistent with test_core.py pattern)
+        diag = nw.from_native(hrec.diagnostics)
+        is_coherent = diag.filter(
+            (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+        )["y_model/BottomUp"].to_list()[0]
+        assert is_coherent == 1.0, "Reconciled forecasts should be coherent"
+
+    def test_conformal_integration_via_intervals_method(self, strict_hierarchy_data):
+        """Test that conformal works through the HierarchicalReconciliation API."""
+        Y_hat_df = strict_hierarchy_data["Y_hat_df"]
+        Y_train_df = strict_hierarchy_data["Y_train_df"]
+        S_df = strict_hierarchy_data["S_df"]
+        tags = strict_hierarchy_data["tags"]
+
+        hrec = HierarchicalReconciliation(reconcilers=[BottomUp()])
+        reconciled = hrec.reconcile(
+            Y_hat_df=Y_hat_df,
+            Y_df=Y_train_df,
+            S_df=S_df,
+            tags=tags,
+            level=[90],
+            intervals_method="conformal",
+        )
+
+        reconciled_nw = nw.from_native(reconciled)
+        # Check that conformal intervals were computed
+        assert "y_model/BottomUp-lo-90" in reconciled_nw.columns
+        assert "y_model/BottomUp-hi-90" in reconciled_nw.columns
+        # Check that hi >= lo
+        lo_vals = reconciled_nw["y_model/BottomUp-lo-90"].to_numpy()
+        hi_vals = reconciled_nw["y_model/BottomUp-hi-90"].to_numpy()
+        assert np.all(hi_vals >= lo_vals)
+
+    def test_conformal_prediction_quantiles(self, test_data):
+        """Test that prediction quantiles are computed correctly."""
+        cls_bottom_up = BottomUp()
+        P, W = cls_bottom_up._get_PW_matrices(S=test_data["S"])
+
+        conformal = Conformal(
+            S=test_data["S"],
+            P=P,
+            y_hat=test_data["y_hat_base"],
+            y_cal=test_data["y_base"],
+            y_hat_cal=test_data["y_hat_base_insample"],
+        )
+
+        quantiles = np.array([0.025, 0.5, 0.975])
+        res = {"mean": conformal.y_hat_rec}
+        res = conformal.get_prediction_quantiles(res, quantiles)
+
+        assert "quantiles" in res
+        assert res["quantiles"].shape == (
+            test_data["S"].shape[0],
+            test_data["h"],
+            len(quantiles),
+        )
+        # Check quantiles are monotonically increasing
+        for i in range(len(quantiles) - 1):
+            assert np.all(res["quantiles"][:, :, i] <= res["quantiles"][:, :, i + 1])
+
+    def test_conformal_invalid_num_samples(self, test_data):
+        """Test that invalid num_samples raises ValueError."""
+        cls_bottom_up = BottomUp()
+        P, W = cls_bottom_up._get_PW_matrices(S=test_data["S"])
+
+        conformal = Conformal(
+            S=test_data["S"],
+            P=P,
+            y_hat=test_data["y_hat_base"],
+            y_cal=test_data["y_base"],
+            y_hat_cal=test_data["y_hat_base_insample"],
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            conformal.get_samples(num_samples=0)
+        assert "positive integer" in str(exc_info.value)
+
+        with pytest.raises(ValueError) as exc_info:
+            conformal.get_samples(num_samples=-5)
+        assert "positive integer" in str(exc_info.value)
+

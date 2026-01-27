@@ -316,7 +316,7 @@ class HierarchicalReconciliation:
         # ----------------------------------- Check Input's Validity ----------------------------------#
 
         # Check input's validity
-        if intervals_method not in ["normality", "bootstrap", "permbu"]:
+        if intervals_method not in ["normality", "bootstrap", "permbu", "conformal"]:
             raise ValueError(f"Unknown interval method: {intervals_method}")
 
         # Check absence of Y_nw for insample reconcilers
@@ -327,7 +327,7 @@ class HierarchicalReconciliation:
                     raise ValueError(
                         f"You need to provide `Y_df` for reconciler {reconciler_name}"
                     )
-            if intervals_method in ["bootstrap", "permbu"]:
+            if intervals_method in ["bootstrap", "permbu", "conformal"]:
                 raise ValueError(
                     f"You need to provide `Y_df` when using intervals_method=`{intervals_method}`."
                 )
@@ -743,7 +743,7 @@ class HierarchicalReconciliation:
                 )
 
                 if (
-                    intervals_method in ["bootstrap", "normality", "permbu"]
+                    intervals_method in ["bootstrap", "normality", "permbu", "conformal"]
                     and level is not None
                 ):
                     level.sort()

@@ -43,7 +43,8 @@
               "examples/australiandomestictourism-intervals.html",
               "examples/australiandomestictourism-bootstraped-intervals.html",
               "examples/australiandomestictourism-permbu-intervals.html",
-              "examples/tourismlarge-evaluation.html"
+              "examples/tourismlarge-evaluation.html",
+              "examples/probabilistic-reconciliation-comparison.html"
             ]
           },
           {

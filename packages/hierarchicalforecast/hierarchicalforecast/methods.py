@@ -21,7 +21,7 @@ from hierarchicalforecast.utils import (
     is_strictly_hierarchical,
 )
 
-from .probabilistic_methods import PERMBU, Bootstrap, Normality
+from .probabilistic_methods import PERMBU, Bootstrap, Conformal, Normality
 
 
 class HReconciler:
@@ -84,6 +84,15 @@ class HReconciler:
                 y_insample=y_insample,
                 y_hat_insample=y_hat_insample,
                 num_samples=num_samples,
+                seed=seed,
+            )
+        elif intervals_method == "conformal":
+            sampler = Conformal(
+                S=S,
+                P=P,
+                y_hat=y_hat,
+                y_cal=y_insample,
+                y_hat_cal=y_hat_insample,
                 seed=seed,
             )
         else:
@@ -225,7 +234,7 @@ class BottomUp(HReconciler):
             y_insample (Optional[np.ndarray], optional): In-sample values of size (`base`, `horizon`). Default is None.
             y_hat_insample (Optional[np.ndarray], optional): In-sample forecast values of size (`base`, `horizon`). Default is None.
             sigmah (Optional[np.ndarray], optional): Estimated standard deviation of the conditional marginal distribution. Default is None.
-            intervals_method (Optional[str], optional): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is None.
+            intervals_method (Optional[str], optional): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None.
             num_samples (Optional[int], optional): Number of samples for probabilistic coherent distribution. Default is None.
             seed (Optional[int], optional): Seed for reproducibility. Default is None.
             tags (Optional[dict[str, np.ndarray]], optional): Tags for hierarchical structure. Default is None.
@@ -273,7 +282,7 @@ class BottomUp(HReconciler):
             y_hat_insample (Optional[np.ndarray], optional): In-sample forecast values of size (`base`, `insample_size`). Default is None.
             sigmah (Optional[np.ndarray], optional): Estimated standard deviation of the conditional marginal distribution. Default is None.
             level (Optional[list[int]], optional): float list 0-100, confidence levels for prediction intervals. Default is None.
-            intervals_method (Optional[str], optional): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is None.
+            intervals_method (Optional[str], optional): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None.
             num_samples (Optional[int], optional): Number of samples for probabilistic coherent distribution. Default is None.
             seed (Optional[int], optional): Seed for reproducibility. Default is None.
             tags (Optional[dict[str, np.ndarray]], optional): Tags for hierarchical structure. Default is None.
@@ -632,7 +641,7 @@ class TopDown(HReconciler):
             y_insample (np.ndarray): Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
             y_hat_insample (np.ndarray): Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method.
             sigmah (np.ndarray): Estimated standard deviation of the conditional marginal distribution.
-            interval_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
+            intervals_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`.
             num_samples (int): Number of samples for probabilistic coherent distribution.
             seed (int): Seed for reproducibility.
             tags (dict[str, np.ndarray]): Each key is a level and each value its `S` indices.
@@ -683,7 +692,7 @@ class TopDown(HReconciler):
             y_hat_insample (np.ndarray): Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. Default is None.
             sigmah (np.ndarray): Estimated standard deviation of the conditional marginal distribution. Default is None.
             level (list[int]): float list 0-100, confidence levels for prediction intervals. Default is None.
-            intervals_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is None.
+            intervals_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None.
             num_samples (int): Number of samples for probabilistic coherent distribution. Default is None.
             seed (int): Seed for reproducibility.
 
@@ -981,7 +990,7 @@ class MiddleOut(HReconciler):
             y_hat_insample (np.ndarray): In-sample forecast values of size (`base`, `insample_size`). Only used for `forecast_proportions`. Default is None.
             sigmah (np.ndarray): Estimated standard deviation of the conditional marginal distribution. Default is None.
             level (list[int]): Confidence levels for prediction intervals. Default is None.
-            intervals_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is None.
+            intervals_method (str): Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None.
             num_samples (int): Number of samples for probabilistic coherent distribution. Default is None.
             seed (int): Seed for reproducibility. Default is None.
 
@@ -1473,7 +1482,7 @@ class MinTrace(HReconciler):
             y_insample: Insample values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink".
             y_hat_insample: Insample forecast values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink"
             sigmah: Estimated standard deviation of the conditional marginal distribution.
-            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
+            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`.
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
@@ -1571,7 +1580,7 @@ class MinTrace(HReconciler):
             y_hat_insample: Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink`
             sigmah: Estimated standard deviation of the conditional marginal distribution.
             level: float list 0-100, confidence levels for prediction intervals.
-            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
+            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`.
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
@@ -1748,7 +1757,7 @@ class MinTraceSparse(MinTrace):
             y_insample: Insample values of size (`base`, `insample_size`). Only used with "wls_var".
             y_hat_insample: Insample forecast values of size (`base`, `insample_size`). Only used with "wls_var"
             sigmah: Estimated standard deviation of the conditional marginal distribution.
-            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
+            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`.
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
@@ -2085,7 +2094,7 @@ class ERM(HReconciler):
             y_insample: Train values of size (`base`, `insample_size`).
             y_hat_insample: Insample train predictions of size (`base`, `insample_size`).
             sigmah: Estimated standard deviation of the conditional marginal distribution.
-            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
+            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`.
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
@@ -2137,7 +2146,7 @@ class ERM(HReconciler):
             y_hat_insample: Insample train predictions of size (`base`, `insample_size`).
             sigmah: Estimated standard deviation of the conditional marginal distribution.
             level: float list 0-100, confidence levels for prediction intervals.
-            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`.
+            intervals_method: Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`.
             num_samples: Number of samples for probabilistic coherent distribution.
             seed: Seed for reproducibility.
             tags: Each key is a level and each value its `S` indices.
