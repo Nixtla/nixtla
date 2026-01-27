@@ -3727,6 +3727,7 @@ distributed = [
     { name = "dask", version = "2024.12.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "fugue", extra = ["dask", "ray", "spark"] },
     { name = "pandas" },
+    { name = "pyspark" },
     { name = "ray" },
 ]
 plotting = [
@@ -3764,6 +3765,7 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'dev'", specifier = "<21.0.0" },
     { name = "pydantic", specifier = ">=1.10" },
     { name = "pyreadr", marker = "extra == 'dev'", specifier = "<0.5.3" },
+    { name = "pyspark", marker = "extra == 'distributed'", specifier = "<=4.0.1" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "pytest-rerunfailures", marker = "extra == 'dev'" },

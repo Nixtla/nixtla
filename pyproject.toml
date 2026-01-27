@@ -75,6 +75,7 @@ distributed = [
     "dask<=2024.12.1",
     "pandas<2.2",
     "ray<=2.20.0",
+    "pyspark<=4.0.1",
 ]
 plotting = [
     "utilsforecast[plotting]",
