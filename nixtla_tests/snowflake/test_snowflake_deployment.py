@@ -568,3 +568,112 @@ class TestExampleScripts:
             atol=1e-3,
             obj="Forecast with future exogenous variables",
         )
+
+    def test_explain_forecast_script(
+        self,
+        snowflake_session: Session,
+        deployed_with_api_endpoint: DeploymentConfig,
+        nixtla_client: NixtlaClient,
+        example_dataframes: dict[str, pd.DataFrame],
+    ):
+        """Test: Explain forecast with feature contributions (SHAP values)."""
+
+        def compare_explain(_test_case, data):
+            # Use series_2 which has exogenous variables
+            data_series2 = data[data["unique_id"] == "series_2"].copy()
+
+            hist_data = data_series2[data_series2["y"].notna()]
+            futr_data = data_series2[data_series2["y"].isna()]
+
+            hist_exog_cols = ["temperature"]
+            futr_exog_cols = ["is_weekend", "promotion"]
+
+            x_df = futr_data[["unique_id", "ds"] + futr_exog_cols].copy()
+
+            nixtla_client.forecast(
+                df=hist_data,
+                h=14,
+                freq="D",
+                hist_exog_list=hist_exog_cols,
+                X_df=x_df,
+                feature_contributions=True,
+            )
+
+            # Access feature_contributions from the client (wide format)
+            contrib_df = nixtla_client.feature_contributions
+
+            # Melt to long format to match Snowflake output
+            id_cols = ["unique_id", "ds"]
+            forecast_col = "TimeGPT"
+            feature_cols = [
+                c for c in contrib_df.columns if c not in id_cols and c != forecast_col
+            ]
+
+            result = pd.melt(
+                contrib_df,
+                id_vars=id_cols + [forecast_col],
+                value_vars=feature_cols,
+                var_name="feature",
+                value_name="contribution",
+            )
+            result = result.rename(columns={forecast_col: "forecast"})
+            return result[["unique_id", "ds", "forecast", "feature", "contribution"]]
+
+        sf_df, client_df = self._execute_and_compare(
+            snowflake_session,
+            deployed_with_api_endpoint,
+            example_dataframes,
+            "explain_forecast",
+            compare_explain,
+        )
+
+        # Normalize column names to lowercase
+        sf_df.columns = sf_df.columns.str.lower()
+        client_df.columns = client_df.columns.str.lower()
+
+        # Validate structure
+        assert len(sf_df) > 0, "Explain returned no results"
+        assert len(client_df) > 0, "Client explain returned no results"
+
+        # Check required columns
+        required_cols = ["unique_id", "ds", "forecast", "feature", "contribution"]
+        for col in required_cols:
+            assert col in sf_df.columns, f"Missing {col} in Snowflake"
+            assert col in client_df.columns, f"Missing {col} in client"
+
+        # Filter to series_2 for comparison since only series_2 has exogenous
+        # variables. Snowflake processes all series from EXAMPLE_TRAIN, but
+        # the client comparison only computes for series_2.
+        sf_df = sf_df[sf_df["unique_id"] == "series_2"].copy()
+
+        # Both should have the same features
+        sf_features = sorted(sf_df["feature"].unique())
+        client_features = sorted(client_df["feature"].unique())
+        assert sf_features == client_features, (
+            f"Feature mismatch: Snowflake={sf_features}, Client={client_features}"
+        )
+
+        # Sort and compare contributions
+        sort_cols = ["unique_id", "ds", "feature"]
+        sf_sorted = sf_df.sort_values(sort_cols).reset_index(drop=True)
+        client_sorted = client_df.sort_values(sort_cols).reset_index(drop=True)
+
+        # Compare forecast values
+        pd.testing.assert_series_equal(
+            sf_sorted["forecast"],
+            client_sorted["forecast"],
+            check_names=False,
+            rtol=1e-3,
+            atol=1e-3,
+            obj="Explain forecast values",
+        )
+
+        # Compare contribution values
+        pd.testing.assert_series_equal(
+            sf_sorted["contribution"],
+            client_sorted["contribution"],
+            check_names=False,
+            rtol=1e-3,
+            atol=1e-3,
+            obj="Feature contributions",
+        )

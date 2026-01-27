@@ -529,6 +529,7 @@ def verify_udtfs_exist(session: Session, config: DeploymentConfig) -> bool:
         ("nixtla_forecast_batch", "OBJECT, OBJECT"),
         ("nixtla_evaluate_batch", "ARRAY, OBJECT"),
         ("nixtla_detect_anomalies_batch", "OBJECT, STRING, TIMESTAMP_NTZ, FLOAT"),
+        ("nixtla_explain_batch", "OBJECT, OBJECT"),
     ]
 
     try:
@@ -557,6 +558,7 @@ def verify_procedures_exist(session: Session, config: DeploymentConfig) -> bool:
         ("NIXTLA_FORECAST", "VARCHAR, OBJECT, NUMBER"),
         ("NIXTLA_EVALUATE", "VARCHAR, ARRAY, NUMBER"),
         ("NIXTLA_DETECT_ANOMALIES", "VARCHAR, OBJECT, NUMBER"),
+        ("NIXTLA_EXPLAIN", "VARCHAR, OBJECT, NUMBER"),
     ]
 
     try:

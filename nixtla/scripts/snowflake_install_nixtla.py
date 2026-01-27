@@ -179,6 +179,34 @@ BEGIN
 END;
 $$
 ;
+
+//<br>
+
+CREATE OR REPLACE PROCEDURE {ds_prefix}NIXTLA_EXPLAIN(
+    "INPUT_DATA" VARCHAR,
+    "PARAMS" OBJECT,
+    "MAX_BATCHES" NUMBER(38,0) DEFAULT 1000
+)
+RETURNS TABLE (
+  UNIQUE_ID VARCHAR, DS TIMESTAMP, FORECAST DOUBLE, FEATURE VARCHAR, CONTRIBUTION DOUBLE
+)
+LANGUAGE SQL AS
+$$
+DECLARE
+  res RESULTSET;
+BEGIN
+  res := (SELECT b.* FROM
+    (SELECT
+        MOD(HASH(unique_id), :MAX_BATCHES) AS gp,
+        unique_id,
+        ds,
+        OBJECT_CONSTRUCT_KEEP_NULL(*) AS data_obj
+      FROM IDENTIFIER(:INPUT_DATA)) a,
+    TABLE(nixtla_explain_batch(:PARAMS, data_obj) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
+  RETURN TABLE(res);
+END;
+$$
+;
 """
 
 
@@ -824,7 +852,10 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
 
         def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
             """Execute forecast for a partition of data."""
-            # Extract configuration and validate
+            # The vectorized UDTF receives df with 2 columns matching input_types:
+            #   Column 0 (MapType): PARAMS config object, same for every row
+            #   Column 1 (MapType): data_obj from OBJECT_CONSTRUCT_KEEP_NULL(*),
+            #                       each row is a dict of the original table columns
             config = df.iloc[0, 0]
             if config.get("finetune_steps", 0) > 0:
                 raise ValueError("Finetuning is not allowed during forecasting")
@@ -833,7 +864,7 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             if h is None:
                 raise ValueError("Parameter 'h' (forecast horizon) is required")
 
-            # Prepare input data
+            # Reconstruct the tabular DataFrame from the per-row dicts in column 1
             data = pd.DataFrame(df.iloc[:, 1].tolist())
             data.columns = data.columns.str.lower()
             data = data.sort_values(by=["unique_id", "ds"]).reset_index(drop=True)
@@ -1075,6 +1106,140 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
 
         end_partition._sf_vectorized_input = pd.DataFrame  # type: ignore
 
+    # Explain UDTF (feature contributions / SHAP values)
+    @udtf(
+        input_types=[MapType(), MapType()],
+        output_schema=StructType(
+            [
+                StructField("unique_id", StringType()),
+                StructField("ds", TimestampType()),
+                StructField("forecast", DoubleType()),
+                StructField("feature", StringType()),
+                StructField("contribution", DoubleType()),
+            ]
+        ),
+        name="nixtla_explain_batch",
+        **security_params,
+        **common_params,
+    )
+    class ExplainUDTF:
+        """UDTF for computing feature contributions (SHAP values) in long format."""
+
+        def __init__(self):
+            import _snowflake
+            from nixtla import NixtlaClient
+
+            token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
+            base_url = _snowflake.get_generic_secret_string(SECRET_BASE_URL)
+            self.client = NixtlaClient(api_key=token, base_url=base_url)
+
+        def end_partition(self, df: pd.DataFrame) -> pd.DataFrame:
+            """Execute forecast with feature contributions and return in long format."""
+            # The vectorized UDTF receives df with 2 columns matching input_types:
+            #   Column 0 (MapType): PARAMS config object, same for every row
+            #   Column 1 (MapType): data_obj from OBJECT_CONSTRUCT_KEEP_NULL(*),
+            #                       each row is a dict of the original table columns
+            config = dict(df.iloc[0, 0])
+            if config.get("finetune_steps", 0) > 0:
+                raise ValueError("Finetuning is not allowed during explain")
+
+            h = config.get("h")
+            if h is None:
+                raise ValueError("Parameter 'h' (forecast horizon) is required")
+
+            # Reconstruct the tabular DataFrame from the per-row dicts in column 1
+            data = pd.DataFrame(df.iloc[:, 1].tolist())
+            data.columns = data.columns.str.lower()
+            data = data.sort_values(by=["unique_id", "ds"]).reset_index(drop=True)
+            data["ds"] = pd.to_datetime(data["ds"])
+
+            # Handle future exogenous variables
+            futr_exog_list = config.get("futr_exog_list")
+            X_df = None
+
+            if futr_exog_list:
+                futr_exog_list = [col.lower() for col in futr_exog_list]
+                future_mask = data.groupby("unique_id").cumcount(ascending=False) < h
+                hist_data = data[~future_mask].copy()
+                future_exog_data = data[future_mask].copy()
+
+                if not future_exog_data.empty:
+                    X_df = future_exog_data[["unique_id", "ds"] + futr_exog_list].copy()
+
+                data = hist_data
+            else:
+                data = data[data["y"].notna()].copy()
+
+            # Handle historical exogenous variables
+            hist_exog_list = config.get("hist_exog_list")
+
+            forecast_params = dict(config)
+            forecast_params.pop("futr_exog_list", None)
+
+            if hist_exog_list:
+                hist_exog_list = [col.lower() for col in hist_exog_list]
+                missing_cols = [
+                    col for col in hist_exog_list if col not in data.columns
+                ]
+                if missing_cols:
+                    raise ValueError(
+                        f"Columns specified in hist_exog_list not found in data: {missing_cols}. "
+                        f"Available columns: {list(data.columns)}"
+                    )
+                forecast_params["hist_exog_list"] = hist_exog_list
+
+            if X_df is not None:
+                forecast_params["X_df"] = X_df
+
+            # Force feature_contributions to True
+            forecast_params["feature_contributions"] = True
+
+            # Execute forecast
+            _ = self.client.forecast(df=data, **forecast_params)
+
+            # Check if feature_contributions were computed
+            if not hasattr(self.client, "feature_contributions"):
+                raise ValueError(
+                    "Feature contributions were not computed. "
+                    "Ensure exogenous variables are provided via hist_exog_list or futr_exog_list."
+                )
+
+            contrib_df = self.client.feature_contributions
+
+            # Identify feature columns (everything except unique_id, ds, TimeGPT)
+            id_cols = ["unique_id", "ds"]
+            forecast_col = "TimeGPT"
+            feature_cols = [
+                col
+                for col in contrib_df.columns
+                if col not in id_cols and col != forecast_col
+            ]
+
+            if not feature_cols:
+                raise ValueError(
+                    "No feature contribution columns found. "
+                    "Ensure exogenous variables are provided."
+                )
+
+            # Melt to long format
+            result = pd.melt(
+                contrib_df,
+                id_vars=id_cols + [forecast_col],
+                value_vars=feature_cols,
+                var_name="feature",
+                value_name="contribution",
+            )
+
+            # Rename forecast column to match output schema
+            result = result.rename(columns={forecast_col: "forecast"})
+
+            # Reorder columns to match schema
+            result = result[["unique_id", "ds", "forecast", "feature", "contribution"]]
+
+            return result
+
+        end_partition._sf_vectorized_input = pd.DataFrame  # type: ignore
+
     print("[green]UDTFs created![/green]")
 
 
@@ -1203,10 +1368,11 @@ def show_example_usage_scripts(config: DeploymentConfig) -> None:
         "evaluation_metrics",
         "anomaly_detection",
         "forecast_with_future_exog",
+        "explain_forecast",
     ]
 
     # Number emojis
-    numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+    numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
     # Header
     print(
@@ -1348,6 +1514,28 @@ def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
                 # in the data (e.g., the 'timegpt' column in EXAMPLE_ALL_DATA)
             },
             compare_columns=["unique_id", "forecaster", "metric", "value"],
+        ),
+        ExampleTestCase(
+            name="explain_forecast",
+            description="Explain forecast with feature contributions (SHAP)",
+            sql_query=f"""CALL {prefix}NIXTLA_EXPLAIN(
+    INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
+    PARAMS => OBJECT_CONSTRUCT(
+        'h', 14,
+        'freq', 'D',
+        'hist_exog_list', ARRAY_CONSTRUCT('temperature'),
+        'futr_exog_list', ARRAY_CONSTRUCT('is_weekend', 'promotion')
+    )
+)""",
+            input_table="train",
+            nixtla_method="forecast",
+            nixtla_params={
+                "h": 14,
+                "freq": "D",
+                "feature_contributions": True,
+                "X_df": None,  # Will be set dynamically in tests based on data
+            },
+            compare_columns=["unique_id", "ds", "forecast", "feature", "contribution"],
         ),
     ]
 
