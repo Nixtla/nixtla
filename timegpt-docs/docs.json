@@ -16,6 +16,9 @@
       "canonical": "https://nixtla.io/docs"
     }
   },
+  "icons":{
+    "library":"lucide"
+  },
   "favicon": "/favicon.ico",
   "ignore": ["utils/**", "depracted-docs/**", "pending_content/**"],
   "navigation": {
@@ -164,12 +167,12 @@
         {
           "anchor": "Home",
           "href": "https://www.nixtla.io",
-          "icon": "book-open-cover"
+          "icon": "book-open"
         },
         {
           "anchor": "Get in touch",
           "href": "https://share.hsforms.com/2kPRkvHcfRHO5m4Qqc9wKqArbxr6",
-          "icon": "envelope"
+          "icon": "mail"
         },
         {
           "anchor": "Meet with us",
@@ -204,9 +207,6 @@
     }
   },
   "integrations": {
-    "amplitude": {
-      "apiKey": "799ca210229ab5f1a23493c6302eaae1"
-    },
     "gtm": {
       "tagId": "GTM-TBJ64S3X"
     },
