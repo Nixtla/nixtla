@@ -28,7 +28,7 @@ dependencies = [
     "annotated-types",
     "httpx[zstd]",
     "orjson",
-    "pandas",
+    "pandas<3.0.0",
     "pydantic>=1.10",
     "tenacity",
     "tqdm",
