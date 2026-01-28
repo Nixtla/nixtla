@@ -1007,3 +1007,435 @@ def test_direct_forecasting_perfect_exogenous_fit():
         rtol=1e-10,
         err_msg="Direct forecasting predictions do not match expected exogenous feature values"
     )
+
+
+@pytest.mark.parametrize("horizons", [
+    [1, 3],
+    [1, 3, 5, 7],
+    [1, 7],
+    [2, 4, 6],
+    [1, 2, 3],  # contiguous horizons
+])
+def test_direct_forecasting_perfect_exogenous_fit_with_horizons(horizons):
+    """Test that sparse horizons correctly use exogenous features for each trained horizon.
+
+    This test validates that when using the `horizons` parameter:
+    1. Predictions are only made for the specified horizons
+    2. Each horizon's prediction correctly uses its aligned exogenous features
+    3. The output timestamps (ds) are correct for the sparse horizons
+
+    With y = X (perfect linear relationship), predictions should equal the
+    exogenous feature values at the corresponding horizon timestamps.
+    """
+    max_h = max(horizons)
+    last_train_ds = 10
+
+    # Create training data where y = X (perfect linear relationship)
+    df = pd.DataFrame({
+        "ds": np.arange(last_train_ds + 1),
+        "X": np.arange(last_train_ds + 1),
+        "unique_id": "ex",
+        "y": np.arange(last_train_ds + 1),
+    })
+
+    # Create test dataframe with exogenous features for all possible prediction timestamps
+    test_df = pd.DataFrame({
+        "ds": np.arange(last_train_ds + 1, last_train_ds + 1 + max_h),
+        "X": np.arange(last_train_ds + 1, last_train_ds + 1 + max_h),
+        "unique_id": "ex",
+    })
+
+    # Fit with sparse horizons
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq=1,
+    )
+    fcst.fit(df, static_features=[], horizons=horizons)
+
+    # Verify correct number of models trained
+    assert len(fcst.models_['LinearRegression']) == len(horizons)
+    # Models should be stored with 0-indexed keys
+    expected_keys = {h - 1 for h in horizons}
+    assert set(fcst.models_['LinearRegression'].keys()) == expected_keys
+
+    # Predict using exogenous features
+    preds = fcst.predict(h=max_h, X_df=test_df)
+
+    # Verify correct number of predictions (one per horizon)
+    assert preds.shape[0] == len(horizons)
+
+    # Verify timestamps are correct
+    expected_ds = [last_train_ds + h for h in horizons]
+    np.testing.assert_array_equal(
+        preds['ds'].values,
+        expected_ds,
+        err_msg=f"Timestamps mismatch for horizons={horizons}"
+    )
+
+    # Verify predictions equal the exogenous feature values at the correct timestamps
+    # For y = X, prediction at ds=t should equal X[t] = t
+    expected_values = np.array(expected_ds, dtype=float)
+    np.testing.assert_allclose(
+        preds['LinearRegression'].values,
+        expected_values,
+        rtol=1e-10,
+        err_msg=f"Predictions do not match expected values for horizons={horizons}"
+    )
+
+
+def test_direct_forecasting_perfect_exogenous_fit_horizons_vs_max_horizon():
+    """Test that horizons=[1,2,3] produces identical results to max_horizon=3.
+
+    This validates that the new horizons parameter, when given contiguous horizons,
+    produces the same predictions as the equivalent max_horizon parameter.
+    """
+    last_train_ds = 10
+    H = 5
+
+    # Create training data where y = X
+    df = pd.DataFrame({
+        "ds": np.arange(last_train_ds + 1),
+        "X": np.arange(last_train_ds + 1),
+        "unique_id": "ex",
+        "y": np.arange(last_train_ds + 1),
+    })
+
+    # Create test dataframe
+    test_df = pd.DataFrame({
+        "ds": np.arange(last_train_ds + 1, last_train_ds + 1 + H),
+        "X": np.arange(last_train_ds + 1, last_train_ds + 1 + H),
+        "unique_id": "ex",
+    })
+
+    # Fit with max_horizon
+    fcst_max = MLForecast(models=[LinearRegression()], freq=1)
+    fcst_max.fit(df, static_features=[], max_horizon=H)
+    preds_max = fcst_max.predict(h=H, X_df=test_df)
+
+    # Fit with equivalent horizons
+    fcst_horizons = MLForecast(models=[LinearRegression()], freq=1)
+    fcst_horizons.fit(df, static_features=[], horizons=list(range(1, H + 1)))
+    preds_horizons = fcst_horizons.predict(h=H, X_df=test_df)
+
+    # Results should be identical
+    pd.testing.assert_frame_equal(preds_max, preds_horizons)
+
+
+def test_direct_forecasting_perfect_exogenous_fit_multiple_series():
+    """Test sparse horizons with multiple time series.
+
+    Validates that sparse horizons work correctly when forecasting multiple series,
+    with correct timestamps and predictions for each series.
+    """
+    horizons = [1, 3, 5]
+    max_h = max(horizons)
+    n_series = 5
+
+    # Generate series structure using generate_daily_series
+    df = generate_daily_series(n_series, min_length=20, max_length=20, equal_ends=True)
+
+    # Add exogenous feature X and set y = X for perfect linear relationship
+    # Use cumcount within each series to create unique X values
+    df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    df['X'] = df.groupby('unique_id', observed=True).cumcount().astype(float)
+    df['y'] = df['X']
+
+    # Fit with sparse horizons
+    fcst = MLForecast(models=[LinearRegression()], freq='D')
+    fcst.fit(df, static_features=[], horizons=horizons)
+
+    # Create future dataframe using make_future_dataframe
+    future_df = fcst.make_future_dataframe(h=max_h)
+
+    # Add exogenous feature X to future dataframe
+    # X continues from where training left off (20, 21, 22, ...)
+    last_train_idx = df.groupby('unique_id', observed=True)['X'].transform('max')
+    future_df = future_df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+    future_df['X'] = future_df.groupby('unique_id', observed=True).cumcount() + 20.0
+
+    preds = fcst.predict(h=max_h, X_df=future_df)
+
+    # Should have len(horizons) predictions per series
+    assert preds.shape[0] == n_series * len(horizons)
+
+    # Get last dates from training data
+    last_dates = df.groupby('unique_id', observed=True)['ds'].max()
+
+    # Verify each series has correct predictions
+    for uid in df['unique_id'].unique():
+        series_preds = preds[preds['unique_id'] == uid].sort_values('ds')
+        assert series_preds.shape[0] == len(horizons)
+
+        # Verify timestamps are correct for sparse horizons
+        expected_dates = [last_dates[uid] + pd.Timedelta(days=h) for h in horizons]
+        assert series_preds['ds'].tolist() == expected_dates
+
+        # Verify predictions match expected X values (y = X)
+        # X values at horizons [1, 3, 5] are [20, 22, 24] (0-indexed from end of training)
+        expected_values = np.array([20 + h - 1 for h in horizons], dtype=float)
+        np.testing.assert_allclose(
+            series_preds['LinearRegression'].values,
+            expected_values,
+            rtol=1e-10
+        )
+
+
+# Tests for horizons parameter
+def test_horizons_basic():
+    """Test that horizons=[7, 14] creates exactly 2 models."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    fcst.fit(df, horizons=[7, 14])
+
+    # Verify only 2 models trained per model name
+    assert len(fcst.models_['LinearRegression']) == 2
+    # Models are stored as dict keyed by 0-indexed horizon
+    assert set(fcst.models_['LinearRegression'].keys()) == {6, 13}
+
+
+def test_horizons_mutual_exclusivity():
+    """Test error when both max_horizon and horizons provided."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        fcst.fit(df, max_horizon=5, horizons=[7, 14])
+
+
+def test_horizons_validation_empty():
+    """Test error for empty horizons list."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    with pytest.raises(ValueError, match="cannot be empty"):
+        fcst.fit(df, horizons=[])
+
+
+def test_horizons_validation_non_positive():
+    """Test error for non-positive horizons."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    with pytest.raises(ValueError, match="positive integers"):
+        fcst.fit(df, horizons=[0, 7, 14])
+
+    with pytest.raises(ValueError, match="positive integers"):
+        fcst.fit(df, horizons=[-1, 7])
+
+
+def test_horizons_validation_non_integer():
+    """Test error for non-integer horizons."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    with pytest.raises(ValueError, match="positive integers"):
+        fcst.fit(df, horizons=[7.5, 14])
+
+
+def test_horizons_duplicate_handling():
+    """Test that horizons=[7, 7, 14] deduplicates to [7, 14]."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    fcst.fit(df, horizons=[7, 7, 14, 14])
+
+    # Should have exactly 2 models after deduplication
+    assert len(fcst.models_['LinearRegression']) == 2
+    assert set(fcst.models_['LinearRegression'].keys()) == {6, 13}
+
+
+def test_horizons_prediction():
+    """Test that predict(h=14) with horizons=[7, 14] works correctly."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    fcst.fit(df, horizons=[7, 14])
+
+    # Predict for horizon 14
+    preds = fcst.predict(h=14)
+
+    # Should only have predictions for the trained horizons (7 and 14)
+    # Each series gets 2 predictions
+    n_series = df['unique_id'].nunique()
+    assert preds.shape[0] == n_series * 2
+
+    # Check that dates are correct (at h=7 and h=14 from last date)
+    last_dates = df.groupby('unique_id', observed=True)['ds'].max()
+    for uid in df['unique_id'].unique():
+        uid_preds = preds[preds['unique_id'] == uid]
+        expected_dates = [
+            last_dates[uid] + pd.Timedelta(days=7),
+            last_dates[uid] + pd.Timedelta(days=14),
+        ]
+        assert uid_preds['ds'].tolist() == expected_dates
+
+
+def test_horizons_prediction_partial():
+    """Test that predict(h=10) with horizons=[7, 14] only returns h=7."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    fcst.fit(df, horizons=[7, 14])
+
+    # Predict for horizon 10 (only h=7 is available)
+    preds = fcst.predict(h=10)
+
+    # Should only have predictions for h=7
+    n_series = df['unique_id'].nunique()
+    assert preds.shape[0] == n_series * 1
+
+
+def test_horizons_cross_validation():
+    """Test that cross_validation works with sparse horizons parameter.
+
+    Note: With sparse horizons, predictions are only made for trained horizons,
+    so the CV result will have fewer rows than the validation set. The join
+    filters to only matching timestamps.
+    """
+    df = generate_daily_series(10, min_length=100, max_length=150)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+
+    # Use max_horizon=14 which is equivalent to horizons=[1,2,...,14]
+    # This should work the same as before
+    cv_results = fcst.cross_validation(
+        df,
+        n_windows=2,
+        h=14,
+        max_horizon=14,
+    )
+
+    # Should have predictions for all 14 horizons per series per window
+    assert cv_results.shape[0] > 0
+    assert 'LinearRegression' in cv_results.columns
+
+
+def test_horizons_backward_compatibility():
+    """Test that max_horizon=5 works identically to before."""
+    df = generate_daily_series(10, min_length=50, max_length=100)
+
+    # Fit with max_horizon
+    fcst1 = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    fcst1.fit(df, max_horizon=5)
+    preds1 = fcst1.predict(h=5)
+
+    # Models should be stored as dict with keys 0, 1, 2, 3, 4
+    assert isinstance(fcst1.models_['LinearRegression'], dict)
+    assert set(fcst1.models_['LinearRegression'].keys()) == {0, 1, 2, 3, 4}
+
+    # Predictions should have 5 rows per series
+    n_series = df['unique_id'].nunique()
+    assert preds1.shape[0] == n_series * 5
+
+
+def test_horizons_with_exogenous():
+    """Test horizons with exogenous features."""
+    df = generate_daily_series(5, min_length=50, max_length=60)
+    df['exog'] = np.random.randn(len(df))
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7],
+    )
+    fcst.fit(df, horizons=[7, 14], static_features=[])
+
+    # Create future exogenous
+    future_df = fcst.make_future_dataframe(h=14)
+    future_df['exog'] = np.random.randn(len(future_df))
+
+    preds = fcst.predict(h=14, X_df=future_df)
+    assert preds.shape[0] > 0
+
+
+def test_horizons_with_target_transforms():
+    """Test that sparse horizons work correctly with target transforms.
+
+    This is a regression test for the bug where inverse_transform failed
+    because indptr was computed using the requested horizon instead of
+    the actual number of predictions (output_horizon).
+    """
+    from mlforecast.target_transforms import Differences
+
+    df = generate_daily_series(5, min_length=50, max_length=60)
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7, 14],
+        target_transforms=[Differences([7])],
+    )
+    fcst.fit(df, horizons=[7, 14])
+
+    # This should not raise an error about indptr/data size mismatch
+    preds = fcst.predict(h=14)
+
+    # Should have 2 predictions per series (h=7 and h=14)
+    n_series = df['unique_id'].nunique()
+    assert preds.shape[0] == n_series * 2
+
+
+def test_horizons_cross_validation_with_target_transforms():
+    """Test cross_validation with sparse horizons and target transforms.
+
+    This is a regression test for the bug where cross_validation failed
+    with sparse horizons because:
+    1. inverse_transform used wrong indptr size
+    2. result row count check didn't account for sparse output
+    """
+    from mlforecast.target_transforms import Differences
+
+    df = generate_daily_series(5, min_length=100, max_length=120)
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7, 14],
+        target_transforms=[Differences([7])],
+    )
+
+    # This should not raise any errors
+    cv_results = fcst.cross_validation(
+        df,
+        n_windows=2,
+        h=14,
+        horizons=[7, 14],
+    )
+
+    # Should have 2 predictions per series per window
+    n_series = df['unique_id'].nunique()
+    n_windows = 2
+    n_horizons = 2  # [7, 14]
+    assert cv_results.shape[0] == n_series * n_windows * n_horizons

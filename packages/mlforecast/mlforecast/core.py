@@ -142,6 +142,37 @@ TargetTransform = Union[BaseTargetTransform, _BaseGroupedArrayTargetTransform]
 Transforms = Dict[str, Union[Tuple[Any, ...], _BaseLagTransform]]
 
 
+def _validate_horizon_params(
+    max_horizon: Optional[int], horizons: Optional[List[int]]
+) -> Tuple[Optional[List[int]], Optional[int]]:
+    """Validate and normalize horizon parameters.
+
+    Args:
+        max_horizon: Train models for all horizons 1 to max_horizon.
+        horizons: Train models only for specific horizons (1-indexed).
+
+    Returns:
+        Tuple of (internal_horizons, effective_max_horizon):
+        - internal_horizons: 0-indexed list of horizons, or None for recursive mode
+        - effective_max_horizon: Maximum horizon value (for target expansion)
+    """
+    if max_horizon is not None and horizons is not None:
+        raise ValueError("Cannot specify both 'max_horizon' and 'horizons'")
+
+    if horizons is not None:
+        if not horizons:
+            raise ValueError("'horizons' cannot be empty")
+        if not all(isinstance(h, int) and h > 0 for h in horizons):
+            raise ValueError("All horizons must be positive integers")
+        horizons = sorted(set(horizons))  # dedupe and sort
+        return [h - 1 for h in horizons], max(horizons)  # 0-indexed, max
+
+    if max_horizon is not None:
+        return list(range(max_horizon)), max_horizon
+
+    return None, None
+
+
 def _parse_transforms(
     lags: Lags,
     lag_transforms: LagTransforms,
@@ -529,12 +560,27 @@ class TimeSeries:
         df: DFType,
         dropna: bool = True,
         max_horizon: Optional[int] = None,
+        horizons: Optional[List[int]] = None,
         return_X_y: bool = False,
         as_numpy: bool = False,
     ) -> DFType:
         """Add the features to `df`.
 
-        if `dropna=True` then all the null rows are dropped."""
+        if `dropna=True` then all the null rows are dropped.
+
+        Args:
+            df: Input dataframe
+            dropna: Drop rows with missing values
+            max_horizon: Train models for all horizons 1 to max_horizon
+            horizons: Train models only for specific horizons (1-indexed)
+            return_X_y: Return tuple of (X, y) instead of dataframe
+            as_numpy: Convert X to numpy array
+        """
+        # Validate and normalize horizon parameters
+        self._horizons, effective_max_horizon = _validate_horizon_params(
+            max_horizon, horizons
+        )
+
         # we need to compute all transformations in case they save state
         features = self._compute_transforms(
             transforms=self.transforms, updates_only=False
@@ -595,11 +641,11 @@ class TimeSeries:
                 features[k] = v[self._restore_idxs]
 
         # target
-        self.max_horizon = max_horizon
-        if max_horizon is None:
+        self.max_horizon = effective_max_horizon
+        if effective_max_horizon is None:
             target = self.ga.data
         else:
-            target = self.ga.expand_target(max_horizon)
+            target = self.ga.expand_target(effective_max_horizon)
         if self._restore_idxs is not None:
             target = target[self._restore_idxs]
 
@@ -698,11 +744,11 @@ class TimeSeries:
             if as_numpy:
                 X = ufp.to_numpy(X)
             return X, target
-        if max_horizon is not None:
+        if effective_max_horizon is not None:
             # remove original target
             out_cols = [c for c in df.columns if c != self.target_col]
             df = df[out_cols]
-            target_names = [f"{self.target_col}{i}" for i in range(max_horizon)]
+            target_names = [f"{self.target_col}{i}" for i in range(effective_max_horizon)]
             df = ufp.assign_columns(df, target_names, target)
         else:
             df = ufp.copy_if_pandas(df, deep=False)
@@ -713,11 +759,11 @@ class TimeSeries:
         self,
         prep: DFType,
         original_df: DFType,
-        max_horizon: int,
+        horizons: List[int],
         target_col: str,
         as_numpy: bool = False,
-    ) -> Iterator[Tuple[Union[DFType, np.ndarray], np.ndarray]]:
-        """Generator that yields (X, y) tuples for each horizon.
+    ) -> Iterator[Tuple[int, Union[DFType, np.ndarray], np.ndarray]]:
+        """Generator that yields (h, X, y) tuples for each horizon.
 
         For horizon h:
         - Dynamic exogenous features are aligned to predict h steps ahead
@@ -727,9 +773,12 @@ class TimeSeries:
         Args:
             prep: Preprocessed dataframe with expanded targets (y0, y1, ..., y{max_horizon-1})
             original_df: Original input dataframe for exog feature lookup
-            max_horizon: Number of horizons
+            horizons: List of horizons to process (0-indexed)
             target_col: Name of target column
             as_numpy: Whether to convert X to numpy array
+
+        Yields:
+            Tuple of (horizon_index, X, y) where horizon_index is 0-indexed
         """
         exog_cols = self._get_dynamic_exog_cols(list(original_df.columns))
 
@@ -742,18 +791,18 @@ class TimeSeries:
         # Non-exog feature columns (lags, date features, static)
         non_exog_cols = [c for c in x_cols if c not in exog_cols]
 
-        # Target column names (y0, y1, ..., y{max_horizon-1})
-        target_cols = [f"{target_col}{i}" for i in range(max_horizon)]
-
         # Build exog lookup dictionary from original_df for efficient lookups
         # Key: (id, time) -> exog values
         if exog_cols:
             # Create a lookup dataframe indexed by (id, time)
             exog_lookup = original_df[[self.id_col, self.time_col] + exog_cols]
 
-        for h in range(max_horizon):
+        for h in horizons:
+            # Target column name for this horizon
+            target_col_h = f"{target_col}{h}"
+
             # Get target for this horizon
-            y_h = prep[target_cols[h]].to_numpy()
+            y_h = prep[target_col_h].to_numpy()
 
             if h == 0 or not exog_cols:
                 # No offset needed for horizon 0 or if no exog cols
@@ -809,7 +858,7 @@ class TimeSeries:
             if as_numpy:
                 X_h = ufp.to_numpy(X_h)
 
-            yield X_h, y_h
+            yield h, X_h, y_h
 
     def fit_transform(
         self,
@@ -821,6 +870,7 @@ class TimeSeries:
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
         max_horizon: Optional[int] = None,
+        horizons: Optional[List[int]] = None,
         return_X_y: bool = False,
         as_numpy: bool = False,
         weight_col: Optional[str] = None,
@@ -830,6 +880,11 @@ class TimeSeries:
         If not all features are static, specify which ones are in `static_features`.
         If you don't want to drop rows with null values after the transformations set `dropna=False`
         If `keep_last_n` is not None then that number of observations is kept across all series for updates.
+
+        Args:
+            max_horizon: Train models for all horizons 1 to max_horizon.
+            horizons: Train models only for specific horizons (1-indexed).
+                      Mutually exclusive with max_horizon.
         """
         self.dropna = dropna
         self.as_numpy = as_numpy
@@ -846,6 +901,7 @@ class TimeSeries:
             df=data,
             dropna=dropna,
             max_horizon=max_horizon,
+            horizons=horizons,
             return_X_y=return_X_y,
             as_numpy=as_numpy,
         )
@@ -1038,7 +1094,7 @@ class TimeSeries:
 
     def _predict_multi(
         self,
-        models: Dict[str, BaseEstimator],
+        models: Dict[str, Dict[int, BaseEstimator]],
         horizon: int,
         before_predict_callback: Optional[Callable] = None,
         X_df: Optional[DFType] = None,
@@ -1048,27 +1104,84 @@ class TimeSeries:
             raise ValueError(
                 f"horizon must be at most max_horizon ({self.max_horizon})"
             )
-        self._predict_setup()
-        uids = self._get_future_ids(horizon)
-        starts = ufp.offset_times(self.curr_dates, self.freq, 1)
-        dates = ufp.time_ranges(starts, self.freq, periods=horizon)
-        if isinstance(self.curr_dates, pl_Series):
-            df_constructor = pl_DataFrame
+
+        # Determine horizons to predict based on _horizons (sparse) or all up to horizon
+        internal_horizons = getattr(self, "_horizons", None)
+
+        # Check if horizons are sparse (not a contiguous range from 0)
+        full_range = list(range(self.max_horizon))
+        is_sparse = internal_horizons is not None and internal_horizons != full_range
+
+        if is_sparse:
+            # Sparse horizons: filter to those <= requested horizon (0-indexed)
+            assert internal_horizons is not None  # mypy: guaranteed by is_sparse check
+            horizons_to_predict = [h for h in internal_horizons if h < horizon]
+            if not horizons_to_predict:
+                raise ValueError(
+                    f"No trained horizons available for prediction up to h={horizon}. "
+                    f"Trained horizons (1-indexed): {[h + 1 for h in internal_horizons]}"
+                )
+            output_horizon = len(horizons_to_predict)
         else:
-            df_constructor = pd.DataFrame
+            # Full horizons: predict all from 0 to horizon-1
+            horizons_to_predict = list(range(horizon))
+            output_horizon = horizon
+
+        self._predict_setup()
+        uids = self._get_future_ids(output_horizon)
+
+        if is_sparse:
+            # Generate dates only for the specific horizons we're predicting
+            # uids structure is [s0, s0, ..., s0 (output_horizon times), s1, s1, ..., s1, ...]
+            # So dates need to be [s0_h0, s0_h1, ..., s1_h0, s1_h1, ...]
+            if isinstance(self.curr_dates, pl_Series):
+                df_constructor = pl_DataFrame
+                # Compute dates for all horizons, then stack and flatten
+                dates_per_horizon = [ufp.offset_times(self.curr_dates, self.freq, h + 1) for h in horizons_to_predict]
+                # Stack: each row is a series, each col is a horizon
+                dates_matrix = pl.DataFrame(dates_per_horizon).transpose()
+                # Flatten row by row: [s0_h0, s0_h1, ..., s1_h0, s1_h1, ...]
+                dates = dates_matrix.to_numpy().ravel()
+                dates = pl.Series(dates)
+            else:
+                df_constructor = pd.DataFrame
+                # Compute dates for all horizons, then stack and flatten
+                dates_per_horizon = [ufp.offset_times(self.curr_dates, self.freq, h + 1) for h in horizons_to_predict]
+                # Stack: each row is a series, each col is a horizon
+                dates_matrix = np.column_stack(dates_per_horizon)
+                # Flatten row by row: [s0_h0, s0_h1, ..., s1_h0, s1_h1, ...]
+                dates = dates_matrix.ravel()
+        else:
+            # Original behavior: generate contiguous date range
+            starts = ufp.offset_times(self.curr_dates, self.freq, 1)
+            dates = ufp.time_ranges(starts, self.freq, periods=horizon)
+            if isinstance(self.curr_dates, pl_Series):
+                df_constructor = pl_DataFrame
+            else:
+                df_constructor = pd.DataFrame
+
         result = df_constructor({self.id_col: uids, self.time_col: dates})
+
         for name, model in models.items():
             with self._backup():
                 self._predict_setup()
-                predictions = np.empty((len(self.uids), horizon))
-                for i in range(horizon):
-                    new_x = self._get_features_for_next_step(X_df)
+                predictions = np.empty((len(self.uids), output_horizon))
+
+                for out_idx, h in enumerate(horizons_to_predict):
+                    # Advance features to the correct horizon step
+                    # We need to step through all horizons up to h to maintain state
+                    while self._h <= h:
+                        new_x = self._get_features_for_next_step(X_df)
+
                     if before_predict_callback is not None:
                         new_x = before_predict_callback(new_x)
-                    preds = model[i].predict(new_x)
+
+                    horizon_model = model[h]
+                    preds = horizon_model.predict(new_x)
                     if len(preds) != len(self.uids):
                         raise ValueError(f"Model returned {len(preds)} predictions but expected {len(self.uids)}")
-                    predictions[:, i] = preds
+                    predictions[:, out_idx] = preds
+
                 raw_preds = predictions.ravel()
                 result = ufp.assign_columns(result, name, raw_preds)
         return result
@@ -1116,7 +1229,7 @@ class TimeSeries:
 
     def predict(
         self,
-        models: Dict[str, Union[BaseEstimator, List[BaseEstimator]]],
+        models: Dict[str, Union[BaseEstimator, Dict[int, BaseEstimator]]],
         horizon: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
@@ -1210,7 +1323,9 @@ class TimeSeries:
                         for c in preds.columns
                         if c not in (self.id_col, self.time_col)
                     ]
-                    indptr = np.arange(0, horizon * (len(self.uids) + 1), horizon)
+                    # Calculate actual predictions per series (handles sparse horizons)
+                    preds_per_series = len(preds) // len(self.uids)
+                    indptr = np.arange(0, preds_per_series * (len(self.uids) + 1), preds_per_series)
                 for tfm in self.target_transforms[::-1]:
                     if isinstance(tfm, _BaseGroupedArrayTargetTransform):
                         for col in model_cols:
