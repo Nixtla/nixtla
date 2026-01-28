@@ -13,6 +13,9 @@ import polars.testing
 import pytest
 from datasetsforecast.evaluation import accuracy as ds_evaluate
 from pyspark.sql import SparkSession
+from dask.distributed import Client
+from fugue_dask import DaskExecutionEngine
+import dask
 
 import utilsforecast.processing as ufp
 from utilsforecast.data import generate_series
@@ -280,6 +283,12 @@ def test_distributed_evaluate(setup_series):
     level = [80, 95]
     spark = SparkSession.builder.getOrCreate()
     spark.sparkContext.setLogLevel("FATAL")
+
+    # Use processes=False to avoid deadlocks in CI
+    client = Client(processes=False)
+    engine = DaskExecutionEngine(client)
+    
+    dask.config.set({"dataframe.shuffle.method": "tasks", "scheduler": "synchronous"})
     dask_df = dd.from_pandas(setup_series, npartitions=2)
     spark_df = spark.createDataFrame(setup_series).repartition(2)
     for distributed_df, use_train in product([dask_df, spark_df], [True, False]):
