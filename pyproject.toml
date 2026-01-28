@@ -29,7 +29,7 @@ dependencies = [
     "httpx[zstd]",
     "narwhals>=2.11.0",
     "orjson",
-    "pandas",
+    "pandas<3.0.0",
     "pydantic>=1.10",
     "tenacity",
     "tqdm",
@@ -69,7 +69,8 @@ dev = [
     "utilsforecast[plotting]",
     "holidays",
     "pandas_market_calendars",
-    "pip-licenses"
+    "pip-licenses",
+    "pyspark<=4.0.1",
 ]
 distributed = [
     "fugue[dask,ray,spark]>=0.8.7",
