@@ -15,8 +15,10 @@ except ModuleNotFoundError:
 
 
 class SparkXGBForecast(SparkXGBRegressor):
-    def _pre_fit(self, target_col):
+    def _pre_fit(self, target_col, weight_col=None):
         self.setParams(label_col=target_col)
+        if weight_col is not None:
+            self.setParams(weight_col=weight_col)
         return self
 
     def extract_local_model(self, trained_model):

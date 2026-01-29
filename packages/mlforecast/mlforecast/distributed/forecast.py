@@ -142,6 +142,7 @@ class DistributedMLForecast:
         keep_last_n: Optional[int] = None,
         window_info: Optional[WindowInfo] = None,
         fit_ts_only: bool = False,
+        weight_col: str | None = None,
     ) -> List[List[Any]]:
         ts = copy.deepcopy(base_ts)
         if fit_ts_only:
@@ -152,6 +153,7 @@ class DistributedMLForecast:
                 target_col=target_col,
                 static_features=static_features,
                 keep_last_n=keep_last_n,
+                weight_col=weight_col,
             )
             core_tfms = ts._get_core_lag_tfms()
             if core_tfms:
@@ -195,6 +197,7 @@ class DistributedMLForecast:
             static_features=static_features,
             dropna=dropna,
             keep_last_n=keep_last_n,
+            weight_col=weight_col,
         )
         return [
             [
@@ -220,6 +223,7 @@ class DistributedMLForecast:
         keep_last_n: Optional[int] = None,
         window_info: Optional[WindowInfo] = None,
         fit_ts_only: bool = False,
+        weight_col: str | None = None,
     ) -> List[Any]:
         if self.num_partitions:
             partition = dict(by=id_col, num=self.num_partitions, algo="coarse")
@@ -247,6 +251,7 @@ class DistributedMLForecast:
                 "keep_last_n": keep_last_n,
                 "window_info": window_info,
                 "fit_ts_only": fit_ts_only,
+                "weight_col": weight_col,
             },
             schema="ts:binary,train:binary,valid:binary",
             engine=self.engine,
@@ -266,6 +271,7 @@ class DistributedMLForecast:
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
         window_info: Optional[WindowInfo] = None,
+        weight_col: str | None = None,
     ) -> fugue.AnyDataFrame:
         self._base_ts.id_col = id_col
         self._base_ts.time_col = time_col
@@ -273,6 +279,7 @@ class DistributedMLForecast:
         self._base_ts.static_features = static_features
         self._base_ts.dropna = dropna
         self._base_ts.keep_last_n = keep_last_n
+        self._base_ts.weight_col = weight_col
         self._partition_results = self._preprocess_partitions(
             data=data,
             id_col=id_col,
@@ -282,6 +289,7 @@ class DistributedMLForecast:
             dropna=dropna,
             keep_last_n=keep_last_n,
             window_info=window_info,
+            weight_col=weight_col,
         )
         base_schema = fa.get_schema(data)
         features_schema = {
@@ -341,6 +349,7 @@ class DistributedMLForecast:
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
         window_info: Optional[WindowInfo] = None,
+        weight_col: str | None = None,
     ) -> "DistributedMLForecast":
         prep = self._preprocess(
             data,
@@ -351,28 +360,41 @@ class DistributedMLForecast:
             dropna=dropna,
             keep_last_n=keep_last_n,
             window_info=window_info,
+            weight_col=weight_col,
         )
+        exclude_cols = {id_col, time_col, target_col}
+        if weight_col is not None:
+            exclude_cols.add(weight_col)
         features = [
             x
             for x in fa.get_column_names(prep)
-            if x not in {id_col, time_col, target_col}
+            if x not in exclude_cols
         ]
         self.models_ = {}
         if SPARK_INSTALLED and isinstance(data, SparkDataFrame):
             featurizer = VectorAssembler(
                 inputCols=features, outputCol="features", handleInvalid="keep"
             )
-            train_data = featurizer.transform(prep)[target_col, "features"]
+            select_cols = [target_col, "features"]
+            if weight_col is not None:
+                select_cols.append(weight_col)
+            train_data = featurizer.transform(prep).select(*select_cols)
             for name, model in self.models.items():
-                trained_model = model._pre_fit(target_col).fit(train_data)
+                trained_model = model._pre_fit(target_col, weight_col).fit(train_data)
                 self.models_[name] = model.extract_local_model(trained_model)
         elif DASK_INSTALLED and isinstance(data, dd.DataFrame):
             X, y = prep[features], prep[target_col]
+            if weights:=weight_col:
+                weights = prep[weight_col]
             for name, model in self.models.items():
-                trained_model = clone(model).fit(X, y)
+                trained_model = clone(model).fit(X, y, sample_weight=weights)
                 self.models_[name] = trained_model.model_
         elif RAY_INSTALLED and isinstance(data, RayDataset):
             # Need to materialize
+            if weight_col is not None:
+                raise NotImplementedError(
+                    "Only spark and dask engines currently support sample weights."
+                )
             prep_selected = prep.select_columns(cols=features + [target_col]).materialize()
             X = RayDMatrix(
                 prep_selected,
@@ -396,6 +418,7 @@ class DistributedMLForecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
+        weight_col: str | None = None,
     ) -> "DistributedMLForecast":
         """Apply the feature engineering and train the models.
 
@@ -409,6 +432,7 @@ class DistributedMLForecast:
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
             keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
                 Defaults to None.
+            weight_col (str, optional): Column that contains the sample weights. Defaults to None.
 
         Returns:
             (DistributedMLForecast): Forecast object with series values and trained models.
@@ -421,6 +445,7 @@ class DistributedMLForecast:
             static_features=static_features,
             dropna=dropna,
             keep_last_n=keep_last_n,
+            weight_col=weight_col,
         )
 
     @staticmethod
@@ -548,6 +573,7 @@ class DistributedMLForecast:
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         input_size: Optional[int] = None,
+        weight_col: str | None = None,
     ) -> fugue.AnyDataFrame:
         """Perform time series cross validation.
         Creates `n_windows` splits where each window has `h` test periods,
@@ -577,6 +603,7 @@ class DistributedMLForecast:
                 The series identifier is on the index. Defaults to None.
             input_size (int, optional): Maximum training samples per serie in each window. If None, will use an expanding window.
                 Defaults to None.
+            weight_col (str, optional): Column that contains the sample weights. Defaults to None.
 
         Returns:
             (dask, spark or ray DataFrame): Predictions for each window with the series id, timestamp, target value and predictions from each model.
@@ -595,6 +622,7 @@ class DistributedMLForecast:
                     dropna=dropna,
                     keep_last_n=keep_last_n,
                     window_info=window_info,
+                    weight_col=weight_col,
                 )
                 self.cv_models_.append(self.models_)
                 partition_results = self._partition_results
@@ -608,6 +636,7 @@ class DistributedMLForecast:
                     dropna=dropna,
                     keep_last_n=keep_last_n,
                     window_info=window_info,
+                    weight_col=weight_col,
                 )
             schema = self._get_predict_schema() + Schema(
                 ("cutoff", "datetime"), (self._base_ts.target_col, "double")
