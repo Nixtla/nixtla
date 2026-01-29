@@ -369,7 +369,7 @@ class TestExampleScripts:
                 if col.lower() not in ["unique_id", "ds", "y"]
             ]
 
-            result = evaluate(data, metrics=metrics, models=forecasters, train_df=data)
+            result = evaluate(data, metrics=metrics, models=forecasters)
 
             # Melt to match Snowflake format: unique_id, forecaster, metric, value
             result = pd.melt(
@@ -554,6 +554,9 @@ class TestExampleScripts:
         # Validate that we have results for series_2
         assert len(sf_series2) > 0, "No results for series_2 from Snowflake"
         assert len(client_series2) > 0, "No results for series_2 from client"
+        assert len(sf_series2) == len(client_series2), (
+            f"Row count mismatch for series_2: Snowflake={len(sf_series2)}, Client={len(client_series2)}"
+        )
 
         # Sort and compare
         sf_sorted = sf_series2.sort_values(["ds"]).reset_index(drop=True)
@@ -576,25 +579,28 @@ class TestExampleScripts:
         nixtla_client: NixtlaClient,
         example_dataframes: dict[str, pd.DataFrame],
     ):
-        """Test: Explain forecast with feature contributions (SHAP values)."""
+        """Test: Explain forecast with historical and future exogenous variables (SHAP values)."""
 
-        def compare_explain(_test_case, data):
-            # Use series_2 which has exogenous variables
+        def compare_explain_future_exog(_test_case, data):
+            # For future exogenous forecasting with explain, we need series_2 which has exog vars
             data_series2 = data[data["unique_id"] == "series_2"].copy()
 
             hist_data = data_series2[data_series2["y"].notna()]
             futr_data = data_series2[data_series2["y"].isna()]
 
+            # Explain using both hist_exog_list and X_df (future exog)
             hist_exog_cols = ["temperature"]
             futr_exog_cols = ["is_weekend", "promotion"]
 
+            # X_df should only contain unique_id, ds, and the future exog columns
+            # This matches what the Snowflake UDTF does internally
             x_df = futr_data[["unique_id", "ds"] + futr_exog_cols].copy()
 
             nixtla_client.forecast(
                 df=hist_data,
                 h=14,
                 freq="D",
-                hist_exog_list=hist_exog_cols,
+                hist_exog_list=hist_exog_cols,  # Historical exogenous
                 X_df=x_df,
                 feature_contributions=True,
             )
@@ -624,7 +630,7 @@ class TestExampleScripts:
             deployed_with_api_endpoint,
             example_dataframes,
             "explain_forecast",
-            compare_explain,
+            compare_explain_future_exog,
         )
 
         # Normalize column names to lowercase
@@ -632,8 +638,8 @@ class TestExampleScripts:
         client_df.columns = client_df.columns.str.lower()
 
         # Validate structure
-        assert len(sf_df) > 0, "Explain returned no results"
-        assert len(client_df) > 0, "Client explain returned no results"
+        assert len(sf_df) > 0, "Explain with future exog returned no results"
+        assert len(client_df) > 0, "Client explain with future exog returned no results"
 
         # Check required columns
         required_cols = ["unique_id", "ds", "forecast", "feature", "contribution"]
@@ -641,22 +647,32 @@ class TestExampleScripts:
             assert col in sf_df.columns, f"Missing {col} in Snowflake"
             assert col in client_df.columns, f"Missing {col} in client"
 
-        # Filter to series_2 for comparison since only series_2 has exogenous
-        # variables. Snowflake processes all series from EXAMPLE_TRAIN, but
+        # Filter to series_2 for comparison (only series_2 has future exog)
+        # Snowflake processes all series from EXAMPLE_TRAIN, but
         # the client comparison only computes for series_2.
-        sf_df = sf_df[sf_df["unique_id"] == "series_2"].copy()
+        sf_series2 = sf_df[sf_df["unique_id"] == "series_2"].copy()
+        client_series2 = client_df[client_df["unique_id"] == "series_2"].copy()
+
+        # Validate that we have results for series_2
+        assert len(sf_series2) > 0, "No explain results for series_2 from Snowflake"
+        assert len(client_series2) > 0, "No explain results for series_2 from client"
 
         # Both should have the same features
-        sf_features = sorted(sf_df["feature"].unique())
-        client_features = sorted(client_df["feature"].unique())
+        sf_features = sorted(sf_series2["feature"].unique())
+        client_features = sorted(client_series2["feature"].unique())
         assert sf_features == client_features, (
             f"Feature mismatch: Snowflake={sf_features}, Client={client_features}"
         )
 
+        # Validate row counts match (same number of rows per feature)
+        assert len(sf_series2) == len(client_series2), (
+            f"Row count mismatch for series_2: Snowflake={len(sf_series2)}, Client={len(client_series2)}"
+        )
+
         # Sort and compare contributions
         sort_cols = ["unique_id", "ds", "feature"]
-        sf_sorted = sf_df.sort_values(sort_cols).reset_index(drop=True)
-        client_sorted = client_df.sort_values(sort_cols).reset_index(drop=True)
+        sf_sorted = sf_series2.sort_values(sort_cols).reset_index(drop=True)
+        client_sorted = client_series2.sort_values(sort_cols).reset_index(drop=True)
 
         # Compare forecast values
         pd.testing.assert_series_equal(
@@ -665,7 +681,7 @@ class TestExampleScripts:
             check_names=False,
             rtol=1e-3,
             atol=1e-3,
-            obj="Explain forecast values",
+            obj="Explain forecast values with future exog",
         )
 
         # Compare contribution values
@@ -675,5 +691,5 @@ class TestExampleScripts:
             check_names=False,
             rtol=1e-3,
             atol=1e-3,
-            obj="Feature contributions",
+            obj="Feature contributions with future exog",
         )

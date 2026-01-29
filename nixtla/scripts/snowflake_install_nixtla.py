@@ -169,11 +169,11 @@ DECLARE
 BEGIN
   res := (SELECT b.* FROM
     (SELECT
-        MOD(HASH($1), :MAX_BATCHES) AS gp,
-        TO_VARCHAR($1) AS unique_id,
-        $2::TIMESTAMP_NTZ AS ds,
-        TO_DOUBLE($3) AS y
-     FROM TABLE(:INPUT_DATA)) a,
+        MOD(HASH(unique_id), :MAX_BATCHES) AS gp,
+        unique_id,
+        ds,
+        y
+     FROM IDENTIFIER(:INPUT_DATA)) a,
     TABLE(nixtla_detect_anomalies_batch(:PARAMS, unique_id, ds, y) OVER (PARTITION BY gp ORDER BY unique_id, ds)) b);
   RETURN TABLE(res);
 END;
@@ -906,15 +906,19 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
 
             if hist_exog_list:
                 # Normalize and validate declared exogenous variables
+                # Store original names for error messages before lowercasing
+                original_hist_exog = list(hist_exog_list)
                 hist_exog_list = [col.lower() for col in hist_exog_list]
                 missing_cols = [
                     col for col in hist_exog_list if col not in data.columns
                 ]
 
                 if missing_cols:
+                    # Show both original (user-specified) and normalized names for clarity
                     raise ValueError(
                         f"Columns specified in hist_exog_list not found in data: {missing_cols}. "
-                        f"Available columns: {list(data.columns)}"
+                        f"Original specification: {original_hist_exog}. "
+                        f"Available columns (lowercase): {list(data.columns)}"
                     )
 
                 forecast_params["hist_exog_list"] = hist_exog_list
@@ -999,7 +1003,7 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             forecasters = self._find_forecaster_columns(data)
 
             # Evaluate and format results
-            result = evaluate(data, metrics=metrics, models=forecasters, train_df=data)
+            result = evaluate(data, metrics=metrics, models=forecasters)
             return self._format_evaluation_results(result)
 
         def _parse_metrics(self, metrics):
@@ -1177,14 +1181,18 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             forecast_params.pop("futr_exog_list", None)
 
             if hist_exog_list:
+                # Store original names for error messages before lowercasing
+                original_hist_exog = list(hist_exog_list)
                 hist_exog_list = [col.lower() for col in hist_exog_list]
                 missing_cols = [
                     col for col in hist_exog_list if col not in data.columns
                 ]
                 if missing_cols:
+                    # Show both original (user-specified) and normalized names for clarity
                     raise ValueError(
                         f"Columns specified in hist_exog_list not found in data: {missing_cols}. "
-                        f"Available columns: {list(data.columns)}"
+                        f"Original specification: {original_hist_exog}. "
+                        f"Available columns (lowercase): {list(data.columns)}"
                     )
                 forecast_params["hist_exog_list"] = hist_exog_list
 
@@ -1198,7 +1206,10 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
             _ = self.client.forecast(df=data, **forecast_params)
 
             # Check if feature_contributions were computed
-            if not hasattr(self.client, "feature_contributions"):
+            if (
+                not hasattr(self.client, "feature_contributions")
+                or self.client.feature_contributions is None
+            ):
                 raise ValueError(
                     "Feature contributions were not computed. "
                     "Ensure exogenous variables are provided via hist_exog_list or futr_exog_list."
@@ -1517,7 +1528,7 @@ def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
         ),
         ExampleTestCase(
             name="explain_forecast",
-            description="Explain forecast with feature contributions (SHAP)",
+            description="Explain forecast with historical and future exogenous variables",
             sql_query=f"""CALL {prefix}NIXTLA_EXPLAIN(
     INPUT_DATA => '{prefix}EXAMPLE_TRAIN',
     PARAMS => OBJECT_CONSTRUCT(
@@ -1666,11 +1677,11 @@ def load_example_datasets(
     train = pd.DataFrame(series_1 + series_2 + series_3)
 
     # Generate and append future exogenous data
+    import numpy as np
+
     future_dates = dates[TRAINING_DAYS : TRAINING_DAYS + 14]
     future_exog_data = []
     for i, date in enumerate(future_dates):
-        import numpy as np
-
         # Calculate day index relative to original series
         day_idx = TRAINING_DAYS + i
 
