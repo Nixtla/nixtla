@@ -80,6 +80,17 @@ nixtla_client.plot(df, anomalies_df,time_col='timestamp', target_col='value')
 
 Explore our [API Reference](https://docs.nixtla.io) to discover how to leverage TimeGPT across various programming languages including JavaScript, Go, and more.
 
+## ❄️ Snowflake Deployment
+
+Run TimeGPT directly within your Snowflake environment. The deployment script creates stored procedures and UDTFs that enable forecasting and anomaly detection on your Snowflake data without moving it outside your infrastructure.
+
+```bash
+pip install nixtla[snowflake]
+python -m nixtla.scripts.snowflake_install_nixtla
+```
+
+The script will guide you through setting up external access integrations, configuring your API key, and deploying the forecasting components to your specified database and schema.
+
 ## 🔥 Features and Capabilities
 
 - **Zero-shot Inference**: TimeGPT can generate forecasts and detect anomalies straight out of the box, requiring no prior training data. This allows for immediate deployment and quick insights from any time series data.

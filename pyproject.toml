@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
     "annotated-types",
     "httpx[zstd]",
+    "narwhals>=2.11.0",
     "orjson",
     "pandas<3.0.0",
     "pydantic>=1.10",
@@ -84,6 +85,11 @@ date_extras = [
     "holidays",
     "pandas_market_calendars",
 ]
+snowflake = [
+    "snowflake-snowpark-python",
+    "fire",
+    "rich",
+]
 
 [project.urls]
 Homepage = "https://github.com/Nixtla/nixtla/"
@@ -106,6 +112,7 @@ markers = [
     "distributed_run: mark test as requiring distributed run, such as those depending on Ray, Spark frameworks",
     "spark_run: mark test execution related to Spark framework",
     "ray_run: mark test execution related to Ray framework",
+    "snowflake: mark test as requiring Snowflake connection and API key",
 ]
 testpaths = ["nixtla_tests"]
 addopts = [
@@ -113,4 +120,9 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-fail-under=80"
+]
+
+[tool.coverage.run]
+omit = [
+    "nixtla/scripts/snowflake_install_nixtla.py",  # Deployment script, not core library
 ]
