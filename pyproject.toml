@@ -55,7 +55,7 @@ dev = [
     "pyreadr<0.5.3",
     "python-dotenv",
     "pyyaml",
-    "setuptools<70",
+    "setuptools<79",
     "statsforecast",
     "tabulate",
     "shap",
