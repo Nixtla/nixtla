@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, nixtla-linux-large-public, windows-latest]
-        python-version: ["3.9", "3.10", "3.11"]
+        python-version: ["3.10", "3.11"]
         # windows python 3.13 can't install pyreadr
         # TODO: in 3.12, it doesn't support ray<=2.20
     steps:
