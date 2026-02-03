@@ -72,7 +72,7 @@ dev = [
     "pyspark<=4.0.1",
 ]
 distributed = [
-    "fugue[dask,ray,spark]>=0.8.7",
+    "fugue[dask,ray,spark]>=0.9.6",
     "dask<=2024.12.1",
     "pandas<2.2",
     "ray<=2.52.1",
