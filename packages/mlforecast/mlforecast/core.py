@@ -45,7 +45,7 @@ from mlforecast.target_transforms import (
 
 from .grouped_array import GroupedArray
 from .lag_transforms import Lag, _BaseLagTransform
-from .utils import _ShortSeriesException
+from .utils import _ShortSeriesException, _resolve_num_threads
 
 date_features_dtypes = {
     "year": np.uint16,
@@ -210,6 +210,7 @@ class TimeSeries:
         lag_transforms_namer: Optional[Callable] = None,
     ):
         self.freq = freq
+        num_threads = _resolve_num_threads(num_threads)
         if not isinstance(num_threads, int) or num_threads < 1:
             warnings.warn("Setting num_threads to 1.")
             num_threads = 1

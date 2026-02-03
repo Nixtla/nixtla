@@ -42,7 +42,7 @@ from .grouped_array import GroupedArray
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
 from .target_transforms import _BaseGroupedArrayTargetTransform
-from .utils import PredictionIntervals
+from .utils import PredictionIntervals, _resolve_num_threads
 
 
 def _add_conformal_distribution_intervals(
@@ -152,7 +152,7 @@ class MLForecast:
             lags (list of int, optional): Lags of the target to use as features. Defaults to None.
             lag_transforms (dict of int to list of functions, optional): Mapping of target lags to their transformations. Defaults to None.
             date_features (list of str or callable, optional): Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input. Defaults to None.
-            num_threads (int): Number of threads to use when computing the features. Defaults to 1.
+            num_threads (int): Number of threads to use when computing the features. Use -1 to use all available CPU cores. Defaults to 1.
             target_transforms (list of transformers, optional): Transformations that will be applied to the target before computing the features and restored after the forecasting step. Defaults to None.
             lag_transforms_namer (callable, optional): Function that takes a transformation (either function or class), a lag and extra arguments and produces a name. Defaults to None.
         """
@@ -164,6 +164,7 @@ class MLForecast:
         else:
             models_with_names = models
         self.models = models_with_names
+        num_threads = _resolve_num_threads(num_threads)
         self.ts = TimeSeries(
             freq=freq,
             lags=lags,

@@ -145,3 +145,47 @@ def test_lightgbmcv_custom_metric(m4_data):
         params={"verbose": -1},
         metric=weighted_mape,
     )
+
+
+def test_lightgbmcv_num_threads_minus_one():
+    """Test that LightGBMCV correctly handles num_threads=-1."""
+    from joblib import cpu_count
+
+    from mlforecast.utils import generate_daily_series
+
+    series = generate_daily_series(5, min_length=50, max_length=100, equal_ends=True)
+
+    lgb_cv_multi = LightGBMCV(
+        freq='D',
+        lags=[1, 2, 3],
+        num_threads=-1,
+    )
+    assert lgb_cv_multi.num_threads == cpu_count()
+    assert lgb_cv_multi.num_threads >= 1
+
+    # Verify it works in fit
+    lgb_cv_multi.fit(
+        series,
+        n_windows=2,
+        h=7,
+        params={"verbosity": -1, "seed": 42},
+        verbose_eval=False,
+    )
+    assert lgb_cv_multi.best_iteration_ is not None
+
+    # Compare with num_threads=1 (same seed for reproducibility)
+    lgb_cv_single = LightGBMCV(
+        freq='D',
+        lags=[1, 2, 3],
+        num_threads=1,
+    )
+    lgb_cv_single.fit(
+        series,
+        n_windows=2,
+        h=7,
+        params={"verbosity": -1, "seed": 42},
+        verbose_eval=False,
+    )
+    assert lgb_cv_single.best_iteration_ is not None
+    # With same seed, best_iteration should be the same
+    assert lgb_cv_multi.best_iteration_ == lgb_cv_single.best_iteration_

@@ -2,11 +2,48 @@ __all__ = ['generate_daily_series', 'generate_prices_for_series', 'PredictionInt
 
 
 from math import ceil, log10
+import warnings
 
 import numpy as np
 import pandas as pd
+from joblib import cpu_count
 from utilsforecast.compat import DataFrame, pl
 from utilsforecast.data import generate_series
+
+
+def _resolve_num_threads(num_threads: int) -> int:
+    """Convert num_threads=-1 to actual CPU count.
+
+    Args:
+        num_threads: Number of threads. Use -1 for all available CPUs.
+
+    Returns:
+        int: Resolved number of threads (always >= 1)
+
+    Note:
+        Uses joblib.cpu_count() which respects CPU affinity and cgroup limits
+        (Docker/Kubernetes resource constraints). Falls back to 1 if CPU
+        count cannot be determined.
+    """
+    if num_threads == -1:
+        try:
+            resolved = cpu_count()
+            if resolved is None:
+                warnings.warn(
+                    "Could not determine CPU count, using num_threads=1.",
+                    UserWarning,
+                    stacklevel=3
+                )
+                return 1
+            return resolved
+        except Exception as e:
+            warnings.warn(
+                f"Error determining CPU count ({e}), using num_threads=1.",
+                UserWarning,
+                stacklevel=3
+            )
+            return 1
+    return num_threads
 
 
 def generate_daily_series(

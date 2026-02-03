@@ -1936,3 +1936,30 @@ def test_target_nulls(series):
     )
     prep = ts.fit_transform(series, "unique_id", "ds", "y", dropna=False)
     assert not prep["y"].isnull().any()
+
+
+def test_timeseries_num_threads_minus_one(series):
+    """Test that TimeSeries correctly handles num_threads=-1."""
+    from joblib import cpu_count
+
+    ts = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        num_threads=-1,
+    )
+    assert ts.num_threads == cpu_count()
+    assert ts.num_threads >= 1
+
+    # Verify it works in fit_transform and produces same results as num_threads=1
+    prep_multi = ts.fit_transform(series, "unique_id", "ds", "y")
+    assert prep_multi is not None
+
+    # Compare with num_threads=1
+    ts_single = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        num_threads=1,
+    )
+    prep_single = ts_single.fit_transform(series, "unique_id", "ds", "y")
+
+    pd.testing.assert_frame_equal(prep_multi, prep_single)

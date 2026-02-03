@@ -9,6 +9,7 @@ from utilsforecast.validation import validate_format
 
 from .core import Lags, LagTransforms, _parse_transforms
 from .grouped_array import GroupedArray
+from .utils import _resolve_num_threads
 
 
 def transform_exog(
@@ -27,11 +28,12 @@ def transform_exog(
         lag_transforms (dict of int to list of functions, optional): Mapping of target lags to their transformations. Defaults to None.
         id_col (str): Column that identifies each serie. Defaults to 'unique_id'.
         time_col (str): Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'.
-        num_threads (int): Number of threads to use when computing the features. Defaults to 1.
+        num_threads (int): Number of threads to use when computing the features. Use -1 to use all available CPU cores. Defaults to 1.
 
     Returns:
         (pandas or polars DataFrame): Original DataFrame with the computed features
     """
+    num_threads = _resolve_num_threads(num_threads)
     if lags is None and lag_transforms is None:
         raise ValueError("At least one of `lags` or `lag_transforms` is required.")
     if lags is None:

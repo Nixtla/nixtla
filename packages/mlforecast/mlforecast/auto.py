@@ -26,7 +26,7 @@ from . import MLForecast
 from .core import Freq, _get_model_name, _name_models
 from .lag_transforms import ExponentiallyWeightedMean, RollingMean
 from .optimization import _TrialToConfig, mlforecast_objective
-from .utils import PredictionIntervals
+from .utils import PredictionIntervals, _resolve_num_threads
 
 
 def lightgbm_space(trial: optuna.Trial):
@@ -243,7 +243,7 @@ class AutoMLForecast:
             Defaults to None.
         fit_config (callable, optional): Function that takes an optuna trial and produces a configuration passed to the MLForecast fit method.
             Defaults to None.
-        num_threads (int): Number of threads to use when computing the features. Defaults to 1.
+        num_threads (int): Number of threads to use when computing the features. Use -1 to use all available CPU cores. Defaults to 1.
         reuse_cv_splits (bool): Creates splits for cv once and re-uses them for tuning instead of generating the splits in each tuning round.
             Default is set to False.
     """
@@ -275,6 +275,7 @@ class AutoMLForecast:
             self.fit_config = fit_config
         else:
             self.fit_config = lambda trial: {}  # noqa: ARG005
+        num_threads = _resolve_num_threads(num_threads)
         self.num_threads = num_threads
         if isinstance(models, list):
             model_names = _name_models([_get_model_name(m) for m in models])

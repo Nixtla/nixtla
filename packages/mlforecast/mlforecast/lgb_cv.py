@@ -21,6 +21,7 @@ from mlforecast.core import (
     TargetTransform,
     TimeSeries,
 )
+from mlforecast.utils import _resolve_num_threads
 
 
 def _mape(y_true, y_pred, ids, _dates, weight_series=None):
@@ -117,10 +118,11 @@ class LightGBMCV:
             lag_transforms (dict of int to list of functions, optional): Mapping of target lags to their transformations. Defaults to None.
             date_features (list of str or callable, optional): Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input.
                 Defaults to None.
-            num_threads (int): Number of threads to use when computing the features. Defaults to 1.
+            num_threads (int): Number of threads to use when computing the features. Use -1 to use all available CPU cores. Defaults to 1.
             target_transforms (list of transformers, optional): Transformations that will be applied to the target before computing the features and restored after the forecasting step.
                 Defaults to None.
         """
+        num_threads = _resolve_num_threads(num_threads)
         self.num_threads = num_threads
         cpu_count = os.cpu_count()
         if cpu_count is None:
