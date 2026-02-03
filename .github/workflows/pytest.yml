@@ -57,4 +57,4 @@ jobs:
 
       - name: Run tests (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
-        run: uv run pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
+        run: uv run pytest -vv -s --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
