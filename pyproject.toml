@@ -11,14 +11,13 @@ authors = [
 ]
 license = {text = "Apache Software License 2.0"}
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["time-series", "forecasting", "gpt"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -56,7 +55,7 @@ dev = [
     "pyreadr<0.5.3",
     "python-dotenv",
     "pyyaml",
-    "setuptools<70",
+    "setuptools<79",
     "statsforecast",
     "tabulate",
     "shap",
@@ -73,10 +72,10 @@ dev = [
     "pyspark<=4.0.1",
 ]
 distributed = [
-    "fugue[dask,ray,spark]>=0.8.7",
+    "fugue[dask,ray,spark]>=0.9.6",
     "dask<=2024.12.1",
     "pandas<2.2",
-    "ray<=2.20.0",
+    "ray<=2.52.1",
 ]
 plotting = [
     "utilsforecast[plotting]",

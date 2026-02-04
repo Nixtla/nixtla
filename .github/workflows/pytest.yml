@@ -38,7 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, nixtla-linux-large-public, windows-latest]
-        python-version: ["3.9", "3.10", "3.11"]
+        python-version: ["3.10", "3.11"]
         # windows python 3.13 can't install pyreadr
         # TODO: in 3.12, it doesn't support ray<=2.20
     steps:
@@ -58,6 +58,10 @@ jobs:
 
       - name: Run tests (Linux Python 3.11)
         if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        env:
+          # Required for distributed tests: Ray/Spark spawn worker processes
+          # that need to locate the correct Python environment
+          UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
         run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
 
       - name: Run tests (not Linux Python 3.11)
