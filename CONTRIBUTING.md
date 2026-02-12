@@ -72,10 +72,7 @@ pre-commit run --show-diff-on-failure --files nixtla/*
 The documentation is built using Mintlify. To view the documentation locally, you can use the Mintlify CLI.
 
 ```sh
-npm install -g mintlify
-```
-
-```cd
+npm i -g mint
 cd timegpt-docs
 mint dev
 ```
