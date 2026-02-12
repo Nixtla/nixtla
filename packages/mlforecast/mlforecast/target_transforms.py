@@ -179,12 +179,49 @@ class AutoDifferences(_BaseGroupedArrayTargetTransform):
         max_diffs (int): Maximum number of differences to apply.
     """
 
+    store_fitted = False
+
     def __init__(self, max_diffs: int):
         self.scaler_ = core_scalers.AutoDifferences(max_diffs)
 
+    def _diffs_per_step(self, indptr_dtype: np.dtype) -> List[np.ndarray]:
+        """Convert stored differences into per-step difference arrays.
+
+        For each differencing step, returns an array indicating the lag to use
+        for each series. This is needed to properly reverse the differencing
+        during inverse_transform_fitted.
+
+        Args:
+            indptr_dtype: The dtype to use for the resulting arrays.
+
+        Returns:
+            List of arrays, one per differencing step, where each array contains
+            the lag value (0 or season_length) to use for each series.
+        """
+        diffs = self.scaler_.diffs_
+        if isinstance(diffs, list):
+            return [d.astype(indptr_dtype, copy=False) for d in diffs]
+        if diffs.size == 0:
+            return []
+        season_length = getattr(self.scaler_, "season_length", 1)
+        max_diffs = int(diffs.max())
+        return [
+            np.where(diffs > i, season_length, 0).astype(indptr_dtype, copy=False)
+            for i in range(max_diffs)
+        ]
+
     def fit_transform(self, ga: GroupedArray) -> GroupedArray:
         core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
-        return GroupedArray(self.scaler_.fit_transform(core_ga), ga.indptr)
+        transformed = self.scaler_.fit_transform(core_ga)
+        self.fitted_: List[np.ndarray] = []
+        self.fitted_indptr_: Optional[np.ndarray] = None
+        if self.store_fitted:
+            self.fitted_indptr_ = core_ga.indptr.copy()
+            fitted = core_ga.data.copy()
+            for ds in self._diffs_per_step(core_ga.indptr.dtype):
+                self.fitted_.append(fitted)
+                fitted = core_ga._with_data(fitted)._diffs(ds)
+        return GroupedArray(transformed, ga.indptr)
 
     def update(self, ga: GroupedArray) -> GroupedArray:
         core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
@@ -195,11 +232,66 @@ class AutoDifferences(_BaseGroupedArrayTargetTransform):
         return GroupedArray(self.scaler_.inverse_transform(core_ga), ga.indptr)
 
     def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
-        raise NotImplementedError
+        """Inverse transform fitted values.
+
+        Reverses the differencing transformation by reconstructing the original
+        values from the differenced fitted values. This is used when fitted=True
+        to restore the fitted predictions to the original scale.
+
+        Args:
+            ga: GroupedArray containing the differenced fitted values.
+
+        Returns:
+            GroupedArray with fitted values in the original scale.
+
+        Raises:
+            ValueError: If fitted differences are smaller than provided target.
+        """
+        if not self.fitted_ or self.fitted_indptr_ is None:
+            return ga
+        if self.fitted_[0].size < ga.data.size:
+            raise ValueError(
+                f"fitted differences are smaller than provided target. "
+                f"Fitted size: {self.fitted_[0].size}, target size: {ga.data.size}"
+            )
+        transformed = ga.data.copy()
+        diffs_per_step = self._diffs_per_step(self.fitted_indptr_.dtype)
+        for ds, fitted in zip(reversed(diffs_per_step), reversed(self.fitted_)):
+            adds = np.empty_like(fitted)
+            for i, (start, end) in enumerate(
+                zip(self.fitted_indptr_[:-1], self.fitted_indptr_[1:])
+            ):
+                d = int(ds[i])
+                if d == 0:
+                    adds[start:end] = 0
+                elif d >= (end - start):
+                    adds[start:end] = np.nan
+                else:
+                    adds[start : start + d] = np.nan
+                    adds[start + d : end] = fitted[start : end - d]
+            if adds.size > ga.data.size:
+                adds = CoreGroupedArray(adds, self.fitted_indptr_)._tails(ga.indptr)
+            transformed = transformed + adds
+        return GroupedArray(transformed, ga.indptr)
 
     def take(self, idxs: np.ndarray) -> "AutoDifferences":
         out = AutoDifferences(self.scaler_.max_diffs)
         out.scaler_ = self.scaler_.take(idxs)
+        if self.fitted_indptr_ is None:
+            out.fitted_ = []
+            out.fitted_indptr_ = None
+        else:
+            out.fitted_ = [
+                np.hstack(
+                    [
+                        data[self.fitted_indptr_[i] : self.fitted_indptr_[i + 1]]
+                        for i in idxs
+                    ]
+                )
+                for data in self.fitted_
+            ]
+            sizes = np.diff(self.fitted_indptr_)[idxs]
+            out.fitted_indptr_ = np.append(0, sizes.cumsum())
         return out
 
 

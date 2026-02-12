@@ -126,6 +126,54 @@ def test_autodifferences():
         np.tile(sc.scaler_.tails_, 2),
     )
 
+@pytest.mark.parametrize("max_diffs", [1, 2, 3])
+def test_autodifferences_restored(max_diffs):
+    """Test inverse_transform_fitted with different max_diffs values."""
+    sc = AutoDifferences(max_diffs)
+    sc.store_fitted = True
+    # Use a longer series to accommodate multiple differences
+    ga = GroupedArray(np.arange(20, dtype=float), np.array([0, 20]))
+    transformed = sc.fit_transform(ga)
+    keep_mask = ~np.isnan(transformed.data)
+    transformed_dropna = GroupedArray(
+        transformed.data[keep_mask], np.array([0, keep_mask.sum()])
+    )
+    restored = sc.inverse_transform_fitted(transformed_dropna)
+    np.testing.assert_allclose(restored.data, ga.data[keep_mask])
+
+
+@pytest.mark.parametrize("max_diffs", [1, 2, 3])
+def test_autodifferences_restored_multiple_series(max_diffs):
+    """Test inverse_transform_fitted with multiple series and different max_diffs values."""
+    sc = AutoDifferences(max_diffs)
+    sc.store_fitted = True
+    # Create 3 series of different lengths (long enough to accommodate max_diffs)
+    data = np.concatenate([
+        np.arange(20, dtype=float),
+        np.arange(25, dtype=float) + 100,
+        np.arange(22, dtype=float) + 200,
+    ])
+    indptr = np.array([0, 20, 45, 67])
+    ga = GroupedArray(data, indptr)
+
+    transformed = sc.fit_transform(ga)
+    keep_mask = ~np.isnan(transformed.data)
+
+    # Reconstruct indptr for dropna version
+    series_masks = [
+        keep_mask[indptr[i]:indptr[i+1]]
+        for i in range(len(indptr) - 1)
+    ]
+    dropna_sizes = [mask.sum() for mask in series_masks]
+    dropna_indptr = np.append(0, np.cumsum(dropna_sizes))
+
+    transformed_dropna = GroupedArray(
+        transformed.data[keep_mask], dropna_indptr
+    )
+    restored = sc.inverse_transform_fitted(transformed_dropna)
+    np.testing.assert_allclose(restored.data, ga.data[keep_mask])
+
+
 def test_autoseasonaldifferences():
     sc = AutoSeasonalDifferences(season_length=5, max_diffs=1)
     ga = GroupedArray(np.arange(5)[np.arange(10) % 5], np.array([0, 10]))
@@ -143,6 +191,25 @@ def test_autoseasonaldifferences():
         stacked.scaler_.tails_,
         np.tile(sc.scaler_.tails_, 2),
     )
+
+
+@pytest.mark.parametrize("max_diffs", [1, 2, 3])
+def test_autoseasonaldifferences_restored(max_diffs):
+    """Test inverse_transform_fitted works for AutoSeasonalDifferences with different max_diffs values."""
+    sc = AutoSeasonalDifferences(season_length=7, max_diffs=max_diffs)
+    sc.store_fitted = True
+    # Create data with seasonal pattern (long enough for max_diffs * season_length)
+    data = np.concatenate([np.arange(30, dtype=float)])
+    ga = GroupedArray(data, np.array([0, 30]))
+
+    transformed = sc.fit_transform(ga)
+    keep_mask = ~np.isnan(transformed.data)
+    transformed_dropna = GroupedArray(
+        transformed.data[keep_mask], np.array([0, keep_mask.sum()])
+    )
+    restored = sc.inverse_transform_fitted(transformed_dropna)
+    np.testing.assert_allclose(restored.data, ga.data[keep_mask])
+
 
 def test_autoseasonality_and_differences():
     sc = AutoSeasonalityAndDifferences(max_season_length=5, max_diffs=1)
@@ -273,6 +340,29 @@ def test_mlforecast_polars(mlforecast_setup):
     pd_preds = fcst_pd.fit(series_pd).predict(5)
 
     pd.testing.assert_frame_equal(pd_preds, pl_preds.to_pandas())
+
+
+@pytest.mark.parametrize("max_diffs", [1, 2, 3])
+def test_mlforecast_fit_with_preprocessed_autodifferences(max_diffs):
+    """Test MLForecast with preprocessed AutoDifferences and different max_diffs values."""
+    series = generate_daily_series(1, min_length=50, max_length=50, with_trend=True)
+    fcst = MLForecast(
+        models=[],
+        freq="D",
+        target_transforms=[AutoDifferences(max_diffs=max_diffs)],
+    )
+    preprocessed = fcst.preprocess(series)
+    fcst.fit(
+        preprocessed.dropna(),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        fitted=True,
+        dropna=True,
+    )
+    fitted = fcst.forecast_fitted_values()
+    assert fitted is not None
+    assert len(fitted) > 0
 
 
 def test_autoseasonality_and_differences_validation():
