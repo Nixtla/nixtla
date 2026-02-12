@@ -107,6 +107,10 @@ training times and could potentially lead to overfitting if not managed properly
 Remember, fine-tuning is a powerful feature, but it should be used thoughtfully
 and carefully.
 
+## Azure AI
+
+When using Azure AI, `finetune_steps` works as described above: it fine-tunes the model at inference time using your data. However, fine-tuned model persistence (saving and reusing models with `NixtlaClient.finetune` and `finetuned_model_id`) is not available for Azure AI deployments. For more details, see [Re-using fine-tuned models](/forecasting/fine-tuning/save_reuse_delete_finetuned_models).
+
 ## Additional Resources
 
 - For a detailed guide on using a specific loss function for fine-tuning, check out the

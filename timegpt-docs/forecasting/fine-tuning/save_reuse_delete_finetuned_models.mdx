@@ -10,6 +10,10 @@ Reusing previously fine-tuned TimeGPT models can help reduce computation time
 and costs while maintaining or improving forecast accuracy. This guide walks you
 through the steps to save, fine-tune, list, and delete your TimeGPT models effectively.
 
+<Warning>
+  Fine-tuned model persistence (saving and reusing fine-tuned models) is **only available** when using the public TimeGPT API. This feature is **not available** for Azure AI deployments. When using Azure AI, you can still use the `finetune_steps` parameter in the `forecast` method to apply fine-tuning at inference time, but the fine-tuned model will not be saved for future reuse.
+</Warning>
+
 
 ## How to Re-use Fine-tuned Models
 
