@@ -583,7 +583,7 @@ def detect_package_installer() -> tuple[list[str], bool]:
 
 
 def package_and_upload_nixtla(
-    session: Session, stage: str, package_source: Optional[str] = None
+    session: Session, stage: str, fallback_package_source: Optional[str] = None
 ) -> None:
     """
     Package nixtla client and upload to Snowflake stage.
@@ -591,33 +591,37 @@ def package_and_upload_nixtla(
     Args:
         session: Active Snowflake session
         stage: Stage name to upload to
-        package_source: Local path to nixtla package to install from (e.g. ".").
-            If None, installs the current version from PyPI.
+        fallback_package_source: Local path to nixtla package (e.g. project root)
+            used as a fallback when the current version is not yet on PyPI.
     """
     with TemporaryDirectory() as tmpdir:
-        # Determine nixtla package specifier
-        if package_source is not None:
-            nixtla_spec = package_source
-        else:
-            from nixtla import __version__ as nixtla_version
-
-            nixtla_spec = f"nixtla=={nixtla_version}"
+        from nixtla import __version__ as nixtla_version
 
         # Detect package installer
         pip_cmd, use_uv = detect_package_installer()
 
-        # Install packages with appropriate flags
-        # UV uses --target instead of -t
-        install_args = pip_cmd + [
+        # Build base install args (shared between PyPI and fallback attempts)
+        base_args = pip_cmd + [
             "--target" if use_uv else "-t",
             tmpdir,
-            nixtla_spec,
-            "utilsforecast",
-            "httpx",
-            "--no-deps",  # Avoid pulling in heavy things like pandas/numpy into the ZIP
         ]
+        extra_deps = ["utilsforecast", "httpx"]
+        no_deps_flag = ["--no-deps"]  # Avoid pulling in heavy things like pandas/numpy
 
-        subprocess.run(install_args, check=True)
+        # Try the released PyPI version first
+        pypi_args = base_args + [f"nixtla=={nixtla_version}"] + extra_deps + no_deps_flag
+        pip_result = subprocess.run(pypi_args)
+
+        if pip_result.returncode != 0 and fallback_package_source is not None:
+            print(
+                f"[yellow]nixtla=={nixtla_version} not found on PyPI, "
+                f"falling back to local package: {fallback_package_source}[/yellow]"
+            )
+            fallback_args = base_args + [fallback_package_source] + extra_deps + no_deps_flag
+            subprocess.run(fallback_args, check=True)
+        elif pip_result.returncode != 0:
+            # No fallback available — surface the original error
+            pip_result.check_returncode()
 
         # Create zip archive
         shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", tmpdir)
@@ -1874,7 +1878,7 @@ def deploy_snowflake_core(
     deploy_procedures: bool = True,
     deploy_finetune: bool = True,
     deploy_examples: bool = True,
-    package_source: Optional[str] = None,
+    fallback_package_source: Optional[str] = None,
 ) -> DeploymentConfig:
     """
     Core deployment logic without user interaction.
@@ -1893,8 +1897,8 @@ def deploy_snowflake_core(
         deploy_procedures: Whether to create stored procedures
         deploy_finetune: Whether to create finetune stored procedure
         deploy_examples: Whether to load example datasets
-        package_source: Local path to nixtla package (e.g. ".").
-            If None, installs from PyPI.
+        fallback_package_source: Local path to nixtla package (e.g. project root)
+            used as a fallback when the current version is not yet on PyPI.
 
     Returns:
         DeploymentConfig that was used for deployment
@@ -1907,7 +1911,9 @@ def deploy_snowflake_core(
         create_security_integration(session, config, api_key, skip_confirmation=True)
 
     if deploy_package:
-        package_and_upload_nixtla(session, config.stage, package_source=package_source)
+        package_and_upload_nixtla(
+            session, config.stage, fallback_package_source=fallback_package_source
+        )
 
     if deploy_udtfs:
         create_udtfs(session, config)

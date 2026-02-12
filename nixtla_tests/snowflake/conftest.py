@@ -343,7 +343,7 @@ def deployed_with_api_endpoint(
         deploy_procedures=True,
         deploy_finetune=False,  # Skip finetune to speed up tests
         deploy_examples=False,  # Load examples separately to get DataFrames
-        package_source=_PROJECT_ROOT,
+        fallback_package_source=_PROJECT_ROOT,
     )
 
     yield config
@@ -402,7 +402,7 @@ def deployed_with_tsmp_endpoint(
         deploy_procedures=True,
         deploy_finetune=False,  # Skip finetune to speed up tests
         deploy_examples=False,  # Load examples separately if needed
-        package_source=_PROJECT_ROOT,
+        fallback_package_source=_PROJECT_ROOT,
     )
 
     yield config
