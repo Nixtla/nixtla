@@ -24,10 +24,15 @@ Note: Tests will be skipped if required environment variables are not set.
 import os
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Generator
 
 import pandas as pd
 import pytest
+
+# Resolve the project root (where pyproject.toml lives) so tests install
+# the local package instead of fetching an (unreleased) version from PyPI.
+_PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 from dotenv import load_dotenv
 from snowflake.snowpark import Session
 
@@ -338,6 +343,7 @@ def deployed_with_api_endpoint(
         deploy_procedures=True,
         deploy_finetune=False,  # Skip finetune to speed up tests
         deploy_examples=False,  # Load examples separately to get DataFrames
+        package_source=_PROJECT_ROOT,
     )
 
     yield config
@@ -396,6 +402,7 @@ def deployed_with_tsmp_endpoint(
         deploy_procedures=True,
         deploy_finetune=False,  # Skip finetune to speed up tests
         deploy_examples=False,  # Load examples separately if needed
+        package_source=_PROJECT_ROOT,
     )
 
     yield config

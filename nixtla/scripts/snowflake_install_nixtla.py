@@ -582,17 +582,26 @@ def detect_package_installer() -> tuple[list[str], bool]:
     )
 
 
-def package_and_upload_nixtla(session: Session, stage: str) -> None:
+def package_and_upload_nixtla(
+    session: Session, stage: str, package_source: Optional[str] = None
+) -> None:
     """
     Package nixtla client and upload to Snowflake stage.
 
     Args:
         session: Active Snowflake session
         stage: Stage name to upload to
+        package_source: Local path to nixtla package to install from (e.g. ".").
+            If None, installs the current version from PyPI.
     """
     with TemporaryDirectory() as tmpdir:
-        # Import version from nixtla package
-        from nixtla import __version__ as nixtla_version
+        # Determine nixtla package specifier
+        if package_source is not None:
+            nixtla_spec = package_source
+        else:
+            from nixtla import __version__ as nixtla_version
+
+            nixtla_spec = f"nixtla=={nixtla_version}"
 
         # Detect package installer
         pip_cmd, use_uv = detect_package_installer()
@@ -602,7 +611,7 @@ def package_and_upload_nixtla(session: Session, stage: str) -> None:
         install_args = pip_cmd + [
             "--target" if use_uv else "-t",
             tmpdir,
-            f"nixtla=={nixtla_version}",
+            nixtla_spec,
             "utilsforecast",
             "httpx",
             "--no-deps",  # Avoid pulling in heavy things like pandas/numpy into the ZIP
@@ -1865,6 +1874,7 @@ def deploy_snowflake_core(
     deploy_procedures: bool = True,
     deploy_finetune: bool = True,
     deploy_examples: bool = True,
+    package_source: Optional[str] = None,
 ) -> DeploymentConfig:
     """
     Core deployment logic without user interaction.
@@ -1883,6 +1893,8 @@ def deploy_snowflake_core(
         deploy_procedures: Whether to create stored procedures
         deploy_finetune: Whether to create finetune stored procedure
         deploy_examples: Whether to load example datasets
+        package_source: Local path to nixtla package (e.g. ".").
+            If None, installs from PyPI.
 
     Returns:
         DeploymentConfig that was used for deployment
@@ -1895,7 +1907,7 @@ def deploy_snowflake_core(
         create_security_integration(session, config, api_key, skip_confirmation=True)
 
     if deploy_package:
-        package_and_upload_nixtla(session, config.stage)
+        package_and_upload_nixtla(session, config.stage, package_source=package_source)
 
     if deploy_udtfs:
         create_udtfs(session, config)
