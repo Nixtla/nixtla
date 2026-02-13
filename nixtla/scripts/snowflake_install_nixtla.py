@@ -609,7 +609,9 @@ def package_and_upload_nixtla(
         no_deps_flag = ["--no-deps"]  # Avoid pulling in heavy things like pandas/numpy
 
         # Try the released PyPI version first
-        pypi_args = base_args + [f"nixtla=={nixtla_version}"] + extra_deps + no_deps_flag
+        pypi_args = (
+            base_args + [f"nixtla=={nixtla_version}"] + extra_deps + no_deps_flag
+        )
         pip_result = subprocess.run(pypi_args)
 
         if pip_result.returncode != 0 and fallback_package_source is not None:
@@ -617,11 +619,13 @@ def package_and_upload_nixtla(
                 f"[yellow]nixtla=={nixtla_version} not found on PyPI, "
                 f"falling back to local package: {fallback_package_source}[/yellow]"
             )
-            fallback_args = base_args + [fallback_package_source] + extra_deps + no_deps_flag
-            subprocess.run(fallback_args, check=True)
-        elif pip_result.returncode != 0:
-            # No fallback available — surface the original error
-            pip_result.check_returncode()
+            fallback_args = (
+                base_args + [fallback_package_source] + extra_deps + no_deps_flag
+            )
+            pip_result = subprocess.run(fallback_args, check=True)
+
+        # Check whether the pip installation run successfully
+        pip_result.check_returncode()
 
         # Create zip archive
         shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", tmpdir)
