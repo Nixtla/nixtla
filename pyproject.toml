@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=36.2", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.7.19,<1.0.0"]
+build-backend = "uv_build"
 
 [project]
 name = "nixtla"
-dynamic = ["version"]
+version = "0.7.3"
 description = "Python SDK for Nixtla API (TimeGPT)"
 authors = [
     {name = "Nixtla", email = "business@nixtla.io"}
@@ -35,9 +35,6 @@ dependencies = [
     "utilsforecast>=0.2.15",
 ]
 
-[tool.setuptools.dynamic]
-version = {attr = "nixtla.__version__"}
-
 [project.optional-dependencies]
 dev = [
     "black",
@@ -55,7 +52,7 @@ dev = [
     "pyreadr<0.5.3",
     "python-dotenv",
     "pyyaml",
-    "setuptools<79",
+    "ruff",
     "statsforecast",
     "tabulate",
     "shap",
@@ -95,11 +92,8 @@ Homepage = "https://github.com/Nixtla/nixtla/"
 Documentation = "https://nixtlaverse.nixtla.io/"
 Repository = "https://github.com/Nixtla/nixtla/"
 
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.packages.find]
-exclude = ["action_files*"]
+[tool.uv.build-backend]
+module-root = "."
 
 [tool.ruff.lint]
 select = [
