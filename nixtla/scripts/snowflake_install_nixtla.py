@@ -766,7 +766,7 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
     )
     class ForecastUDTF:
         def __init__(self):
-            import _snowflake
+            import _snowflake   # type: ignore
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
@@ -1062,7 +1062,7 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
     )
     class AnomalyDetectionUDTF:
         def __init__(self):
-            import _snowflake
+            import _snowflake   # type: ignore
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
@@ -1147,7 +1147,7 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
         """UDTF for computing feature contributions (SHAP values) in long format."""
 
         def __init__(self):
-            import _snowflake
+            import _snowflake   # type: ignore
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
@@ -1336,7 +1336,7 @@ def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
         params: Optional[dict] = None,
         max_series: int = 1000,
     ) -> str:
-        import _snowflake
+        import _snowflake   # type: ignore
         from snowflake.snowpark import functions as F
         from nixtla import NixtlaClient
 
