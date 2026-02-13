@@ -24,8 +24,8 @@ import os
 import shutil
 import subprocess
 import sys
-
 from dataclasses import dataclass
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Mapping, Optional
 from urllib.parse import urlparse
@@ -36,7 +36,6 @@ from rich import print
 from rich.markdown import Markdown
 from rich.prompt import Confirm, Prompt
 from snowflake.snowpark import Session
-from pathlib import Path
 
 # ============================================================================
 # Constants
@@ -766,7 +765,8 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
     )
     class ForecastUDTF:
         def __init__(self):
-            import _snowflake   # type: ignore
+            import _snowflake  # type: ignore
+
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
@@ -1062,7 +1062,8 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
     )
     class AnomalyDetectionUDTF:
         def __init__(self):
-            import _snowflake   # type: ignore
+            import _snowflake  # type: ignore
+
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
@@ -1147,7 +1148,8 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
         """UDTF for computing feature contributions (SHAP values) in long format."""
 
         def __init__(self):
-            import _snowflake   # type: ignore
+            import _snowflake  # type: ignore
+
             from nixtla import NixtlaClient
 
             token = _snowflake.get_generic_secret_string(SECRET_API_KEY)
@@ -1336,8 +1338,9 @@ def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
         params: Optional[dict] = None,
         max_series: int = 1000,
     ) -> str:
-        import _snowflake   # type: ignore
+        import _snowflake  # type: ignore
         from snowflake.snowpark import functions as F
+
         from nixtla import NixtlaClient
 
         if params is None:
