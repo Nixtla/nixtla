@@ -1100,7 +1100,7 @@ class NixtlaClient:
         self,
         df: DFType,
         X_df: Optional[DFType],
-        id_col: str,
+        id_col: Optional[str],
         time_col: str,
         target_col: str,
         model: _Model,
@@ -1109,7 +1109,18 @@ class NixtlaClient:
     ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email support@nixtla.io")
-        drop_id = id_col not in df.columns
+        if id_col is None:
+            id_col = "unique_id"
+            drop_id = True
+        elif id_col not in df.columns:
+            raise ValueError(
+                f"id_col='{id_col}' not found in dataframe columns: "
+                f"{list(df.columns)}. "
+                "If your data doesn't have an ID column "
+                "(single series), you can set id_col=None."
+            )
+        else:
+            drop_id = False
         if drop_id:
             df = ufp.copy_if_pandas(df, deep=False)
             df = ufp.assign_columns(df, id_col, 0)
@@ -1196,7 +1207,7 @@ class NixtlaClient:
         self,
         df: DataFrame,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         finetune_steps: _NonNegativeInt = 10,
@@ -1461,7 +1472,7 @@ class NixtlaClient:
         df: AnyDFType,
         h: _PositiveInt,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         X_df: Optional[AnyDFType] = None,
@@ -1844,7 +1855,7 @@ class NixtlaClient:
         self,
         df: AnyDFType,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
@@ -2085,7 +2096,7 @@ class NixtlaClient:
         detection_size: _PositiveInt,
         threshold_method: _ThresholdMethod = "univariate",
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
@@ -2392,7 +2403,7 @@ class NixtlaClient:
         df: AnyDFType,
         h: _PositiveInt,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         level: Optional[list[Union[int, float]]] = None,
