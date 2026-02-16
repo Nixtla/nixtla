@@ -1106,7 +1106,7 @@ class NixtlaClient:
         model: _Model,
         validate_api_key: bool,
         freq: Optional[_FreqType],
-    ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
+    ) -> tuple[DFType, Optional[DFType], str, bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email support@nixtla.io")
         if id_col is None:
@@ -1169,7 +1169,7 @@ class NixtlaClient:
                 "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
                 "for an end to end example."
             )
-        return df, X_df, drop_id, freq
+        return df, X_df, id_col, drop_id, freq
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Check API key status.
@@ -1274,7 +1274,7 @@ class NixtlaClient:
             raise ValueError("Can only fine-tune on pandas or polars dataframes.")
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, X_df, drop_id, freq = self._run_validations(
+        df, X_df, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -1620,7 +1620,7 @@ class NixtlaClient:
         self.__dict__.pop("feature_contributions", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, X_df, drop_id, freq = self._run_validations(
+        df, X_df, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=X_df,
             id_col=id_col,
@@ -1951,7 +1951,7 @@ class NixtlaClient:
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        df, _, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -2238,7 +2238,7 @@ class NixtlaClient:
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        df, _, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -2547,7 +2547,7 @@ class NixtlaClient:
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        df, _, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
