@@ -1,6 +1,6 @@
 ---
 output-file: utils.html
-title: Utils
+title: Utils | MLForecast
 ---
 
 

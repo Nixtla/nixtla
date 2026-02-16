@@ -1,6 +1,6 @@
 ---
 output-file: core.html
-title: Core
+title: Core | MLForecast
 ---
 
 
