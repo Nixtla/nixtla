@@ -6,13 +6,6 @@ import pytest
 import scipy.sparse as sp
 
 from hierarchicalforecast.core import HierarchicalReconciliation
-from hierarchicalforecast.evaluation import (
-    energy_score,
-    log_score,
-    msse,
-    rel_mse,
-    scaled_crps,
-)
 from hierarchicalforecast.methods import BottomUp
 from hierarchicalforecast.probabilistic_methods import (
     PERMBU,
@@ -909,80 +902,6 @@ def test_coherent_samples_shape(samplers):
 
     assert bootstrap_samples.shape == normality_samples.shape
     assert bootstrap_samples.shape == permbu_samples.shape
-
-
-def test_rel_mse_execution(test_data):
-    """Test RelMSE's execution."""
-    result = rel_mse(
-        y=test_data["y_test"],
-        y_hat=test_data["y_hat_base"],
-        y_train=test_data["y_base"],
-    )
-    assert result is not None
-
-
-def test_msse_execution(test_data):
-    """Test MSSE's execution."""
-    result = msse(
-        y=test_data["y_test"],
-        y_hat=test_data["y_hat_base"],
-        y_train=test_data["y_base"],
-    )
-    assert result is not None
-
-
-def test_energy_score_execution(test_data, samplers):
-    """Test energy score's execution."""
-    bootstrap_samples = samplers["bootstrap_sampler"].get_samples(num_samples=100)
-    permbu_samples = samplers["permbu_sampler"].get_samples(num_samples=100)
-
-    result = energy_score(
-        y=test_data["y_test"], y_sample1=bootstrap_samples, y_sample2=permbu_samples
-    )
-    assert result is not None
-
-
-def test_scaled_crps_execution(test_data, samplers):
-    """Test scaled CRPS' execution."""
-    bootstrap_samples = samplers["bootstrap_sampler"].get_samples(num_samples=100)
-    quantiles = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-    bootstrap_quantiles = np.quantile(bootstrap_samples, q=quantiles, axis=2)
-    bootstrap_quantiles = bootstrap_quantiles.transpose((1, 2, 0))  # [Q,N,H] -> [N,H,Q]
-
-    result = scaled_crps(
-        y=test_data["y_test"], y_hat=bootstrap_quantiles, quantiles=quantiles
-    )
-    assert result is not None
-
-
-def test_log_score_execution(test_data, samplers):
-    """Test log score's execution."""
-    cov = np.concatenate(
-        [cov[:, :, None] for cov in samplers["normality_sampler"].cov_rec], axis=2
-    )
-    result = log_score(
-        y=test_data["y_test"],
-        y_hat=test_data["y_hat_base"],
-        cov=cov,
-        allow_singular=True,
-    )
-    assert result is not None
-
-
-def test_quantile_loss_protections(test_data, samplers):
-    """Test quantile loss protections."""
-    bootstrap_samples = samplers["bootstrap_sampler"].get_samples(num_samples=100)
-    quantiles = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-    bootstrap_quantiles = np.quantile(bootstrap_samples, q=quantiles, axis=2)
-    bootstrap_quantiles = bootstrap_quantiles.transpose((1, 2, 0))  # [Q,N,H] -> [N,H,Q]
-
-    # Test with invalid quantiles (>1.0)
-    invalid_quantiles = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.2])
-
-    with pytest.raises(Exception) as exc_info:
-        scaled_crps(test_data["y_test"], bootstrap_quantiles, invalid_quantiles)
-
-    assert "between 0 and 1" in str(exc_info.value)
 
 
 class TestConformal:

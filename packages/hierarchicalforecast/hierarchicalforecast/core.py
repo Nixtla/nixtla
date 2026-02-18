@@ -478,7 +478,6 @@ class HierarchicalReconciliation:
         target_col: str = "y",
         id_time_col: str = "temporal_id",
         temporal: bool = False,
-        S: Frame = None,  # For compatibility with the old API, S_df is now S
         diagnostics: bool = False,
         diagnostics_atol: float = 1e-6,
     ) -> FrameT:
@@ -539,22 +538,6 @@ class HierarchicalReconciliation:
             - `is_coherent`: Whether reconciled forecasts satisfy aggregation constraints (Overall level only)
             - `coherence_max_violation`: Maximum coherence violation (Overall level only)
         """
-        # Handle deprecated S parameter
-        if S is not None:
-            import warnings
-
-            if S_df is not None:
-                raise ValueError(
-                    "Both 'S' and 'S_df' parameters were provided. Please use only 'S_df'."
-                )
-            warnings.warn(
-                "The 'S' parameter is deprecated and will be removed in a future version. "
-                "Please use 'S_df' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            S_df = S
-
         # To Narwhals
         Y_hat_nw = nw.from_native(Y_hat_df)
         S_nw = nw.from_native(S_df)

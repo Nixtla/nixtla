@@ -599,10 +599,6 @@ class TopDown(HReconciler):
             prop = np.nanmean(y_btm / y_top, axis=1)
         elif self.method == "proportion_averages":
             prop = np.nanmean(y_btm, axis=1) / np.nanmean(y_top)
-        elif self.method == "forecast_proportions":
-            raise NotImplementedError(
-                f"Fit method not implemented for {self.method} yet"
-            )
         else:
             raise ValueError(f"Unknown method {self.method}")
 
@@ -817,8 +813,6 @@ class TopDownSparse(TopDown):
             prop = np.mean(y_btm / y_top, 1)
         elif self.method == "proportion_averages":
             prop = np.mean(y_btm, 1) / np.mean(y_top)
-        elif self.method == "forecast_proportions":
-            raise ValueError(f"Fit method not yet implemented for {self.method}.")
         else:
             raise ValueError(f"{self.method} is an unknown disaggregation method.")
 
@@ -1964,6 +1958,12 @@ class OptimalCombination(MinTrace):
             raise ValueError(
                 f"Unknown method `{method}`. Choose from `ols`, `wls_struct`."
             )
+        warnings.warn(
+            "OptimalCombination is deprecated and will be removed in a future version. "
+            "Use MinTrace(method='ols') or MinTrace(method='wls_struct') instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(
             method=method, nonnegative=nonnegative, num_threads=num_threads
         )

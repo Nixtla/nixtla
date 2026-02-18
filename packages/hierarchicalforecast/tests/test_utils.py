@@ -7,7 +7,6 @@ from utilsforecast.data import generate_series as util_generate_series
 
 from hierarchicalforecast.utils import (
     CodeTimer,
-    HierarchicalPlot,
     _ma_cov,
     _shrunk_covariance_schaferstrimmer_no_nans,
     _shrunk_covariance_schaferstrimmer_with_nans,
@@ -74,7 +73,9 @@ def test_simple_case(df, spec):
 
 # Testing equivalence of other dataframe libs to pandas results.
 # TODO: extend for other frameworks
-def assert_eq_agg_dataframe(df, spec, frameworks=["polars"]):
+def assert_eq_agg_dataframe(df, spec, frameworks=None):
+    if frameworks is None:
+        frameworks = ["polars"]
     for framework in frameworks:
         if framework == "polars":
             df_f = pl.from_pandas(df)

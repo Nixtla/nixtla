@@ -9,22 +9,9 @@ from statsforecast.core import StatsForecast
 from statsforecast.models import AutoETS
 
 from hierarchicalforecast.core import HierarchicalReconciliation
-from hierarchicalforecast.evaluation import HierarchicalEvaluation, evaluate, mse
+from hierarchicalforecast.evaluation import evaluate
 from hierarchicalforecast.methods import BottomUp, MinTrace
 from hierarchicalforecast.utils import aggregate
-
-
-def rmse(y, y_hat):
-    return np.mean(np.sqrt(np.mean((y - y_hat) ** 2, axis=1)))
-
-
-def mase(y, y_hat, y_insample, seasonality=4):
-    errors = np.mean(np.abs(y - y_hat), axis=1)
-    scale = np.mean(
-        np.abs(y_insample[:, seasonality:] - y_insample[:, :-seasonality]), axis=1
-    )
-    return np.mean(errors / scale)
-
 
 
 @pytest.fixture
@@ -47,7 +34,7 @@ def grouped_data(tourism_df, hierarchy_specs):
     hier_grouped_df_h = (
         hier_grouped_df.groupby("unique_id").tail(12).reset_index(drop=True)
     )
-    ds_h = hier_grouped_df_h["ds"].unique()
+    ds_h = hier_grouped_df_h["ds"].unique() # noqa: F841
     hier_grouped_df = hier_grouped_df.query("~(ds in @ds_h)")
     # adding noise to `y_model` to avoid perfect fited values
     rng = np.random.default_rng(0)
@@ -78,137 +65,10 @@ def reconciled_data(grouped_data):
     reconciled = hrec.reconcile(
         Y_hat_df=grouped_data["hier_grouped_df_h"],
         Y_df=grouped_data["hier_grouped_df"],
-        S=grouped_data["S_grouped"],
+        S_df=grouped_data["S_grouped"],
         tags=grouped_data["tags_grouped"],
     )
     return reconciled
-
-
-def test_mse_rmse_evaluation(reconciled_data, grouped_data):
-    """Test MSE and RMSE evaluation."""
-    # Test mse, rmse
-    evaluator = HierarchicalEvaluation([mse, rmse])
-    evaluation_old = evaluator.evaluate(
-        Y_hat_df=reconciled_data.drop(columns="y"),
-        Y_test_df=reconciled_data[["unique_id", "ds", "y"]],
-        tags=grouped_data["tags_grouped"],
-    )
-    # Test mse, rmse
-    evaluation = evaluate(
-        reconciled_data, metrics=[ufl.mse, ufl.rmse], tags=grouped_data["tags_grouped"]
-    )
-
-    pd.testing.assert_frame_equal(evaluation_old, evaluation)
-
-
-def test_mse_rmse_evaluation_polars(reconciled_data, grouped_data):
-    """Test MSE and RMSE evaluation with polars."""
-    evaluator = HierarchicalEvaluation([mse, rmse])
-    # polars
-    # Test mse, rmse
-    reconciled_pl = pl.from_pandas(reconciled_data)
-    evaluation_pl = evaluator.evaluate(
-        Y_hat_df=reconciled_pl.drop("y"),
-        Y_test_df=reconciled_pl[["unique_id", "ds", "y"]],
-        tags=grouped_data["tags_grouped"],
-    )
-
-    evaluation = evaluate(
-        reconciled_data, metrics=[ufl.mse, ufl.rmse], tags=grouped_data["tags_grouped"]
-    )
-
-    pd.testing.assert_frame_equal(evaluation, evaluation_pl.to_pandas())
-
-
-def test_mase_evaluation(reconciled_data, grouped_data):
-    """Test MASE evaluation."""
-    # Test mase
-    evaluator = HierarchicalEvaluation([mase])
-    evaluation_old = evaluator.evaluate(
-        Y_hat_df=reconciled_data.drop(columns="y"),
-        Y_test_df=reconciled_data[["unique_id", "ds", "y"]],
-        tags=grouped_data["tags_grouped"],
-        Y_df=grouped_data["hier_grouped_df"],
-    )
-    evaluation = evaluate(
-        reconciled_data,
-        metrics=[partial(ufl.mase, seasonality=4)],
-        train_df=grouped_data["hier_grouped_df"],
-        tags=grouped_data["tags_grouped"],
-    )
-
-    pd.testing.assert_frame_equal(evaluation_old, evaluation)
-
-
-def test_mase_evaluation_polars(reconciled_data, grouped_data):
-    """Test MASE evaluation with polars."""
-    evaluator = HierarchicalEvaluation([mase])
-    # polars
-    reconciled_pl = pl.from_pandas(reconciled_data)
-    hier_grouped_df_pl = pl.from_pandas(grouped_data["hier_grouped_df"])
-
-    evaluation_pl = evaluator.evaluate(
-        Y_hat_df=reconciled_pl.drop("y"),
-        Y_test_df=reconciled_pl[["unique_id", "ds", "y"]],
-        tags=grouped_data["tags_grouped"],
-        Y_df=hier_grouped_df_pl,
-    )
-
-    evaluation = evaluate(
-        reconciled_data,
-        metrics=[partial(ufl.mase, seasonality=4)],
-        train_df=grouped_data["hier_grouped_df"],
-        tags=grouped_data["tags_grouped"],
-    )
-
-    pd.testing.assert_frame_equal(evaluation, evaluation_pl.to_pandas())
-
-
-def test_evaluation_h1(reconciled_data, grouped_data):
-    """Test that evaluation works for h=1."""
-    evaluator = HierarchicalEvaluation([mase])
-    evaluation_old = evaluator.evaluate(
-        Y_hat_df=reconciled_data.groupby("unique_id").tail(1).drop(columns="y"),
-        Y_test_df=reconciled_data.groupby("unique_id").tail(1)[
-            ["unique_id", "ds", "y"]
-        ],
-        tags=grouped_data["tags_grouped"],
-        Y_df=grouped_data["hier_grouped_df"],
-    )
-    # test work for h=1
-    evaluation = evaluate(
-        reconciled_data.groupby("unique_id").tail(1),
-        metrics=[partial(ufl.mase, seasonality=4)],
-        train_df=grouped_data["hier_grouped_df"],
-        tags=grouped_data["tags_grouped"],
-    )
-
-    pd.testing.assert_frame_equal(evaluation_old, evaluation)
-
-
-def test_evaluation_h1_polars(reconciled_data, grouped_data):
-    """Test that evaluation works for h=1 with polars."""
-    evaluator = HierarchicalEvaluation([mase])
-    evaluation_old = evaluator.evaluate(
-        Y_hat_df=reconciled_data.groupby("unique_id").tail(1).drop(columns="y"),
-        Y_test_df=reconciled_data.groupby("unique_id").tail(1)[
-            ["unique_id", "ds", "y"]
-        ],
-        tags=grouped_data["tags_grouped"],
-        Y_df=grouped_data["hier_grouped_df"],
-    )
-
-    # polars
-    # test work for h=1
-    reconciled_pl = pl.from_pandas(reconciled_data)
-    evaluation_pl = evaluate(
-        reconciled_pl.group_by("unique_id").tail(1),
-        metrics=[partial(ufl.mase, seasonality=4)],
-        train_df=pl.from_pandas(grouped_data["hier_grouped_df"]),
-        tags=grouped_data["tags_grouped"],
-    )
-
-    pd.testing.assert_frame_equal(evaluation_old, evaluation_pl.to_pandas())
 
 
 @pytest.fixture
@@ -243,7 +103,7 @@ def statsforecast_data(tourism_df, hiers_grouped):
         MinTrace(method="mint_shrink"),
     ]
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
-    Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_fitted_df, S=S_df, tags=tags)
+    Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_fitted_df, S_df=S_df, tags=tags)
 
     # Evaluate
     eval_tags = {}
@@ -265,37 +125,6 @@ def statsforecast_data(tourism_df, hiers_grouped):
         "hierarchy_levels": hiers_grouped,
         "df": df,
     }
-
-
-def test_statsforecast_evaluation_mase(statsforecast_data):
-    """Test StatsForecast evaluation with MASE metric."""
-    evaluator = HierarchicalEvaluation(evaluators=[mase, rmse])
-    evaluation_old = evaluator.evaluate(
-        Y_hat_df=statsforecast_data["Y_rec_df"],
-        Y_test_df=statsforecast_data["Y_test_df"],
-        tags=statsforecast_data["eval_tags"],
-        Y_df=statsforecast_data["Y_train_df"],
-    )
-    numeric_cols = evaluation_old.select_dtypes(include="number").columns
-    evaluation_old[numeric_cols] = (
-        evaluation_old[numeric_cols].map("{:.2f}".format).astype(np.float64)
-    )
-
-    evaluation_check = pd.DataFrame(
-        {
-            "level": ["Total", "Purpose", "State", "Regions", "Bottom", "Overall"],
-            "metric": 6 * ["mase"],
-            "AutoETS": [1.59, 1.32, 1.39, 1.12, 0.98, 1.02],
-            "AutoETS/BottomUp": [3.16, 2.28, 1.90, 1.19, 0.98, 1.06],
-        }
-    )
-
-    pd.testing.assert_frame_equal(
-        evaluation_old.query("metric == 'mase'")[
-            ["level", "metric", "AutoETS", "AutoETS/BottomUp"]
-        ].reset_index(drop=True),
-        evaluation_check,
-    )
 
 
 def test_statsforecast_evaluate_function(statsforecast_data):
@@ -333,20 +162,6 @@ def test_statsforecast_evaluate_function(statsforecast_data):
         evaluation_check,
     )
 
-    # Compare with old evaluation method
-    evaluator = HierarchicalEvaluation(evaluators=[mase, rmse])
-    evaluation_old = evaluator.evaluate(
-        Y_hat_df=statsforecast_data["Y_rec_df"],
-        Y_test_df=statsforecast_data["Y_test_df"],
-        tags=statsforecast_data["eval_tags"],
-        Y_df=statsforecast_data["Y_train_df"],
-    )
-    evaluation_old[numeric_cols] = (
-        evaluation_old[numeric_cols].map("{:.2f}".format).astype(np.float64)
-    )
-
-    pd.testing.assert_frame_equal(evaluation_old, evaluation)
-
 
 def test_polars_statsforecast_evaluation(statsforecast_data):
     """Test if polars gives equal results to pandas for StatsForecast evaluation."""
@@ -371,7 +186,7 @@ def test_polars_statsforecast_evaluation(statsforecast_data):
     reconcilers = [BottomUp(), MinTrace(method="ols"), MinTrace(method="mint_shrink")]
     hrec = HierarchicalReconciliation(reconcilers=reconcilers)
     Y_rec_df_pl = hrec.reconcile(
-        Y_hat_df=Y_hat_df_pl, Y_df=Y_fitted_df, S=S_df, tags=tags
+        Y_hat_df=Y_hat_df_pl, Y_df=Y_fitted_df, S_df=S_df, tags=tags
     )
 
     # Evaluate
