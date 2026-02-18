@@ -6,7 +6,11 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from hierarchicalforecast.core import HierarchicalReconciliation, _build_fn_name
+from hierarchicalforecast.core import (
+    HierarchicalReconciliation,
+    _build_fn_name,
+    _estimate_sigmah,
+)
 from hierarchicalforecast.methods import (
     ERM,
     BottomUp,
@@ -920,3 +924,87 @@ def test_fails_fast_before_reconciliation(common_test_data):
 
     # Verify fit was never called
     assert not TrackingTopDown.fit_called, "Validation should fail before fit() is called"
+
+
+# ------------------------------------------------------------------
+# Tests for _estimate_sigmah
+# ------------------------------------------------------------------
+class TestEstimateSigmah:
+    """Unit tests for IQR-based sigma_h estimation."""
+
+    def _make_df(self, y_hat, columns):
+        """Helper to build a narwhals-wrapped DataFrame with unique_id/ds."""
+        n_series, n_horizon = y_hat.shape
+        ids = np.repeat(np.arange(n_series), n_horizon)
+        ds = np.tile(np.arange(n_horizon), n_series)
+        data = {"unique_id": ids, "ds": ds}
+        for name, vals in columns.items():
+            data[name] = vals.flatten()
+        return nw.from_native(pd.DataFrame(data))
+
+    def test_single_paired_level(self):
+        """sigma_h from a single lo/hi pair matches (hi - lo) / (2*z)."""
+        from scipy.stats import norm
+
+        n_series, n_horizon = 3, 4
+        y_hat = np.random.default_rng(0).standard_normal((n_series, n_horizon))
+        sigma_true = np.abs(np.random.default_rng(1).standard_normal((n_series, n_horizon)))
+        level = 90
+        z = norm.ppf(0.5 + level / 200)
+        lo = y_hat - z * sigma_true
+        hi = y_hat + z * sigma_true
+
+        df = self._make_df(y_hat, {"model": y_hat, "model-lo-90": lo, "model-hi-90": hi})
+        sigmah = _estimate_sigmah(df, y_hat, model_name="model")
+        np.testing.assert_allclose(sigmah, sigma_true, atol=1e-12)
+
+    def test_multiple_paired_levels(self):
+        """With multiple paired levels, the result is the average of per-level estimates."""
+        from scipy.stats import norm
+
+        n_series, n_horizon = 2, 3
+        y_hat = np.ones((n_series, n_horizon))
+        sigma_true = np.full((n_series, n_horizon), 2.0)
+
+        cols = {"model": y_hat}
+        for level in [80, 95]:
+            z = norm.ppf(0.5 + level / 200)
+            cols[f"model-lo-{level}"] = y_hat - z * sigma_true
+            cols[f"model-hi-{level}"] = y_hat + z * sigma_true
+
+        df = self._make_df(y_hat, cols)
+        sigmah = _estimate_sigmah(df, y_hat, model_name="model")
+        # Both levels yield the same sigma, so the average is exact
+        np.testing.assert_allclose(sigmah, sigma_true, atol=1e-12)
+
+    def test_raises_on_unpaired_interval(self):
+        """Raises ValueError when only one direction (lo but no hi) exists."""
+        n_series, n_horizon = 2, 2
+        y_hat = np.ones((n_series, n_horizon))
+        df = self._make_df(y_hat, {"model": y_hat, "model-lo-90": y_hat * 0.9})
+        with pytest.raises(ValueError, match="No paired prediction interval columns"):
+            _estimate_sigmah(df, y_hat, model_name="model")
+
+    def test_raises_on_no_intervals(self):
+        """Raises ValueError when no PI columns exist at all."""
+        n_series, n_horizon = 2, 2
+        y_hat = np.ones((n_series, n_horizon))
+        df = self._make_df(y_hat, {"model": y_hat})
+        with pytest.raises(ValueError, match="No paired prediction interval columns"):
+            _estimate_sigmah(df, y_hat, model_name="model")
+
+    def test_non_negative_output(self):
+        """Ensures output is non-negative even if lo > hi (degenerate input)."""
+        from scipy.stats import norm
+
+        n_series, n_horizon = 2, 2
+        y_hat = np.ones((n_series, n_horizon))
+        # Deliberately swap lo/hi to produce negative raw sigma
+        level = 90
+        z = norm.ppf(0.5 + level / 200)
+        lo = y_hat + z * 1.0  # "lo" is actually above y_hat
+        hi = y_hat - z * 1.0  # "hi" is actually below y_hat
+
+        df = self._make_df(y_hat, {"model": y_hat, "model-lo-90": lo, "model-hi-90": hi})
+        sigmah = _estimate_sigmah(df, y_hat, model_name="model")
+        assert np.all(sigmah >= 0)

@@ -150,50 +150,73 @@ def _build_fn_name(fn) -> str:
     return fn_name
 
 
-def _reverse_engineer_sigmah(
+def _estimate_sigmah(
     Y_hat_df: Frame,
     y_hat: np.ndarray,
     model_name: str,
     id_col: str = "unique_id",
-    time_col: str = "ds",
-    target_col: str = "y",
-    num_samples: int = 200,
 ) -> np.ndarray:
-    r"""Reverse engineer sigma_h from prediction intervals.
+    r"""Estimate forecast standard deviation from paired prediction intervals.
 
-    This function assumes that the model creates prediction intervals
-    under a normality with the following the Equation:
-    $\hat{y}_{t+h} + c \hat{sigma}_{h}$
+    Uses the interquartile range (IQR) approach: for each pair of prediction
+    interval columns (``{model_name}-lo-{level}`` and ``{model_name}-hi-{level}``),
+    computes:
 
-    In the future, we might deprecate this function in favor of a
-    direct usage of an estimated $\hat{sigma}_{h}$
+    .. math::
+        \hat{\sigma}_h = \frac{\text{hi} - \text{lo}}{2z}
+
+    where :math:`z = \Phi^{-1}(0.5 + \text{level}/200)`. When multiple paired
+    levels are available, the estimates are averaged for robustness.
+
+    Args:
+        Y_hat_df: DataFrame with base forecasts and prediction interval columns.
+        y_hat: Point forecasts of shape (``n_series``, ``n_horizon``).
+        model_name: Name of the forecast model (used to find PI columns).
+        id_col: Column name for series identifiers.
+
+    Returns:
+        Estimated forecast standard deviations of shape (``n_series``, ``n_horizon``).
+
+    Raises:
+        ValueError: If no paired prediction interval columns are found.
     """
-
-    drop_cols = [time_col]
-    if target_col in Y_hat_df.columns:
-        drop_cols.append(target_col)
-    if model_name + "-median" in Y_hat_df.columns:
-        drop_cols.append(model_name + "-median")
-    model_names = [c for c in Y_hat_df.columns if c not in drop_cols]
-    pi_model_names = [name for name in model_names if ("-lo" in name or "-hi" in name)]
-    pi_model_name = [pi_name for pi_name in pi_model_names if model_name in pi_name]
-    pi = len(pi_model_name) > 0
-
     n_series = Y_hat_df[id_col].n_unique()
 
-    if not pi:
+    # Find all lo/hi PI columns for this model
+    lo_cols = {}
+    hi_cols = {}
+    for col in Y_hat_df.columns:
+        if not col.startswith(model_name + "-"):
+            continue
+        suffix = col[len(model_name) + 1 :]
+        level_match = re.match(r"^(lo|hi)-(.+)$", suffix)
+        if level_match is None:
+            continue
+        direction, level_str = level_match.groups()
+        level = float(level_str)
+        if direction == "lo":
+            lo_cols[level] = col
+        else:
+            hi_cols[level] = col
+
+    # Collect paired levels
+    paired_levels = sorted(lo_cols.keys() & hi_cols.keys())
+    if not paired_levels:
         raise ValueError(
-            f"Please include `{model_name}` prediction intervals in `Y_hat_df`"
+            f"No paired prediction interval columns found for `{model_name}`. "
+            f"Expected columns like `{model_name}-lo-90` and `{model_name}-hi-90`."
         )
 
-    pi_col = pi_model_name[0]
-    sign = -1 if "lo" in pi_col else 1
-    level_cols = re.findall(r"[\d]+[.,\d]+|[\d]*[.][\d]+|[\d]+", pi_col)
-    level_col = float(level_cols[-1])
-    z = norm.ppf(0.5 + level_col / num_samples)
-    sigmah = Y_hat_df[pi_col].to_numpy().reshape(n_series, -1)
-    sigmah = sign * (sigmah - y_hat) / z
+    # Estimate sigma_h from each paired level and average
+    sigma_estimates = []
+    for level in paired_levels:
+        lo = Y_hat_df[lo_cols[level]].to_numpy().reshape(n_series, -1)
+        hi = Y_hat_df[hi_cols[level]].to_numpy().reshape(n_series, -1)
+        z = norm.ppf(0.5 + level / 200)
+        sigma_estimates.append((hi - lo) / (2 * z))
 
+    sigmah = np.mean(sigma_estimates, axis=0)
+    sigmah = np.maximum(sigmah, 0)
     return sigmah
 
 
@@ -686,14 +709,11 @@ class HierarchicalReconciliation:
                     reconciler_args["seed"] = seed
 
                     if intervals_method in ["normality", "permbu"]:
-                        sigmah = _reverse_engineer_sigmah(
+                        sigmah = _estimate_sigmah(
                             Y_hat_df=Y_hat_nw,
                             y_hat=y_hat,
                             model_name=model_name,
                             id_col=id_col,
-                            time_col=time_col,
-                            target_col=target_col,
-                            num_samples=reconciler_args["num_samples"],
                         )
                         reconciler_args["sigmah"] = sigmah
 
