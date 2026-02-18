@@ -428,6 +428,29 @@ def air_passengers_renamed_df(air_passengers_df):
 
 
 @pytest.fixture(scope="module")
+def air_passengers_with_nans(air_passengers_renamed_df):
+    df = deepcopy(air_passengers_renamed_df)
+    rng = np.random.default_rng(42)
+    nan_idx = rng.choice(len(df), size=10, replace=False)
+    df.loc[df.index[nan_idx], "y"] = np.nan
+    return df
+
+
+@pytest.fixture(scope="module")
+def multi_series_with_nans(ts_data_set1):
+    df = deepcopy(ts_data_set1.train)
+    rng = np.random.default_rng(42)
+    nan_idx = rng.choice(len(df), size=20, replace=False)
+    df.loc[df.index[nan_idx], "y"] = np.nan
+    return SimpleNamespace(
+        df=df,
+        h=ts_data_set1.h,
+        freq=ts_data_set1.freq,
+        n_ids=df["unique_id"].nunique(),
+    )
+
+
+@pytest.fixture(scope="module")
 def air_passengers_renamed_df_with_index(air_passengers_renamed_df):
     df_copy = deepcopy(air_passengers_renamed_df)
     df_ds_index = df_copy.set_index("ds")[["unique_id", "y"]]
