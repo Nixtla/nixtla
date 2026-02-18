@@ -6,10 +6,12 @@ icon: "table"
 
 ## Missing Values in Time Series
 
-TimeGPT requires time series data without missing values. While you may have
-multiple series starting and ending on different dates, each one must maintain
-a continuous data sequence.
+TimeGPT can handle missing values in your target series, but it needs a continuous series of timestamps.
+While you may have multiple series starting and ending on different dates, each one must maintain
+a continuous date sequence. Any unobserved values in your target series can be labelled as `NaN`.
 
+Whenever possible, we recommend to fill missing values by interpolation or any other method that makes
+sense in your particular context.
 
 This tutorial shows you how to handle missing values for use with TimeGPT. For
 reference, this tutorial is based on the skforecast tutorial:
@@ -19,6 +21,7 @@ reference, this tutorial is based on the skforecast tutorial:
   <Tip>
     Managing missing values ensures your forecasts with TimeGPT are accurate and reliable.
     When dates or values are missing, fill or interpolate them according to the nature of your dataset.
+    If values cannot be filled, you can label them as `NaN`.
   </Tip>
 
 ## Tutorial
@@ -110,15 +113,12 @@ Additionally, notice a period from March 16, 2020, to April 21, 2020, where the
 data shows zero rentals. These are not missing values, but actual zeros
 corresponding to the COVID-19 lockdown in the city.
 
-### Step 4: Fill Missing Values
+### Step 4: Fill Missing Dates
 
 You can use `fill_gaps` from `utilsforecast` to insert the missing dates:
 
-
-Before using TimeGPT, we need to ensure that:
-
-1. All timestamps from the start date to the end date are present in the data.
-2. The target column contains no missing values.
+Before using TimeGPT, we need to ensure that **all timestamps** from the start date to the end date are present in the data.
+Missing values in the series can be present as `NaN`.
 
 To address the first issue, we will use the `fill_gaps` function from `utilsforecast`,
 a Python package from Nixtla that provides essential utilities for time series
@@ -153,14 +153,13 @@ assist with this (refer to the documentation for complete details), namely
 `start` and `end`.
 
 
-Now we need to decide how to fill the missing values in the target column. In
-this tutorial, we will use interpolation, but it is important to consider the
+Now we need to decide whether to fill the missing values in the target column or not. In
+this tutorial, we decide to use interpolation, but it is important to consider the
 specific context of your data when selecting a filling strategy. For example,
 if you are dealing with daily retail data, a missing value most likely indicates
 that there were no sales on that day, and you can fill it with zero. Conversely,
 if you are working with hourly temperature data, a missing value probably means
-that the sensor was not functioning, and you might prefer to use interpolation
-to fill the missing values.
+that the sensor was not functioning, and you might prefer to keep the value as `NaN`.
 
 In this case, we will handle the newly inserted missing values by interpolation.
 
@@ -225,8 +224,9 @@ evaluate(result, metrics=[mae])
 
 ### Step 6: Conclusion
 
-- Always ensure that your data is free of missing dates and values before forecasting with TimeGPT.
+- Always ensure that your data is free of missing dates before forecasting with TimeGPT.
 - Select a gap-filling strategy based on your domain knowledge (linear interpolation, constant filling, etc.).
+- You may want to keep missing values as `NaN` if no gap-filling strategy makes sense in your context.
 
 
 ## References
