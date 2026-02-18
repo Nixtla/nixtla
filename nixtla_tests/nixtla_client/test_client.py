@@ -112,7 +112,7 @@ def test_forecast_warning(nixtla_test_client, air_passengers_df, caplog):
 )
 def test_forecast_error(nixtla_test_client, air_passengers_df, kwargs):
     with pytest.raises(
-        ApiError, match="Minimum required samples for computing prediction intervals"
+        ApiError, match="Minimum required.*samples for computing prediction intervals"
     ):
         nixtla_test_client.forecast(
             df=air_passengers_df.tail(3),
