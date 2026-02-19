@@ -27,3 +27,7 @@ def test_detect_anomalies_with_missing_values(
     anomalies = nixtla_test_client.detect_anomalies(air_passengers_with_nans)
     assert len(anomalies) > 0
     assert "anomaly" in anomalies.columns
+
+def test_finetune_with_missing_values(nixtla_test_client, air_passengers_with_nans):                                        
+    model_id = nixtla_test_client.finetune(air_passengers_with_nans, finetune_steps=1)                                      
+    assert isinstance(model_id, str)    
