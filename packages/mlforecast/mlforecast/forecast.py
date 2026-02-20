@@ -838,6 +838,7 @@ class MLForecast:
                 "If you ran preprocess after fit please run fit again."
             )
 
+        new_ts: Optional[TimeSeries] = None
         if new_df is not None:
             if level is not None:
                 raise ValueError(
@@ -869,7 +870,7 @@ class MLForecast:
             new_ts.as_numpy = self.ts.as_numpy
             ts = new_ts
         else:
-            ts = self.ts  
+            ts = self.ts
         forecasts = ts.predict(
             models=self.models_,
             horizon=h,
@@ -878,6 +879,9 @@ class MLForecast:
             X_df=X_df,
             ids=ids,
         )
+        if new_ts is not None:
+            # Persist transfer-learning state only after a successful prediction.
+            self.ts = new_ts
         if level is not None:
             if self._cs_df is None:
                 warn_msg = (
@@ -886,6 +890,26 @@ class MLForecast:
                 )
                 warnings.warn(warn_msg, UserWarning)
             else:
+                if isinstance(self._cs_df, pl_DataFrame):
+                    cs_ids = set(self._cs_df[self.ts.id_col].unique().to_list())
+                else:
+                    cs_ids = set(self._cs_df[self.ts.id_col].unique().tolist())
+                if ids is None:
+                    active_ids = set(self.ts.uids)
+                    if cs_ids != active_ids:
+                        raise ValueError(
+                            "Prediction intervals were calibrated on a different set of series "
+                            "than the current forecasting state. Please rerun `fit` before "
+                            "requesting intervals."
+                        )
+                else:
+                    missing_ids = set(ids) - cs_ids
+                    if missing_ids:
+                        raise ValueError(
+                            "Prediction intervals are only available for series seen during "
+                            "interval calibration. Missing ids: "
+                            f"{missing_ids}."
+                        )
                 if (self.prediction_intervals.h != 1) and (
                     self.prediction_intervals.h < h
                 ):

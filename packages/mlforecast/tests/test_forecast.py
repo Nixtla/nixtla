@@ -1478,3 +1478,117 @@ def test_mlforecast_num_threads_minus_one():
     preds_single = mlf_single.predict(h=7)
 
     pd.testing.assert_frame_equal(preds_multi, preds_single)
+
+
+def test_transfer_learning_updates_uids():
+    """Test that predict with new_df updates self.ts to reflect the new dataset."""
+    train_a = generate_daily_series(3, min_length=50, max_length=50)
+    train_b = generate_daily_series(
+        2, min_length=50, max_length=50, n_static_features=0
+    )
+    # Make sure train_b has different uids
+    train_b["unique_id"] = train_b["unique_id"].cat.rename_categories(
+        {c: f"new_{c}" for c in train_b["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1, 2, 3],
+    )
+    fcst.fit(train_a)
+    original_uids = set(fcst.ts.uids)
+    assert len(original_uids) == 3
+
+    fcst.predict(h=5, new_df=train_b)
+    new_uids = set(fcst.ts.uids)
+    expected_uids = set(train_b["unique_id"].unique())
+    assert new_uids == expected_uids
+    assert new_uids != original_uids
+
+
+def test_transfer_learning_failed_predict_keeps_original_state():
+    """Test that transfer learning doesn't mutate state if prediction fails."""
+    train_a = generate_daily_series(3, min_length=50, max_length=50, n_static_features=0)
+    train_b = generate_daily_series(2, min_length=50, max_length=50, n_static_features=0)
+    train_b["unique_id"] = train_b["unique_id"].cat.rename_categories(
+        {c: f"new_{c}" for c in train_b["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1, 2, 3],
+    )
+    fcst.fit(train_a)
+    original_uids = set(fcst.ts.uids)
+
+    with pytest.raises(ValueError, match="weren't seen during training"):
+        fcst.predict(h=5, new_df=train_b, ids=["id_0"])
+
+    assert set(fcst.ts.uids) == original_uids
+
+
+def test_transfer_learning_then_intervals_raises_clear_error():
+    """Test that intervals after transfer learning fail with a clear message."""
+    train_a = generate_daily_series(3, min_length=50, max_length=50, n_static_features=0)
+    train_b = generate_daily_series(2, min_length=50, max_length=50, n_static_features=0)
+    train_b["unique_id"] = train_b["unique_id"].cat.rename_categories(
+        {c: f"new_{c}" for c in train_b["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1, 2, 3],
+    )
+    fcst.fit(train_a, prediction_intervals=PredictionIntervals(n_windows=2, h=5))
+    fcst.predict(h=5, new_df=train_b)
+
+    with pytest.raises(ValueError, match="calibrated on a different set of series"):
+        fcst.predict(h=5, level=[90])
+
+
+def test_transfer_learning_then_intervals_raises_with_same_series_count():
+    """Intervals should fail if ids differ, even when the number of series matches."""
+    train_a = generate_daily_series(2, min_length=50, max_length=50, n_static_features=0)
+    train_b = generate_daily_series(2, min_length=50, max_length=50, n_static_features=0)
+    train_b["unique_id"] = train_b["unique_id"].cat.rename_categories(
+        {c: f"new_{c}" for c in train_b["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1, 2, 3],
+    )
+    fcst.fit(train_a, prediction_intervals=PredictionIntervals(n_windows=2, h=5))
+    fcst.predict(h=5, new_df=train_b)
+
+    with pytest.raises(ValueError, match="calibrated on a different set of series"):
+        fcst.predict(h=5, level=[90])
+
+
+def test_transfer_learning_subset_predict_keeps_full_transform_state():
+    """Subset forecasts after transfer learning shouldn't persist subset-mutated transforms."""
+    train_a = generate_daily_series(2, min_length=60, max_length=60, n_static_features=0)
+    train_b = generate_daily_series(2, min_length=60, max_length=60, n_static_features=0)
+    train_b["unique_id"] = train_b["unique_id"].cat.rename_categories(
+        {c: f"new_{c}" for c in train_b["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1],
+        lag_transforms={1: [ExpandingMean()]},
+    )
+    fcst.fit(train_a)
+    expected_uids = set(train_b["unique_id"].unique())
+    subset_id = [next(iter(expected_uids))]
+
+    # Persist transfer state through a subset forecast first.
+    fcst.predict(h=3, new_df=train_b, ids=subset_id)
+    # A full forecast should still work for all transfer-learning ids.
+    preds = fcst.predict(h=3)
+    assert set(preds["unique_id"].unique()) == expected_uids

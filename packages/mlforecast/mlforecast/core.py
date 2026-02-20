@@ -1226,7 +1226,7 @@ class TimeSeries:
             self.static_features_ = statics
             self.last_dates = last_dates
             self.target_transforms = targ_tfms
-            self.lag_tfms = lag_tfms
+            self.transforms = lag_tfms
 
     def predict(
         self,
