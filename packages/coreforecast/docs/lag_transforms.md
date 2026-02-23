@@ -1,5 +1,5 @@
 ---
-title: Lag transformations
+title: Lag transformations | CoreForecast
 description: Compute lag transforms
 ---
 
