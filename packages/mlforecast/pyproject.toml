@@ -20,13 +20,14 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "cloudpickle",
     "coreforecast>=0.0.15",
     "fsspec",
     "optuna",
-    "pandas",
+    "pandas<3.0",
     "scikit-learn",
     "utilsforecast>=0.2.9",
 ]
@@ -39,7 +40,12 @@ Documentation = "https://nixtlaverse.nixtla.io/mlforecast/"
 
 [dependency-groups]
 dask = ["fugue[dask]>=0.9.4", "dask[complete]", "lightgbm", "xgboost"]
-ray = ["fugue[ray]>=0.9.4", "lightgbm_ray", "xgboost_ray>=0.1.19", "xgboost>=2.0.0,<2.1.0"]
+ray = [
+    "fugue[ray]>=0.9.4; sys_platform != 'win32' and python_version < '3.14'",
+    "lightgbm_ray; sys_platform != 'win32' and python_version < '3.14'",
+    "xgboost_ray>=0.1.19; sys_platform != 'win32' and python_version < '3.14'",
+    "xgboost>=2.0.0,<2.1.0; sys_platform != 'win32' and python_version < '3.14'"
+]
 spark = ["fugue[spark]>=0.9.4", "pyspark>=3.3", "lightgbm", "xgboost"]
 aws = ["fsspec[s3]"]
 gcp = ["fsspec[gcs]"]

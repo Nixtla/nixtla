@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
       - name: Clone repo
         uses: actions/checkout@v6
@@ -33,15 +33,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - name: Install dependencies (Linux/macOS)
-        if: matrix.os != 'windows-latest'
+      - name: Install dependencies
         run: |
           uv sync --group dev --group dask --group ray
-
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          uv sync --group dev --group dask
 
       - name: Install lightgbm on macOS
         if: matrix.os == 'macos-latest'

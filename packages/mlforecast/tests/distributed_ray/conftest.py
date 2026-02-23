@@ -2,6 +2,8 @@ import sys
 import pytest
 
 # Skip entire directory if Ray is not available or on Windows
+if sys.version_info >= (3, 14):
+    pytest.skip("Ray does not support Python 3.14+", allow_module_level=True)
 pytest.importorskip('ray', reason="Ray is required for distributed tests")
 if sys.platform == "win32":
     pytest.skip("Distributed tests are not supported on Windows", allow_module_level=True)
