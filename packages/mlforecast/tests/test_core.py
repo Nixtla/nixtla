@@ -1453,7 +1453,7 @@ def test_update_validation_valid_continuous(engine, freq_name):
     ts = TimeSeries(freq=freq, lags=[1])
     ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
     update = _make_valid_update(series, engine, freq_config)
-    ts.update(update, validate_input=True)
+    ts.update(update, validate_new_data=True)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1483,8 +1483,8 @@ def test_update_validation_invalid_gap(engine, freq_name):
             ],
             ignore_index=True,
         )
-    with pytest.raises(ValueError, match="gaps or duplicate"):
-        ts.update(update, validate_input=True)
+    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+        ts.update(update, validate_new_data=True)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1515,7 +1515,7 @@ def test_update_validation_invalid_start(engine, freq_name):
             ignore_index=True,
         )
     with pytest.raises(ValueError, match="invalid start"):
-        ts.update(update, validate_input=True)
+        ts.update(update, validate_new_data=True)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1584,7 +1584,7 @@ def test_update_validation_new_series(engine, freq_name):
             }
         )
         update = pd.concat([update, new_series], ignore_index=True)
-    ts.update(update, validate_input=True)
+    ts.update(update, validate_new_data=True)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1624,8 +1624,8 @@ def test_update_validation_frequency_mismatch(engine, freq_name):
             ],
             ignore_index=True,
         )
-    with pytest.raises(ValueError, match="gaps or duplicate"):
-        ts.update(update, validate_input=True)
+    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+        ts.update(update, validate_new_data=True)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1674,8 +1674,8 @@ def test_update_validation_misaligned_intermediate_timestamp(engine, freq_name):
         df3 = last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset2"])
         update = pd.concat([df1, df2, df3], ignore_index=True)
 
-    with pytest.raises(ValueError, match="aligned|gaps or duplicate"):
-        ts.update(update, validate_input=True)
+    with pytest.raises(ValueError, match="aligned|missing or duplicate timestamps"):
+        ts.update(update, validate_new_data=True)
 
 
 def test_ts_polars():

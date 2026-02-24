@@ -571,9 +571,8 @@ def test_wrong_frequency_error():
         freq='MS',
         lags=[1],
     )
-    with pytest.raises(ValueError) as exec:
+    with pytest.raises(ValueError, match="freq"):
         fcst_wrong_freq.cross_validation(df_wrong_freq, n_windows=1, h=1)
-    assert 'Cross validation result produced less results than expected' in str(exec.value)
 
 
 def test_best_iter(setup_forecast_data):
@@ -714,9 +713,8 @@ def polars_pandas_test_data():
     series_pl = series_pl[permutation]
     series_pd = series_pd.iloc[permutation]
 
-    cfg = dict(
+    base_cfg = dict(
         models=[LinearRegression(), lgb.LGBMRegressor(verbosity=-1)],
-        freq='1d',
         lags=[1, 2],
         lag_transforms={
             1: [ExpandingMean()],
@@ -725,6 +723,8 @@ def polars_pandas_test_data():
         date_features=['day', 'month', 'week', 'year'],
         target_transforms=[Differences([1, 2]), LocalStandardScaler()],
     )
+    cfg_pl = dict(**base_cfg, freq='1d')
+    cfg_pd = dict(**base_cfg, freq='D')
     fit_kwargs = dict(
         fitted=True,
         prediction_intervals=PredictionIntervals(h=horizon),
@@ -748,7 +748,8 @@ def polars_pandas_test_data():
         'series_pd': series_pd,
         'prices_pl': prices_pl,
         'prices_pd': prices_pd,
-        'cfg': cfg,
+        'cfg_pl': cfg_pl,
+        'cfg_pd': cfg_pd,
         'fit_kwargs': fit_kwargs,
         'predict_kwargs': predict_kwargs,
         'cv_kwargs': cv_kwargs,
@@ -764,7 +765,7 @@ def test_polars_pandas_compatibility(polars_pandas_test_data, max_horizon, as_nu
     if not as_numpy:
         pytest.skip("LightGBM with polars DataFrames not fully supported yet")
 
-    fcst_pl = MLForecast(**data['cfg'])
+    fcst_pl = MLForecast(**data['cfg_pl'])
     fcst_pl.fit(data['series_pl'], max_horizon=max_horizon, as_numpy=as_numpy, **data['fit_kwargs'])
     fitted_pl = fcst_pl.forecast_fitted_values()
     preds_pl = fcst_pl.predict(X_df=data['prices_pl'], **data['predict_kwargs'])
@@ -772,7 +773,7 @@ def test_polars_pandas_compatibility(polars_pandas_test_data, max_horizon, as_nu
     cv_pl = fcst_pl.cross_validation(data['series_pl'], as_numpy=as_numpy, **data['cv_kwargs'])
     cv_fitted_pl = fcst_pl.cross_validation_fitted_values()
 
-    fcst_pd = MLForecast(**data['cfg'])
+    fcst_pd = MLForecast(**data['cfg_pd'])
     fcst_pd.fit(data['series_pd'], max_horizon=max_horizon, as_numpy=as_numpy, **data['fit_kwargs'])
     fitted_pd = fcst_pd.forecast_fitted_values()
     preds_pd = fcst_pd.predict(X_df=data['prices_pd'], **data['predict_kwargs'])
@@ -1441,6 +1442,166 @@ def test_horizons_cross_validation_with_target_transforms():
     assert cv_results.shape[0] == n_series * n_windows * n_horizons
 
 
+def test_fit_with_validate_data_clean():
+    """Test that fit with validate_data=True works on clean data without warnings."""
+    # Use equal_ends=True to ensure all series have the same length
+    df = generate_daily_series(3, min_length=50, max_length=50, equal_ends=True)
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7]
+    )
+
+    # Should not produce any warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # Turn warnings into errors
+        fcst.fit(df, validate_data=True)
+
+    # Model should be fitted
+    assert hasattr(fcst, 'models_')
+    assert len(fcst.models_) > 0
+
+
+def test_fit_with_validate_data_duplicates():
+    """Test that fit with validate_data=True raises ValueError on duplicates."""
+    df = generate_daily_series(3, min_length=50, max_length=100)
+
+    # Add duplicate rows
+    duplicate_rows = df.head(5).copy()
+    df = pd.concat([df, duplicate_rows], ignore_index=True)
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7]
+    )
+
+    # Duplicates are a hard error - raises ValueError and stops execution
+    with pytest.raises(ValueError, match="duplicate"):
+        fcst.fit(df, validate_data=True)
+
+
+def test_fit_with_validate_data_missing_dates():
+    """Test that fit with validate_data=True warns about missing dates but continues."""
+    # Create data with gaps
+    df = pd.DataFrame({
+        'unique_id': ['A'] * 10 + ['B'] * 8,
+        'ds': pd.date_range('2020-01-01', periods=10, freq='D').tolist() +
+             [pd.Timestamp('2020-01-01'), pd.Timestamp('2020-01-02'),
+              pd.Timestamp('2020-01-04'), pd.Timestamp('2020-01-05'),
+              pd.Timestamp('2020-01-06'), pd.Timestamp('2020-01-08'),
+              pd.Timestamp('2020-01-09'), pd.Timestamp('2020-01-10')],
+        'y': list(range(18))
+    })
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1]
+    )
+
+    # Should produce error about missing dates
+    with pytest.raises(ValueError, match="missing"):
+        fcst.fit(df, validate_data=True)
+
+
+def test_fit_validate_data_default_true():
+    """Test that validate_data defaults to True - raises on duplicates by default."""
+    # Create data with duplicate rows
+    df = generate_daily_series(3, min_length=50, max_length=100)
+    duplicate_rows = df.head(5).copy()
+    df = pd.concat([df, duplicate_rows], ignore_index=True)
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7]
+    )
+
+    # Should raise by default (validate_data=True)
+    with pytest.raises(ValueError, match="duplicate"):
+        fcst.fit(df)
+
+    # Should succeed when validation is explicitly disabled
+    fcst2 = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1, 7]
+    )
+    fcst2.fit(df, validate_data=False)
+    assert hasattr(fcst2, 'models_')
+
+
+def test_preprocess_with_validate_data():
+    """Test that preprocess method honors validate_data parameter."""
+    df = pd.DataFrame({
+        'unique_id': ['A'] * 10,
+        'ds': pd.date_range('2020-01-01', periods=10, freq='D'),
+        'y': list(range(10))
+    })
+
+    # Add duplicate rows
+    duplicate_rows = df.head(2).copy()
+    df = pd.concat([df, duplicate_rows], ignore_index=True)
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1]
+    )
+
+    # Should raise ValueError when validate_data=True and duplicates are present
+    with pytest.raises(ValueError, match="duplicate"):
+        fcst.preprocess(df, validate_data=True)
+
+    # Should not produce warning when validate_data=False (default)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fcst.preprocess(df, validate_data=False)
+
+
+def test_cross_validation_with_validate_data():
+    """Test that cross_validation method honors validate_data parameter."""
+    # Create data with gaps
+    df = pd.DataFrame({
+        'unique_id': ['A'] * 50 + ['B'] * 48,
+        'ds': pd.date_range('2020-01-01', periods=50, freq='D').tolist() +
+             [pd.Timestamp('2020-01-01') + pd.Timedelta(days=i)
+              for i in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+                        39, 40, 41, 42, 43, 44, 45, 46, 47, 49]],  # Missing day 48
+        'y': list(range(98))
+    })
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1]
+    )
+
+    # Should produce warning when validate_data=True
+    with pytest.raises(ValueError, match="missing"):
+        cv_results = fcst.cross_validation(
+            df,
+            n_windows=2,
+            h=5,
+            validate_data=True
+        )
+
+    # Should not produce warning when validate_data=False
+    fcst2 = MLForecast(
+        models=[LinearRegression()],
+        freq='D',
+        lags=[1]
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        cv_results2 = fcst2.cross_validation(
+            df,
+            n_windows=2,
+            h=5,
+            validate_data=False
+        )
 def test_mlforecast_num_threads_minus_one():
     """Test that MLForecast correctly handles num_threads=-1."""
     import pandas as pd
@@ -1592,3 +1753,30 @@ def test_transfer_learning_subset_predict_keeps_full_transform_state():
     # A full forecast should still work for all transfer-learning ids.
     preds = fcst.predict(h=3)
     assert set(preds["unique_id"].unique()) == expected_uids
+
+
+def test_transfer_learning_with_sparse_horizons():
+    """Regression test: _horizons must be propagated to new_ts during transfer learning.
+
+    Previously, predict(new_df=...) created a fresh TimeSeries object without copying
+    _horizons, causing a KeyError when sparse horizons (e.g. [3, 10]) were used.
+    """
+    train_a = generate_daily_series(3, min_length=50, max_length=50, n_static_features=0)
+    train_b = generate_daily_series(3, min_length=50, max_length=50, n_static_features=0)
+    train_b["unique_id"] = train_b["unique_id"].cat.rename_categories(
+        {c: f"new_{c}" for c in train_b["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1, 2, 3],
+    )
+    fcst.fit(train_a, horizons=[3, 10])
+
+    preds = fcst.predict(h=10, new_df=train_b)
+
+    n_series = train_b["unique_id"].nunique()
+    # Only horizons 3 and 10 should be returned
+    assert preds.shape[0] == n_series * 2
+    assert set(preds["unique_id"].unique()) == set(train_b["unique_id"].unique())

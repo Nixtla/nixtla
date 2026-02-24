@@ -41,6 +41,7 @@ from .grouped_array import GroupedArray
 
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
+from .data_validation import validate_df
 from .target_transforms import _BaseGroupedArrayTargetTransform
 from .utils import PredictionIntervals, _resolve_num_threads
 
@@ -203,6 +204,14 @@ class MLForecast:
         fcst.ts = copy.deepcopy(cv.ts)
         return fcst
 
+    def _validate_data(
+        self,
+        df: DataFrame,
+        id_col: str,
+        time_col: str,
+    ) -> None:
+        validate_df(df, id_col, time_col, self.freq)
+
     def preprocess(
         self,
         df: DFType,
@@ -217,6 +226,7 @@ class MLForecast:
         return_X_y: bool = False,
         as_numpy: bool = False,
         weight_col: Optional[str] = None,
+        validate_data: bool = True,
     ) -> Union[DFType, Tuple[DFType, np.ndarray]]:
         """Add the features to `data`.
 
@@ -231,12 +241,17 @@ class MLForecast:
             max_horizon (int, optional): Train this many models, where each model will predict a specific horizon. Defaults to None.
             horizons (list of int, optional): Train models only for specific horizons (1-indexed). Mutually exclusive with max_horizon. Defaults to None.
             return_X_y (bool): Return a tuple with the features and the target. If False will return a single dataframe. Defaults to False.
-            as_numpy (bool): Cast features to numpy array. Only works for `return_X_y=True`. Defaults to False.
+            as_numpy (bool): Cast features to numpy array. Only works for `return_X_y=True`. Defaults to True.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
+            validate_data (bool): Run data quality validations before preprocessing. Warns about missing dates and raises on duplicate rows. Defaults to True.
 
         Returns:
             DataFrame or tuple of pandas Dataframe and a numpy array: `df` plus added features and target(s).
         """
+        # Run data validations if requested
+        if validate_data:
+            self._validate_data(df, id_col, time_col)
+
         return self.ts.fit_transform(
             df,
             id_col=id_col,
@@ -450,130 +465,91 @@ class MLForecast:
             # y was already extracted from prep by _extract_X_y and contains expanded targets
             exog_cols = self.ts._get_dynamic_exog_cols(list(original_df.columns)) if original_df is not None else []
 
-            horizon_fitted_values = []
-            for h in range(max_horizon):
-                # Get target at horizon h from the y array
+            # Only allocate entries for trained horizons (sparse or dense).
+            trained_horizons = sorted({h for hm in self.models_.values() for h in hm})
+            horizon_fitted_values = {}
+            for h in trained_horizons:
                 y_h = y[:, h] if y.ndim == 2 else y
-
                 horizon_base = ufp.copy_if_pandas(base, deep=True)
                 horizon_base = ufp.assign_columns(horizon_base, target_col, y_h)
-                horizon_fitted_values.append(horizon_base)
+                horizon_fitted_values[h] = horizon_base
 
             # Check if models were trained with numpy arrays
             models_trained_with_numpy = self.ts.as_numpy
 
-            for name, horizon_models in self.models_.items():
-                model_items = horizon_models.items()
+            # Precompute per-horizon aligned features and validity masks once,
+            # shared across all models to avoid redundant joins per model.
+            x_cols = list(X.columns) if hasattr(X, 'columns') else None
+            horizon_cache = {}  # h -> (X_h, valid_mask)
+            for h in trained_horizons:
+                y_h = y[:, h] if y.ndim == 2 else y
+                valid_target = ~np.isnan(y_h)
 
-                for h, model in model_items:
-                    # Get valid mask for this horizon (target not NaN)
-                    y_h = y[:, h] if y.ndim == 2 else y
-                    valid_target = ~np.isnan(y_h)
+                if h == 0 or not exog_cols or original_df is None:
+                    horizon_cache[h] = (X, valid_target)
+                else:
+                    non_exog_cols = [c for c in x_cols if c not in exog_cols] if x_cols else None
+                    offset_times = ufp.offset_times(base[time_col], self.ts.freq, h)
 
-                    if h == 0 or not exog_cols or original_df is None:
-                        # No exog offset needed for horizon 0 or if no exog cols
-                        X_valid = ufp.filter_with_mask(X, valid_target)
-                        X_pred = ufp.to_numpy(X_valid) if models_trained_with_numpy else X_valid
-                        preds_valid = model.predict(X_pred)
-                        # Create full predictions array with NaN for invalid rows
-                        preds = np.full(len(X), np.nan)
-                        preds[valid_target] = preds_valid
-                    else:
-                        # Build aligned X for this horizon using join with row index
-                        x_cols = list(X.columns) if hasattr(X, 'columns') else None
-                        non_exog_cols = [c for c in x_cols if c not in exog_cols] if x_cols else None
-
-                        offset_times = ufp.offset_times(base[time_col], self.ts.freq, h)
-
-                        # Create lookup dataframe with row index to maintain order
-                        if isinstance(base, pl_DataFrame):
-                            # Polars
-                            lookup_df = (
-                                base[[id_col]]
-                                .with_columns(pl_Series('_offset_time', offset_times))
-                                .with_row_index('_row_idx')
-                            )
-                            exog_source = original_df[[id_col, time_col] + exog_cols]
-                            exog_renamed = exog_source.rename({time_col: '_offset_time'})
-                            merged = lookup_df.join(exog_renamed, on=[id_col, '_offset_time'], how='left')
-                            merged = merged.sort('_row_idx')
-
-                            # Build X_h: non-exog from X + exog from merged
-                            if non_exog_cols:
-                                X_h = X[non_exog_cols]
-                                for col in exog_cols:
-                                    X_h = X_h.with_columns(merged[col].alias(col))
-                                X_h = X_h[x_cols]
-                            else:
-                                X_h = X
+                    if isinstance(base, pl_DataFrame):
+                        lookup_df = (
+                            base[[id_col]]
+                            .with_columns(pl_Series('_offset_time', offset_times))
+                            .with_row_index('_row_idx')
+                        )
+                        exog_source = original_df[[id_col, time_col] + exog_cols]
+                        exog_renamed = exog_source.rename({time_col: '_offset_time'})
+                        merged = lookup_df.join(exog_renamed, on=[id_col, '_offset_time'], how='left')
+                        merged = merged.sort('_row_idx')
+                        if non_exog_cols:
+                            X_h = X[non_exog_cols]
+                            for col in exog_cols:
+                                X_h = X_h.with_columns(merged[col].alias(col))
+                            X_h = X_h[x_cols]
                         else:
-                            # Pandas
-                            lookup_df = base[[id_col]].copy()
-                            lookup_df['_offset_time'] = offset_times
-                            lookup_df['_row_idx'] = np.arange(len(base))
-                            exog_source = original_df[[id_col, time_col] + exog_cols]
-                            exog_renamed = exog_source.rename(columns={time_col: '_offset_time'})
-                            merged = lookup_df.merge(exog_renamed, on=[id_col, '_offset_time'], how='left')
-                            merged = merged.sort_values('_row_idx')
+                            X_h = X
+                    else:
+                        lookup_df = base[[id_col]].copy()
+                        lookup_df['_offset_time'] = offset_times
+                        lookup_df['_row_idx'] = np.arange(len(base))
+                        exog_source = original_df[[id_col, time_col] + exog_cols]
+                        exog_renamed = exog_source.rename(columns={time_col: '_offset_time'})
+                        merged = lookup_df.merge(exog_renamed, on=[id_col, '_offset_time'], how='left')
+                        merged = merged.sort_values('_row_idx')
+                        if non_exog_cols:
+                            X_h = X[non_exog_cols].copy()
+                            for col in exog_cols:
+                                X_h[col] = merged[col].values
+                            X_h = X_h[x_cols]
+                        else:
+                            X_h = X
 
-                            # Build X_h: non-exog from X + exog from merged
-                            if non_exog_cols:
-                                X_h = X[non_exog_cols].copy()
-                                for col in exog_cols:
-                                    X_h[col] = merged[col].values
-                                X_h = X_h[x_cols]
-                            else:
-                                X_h = X
+                    valid = valid_target.copy()
+                    for col in exog_cols:
+                        valid &= ~ufp.is_nan_or_none(X_h[col]).to_numpy()
+                    horizon_cache[h] = (X_h, valid)
 
-                        # Check for valid rows (non-NaN target and exog)
-                        valid = valid_target.copy()
-                        for col in exog_cols:
-                            valid &= ~ufp.is_nan_or_none(X_h[col]).to_numpy()
-
-                        X_valid = ufp.filter_with_mask(X_h, valid)
-                        # Convert to numpy if models were trained with numpy
-                        X_valid_pred = ufp.to_numpy(X_valid) if models_trained_with_numpy else X_valid
-                        preds_valid = model.predict(X_valid_pred)
-
-                        # Create full predictions array with NaN for invalid rows
-                        preds = np.full(len(X_h), np.nan)
-                        preds[valid] = preds_valid
-
+            for name, horizon_models in self.models_.items():
+                for h, model in horizon_models.items():
+                    X_h, valid = horizon_cache[h]
+                    X_valid = ufp.filter_with_mask(X_h, valid)
+                    X_pred = ufp.to_numpy(X_valid) if models_trained_with_numpy else X_valid
+                    preds_valid = model.predict(X_pred)
+                    preds = np.full(len(X_h), np.nan)
+                    preds[valid] = preds_valid
                     horizon_fitted_values[h] = ufp.assign_columns(
                         horizon_fitted_values[h], name, preds
                     )
 
-            for h, horizon_df in enumerate(horizon_fitted_values):
-                keep_mask = ~ufp.is_nan(horizon_df[target_col])
-                # Convert to numpy array for consistent manipulation
-                if hasattr(keep_mask, "to_numpy"):
-                    keep_mask = keep_mask.to_numpy()
-
-                # Also filter by valid exog features for this horizon
-                if h > 0 and exog_cols and original_df is not None:
-                    # Need to recompute valid mask for exog
-                    prep_df = ufp.horizontal_concat([base, X])
-                    offset_times = ufp.offset_times(prep_df[time_col], self.ts.freq, h)
-                    lookup_df = type(prep_df)({
-                        id_col: prep_df[id_col],
-                        '_offset_time': offset_times,
-                    })
-                    exog_source = original_df[[id_col, time_col] + exog_cols]
-                    exog_source = ufp.rename(exog_source, {time_col: '_offset_time'})
-                    merged = ufp.join(lookup_df, exog_source,
-                                     on=[id_col, '_offset_time'], how='left')
-                    exog_valid = np.ones(len(merged), dtype=bool)
-                    for col in exog_cols:
-                        exog_valid &= ~ufp.is_nan_or_none(merged[col]).to_numpy()
-                    keep_mask = keep_mask & exog_valid
-
+            for h, horizon_df in horizon_fitted_values.items():
+                _, keep_mask = horizon_cache[h]
                 horizon_df = ufp.filter_with_mask(horizon_df, keep_mask)
                 horizon_df = ufp.copy_if_pandas(horizon_df, deep=True)
                 horizon_df = self._invert_transforms_fitted(horizon_df)
                 horizon_df = ufp.assign_columns(horizon_df, "h", h + 1)
                 horizon_fitted_values[h] = horizon_df
             fitted_values = ufp.vertical_concat(
-                horizon_fitted_values, match_categories=False
+                list(horizon_fitted_values.values()), match_categories=False
             )
         if self.ts.target_transforms is not None:
             for tfm in self.ts.target_transforms[::-1]:
@@ -599,6 +575,7 @@ class MLForecast:
         as_numpy: bool = False,
         weight_col: Optional[str] = None,
         models_fit_kwargs: Optional[dict[str, dict[str, Any]]] = None,
+        validate_data: bool = True,
     ) -> "MLForecast":
         """Apply the feature engineering and train the models.
 
@@ -614,8 +591,10 @@ class MLForecast:
             horizons (list of int, optional): Train models only for specific horizons (1-indexed). For example, `horizons=[7, 14]` trains models only for steps 7 and 14. Mutually exclusive with max_horizon. Defaults to None.
             prediction_intervals (PredictionIntervals, optional): Configuration to calibrate prediction intervals (Conformal Prediction). Defaults to None.
             fitted (bool): Save in-sample predictions. Defaults to False.
-            as_numpy (bool): Cast features to numpy array. Defaults to False.
+            as_numpy (bool): Cast features to numpy array. Defaults to True.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
+            models_fit_kwargs (dict, optional): Keyword arguments for each model's fit method. Defaults to None.
+            validate_data (bool): Run data quality validations before fitting. Warns about missing dates and raises on duplicate rows. Defaults to True.
 
         Returns:
             MLForecast: Forecast object with series values and trained models.
@@ -657,6 +636,7 @@ class MLForecast:
                 return_X_y=False,
                 as_numpy=False,
                 weight_col=weight_col,
+                validate_data=validate_data,
             )
             # Restore the as_numpy setting for prediction
             self.ts.as_numpy = as_numpy
@@ -710,6 +690,7 @@ class MLForecast:
                 return_X_y=not fitted,
                 as_numpy=as_numpy,
                 weight_col=weight_col,
+                validate_data=validate_data,
             )
             if isinstance(prep, tuple):
                 X, y = prep
@@ -867,6 +848,7 @@ class MLForecast:
                 # populate the stats needed for the updates
                 new_ts._compute_transforms(core_tfms, updates_only=False)
             new_ts.max_horizon = self.ts.max_horizon
+            new_ts._horizons = self.ts._horizons
             new_ts.as_numpy = self.ts.as_numpy
             ts = new_ts
         else:
@@ -974,6 +956,7 @@ class MLForecast:
         fitted: bool = False,
         as_numpy: bool = False,
         weight_col: Optional[str] = None,
+        validate_data: bool = True,
     ) -> DFType:
         """Perform time series cross validation.
         Creates `n_windows` splits where each window has `h` test periods,
@@ -999,12 +982,17 @@ class MLForecast:
             level (list of ints or floats, optional): Confidence levels between 0 and 100 for prediction intervals. Defaults to None.
             input_size (int, optional): Maximum training samples per serie in each window. If None, will use an expanding window. Defaults to None.
             fitted (bool): Store the in-sample predictions. Defaults to False.
-            as_numpy (bool): Cast features to numpy array. Defaults to False.
+            as_numpy (bool): Cast features to numpy array. Defaults to True.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
+            validate_data (bool): Run data quality validations on the full dataset before cross-validation. Warns about missing dates and raises on duplicate rows. Defaults to True.
 
         Returns:
             pandas or polars DataFrame: Predictions for each window with the series id, timestamp, last train date, target value and predictions from each model.
         """
+        # Run data validations once on full dataset if requested
+        if validate_data:
+            self._validate_data(df, id_col, time_col)
+
         results = []
         cv_models = []
         cv_fitted_values = []
@@ -1035,6 +1023,7 @@ class MLForecast:
                     fitted=fitted,
                     as_numpy=as_numpy,
                     weight_col=weight_col,
+                    validate_data=False,
                 )
                 cv_models.append(self.models_)
                 if fitted:
@@ -1058,6 +1047,7 @@ class MLForecast:
                     horizons=horizons,
                     return_X_y=False,
                     weight_col=weight_col,
+                    validate_data=False,
                 )
                 assert not isinstance(prep, tuple)
                 effective_max_horizon = self.ts.max_horizon
@@ -1183,11 +1173,11 @@ class MLForecast:
             fcst._cs_df = intervals["scores"]
         return fcst
 
-    def update(self, df: DataFrame, validate_input: bool = False) -> None:
+    def update(self, df: DataFrame, validate_new_data: bool = False) -> None:
         """Update the values of the stored series.
 
         Args:
             df (pandas or polars DataFrame): Dataframe with new observations.
-            validate_input (bool): If True, validate continuity, start dates, and frequency.
+            validate_new_data (bool): If True, validate continuity, start dates, and frequency.
         """
-        self.ts.update(df, validate_input)
+        self.ts.update(df, validate_new_data)

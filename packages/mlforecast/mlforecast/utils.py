@@ -43,6 +43,8 @@ def _resolve_num_threads(num_threads: int) -> int:
                 stacklevel=3
             )
             return 1
+    if num_threads < 1:
+        raise ValueError(f"num_threads must be -1 or a positive integer, got {num_threads}.")
     return num_threads
 
 

@@ -82,3 +82,15 @@ def test_resolve_num_threads_cpu_count_raises_exception():
             assert "Error determining CPU count" in str(w[0].message)
             assert "Test error" in str(w[0].message)
             assert issubclass(w[0].category, UserWarning)
+
+
+def test_resolve_num_threads_zero_raises():
+    """Regression test: num_threads=0 must raise ValueError, not ZeroDivisionError."""
+    with pytest.raises(ValueError, match="num_threads must be -1 or a positive integer"):
+        _resolve_num_threads(0)
+
+
+def test_resolve_num_threads_negative_raises():
+    """Any negative value other than -1 should raise ValueError."""
+    with pytest.raises(ValueError, match="num_threads must be -1 or a positive integer"):
+        _resolve_num_threads(-2)

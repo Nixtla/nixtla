@@ -26,6 +26,7 @@ dependencies = [
     "cloudpickle",
     "coreforecast>=0.0.15",
     "fsspec",
+    "narwhals",
     "optuna",
     "pandas<3.0",
     "scikit-learn",
