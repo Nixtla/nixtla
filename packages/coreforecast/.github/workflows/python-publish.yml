@@ -69,6 +69,9 @@ jobs:
     name: "Upload to PyPI"
     if: github.repository == 'Nixtla/coreforecast'
     needs: [build_wheels, build_sdist]
+    environment:
+      name: release
+      url: https://pypi.org/project/coreforecast/
     runs-on: ubuntu-latest
     permissions:
       id-token: write
