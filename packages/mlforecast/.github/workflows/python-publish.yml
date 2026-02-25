@@ -1,34 +1,37 @@
-name: Release
+name: Upload Python Package
 
 on:
   push:
     tags:
       - 'v*'
 
-defaults:
-  run:
-    shell: bash -l {0}
-
 jobs:
-  release:
+  publish:
     if: github.repository == 'Nixtla/mlforecast'
     runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/project/mlforecast/
     permissions:
-      id-token: write    
+      contents: read
+      id-token: write
+    env:
+      UV_PYTHON: "3.11"
     steps:
-      - name: Clone repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Checkout code
+        uses: actions/checkout@v6 
 
-      - name: Set up python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # 6.2.0
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
         with:
-          python-version: '3.10' 
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Install build dependencies
         run: python -m pip install build wheel
 
-      - name: Build distributions
-        run: python -m build -sw
+      - name: Build package
+        run: uv build
 
-      - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+      - name: Publish to PyPI
+        run: uv publish
