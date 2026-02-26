@@ -428,6 +428,81 @@ def air_passengers_renamed_df(air_passengers_df):
 
 
 @pytest.fixture(scope="module")
+def air_passengers_with_num_and_cat_exog(air_passengers_renamed_df, train_test_split):
+    """Air passengers with both a numerical exog and a categorical seasonal exog."""
+    h = 12
+    df_train, df_test = train_test_split
+    seasons = {
+        1: "winter", 2: "winter", 3: "spring", 4: "spring", 5: "spring",
+        6: "summer", 7: "summer", 8: "summer", 9: "fall", 10: "fall",
+        11: "fall", 12: "winter",
+    }
+    df = df_train.copy().merge(
+        air_passengers_renamed_df[["unique_id", "ds", "y"]].rename(columns={"y": "num_feat"}),
+        on=["unique_id", "ds"],
+    )
+    df["season"] = df["ds"].dt.month.map(seasons)
+    x_df = df_test[["unique_id", "ds"]].copy()
+    x_df = x_df.merge(
+        air_passengers_renamed_df[["unique_id", "ds", "y"]].rename(columns={"y": "num_feat"}),
+        on=["unique_id", "ds"],
+    )
+    x_df["season"] = x_df["ds"].dt.month.map(seasons)
+    return SimpleNamespace(df=df, X_df=x_df, h=h, cat_cols=["season"])
+
+
+@pytest.fixture(scope="module")
+def air_passengers_with_cat_exog(air_passengers_renamed_df, train_test_split):
+    """Air passengers with a categorical seasonal exog (future exog in X_df)."""
+    h = 12
+    df_train, df_test = train_test_split
+    seasons = {
+        1: "winter", 2: "winter", 3: "spring", 4: "spring", 5: "spring",
+        6: "summer", 7: "summer", 8: "summer", 9: "fall", 10: "fall",
+        11: "fall", 12: "winter",
+    }
+    df = df_train.copy()
+    df["season"] = df["ds"].dt.month.map(seasons)
+    x_df = df_test[["unique_id", "ds"]].copy()
+    x_df["season"] = x_df["ds"].dt.month.map(seasons)
+    return SimpleNamespace(df=df, X_df=x_df, h=h, cat_cols=["season"])
+
+
+@pytest.fixture(scope="module")
+def multi_series_with_cat_exog(ts_data_set1):
+    """Multiple daily series with a categorical day-of-week exog (future exog in X_df)."""
+    h = ts_data_set1.h
+    freq = ts_data_set1.freq
+    days = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+    df = ts_data_set1.train.copy()
+    df["day_of_week"] = df["ds"].dt.dayofweek.map(days)
+    x_df_parts = []
+    for uid in df["unique_id"].unique():
+        last_ds = df.loc[df["unique_id"] == uid, "ds"].max()
+        future_dates = pd.date_range(
+            start=last_ds + pd.offsets.Day(), periods=h, freq=freq
+        )
+        x_df_parts.append(
+            pd.DataFrame(
+                {
+                    "unique_id": uid,
+                    "ds": future_dates,
+                    "day_of_week": [days[d.dayofweek] for d in future_dates],
+                }
+            )
+        )
+    x_df = pd.concat(x_df_parts).reset_index(drop=True)
+    return SimpleNamespace(
+        df=df,
+        X_df=x_df,
+        h=h,
+        freq=freq,
+        cat_cols=["day_of_week"],
+        n_ids=df["unique_id"].nunique(),
+    )
+
+
+@pytest.fixture(scope="module")
 def air_passengers_with_nans(air_passengers_renamed_df):
     df = deepcopy(air_passengers_renamed_df)
     rng = np.random.default_rng(42)

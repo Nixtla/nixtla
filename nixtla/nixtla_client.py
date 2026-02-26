@@ -324,6 +324,8 @@ def _partition_series(
                 part_series["X_future"] = [
                     x[i * h : (i + series_per_part) * h] for x in series["X_future"]
                 ]
+        if "categorical_exog" in series:
+            part_series["categorical_exog"] = series["categorical_exog"]
         parts.append({"series": part_series, **payload})
     return parts
 
@@ -1380,6 +1382,7 @@ class NixtlaClient:
         finetuned_model_id: Optional[str],
         clean_ex_first: bool,
         hist_exog_list: Optional[list[str]],
+        categorical_exog_list: Optional[list[str]],
         validate_api_key: bool,
         add_history: bool,
         date_features: Union[bool, list[Union[str, Callable]]],
@@ -1441,6 +1444,7 @@ class NixtlaClient:
                 finetuned_model_id=finetuned_model_id,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
+                categorical_exog_list=categorical_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
@@ -1473,6 +1477,7 @@ class NixtlaClient:
         finetuned_model_id: Optional[str] = None,
         clean_ex_first: bool = True,
         hist_exog_list: Optional[list[str]] = None,
+        categorical_exog_list: Optional[list[str]] = None,
         validate_api_key: bool = False,
         add_history: bool = False,
         date_features: Union[bool, list[Union[str, Callable]]] = False,
@@ -1539,6 +1544,11 @@ class NixtlaClient:
                 forecasts using TimeGPT. Defaults to True.
             hist_exog_list (list[str], optional): Column names of the
                 historical exogenous features. Defaults to None.
+            categorical_exog_list (list[str], optional): Column names of
+                categorical exogenous features (can be strings or numbers).
+                Future categoricals must be provided via `X_df`; historical-only
+                categoricals must appear in `df` and be listed in
+                `hist_exog_list`. Defaults to None.
             validate_api_key (bool):
                 If True, validates api_key before sending requests. Defaults
                 to False.
@@ -1595,6 +1605,7 @@ class NixtlaClient:
                 finetuned_model_id=finetuned_model_id,
                 clean_ex_first=clean_ex_first,
                 hist_exog_list=hist_exog_list,
+                categorical_exog_list=categorical_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
                 date_features=date_features,
@@ -1619,14 +1630,52 @@ class NixtlaClient:
             model=model,
             freq=freq,
         )
+        # Determine categorical split before _validate_exog so hist-only
+        # categoricals are treated as historical exog during validation.
+        futr_cat_cols: list[str] = []
+        hist_cat_cols: list[str] = []
+        if categorical_exog_list:
+            x_df_exog_cols = (
+                {c for c in X_df.columns if c not in {id_col, time_col}}
+                if X_df is not None
+                else set()
+            )
+            df_exog_cols = {c for c in df.columns if c not in {id_col, time_col, target_col}}
+            invalid_cats = set(categorical_exog_list) - df_exog_cols - x_df_exog_cols
+            if invalid_cats:
+                raise ValueError(
+                    "The following columns in `categorical_exog_list` were not "
+                    f"found in `df` or `X_df`: {invalid_cats}."
+                )
+            futr_cat_cols = [c for c in categorical_exog_list if c in x_df_exog_cols]
+            hist_cat_cols = [c for c in categorical_exog_list if c not in futr_cat_cols]
+
+        # Merge hist_exog_list and hist_cat_cols, deduplicating in case the user
+        # listed a column in both (e.g. hist_exog_list=['cat'] + categorical_exog_list=['cat']).
+        _combined_hist = list(dict.fromkeys((hist_exog_list or []) + hist_cat_cols))
         df, X_df = _validate_exog(
             df=df,
             X_df=X_df,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-            hist_exog=hist_exog_list,
+            hist_exog=_combined_hist,
         )
+
+        # Extract categorical values and strip them from df/X_df so that
+        # process_df only sees numerical columns.
+        df_cat_vals: dict[str, np.ndarray] = {}
+        X_df_cat_future: list[list] = []
+        if categorical_exog_list:
+            for c in categorical_exog_list:
+                df_cat_vals[c] = df[c].to_numpy()
+            if futr_cat_cols and X_df is not None:
+                X_df_sorted = ensure_sorted(X_df, id_col=id_col, time_col=time_col)
+                for c in futr_cat_cols:
+                    X_df_cat_future.append(X_df_sorted[c].tolist())
+                X_df = X_df[[c for c in X_df.columns if c not in futr_cat_cols]]
+            df = df[[c for c in df.columns if c not in categorical_exog_list]]
+
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
 
         logger.info("Preprocessing dataframes...")
@@ -1641,6 +1690,13 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+
+        # Sort categorical arrays to match process_df row ordering.
+        sorted_df_cat: dict[str, np.ndarray] = {}
+        if categorical_exog_list:
+            for c, vals in df_cat_vals.items():
+                sorted_df_cat[c] = vals[processed.sort_idxs] if processed.sort_idxs is not None else vals
+
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if finetune_steps > 0:
@@ -1653,7 +1709,7 @@ class NixtlaClient:
                 "this may lead to less accurate forecasts. "
                 "Please consider using a smaller horizon."
             )
-        restrict_input = finetune_steps == 0 and not x_cols and not add_history
+        restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list and not add_history
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -1663,24 +1719,60 @@ class NixtlaClient:
                 h=h,
             )
             processed = _tail(processed, new_input_size)
-        if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].T
+
+        # Build X with ordering [futr_num, futr_cat, hist_num, hist_cat] so that
+        # future features share the same column indices in X and X_future.
+        n_futr_num = len(futr_cols) if futr_cols is not None else 0
+        n_futr_cat = len(futr_cat_cols)
+        n_hist_num = len(x_cols) - n_futr_num
+        n_hist_cat = len(hist_cat_cols)
+
+        X_hist_cat: list[list] = [
+            sorted_df_cat[c].tolist() for c in futr_cat_cols + hist_cat_cols
+        ]
+
+        if processed.data.shape[1] > 1 or X_hist_cat:
+            X_num = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
+            futr_num_rows = X_num[:n_futr_num]
+            hist_num_rows = X_num[n_futr_num:]
+            futr_cat_hist_rows = X_hist_cat[:n_futr_cat]
+            hist_cat_hist_rows = X_hist_cat[n_futr_cat:]
+            X = futr_num_rows + futr_cat_hist_rows + hist_num_rows + hist_cat_hist_rows
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")
+            if futr_cat_cols:
+                logger.info(f"Using future categorical exogenous features: {futr_cat_cols}")
             if hist_exog_list:
                 logger.info(f"Using historical exogenous features: {hist_exog_list}")
+            if hist_cat_cols:
+                logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
         else:
             X = None
 
+        # Build X_future with ordering [futr_num, futr_cat].
+        if X_future is not None or X_df_cat_future:
+            X_future = (list(X_future) if X_future is not None else []) + X_df_cat_future
+
+        # Compute categorical_exog indices: futr_cat after futr_num, hist_cat after hist_num.
+        categorical_exog_payload: Optional[list[int]] = None
+        if categorical_exog_list:
+            futr_cat_indices = list(range(n_futr_num, n_futr_num + n_futr_cat))
+            hist_cat_start = n_futr_num + n_futr_cat + n_hist_num
+            hist_cat_indices = list(range(hist_cat_start, hist_cat_start + n_hist_cat))
+            categorical_exog_payload = futr_cat_indices + hist_cat_indices
+
         logger.info("Calling Forecast Endpoint...")
         sizes = np.diff(processed.indptr)
+        series_payload: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": sizes,
+            "X": X,
+            "X_future": X_future,
+        }
+        if categorical_exog_payload is not None:
+            series_payload["categorical_exog"] = categorical_exog_payload
         payload = {
-            "series": {
-                "y": processed.data[:, 0],
-                "sizes": sizes,
-                "X": X,
-                "X_future": X_future,
-            },
+            "series": series_payload,
             "model": model,
             "h": h,
             "freq": standard_freq,
@@ -1783,7 +1875,9 @@ class NixtlaClient:
                         self.feature_contributions
                     )
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
+        # Build x_cols in the same order as X: [futr_num, futr_cat, hist_num, hist_cat]
+        weights_x_cols = x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
+        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=weights_x_cols)
         return out
 
     def _distributed_detect_anomalies(
@@ -2993,6 +3087,7 @@ def _forecast_wrapper(
     finetuned_model_id: Optional[str],
     clean_ex_first: bool,
     hist_exog_list: Optional[list[str]],
+    categorical_exog_list: Optional[list[str]],
     validate_api_key: bool,
     add_history: bool,
     date_features: Union[bool, list[Union[str, Callable]]],
@@ -3025,6 +3120,7 @@ def _forecast_wrapper(
         finetuned_model_id=finetuned_model_id,
         clean_ex_first=clean_ex_first,
         hist_exog_list=hist_exog_list,
+        categorical_exog_list=categorical_exog_list,
         validate_api_key=validate_api_key,
         add_history=add_history,
         date_features=date_features,
