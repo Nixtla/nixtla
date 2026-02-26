@@ -57,7 +57,9 @@
             ]
           },
           "examples/mlframeworksexample.html",
-          "examples/reconciliationdiagnostics.html"
+          "examples/exogenousvariables.html",
+          "examples/reconciliationdiagnostics.html",
+          "examples/hierarchicalforecastingatscale.html"
         ]
       },
       {
