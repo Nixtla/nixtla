@@ -22,14 +22,12 @@ classifiers = [
 requires-python = ">=3.10,<4.0"
 dependencies = [
     "numpy",
-    "numba",
     "pandas>=2.1.0",
     "scikit-learn>=1.2",
     "matplotlib",
     "narwhals>=2.0",
     "qpsolvers[clarabel]",
     "utilsforecast>=0.2.12",
-    "intel-cmplr-lib-rt ; platform_system!='Darwin' and platform_machine=='x86_64'"
 ]
 
 [project.urls]
@@ -60,12 +58,15 @@ polars = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.7.19,<1.0.0"]
-build-backend = "uv_build"
+requires = ["setuptools>=45", "pybind11>=2.10", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[tool.uv.build-backend]
-module-root = "."
+[tool.setuptools]
+packages = ["hierarchicalforecast"]
 
+[tool.cibuildwheel]
+archs = "all"
+build-verbosity = 1
 
 [tool.ruff]
 fix = true

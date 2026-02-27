@@ -9,7 +9,10 @@ jobs:
       - run:
           name: Install Git
           command: |
-            apt-get update && apt-get install -y git
+            apt-get update && apt-get install -y git g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init --recursive
       - run:
           name: Install dependencies & run tests
           command: |
@@ -34,7 +37,10 @@ jobs:
       - run:
           name: Install Git
           command: |
-            apt-get update && apt-get install -y git
+            apt-get update && apt-get install -y git g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init --recursive
       - run:
           name: Install dependencies
           command: |
@@ -62,7 +68,10 @@ jobs:
       - run:
           name: Install Git
           command: |
-            apt-get update && apt-get install -y git
+            apt-get update && apt-get install -y git g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init --recursive
       - run:
           name: Install dependencies
           command: |

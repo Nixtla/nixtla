@@ -1,4 +1,7 @@
-name: pytest
+name: CI
+
+permissions:
+  contents: read
 
 on:
   push:
@@ -12,24 +15,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  all-tests:
-    runs-on: ${{ matrix.os }}
+  run-tests:
+    name: Tests cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+    runs-on: ${{ matrix.os-platform[0] }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python-version: [310, 311, 312, 313, 314]
+        os-platform:
+          - [ubuntu-latest, manylinux_x86_64]
+          - [ubuntu-latest, manylinux_aarch64]
+          - [windows-latest, win_amd64]
+          - [macos-14, macosx_arm64]
     steps:
       - name: Clone repo
         uses: actions/checkout@v6.0.2
-
-      - uses: actions/setup-python@v6.2.0
         with:
-          python-version: ${{ matrix.python-version }}
+          submodules: true
 
-      - name: Install dependencies
-        run: pip install uv && uv sync --group dev
+      - name: Set up QEMU
+        if: matrix.os-platform[1] == 'manylinux_aarch64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-      - name: Run pytest
-        run: uv run pytest
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
 
+      - name: Build wheels and run tests
+        uses: pypa/cibuildwheel@v3.0.0
+        env:
+          CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          CIBW_BUILD_FRONTEND: build[uv]
+          CIBW_ENABLE: cpython-prerelease
+          CIBW_TEST_SKIP: "*linux_aarch64 *cp314*"
+          CIBW_BEFORE_BUILD_MACOS: brew install libomp
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14.0
+          CIBW_BEFORE_TEST: >
+            uv pip install datasetsforecast "statsforecast>=1.0.0"
+            scipy "polars[numpy]<=1.32.0" pytest pytest-benchmark pytest-cov
+          CIBW_TEST_COMMAND: >
+            pytest {project}/tests --no-cov --import-mode=importlib

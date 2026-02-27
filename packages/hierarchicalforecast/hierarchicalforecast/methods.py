@@ -18,7 +18,9 @@ from hierarchicalforecast.utils import (
     _ma_cov,
     _shrunk_covariance_schaferstrimmer_no_nans,
     _shrunk_covariance_schaferstrimmer_with_nans,
+    get_num_threads,
     is_strictly_hierarchical,
+    set_num_threads,
 )
 
 from .probabilistic_methods import PERMBU, Bootstrap, Conformal, Normality
@@ -1255,7 +1257,7 @@ class MinTrace(HReconciler):
         method (str): One of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`, `emint`.
         nonnegative (bool): Reconciled forecasts should be nonnegative?
         mint_shr_ridge (float): Ridge numeric protection to MinTrace-shr covariance estimator.
-        num_threads (int): Number of threads to use for solving the optimization problems (when nonnegative=True).
+        num_threads (int): Number of threads for the C++ covariance backend (OpenMP) and for solving the optimization problems (when nonnegative=True).
 
     References:
     - [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). "Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization". Journal of the American Statistical Association, 114 , 804-819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
@@ -1270,7 +1272,7 @@ class MinTrace(HReconciler):
         self,
         method: str,
         nonnegative: bool = False,
-        mint_shr_ridge: float | None = 2e-8,
+        mint_shr_ridge: float = 2e-8,
         num_threads: int = 1,
     ):
         if method not in ["ols", "wls_struct", "wls_var", "mint_cov", "mint_shrink", "emint"]:
@@ -1283,14 +1285,34 @@ class MinTrace(HReconciler):
         if method == "mint_shrink":
             self.mint_shr_ridge = mint_shr_ridge
         self.num_threads = num_threads
-        if not self.nonnegative and self.num_threads > 1:
-            warnings.warn("`num_threads` is only used when `nonnegative=True`")
         # Store init params for naming (excluding internal flags like insample, num_threads)
         self._init_params = {"method": method, "nonnegative": nonnegative}
         if method == "mint_shrink":
             self._init_params["mint_shr_ridge"] = mint_shr_ridge
 
     def _get_PW_matrices(
+        self,
+        S: np.ndarray,
+        y_hat: np.ndarray,
+        y_insample: np.ndarray | None = None,
+        y_hat_insample: np.ndarray | None = None,
+    ):
+        # Temporarily set OpenMP threads to match num_threads
+        prev_threads = get_num_threads()
+        if self.num_threads != prev_threads:
+            set_num_threads(self.num_threads)
+        try:
+            return self._get_PW_matrices_impl(
+                S=S,
+                y_hat=y_hat,
+                y_insample=y_insample,
+                y_hat_insample=y_hat_insample,
+            )
+        finally:
+            if self.num_threads != prev_threads:
+                set_num_threads(prev_threads)
+
+    def _get_PW_matrices_impl(
         self,
         S: np.ndarray,
         y_hat: np.ndarray,
@@ -1620,7 +1642,7 @@ class MinTraceSparse(MinTrace):
     Args:
         method (str): One of `ols`, `wls_struct`, or `wls_var`.
         nonnegative (bool): Return non-negative reconciled forecasts.
-        num_threads (int): Number of threads to execute non-negative quadratic programming calls.
+        num_threads (int): Number of threads for non-negative quadratic programming calls.
         qp (bool): Implement non-negativity constraint with a quadratic programming approach. Setting
         this to True generally gives better results, but at the expense of higher cost to compute.
     """

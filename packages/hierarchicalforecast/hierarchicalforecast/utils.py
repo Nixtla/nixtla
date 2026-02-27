@@ -1,7 +1,13 @@
-__all__ = ['aggregate', 'aggregate_temporal', 'make_future_dataframe', 'get_cross_temporal_tags', 'HierarchicalPlot']
+__all__ = ['aggregate', 'aggregate_temporal', 'make_future_dataframe', 'get_cross_temporal_tags', 'HierarchicalPlot', 'set_num_threads', 'get_num_threads']
 
 
 import itertools
+
+# Default OpenMP to physical cores (logical / 2) to avoid oversubscription,
+# matching PyTorch's convention. This matters when running reconciliation
+# inside multiprocessing.Pool — without it each worker silently spawns
+# all-CPU OpenMP threads.
+import os as _os
 import reprlib
 import sys
 import timeit
@@ -14,15 +20,36 @@ import pandas as pd
 import utilsforecast.processing as ufp
 import utilsforecast.validation as ufv
 from narwhals.typing import Frame, FrameT
-from numba import njit, prange
 from scipy import sparse
 from sklearn.preprocessing import OneHotEncoder
 
-# Global variables
-NUMBA_NOGIL = True
-NUMBA_CACHE = True
-NUMBA_PARALLEL = True
-NUMBA_FASTMATH = True
+from hierarchicalforecast._lib import reconciliation as _lib_recon
+
+_default_threads = int(
+    _os.environ.get(
+        "OMP_NUM_THREADS", max(1, (_os.cpu_count() or 1) // 2)
+    )
+)
+_lib_recon.set_num_threads(_default_threads)
+del _os, _default_threads
+
+
+def set_num_threads(n: int) -> None:
+    """Set the number of OpenMP threads used by the C++ backend.
+
+    Args:
+        n (int): Number of threads. Must be >= 1.
+    """
+    _lib_recon.set_num_threads(n)
+
+
+def get_num_threads() -> int:
+    """Return the current maximum number of OpenMP threads.
+
+    Returns:
+        int: Number of threads.
+    """
+    return _lib_recon.get_num_threads()
 
 
 class CodeTimer:
@@ -956,202 +983,40 @@ def samples_to_quantiles_df(
 
 
 # Masked empirical covariance matrix
-@njit(
-    "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool_, 2, 'C'))",
-    nogil=NUMBA_NOGIL,
-    cache=NUMBA_CACHE,
-    parallel=NUMBA_PARALLEL,
-    fastmath=NUMBA_FASTMATH,
-    error_model="numpy",
-)
 def _ma_cov(residuals: np.ndarray, not_nan_mask: np.ndarray):
     """Masked empirical covariance matrix.
 
     :meta private:
     """
-    n_timeseries = residuals.shape[0]
-    W = np.zeros((n_timeseries, n_timeseries), dtype=np.float64).T
-    for i in prange(n_timeseries):
-        not_nan_mask_i = not_nan_mask[i]
-        for j in range(i + 1):
-            not_nan_mask_j = not_nan_mask[j]
-            not_nan_mask_ij = not_nan_mask_i & not_nan_mask_j
-            n_samples = np.sum(not_nan_mask_ij)
-            # Only compute if we have enough non-nan samples in the time series pair
-            if n_samples > 1:
-                # Masked residuals
-                residuals_i = residuals[i][not_nan_mask_ij]
-                residuals_j = residuals[j][not_nan_mask_ij]
-                residuals_i_mean = np.mean(residuals_i)
-                residuals_j_mean = np.mean(residuals_j)
-                X_i = residuals_i - residuals_i_mean
-                X_j = residuals_j - residuals_j_mean
-                # Empirical covariance
-                factor_emp_cov = np.float64(1 / (n_samples - 1))
-                W[i, j] = W[j, i] = factor_emp_cov * np.sum(X_i * X_j)
-
-    return W
+    return _lib_recon._ma_cov(residuals, not_nan_mask)
 
 
 # Shrunk covariance matrix using the Schafer-Strimmer method
-
-
-@njit(
-    "Array(float64, 2, 'F')(Array(float64, 2, 'C'), float64)",
-    nogil=NUMBA_NOGIL,
-    cache=NUMBA_CACHE,
-    parallel=NUMBA_PARALLEL,
-    fastmath=NUMBA_FASTMATH,
-    error_model="numpy",
-)
 def _shrunk_covariance_schaferstrimmer_no_nans(
     residuals: np.ndarray, mint_shr_ridge: float
 ):
-    """Shrink empirical covariance according to the following method:
-        Schäfer, Juliane, and Korbinian Strimmer.
-        "A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and
-        Implications for Functional Genomics". Statistical Applications in
-        Genetics and Molecular Biology 4, no. 1 (14 January 2005).
-        https://doi.org/10.2202/1544-6115.1175.
+    """Shrink empirical covariance (Schäfer-Strimmer, no NaN handling).
 
     :meta private:
     """
-    n_timeseries = residuals.shape[0]
-    n_samples = residuals.shape[1]
-
-    # We need the empirical covariance, the off-diagonal sum of the variance of
-    # the empirical correlation matrix and the off-diagonal sum of the squared
-    # empirical correlation matrix.
-    W = np.zeros((n_timeseries, n_timeseries), dtype=np.float64).T
-    sum_var_emp_corr = np.float64(0.0)
-    sum_sq_emp_corr = np.float64(0.0)
-    factor_emp_cov = np.float64(1 / (n_samples - 1))
-    factor_shrinkage = np.float64(1 / (n_samples * (n_samples - 1)))
-    epsilon = np.float64(2e-8)
-    for i in prange(n_timeseries):
-        # Mean of the standardized residuals
-        X_i = residuals[i] - np.mean(residuals[i])
-        Xs_i = X_i / (np.std(residuals[i]) + epsilon)
-        Xs_i_mean = np.mean(Xs_i)
-        for j in range(i + 1):
-            # Empirical covariance
-            X_j = residuals[j] - np.mean(residuals[j])
-            W[i, j] = factor_emp_cov * np.sum(X_i * X_j)
-            # Off-diagonal sums
-            if i != j:
-                Xs_j = X_j / (np.std(residuals[j]) + epsilon)
-                Xs_j_mean = np.mean(Xs_j)
-                # Sum off-diagonal variance of empirical correlation
-                w = (Xs_i - Xs_i_mean) * (Xs_j - Xs_j_mean)
-                w_mean = np.mean(w)
-                sum_var_emp_corr += np.sum(np.square(w - w_mean))
-                # Sum squared empirical correlation
-                sum_sq_emp_corr += w_mean**2
-
-    # Calculate shrinkage intensity
-    shrinkage = 1.0 - max(
-        min((factor_shrinkage * sum_var_emp_corr) / (sum_sq_emp_corr + epsilon), 1.0),
-        0.0,
+    return _lib_recon._shrunk_covariance_schaferstrimmer_no_nans(
+        residuals, mint_shr_ridge
     )
-    # Shrink the empirical covariance
-    for i in prange(n_timeseries):
-        for j in range(i + 1):
-            if i != j:
-                W[i, j] = W[j, i] = shrinkage * W[i, j]
-            else:
-                W[i, j] = W[j, i] = max(W[i, j], mint_shr_ridge)
-    return W
 
 
-@njit(
-    "Array(float64, 2, 'F')(Array(float64, 2, 'C'), Array(bool_, 2, 'C'), float64)",
-    nogil=NUMBA_NOGIL,
-    cache=NUMBA_CACHE,
-    parallel=NUMBA_PARALLEL,
-    fastmath=NUMBA_FASTMATH,
-    error_model="numpy",
-)
 def _shrunk_covariance_schaferstrimmer_with_nans(
     residuals: np.ndarray, not_nan_mask: np.ndarray, mint_shr_ridge: float
 ):
-    """Shrink empirical covariance according to the following method:
-        Schäfer, Juliane, and Korbinian Strimmer.
-        "A Shrinkage Approach to Large-Scale Covariance Matrix Estimation and
-        Implications for Functional Genomics". Statistical Applications in
-        Genetics and Molecular Biology 4, no. 1 (14 January 2005).
-        https://doi.org/10.2202/1544-6115.1175.
+    """Shrink empirical covariance (Schäfer-Strimmer, with NaN masking).
 
     :meta private:
     """
-    n_timeseries = residuals.shape[0]
-
-    # We need the empirical covariance, the off-diagonal sum of the variance of
-    # the empirical correlation matrix and the off-diagonal sum of the squared
-    # empirical correlation matrix.
-    W = np.zeros((n_timeseries, n_timeseries), dtype=np.float64).T
-    sum_var_emp_corr = np.float64(0.0)
-    sum_sq_emp_corr = np.float64(0.0)
-    epsilon = np.float64(2e-8)
-    for i in prange(n_timeseries):
-        not_nan_mask_i = not_nan_mask[i]
-        for j in range(i + 1):
-            not_nan_mask_j = not_nan_mask[j]
-            not_nan_mask_ij = not_nan_mask_i & not_nan_mask_j
-            n_samples = np.sum(not_nan_mask_ij)
-            # Only compute if we have enough non-nan samples in the time series pair
-            if n_samples > 1:
-                # Masked residuals
-                residuals_i = residuals[i][not_nan_mask_ij]
-                residuals_j = residuals[j][not_nan_mask_ij]
-                residuals_i_mean = np.mean(residuals_i)
-                residuals_j_mean = np.mean(residuals_j)
-                X_i = residuals_i - residuals_i_mean
-                X_j = residuals_j - residuals_j_mean
-                # Empirical covariance
-                factor_emp_cov = np.float64(1 / (n_samples - 1))
-                W[i, j] = factor_emp_cov * np.sum(X_i * X_j)
-                # Off-diagonal sums
-                if i != j:
-                    factor_var_emp_cor = np.float64(n_samples / (n_samples - 1) ** 3)
-                    residuals_i_std = np.std(residuals_i) + epsilon
-                    residuals_j_std = np.std(residuals_j) + epsilon
-                    Xs_i = X_i / (residuals_i_std + epsilon)
-                    Xs_j = X_j / (residuals_j_std + epsilon)
-                    Xs_im_mean = np.mean(Xs_i)
-                    Xs_jm_mean = np.mean(Xs_j)
-                    # Sum off-diagonal variance of empirical correlation
-                    w = (Xs_i - Xs_im_mean) * (Xs_j - Xs_jm_mean)
-                    w_mean = np.mean(w)
-                    sum_var_emp_corr += factor_var_emp_cor * np.sum(
-                        np.square(w - w_mean)
-                    )
-                    # Sum squared empirical correlation
-                    sum_sq_emp_corr += np.square(factor_emp_cov * n_samples * w_mean)
-
-    # Calculate shrinkage intensity
-    shrinkage = 1.0 - max(
-        min((sum_var_emp_corr) / (sum_sq_emp_corr + epsilon), 1.0), 0.0
+    return _lib_recon._shrunk_covariance_schaferstrimmer_with_nans(
+        residuals, not_nan_mask, mint_shr_ridge
     )
-
-    # Shrink the empirical covariance
-    for i in prange(n_timeseries):
-        for j in range(i + 1):
-            if i != j:
-                W[i, j] = W[j, i] = shrinkage * W[i, j]
-            else:
-                W[i, j] = W[j, i] = max(W[i, j], mint_shr_ridge)
-
-    return W
 
 
 # Lasso cyclic coordinate descent
-@njit(
-    "Array(float64, 1, 'C')(Array(float64, 2, 'C'), Array(float64, 1, 'C'), float64, int64, float64)",
-    nogil=NUMBA_NOGIL,
-    cache=NUMBA_CACHE,
-    fastmath=NUMBA_FASTMATH,
-    error_model="numpy",
-)
 def _lasso(
     X: np.ndarray,
     y: np.ndarray,
@@ -1159,41 +1024,8 @@ def _lasso(
     max_iters: int = 1_000,
     tol: float = 1e-4,
 ):
-    # lasso cyclic coordinate descent
-    n, feats = X.shape
-    norms = np.sum(X**2, axis=0)
-    beta = np.zeros(feats, dtype=np.float64)
-    beta_changes = np.zeros(feats, dtype=np.float64)
-    residuals = y.copy()
+    """Lasso cyclic coordinate descent.
 
-    for _it in range(max_iters):
-        for i in range(feats):
-            norms_i = norms[i]
-            # is feature is close to zero, we
-            # continue to the next.
-            # in this case is optimal betai= 0
-            if abs(norms_i) < 1e-8:
-                continue
-            beta_i = beta[i]
-
-            # we calculate the normalized derivative
-            rho = beta_i
-            for j in range(n):
-                rho += X[j, i] * residuals[j] / norms_i
-
-            # soft threshold
-            beta_i_next = np.sign(rho) * max(
-                np.abs(rho) - lambda_reg * n / norms_i, 0.0
-            )  # (norms[i] + 1e-3), 0.)
-            beta_delta = beta_i - beta_i_next
-            beta_changes[i] = np.abs(beta_delta)
-            if beta_delta != 0.0:
-                for j in range(n):
-                    residuals[j] += beta_delta * X[j, i]
-
-                beta[i] = beta_i_next
-
-        if max(beta_changes) < tol:
-            break
-
-    return beta
+    :meta private:
+    """
+    return _lib_recon._lasso(np.asfortranarray(X), y, lambda_reg, max_iters, tol)

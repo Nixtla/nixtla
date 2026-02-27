@@ -1,0 +1,9 @@
+#include <pybind11/pybind11.h>
+
+namespace py = pybind11;
+
+namespace reconciliation {
+void init(py::module_ &);
+}
+
+PYBIND11_MODULE(_lib, m) { reconciliation::init(m); }

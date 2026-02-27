@@ -1,12 +1,4 @@
-# This workflow will upload a Python Package using Twine when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Upload Python Package
+name: Upload Python Package to PyPI
 
 on:
   release:
@@ -16,24 +8,77 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-
-    runs-on: ubuntu-latest
-
+  build_wheels:
+    name: Build wheels cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+    runs-on: ${{ matrix.os-platform[0] }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [310, 311, 312, 313, 314]
+        os-platform:
+          - [ubuntu-latest, manylinux_x86_64]
+          - [ubuntu-latest, manylinux_aarch64]
+          - [windows-latest, win_amd64]
+          - [macos-14, macosx_arm64]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # 6.2.0
+      - uses: actions/checkout@v6.0.2
         with:
-          python-version: '3.x'
-      - name: Install dependencies
+          submodules: true
+
+      - name: Set up QEMU
+        if: matrix.os-platform[1] == 'manylinux_aarch64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.0.0
+        env:
+          CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          CIBW_ENABLE: cpython-prerelease
+          CIBW_BEFORE_BUILD_MACOS: brew install libomp
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14.0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifact-cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          path: wheelhouse/*.whl
+          retention-days: 1
+
+  build_sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.10"
+
+      - name: Build sdist
         run: |
-          python -m pip install --upgrade pip
-          pip install build
-      - name: Build package
-        run: python -m build
-      - name: Publish package
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+          uv pip install --system build
+          python -m build --sdist --outdir dist
+
+      - uses: actions/upload-artifact@v4
         with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          path: dist/*.tar.gz
+
+  upload:
+    name: Upload to PyPI
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/project/hierarchicalforecast/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@v1

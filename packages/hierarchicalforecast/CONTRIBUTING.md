@@ -42,6 +42,12 @@ cd hierarchicalforecast
 git remote add upstream https://github.com/Nixtla/hierarchicalforecast.git
 ```
 
+4. Initialize the git submodules (required for the Eigen C++ library):
+
+```sh
+git submodule update --init --recursive
+```
+
 ### Set Up a Virtual Environment with `uv`
 
 `uv` is an [open-source package management](https://docs.astral.sh/uv/getting-started/installation/) and environment management system that runs on Windows, macOS, and Linux. Once you have `uv` installed, run:
@@ -86,9 +92,17 @@ git checkout main
 git merge upstream/main
 ```
 
+### Install Build Prerequisites
+
+The library includes a native C++ extension (pybind11 + Eigen) that is compiled during installation. You need a C++ compiler with C++20 and OpenMP support:
+
+* **Linux**: `gcc`/`g++` (typically pre-installed)
+* **macOS**: Xcode Command Line Tools + OpenMP runtime: `brew install libomp`
+* **Windows**: MSVC with OpenMP support (via Visual Studio or Build Tools)
+
 ### Install the library
 
-Install the library in editable mode:
+Install the library in editable mode (this compiles the C++ extension):
 
 ```sh
 uv pip install -e ".[dev]"

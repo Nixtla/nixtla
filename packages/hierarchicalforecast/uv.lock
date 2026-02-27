@@ -1076,10 +1076,8 @@ name = "hierarchicalforecast"
 version = "1.4.0"
 source = { editable = "." }
 dependencies = [
-    { name = "intel-cmplr-lib-rt", marker = "platform_machine == 'x86_64' and sys_platform != 'darwin'" },
     { name = "matplotlib" },
     { name = "narwhals" },
-    { name = "numba" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pandas" },
@@ -1114,10 +1112,8 @@ polars = [
 
 [package.metadata]
 requires-dist = [
-    { name = "intel-cmplr-lib-rt", marker = "platform_machine == 'x86_64' and sys_platform != 'darwin'" },
     { name = "matplotlib" },
     { name = "narwhals", specifier = ">=2.0" },
-    { name = "numba" },
     { name = "numpy" },
     { name = "pandas", specifier = ">=2.1.0" },
     { name = "qpsolvers", extras = ["clarabel"] },
@@ -1170,15 +1166,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
-]
-
-[[package]]
-name = "intel-cmplr-lib-rt"
-version = "2025.3.1"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/66/26dfd6a19f7faf595da12c21bdb4102c6f30755511c7f167f745b203fbb7/intel_cmplr_lib_rt-2025.3.1-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:57f657aa49442723e59102fb9e3f5eb70799d9371eca7ab2ad46f44facf210cf", size = 48073835, upload-time = "2025-11-03T05:32:48.883Z" },
-    { url = "https://files.pythonhosted.org/packages/df/95/58b8a42f53a395890aaecd58ebc6aaeb60a0a5e860234b00c964c663e0d4/intel_cmplr_lib_rt-2025.3.1-py2.py3-none-win_amd64.whl", hash = "sha256:dbae2c6d5163b8e5cfe20946cf6c63b65b05847bb79e33303bf2e35f86fd8523", size = 17740365, upload-time = "2025-11-03T05:32:02.685Z" },
 ]
 
 [[package]]

@@ -2,4 +2,7 @@ include settings.ini
 include LICENSE
 include CONTRIBUTING.md
 include README.md
+include setup.py
+recursive-include src *.cpp *.h
+recursive-include external_libs *
 recursive-exclude * __pycache__
