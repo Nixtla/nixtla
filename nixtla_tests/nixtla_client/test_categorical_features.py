@@ -108,3 +108,27 @@ def test_cv_with_hist_categorical_features(
     )
     assert len(cv) == data.h
     assert cv["TimeGPT"].notna().all()
+
+
+def test_detect_anomalies_with_categorical_features(
+    nixtla_test_client, air_passengers_with_cat_exog
+):
+    data = air_passengers_with_cat_exog
+    anomalies = nixtla_test_client.detect_anomalies(
+        data.df,
+        categorical_exog_list=data.cat_cols,
+    )
+    assert len(anomalies) > 0
+    assert "anomaly" in anomalies.columns
+
+
+def test_detect_anomalies_with_numerical_and_categorical_features(
+    nixtla_test_client, air_passengers_with_num_and_cat_exog
+):
+    data = air_passengers_with_num_and_cat_exog
+    anomalies = nixtla_test_client.detect_anomalies(
+        data.df,
+        categorical_exog_list=data.cat_cols,
+    )
+    assert len(anomalies) > 0
+    assert "anomaly" in anomalies.columns

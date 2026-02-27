@@ -1896,6 +1896,7 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         multivariate: bool,
+        categorical_exog_list: Optional[list[str]] = None,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1928,6 +1929,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=None,
                 multivariate=multivariate,
+                categorical_exog_list=categorical_exog_list,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -1950,6 +1952,7 @@ class NixtlaClient:
         model: _Model = "timegpt-1",
         num_partitions: Optional[_PositiveInt] = None,
         multivariate: bool = False,
+        categorical_exog_list: Optional[list[str]] = None,
     ) -> AnyDFType:
         """Detect anomalies in your time series using TimeGPT.
 
@@ -2008,7 +2011,10 @@ class NixtlaClient:
                 resources in distributed environments. Defaults to None.
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models. 
+                supported for a select set of TimeGPT models.
+            categorical_exog_list (list[str], optional): Column names of
+                categorical exogenous features in `df` (can be strings or
+                numbers). Defaults to None.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2030,6 +2036,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=num_partitions,
                 multivariate=multivariate,
+                categorical_exog_list=categorical_exog_list,
             )
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
@@ -2045,6 +2052,20 @@ class NixtlaClient:
             freq=freq,
         )
 
+        # Validate and extract categorical columns before preprocessing.
+        cat_cols: list[str] = []
+        if categorical_exog_list:
+            df_exog_cols = {c for c in df.columns if c not in {id_col, time_col, target_col}}
+            invalid_cats = set(categorical_exog_list) - df_exog_cols
+            if invalid_cats:
+                raise ValueError(
+                    "The following columns in `categorical_exog_list` were not "
+                    f"found in `df`: {invalid_cats}."
+                )
+            cat_cols = list(categorical_exog_list)
+            df_cat_vals: dict[str, np.ndarray] = {c: df[c].to_numpy() for c in cat_cols}
+            df = df[[c for c in df.columns if c not in cat_cols]]
+
         logger.info("Preprocessing dataframes...")
         processed, _, x_cols, _ = _preprocess(
             df=df,
@@ -2059,19 +2080,40 @@ class NixtlaClient:
         )
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
-        if processed.data.shape[1] > 1:
-            X = processed.data[:, 1:].T
-            logger.info(f"Using the following exogenous features: {x_cols}")
-        else:
-            X = None
+
+        # Sort categorical arrays to match _preprocess row ordering.
+        sorted_cat: list[list] = []
+        if cat_cols:
+            for c in cat_cols:
+                vals = df_cat_vals[c]
+                if processed.sort_idxs is not None:
+                    vals = vals[processed.sort_idxs]
+                sorted_cat.append(vals.tolist())
+
+        X: Optional[list[Any]] = None
+        categorical_exog_payload: Optional[list[int]] = None
+        if processed.data.shape[1] > 1 or sorted_cat:
+            X_num = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
+            X = X_num + sorted_cat
+            cat_indices = list(range(len(x_cols), len(x_cols) + len(cat_cols)))
+            if cat_indices:
+                categorical_exog_payload = cat_indices
+            if x_cols:
+                logger.info(f"Using the following exogenous features: {x_cols}")
+            if cat_cols:
+                logger.info(f"Using categorical exogenous features: {cat_cols}")
+
+        series_payload: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": np.diff(processed.indptr),
+            "X": X,
+        }
+        if categorical_exog_payload is not None:
+            series_payload["categorical_exog"] = categorical_exog_payload
 
         logger.info("Calling Anomaly Detector Endpoint...")
         payload = {
-            "series": {
-                "y": processed.data[:, 0],
-                "sizes": np.diff(processed.indptr),
-                "X": X,
-            },
+            "series": series_payload,
             "model": model,
             "freq": standard_freq,
             "finetuned_model_id": finetuned_model_id,
@@ -2101,7 +2143,8 @@ class NixtlaClient:
         )
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=x_cols)
+        weights_x_cols = x_cols + cat_cols
+        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=weights_x_cols)
         return out
 
     def _distributed_detect_anomalies_online(
@@ -3208,7 +3251,8 @@ def _detect_anomalies_wrapper(
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
     num_partitions: Optional[_PositiveInt],
-    multivariate: bool
+    multivariate: bool,
+    categorical_exog_list: Optional[list[str]] = None,
 ) -> pd.DataFrame:
     return client.detect_anomalies(
         df=df,
@@ -3225,6 +3269,7 @@ def _detect_anomalies_wrapper(
         model=model,
         num_partitions=num_partitions,
         multivariate=multivariate,
+        categorical_exog_list=categorical_exog_list,
     )
 
 
