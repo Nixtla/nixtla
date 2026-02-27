@@ -2433,6 +2433,7 @@ class NixtlaClient:
         num_partitions: Optional[int],
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
+        categorical_exog_list: Optional[list[str]] = None,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2475,6 +2476,7 @@ class NixtlaClient:
                 num_partitions=None,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
+                categorical_exog_list=categorical_exog_list,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -2507,6 +2509,7 @@ class NixtlaClient:
         num_partitions: Optional[_PositiveInt] = None,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
+        categorical_exog_list: Optional[list[str]] = None,
     ) -> AnyDFType:
         """Perform cross validation in your time series using TimeGPT.
 
@@ -2594,7 +2597,11 @@ class NixtlaClient:
                 the behavior of the model. Default is None.            
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models. 
+                supported for a select set of TimeGPT models.
+            categorical_exog_list (list[str], optional): Column names of
+                categorical exogenous features in `df` (can be strings or
+                numbers). All categorical features in cross-validation are
+                treated as historical. Defaults to None.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2627,6 +2634,7 @@ class NixtlaClient:
                 num_partitions=num_partitions,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
+                categorical_exog_list=categorical_exog_list,
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2644,6 +2652,25 @@ class NixtlaClient:
         if step_size is None:
             step_size = h
 
+        # All categorical features in cross-validation are historical (no X_df).
+        hist_cat_cols: list[str] = []
+        if categorical_exog_list:
+            df_exog_cols = {c for c in df.columns if c not in {id_col, time_col, target_col}}
+            invalid_cats = set(categorical_exog_list) - df_exog_cols
+            if invalid_cats:
+                raise ValueError(
+                    "The following columns in `categorical_exog_list` were not "
+                    f"found in `df`: {invalid_cats}."
+                )
+            hist_cat_cols = list(categorical_exog_list)
+
+        # Extract categorical values and strip from df so _preprocess sees only numericals.
+        df_cat_vals: dict[str, np.ndarray] = {}
+        if categorical_exog_list:
+            for c in categorical_exog_list:
+                df_cat_vals[c] = df[c].to_numpy()
+            df = df[[c for c in df.columns if c not in categorical_exog_list]]
+
         logger.info("Preprocessing dataframes...")
         processed, _, x_cols, _ = _preprocess(
             df=df,
@@ -2656,6 +2683,13 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+
+        # Sort categorical arrays to match _preprocess row ordering.
+        sorted_df_cat: dict[str, np.ndarray] = {}
+        if categorical_exog_list:
+            for c, vals in df_cat_vals.items():
+                sorted_df_cat[c] = vals[processed.sort_idxs] if processed.sort_idxs is not None else vals
+
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         targets = _extract_target_array(df, target_col)
@@ -2663,7 +2697,7 @@ class NixtlaClient:
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
-        restrict_input = finetune_steps == 0 and not x_cols
+        restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -2677,15 +2711,41 @@ class NixtlaClient:
             processed = _tail(processed, new_input_size)
             times = _array_tails(times, orig_indptr, np.diff(processed.indptr))
             targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
-        X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
+        # Numerical hist exog: exclude any cols that appear in categorical_exog_list
+        # (those were stripped from df before _preprocess).
+        _num_hist: Optional[list[str]] = None
+        if hist_exog_list:
+            _num_hist = [c for c in hist_exog_list if c not in hist_cat_cols] or None
+        X_np, hist_exog = _process_exog_features(processed.data, x_cols, _num_hist)
+
+        # Append historical categorical columns to X and extend hist_exog/categorical_exog.
+        X: Optional[list[Any]] = None
+        categorical_exog_payload: Optional[list[int]] = None
+        if categorical_exog_list:
+            n_num_cols = len(x_cols)
+            cat_arrays = [sorted_df_cat[c].tolist() for c in hist_cat_cols]
+            if X_np is not None:
+                X = list(X_np) + cat_arrays
+            else:
+                X = cat_arrays
+            cat_col_indices = list(range(n_num_cols, n_num_cols + len(hist_cat_cols)))
+            categorical_exog_payload = cat_col_indices
+            if hist_cat_cols:
+                logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
+        else:
+            X = list(X_np) if X_np is not None else None
+
+        series_payload: dict[str, Any] = {
+            "y": targets,
+            "sizes": np.diff(processed.indptr),
+            "X": X,
+        }
+        if categorical_exog_payload is not None:
+            series_payload["categorical_exog"] = categorical_exog_payload
 
         logger.info("Calling Cross Validation Endpoint...")
         payload = {
-            "series": {
-                "y": targets,
-                "sizes": np.diff(processed.indptr),
-                "X": X,
-            },
+            "series": series_payload,
             "model": model,
             "h": h,
             "n_windows": n_windows,
@@ -3243,6 +3303,7 @@ def _cross_validation_wrapper(
     num_partitions: Optional[_PositiveInt],
     model_parameters: _ExtraParamDataType,
     multivariate: bool,
+    categorical_exog_list: Optional[list[str]] = None,
 ) -> pd.DataFrame:
     return client.cross_validation(
         df=df,
@@ -3269,6 +3330,7 @@ def _cross_validation_wrapper(
         num_partitions=num_partitions,
         model_parameters=model_parameters,
         multivariate=multivariate,
+        categorical_exog_list=categorical_exog_list,
     )
 
 
