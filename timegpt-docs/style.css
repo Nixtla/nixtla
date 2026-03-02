@@ -37,6 +37,7 @@
   --primary: #222121;
   --primary-foreground: #f6f4f0;
   --secondary: #eae9e6;
+  --secondary-foreground: #222121;
   --border: #222121;
   --accent: #bfd1ff;
   --radius: 0rem;
@@ -138,9 +139,6 @@ p {
   padding: 2px 6px !important;
   border-radius: var(--radius) !important;
   border: none !important;
-  font-weight: 400 !important;
-  line-height: 22px !important;
-  text-transform: uppercase !important;
 }
 
 .feedback-toolbar button,
@@ -152,7 +150,7 @@ p {
   font-size: 12px !important;
   text-transform: uppercase !important;
   line-height: 22px !important;
-  color: var(--primary) !important;
+  color: var(--secondary-foreground) !important;
 }
 
 .feedback-toolbar button svg,
@@ -386,6 +384,7 @@ html.dark {
   --primary: #dedddd;
   --primary-foreground: #222121;
   --secondary: #f6f4f0;
+  --secondary-foreground: #222121;
   --border: rgba(212, 212, 216, 0.6);
   --accent: #9187e8;
 }
@@ -447,20 +446,6 @@ html.dark a.card svg {
   background: var(--primary);
 }
 
-html.dark .feedback-toolbar button,
-html.dark .feedback-toolbar a,
-html.dark .feedback-toolbar button:hover,
-html.dark .feedback-toolbar a:hover {
-  background: var(--primary-foreground) !important;
-  background-color: var(--primary-foreground) !important;
-}
-
-html.dark .feedback-toolbar button,
-html.dark .feedback-toolbar button *,
-html.dark .feedback-toolbar a,
-html.dark .feedback-toolbar a * {
-  color: var(--primary) !important;
-}
 
 /* Remove border-bottom from links nested inside lists */
 ul li a {
