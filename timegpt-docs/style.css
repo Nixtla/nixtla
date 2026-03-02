@@ -132,7 +132,8 @@ p {
   line-height: 16px !important;
 }
 
-.feedback-toolbar button {
+.feedback-toolbar button,
+.feedback-toolbar a {
   background: var(--secondary) !important;
   font-family: "Supply", monospace !important;
   font-size: 10.5px !important;
@@ -141,6 +142,8 @@ p {
   text-transform: uppercase !important;
   padding: 2px 6px !important;
   border-radius: var(--radius) !important;
+  border: 1px solid transparent !important;
+  color: var(--primary) !important;
 }
 
 .feedback-toolbar button svg,
@@ -149,11 +152,14 @@ p {
 }
 
 .feedback-toolbar small,
+.feedback-toolbar button small,
 .feedback-toolbar a small {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
   font-size: 12px !important;
   text-transform: uppercase !important;
+  line-height: 22px !important;
+  color: var(--primary) !important;
 }
 
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
