@@ -143,13 +143,17 @@ p {
   border-radius: var(--radius) !important;
 }
 
-.feedback-toolbar button svg {
+.feedback-toolbar button svg,
+.feedback-toolbar a svg {
   display: none !important;
 }
 
 .feedback-toolbar small,
 .feedback-toolbar a small {
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
   font-size: 12px !important;
+  text-transform: uppercase !important;
 }
 
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
