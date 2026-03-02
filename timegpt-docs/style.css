@@ -448,8 +448,11 @@ html.dark a.card svg {
 }
 
 html.dark .feedback-toolbar button,
-html.dark .feedback-toolbar a {
+html.dark .feedback-toolbar a,
+html.dark .feedback-toolbar button:hover,
+html.dark .feedback-toolbar a:hover {
   background: var(--primary-foreground) !important;
+  background-color: var(--primary-foreground) !important;
 }
 
 html.dark .feedback-toolbar button,
