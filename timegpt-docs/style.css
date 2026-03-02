@@ -328,18 +328,19 @@ a.card:hover {
 
 #banner {
   background-color: var(--accent) !important;
-  border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
+  border-bottom: 1px solid rgb(var(--background) / 0.06) !important;
 }
 
 #banner,
 #banner * {
   color: var(--primary) !important;
   background-color: var(--accent) !important;
-  border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
+  border-bottom: 1px solid rgb(var(--background) / 0.06) !important;
 }
 
 #banner a:hover {
   opacity: 0.8;
+  color: var(--primary) !important;
 }
 
 #banner p span {
