@@ -147,6 +147,11 @@ p {
   display: none !important;
 }
 
+.feedback-toolbar small,
+.feedback-toolbar a small {
+  font-size: 12px !important;
+}
+
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
 
 .chat-assistant-floating-input div::before,
@@ -191,7 +196,7 @@ p {
 #navbar nav a {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
-  font-size: 0.84375rem;
+  font-size: 0.74375rem;
   text-transform: uppercase;
   font-stretch: expanded;
   line-height: 92%;
