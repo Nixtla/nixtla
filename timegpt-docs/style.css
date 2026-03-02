@@ -1,29 +1,74 @@
+/* ─── Fonts ──────────────────────────────────────────────────────────────── */
+
 @font-face {
-  font-family: "PPNeueMontreal";
-  src: url("./fonts/ppneuemontreal-medium.otf") format("otf");
+  font-family: "NeueMontreal";
+  src: url("./fonts/PPNeueMontreal-Book.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
 }
 
 @font-face {
-  font-family: "SupplyMono";
-  src: url("./fonts/Supply-Regular.otf") format("otf");
+  font-family: "NeueMontreal";
+  src: url("./fonts/ppneuemontreal-medium.otf") format("opentype");
+  font-weight: 500;
+  font-display: swap;
 }
+
+@font-face {
+  font-family: "Supply";
+  src: url("./fonts/PPSupplyMono-Ultralight.woff2") format("woff2");
+  font-weight: 200;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Supply";
+  src: url("./fonts/Supply-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* ─── Design tokens ──────────────────────────────────────────────────────── */
 
 :root {
-  --primary-light: #fff;
-  --primary-dark: #161616;
-  --gray: #f0f0f0;
+  --background: #f6f4f0;
+  --primary: #222121;
+  --primary-foreground: #f6f4f0;
+  --secondary: #eae9e6;
+  --border: #222121;
+  --accent: #bfd1ff;
+  --radius: 0rem;
 }
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 
 html,
 body {
-  background-color: var(--gray);
-  font-family: "PPNeueMontreal", sans-serif;
+  background-color: var(--background);
+  font-family: "NeueMontreal", sans-serif;
+  font-weight: 400;
+}
+
+#page-title,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span {
+  font-family: "NeueMontreal", sans-serif;
+  font-weight: 400;
 }
 
 .eyebrow {
-  font-family: "SupplyMono", monospace;
+  font-family: "Supply", monospace;
+  font-weight: 200;
   @apply text-red-300;
 }
+
+/* ─── Mintlify component overrides ──────────────────────────────────────── */
 
 #navbar img {
   height: 20px;
@@ -35,41 +80,38 @@ body {
 }
 
 a {
-  border-radius: 0.125rem !important;
+  border-radius: var(--radius) !important;
   border: 1px solid transparent;
 }
 
 a.font-semibold {
-  background: var(--primary-light);
-  border: 1px solid var(--primary-dark);
+  background: var(--background);
+  border: 1px solid var(--primary);
   font-weight: 500;
-  color: var(--primary-dark);
+  color: var(--primary);
 }
 
 a.font-semibold svg {
-  background: var(--primary-dark);
+  background: var(--primary);
 }
 
-.rounded-md {
-  border-radius: 0.125rem !important;
-}
-
+.rounded-md,
 .rounded-xl {
-  border-radius: 0.125rem !important;
+  border-radius: var(--radius) !important;
 }
 
 .rounded-2xl,
 .rounded-search {
-  border-radius: 0.25rem !important;
+  border-radius: calc(var(--radius) + 0.125rem) !important;
 }
 
 #navbar-transition {
-  background: var(--gray);
+  background: var(--background);
 }
 
 #topbar-cta-button a span {
-  background: var(--primary-dark);
-  border-radius: 0.125rem;
+  background: var(--primary);
+  border-radius: var(--radius);
 }
 
 #content-side-layout a {
@@ -81,18 +123,32 @@ a.font-semibold svg {
   font-weight: 600;
 }
 
+a.card {
+  background: var(--background) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease;
+}
+
+a.card:hover {
+  background: var(--secondary) !important;
+  transform: translateY(-3px);
+}
+
 a.card svg {
-  background: var(--primary-dark);
+  background: var(--primary);
   opacity: 0.8;
 }
 
-/* Banner styling for theme support */
+/* ─── Banner ─────────────────────────────────────────────────────────────── */
+
 #banner {
-  /* background-color: var(--primary-light); # original  */
-  background-color: #22c55e;
-  border-color: var(--primary-light);
-  color: var(--primary-dark);
-  border-bottom: 1px solid var(--primary-dark) !important;
+  background-color: var(--accent);
+  border-color: var(--background);
+  color: var(--primary);
+  border-bottom: 1px solid var(--primary) !important;
 }
 
 #banner a:hover {
@@ -114,35 +170,73 @@ a.card svg {
   color: #000 !important;
 }
 
-/* dark mode */
+/* ─── Dark mode ──────────────────────────────────────────────────────────── */
+
+html.dark {
+  --background: #222121;
+  --primary: #dedddd;
+  --primary-foreground: #222121;
+  --secondary: #f6f4f0;
+  --border: rgba(212, 212, 216, 0.6);
+  --accent: #9187e8;
+}
+
 html.dark > body {
-  background-color: #161616;
+  background-color: var(--background);
 }
 
 html.dark #navbar-transition {
-  background: var(--primary-dark);
+  background: var(--background);
 }
 
 html.dark a.font-semibold {
   background: #000;
-  border: 1px solid var(--gray);
-  outline-color: var(--gray);
-  color: black;
+  border: 1px solid var(--secondary);
+  outline-color: var(--secondary);
+  color: var(--primary);
 }
 
 html.dark a.font-semibold svg {
-  background: #fff;
+  background: var(--primary);
 }
 
 html.dark #topbar-cta-button a span {
-  background: #fff;
-  color: #000;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 html.dark #topbar-cta-button svg {
-  color: #000;
+  color: var(--primary-foreground);
+}
+
+html.dark a.card:hover {
+  background: var(--background) !important;
+}
+
+html.dark #sidebar-group a[class*="bg-primary"] {
+  background-color: rgba(222, 221, 221, 0.1) !important;
+  color: var(--primary) !important;
+}
+
+html.dark #sidebar-group a[class*="bg-primary"] svg {
+  background-color: var(--primary) !important;
 }
 
 html.dark a.card svg {
-  background: var(--primary-light);
+  background: var(--primary);
+}
+
+/* Remove border-bottom from links nested inside lists */
+ul li a {
+  border-bottom: none !important;
+}
+
+/* Active navigation item */
+#sidebar-group a[class*="bg-primary"] {
+  background-color: var(--secondary) !important;
+  color: var(--primary) !important;
+}
+
+#sidebar-group a[class*="bg-primary"] svg {
+  background-color: var(--primary) !important;
 }
