@@ -23,7 +23,9 @@
 
 @font-face {
   font-family: "Supply";
-  src: url("./fonts/Supply-Regular.otf") format("opentype");
+  src:
+    url("./fonts/PPSupplyMono-Regular.woff2") format("woff2"),
+    url("./fonts/Supply-Regular.otf") format("opentype");
   font-weight: 400;
   font-display: swap;
 }
@@ -50,28 +52,141 @@ body {
 }
 
 #page-title,
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-p,
-span {
-  font-family: "NeueMontreal", sans-serif;
+h1 {
+  font-size: 50px;
+  font-style: normal;
   font-weight: 400;
+  line-height: 112%; /* 56px */
+  letter-spacing: -0.5px;
+  color: var(--primary);
+}
+
+h2,
+h2 span {
+  font-size: 30px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 95%; /* 28.5px */
+}
+
+p {
+  color: var(--primary);
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 24px; /* 150% */
 }
 
 .eyebrow {
-  font-family: "Supply", monospace;
-  font-weight: 200;
-  @apply text-red-300;
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
+  font-size: 1rem;
+  text-transform: uppercase;
+  font-stretch: expanded;
+  line-height: 110%;
+}
+
+.eyebrow-sm {
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
+  font-size: 0.84375rem;
+  text-transform: uppercase;
+  font-stretch: expanded;
+  line-height: 92%;
+}
+
+/* ─── Pagination ─────────────────────────────────────────────────────────── */
+
+#pagination {
+  font-family: "NeueMontreal", sans-serif !important;
+  font-size: 30px !important;
+  font-weight: 400 !important;
+  line-height: 100% !important;
+  color: var(--primary) !important;
+}
+
+#pagination a span {
+  font-size: 20px !important;
+  font-weight: 400 !important;
+  line-height: 100% !important;
+  color: var(--primary) !important;
+}
+
+#pagination svg {
+  height: 10px !important;
+  width: 10px !important;
+  stroke: var(--primary) !important;
+}
+
+#pagination svg path {
+  stroke-width: 1 !important;
+}
+
+/* ─── Feedback toolbar ───────────────────────────────────────────────────── */
+
+.feedback-toolbar p {
+  color: var(--primary) !important;
+  font-family: "NeueMontreal", sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  line-height: 16px !important;
+}
+
+.feedback-toolbar button {
+  background: var(--secondary) !important;
+  font-family: "Supply", monospace !important;
+  font-size: 10.5px !important;
+  font-weight: 400 !important;
+  line-height: 22px !important;
+  text-transform: uppercase !important;
+  padding: 2px 6px !important;
+  border-radius: var(--radius) !important;
+}
+
+.feedback-toolbar button svg {
+  display: none !important;
+}
+
+/* ─── Content layout ─────────────────────────────────────────────────────── */
+
+#content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 80px;
+}
+
+.mdx-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin: 0;
+}
+
+/* Header: flex column controls all internal spacing */
+#header {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+#header p {
+  max-width: 420px;
 }
 
 /* ─── Mintlify component overrides ──────────────────────────────────────── */
 
 #navbar img {
   height: 20px;
+}
+
+#navbar nav a {
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
+  font-size: 0.84375rem;
+  text-transform: uppercase;
+  font-stretch: expanded;
+  line-height: 92%;
+  padding: 4px 8px !important;
 }
 
 .bg-gradient-to-b {
@@ -87,8 +202,20 @@ a {
 a.font-semibold {
   background: var(--background);
   border: 1px solid var(--primary);
-  font-weight: 500;
+  font-family: "Supply", monospace;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--primary);
+}
+
+/* Primary (dark) CTA button */
+a.font-semibold[class*="bg-primary"],
+a.font-semibold[class*="dark"],
+#hero a.font-semibold:first-child {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
 }
 
 a.font-semibold svg {
@@ -109,11 +236,6 @@ a.font-semibold svg {
   background: var(--background);
 }
 
-#topbar-cta-button a span {
-  background: var(--primary);
-  border-radius: var(--radius);
-}
-
 #content-side-layout a {
   border: none;
 }
@@ -123,23 +245,83 @@ a.font-semibold svg {
   font-weight: 600;
 }
 
+/* ─── Cards ──────────────────────────────────────────────────────────────── */
+
+/* Grid container: remove gap, outer borders only for collapse */
+.card-group {
+  gap: 0 !important;
+  border-top: 1px solid #f5f5f5;
+  border-left: 1px solid #f5f5f5;
+}
+
+/* Card */
 a.card {
-  background: var(--background) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: rgba(252, 252, 252, 0.5) !important;
+  border: none !important;
+  border-right: 1px solid #f5f5f5 !important;
+  border-bottom: 1px solid #f5f5f5 !important;
+  border-radius: 0 !important;
   transition:
     transform 0.2s ease,
     background-color 0.2s ease;
 }
 
 a.card:hover {
-  background: var(--secondary) !important;
+  background: rgba(245, 245, 245, 0.9) !important;
+  border-color: #f5f5f5 !important;
   transform: translateY(-3px);
 }
 
-a.card svg {
-  background: var(--primary);
-  opacity: 0.8;
+/* Content container: layout + padding */
+[data-component-part="card-content-container"] {
+  padding: 40px 30px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 30px !important;
+}
+
+/* Icon */
+[data-component-part="card-icon"] {
+  width: 24px !important;
+  height: 24px !important;
+  flex-shrink: 0;
+}
+
+[data-component-part="card-icon"] svg {
+  width: 24px !important;
+  height: 24px !important;
+  background-color: var(--primary) !important;
+}
+
+/* Inner wrapper: gap between title and description */
+[data-component-part="card-content-container"] > .w-full {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 30px !important;
+}
+
+/* Title */
+[data-component-part="card-title"] {
+  font-size: 26px !important;
+  font-style: normal !important;
+  font-weight: 400 !important;
+  line-height: 100% !important;
+  font-family: "NeueMontreal", sans-serif !important;
+  color: var(--primary) !important;
+  margin: 0 !important;
+}
+
+/* Description */
+[data-component-part="card-content"] {
+  font-size: 16px !important;
+  font-style: normal !important;
+  font-weight: 400 !important;
+  line-height: 24px !important;
+  color: var(--primary) !important;
+  margin: 0 !important;
+  opacity: 0.7;
 }
 
 /* ─── Banner ─────────────────────────────────────────────────────────────── */
@@ -209,8 +391,20 @@ html.dark #topbar-cta-button svg {
   color: var(--primary-foreground);
 }
 
+html.dark .card-group {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html.dark a.card {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
 html.dark a.card:hover {
-  background: var(--background) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 html.dark #sidebar-group a[class*="bg-primary"] {
@@ -239,4 +433,23 @@ ul li a {
 
 #sidebar-group a[class*="bg-primary"] svg {
   background-color: var(--primary) !important;
+}
+
+#sidebar-title {
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
+  font-size: 0.84375rem;
+  text-transform: uppercase;
+  font-stretch: expanded;
+  line-height: 92%;
+  padding: 8px !important;
+}
+
+#table-of-contents button {
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
+  font-size: 0.84375rem;
+  text-transform: uppercase;
+  font-stretch: expanded;
+  line-height: 92%;
 }
