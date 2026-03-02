@@ -135,31 +135,29 @@ p {
 .feedback-toolbar button,
 .feedback-toolbar a {
   background: var(--secondary) !important;
-  font-family: "Supply", monospace !important;
-  font-size: 10.5px !important;
+  padding: 2px 6px !important;
+  border-radius: var(--radius) !important;
+  border: none !important;
   font-weight: 400 !important;
   line-height: 22px !important;
   text-transform: uppercase !important;
-  padding: 2px 6px !important;
-  border-radius: var(--radius) !important;
-  border: 1px solid transparent !important;
-  color: var(--primary) !important;
 }
 
-.feedback-toolbar button svg,
-.feedback-toolbar a svg {
-  display: none !important;
-}
-
-.feedback-toolbar small,
-.feedback-toolbar button small,
-.feedback-toolbar a small {
+.feedback-toolbar button,
+.feedback-toolbar button *,
+.feedback-toolbar a,
+.feedback-toolbar a * {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
   font-size: 12px !important;
   text-transform: uppercase !important;
   line-height: 22px !important;
   color: var(--primary) !important;
+}
+
+.feedback-toolbar button svg,
+.feedback-toolbar a svg {
+  display: none !important;
 }
 
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
