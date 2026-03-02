@@ -326,11 +326,11 @@ a.card:hover {
 
 /* ─── Banner ─────────────────────────────────────────────────────────────── */
 
-#banner {
+#banner p span a {
   background-color: var(--accent);
-  border-color: var(--border) !important;
+  border-color: rgb(var(--border) / 0.06) !important;
   color: var(--primary) !important;
-  border-bottom: 1px solid var(--primary) !important;
+  border-bottom: 1px solid rgb(var(--border) / 0.06) !important;
 }
 
 #banner a:hover {
