@@ -149,7 +149,10 @@ p {
 
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
 
-.chat-assistant-floating-input div::before {
+.chat-assistant-floating-input div::before,
+.chat-assistant-floating-input > div::before,
+[class*="chat-assistant"] div::before {
+  display: none !important;
   height: 0 !important;
 }
 
