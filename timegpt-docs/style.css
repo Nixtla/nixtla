@@ -335,6 +335,7 @@ a.card:hover {
 #banner * {
   color: var(--primary) !important;
   background-color: var(--accent) !important;
+  border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
 }
 
 #banner a:hover {
