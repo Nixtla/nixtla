@@ -147,6 +147,12 @@ p {
   display: none !important;
 }
 
+/* ─── Chat assistant ─────────────────────────────────────────────────────── */
+
+.chat-assistant-floating-input div::before {
+  height: 0 !important;
+}
+
 /* ─── Content layout ─────────────────────────────────────────────────────── */
 
 #content-area {
