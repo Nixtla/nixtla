@@ -447,6 +447,18 @@ html.dark a.card svg {
   background: var(--primary);
 }
 
+html.dark .feedback-toolbar button,
+html.dark .feedback-toolbar a {
+  background: var(--primary-foreground) !important;
+}
+
+html.dark .feedback-toolbar button,
+html.dark .feedback-toolbar button *,
+html.dark .feedback-toolbar a,
+html.dark .feedback-toolbar a * {
+  color: var(--primary) !important;
+}
+
 /* Remove border-bottom from links nested inside lists */
 ul li a {
   border-bottom: none !important;
