@@ -328,8 +328,8 @@ a.card:hover {
 
 #banner {
   background-color: var(--accent);
-  border-color: var(--background);
-  color: var(--primary);
+  border-color: var(--border) !important;
+  color: var(--primary) !important;
   border-bottom: 1px solid var(--primary) !important;
 }
 
@@ -338,18 +338,18 @@ a.card:hover {
 }
 
 #banner p span {
-  color: black !important;
+  color: var(--primary) !important;
   margin: 0;
   font-size: medium;
 }
 
 #banner strong {
-  color: #000 !important;
+  color: var(--primary) !important;
   font-size: medium;
 }
 
 #banner svg path {
-  color: #000 !important;
+  color: var(--primary) !important;
 }
 
 /* ─── Dark mode ──────────────────────────────────────────────────────────── */
