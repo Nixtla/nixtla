@@ -144,7 +144,7 @@ p {
   .eyebrow-sm,
   #sidebar-title,
   #table-of-contents button {
-    line-height: 122% !important;
+    line-height: 122%;
   }
 }
 
@@ -566,6 +566,11 @@ html.dark div.card svg {
 }
 
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
+
+#content-area > div:has(.chat-assistant-floating-input) {
+  height: 0 !important;
+  overflow: visible !important;
+}
 
 .chat-assistant-floating-input div::before,
 .chat-assistant-floating-input > div::before,
