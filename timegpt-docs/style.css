@@ -50,6 +50,10 @@
   /* Feedback toolbar */
   --feedback-btn-bg: var(--secondary);
   --feedback-btn-color: var(--secondary-foreground);
+
+  /* Table */
+  --table-border: rgba(0, 0, 0, 0.1);
+  --table-header-bg: var(--background);
 }
 
 /* ─── Design tokens — dark mode ──────────────────────────────────────────── */
@@ -71,6 +75,10 @@ html.dark {
   /* Feedback toolbar */
   --feedback-btn-bg: rgba(255, 255, 255, 0.1);
   --feedback-btn-color: var(--primary);
+
+  /* Table */
+  --table-border: rgba(255, 255, 255, 0.1);
+  --table-header-bg: var(--background);
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
@@ -133,7 +141,7 @@ p {
 /* ─── Navbar ─────────────────────────────────────────────────────────────── */
 
 #navbar img {
-  height: 20px;
+  width: 120px;
 }
 
 #navbar-transition {
@@ -151,7 +159,17 @@ html.dark #navbar-transition {
   text-transform: uppercase;
   font-stretch: expanded;
   line-height: 92%;
+}
+
+#navbar nav li:not(#topbar-cta-button) a {
   padding: 4px 8px !important;
+}
+
+#topbar-cta-button a {
+  padding: 2px 8px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  line-height: normal !important;
 }
 
 #topbar-cta-button a span.absolute {
@@ -382,6 +400,48 @@ html.dark div.card svg {
   color: var(--primary) !important;
   margin: 0 !important;
   opacity: 0.7;
+}
+
+/* ─── Tables ─────────────────────────────────────────────────────────────── */
+
+.mdx-content table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 0.875rem;
+}
+
+.mdx-content table tr {
+  border-bottom: 1px solid var(--table-border) !important;
+}
+
+.mdx-content table th {
+  text-align: left;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  padding-right: 2rem;
+  background-color: var(--table-header-bg);
+  vertical-align: middle;
+  white-space: nowrap;
+  font-size: 0.84375rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  font-family: "Supply", monospace;
+  font-stretch: expanded;
+  line-height: 92%;
+  letter-spacing: -1.08px;
+  color: var(--primary);
+}
+
+.mdx-content table td {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+  padding-right: 2rem;
+  white-space: nowrap;
+  font-size: 0.84375rem;
+  font-weight: 400;
+  color: var(--primary);
 }
 
 /* ─── Banner ─────────────────────────────────────────────────────────────── */
