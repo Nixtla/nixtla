@@ -54,6 +54,11 @@
   /* Table */
   --table-border: rgba(0, 0, 0, 0.1);
   --table-header-bg: var(--background);
+
+  /* Dropdown */
+  --dropdown-bg: var(--background);
+  --dropdown-text: var(--secondary-foreground);
+  --dropdown-border: var(--card-border);
 }
 
 /* ─── Design tokens — dark mode ──────────────────────────────────────────── */
@@ -79,6 +84,11 @@ html.dark {
   /* Table */
   --table-border: rgba(255, 255, 255, 0.1);
   --table-header-bg: var(--background);
+
+  /* Dropdown */
+  --dropdown-bg: var(--secondary);
+  --dropdown-text: var(--secondary-foreground);
+  --dropdown-border: var(--card-border);
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
@@ -234,6 +244,58 @@ html.dark #topbar-cta-button a span {
 
 html.dark #topbar-cta-button svg {
   color: var(--primary-foreground);
+}
+
+/* ─── Navigation items ───────────────────────────────────────────────────── */
+
+#navigation-items ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+#navigation-items a.nav-anchor {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  padding: 6px 8px !important;
+  margin-left: 0 !important;
+  margin-bottom: 0 !important;
+  border: none !important;
+  border-bottom: none !important;
+  text-decoration: none !important;
+  color: var(--primary) !important;
+  opacity: 0.7;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+
+#navigation-items a.nav-anchor div,
+#navigation-items a.nav-anchor:hover div {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  --tw-ring-shadow: 0 0 0 0 transparent !important;
+  --tw-ring-offset-shadow: 0 0 0 0 transparent !important;
+}
+
+#navigation-items a.nav-anchor:hover svg {
+  background-color: rgb(156 163 175) !important;
+}
+
+html.dark #navigation-items a.nav-anchor:hover svg {
+  background-color: rgb(107 114 128) !important;
+}
+
+#navigation-items a.nav-anchor:hover {
+  opacity: 1;
+  background-color: var(--secondary) !important;
+  text-decoration: none !important;
+  color: var(--primary) !important;
+}
+
+html.dark #navigation-items a.nav-anchor:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 /* ─── Sidebar ────────────────────────────────────────────────────────────── */
@@ -594,15 +656,15 @@ html.dark details.accordion summary:hover {
 /* ─── Page context buttons & dropdown ────────────────────────────────────── */
 
 [role="menu"][data-orientation="vertical"] {
-  background-color: var(--secondary) !important;
+  background-color: var(--dropdown-bg) !important;
   border-radius: 0 !important;
-  border-color: var(--border) !important;
+  border-color: var(--dropdown-border) !important;
 }
 
 [role="menu"][data-orientation="vertical"] [role="menuitem"],
 [role="menu"][data-orientation="vertical"] [role="menuitem"] * {
   border-radius: 0 !important;
-  color: var(--secondary-foreground) !important;
+  color: var(--dropdown-text) !important;
 }
 
 #page-context-menu-button,
