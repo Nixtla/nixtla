@@ -403,6 +403,21 @@ html.dark div.card svg {
   opacity: 0.7;
 }
 
+/* ─── Accordion ──────────────────────────────────────────────────────────── */
+
+details.accordion,
+details.accordion summary {
+  border-radius: 0 !important;
+}
+
+details.accordion summary:hover {
+  background-color: var(--secondary) !important;
+}
+
+html.dark details.accordion summary:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
 /* ─── Tables ─────────────────────────────────────────────────────────────── */
 
 .mdx-content table {
@@ -574,6 +589,41 @@ html.dark div.card svg {
 .feedback-toolbar button svg,
 .feedback-toolbar a svg {
   display: none !important;
+}
+
+/* ─── Page context buttons & dropdown ────────────────────────────────────── */
+
+[role="menu"][data-orientation="vertical"] {
+  background-color: var(--secondary) !important;
+  border-radius: 0 !important;
+  border-color: var(--border) !important;
+}
+
+[role="menu"][data-orientation="vertical"] [role="menuitem"],
+[role="menu"][data-orientation="vertical"] [role="menuitem"] * {
+  border-radius: 0 !important;
+  color: var(--secondary-foreground) !important;
+}
+
+#page-context-menu-button,
+#page-context-menu-button + button {
+  border-radius: 0 !important;
+  background-color: var(--secondary) !important;
+  color: var(--secondary-foreground) !important;
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  font-stretch: expanded !important;
+  line-height: 92% !important;
+}
+
+#page-context-menu-button *,
+#page-context-menu-button + button * {
+  font-family: "Supply", monospace !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  font-stretch: expanded !important;
 }
 
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
