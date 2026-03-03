@@ -129,7 +129,9 @@ p {
   line-height: 110%;
 }
 
-.eyebrow-sm {
+.eyebrow-sm,
+#sidebar-title,
+#table-of-contents button {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
   font-size: 0.84375rem;
@@ -140,8 +142,10 @@ p {
 
 /* ─── Navbar ─────────────────────────────────────────────────────────────── */
 
-#navbar img {
+#navbar img,
+.nav-logo {
   width: 120px !important;
+  height: auto !important;
 }
 
 #navbar-transition {
@@ -227,12 +231,6 @@ html.dark #topbar-cta-button svg {
 /* ─── Sidebar ────────────────────────────────────────────────────────────── */
 
 #sidebar-title {
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
-  font-size: 0.84375rem;
-  text-transform: uppercase;
-  font-stretch: expanded;
-  line-height: 92%;
   padding: 8px !important;
 }
 
@@ -261,15 +259,6 @@ ul li a {
 }
 
 /* ─── Table of contents ──────────────────────────────────────────────────── */
-
-#table-of-contents button {
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
-  font-size: 0.84375rem;
-  text-transform: uppercase;
-  font-stretch: expanded;
-  line-height: 92%;
-}
 
 /* ─── Content layout ─────────────────────────────────────────────────────── */
 
