@@ -446,6 +446,12 @@ html.dark div.card svg {
   max-height: none !important;
 }
 
+@media (min-width: 768px) {
+  #banner {
+    padding-bottom: 4px !important;
+  }
+}
+
 @media (max-width: 767px) {
   #banner {
     padding-top: 4px !important;
