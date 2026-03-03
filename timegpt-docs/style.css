@@ -123,7 +123,7 @@ p {
 .eyebrow {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
-  font-size: 1rem;
+  font-size: 14px;
   text-transform: uppercase;
   font-stretch: expanded;
   line-height: 110%;
@@ -131,10 +131,13 @@ p {
 
 .eyebrow-sm,
 #sidebar-title,
-#table-of-contents button {
+#table-of-contents button,
+#banner p,
+#banner span,
+#banner strong {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
-  font-size: 0.84375rem;
+  font-size: 12px;
   text-transform: uppercase;
   font-stretch: expanded;
   line-height: 92%;
@@ -496,6 +499,15 @@ html.dark div.card svg {
 
 #pagination svg path {
   stroke-width: 1 !important;
+}
+
+#pagination a {
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#pagination a:hover {
+  opacity: 0.6;
+  text-decoration: underline;
 }
 
 /* ─── Feedback toolbar ───────────────────────────────────────────────────── */
