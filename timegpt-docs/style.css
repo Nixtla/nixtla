@@ -49,6 +49,7 @@
 
   /* Feedback toolbar */
   --feedback-btn-bg: var(--secondary);
+  --feedback-btn-color: var(--secondary-foreground);
 }
 
 /* ─── Design tokens — dark mode ──────────────────────────────────────────── */
@@ -69,6 +70,7 @@ html.dark {
 
   /* Feedback toolbar */
   --feedback-btn-bg: rgba(255, 255, 255, 0.1);
+  --feedback-btn-color: var(--primary);
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
@@ -461,7 +463,7 @@ html.dark div.card svg {
   font-size: 12px !important;
   text-transform: uppercase !important;
   line-height: 22px !important;
-  color: var(--secondary-foreground) !important;
+  color: var(--feedback-btn-color) !important;
 }
 
 .feedback-toolbar button svg,
