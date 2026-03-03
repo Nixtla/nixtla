@@ -449,6 +449,7 @@ html.dark div.card svg {
 .feedback-toolbar button,
 .feedback-toolbar a {
   background: var(--feedback-btn-bg) !important;
+  color: var(--feedback-btn-color) !important;
   padding: 2px 6px !important;
   border-radius: var(--radius) !important;
   border: none !important;
