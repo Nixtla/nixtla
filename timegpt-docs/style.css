@@ -144,7 +144,7 @@ p {
   .eyebrow-sm,
   #sidebar-title,
   #table-of-contents button {
-    line-height: 122%;
+    line-height: 122% !important;
   }
 }
 
