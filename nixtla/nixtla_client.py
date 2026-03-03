@@ -1125,10 +1125,6 @@ class NixtlaClient:
             df = df.reset_index()
         df = ensure_time_dtype(df, time_col=time_col)
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
-        if ufp.is_nan_or_none(df[target_col]).any():
-            raise ValueError(
-                f"Target column ({target_col}) cannot contain missing values."
-            )
         freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
         if isinstance(freq, (str, int)):
             expected_ids_times = id_time_grid(
