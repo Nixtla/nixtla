@@ -475,12 +475,9 @@ html.dark div.card svg {
   line-height: 92% !important;
 }
 
-#banner p {
-  overflow: visible !important;
-}
-
 #banner p a {
   text-decoration: underline !important;
+  text-decoration-color: var(--primary) !important;
   text-underline-offset: 3px !important;
 }
 
