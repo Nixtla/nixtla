@@ -258,6 +258,10 @@ ul li a {
   border-bottom: none !important;
 }
 
+ul li a.link {
+  text-decoration: underline !important;
+}
+
 /* ─── Table of contents ──────────────────────────────────────────────────── */
 
 /* ─── Content layout ─────────────────────────────────────────────────────── */
@@ -480,7 +484,7 @@ html.dark div.card svg {
 #pagination a span {
   font-size: 20px !important;
   font-weight: 400 !important;
-  line-height: 100% !important;
+  line-height: 120% !important;
   color: var(--primary) !important;
 }
 
