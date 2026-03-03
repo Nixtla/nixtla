@@ -524,6 +524,17 @@ html.dark div.card svg {
   transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+#pagination {
+  flex-wrap: wrap !important;
+  gap: 20px !important;
+  align-items: start !important;
+  justify-content: space-between !important;
+}
+
+#pagination a:nth-child(2) {
+  margin-left: 0 !important;
+}
+
 #pagination a:hover {
   opacity: 0.6;
   text-decoration: underline;
