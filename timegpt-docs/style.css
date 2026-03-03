@@ -36,7 +36,7 @@
   --background: #f6f4f0;
   --primary: #222121;
   --primary-foreground: #f6f4f0;
-  --secondary: #f5f5f5;
+  --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: #222121;
   --accent: #bfd1ff;
@@ -58,7 +58,7 @@ html.dark {
   --background: #222121;
   --primary: #dedddd;
   --primary-foreground: #222121;
-  --secondary: #f6f4f0;
+  --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: rgba(212, 212, 216, 0.6);
   --accent: #9187e8;
@@ -152,6 +152,14 @@ html.dark #navbar-transition {
   font-stretch: expanded;
   line-height: 92%;
   padding: 4px 8px !important;
+}
+
+#topbar-cta-button a span.absolute {
+  background: var(--primary) !important;
+}
+
+#topbar-cta-button a div span {
+  background: transparent !important;
 }
 
 /* CTA button — secondary style */
@@ -462,7 +470,7 @@ html.dark div.card svg {
 .feedback-toolbar a * {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
-  font-size: 12px !important;
+  font-size: 10px !important;
   text-transform: uppercase !important;
   line-height: 22px !important;
   color: var(--feedback-btn-color) !important;
