@@ -568,8 +568,8 @@ html.dark div.card svg {
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
 
 #content-area > div:has(.chat-assistant-floating-input) {
-  height: 0 !important;
-  overflow: visible !important;
+  margin-top: -80px !important;
+  margin-bottom: -80px !important;
 }
 
 .chat-assistant-floating-input div::before,
