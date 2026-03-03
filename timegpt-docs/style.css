@@ -140,6 +140,14 @@ p {
   line-height: 92%;
 }
 
+@media (max-width: 767px) {
+  .eyebrow-sm,
+  #sidebar-title,
+  #table-of-contents button {
+    line-height: 122%;
+  }
+}
+
 /* ─── Navbar ─────────────────────────────────────────────────────────────── */
 
 #navbar img,
@@ -446,13 +454,10 @@ html.dark div.card svg {
   max-height: none !important;
 }
 
-
 @media (max-width: 767px) {
   #banner {
-    padding-top: 12px !important;
-    padding-bottom: 12px !important;
-    padding-left: 16px !important;
-    padding-right: 16px !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
   }
 }
 
