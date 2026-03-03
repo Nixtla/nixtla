@@ -171,12 +171,12 @@
         },
         {
           "anchor": "Get in touch",
-          "href": "https://www.nixtla.io/book-a-free-trial",
+          "href": "https://nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
           "icon": "mail"
         },
         {
           "anchor": "Meet with us",
-          "href": "https://www.nixtla.io/book-a-call?uuid=dc037f5a-d93b-4%5B…%5D90b-a611dd9460af&utm_source=docs&utm_medium=docs",
+          "href": "https://nixtla.io/book-a-call?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
           "icon": "calendar"
         }
       ]
