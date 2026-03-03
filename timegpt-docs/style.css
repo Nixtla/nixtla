@@ -131,10 +131,7 @@ p {
 
 .eyebrow-sm,
 #sidebar-title,
-#table-of-contents button,
-#banner p,
-#banner span,
-#banner strong {
+#table-of-contents button {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
   font-size: 12px;
@@ -459,15 +456,14 @@ html.dark div.card svg {
   text-decoration-color: var(--primary) !important;
 }
 
-#banner p span {
-  color: var(--primary) !important;
-  margin: 0;
-  font-size: medium;
-}
-
-#banner strong {
-  color: var(--primary) !important;
-  font-size: medium;
+#banner p,
+#banner p a {
+  font-family: "Supply", monospace !important;
+  font-weight: 400 !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  font-stretch: expanded !important;
+  line-height: 92% !important;
 }
 
 #banner svg path {
