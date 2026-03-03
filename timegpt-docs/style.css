@@ -380,7 +380,7 @@ html.dark div.card svg {
 
 #banner {
   background-color: var(--accent) !important;
-  border-bottom: 1px solid var(--border) !important;
+  border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
 }
 
 #banner,
@@ -392,6 +392,7 @@ html.dark div.card svg {
 #banner a:hover {
   opacity: 0.8;
   color: var(--primary) !important;
+  text-decoration-color: var(--primary) !important;
 }
 
 #banner p span {
