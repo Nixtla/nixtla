@@ -141,7 +141,7 @@ p {
 /* ─── Navbar ─────────────────────────────────────────────────────────────── */
 
 #navbar img {
-  width: 120px;
+  width: 120px !important;
 }
 
 #navbar-transition {
