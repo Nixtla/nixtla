@@ -446,11 +446,6 @@ html.dark div.card svg {
   max-height: none !important;
 }
 
-@media (min-width: 768px) {
-  #banner {
-    padding-bottom: 4px !important;
-  }
-}
 
 @media (max-width: 767px) {
   #banner {
@@ -484,7 +479,7 @@ html.dark div.card svg {
 #banner p a {
   text-decoration: underline !important;
   text-decoration-color: var(--primary) !important;
-  text-underline-offset: 3px !important;
+  text-underline-offset: 1px !important;
 }
 
 #banner svg path {
