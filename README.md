@@ -37,7 +37,7 @@ from nixtla import NixtlaClient
 ### Forecast using TimeGPT in 3 easy steps
 
 ```python
-# Get your API Key at dashboard.nixtla.io
+# Get your API Key at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/readme
 
 # 1. Instantiate the NixtlaClient
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
@@ -58,7 +58,7 @@ nixtla_client.plot(df, fcst_df, level=[80, 90])
 ### Anomaly detection using TimeGPT in 3 easy steps
 
 ```python
-# Get your API Key at dashboard.nixtla.io
+# Get your API Key at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/readme
 
 # 1. Instantiate the NixtlaClient
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')

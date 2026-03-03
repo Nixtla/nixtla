@@ -79,7 +79,7 @@
       "post": {
         "tags": ["hidden"],
         "summary": "Foundational Time Series Model (Beta)",
-        "description": "This endpoint predicts the future values of a single time series based on the provided data. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io",
+        "description": "This endpoint predicts the future values of a single time series based on the provided data. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values based on the input arguments. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference",
         "operationId": "forecast_forecast_post",
         "requestBody": {
           "content": {
@@ -231,7 +231,7 @@
       "post": {
         "tags": ["hidden"],
         "summary": "Foundational Time Series Model Historic (Beta)",
-        "description": "Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "historic_forecast_historic_forecast_post",
         "requestBody": {
           "content": {
@@ -330,7 +330,7 @@
       "post": {
         "tags": ["hidden"],
         "summary": "Foundational Time Series Model Multi Series (Beta)",
-        "description": "Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "forecast_multi_series_forecast_multi_series_post",
         "requestBody": {
           "content": {
@@ -376,7 +376,7 @@
       "post": {
         "tags": ["hidden"],
         "summary": "Foundational Time Series Model Multi Series Historic (Beta)",
-        "description": "Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "historic_forecast_multi_series_historic_forecast_multi_series_post",
         "requestBody": {
           "content": {
@@ -519,7 +519,7 @@
       "post": {
         "tags": ["hidden"],
         "summary": "Foundational Time Series Model Multi Series Anomaly Detector (Beta)",
-        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "anomaly_detection_multi_series_anomaly_detection_multi_series_post",
         "requestBody": {
           "content": {
@@ -1412,7 +1412,7 @@
       "post": {
         "tags": ["excluded"],
         "summary": "Foundational Time Series Model (Beta)",
-        "description": "This endpoint predicts the future values of a single time series based on the provided data. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io",
+        "description": "This endpoint predicts the future values of a single time series based on the provided data. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values based on the input arguments. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference",
         "operationId": "timegpt_timegpt_post",
         "requestBody": {
           "content": {
@@ -1565,7 +1565,7 @@
       "post": {
         "tags": ["excluded"],
         "summary": "Foundational Time Series Model Historic (Beta)",
-        "description": "Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts time series data for the in-sample period (historical period). It takes a JSON as an input, including information like the series frequency and the historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "timegpt_historic_timegpt_historic_post",
         "requestBody": {
           "content": {
@@ -1665,7 +1665,7 @@
       "post": {
         "tags": ["excluded"],
         "summary": "Foundational Time Series Model Multi Series (Beta)",
-        "description": "Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "timegpt_multi_series_timegpt_multi_series_post",
         "requestBody": {
           "content": {
@@ -1712,7 +1712,7 @@
       "post": {
         "tags": ["excluded"],
         "summary": "Foundational Time Series Model Multi Series Historic (Beta)",
-        "description": "Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "timegpt_multi_series_historic_timegpt_multi_series_historic_post",
         "requestBody": {
           "content": {
@@ -1856,7 +1856,7 @@
       "post": {
         "tags": ["excluded"],
         "summary": "Foundational Time Series Model Multi Series Anomaly Detector (Beta)",
-        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "timegpt_multi_series_anomalies_timegpt_multi_series_anomalies_post",
         "requestBody": {
           "content": {
@@ -1949,7 +1949,7 @@
     "/v2/forecast": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series",
-        "description": "Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts the future values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for each series based on the input arguments. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "v2_forecast_v2_forecast_post",
         "requestBody": {
           "content": {
@@ -2060,7 +2060,7 @@
     "/v2/historic_forecast": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Historic",
-        "description": "Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "v2_historic_forecast_v2_historic_forecast_post",
         "requestBody": {
           "content": {
@@ -2117,7 +2117,7 @@
     "/v2/anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Anomaly Detector",
-        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "v2_anomaly_detection_v2_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -2175,7 +2175,7 @@
     "/v2/online_anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Online Multi Series Anomaly Detector",
-        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports the associated z-score for each point. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports the associated z-score for each point. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "v2_online_anomaly_detection_v2_online_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -2378,7 +2378,7 @@
     "/v2/finetune": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Finetuning",
-        "description": "Fine-tune the large time model to your data and save it for later use. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the ID of the finetuned model, which you can provide in other endpoints to use that model to make the forecasts. Get your token for private beta at https://dashboard.nixtla.io.",
+        "description": "Fine-tune the large time model to your data and save it for later use. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the ID of the finetuned model, which you can provide in other endpoints to use that model to make the forecasts. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/api-reference.",
         "operationId": "v2_finetune_v2_finetune_post",
         "requestBody": {
           "content": {
