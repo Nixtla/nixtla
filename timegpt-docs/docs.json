@@ -16,8 +16,8 @@
       "canonical": "https://nixtla.io/docs"
     }
   },
-  "icons":{
-    "library":"lucide"
+  "icons": {
+    "library": "lucide"
   },
   "favicon": "/favicon.ico",
   "ignore": ["utils/**", "depracted-docs/**", "pending_content/**"],
@@ -171,12 +171,12 @@
         },
         {
           "anchor": "Get in touch",
-          "href": "https://share.hsforms.com/2kPRkvHcfRHO5m4Qqc9wKqArbxr6",
+          "href": "https://nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
           "icon": "mail"
         },
         {
           "anchor": "Meet with us",
-          "href": "https://meetings.hubspot.com/cristian-challu/enterprise-contact-us?uuid=dc037f5a-d93b-4%5B…%5D90b-a611dd9460af&utm_source=docs&utm_medium=docs",
+          "href": "https://nixtla.io/book-a-call?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
           "icon": "calendar"
         }
       ]
