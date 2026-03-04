@@ -39,7 +39,7 @@ jobs:
           CIBW_BEFORE_BUILD_MACOS: brew install libomp
           CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14.0
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: artifact-cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
           path: wheelhouse/*.whl
@@ -62,7 +62,7 @@ jobs:
           pip install build
           python -m build --sdist --outdir dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           path: dist/*.tar.gz
 
@@ -76,7 +76,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
