@@ -335,8 +335,26 @@ ul li a {
   border-bottom: none !important;
 }
 
-ul li a.link {
+a.link {
   text-decoration: underline !important;
+  border: none !important;
+}
+
+/* ─── Code ───────────────────────────────────────────────────────────────── */
+
+:not(pre) > code {
+  --code-bg: #ececec;
+  background-color: var(--code-bg) !important;
+  color: var(--primary) !important;
+}
+
+html.dark :not(pre) > code {
+  --code-bg: rgba(222, 221, 221, 0.1);
+}
+
+pre code {
+  background-color: unset !important;
+  color: unset !important;
 }
 
 /* ─── Table of contents ──────────────────────────────────────────────────── */
@@ -490,9 +508,8 @@ html.dark details.accordion summary:hover {
 /* ─── Tables ─────────────────────────────────────────────────────────────── */
 
 .mdx-content table {
-  display: block;
+  display: table;
   width: 100%;
-  max-width: 100%;
   overflow-x: auto;
   font-size: 0.875rem;
 }
