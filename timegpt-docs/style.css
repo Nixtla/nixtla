@@ -374,6 +374,25 @@ pre code {
   margin: 0;
 }
 
+.mdx-content br {
+  display: none;
+}
+
+.mdx-content span[data-as="p"] {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.mdx-content hr {
+  margin-top: 20px !important;
+  margin-bottom: 20px !important;
+}
+
+[role="list"].steps {
+  margin-top: 20px !important;
+  margin-bottom: 20px !important;
+}
+
 #header {
   display: flex;
   flex-direction: column;
@@ -710,6 +729,13 @@ html.dark details.accordion summary:hover {
   font-size: 12px !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
+}
+
+/* ─── Tabs ───────────────────────────────────────────────────────────────── */
+
+[data-component-part="tab-button"][data-active="true"] svg {
+  color: var(--primary) !important;
+  background-color: var(--primary) !important;
 }
 
 /* ─── Chat assistant ─────────────────────────────────────────────────────── */
