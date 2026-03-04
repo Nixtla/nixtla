@@ -266,9 +266,10 @@ html.dark #topbar-cta-button svg {
   text-decoration: none !important;
   color: var(--primary) !important;
   opacity: 0.7;
-  transition: opacity 0.2s ease, background-color 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
 }
-
 
 #navigation-items a.nav-anchor div,
 #navigation-items a.nav-anchor:hover div {
@@ -695,11 +696,8 @@ html.dark details.accordion summary:hover {
   margin-bottom: -80px !important;
 }
 
-.chat-assistant-floating-input div::before,
-.chat-assistant-floating-input > div::before,
-[class*="chat-assistant"] div::before {
-  display: none !important;
-  height: 0 !important;
+.chat-assistant-floating-input::before {
+  background-color: transparent !important;
 }
 
 /* ─── Utilities ──────────────────────────────────────────────────────────── */
