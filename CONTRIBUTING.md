@@ -58,7 +58,7 @@ This library uses `python-dotenv` for development. To set up your Nixtla API key
 NIXTLA_API_KEY=<your token>
 ```
 
-* NOTE: You can get your Nixtla API key by logging into [Nixtla Dashboard](https://dashboard.nixtla.io/) where you can get few API calls for free. If you need more API calls for development purpose, please write to `support@nixtla.io`.
+* NOTE: You can get your Nixtla API key by logging into [Nixtla Dashboard](https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/contributing) where you can get few API calls for free. If you need more API calls for development purpose, please write to `support@nixtla.io`.
 
 #### Install pre-commit
 
