@@ -42,6 +42,9 @@
   --accent: #bfd1ff;
   --radius: 0rem;
 
+  /* Active Nav Item */
+  --active-nav-item: #d4d4d4;
+
   /* Card */
   --card-bg: rgba(252, 252, 252, 0.5);
   --card-bg-hover: rgba(245, 245, 245, 0.9);
@@ -71,6 +74,9 @@ html.dark {
   --secondary-foreground: #222121;
   --border: rgba(212, 212, 216, 0.6);
   --accent: #9187e8;
+
+  /* Active Nav Item */
+  --active-nav-item: rgba(222, 221, 221, 0.1);
 
   /* Card */
   --card-bg: rgba(255, 255, 255, 0.03);
@@ -307,7 +313,7 @@ html.dark #navigation-items a.nav-anchor:hover {
 
 /* Active navigation item */
 #sidebar-group a[class*="bg-primary"] {
-  background-color: var(--secondary) !important;
+  background-color: var(--active-nav-item) !important;
   color: var(--primary) !important;
 }
 
@@ -316,7 +322,7 @@ html.dark #navigation-items a.nav-anchor:hover {
 }
 
 html.dark #sidebar-group a[class*="bg-primary"] {
-  background-color: rgba(222, 221, 221, 0.1) !important;
+  background-color: var(--active-nav-item) !important;
   color: var(--primary) !important;
 }
 
