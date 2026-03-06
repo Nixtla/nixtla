@@ -59,7 +59,7 @@
   --table-header-bg: var(--background);
 
   /* Dropdown */
-  --dropdown-bg: white;
+  --dropdown-bg: #ffffff;
   --dropdown-text: var(--secondary-foreground);
   --dropdown-border: var(--card-border);
 }
