@@ -41,6 +41,7 @@ machine learning models, with the option to scale to massive amounts of
 data using remote clusters.
 """
     readme_text = Path("README.md").read_text()
+    readme_text = re.sub(r"https?://nixtlaverse\.nixtla\.io/mlforecast/", "./", readme_text)
     # Skip the first 22 lines
     lines = readme_text.split('\n')
     readme_text = '\n'.join(lines[22:])

@@ -82,29 +82,29 @@ Missing something? Please open an issue or write us in
 ## Examples and Guides
 
 📚 [End to End
-Walkthrough](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/end_to_end_walkthrough):
+Walkthrough](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/end_to_end_walkthrough.html):
 model training, evaluation and selection for multiple time series.
 
 🔎 [Probabilistic
-Forecasting](https://nixtlaverse.nixtla.io/mlforecast/docs/tutorials/prediction_intervals_in_forecasting_models):
+Forecasting](https://nixtlaverse.nixtla.io/mlforecast/docs/tutorials/prediction_intervals_in_forecasting_models.html):
 use Conformal Prediction to produce prediciton intervals.
 
 👩‍🔬 [Cross
-Validation](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/cross_validation):
+Validation](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/cross_validation.html):
 robust model’s performance evaluation.
 
 🔌 [Predict Demand
-Peaks](https://nixtlaverse.nixtla.io/mlforecast/docs/tutorials/electricity_peak_forecasting):
+Peaks](https://nixtlaverse.nixtla.io/mlforecast/docs/tutorials/electricity_peak_forecasting.html):
 electricity load forecasting for detecting daily peaks and reducing
 electric bills.
 
 📈 [Transfer
-Learning](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/transfer_learning):
+Learning](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/transfer_learning.html):
 pretrain a model using a set of time series and then predict another one
 using that pretrained model.
 
 🌡️ [Distributed
-Training](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/quick_start_distributed):
+Training](https://nixtlaverse.nixtla.io/mlforecast/docs/getting-started/quick_start_distributed.html):
 use a Dask, Ray or Spark cluster to train models at scale.
 
 ## How to use
@@ -164,7 +164,7 @@ models = [
 ### Forecast object
 
 Now instantiate an
-[`MLForecast`](https://nixtlaverse.nixtla.io/mlforecast/forecast#class-mlforecast)
+[`MLForecast`](https://nixtlaverse.nixtla.io/mlforecast/forecast.html#mlforecast)
 object with the models and the features that you want to use. The
 features can be lags, transformations on the lags and date features. You
 can also define transformations to apply to the target before fitting,
