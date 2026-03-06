@@ -408,8 +408,8 @@ details.accordion :not(summary) span[data-as="p"] {
   max-width: 420px;
 }
 
-/* Desktop (md+): absolute layout — eyebrow row + context menu + full-width title */
-@media (min-width: 768px) {
+/* Desktop (sm+): absolute layout — eyebrow row + context menu + full-width title */
+@media (min-width: 640px) {
   #header > div > .eyebrow {
     padding-right: 180px;
     height: 40px;
