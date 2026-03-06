@@ -59,7 +59,7 @@
   --table-header-bg: var(--background);
 
   /* Dropdown */
-  --dropdown-bg: var(--background);
+  --dropdown-bg: white;
   --dropdown-text: var(--secondary-foreground);
   --dropdown-border: var(--card-border);
 }
@@ -94,7 +94,7 @@ html.dark {
   /* Dropdown */
   --dropdown-bg: var(--secondary);
   --dropdown-text: var(--secondary-foreground);
-  --dropdown-border: var(--card-border);
+  --dropdown-border: var(--secondary);
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
@@ -383,6 +383,10 @@ pre code {
   margin-bottom: 0 !important;
 }
 
+details.accordion :not(summary) span[data-as="p"] {
+  margin-bottom: 20px !important;
+}
+
 .mdx-content hr {
   margin-top: 20px !important;
   margin-bottom: 20px !important;
@@ -397,10 +401,42 @@ pre code {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  position: relative;
 }
 
 #header p {
   max-width: 420px;
+}
+
+/* Desktop (md+): absolute layout — eyebrow row + context menu + full-width title */
+@media (min-width: 768px) {
+  #header > div > .eyebrow {
+    padding-right: 180px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+  }
+
+  #header > div > div:has(#page-title) {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    position: static !important;
+    margin-top: 32px !important;
+  }
+
+  #page-title {
+    width: 100% !important;
+    flex: none !important;
+  }
+
+  #header #page-context-menu {
+    position: absolute !important;
+    top: 5px !important;
+    right: 0 !important;
+    margin-left: 0 !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
 }
 
 #content-side-layout a {
@@ -708,6 +744,13 @@ html.dark details.accordion summary:hover {
 [role="menu"][data-orientation="vertical"] [role="menuitem"] * {
   border-radius: 0 !important;
   color: var(--dropdown-text) !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+html.dark [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
+  background-color: rgba(0, 0, 0, 0.08) !important;
 }
 
 #page-context-menu-button,
@@ -721,6 +764,9 @@ html.dark details.accordion summary:hover {
   text-transform: uppercase !important;
   font-stretch: expanded !important;
   line-height: 92% !important;
+  height: 30px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 #page-context-menu-button *,
