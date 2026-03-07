@@ -421,7 +421,7 @@ details.accordion :not(summary) span[data-as="p"] {
     flex-direction: column !important;
     align-items: flex-start !important;
     position: static !important;
-    margin-top: 32px !important;
+    margin-top: 24px !important;
   }
 
   #page-title {
