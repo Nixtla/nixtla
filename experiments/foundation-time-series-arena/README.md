@@ -121,7 +121,7 @@ To ensure the reproducibility of our findings, the experiments were conducted on
 
 ## Get started with Nixtla's models on the public API
 
-It must be noted, that to use `TimeGPT-1` you will need an account on Nixtla platform to access our models and get a [30 days free trial](https://dashboard.nixtla.io/freetrial). You can also access `TimeGPT-1` through [Azure AI Studio](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-models-timegen-1?view=azureml-api-2) and Azure Machine Learning (named `TimeGEN-1`).
+It must be noted, that to use `TimeGPT-1` you will need an account on Nixtla platform to access our models and get a [30 days free trial](https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/experiments/foundation-time-series-arena). You can also access `TimeGPT-1` through [Azure AI Studio](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-models-timegen-1?view=azureml-api-2) and Azure Machine Learning (named `TimeGEN-1`).
 
 ## Instructions to reproduce the benchmark
 
@@ -178,7 +178,7 @@ After several months of beta testing, we have new updates and improvements based
 
 At Nixtla, our mission is to make frontier AI ubiquitous. Last week we announce the availability of `TimeGEN-1` on Azure. Our models are now accessible through:
 
-- Public API: hosted safely on Nixtla infrastructure, this access point enables developers to create applications and services across our range of models. Create your account [here](https://dashboard.nixtla.io/)
+- Public API: hosted safely on Nixtla infrastructure, this access point enables developers to create applications and services across our range of models. Create your account [here](https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/experiments/foundation-time-series-arena)
 
 - [Azure](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-models-timegen-1?view=azureml-api-2): `TimeGEN-1` is available through Azure AI Studio and Azure Machine Learning, offering a seamless user experience comparable to our API. Beta customers have experienced significant success. 
 
