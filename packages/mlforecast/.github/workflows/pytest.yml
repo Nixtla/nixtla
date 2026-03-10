@@ -11,8 +11,51 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  check-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Check wheel contents
+        run: |
+          python -c "
+          import glob, zipfile, sys
+          wheel = glob.glob('dist/*.whl')[0]
+          with zipfile.ZipFile(wheel) as zf:
+              names = zf.namelist()
+          required = [
+              'mlforecast/__init__.py',
+              'mlforecast/distributed/__init__.py',
+              'mlforecast/distributed/models/__init__.py',
+              'mlforecast/distributed/models/dask/__init__.py',
+              'mlforecast/distributed/models/ray/__init__.py',
+              'mlforecast/distributed/models/spark/__init__.py',
+          ]
+          missing = [p for p in required if p not in names]
+          if missing:
+              print('Missing from wheel:')
+              for p in missing:
+                  print(f'  {p}')
+              sys.exit(1)
+          print('All subpackages found in wheel.')
+          "
+
   all-tests:
+    needs: check-package
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

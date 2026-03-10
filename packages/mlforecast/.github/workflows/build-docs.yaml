@@ -17,6 +17,9 @@ on:
           - staging
           - production
 
+permissions:
+  contents: write
+
 jobs:
   build-docs:
     if: github.actor != 'dependabot[bot]'
