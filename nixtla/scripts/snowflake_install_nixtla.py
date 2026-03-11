@@ -596,13 +596,21 @@ def package_and_upload_nixtla(
     with TemporaryDirectory() as tmpdir:
         from nixtla import __version__ as nixtla_version
 
+        # Install packages into a subdirectory so the zip output (written to
+        # tmpdir) is never inside the directory being archived. If the archive
+        # base path were inside the source directory, shutil.make_archive would
+        # include the partially-written zip file in itself, producing a
+        # self-referential, corrupted archive.
+        pkg_dir = os.path.join(tmpdir, "pkg")
+        os.makedirs(pkg_dir)
+
         # Detect package installer
         pip_cmd, use_uv = detect_package_installer()
 
         # Build base install args (shared between PyPI and fallback attempts)
         base_args = pip_cmd + [
             "--target" if use_uv else "-t",
-            tmpdir,
+            pkg_dir,
         ]
         extra_deps = ["utilsforecast", "httpx"]
         no_deps_flag = ["--no-deps"]  # Avoid pulling in heavy things like pandas/numpy
@@ -626,8 +634,9 @@ def package_and_upload_nixtla(
         # Check whether the pip installation run successfully
         pip_result.check_returncode()
 
-        # Create zip archive
-        shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", tmpdir)
+        # Create zip archive from pkg_dir; output goes to tmpdir/nixtla.zip
+        # which is outside pkg_dir, so the archive never contains itself.
+        shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", pkg_dir)
         zip_path = os.path.join(tmpdir, "nixtla.zip")
 
         # Upload to stage (normalize path for Windows and quote file URI)
