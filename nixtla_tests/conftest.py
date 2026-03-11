@@ -45,6 +45,11 @@ def custom_client():
         base_url=os.environ["NIXTLA_BASE_URL_CUSTOM"],
         api_key=os.environ["NIXTLA_API_KEY_CUSTOM"],
     )
+    for model in client.finetuned_models():
+        try:
+            client.delete_finetuned_model(model.id)
+        except Exception:
+            pass
     yield client
 
     try:
