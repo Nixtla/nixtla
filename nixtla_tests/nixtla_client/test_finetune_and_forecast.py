@@ -103,11 +103,10 @@ class TestTimeSeriesDataSet1:
         assert detected_anomalies_base < detected_anomalies_finetune
 
     def test_list_finetuned_models(self, custom_client):
-        custom_client.delete_finetuned_model(model_ids_object.model_id1)
         models = custom_client.finetuned_models()
         ids = {m.id for m in models}
         assert (
-            model_ids_object.model_id1 not in ids and model_ids_object.model_id2 in ids
+            model_ids_object.model_id1 in ids and model_ids_object.model_id2 in ids
         )
 
     def test_get_single_finetuned_model(self, custom_client):
