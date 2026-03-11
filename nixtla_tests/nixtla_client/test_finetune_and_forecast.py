@@ -61,31 +61,27 @@ class TestTimeSeriesDataSet1:
         )
 
     def test_cv_with_finetuned_model(self, custom_client, ts_data_set1):
-        try:
-            cv_base = custom_client.cross_validation(
-                ts_data_set1.series, n_windows=2, h=ts_data_set1.h
-            )
-            cv_finetune = custom_client.cross_validation(
-                ts_data_set1.series,
-                n_windows=2,
-                h=ts_data_set1.h,
-                finetuned_model_id=model_ids_object.model_id1,
-            )
-            merged = cv_base.merge(
-                cv_finetune,
-                on=["unique_id", "ds", "cutoff", "y"],
-                suffixes=("_base", "_finetune"),
-            ).drop(columns="cutoff")
-            cv_rmse = evaluate(
-                merged,
-                metrics=[rmse],
-                agg_fn="mean",
-            ).loc[0]
-            # error was reduced over 30% by finetuning
-            assert 1 - cv_rmse["TimeGPT_finetune"] / cv_rmse["TimeGPT_base"] > 0.3
-        finally:
-            custom_client.delete_finetuned_model(model_ids_object.model_id1)
-
+        cv_base = custom_client.cross_validation(
+            ts_data_set1.series, n_windows=2, h=ts_data_set1.h
+        )
+        cv_finetune = custom_client.cross_validation(
+            ts_data_set1.series,
+            n_windows=2,
+            h=ts_data_set1.h,
+            finetuned_model_id=model_ids_object.model_id1,
+        )
+        merged = cv_base.merge(
+            cv_finetune,
+            on=["unique_id", "ds", "cutoff", "y"],
+            suffixes=("_base", "_finetune"),
+        ).drop(columns="cutoff")
+        cv_rmse = evaluate(
+            merged,
+            metrics=[rmse],
+            agg_fn="mean",
+        ).loc[0]
+        # error was reduced over 30% by finetuning
+        assert 1 - cv_rmse["TimeGPT_finetune"] / cv_rmse["TimeGPT_base"] > 0.3
     def test_anomaly_detection_with_finetuned_model(
         self, custom_client, ts_anomaly_data
     ):
@@ -107,6 +103,7 @@ class TestTimeSeriesDataSet1:
         assert detected_anomalies_base < detected_anomalies_finetune
 
     def test_list_finetuned_models(self, custom_client):
+        custom_client.delete_finetuned_model(model_ids_object.model_id1)
         models = custom_client.finetuned_models()
         ids = {m.id for m in models}
         assert (
