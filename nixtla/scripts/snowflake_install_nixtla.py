@@ -24,6 +24,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -636,8 +637,20 @@ def package_and_upload_nixtla(
 
         # Create zip archive from pkg_dir; output goes to tmpdir/nixtla.zip
         # which is outside pkg_dir, so the archive never contains itself.
-        shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", pkg_dir)
+        # Using zipfile directly (instead of shutil.make_archive) to avoid a
+        # Python 3.10 on Windows bug where CRC-32 is computed incorrectly for
+        # some files, causing BadZipFile errors when Snowflake extracts the archive.
         zip_path = os.path.join(tmpdir, "nixtla.zip")
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for root, _dirs, files in os.walk(pkg_dir):
+                for file in files:
+                    abs_path = os.path.join(root, file)
+                    # Normalize to forward slashes for cross-platform consistency
+                    arc_name = os.path.relpath(abs_path, pkg_dir).replace(
+                        os.sep, "/"
+                    )
+                    with open(abs_path, "rb") as f:
+                        zf.writestr(arc_name, f.read())
 
         # Upload to stage (normalize path for Windows and quote file URI)
         zip_posix = Path(zip_path).resolve().as_posix()
