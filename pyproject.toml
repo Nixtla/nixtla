@@ -70,7 +70,7 @@ dev = [
 ]
 distributed = [
     "fugue[dask,ray,spark]>=0.9.6",
-    "dask<=2024.12.1",
+    "dask",
     "pandas<2.2",
     "ray<=2.54.0",
 ]
