@@ -33,6 +33,7 @@ env:
 jobs:
   run-tests:
     runs-on: ${{ matrix.os }}
+    environment: secrets
     timeout-minutes: 60
     strategy:
       fail-fast: false
