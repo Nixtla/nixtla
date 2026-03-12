@@ -861,7 +861,7 @@ class NixtlaClient:
         if api_key is None:
             api_key = os.environ["NIXTLA_API_KEY"]
         if base_url is None:
-            base_url = os.getenv("NIXTLA_BASE_URL", "https://api.nixtla.io")
+            base_url = os.getenv("NIXTLA_BASE_URL") or "https://api.nixtla.io"
         self._client_kwargs = {
             "base_url": base_url,
             "headers": {
