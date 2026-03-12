@@ -1045,30 +1045,26 @@ wheels = [
 ]
 
 [[package]]
-name = "griffe"
-version = "1.15.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0d/0c/3a471b6e31951dce2360477420d0a8d1e00dea6cf33b70f3e8c3ab6e28e1/griffe-1.15.0.tar.gz", hash = "sha256:7726e3afd6f298fbc3696e67958803e7ac843c1cfe59734b6251a40cdbfb5eea", size = 424112, upload-time = "2025-11-10T15:03:15.52Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/83/3b1d03d36f224edded98e9affd0467630fc09d766c0e56fb1498cbb04a9b/griffe-1.15.0-py3-none-any.whl", hash = "sha256:6f6762661949411031f5fcda9593f586e6ce8340f0ba88921a0f2ef7a81eb9a3", size = 150705, upload-time = "2025-11-10T15:03:13.549Z" },
-]
-
-[[package]]
 name = "griffe2md"
-version = "1.2.6"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "griffe" },
+    { name = "griffelib" },
     { name = "jinja2" },
     { name = "mdformat" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/e0/01540673c434406960fe8d4adabaf8ec085dcab1f333a0d56f590da4f7e9/griffe2md-1.2.6.tar.gz", hash = "sha256:2f6699a39985fc564a14fffcf03dedaa056165d2e29b8ce7ce6637d1f467c9d3", size = 42158, upload-time = "2025-11-10T14:47:57.407Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/a2/0dd1169f5f244ed2ffb1ab47277fb33256cb94ce0e4eda0b284ace8e1345/griffe2md-1.4.0.tar.gz", hash = "sha256:87823f77d3ce19ad674f7c3d2b36629d0d94503e3a54ec05b2a855eba111c085", size = 46888, upload-time = "2026-03-06T17:05:15.29Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/d1/a2d64733b333e71125535fbabdb8170e55272b7b54b1ee5c2a2f713cd0e6/griffe2md-1.2.6-py3-none-any.whl", hash = "sha256:f35fe37237caaee25f158b39a329de58337eceda9d2ab720c252718355655040", size = 30025, upload-time = "2025-11-10T14:47:56.233Z" },
+    { url = "https://files.pythonhosted.org/packages/31/ba/9565399c76bd683d9d30d6c07af78c25ebb0a633529587f5150c2e92e71e/griffe2md-1.4.0-py3-none-any.whl", hash = "sha256:8ddaeccff3b172fe5a119f16e4466bc62a6569f30a1d60c7a2ac9aff628c9519", size = 32067, upload-time = "2026-03-06T17:05:13.886Z" },
+]
+
+[[package]]
+name = "griffelib"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/51/c936033e16d12b627ea334aaaaf42229c37620d0f15593456ab69ab48161/griffelib-2.0.0-py3-none-any.whl", hash = "sha256:01284878c966508b6d6f1dbff9b6fa607bc062d8261c5c7253cb285b06422a7f", size = 142004, upload-time = "2026-02-09T19:09:40.561Z" },
 ]
 
 [[package]]
@@ -1621,7 +1617,7 @@ wheels = [
 [[package]]
 name = "mkdocstrings-parser"
 version = "0.0.1"
-source = { git = "https://github.com/Nixtla/mkdocstrings-parser?rev=main#b28e6925beba7e05d7f40047d99244c9c8d6baed" }
+source = { git = "https://github.com/Nixtla/mkdocstrings-parser?rev=main#b5ed819eb90b0fe367a923d40482535a1f796568" }
 dependencies = [
     { name = "griffe2md" },
     { name = "pip-licenses" },

@@ -615,16 +615,21 @@ class PERMBU:
     with empirical copula functions (describing bottom-level dependencies) to
     generate the distribution of aggregate-level distributions using BottomUp
     reconciliation. The sample reordering technique in the PERMBU method reinjects
-    multivariate dependencies into independent bottom-level samples. $\hat{\epsilon}_{i,t}$
+    multivariate dependencies into independent bottom-level samples.
+
+    ```math
+    residuals = \hat{\epsilon}_{i,t}
+    ```
 
     Algorithm:
-    1.   For all series compute conditional marginals distributions.
-    2.   Compute residuals $\hat{\epsilon}_{i,t}$ and obtain rank permutations.
-    3.   Obtain K-sample from the bottom-level series predictions.
-    4.   Apply recursively through the hierarchical structure:
-        4.1.   For a given aggregate series $i$ and its children series:
-        4.2.   Obtain children's empirical joint using sample reordering copula.
-        4.2.   From the children's joint obtain the aggregate series's samples.
+    1. For all series compute conditional marginals distributions.
+    2. Compute `residuals` and obtain rank permutations.
+    3. Obtain K-sample from the bottom-level series predictions.
+    4. Apply recursively through the hierarchical structure:
+        1. For a given aggregate series $i$ and its children series:
+        2. Obtain children's empirical joint using sample reordering copula.
+        3. From the children's joint obtain the aggregate series's samples.
+
 
     Args:
         S (np.array): summing matrix of size (`base`, `bottom`).
