@@ -33,10 +33,11 @@ def nixtla_test_client():
     except:
         print("model_id1 not found, skipping deletion.")
 
-    try:
-        client.delete_finetuned_model(model_ids_object.model_id2)
-    except:
-        print("model_id2 not found, skipping deletion.")
+    if model_ids_object.model_id2:
+        try:
+            client.delete_finetuned_model(model_ids_object.model_id2)
+        except:
+            print("model_id2 not found, skipping deletion.")
 
 
 @pytest.fixture(scope="class")
