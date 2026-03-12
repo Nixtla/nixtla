@@ -45,6 +45,7 @@ jobs:
 
   run-notebooks-test:
     runs-on: nixtla-linux-large-public
+    environment: secrets
     timeout-minutes: 60
     strategy:
       fail-fast: false
