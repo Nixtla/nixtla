@@ -56,14 +56,19 @@ jobs:
         run: >
           make devenv
 
+      - name: Cleanup old finetuned models
+        run: >
+          uv run python scripts/cleanup_finetuned_models.py --older-than 60
+        continue-on-error: true
+
       - name: Run tests (Linux Python 3.11)
         if: runner.os == 'Linux' && matrix.python-version == '3.11'
         env:
           # Required for distributed tests: Ray/Spark spawn worker processes
           # that need to locate the correct Python environment
           UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
-        run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
+        run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
 
       - name: Run tests (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
-        run: uv run pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" nixtla_tests
+        run: uv run pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
