@@ -1699,8 +1699,6 @@ class NixtlaClient:
             model=model,
             freq=freq,
         )
-        # Strip categorical columns before _validate_exog so that numerical
-        # exog validation operates only on the numerical columns.
         df, X_df, df_cat_vals, futr_cat_cols, hist_cat_cols, X_df_cat_future = (
             _extract_categorical_exog(
                 df=df,
@@ -1735,7 +1733,6 @@ class NixtlaClient:
             target_col=target_col,
         )
 
-        # Sort categorical arrays to match process_df row ordering.
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
             for c, vals in df_cat_vals.items():
@@ -1764,8 +1761,6 @@ class NixtlaClient:
             )
             processed = _tail(processed, new_input_size)
 
-        # Build X with ordering [futr_num, futr_cat_hist, hist_num, hist_cat] so that
-        # future feature row indices match between X and X_future.
         n_futr_num = len(futr_cols) if futr_cols is not None else 0
         n_futr_cat = len(futr_cat_cols)
         n_hist_num = len(x_cols) - n_futr_num
@@ -1793,11 +1788,9 @@ class NixtlaClient:
         else:
             X = None
 
-        # Build X_future with ordering [futr_num, futr_cat].
         if X_future is not None or X_df_cat_future:
             X_future = (list(X_future) if X_future is not None else []) + X_df_cat_future
 
-        # Compute categorical_exog indices: futr_cat after futr_num, hist_cat after hist_num.
         categorical_exog_payload: Optional[list[int]] = None
         if categorical_exog_list:
             futr_cat_indices = list(range(n_futr_num, n_futr_num + n_futr_cat))
@@ -2742,7 +2735,6 @@ class NixtlaClient:
         if step_size is None:
             step_size = h
 
-        # All categorical features in cross-validation are historical (no X_df).
         df, _, df_cat_vals, _, hist_cat_cols, _ = _extract_categorical_exog(
             df=df,
             categorical_exog_list=categorical_exog_list,
@@ -2772,7 +2764,6 @@ class NixtlaClient:
             target_col=target_col,
         )
 
-        # Sort categorical arrays to match _preprocess row ordering.
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
             for c, vals in df_cat_vals.items():
@@ -2799,14 +2790,11 @@ class NixtlaClient:
             processed = _tail(processed, new_input_size)
             times = _array_tails(times, orig_indptr, np.diff(processed.indptr))
             targets = _array_tails(targets, orig_indptr, np.diff(processed.indptr))
-        # Numerical hist exog: exclude any cols that appear in categorical_exog_list
-        # (those were stripped from df before _preprocess).
         _num_hist: Optional[list[str]] = None
         if hist_exog_list:
             _num_hist = [c for c in hist_exog_list if c not in hist_cat_cols] or None
         X_np, hist_exog = _process_exog_features(processed.data, x_cols, _num_hist)
 
-        # Append historical categorical columns to X and extend hist_exog/categorical_exog.
         X: Optional[list[Any]] = None
         categorical_exog_payload: Optional[list[int]] = None
         if categorical_exog_list:
