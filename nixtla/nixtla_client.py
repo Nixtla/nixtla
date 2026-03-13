@@ -494,8 +494,18 @@ def _extract_categorical_exog(
     futr_cat_cols = [c for c in categorical_exog_list if c in x_df_exog_cols]
     hist_cat_cols = [c for c in categorical_exog_list if c not in futr_cat_cols]
 
-    # Only hist_cat_cols live in df; futr_cat_cols are extracted from X_df via X_df_cat_future.
-    df_cat_vals: dict[str, np.ndarray] = {c: df[c].to_numpy() for c in hist_cat_cols}
+    # futr_cat_cols must also exist in df to provide historical context rows for X.
+    futr_cat_missing_from_df = set(futr_cat_cols) - df_exog_cols
+    if futr_cat_missing_from_df:
+        raise ValueError(
+            "The following columns in `categorical_exog_list` were found in `X_df` but are "
+            f"missing from `df`: {futr_cat_missing_from_df}. Future categorical features must "
+            "also be present in `df` to provide historical context."
+        )
+
+    # Extract historical values for all cat cols from df.
+    # futr_cat_cols appear in both df (history) and X_df (future); hist_cat_cols only in df.
+    df_cat_vals: dict[str, np.ndarray] = {c: df[c].to_numpy() for c in categorical_exog_list}
 
     X_df_cat_future: list[list] = []
     if futr_cat_cols and X_df is not None:
@@ -1754,19 +1764,24 @@ class NixtlaClient:
             )
             processed = _tail(processed, new_input_size)
 
-        # Build X with ordering [futr_num, hist_num, hist_cat].
-        # futr_cat values are only available as future rows (from X_df); they are
-        # appended to X_future and do not have historical rows in X.
+        # Build X with ordering [futr_num, futr_cat_hist, hist_num, hist_cat] so that
+        # future feature row indices match between X and X_future.
         n_futr_num = len(futr_cols) if futr_cols is not None else 0
         n_futr_cat = len(futr_cat_cols)
         n_hist_num = len(x_cols) - n_futr_num
         n_hist_cat = len(hist_cat_cols)
 
-        X_hist_cat: list[list] = [sorted_df_cat[c].tolist() for c in hist_cat_cols]
+        X_hist_cat: list[list] = [
+            sorted_df_cat[c].tolist() for c in futr_cat_cols + hist_cat_cols
+        ]
 
         if processed.data.shape[1] > 1 or X_hist_cat:
             X_num = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
-            X = X_num + X_hist_cat
+            futr_num_rows = X_num[:n_futr_num]
+            hist_num_rows = X_num[n_futr_num:]
+            futr_cat_hist_rows = X_hist_cat[:n_futr_cat]
+            hist_cat_hist_rows = X_hist_cat[n_futr_cat:]
+            X = futr_num_rows + futr_cat_hist_rows + hist_num_rows + hist_cat_hist_rows
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")
             if futr_cat_cols:
@@ -1782,15 +1797,13 @@ class NixtlaClient:
         if X_future is not None or X_df_cat_future:
             X_future = (list(X_future) if X_future is not None else []) + X_df_cat_future
 
-        # Compute categorical_exog indices.
-        # hist_cat rows sit after futr_num + hist_num rows in X.
-        # futr_cat rows sit after futr_num rows in X_future (same index space as X future rows).
+        # Compute categorical_exog indices: futr_cat after futr_num, hist_cat after hist_num.
         categorical_exog_payload: Optional[list[int]] = None
         if categorical_exog_list:
-            hist_cat_start = n_futr_num + n_hist_num
-            hist_cat_indices = list(range(hist_cat_start, hist_cat_start + n_hist_cat))
             futr_cat_indices = list(range(n_futr_num, n_futr_num + n_futr_cat))
-            categorical_exog_payload = hist_cat_indices + futr_cat_indices
+            hist_cat_start = n_futr_num + n_futr_cat + n_hist_num
+            hist_cat_indices = list(range(hist_cat_start, hist_cat_start + n_hist_cat))
+            categorical_exog_payload = futr_cat_indices + hist_cat_indices
 
         logger.info("Calling Forecast Endpoint...")
         sizes = np.diff(processed.indptr)
@@ -1884,10 +1897,13 @@ class NixtlaClient:
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
         out = _maybe_convert_level_to_quantiles(out, quantiles)
+        # Build the full feature list in X order: [futr_num, futr_cat_hist, hist_num, hist_cat].
+        # Used for both feature_contributions and weights_x so SHAP/weight labels align with X rows.
+        weights_x_cols = x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
         self._maybe_assign_feature_contributions(
             expected_contributions=feature_contributions,
             resp=resp,
-            x_cols=x_cols,
+            x_cols=weights_x_cols,
             out_df=out[[id_col, time_col, "TimeGPT"]],
             insample_feat_contributions=insample_feat_contributions,
         )
@@ -1906,8 +1922,6 @@ class NixtlaClient:
                         self.feature_contributions
                     )
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-        # Build x_cols in the same order as X: [futr_num, hist_num, hist_cat]
-        weights_x_cols = x_cols + hist_cat_cols
         self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=weights_x_cols)
         return out
 

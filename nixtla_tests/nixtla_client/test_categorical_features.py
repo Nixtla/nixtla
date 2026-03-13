@@ -1,3 +1,29 @@
+import numpy as np
+
+
+def test_forecast_feature_contributions_with_categorical_features(
+    nixtla_test_client, air_passengers_with_cat_exog
+):
+    data = air_passengers_with_cat_exog
+    fcst = nixtla_test_client.forecast(
+        data.df,
+        h=data.h,
+        X_df=data.X_df,
+        categorical_exog_list=data.cat_cols,
+        feature_contributions=True,
+    )
+    shap_df = nixtla_test_client.feature_contributions
+    # Categorical column must appear as a labelled SHAP column.
+    for col in data.cat_cols:
+        assert col in shap_df.columns, f"'{col}' missing from feature_contributions columns"
+    # SHAP values (everything after unique_id, ds, TimeGPT) must sum to predictions.
+    np.testing.assert_allclose(
+        fcst["TimeGPT"].values,
+        shap_df.iloc[:, 3:].sum(axis=1).values,
+        rtol=1e-3,
+    )
+
+
 def test_forecast_with_categorical_features(
     nixtla_test_client, air_passengers_with_cat_exog
 ):
