@@ -220,7 +220,7 @@ nixtla_client.plot(
 
 ## 5. Evaluate Forecast Accuracy
 
-Finally, we calculate the **Symmetric Mean Absolute Percetange Error (sMAPE)** for the forecasts with and without categorical variables.
+Finally, we calculate the **Symmetric Mean Absolute Percentage Error (sMAPE)** for the forecasts with and without categorical variables.
 
 
 ```python
@@ -236,7 +236,7 @@ df_target = df_target.merge(timegpt_fcst_without_cat_vars_df[['unique_id', 'ds',
 df_target = df_target.merge(timegpt_fcst_with_cat_vars_df[['unique_id', 'ds', 'TimeGPT-with-cat-vars']])
 
 # Compute errors
-smape_errors = mae(df_target, ['TimeGPT-without-cat-vars', 'TimeGPT-with-cat-vars'])
+smape_errors = smape(df_target, ['TimeGPT-without-cat-vars', 'TimeGPT-with-cat-vars'])
 ```
 
 
