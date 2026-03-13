@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Script to clean up finetuned models older than a specified duration.
 Usage: python scripts/cleanup_finetuned_models.py [--older-than MINUTES] [--dry-run]
@@ -34,7 +35,7 @@ def cleanup_models(older_than_minutes: int = 30, dry_run: bool = False) -> int:
     credentials = [(key, url) for key, url in credentials if key and url]
 
     if not credentials:
-        print("⚠ No credentials found. Skipping cleanup.")
+        print("[WARNING] No credentials found. Skipping cleanup.")
         return 0
 
     now = datetime.now(timezone.utc)
@@ -77,12 +78,12 @@ def cleanup_models(older_than_minutes: int = 30, dry_run: bool = False) -> int:
                 total_failed += 1
 
     if dry_run:
-        print(f"🔍 Found {total_deleted} model(s) older than {older_than_minutes} minute(s)")
-        print("📋 [DRY RUN] Models would be deleted without --dry-run")
+        print(f"[DRY RUN] Found {total_deleted} model(s) older than {older_than_minutes} minute(s)")
+        print("[DRY RUN] Models would be deleted without --dry-run flag")
     else:
-        print(f"✓ Cleaned up {total_deleted} finetuned model(s)")
+        print(f"[OK] Cleaned up {total_deleted} finetuned model(s)")
         if total_failed:
-            print(f"⚠ {total_failed} model(s) failed to delete")
+            print(f"[WARNING] {total_failed} model(s) failed to delete")
 
     return total_deleted
 
