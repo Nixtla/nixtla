@@ -1771,16 +1771,16 @@ class NixtlaClient:
         n_hist_num = len(x_cols) - n_futr_num
         n_hist_cat = len(hist_cat_cols)
 
-        X_hist_cat: list[list] = [
+        cat_all_hist_rows: list[list] = [
             sorted_df_cat[c].tolist() for c in futr_cat_cols + hist_cat_cols
         ]
 
-        if processed.data.shape[1] > 1 or X_hist_cat:
+        if processed.data.shape[1] > 1 or cat_all_hist_rows:
             X_num = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
             futr_num_rows = X_num[:n_futr_num]
             hist_num_rows = X_num[n_futr_num:]
-            futr_cat_hist_rows = X_hist_cat[:n_futr_cat]
-            hist_cat_hist_rows = X_hist_cat[n_futr_cat:]
+            futr_cat_hist_rows = cat_all_hist_rows[:n_futr_cat]
+            hist_cat_hist_rows = cat_all_hist_rows[n_futr_cat:]
             X = futr_num_rows + futr_cat_hist_rows + hist_num_rows + hist_cat_hist_rows
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")

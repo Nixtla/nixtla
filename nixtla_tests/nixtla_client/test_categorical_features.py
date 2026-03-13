@@ -16,7 +16,7 @@ def test_forecast_feature_contributions_with_categorical_features(
     # Categorical column must appear as a labelled SHAP column.
     for col in data.cat_cols:
         assert col in shap_df.columns, f"'{col}' missing from feature_contributions columns"
-    # SHAP values (everything after unique_id, ds, TimeGPT) must sum to predictions.
+    # SHAP values addtivity
     np.testing.assert_allclose(
         fcst["TimeGPT"].values,
         shap_df.iloc[:, 3:].sum(axis=1).values,
