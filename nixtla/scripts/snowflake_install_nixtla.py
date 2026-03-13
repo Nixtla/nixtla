@@ -607,6 +607,17 @@ def package_and_upload_nixtla(
         # Detect package installer
         pip_cmd, use_uv = detect_package_installer()
 
+        # Clear pip cache to avoid corrupted or stale packages
+        # This prevents zipfile.BadZipFile errors from overlapping entries
+        cache_clear_cmd = (
+            ["uv", "cache", "clean"] if use_uv else ["pip", "cache", "purge"]
+        )
+        try:
+            subprocess.run(cache_clear_cmd, check=False, capture_output=True)
+        except Exception:
+            # If cache clearing fails, continue anyway
+            pass
+
         # Build base install args (shared between PyPI and fallback attempts)
         base_args = pip_cmd + [
             "--target" if use_uv else "-t",

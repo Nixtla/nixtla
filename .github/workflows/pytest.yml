@@ -33,7 +33,6 @@ env:
 jobs:
   run-tests:
     runs-on: ${{ matrix.os }}
-    environment: secrets
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -56,6 +55,11 @@ jobs:
       - name: Setup devenv
         run: >
           make devenv
+
+      - name: Cleanup old finetuned models
+        run: >
+          uv run python scripts/cleanup_finetuned_models.py --older-than 60
+        continue-on-error: true
 
       - name: Run tests (Linux Python 3.11)
         if: runner.os == 'Linux' && matrix.python-version == '3.11'
