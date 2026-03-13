@@ -21,8 +21,11 @@ env:
   NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
   API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
 
+
 jobs:
   check-import:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -44,6 +47,8 @@ jobs:
         run: python -c "from nixtla import NixtlaClient"
 
   run-notebooks-test:
+    permissions:
+      contents: write
     runs-on: nixtla-linux-large-public
     timeout-minutes: 60
     strategy:
