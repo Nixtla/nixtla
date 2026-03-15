@@ -29,6 +29,8 @@ env:
   SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
   SF_ROLE: ${{ secrets.SF_ROLE }}
 
+permissions:
+  contents: read
 
 jobs:
   run-tests:
