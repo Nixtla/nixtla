@@ -2097,14 +2097,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        df, _ = _validate_exog(
-            df=df,
-            X_df=None,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            hist_exog=None,
-        )
 
         logger.info("Preprocessing dataframes...")
         processed, _, x_cols, _ = _preprocess(
@@ -2742,15 +2734,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        df, _ = _validate_exog(
-            df=df,
-            X_df=None,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            hist_exog=hist_exog_list,
-        )
-
         logger.info("Preprocessing dataframes...")
         processed, _, x_cols, _ = _preprocess(
             df=df,
