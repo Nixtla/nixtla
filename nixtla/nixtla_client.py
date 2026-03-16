@@ -471,7 +471,7 @@ def _extract_categorical_exog(
         X_df: X_df with future categorical columns removed (unchanged if None).
         df_cat_vals: mapping col → raw values array for every col in categorical_exog_list.
         futr_cat_cols: cat cols found in X_df (treated as future categoricals).
-        hist_cat_cols: cat cols not in X_df (treated as historical-only categoricals).
+        hist_cat_cols: cat cols not in X_df.
         X_df_cat_future: sorted future values per futr_cat_col (empty when X_df is None).
     """
     if not categorical_exog_list:
@@ -2674,9 +2674,8 @@ class NixtlaClient:
                 Defaults to False. Note: multivariate predictions are only
                 supported for a select set of TimeGPT models.
             categorical_exog_list (list[str], optional): Column names of
-                categorical exogenous features in `df` (can be strings or
-                numbers). All categorical features in cross-validation are
-                treated as historical. Defaults to None.
+                categorical exogenous features in (can be strings or
+                numbers). Defaults to None.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
