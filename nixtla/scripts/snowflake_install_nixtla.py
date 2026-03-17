@@ -597,58 +597,57 @@ def package_and_upload_nixtla(
         from nixtla import __version__ as nixtla_version
 
         # Install packages into a subdirectory so the zip output (written to
-        # tmpdir) is never inside the directory being archived. If the archive
-        # base path were inside the source directory, shutil.make_archive would
-        # include the partially-written zip file in itself, producing a
-        # self-referential, corrupted archive.
+        # tmpdir) is never inside the directory being archived.
         pkg_dir = os.path.join(tmpdir, "pkg")
         os.makedirs(pkg_dir)
 
         # Detect package installer
         pip_cmd, use_uv = detect_package_installer()
 
-        # Clear pip cache to avoid corrupted or stale packages
-        # This prevents zipfile.BadZipFile errors from overlapping entries
-        cache_clear_cmd = (
-            ["uv", "cache", "clean"] if use_uv else ["pip", "cache", "purge"]
-        )
-        try:
-            subprocess.run(cache_clear_cmd, check=False, capture_output=True)
-        except Exception:
-            # If cache clearing fails, continue anyway
-            pass
-
-        # Build base install args (shared between PyPI and fallback attempts)
+        # --no-cache / --no-cache-dir guarantees a fresh download and avoids
+        # BadZipFile errors from stale or corrupted cached wheels.
+        no_cache_flag = ["--no-cache"] if use_uv else ["--no-cache-dir"]
         base_args = pip_cmd + [
             "--target" if use_uv else "-t",
             pkg_dir,
-        ]
-        extra_deps = ["utilsforecast", "httpx"]
+        ] + no_cache_flag
+        # utilsforecast must be in the zip; httpx is already available via
+        # PACKAGES (Snowflake conda channel) so omitting it avoids version
+        # conflicts and duplicate zip entries.
+        extra_deps = ["utilsforecast"]
         no_deps_flag = ["--no-deps"]  # Avoid pulling in heavy things like pandas/numpy
 
-        # Try the released PyPI version first
-        pypi_args = (
-            base_args + [f"nixtla=={nixtla_version}"] + extra_deps + no_deps_flag
-        )
-        pip_result = subprocess.run(pypi_args)
-
-        if pip_result.returncode != 0 and fallback_package_source is not None:
+        # Choose the nixtla source upfront — one install, no retry into the
+        # same pkg_dir.  A two-pass approach (try PyPI, then fall back) risks
+        # leaving partial artifacts from the first pass, which produces
+        # duplicate dist-info entries and a "Overlapped entries" BadZipFile.
+        if fallback_package_source is not None:
             print(
-                f"[yellow]nixtla=={nixtla_version} not found on PyPI, "
-                f"falling back to local package: {fallback_package_source}[/yellow]"
+                f"[yellow]Using local package source: {fallback_package_source}[/yellow]"
             )
-            fallback_args = (
-                base_args + [fallback_package_source] + extra_deps + no_deps_flag
-            )
-            pip_result = subprocess.run(fallback_args, check=True)
+            nixtla_source = fallback_package_source
+        else:
+            nixtla_source = f"nixtla=={nixtla_version}"
 
-        # Check whether the pip installation run successfully
-        pip_result.check_returncode()
+        install_args = base_args + [nixtla_source] + extra_deps + no_deps_flag
+        subprocess.run(install_args, check=True)
 
-        # Create zip archive from pkg_dir; output goes to tmpdir/nixtla.zip
-        # which is outside pkg_dir, so the archive never contains itself.
-        shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", pkg_dir)
+        # Build the zip with ZIP_STORED (no DEFLATE compression).
+        # shutil.make_archive uses DEFLATE by default, but different zlib
+        # versions across platforms (e.g. Windows vs Snowflake's Linux) can
+        # disagree on the validity of a compressed stream, causing
+        # "zlib.error: Error -3 ... invalid distance too far back" when
+        # Snowflake's Python tries to import the zip.  ZIP_STORED keeps files
+        # verbatim — no zlib involved — so the zip is readable on any platform.
+        import zipfile as _zipfile
+
         zip_path = os.path.join(tmpdir, "nixtla.zip")
+        with _zipfile.ZipFile(zip_path, "w", compression=_zipfile.ZIP_STORED) as zf:
+            for dirpath, _dirnames, filenames in os.walk(pkg_dir):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    arcname = os.path.relpath(filepath, pkg_dir)
+                    zf.write(filepath, arcname)
 
         # Upload to stage (normalize path for Windows and quote file URI)
         zip_posix = Path(zip_path).resolve().as_posix()
@@ -658,8 +657,22 @@ def package_and_upload_nixtla(
             f"PUT '{file_uri}' @{stage} AUTO_COMPRESS=FALSE OVERWRITE=TRUE"
         ).collect()
 
-        if result[0]["status"].lower() != "uploaded":
+        put_row = result[0]
+        if put_row["status"].lower() != "uploaded":
             raise ValueError("Upload failed " + str(result))
+
+        # Verify the stage stored the file as nixtla.zip (not nixtla.zip.gz).
+        # AUTO_COMPRESS=FALSE should prevent gzip wrapping, but if the stage
+        # silently re-compresses the file, Python's zipimport would receive raw
+        # gzip bytes and raise BadZipFile when trying to read the zip headers.
+        target_name = getattr(put_row, "target", "")
+        if target_name.endswith(".gz"):
+            raise ValueError(
+                f"Snowflake stored the package as '{target_name}' (gzip-compressed) "
+                "instead of 'nixtla.zip'. The stage may have AUTO_COMPRESS enabled "
+                "at the stage level. Re-create the stage with COMPRESSION = 'NONE' "
+                "or ensure AUTO_COMPRESS=FALSE is respected."
+            )
 
         print("[green]Nixtla client package uploaded[/green]")
 
