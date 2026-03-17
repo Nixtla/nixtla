@@ -607,8 +607,8 @@ def package_and_upload_nixtla(
         # Detect package installer
         pip_cmd, use_uv = detect_package_installer()
 
-        # Build base install args.  --no-cache / --no-cache-dir guarantees a
-        # fresh download; avoids BadZipFile from stale or corrupted cached wheels.
+        # --no-cache / --no-cache-dir guarantees a fresh download and avoids
+        # BadZipFile errors from stale or corrupted cached wheels.
         no_cache_flag = ["--no-cache"] if use_uv else ["--no-cache-dir"]
         base_args = pip_cmd + [
             "--target" if use_uv else "-t",
@@ -616,35 +616,24 @@ def package_and_upload_nixtla(
         ] + no_cache_flag
         # utilsforecast must be in the zip; httpx is already available via
         # PACKAGES (Snowflake conda channel) so omitting it avoids version
-        # conflicts and duplicate zip entries that caused BadZipFile errors.
+        # conflicts and duplicate zip entries.
         extra_deps = ["utilsforecast"]
         no_deps_flag = ["--no-deps"]  # Avoid pulling in heavy things like pandas/numpy
 
-        # Try the released PyPI version first
-        pypi_args = (
-            base_args + [f"nixtla=={nixtla_version}"] + extra_deps + no_deps_flag
-        )
-        pip_result = subprocess.run(pypi_args)
-
-        if pip_result.returncode != 0 and fallback_package_source is not None:
+        # Choose the nixtla source upfront — one install, no retry into the
+        # same pkg_dir.  A two-pass approach (try PyPI, then fall back) risks
+        # leaving partial artifacts from the first pass, which produces
+        # duplicate dist-info entries and a "Overlapped entries" BadZipFile.
+        if fallback_package_source is not None:
             print(
-                f"[yellow]nixtla=={nixtla_version} not found on PyPI, "
-                f"falling back to local package: {fallback_package_source}[/yellow]"
+                f"[yellow]Using local package source: {fallback_package_source}[/yellow]"
             )
-            # Wipe pkg_dir so that any partial artifacts from the failed PyPI
-            # install (e.g. a partially-written nixtla-*.dist-info/) don't end
-            # up alongside the fallback install.  Duplicate dist-info entries
-            # in the resulting zip are detected by Python 3.9+ as "Overlapped
-            # entries" and raise zipfile.BadZipFile at import time.
-            shutil.rmtree(pkg_dir)
-            os.makedirs(pkg_dir)
-            fallback_args = (
-                base_args + [fallback_package_source] + extra_deps + no_deps_flag
-            )
-            pip_result = subprocess.run(fallback_args, check=True)
+            nixtla_source = fallback_package_source
+        else:
+            nixtla_source = f"nixtla=={nixtla_version}"
 
-        # Check whether the pip installation ran successfully
-        pip_result.check_returncode()
+        install_args = base_args + [nixtla_source] + extra_deps + no_deps_flag
+        subprocess.run(install_args, check=True)
 
         # Create zip archive from pkg_dir; output goes to tmpdir/nixtla.zip
         # which is outside pkg_dir, so the archive never contains itself.
