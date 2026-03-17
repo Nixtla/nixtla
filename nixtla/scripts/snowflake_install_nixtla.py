@@ -631,6 +631,13 @@ def package_and_upload_nixtla(
                 f"[yellow]nixtla=={nixtla_version} not found on PyPI, "
                 f"falling back to local package: {fallback_package_source}[/yellow]"
             )
+            # Wipe pkg_dir so that any partial artifacts from the failed PyPI
+            # install (e.g. a partially-written nixtla-*.dist-info/) don't end
+            # up alongside the fallback install.  Duplicate dist-info entries
+            # in the resulting zip are detected by Python 3.9+ as "Overlapped
+            # entries" and raise zipfile.BadZipFile at import time.
+            shutil.rmtree(pkg_dir)
+            os.makedirs(pkg_dir)
             fallback_args = (
                 base_args + [fallback_package_source] + extra_deps + no_deps_flag
             )
