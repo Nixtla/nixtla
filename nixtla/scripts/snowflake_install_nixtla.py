@@ -597,10 +597,7 @@ def package_and_upload_nixtla(
         from nixtla import __version__ as nixtla_version
 
         # Install packages into a subdirectory so the zip output (written to
-        # tmpdir) is never inside the directory being archived. If the archive
-        # base path were inside the source directory, shutil.make_archive would
-        # include the partially-written zip file in itself, producing a
-        # self-referential, corrupted archive.
+        # tmpdir) is never inside the directory being archived.
         pkg_dir = os.path.join(tmpdir, "pkg")
         os.makedirs(pkg_dir)
 
@@ -635,21 +632,22 @@ def package_and_upload_nixtla(
         install_args = base_args + [nixtla_source] + extra_deps + no_deps_flag
         subprocess.run(install_args, check=True)
 
-        # Create zip archive from pkg_dir; output goes to tmpdir/nixtla.zip
-        # which is outside pkg_dir, so the archive never contains itself.
-        shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", pkg_dir)
-        zip_path = os.path.join(tmpdir, "nixtla.zip")
-
-        # Validate the zip before uploading to catch corruption early.
+        # Build the zip with ZIP_STORED (no DEFLATE compression).
+        # shutil.make_archive uses DEFLATE by default, but different zlib
+        # versions across platforms (e.g. Windows vs Snowflake's Linux) can
+        # disagree on the validity of a compressed stream, causing
+        # "zlib.error: Error -3 ... invalid distance too far back" when
+        # Snowflake's Python tries to import the zip.  ZIP_STORED keeps files
+        # verbatim — no zlib involved — so the zip is readable on any platform.
         import zipfile as _zipfile
 
-        with _zipfile.ZipFile(zip_path, "r") as zf:
-            bad_file = zf.testzip()
-            if bad_file is not None:
-                raise ValueError(
-                    f"nixtla.zip is corrupted (bad entry: {bad_file!r}). "
-                    "Re-run to retry with a fresh install."
-                )
+        zip_path = os.path.join(tmpdir, "nixtla.zip")
+        with _zipfile.ZipFile(zip_path, "w", compression=_zipfile.ZIP_STORED) as zf:
+            for dirpath, _dirnames, filenames in os.walk(pkg_dir):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    arcname = os.path.relpath(filepath, pkg_dir)
+                    zf.write(filepath, arcname)
 
         # Upload to stage (normalize path for Windows and quote file URI)
         zip_posix = Path(zip_path).resolve().as_posix()
