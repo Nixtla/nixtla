@@ -2070,7 +2070,13 @@ class BaseModel(pl.LightningModule):
                 'baseline_predictions': baseline_predictions
             }
         else:
-            trainer = pl.Trainer(**pred_trainer_kwargs)
+            if (
+                not hasattr(self, "_pred_trainer")
+                or self._pred_trainer_kwargs != pred_trainer_kwargs
+            ):
+                self._pred_trainer = pl.Trainer(**pred_trainer_kwargs)
+                self._pred_trainer_kwargs = pred_trainer_kwargs
+            trainer = self._pred_trainer
             fcsts = trainer.predict(self, datamodule=datamodule)
             fcsts = torch.vstack(fcsts)
             self.explanations = None
