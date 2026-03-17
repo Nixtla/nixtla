@@ -607,23 +607,17 @@ def package_and_upload_nixtla(
         # Detect package installer
         pip_cmd, use_uv = detect_package_installer()
 
-        # Clear pip cache to avoid corrupted or stale packages
-        # This prevents zipfile.BadZipFile errors from overlapping entries
-        cache_clear_cmd = (
-            ["uv", "cache", "clean"] if use_uv else ["pip", "cache", "purge"]
-        )
-        try:
-            subprocess.run(cache_clear_cmd, check=False, capture_output=True)
-        except Exception:
-            # If cache clearing fails, continue anyway
-            pass
-
-        # Build base install args (shared between PyPI and fallback attempts)
+        # Build base install args.  --no-cache / --no-cache-dir guarantees a
+        # fresh download; avoids BadZipFile from stale or corrupted cached wheels.
+        no_cache_flag = ["--no-cache"] if use_uv else ["--no-cache-dir"]
         base_args = pip_cmd + [
             "--target" if use_uv else "-t",
             pkg_dir,
-        ]
-        extra_deps = ["utilsforecast", "httpx"]
+        ] + no_cache_flag
+        # utilsforecast must be in the zip; httpx is already available via
+        # PACKAGES (Snowflake conda channel) so omitting it avoids version
+        # conflicts and duplicate zip entries that caused BadZipFile errors.
+        extra_deps = ["utilsforecast"]
         no_deps_flag = ["--no-deps"]  # Avoid pulling in heavy things like pandas/numpy
 
         # Try the released PyPI version first
@@ -642,13 +636,24 @@ def package_and_upload_nixtla(
             )
             pip_result = subprocess.run(fallback_args, check=True)
 
-        # Check whether the pip installation run successfully
+        # Check whether the pip installation ran successfully
         pip_result.check_returncode()
 
         # Create zip archive from pkg_dir; output goes to tmpdir/nixtla.zip
         # which is outside pkg_dir, so the archive never contains itself.
         shutil.make_archive(os.path.join(tmpdir, "nixtla"), "zip", pkg_dir)
         zip_path = os.path.join(tmpdir, "nixtla.zip")
+
+        # Validate the zip before uploading to catch corruption early.
+        import zipfile as _zipfile
+
+        with _zipfile.ZipFile(zip_path, "r") as zf:
+            bad_file = zf.testzip()
+            if bad_file is not None:
+                raise ValueError(
+                    f"nixtla.zip is corrupted (bad entry: {bad_file!r}). "
+                    "Re-run to retry with a fresh install."
+                )
 
         # Upload to stage (normalize path for Windows and quote file URI)
         zip_posix = Path(zip_path).resolve().as_posix()
@@ -658,8 +663,22 @@ def package_and_upload_nixtla(
             f"PUT '{file_uri}' @{stage} AUTO_COMPRESS=FALSE OVERWRITE=TRUE"
         ).collect()
 
-        if result[0]["status"].lower() != "uploaded":
+        put_row = result[0]
+        if put_row["status"].lower() != "uploaded":
             raise ValueError("Upload failed " + str(result))
+
+        # Verify the stage stored the file as nixtla.zip (not nixtla.zip.gz).
+        # AUTO_COMPRESS=FALSE should prevent gzip wrapping, but if the stage
+        # silently re-compresses the file, Python's zipimport would receive raw
+        # gzip bytes and raise BadZipFile when trying to read the zip headers.
+        target_name = getattr(put_row, "target", "")
+        if target_name.endswith(".gz"):
+            raise ValueError(
+                f"Snowflake stored the package as '{target_name}' (gzip-compressed) "
+                "instead of 'nixtla.zip'. The stage may have AUTO_COMPRESS enabled "
+                "at the stage level. Re-create the stage with COMPRESSION = 'NONE' "
+                "or ensure AUTO_COMPRESS=FALSE is respected."
+            )
 
         print("[green]Nixtla client package uploaded[/green]")
 
