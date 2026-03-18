@@ -77,8 +77,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
-        run: |
-          uv sync --group dev --group dask --group ray
+        run: uv sync --group dev --upgrade-package mkdocstrings-parser --extra dask --extra spark
 
       - name: Install lightgbm on macOS
         if: matrix.os == 'macos-latest'
@@ -88,7 +87,7 @@ jobs:
           brew install lightgbm
 
       - name: Run pytest
-        env: 
-          RAY_ENABLE_UV_RUN_RUNTIME_ENV: 0          
+        env:
+          RAY_ENABLE_UV_RUN_RUNTIME_ENV: 0
         run: uv run pytest
 

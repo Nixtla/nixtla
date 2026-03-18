@@ -38,8 +38,7 @@ Homepage = "https://github.com/Nixtla/mlforecast"
 Repository = "https://github.com/Nixtla/mlforecast"
 Documentation = "https://nixtlaverse.nixtla.io/mlforecast/"
 
-
-[dependency-groups]
+[project.optional-dependencies]
 dask = ["fugue[dask]>=0.9.4", "dask[complete]", "lightgbm", "xgboost"]
 ray = [
     "fugue[ray]>=0.9.4; sys_platform != 'win32' and python_version < '3.14'",
@@ -52,17 +51,16 @@ aws = ["fsspec[s3]"]
 gcp = ["fsspec[gcs]"]
 azure = ["fsspec[adl]"]
 polars = ["polars[numpy]"]
+
+[dependency-groups]
 dev = [
-    "black>=24",
     "datasetsforecast>=1",
-    "fastcore<=1.7.29",
     "gitpython",
     "holidays<0.21",
     "lightgbm>=4.6",
     "matplotlib",
     "mlflow>=2.10.0",
     "mypy",
-    "nbdev<2.3.26",
     "numpy",
     "pandas",
     "pre-commit",
