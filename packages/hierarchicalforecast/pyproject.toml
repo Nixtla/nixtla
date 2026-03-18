@@ -35,6 +35,11 @@ Homepage = "https://github.com/Nixtla/hierarchicalforecast/"
 Repository = "https://github.com/Nixtla/hierarchicalforecast/"
 Documentation = "https://nixtlaverse.nixtla.io/hierarchicalforecast/"
 
+[project.optional-dependencies]
+polars = [
+    "polars[numpy]<=1.32.0"
+]
+
 [dependency-groups]
 dev = [
     "datasetsforecast",
@@ -52,9 +57,6 @@ dev = [
     "pytest-cov",
     "pip-licenses",
     "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@main"
-]
-polars = [
-    "polars[numpy]<=1.32.0"
 ]
 
 [build-system]
