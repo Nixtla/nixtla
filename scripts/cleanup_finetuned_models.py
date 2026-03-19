@@ -27,7 +27,7 @@ def cleanup_models(older_than_minutes: int = 30, dry_run: bool = False) -> int:
     # Collect all credential pairs from environment
     credentials = [
         (os.environ.get("NIXTLA_API_KEY_CUSTOM"), os.environ.get("NIXTLA_BASE_URL_CUSTOM")),
-        (os.environ.get("NIXTLA_API_KEY"), os.environ.get("NIXTLA_BASE_URL")),
+        (os.environ.get("NIXTLA_API_KEY_FOR_SF"), os.environ.get("NIXTLA_BASE_URL")),
         (os.environ.get("NIXTLA_API_KEY_FOR_SF"), os.environ.get("NIXTLA_BASE_URL")),
     ]
 

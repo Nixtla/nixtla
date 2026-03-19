@@ -704,7 +704,7 @@ def create_security_integration(
     if api_key is None:
         nixtla_api_key = ask_with_defaults(
             "Nixtla API key: ",
-            lambda: os.environ.get("NIXTLA_API_KEY"),
+            lambda: os.environ.get("NIXTLA_API_KEY_FOR_SF"),
             password=True,
         )
     else:
@@ -1944,7 +1944,7 @@ def deploy_snowflake_core(
         DeploymentConfig that was used for deployment
     """
     # Set API key in environment for the deployment functions
-    os.environ["NIXTLA_API_KEY"] = api_key
+    os.environ["NIXTLA_API_KEY_FOR_SF"] = api_key
 
     # Deploy components based on flags
     if deploy_security:
@@ -2072,7 +2072,7 @@ def deploy_snowflake(
         # Get API key
         nixtla_api_key = ask_with_defaults(
             "Nixtla API key: ",
-            lambda: os.environ.get("NIXTLA_API_KEY"),
+            lambda: os.environ.get("NIXTLA_API_KEY_FOR_SF"),
             password=True,
         )
 

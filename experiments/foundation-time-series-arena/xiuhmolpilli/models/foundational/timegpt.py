@@ -26,7 +26,7 @@ class TimeGPT(Forecaster):
 
     def _get_client(self) -> NixtlaClient:
         if self.api_key is None:
-            api_key = os.environ["NIXTLA_API_KEY"]
+            api_key = os.environ["NIXTLA_API_KEY_FOR_SF"]
         else:
             api_key = self.api_key
         return NixtlaClient(

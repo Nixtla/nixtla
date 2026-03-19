@@ -39,10 +39,10 @@ def test_integer_freq(integer_freq_series):
 
 
 def test_api_key_fail():
-    with delete_env_var("NIXTLA_API_KEY"), delete_env_var("TIMEGPT_TOKEN"):
+    with delete_env_var("NIXTLA_API_KEY_FOR_SF"), delete_env_var("TIMEGPT_TOKEN"):
         with pytest.raises(KeyError) as excinfo:
             NixtlaClient()
-        assert "NIXTLA_API_KEY" in str(excinfo.value)
+        assert "NIXTLA_API_KEY_FOR_SF" in str(excinfo.value)
 
 
 def test_api_key_success():

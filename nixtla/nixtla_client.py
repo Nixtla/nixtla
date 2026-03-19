@@ -859,7 +859,7 @@ class NixtlaClient:
                 errors, use max_wait_time >> 60. Defaults to 360.
         """
         if api_key is None:
-            api_key = os.environ["NIXTLA_API_KEY"]
+            api_key = os.environ["NIXTLA_API_KEY_FOR_SF"]
         if base_url is None:
             base_url = os.getenv("NIXTLA_BASE_URL") or "https://api.nixtla.io"
         self._client_kwargs = {
