@@ -32,7 +32,7 @@ dependencies = [
 [tool.setuptools.dynamic]
 version = {attr = "utilsforecast.__version__"}
 
-[dependency-groups]
+[project.optional-dependencies]
 plotting = [
     "pandas[plot]<3.0.0",
     "plotly",
@@ -41,6 +41,8 @@ plotting = [
 polars = [
     "polars[numpy]<=1.31",
 ]
+
+[dependency-groups]
 dev = [
     "datasetsforecast==0.0.8",
     "numba>=0.58.0",
@@ -57,7 +59,7 @@ dev = [
     "fugue[dask,spark]>=0.9.4",
     "dask",
     "pip-licenses",
-    "mkdocstrings-parser@git+https://github.com/Nixtla/mkdocstrings-parser.git",
+    "mkdocstrings-parser@git+https://github.com/Nixtla/mkdocstrings-parser.git@main",
 ]
 
 [project.urls]

@@ -968,30 +968,26 @@ spark = [
 ]
 
 [[package]]
-name = "griffe"
-version = "1.15.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0d/0c/3a471b6e31951dce2360477420d0a8d1e00dea6cf33b70f3e8c3ab6e28e1/griffe-1.15.0.tar.gz", hash = "sha256:7726e3afd6f298fbc3696e67958803e7ac843c1cfe59734b6251a40cdbfb5eea", size = 424112, upload-time = "2025-11-10T15:03:15.52Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/83/3b1d03d36f224edded98e9affd0467630fc09d766c0e56fb1498cbb04a9b/griffe-1.15.0-py3-none-any.whl", hash = "sha256:6f6762661949411031f5fcda9593f586e6ce8340f0ba88921a0f2ef7a81eb9a3", size = 150705, upload-time = "2025-11-10T15:03:13.549Z" },
-]
-
-[[package]]
 name = "griffe2md"
-version = "1.2.6"
+version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "griffe" },
+    { name = "griffelib" },
     { name = "jinja2" },
     { name = "mdformat" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/e0/01540673c434406960fe8d4adabaf8ec085dcab1f333a0d56f590da4f7e9/griffe2md-1.2.6.tar.gz", hash = "sha256:2f6699a39985fc564a14fffcf03dedaa056165d2e29b8ce7ce6637d1f467c9d3", size = 42158, upload-time = "2025-11-10T14:47:57.407Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/a8/18adadd26454832fb0beaea07e5f05b92f8830a112ec860d3c403914d651/griffe2md-1.5.0.tar.gz", hash = "sha256:58e184dffcd506ca97f54516dc07dd41f98ddc76eb17ba30518cf3dda18f6a51", size = 47309, upload-time = "2026-03-12T16:22:01.392Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/d1/a2d64733b333e71125535fbabdb8170e55272b7b54b1ee5c2a2f713cd0e6/griffe2md-1.2.6-py3-none-any.whl", hash = "sha256:f35fe37237caaee25f158b39a329de58337eceda9d2ab720c252718355655040", size = 30025, upload-time = "2025-11-10T14:47:56.233Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/50/75d7902f3a82e77710123418e905302309e116c4d12050f04cf6f4ed9d4e/griffe2md-1.5.0-py3-none-any.whl", hash = "sha256:1becaff032cb02ffedd46057a83c218400bb586579c37010ec8504377108591d", size = 32367, upload-time = "2026-03-12T16:22:00.237Z" },
+]
+
+[[package]]
+name = "griffelib"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/51/c936033e16d12b627ea334aaaaf42229c37620d0f15593456ab69ab48161/griffelib-2.0.0-py3-none-any.whl", hash = "sha256:01284878c966508b6d6f1dbff9b6fa607bc062d8261c5c7253cb285b06422a7f", size = 142004, upload-time = "2026-02-09T19:09:40.561Z" },
 ]
 
 [[package]]
@@ -1396,7 +1392,7 @@ wheels = [
 [[package]]
 name = "mkdocstrings-parser"
 version = "0.0.1"
-source = { git = "https://github.com/Nixtla/mkdocstrings-parser.git#b28e6925beba7e05d7f40047d99244c9c8d6baed" }
+source = { git = "https://github.com/Nixtla/mkdocstrings-parser.git?rev=main#9fec1cf211cb2b60f2a73f9890ed57df70ca919f" }
 dependencies = [
     { name = "griffe2md" },
     { name = "pip-licenses" },
@@ -2986,6 +2982,16 @@ dependencies = [
     { name = "pandas" },
 ]
 
+[package.optional-dependencies]
+plotting = [
+    { name = "pandas", extra = ["plot"] },
+    { name = "plotly" },
+    { name = "plotly-resampler", marker = "python_full_version < '3.14'" },
+]
+polars = [
+    { name = "polars", extra = ["numpy"] },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "dask" },
@@ -3006,14 +3012,6 @@ dev = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-plotting = [
-    { name = "pandas", extra = ["plot"] },
-    { name = "plotly" },
-    { name = "plotly-resampler", marker = "python_full_version < '3.14'" },
-]
-polars = [
-    { name = "polars", extra = ["numpy"] },
-]
 
 [package.metadata]
 requires-dist = [
@@ -3021,14 +3019,19 @@ requires-dist = [
     { name = "numpy" },
     { name = "packaging" },
     { name = "pandas", specifier = "<3.0.0" },
+    { name = "pandas", extras = ["plot"], marker = "extra == 'plotting'", specifier = "<3.0.0" },
+    { name = "plotly", marker = "extra == 'plotting'" },
+    { name = "plotly-resampler", marker = "python_full_version < '3.14' and extra == 'plotting'" },
+    { name = "polars", extras = ["numpy"], marker = "extra == 'polars'", specifier = "<=1.31" },
 ]
+provides-extras = ["plotting", "polars"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "dask" },
     { name = "datasetsforecast", specifier = "==0.0.8" },
     { name = "fugue", extras = ["dask", "spark"], specifier = ">=0.9.4" },
-    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser.git" },
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser.git?rev=main" },
     { name = "numba", specifier = ">=0.58.0" },
     { name = "pandas", extras = ["plot"], specifier = "<3.0.0" },
     { name = "pip" },
@@ -3042,12 +3045,6 @@ dev = [
     { name = "pytest-cov" },
     { name = "scipy" },
 ]
-plotting = [
-    { name = "pandas", extras = ["plot"], specifier = "<3.0.0" },
-    { name = "plotly" },
-    { name = "plotly-resampler", marker = "python_full_version < '3.14'" },
-]
-polars = [{ name = "polars", extras = ["numpy"], specifier = "<=1.31" }]
 
 [[package]]
 name = "virtualenv"
