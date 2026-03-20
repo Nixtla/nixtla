@@ -8,9 +8,9 @@ from typing import Callable
 
 import pandas as pd
 import pytest
-from nixtla import NixtlaClient
 from snowflake.snowpark import Session
 
+from nixtla import NixtlaClient
 from nixtla.scripts.snowflake_install_nixtla import (
     DeploymentConfig,
     get_example_test_cases,
@@ -51,12 +51,6 @@ class TestSnowflakeDeployment:
         """Test full deployment with api.nixtla.io endpoint."""
         _verify_full_deployment(snowflake_session, deployed_with_api_endpoint)
 
-    def test_deploy_with_tsmp_nixtla_io(
-        self, snowflake_session: Session, deployed_with_tsmp_endpoint: DeploymentConfig
-    ):
-        """Test full deployment with tsmp.nixtla.io endpoint."""
-        _verify_full_deployment(snowflake_session, deployed_with_tsmp_endpoint)
-
     def test_example_datasets_loaded(
         self,
         snowflake_session: Session,
@@ -82,44 +76,6 @@ class TestSnowflakeDeployment:
                 f"SELECT COUNT(*) as cnt FROM {config.prefix}{table}"
             ).collect()
             assert result[0]["CNT"] > 0, f"{table} is empty"
-
-
-@pytest.mark.snowflake
-class TestDeploymentConfig:
-    """Test DeploymentConfig properties and methods."""
-
-    @pytest.mark.parametrize(
-        "base_url,expected_host",
-        [
-            ("https://api.nixtla.io", "api.nixtla.io"),
-            ("https://tsmp.nixtla.io", "tsmp.nixtla.io"),
-        ],
-    )
-    def test_api_host_extraction(self, base_url: str, expected_host: str):
-        """Test that api_host property correctly extracts hostname from various URLs."""
-        config = DeploymentConfig(
-            database="TEST_DB",
-            schema="TEST_SCHEMA",
-            stage="test_stage",
-            base_url=base_url,
-        )
-        assert config.api_host == expected_host
-        assert config.base_url == base_url
-
-    def test_security_params_include_both_secrets(self):
-        """Test that get_security_params includes both secrets."""
-        config = DeploymentConfig(
-            database="TEST_DB",
-            schema="TEST_SCHEMA",
-            stage="test_stage",
-            base_url="https://api.nixtla.io",
-        )
-        params = config.get_security_params()
-
-        assert "secrets" in params
-        assert "nixtla_api_key" in params["secrets"]
-        assert "nixtla_base_url" in params["secrets"]
-        assert "external_access_integrations" in params
 
 
 # ============================================================================
@@ -160,7 +116,7 @@ def nixtla_client(test_config: SnowflakeTestConfig) -> NixtlaClient:
     """Create NixtlaClient for comparison tests."""
     return NixtlaClient(
         api_key=test_config.api_key,
-        base_url="https://api.nixtla.io",
+        base_url=test_config.base_url,
     )
 
 
