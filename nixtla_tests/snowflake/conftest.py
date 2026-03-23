@@ -83,10 +83,7 @@ def test_config() -> SnowflakeTestConfig:
         missing_vars.append("NIXTLA_API_KEY")
     if not base_url:
         missing_vars.append("NIXTLA_BASE_URL")
-    if missing_vars:
-        pytest.skip(
-            f"Missing environment variables: {', '.join(missing_vars)}, skipping Snowflake tests"
-        )
+    assert not missing_vars, f"Missing environment variables: {', '.join(missing_vars)}"
 
     assert api_key is not None and base_url is not None  # For type checkers
     ns = uuid.uuid4().hex[:8].upper()
