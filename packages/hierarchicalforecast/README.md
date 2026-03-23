@@ -121,7 +121,7 @@ evaluation = evaluate(df = df,
 ```
 
 ## 📖 Documentation
-Here is a link to the [documentation](https://nixtlaverse.nixtla.io/hierarchicalforecast/index).
+Here is a link to the [documentation](https://nixtlaverse.nixtla.io/hierarchicalforecast/index.html).
 
 ## 📃 License
 This project is licensed under the Apache 2.0 License - see the [LICENSE](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE) file for details.

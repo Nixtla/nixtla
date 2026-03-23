@@ -6,7 +6,7 @@ title: Aggregation/Visualization Utils
 
 The `HierarchicalForecast` package contains utility functions to wrangle
 and visualize hierarchical series datasets. The
-[`aggregate`](https://Nixtla.github.io/hierarchicalforecast/src/utils.html#aggregate)
+[`aggregate`](https://nixtlaverse.nixtla.io/hierarchicalforecast/utils.html#aggregate)
 function of the module allows you to create a hierarchy from categorical
 variables representing the structure levels, returning also the
 aggregation contraints matrix $\mathbf{S}$.

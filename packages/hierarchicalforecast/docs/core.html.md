@@ -16,7 +16,7 @@ the hierarchical time series pd.DataFrame `Y_df`, the base predictions
 pd.DataFrame `Y_hat_df`, the aggregation constraints matrix `S_df`. For
 more information on the creation of aggregation constraints matrix see
 the utils [aggregation
-method](https://nixtlaverse.nixtla.io/hierarchicalforecast/src/utils.html#aggregate)
+method](https://nixtlaverse.nixtla.io/hierarchicalforecast/utils.html#aggregate)
 
 ::: hierarchicalforecast.core.HierarchicalReconciliation
     options:

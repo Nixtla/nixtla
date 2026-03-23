@@ -564,7 +564,7 @@ class HierarchicalPlot:
     to medium sized hierarchical series.
 
     Args:
-        S (Frame): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate function](./utils#function-aggregate).
+        S (Frame): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate function](./utils.html#aggregate).
         tags (dict[str, np.ndarray]): hierarchical aggregation indexes, where
             each key is a level and its value contains tags associated to that level.
         S_id_col (str, optional): column that identifies each aggregation. Default is 'unique_id'.

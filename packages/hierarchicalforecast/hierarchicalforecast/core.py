@@ -227,10 +227,11 @@ class HierarchicalReconciliation:
     HierarchicaForecast methods for a collection of time series and base predictions stored in
     pandas DataFrames. The `Y_df` dataframe identifies series and datestamps with the unique_id and ds columns while the
     y column denotes the target time series variable. The `Y_h` dataframe stores the base predictions,
-    example ([AutoARIMA](../../../statsforecast/docs/models/AutoARIMA#autoarima-model), [ETS](../../../statsforecast/docs/models/AutoETS#autoets-model), etc.).
+    example ([AutoARIMA](../../../statsforecast/src/core/models.html#autoarima),
+    [ETS](../../../statsforecast/src/core/models.html#autoets), etc.).
 
     Args:
-        - reconcilers (list[HReconciler]): A list of instantiated classes of the [reconciliation methods](./methods) module.
+        - reconcilers (list[HReconciler]): A list of instantiated classes of the [reconciliation methods](./methods.html) module.
 
     References:
         - [Rob J. Hyndman and George Athanasopoulos (2018). "Forecasting principles and practice, Hierarchical and Grouped Series"](https://otexts.com/fpp3/hierarchical.html).
@@ -533,7 +534,7 @@ class HierarchicalReconciliation:
         Args:
             Y_hat_df (Frame): DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.
             tags (dict[str, np.ndarray]): Each key is a level and its value contains tags associated to that level.
-            S_df (Frame, optional): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](./utils#function-aggregate). Default is None.
+            S_df (Frame, optional): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](./utils.html#aggregate). Default is None.
             Y_df (Optional[Frame], optional): DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`.
                 If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns. Default is None.
             level (Optional[list[int]], optional): positive float list [0,100), confidence levels for prediction intervals. Default is None.

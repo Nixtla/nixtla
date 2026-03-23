@@ -43,7 +43,7 @@ class Normality:
 
     The Normality method leverages the Gaussian Distribution linearity, to
     generate hierarchically coherent prediction distributions. This class is
-    meant to be used as the `sampler` input as other `HierarchicalForecast` [reconciliation classes](./methods).
+    meant to be used as the `sampler` input as other `HierarchicalForecast` [reconciliation classes](./methods.html).
 
     Given base forecasts under a normal distribution:
     ```math
