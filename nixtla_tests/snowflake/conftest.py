@@ -7,7 +7,8 @@ Required environment variables:
     SF_PASSWORD: Snowflake password
     SF_WAREHOUSE: Snowflake warehouse (optional)
     SF_ROLE: Snowflake role (optional)
-    NIXTLA_API_KEY_FOR_SF: Nixtla API key for authentication
+    NIXTLA_API_KEY: Nixtla API key for authentication
+    NIXTLA_BASE_URL: Nixtla base URL for API calls
 
 Optional test resource configuration:
     SF_TEST_DATABASE: Base database name (default: "NIXTLA_TESTDB")
@@ -57,6 +58,7 @@ class SnowflakeTestConfig:
     schema: str
     stage: str
     api_key: str
+    base_url: str
     namespace: str
 
 
@@ -73,14 +75,17 @@ def test_config() -> SnowflakeTestConfig:
     Returns:
         SnowflakeTestConfig with database, schema, stage, and API key
     """
-    api_key = os.getenv("NIXTLA_API_KEY_FOR_SF")
+    api_key = os.getenv("NIXTLA_API_KEY")
+    base_url = os.getenv("NIXTLA_BASE_URL")
 
+    missing_vars = []
     if not api_key:
-        pytest.skip("NIXTLA_API_KEY_FOR_SF not set, skipping Snowflake tests")
+        missing_vars.append("NIXTLA_API_KEY")
+    if not base_url:
+        missing_vars.append("NIXTLA_BASE_URL")
+    assert not missing_vars, f"Missing environment variables: {', '.join(missing_vars)}"
 
-    assert isinstance(api_key, str) and len(api_key) > 0, (
-        "NIXTLA_API_KEY_FOR_SF must be a non-empty string"
-    )
+    assert api_key is not None and base_url is not None  # For type checkers
     ns = uuid.uuid4().hex[:8].upper()
 
     # Base names from env (if provided), then namespace them
@@ -93,6 +98,7 @@ def test_config() -> SnowflakeTestConfig:
         schema=f"{base_schema}_{ns}",
         stage=f"{base_stage}_{ns}",
         api_key=api_key,
+        base_url=base_url,
         namespace=ns,
     )
 
@@ -273,31 +279,8 @@ def deployment_config_api_nixtla(
         schema=test_config.schema,
         stage=test_config.stage,
         integration_name=f"nixtla_test_integration_api_{test_config.namespace}",
-        base_url="https://api.nixtla.io",
+        base_url=test_config.base_url,
         network_rule_name=f"nixtla_network_rule_api_{test_config.namespace}",
-    )
-
-
-@pytest.fixture(scope="module")
-def deployment_config_tsmp_nixtla(
-    test_config: SnowflakeTestConfig,
-    ensure_test_database: str,
-    ensure_test_schema: str,
-    ensure_test_stage: str,
-) -> DeploymentConfig:
-    """
-    Create deployment config for tsmp.nixtla.io endpoint.
-
-    Returns:
-        DeploymentConfig configured for tsmp.nixtla.io
-    """
-    return DeploymentConfig(
-        database=test_config.database,
-        schema=test_config.schema,
-        stage=test_config.stage,
-        integration_name=f"nixtla_test_integration_tsmp_{test_config.namespace}",
-        base_url="https://tsmp.nixtla.io",
-        network_rule_name=f"nixtla_network_rule_tsmp_{test_config.namespace}",
     )
 
 
@@ -343,65 +326,6 @@ def deployed_with_api_endpoint(
         deploy_procedures=True,
         deploy_finetune=False,  # Skip finetune to speed up tests
         deploy_examples=False,  # Load examples separately to get DataFrames
-        fallback_package_source=_PROJECT_ROOT,
-    )
-
-    yield config
-
-    # Cleanup: Drop integration and secrets
-    try:
-        snowflake_session.sql(
-            f"DROP INTEGRATION IF EXISTS {config.integration_name}"
-        ).collect()
-        snowflake_session.sql(
-            f"DROP SECRET IF EXISTS {config.prefix}nixtla_api_key"
-        ).collect()
-        snowflake_session.sql(
-            f"DROP SECRET IF EXISTS {config.prefix}nixtla_base_url"
-        ).collect()
-        snowflake_session.sql(
-            f"DROP NETWORK RULE IF EXISTS {config.prefix}{config.network_rule_name}"
-        ).collect()
-    except Exception as e:
-        print(f"Warning: Failed to cleanup integration resources: {e}")
-
-
-@pytest.fixture(scope="module")
-def deployed_with_tsmp_endpoint(
-    snowflake_session: Session,
-    deployment_config_tsmp_nixtla: DeploymentConfig,
-    test_config: SnowflakeTestConfig,
-) -> Generator[DeploymentConfig, None, None]:
-    """
-    Deploy Nixtla components with tsmp.nixtla.io endpoint.
-
-    This is a module-scoped fixture because deployment is expensive.
-    The deployment is shared across all tests in the module.
-
-    Yields:
-        DeploymentConfig for the deployed components
-
-    Cleanup:
-        Drops integration, secrets, and network rules
-    """
-    config = deployment_config_tsmp_nixtla
-
-    # Ensure session is using the correct database and schema context
-    snowflake_session.use_database(config.database)
-    snowflake_session.use_schema(config.schema)
-
-    # Deploy all components using core function
-    # Note: deploy_examples=False because example loading is handled separately
-    deploy_snowflake_core(
-        session=snowflake_session,
-        config=config,
-        api_key=test_config.api_key,
-        deploy_security=True,
-        deploy_package=True,
-        deploy_udtfs=True,
-        deploy_procedures=True,
-        deploy_finetune=False,  # Skip finetune to speed up tests
-        deploy_examples=False,  # Load examples separately if needed
         fallback_package_source=_PROJECT_ROOT,
     )
 
