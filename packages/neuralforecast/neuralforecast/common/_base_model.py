@@ -2098,6 +2098,122 @@ class BaseModel(pl.LightningModule):
 
         return fcsts
 
+    def simulate(
+        self,
+        dataset,
+        n_paths=500,
+        random_seed=None,
+        quantiles=None,
+        method="gaussian_copula",
+        **data_module_kwargs,
+    ):
+        """Simulate sample paths with temporal correlation.
+
+        Calls ``predict()`` to obtain quantile forecasts, then draws correlated
+        sample paths using the specified simulation method.
+
+        Works with any loss that supports quantile output (``DistributionLoss``,
+        ``MQLoss``, etc.).
+
+        Args:
+            dataset (TimeSeriesDataset): NeuralForecast's ``TimeSeriesDataset``.
+            n_paths (int): Number of sample paths to generate.
+            random_seed (int, optional): Random seed for reproducibility.
+            quantiles (list of float, optional): Quantile grid for marginals.
+                Only used for ``DistributionLoss`` and mixture losses.
+                Defaults to ``[0.01, 0.02, ..., 0.99]``.
+                For ``MQLoss``/``HuberMQLoss``, the model's trained quantiles
+                are used automatically.
+            method (str): Simulation method. Default: ``"gaussian_copula"``.
+            **data_module_kwargs: Extra arguments for ``TimeSeriesDataModule``.
+
+        Returns:
+            samples (np.ndarray): Array of shape ``[n_series, n_paths, H]``.
+        """
+        from neuralforecast.utils import (
+            DEFAULT_QUANTILE_GRID,
+            VALID_SIMULATION_METHODS,
+        )
+
+        if method not in VALID_SIMULATION_METHODS:
+            raise ValueError(
+                f"Unknown simulation method '{method}'. "
+                f"Valid methods: {sorted(VALID_SIMULATION_METHODS)}"
+            )
+        if quantiles is None:
+            quantiles = DEFAULT_QUANTILE_GRID
+
+        # Determine quantile grid based on loss type
+        if self.loss.is_distribution_output:
+            # DistributionLoss/mixture: can produce arbitrary quantiles
+            predict_quantiles = quantiles
+            quantile_positions = np.array(quantiles)
+        elif isinstance(self.loss, MULTIQUANTILE_LOSSES):
+            # MQLoss/HuberMQLoss: uses its trained quantiles
+            predict_quantiles = None  # use model's built-in quantiles
+            quantile_positions = self.loss.quantiles.cpu().numpy()
+        elif isinstance(self.loss, (losses.IQLoss, losses.HuberIQLoss)):
+            # IQLoss: one forward pass per quantile, then take quantile over results
+            predict_quantiles = None  # handled below
+            quantile_positions = np.array(quantiles)
+        else:
+            raise ValueError(
+                f"Simulation requires a loss with quantile output "
+                f"(DistributionLoss, MQLoss, IQLoss, etc.). "
+                f"Model uses {type(self.loss).__name__}."
+            )
+
+        # Get quantile forecasts via existing predict infrastructure
+        if isinstance(self.loss, (losses.IQLoss, losses.HuberIQLoss)):
+            # IQLoss: multiple forward passes, one per quantile in a grid
+            iq_grid = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99]
+            iq_fcsts = []
+            for q in iq_grid:
+                f = self.predict(
+                    dataset=dataset,
+                    random_seed=random_seed,
+                    quantiles=[q],
+                    **data_module_kwargs,
+                )
+                iq_fcsts.append(f)
+            # Each f is (n_series * H, 1); stack along last axis
+            iq_all = np.concatenate(iq_fcsts, axis=-1)  # (n_series * H, len(iq_grid))
+            # Interpolate to the requested quantile positions
+            fcsts = np.quantile(iq_all, quantiles, axis=-1).T  # (n_series * H, n_quantiles)
+            n_quantiles = len(quantile_positions)
+            quantile_fcsts = fcsts[:, :n_quantiles]
+        else:
+            fcsts = self.predict(
+                dataset=dataset,
+                random_seed=random_seed,
+                quantiles=predict_quantiles,
+                **data_module_kwargs,
+            )
+            # fcsts: flattened array, shape (n_series * H, n_outputs)
+            n_quantiles = len(quantile_positions)
+            if self.loss.is_distribution_output:
+                # col 0 = mean, cols 1..Q = quantiles
+                quantile_fcsts = fcsts[:, 1 : 1 + n_quantiles]
+            else:
+                # MQLoss: all columns are quantiles
+                quantile_fcsts = fcsts[:, :n_quantiles]
+
+        h = self.horizon_backup
+        n_series = quantile_fcsts.shape[0] // h
+        quantile_values = quantile_fcsts.reshape(n_series, h, n_quantiles)
+
+        # Generate sample paths using shared helper
+        from neuralforecast.utils import sample_from_quantiles
+
+        return sample_from_quantiles(
+            quantile_positions=quantile_positions,
+            quantile_values=quantile_values,
+            dataset=dataset,
+            n_paths=n_paths,
+            seed=random_seed,
+            method=method,
+        )  # (n_series, n_paths, H)
+
     def decompose(
         self,
         dataset,
