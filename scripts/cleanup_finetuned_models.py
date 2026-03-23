@@ -26,9 +26,11 @@ def cleanup_models(older_than_minutes: int = 30, dry_run: bool = False) -> int:
     """
     # Collect all credential pairs from environment
     credentials = [
-        (os.environ.get("NIXTLA_API_KEY_CUSTOM"), os.environ.get("NIXTLA_BASE_URL_CUSTOM")),
+        (
+            os.environ.get("NIXTLA_API_KEY_CUSTOM"),
+            os.environ.get("NIXTLA_BASE_URL_CUSTOM"),
+        ),
         (os.environ.get("NIXTLA_API_KEY"), os.environ.get("NIXTLA_BASE_URL")),
-        (os.environ.get("NIXTLA_API_KEY_FOR_SF"), os.environ.get("NIXTLA_BASE_URL")),
     ]
 
     # Filter out None/empty credentials
@@ -78,7 +80,9 @@ def cleanup_models(older_than_minutes: int = 30, dry_run: bool = False) -> int:
                 total_failed += 1
 
     if dry_run:
-        print(f"[DRY RUN] Found {total_deleted} model(s) older than {older_than_minutes} minute(s)")
+        print(
+            f"[DRY RUN] Found {total_deleted} model(s) older than {older_than_minutes} minute(s)"
+        )
         print("[DRY RUN] Models would be deleted without --dry-run flag")
     else:
         print(f"[OK] Cleaned up {total_deleted} finetuned model(s)")
@@ -96,7 +100,9 @@ if __name__ == "__main__":
         default=30,
         help="Delete models older than this many minutes (default: 30)",
     )
-    parser.add_argument("--dry-run", action="store_true", help="List models without deleting")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="List models without deleting"
+    )
     args = parser.parse_args()
 
     cleanup_models(older_than_minutes=args.older_than, dry_run=args.dry_run)

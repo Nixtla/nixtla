@@ -20,8 +20,6 @@ env:
   NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
   NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
   NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
-  NIXTLA_API_KEY_FOR_SF: ${{ secrets.NIXTLA_API_KEY_FOR_SF }}
-  API_KEY_FRED: ${{ secrets.API_KEY_FRED }}
   # Snowflake credentials for integration tests
   SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
   SF_USER: ${{ secrets.SF_USER }}
@@ -73,4 +71,4 @@ jobs:
 
       - name: Run tests (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
-        run: uv run pytest --cov=nixtla -m "not distributed_run" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
+        run: uv run pytest --cov=nixtla -m "not distributed_run and not snowflake" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
