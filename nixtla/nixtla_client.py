@@ -1709,13 +1709,20 @@ class NixtlaClient:
                 X_df=X_df,
             )
         )
+        # Exclude hist_cat_cols from hist_exog: they've been stripped from df
+        # by _extract_categorical_exog, so _validate_exog must not look for them.
+        num_hist_exog = (
+            [c for c in hist_exog_list if c not in hist_cat_cols]
+            if hist_exog_list
+            else hist_exog_list
+        )
         df, X_df = _validate_exog(
             df=df,
             X_df=X_df,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-            hist_exog=hist_exog_list,
+            hist_exog=num_hist_exog,
         )
 
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
