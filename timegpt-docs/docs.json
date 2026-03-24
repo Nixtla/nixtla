@@ -211,7 +211,8 @@
       "tagId": "GTM-TBJ64S3X"
     },
     "posthog": {
-      "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82"
+      "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82",
+      "apiHost": "https://d.nixtla.io"
     },
     "intercom": {
       "appId": "j7y9c2ep"
