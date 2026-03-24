@@ -81,6 +81,22 @@ def test_forecast_with_hist_categorical_features(
     assert fcst["TimeGPT"].notna().all()
 
 
+def test_forecast_with_hist_cat_and_futr_num_exog(
+    nixtla_test_client, air_passengers_with_futr_num_and_hist_cat_exog
+):
+    """Regression test: hist categoricals in hist_exog_list + X_df provided must not KeyError."""
+    data = air_passengers_with_futr_num_and_hist_cat_exog
+    fcst = nixtla_test_client.forecast(
+        data.df,
+        h=data.h,
+        X_df=data.X_df,
+        hist_exog_list=data.cat_cols,
+        categorical_exog_list=data.cat_cols,
+    )
+    assert len(fcst) == data.h
+    assert fcst["TimeGPT"].notna().all()
+
+
 def test_cv_with_categorical_features(
     nixtla_test_client, air_passengers_with_cat_exog
 ):

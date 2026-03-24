@@ -452,6 +452,34 @@ def air_passengers_with_num_and_cat_exog(air_passengers_renamed_df, train_test_s
 
 
 @pytest.fixture(scope="module")
+def air_passengers_with_futr_num_and_hist_cat_exog(air_passengers_renamed_df, train_test_split):
+    """Air passengers with a future numerical exog in X_df and a hist-only categorical in df.
+
+    This fixture covers the case where hist categoricals are listed in both
+    hist_exog_list and categorical_exog_list while X_df is also provided.
+    """
+    h = 12
+    df_train, df_test = train_test_split
+    seasons = {
+        1: "winter", 2: "winter", 3: "spring", 4: "spring", 5: "spring",
+        6: "summer", 7: "summer", 8: "summer", 9: "fall", 10: "fall",
+        11: "fall", 12: "winter",
+    }
+    df = df_train.copy().merge(
+        air_passengers_renamed_df[["unique_id", "ds", "y"]].rename(columns={"y": "num_feat"}),
+        on=["unique_id", "ds"],
+    )
+    df["season"] = df["ds"].dt.month.map(seasons)
+    x_df = df_test[["unique_id", "ds"]].copy()
+    x_df = x_df.merge(
+        air_passengers_renamed_df[["unique_id", "ds", "y"]].rename(columns={"y": "num_feat"}),
+        on=["unique_id", "ds"],
+    )
+    # season is intentionally omitted from x_df — it is a hist-only categorical
+    return SimpleNamespace(df=df, X_df=x_df, h=h, cat_cols=["season"])
+
+
+@pytest.fixture(scope="module")
 def air_passengers_with_cat_exog(air_passengers_renamed_df, train_test_split):
     """Air passengers with a categorical seasonal exog (future exog in X_df)."""
     h = 12
