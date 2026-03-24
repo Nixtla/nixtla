@@ -917,6 +917,8 @@ class NixtlaClient:
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
             )
         headers = {}
+        if "model" in payload:
+            headers["nixtla-model"] = payload["model"]
         if content_size_mb > 1:
             threads = -1 if multithreaded_compress else 0
             content = zstd.ZstdCompressor(level=1, threads=threads).compress(content)
