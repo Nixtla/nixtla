@@ -14,6 +14,7 @@ from scipy.stats import norm
 
 from .methods import HReconciler
 from .utils import (
+    SMatrix,
     _construct_adjacency_matrix,
     _is_strictly_hierarchical,
     is_strictly_hierarchical,
@@ -254,6 +255,7 @@ class HierarchicalReconciliation:
         target_col: str = "y",
         id_time_col: str = "temporal_id",
         temporal: bool = False,
+        skip_identity_check: bool = False,
     ) -> tuple[FrameT, FrameT, FrameT, list[str], str]:
         """Performs preliminary wrangling and protections."""
         Y_hat_nw_cols = Y_hat_nw.columns
@@ -393,35 +395,36 @@ class HierarchicalReconciliation:
 
         # Assert S is an identity matrix at the bottom
         S_nw_cols.remove(id_col)
-        # Check if S_nw is backed by a sparse pandas DataFrame (check value columns only)
-        S_bottom_nw = S_nw[S_nw_cols][-len(S_nw_cols) :]
-        S_bottom = S_bottom_nw.to_native()
-        is_sparse_df = hasattr(S_bottom, "sparse") and hasattr(S_bottom, "dtypes") and all(
-            str(dtype).startswith("Sparse") for dtype in S_bottom.dtypes
-        )
-        if is_sparse_df:
-            # Sparse-aware identity check: verify diagonal is 1 and off-diagonal is 0
-            # by checking nnz equals n and all non-zero values are 1
-            S_bottom_coo = S_bottom.sparse.to_coo()
-            n = S_bottom_coo.shape[0]
-            is_identity = (
-                S_bottom_coo.shape[0] == S_bottom_coo.shape[1]
-                and S_bottom_coo.nnz == n
-                and np.allclose(S_bottom_coo.data, 1.0)
-                and np.array_equal(S_bottom_coo.row, S_bottom_coo.col)  # diagonal only
+        if not skip_identity_check:
+            # Check if S_nw is backed by a sparse pandas DataFrame (check value columns only)
+            S_bottom_nw = S_nw[S_nw_cols][-len(S_nw_cols) :]
+            S_bottom = S_bottom_nw.to_native()
+            is_sparse_df = hasattr(S_bottom, "sparse") and hasattr(S_bottom, "dtypes") and all(
+                str(dtype).startswith("Sparse") for dtype in S_bottom.dtypes
             )
-            if not is_identity:
-                raise ValueError(
-                    f"The bottom {n}x{n} part of S must be an identity matrix."
+            if is_sparse_df:
+                # Sparse-aware identity check: verify diagonal is 1 and off-diagonal is 0
+                # by checking nnz equals n and all non-zero values are 1
+                S_bottom_coo = S_bottom.sparse.to_coo()
+                n = S_bottom_coo.shape[0]
+                is_identity = (
+                    S_bottom_coo.shape[0] == S_bottom_coo.shape[1]
+                    and S_bottom_coo.nnz == n
+                    and np.allclose(S_bottom_coo.data, 1.0)
+                    and np.array_equal(S_bottom_coo.row, S_bottom_coo.col)  # diagonal only
                 )
-        else:
-            # Dense path (original)
-            if not np.allclose(
-                S_bottom_nw, np.eye(len(S_nw_cols))
-            ):
-                raise ValueError(
-                    f"The bottom {S_nw.shape[1]}x{S_nw.shape[1]} part of S must be an identity matrix."
-                )
+                if not is_identity:
+                    raise ValueError(
+                        f"The bottom {n}x{n} part of S must be an identity matrix."
+                    )
+            else:
+                # Dense path (original)
+                if not np.allclose(
+                    S_bottom_nw, np.eye(len(S_nw_cols))
+                ):
+                    raise ValueError(
+                        f"The bottom {S_nw.shape[1]}x{S_nw.shape[1]} part of S must be an identity matrix."
+                    )
 
         # Check Y_hat_df\S_df series difference
         # TODO: this logic should be method specific
@@ -490,7 +493,7 @@ class HierarchicalReconciliation:
         self,
         Y_hat_df: Frame,
         tags: dict[str, np.ndarray],
-        S_df: Frame = None,
+        S_df: "Frame | SMatrix" = None,
         Y_df: Frame | None = None,
         level: list[int] | None = None,
         intervals_method: str = "normality",
@@ -534,7 +537,7 @@ class HierarchicalReconciliation:
         Args:
             Y_hat_df (Frame): DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.
             tags (dict[str, np.ndarray]): Each key is a level and its value contains tags associated to that level.
-            S_df (Frame, optional): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](./utils.html#aggregate). Default is None.
+            S_df (Frame | SMatrix, optional): DataFrame or :class:`~hierarchicalforecast.utils.SMatrix` with summing matrix of size `(base, bottom)`, see [aggregate method](./utils.html#aggregate). Passing an ``SMatrix`` (from ``aggregate(..., sparse_s=True)``) avoids dense materialization. Default is None.
             Y_df (Optional[Frame], optional): DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`.
                 If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns. Default is None.
             level (Optional[list[int]], optional): positive float list [0,100), confidence levels for prediction intervals. Default is None.
@@ -564,7 +567,25 @@ class HierarchicalReconciliation:
         """
         # To Narwhals
         Y_hat_nw = nw.from_native(Y_hat_df)
-        S_nw = nw.from_native(S_df)
+        # Accept SMatrix or DataFrame for S_df
+        self._s_matrix = None
+        skip_identity_check = False
+        if isinstance(S_df, SMatrix):
+            self._s_matrix = S_df
+            # Validate identity property on sparse data (avoids dense allocation)
+            n_bottom = S_df.sparse_shape[1]
+            if not S_df.check_bottom_identity():
+                raise ValueError(
+                    f"The bottom {n_bottom}x{n_bottom} part of S must be an identity matrix."
+                )
+            skip_identity_check = True
+            # Build lightweight id-only frame for _prepare_fit (avoids dense materialisation)
+            S_nw = nw.from_dict(
+                {S_df.id_col: S_df.row_labels}, backend=S_df.backend
+            )
+            S_nw = nw.maybe_reset_index(S_nw)
+        else:
+            S_nw = nw.from_native(S_df)
         if Y_df is not None:
             Y_nw = nw.from_native(Y_df)
         else:
@@ -583,11 +604,23 @@ class HierarchicalReconciliation:
             target_col=target_col,
             id_time_col=id_time_col,
             temporal=temporal,
+            skip_identity_check=skip_identity_check,
         )
 
         # Initialize reconciler arguments
+        _s_matrix = self._s_matrix
+        if _s_matrix is not None:
+            n_bottom = _s_matrix.sparse_shape[1]
+            n_series = _s_matrix.sparse_shape[0]
+            S_nw_cols_ex_id_col = list(_s_matrix.col_labels)
+        else:
+            n_series = len(S_nw)
+            S_nw_cols_ex_id_col = S_nw.columns
+            S_nw_cols_ex_id_col.remove(id_col)
+            n_bottom = len(S_nw_cols_ex_id_col)
+
         reconciler_args = dict(
-            idx_bottom=np.arange(len(S_nw))[-S_nw.shape[1] + 1:],
+            idx_bottom=np.arange(n_series)[-n_bottom:],
             tags={
                 key: S_nw.with_columns(nw.col(id_col).is_in(val).alias("in_cols"))[
                     "in_cols"
@@ -599,19 +632,22 @@ class HierarchicalReconciliation:
         )
 
         any_sparse = any([method.is_sparse_method for method in self.reconcilers])
-        S_nw_cols_ex_id_col = S_nw.columns
-        S_nw_cols_ex_id_col.remove(id_col)
+
+        # Fast path: when S_df was an SMatrix, extract sparse/dense directly
         if any_sparse:
-            try:
-                S_for_sparse = sparse.csr_matrix(
-                    S_nw.select(nw.col(S_nw_cols_ex_id_col)).to_native().sparse.to_coo()
-                )
-            except AttributeError:
-                S_for_sparse = sparse.csr_matrix(
-                    S_nw.select(nw.col(S_nw_cols_ex_id_col))
-                    .to_numpy()
-                    .astype(np.float64, copy=False)
-                )
+            if _s_matrix is not None:
+                S_for_sparse = _s_matrix.to_csr()
+            else:
+                try:
+                    S_for_sparse = sparse.csr_matrix(
+                        S_nw.select(nw.col(S_nw_cols_ex_id_col)).to_native().sparse.to_coo()
+                    )
+                except AttributeError:
+                    S_for_sparse = sparse.csr_matrix(
+                        S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                        .to_numpy()
+                        .astype(np.float64, copy=False)
+                    )
         if Y_nw is not None:
             y_insample = self._prepare_Y(
                 Y_nw=Y_nw,
@@ -642,11 +678,14 @@ class HierarchicalReconciliation:
                 is_valid_hierarchy = _is_strictly_hierarchical(A, reconciler_args["tags"])
             else:
                 # Use dense check with summing matrix
-                S_numpy = (
-                    S_nw.select(nw.col(S_nw_cols_ex_id_col))
-                    .to_numpy()
-                    .astype(np.float64, copy=False)
-                )
+                if _s_matrix is not None:
+                    S_numpy = _s_matrix.to_dense()
+                else:
+                    S_numpy = (
+                        S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                        .to_numpy()
+                        .astype(np.float64, copy=False)
+                    )
                 is_valid_hierarchy = is_strictly_hierarchical(S_numpy, reconciler_args["tags"])
 
             # Raise error if hierarchy is not valid
@@ -670,11 +709,14 @@ class HierarchicalReconciliation:
             if reconciler.is_sparse_method:
                 reconciler_args["S"] = S_for_sparse
             else:
-                reconciler_args["S"] = (
-                    S_nw.select(nw.col(S_nw_cols_ex_id_col))
-                    .to_numpy()
-                    .astype(np.float64, copy=False)
-                )
+                if _s_matrix is not None:
+                    reconciler_args["S"] = _s_matrix.to_dense()
+                else:
+                    reconciler_args["S"] = (
+                        S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                        .to_numpy()
+                        .astype(np.float64, copy=False)
+                    )
 
             for model_name in self.model_names:
                 start = time.time()
@@ -779,11 +821,14 @@ class HierarchicalReconciliation:
             native_namespace = nw.get_native_namespace(Y_hat_nw)
 
             # Prepare S matrix as dense numpy array for diagnostics
-            S_numpy = (
-                S_nw.select(nw.col(S_nw_cols_ex_id_col))
-                .to_numpy()
-                .astype(np.float64, copy=False)
-            )
+            if _s_matrix is not None:
+                S_numpy = _s_matrix.to_dense()
+            else:
+                S_numpy = (
+                    S_nw.select(nw.col(S_nw_cols_ex_id_col))
+                    .to_numpy()
+                    .astype(np.float64, copy=False)
+                )
 
             # Get indices - note: S_numpy has shape (n_series, n_bottom)
             # idx_bottom should refer to the last n_bottom rows of y

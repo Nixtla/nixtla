@@ -1008,3 +1008,186 @@ class TestEstimateSigmah:
         df = self._make_df(y_hat, {"model": y_hat, "model-lo-90": lo, "model-hi-90": hi})
         sigmah = _estimate_sigmah(df, y_hat, model_name="model")
         assert np.all(sigmah >= 0)
+
+
+# ==============================================================================
+# Tests for SMatrix integration through reconcile()
+# ==============================================================================
+
+@pytest.fixture(scope="module")
+def sparse_grouped_data(common_data):
+    """Prepares grouped data with sparse_s=True (SMatrix)."""
+    df = common_data['df']
+    spec = common_data['grouped_spec']
+
+    # Pandas with SMatrix
+    Y_df, S_df, tags = aggregate(df, spec, sparse_s=True)
+    Y_df['y_model'] = Y_df['y']
+    Y_hat_df = Y_df.groupby('unique_id').tail(12).copy()
+    ds_h = Y_hat_df['ds'].unique()  # noqa: F841
+    Y_train_df = Y_df.query('~(ds in @ds_h)').copy()
+    Y_train_df['y_model'] += np.random.uniform(-1, 1, len(Y_train_df))
+
+    # Polars with SMatrix
+    df_pl = pl.from_pandas(df)
+    Y_df_pl, S_df_pl, tags_pl = aggregate(df_pl, spec, sparse_s=True)
+    Y_hat_df_pl = pl.from_pandas(Y_hat_df)
+    Y_train_df_pl = pl.from_pandas(Y_train_df)
+
+    return {
+        "pandas": {
+            "Y_hat_df": Y_hat_df,
+            "Y_train_df": Y_train_df,
+            "S_df": S_df,
+            "tags": tags
+        },
+        "polars": {
+            "Y_hat_df": Y_hat_df_pl,
+            "Y_train_df": Y_train_df_pl,
+            "S_df": S_df_pl,
+            "tags": tags_pl
+        }
+    }
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_smatrix_reconciliation_matches_dense(grouped_data, sparse_grouped_data, lib):
+    """Tests that reconciliation with SMatrix produces the same results as with dense S."""
+    from hierarchicalforecast.utils import SMatrix
+
+    dense_data = grouped_data[lib]
+    sparse_data = sparse_grouped_data[lib]
+
+    assert isinstance(sparse_data["S_df"], SMatrix)
+
+    # Use both sparse and dense reconcilers
+    reconcilers = [
+        BottomUp(),
+        MinTrace(method='ols'),
+        MinTrace(method='mint_shrink'),
+        BottomUpSparse(),
+        MinTraceSparse(method='ols'),
+        MinTraceSparse(method='wls_struct')
+    ]
+
+    # Reconcile with dense S
+    hrec_dense = HierarchicalReconciliation(reconcilers=copy.deepcopy(reconcilers))
+    result_dense = hrec_dense.reconcile(
+        Y_hat_df=dense_data["Y_hat_df"],
+        Y_df=dense_data["Y_train_df"],
+        S_df=dense_data["S_df"],
+        tags=dense_data["tags"],
+    )
+
+    # Reconcile with SMatrix
+    hrec_sparse = HierarchicalReconciliation(reconcilers=copy.deepcopy(reconcilers))
+    result_sparse = hrec_sparse.reconcile(
+        Y_hat_df=sparse_data["Y_hat_df"],
+        Y_df=sparse_data["Y_train_df"],
+        S_df=sparse_data["S_df"],
+        tags=sparse_data["tags"],
+    )
+
+    result_dense_nw = nw.from_native(result_dense)
+    result_sparse_nw = nw.from_native(result_sparse)
+
+    # Verify all reconciled columns match
+    for col in result_dense_nw.columns:
+        if col in ("unique_id", "ds"):
+            continue
+        np.testing.assert_allclose(
+            result_dense_nw[col].to_numpy(),
+            result_sparse_nw[col].to_numpy(),
+            atol=1e-6,
+            err_msg=f"Mismatch in column {col}",
+        )
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_smatrix_reconciliation_with_sparse_methods(sparse_grouped_data, lib):
+    """Tests that sparse reconciliation methods work with SMatrix."""
+    data = sparse_grouped_data[lib]
+
+    reconcilers = [
+        BottomUpSparse(),
+        MinTraceSparse(method='ols'),
+        MinTraceSparse(method='wls_struct'),
+    ]
+    hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+    result = hrec.reconcile(
+        Y_hat_df=data["Y_hat_df"],
+        Y_df=data["Y_train_df"],
+        S_df=data["S_df"],
+        tags=data["tags"],
+    )
+
+    result_nw = nw.from_native(result)
+
+    # Verify reconciled columns exist
+    for reconciler in reconcilers:
+        col_name = f"y_model/{_build_fn_name(reconciler)}"
+        assert col_name in result_nw.columns
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_smatrix_reconciliation_with_diagnostics(sparse_grouped_data, lib):
+    """Tests that diagnostics=True works with SMatrix (no crash on missing columns)."""
+    data = sparse_grouped_data[lib]
+
+    hrec = HierarchicalReconciliation(reconcilers=[BottomUp()])
+    result = hrec.reconcile(
+        Y_hat_df=data["Y_hat_df"],
+        S_df=data["S_df"],
+        tags=data["tags"],
+        diagnostics=True,
+    )
+
+    assert result is not None
+    assert hrec.diagnostics is not None
+
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/BottomUp"].to_list()[0]
+    assert is_coherent == 1.0
+
+
+def test_smatrix_check_bottom_identity_rejects_bad_matrix():
+    """Tests that reconcile() raises ValueError when SMatrix has a corrupted bottom block."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    # Create a valid 5x3 summing matrix (2 aggregate + 3 bottom)
+    data = np.array([
+        [1, 1, 1],
+        [1, 1, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+    ], dtype=np.float64)
+    # Corrupt the bottom block: swap two entries so it's not identity
+    data[2, 0] = 0.0  # break the diagonal
+    data[2, 1] = 1.0  # move to off-diagonal
+
+    smat = SMatrix(
+        sparse_matrix=sp.csc_matrix(data),
+        row_labels=np.array(["top", "mid", "a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+
+    assert not smat.check_bottom_identity()
+
+    # Passing to reconcile should raise ValueError
+    Y_hat_df = pd.DataFrame({
+        "unique_id": ["top", "mid", "a", "b", "c"],
+        "ds": [1, 1, 1, 1, 1],
+        "model": [6.0, 3.0, 1.0, 2.0, 3.0],
+    })
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_df,
+            S_df=smat,
+            tags={"top": np.array(["top"]), "mid": np.array(["mid"]), "bottom": np.array(["a", "b", "c"])},
+        )

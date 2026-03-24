@@ -126,16 +126,16 @@ def test_tourism_df_non_null_grouped(tourism_df, hiers_grouped, hiers_strictly):
     # test strict
     hier_df, S_df, tags = aggregate(df=df, spec=hiers_strictly)
     assert len(hier_df) == 6800
-    assert hier_df["unique_id"].nunique(), 85
-    assert S_df.shape, (85, 77)
+    assert hier_df["unique_id"].nunique() == 85
+    assert S_df.shape == (85, 77)
     np.testing.assert_array_equal(hier_df["unique_id"].unique(), S_df["unique_id"])
-    assert len(tags), len(hiers_strictly)
+    assert len(tags) == len(hiers_strictly)
 
 
     # test grouped
     hier_df, S_df, tags = aggregate(df=df, spec=hiers_grouped)
     assert len(hier_df) == 34_000
-    assert hier_df["unique_id"].nunique(), 425
+    assert hier_df["unique_id"].nunique() == 425
     assert S_df.shape == (425, 305)
     np.testing.assert_array_equal(hier_df["unique_id"].unique(), S_df["unique_id"])
     assert len(tags) == len(hiers_grouped)
@@ -181,20 +181,21 @@ def test_tourism_df_null_grouped(tourism_df, hiers_strictly):
     )
 
 def test_equality_sparse_non_sparse(tourism_df, hiers_strictly, hiers_grouped):
+    from hierarchicalforecast.utils import SMatrix
+
     df = tourism_df
 
-    # Test equality of sparse and non-sparse aggregation
+    # Test equality of sparse (SMatrix) and non-sparse (DataFrame) aggregation
     with CodeTimer('strict non-sparse aggregate'):
         Y_df, S_df, tags = aggregate(df=df, sparse_s=False, spec=hiers_strictly)
 
     with CodeTimer('strict sparse aggregate'):
         Y_df_sparse, S_df_sparse, tags_sparse = aggregate(df=df, sparse_s=True, spec=hiers_strictly)
 
+    assert isinstance(S_df_sparse, SMatrix)
     np.testing.assert_almost_equal(Y_df.y.values, Y_df_sparse.y.values)
-    np.testing.assert_array_equal(S_df.values, S_df_sparse.values)
-
-    np.testing.assert_array_equal(S_df.columns, S_df_sparse.columns)
-    np.testing.assert_array_equal(S_df.index, S_df_sparse.index)
+    np.testing.assert_array_equal(S_df.values, S_df_sparse.to_frame().values)
+    np.testing.assert_array_equal(S_df.columns, S_df_sparse.to_frame().columns)
 
     np.testing.assert_array_equal(Y_df.columns, Y_df_sparse.columns)
     np.testing.assert_array_equal(Y_df.index, Y_df_sparse.index)
@@ -205,14 +206,32 @@ def test_equality_sparse_non_sparse(tourism_df, hiers_strictly, hiers_grouped):
     with CodeTimer('grouped sparse aggregate'):
         Y_df_sparse, S_df_sparse, tags_sparse = aggregate(df=df, sparse_s=True, spec=hiers_grouped)
 
+    assert isinstance(S_df_sparse, SMatrix)
     np.testing.assert_almost_equal(Y_df.y.values, Y_df_sparse.y.values)
-    np.testing.assert_array_equal(S_df.values, S_df_sparse.values)
-
-    np.testing.assert_array_equal(S_df.columns, S_df_sparse.columns)
-    np.testing.assert_array_equal(S_df.index, S_df_sparse.index)
+    np.testing.assert_array_equal(S_df.values, S_df_sparse.to_frame().values)
+    np.testing.assert_array_equal(S_df.columns, S_df_sparse.to_frame().columns)
 
     np.testing.assert_array_equal(Y_df.columns, Y_df_sparse.columns)
     np.testing.assert_array_equal(Y_df.index, Y_df_sparse.index)
+
+
+def test_sparse_s_with_polars(tourism_df, hiers_strictly):
+    """sparse_s=True should work with Polars input (previously raised an error)."""
+    from hierarchicalforecast.utils import SMatrix
+
+    df_pl = pl.from_pandas(tourism_df)
+    Y_df, S_df, tags = aggregate(df=df_pl, sparse_s=True, spec=hiers_strictly)
+    assert isinstance(S_df, SMatrix)
+    assert S_df.shape == (85, 76)
+    assert S_df.frame_shape == (85, 77)
+    assert len(S_df.row_labels) == 85
+    assert len(S_df.col_labels) == 76
+
+    # Verify values match the dense Pandas path
+    Y_df_pd, S_df_pd, _ = aggregate(df=tourism_df, sparse_s=False, spec=hiers_strictly)
+    np.testing.assert_array_equal(
+        S_df_pd.values, S_df.to_frame(backend="pandas").values
+    )
 
 
 @pytest.fixture
@@ -536,6 +555,81 @@ def test_agg_func_for_exog_vars():
     np.testing.assert_array_equal(S_df, S_df_check_f)
 
     np.testing.assert_array_equal(Y_df_exog, Y_df_check_exog_f)
+
+def test_aggregate_temporal_sparse(tourism_df, hiers_strictly):
+    """aggregate_temporal with sparse_s=True should match the dense path."""
+    from hierarchicalforecast.utils import SMatrix
+
+    df = tourism_df.copy()
+    df['ds'] = pd.to_datetime(df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True))
+
+    spec_cs = [['Country'], ['Country', 'State'], ['Country', 'State', 'Region']]
+    Y_df_cs, S_df_cs, tags_cs = aggregate(df, spec_cs)
+
+    spec_te = {"year": 4, "quarter": 1}
+    Y_dense, S_dense, tags_dense = aggregate_temporal(Y_df_cs, spec_te, sparse_s=False)
+    Y_sparse, S_sparse, tags_sparse = aggregate_temporal(Y_df_cs, spec_te, sparse_s=True)
+
+    assert isinstance(S_sparse, SMatrix)
+    np.testing.assert_array_equal(
+        S_dense.values, S_sparse.to_frame(backend="pandas").values
+    )
+
+
+def test_smatrix_getitem():
+    """Tests SMatrix.__getitem__ for id col, value col, and invalid key."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    data = np.array([[1, 1, 0], [0, 1, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    smat = SMatrix(
+        sparse_matrix=sp.csc_matrix(data),
+        row_labels=np.array(["top", "mid", "a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+
+    # Access id column
+    np.testing.assert_array_equal(smat["unique_id"], np.array(["top", "mid", "a", "b", "c"]))
+
+    # Access a value column
+    np.testing.assert_array_equal(smat["a"], np.array([1, 0, 1, 0, 0]))
+
+    # Invalid key raises KeyError
+    with pytest.raises(KeyError):
+        smat["nonexistent"]
+
+
+def test_smatrix_clear_cache():
+    """Tests that clear_cache() releases cached representations."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    data = np.eye(3, dtype=np.float64)
+    smat = SMatrix(
+        sparse_matrix=sp.csc_matrix(data),
+        row_labels=np.array(["a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+
+    # Populate caches
+    smat.to_dense()
+    smat.to_csr()
+    smat.to_frame(backend="pandas")
+    assert smat._dense is not None
+    assert smat._csr is not None
+    assert len(smat._frames) > 0
+
+    smat.clear_cache()
+    assert smat._dense is None
+    assert smat._csr is None
+    assert len(smat._frames) == 0
+
+    # Should still work after clearing
+    dense = smat.to_dense()
+    np.testing.assert_array_equal(dense, np.eye(3))
+
 
 def test_cov_equivalence():
     # test covariance equivalence

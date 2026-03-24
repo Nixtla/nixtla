@@ -1,4 +1,4 @@
-__all__ = ['aggregate', 'aggregate_temporal', 'make_future_dataframe', 'get_cross_temporal_tags', 'HierarchicalPlot', 'set_num_threads', 'get_num_threads']
+__all__ = ['aggregate', 'aggregate_temporal', 'make_future_dataframe', 'get_cross_temporal_tags', 'HierarchicalPlot', 'set_num_threads', 'get_num_threads', 'SMatrix']
 
 
 import itertools
@@ -12,11 +12,11 @@ import reprlib
 import sys
 import timeit
 from collections.abc import Sequence
+from typing import Any
 
 import matplotlib.pyplot as plt
 import narwhals.stable.v2 as nw
 import numpy as np
-import pandas as pd
 import utilsforecast.processing as ufp
 import utilsforecast.validation as ufv
 from narwhals.typing import Frame, FrameT
@@ -161,7 +161,7 @@ def aggregate(
     time_col: str = "ds",
     id_time_col: str | None = None,
     target_cols: Sequence[str] = ("y",),
-) -> tuple[FrameT, FrameT, dict]:
+) -> tuple[FrameT, "FrameT | SMatrix", dict]:
     """Utils Aggregation Function.
 
     Aggregates bottom level series contained in the DataFrame `df` according
@@ -172,16 +172,17 @@ def aggregate(
         spec (list[list[str]]): list of levels. Each element of the list should contain a list of columns of `df` to aggregate.
         exog_vars (Optional[dict[str, Union[str, list[str]]]], optional): dictionary of string keys & values that can either be a list of strings or a single string
             keys correspond to column names and the values represent the aggregation(s) that will be applied to each column. Accepted values are those from Pandas or Polars aggregation Functions, check the respective docs for guidance. Default is None.
-        sparse_s (bool, optional): Return `S_df` as a sparse Pandas dataframe. Default is False.
+        sparse_s (bool, optional): Return `S_df` as an `SMatrix` (sparse summing matrix wrapper) instead of a dense DataFrame. Works with both Pandas and Polars inputs. Default is False.
         id_col (str, optional): Column that will identify each serie after aggregation. Default is "unique_id".
         time_col (str, optional): Column that identifies each timestep, its values can be timestamps or integers. Default is "ds".
         id_time_col (Optional[str], optional): Column that will identify each timestep after temporal aggregation. If provided, aggregate will operate temporally. Default is None.
         target_cols (Sequence[str], optional): list of columns that contains the targets to aggregate. Default is ("y",).
 
     Returns:
-        tuple[FrameT, FrameT, dict]: Y_df, S_df, tags
+        tuple[FrameT, FrameT | SMatrix, dict]: Y_df, S_df, tags
             Y_df: Hierarchically structured series.
-            S_df: Summing dataframe.
+            S_df: Summing dataframe. When ``sparse_s=True``, returns an
+                :class:`SMatrix` instead of a DataFrame.
             tags: Aggregation indices.
     """
     # To Narwhals
@@ -209,8 +210,7 @@ def aggregate(
             f"Check the last (bottom) level of spec, it has missing columns: {reprlib.repr(missing_cols_in_bottom_spec)}"
         )
 
-    if sparse_s and not nw.dependencies.is_pandas_dataframe(df):
-        raise ValueError("Sparse output is only supported for Pandas DataFrames.")
+    # sparse_s is supported for both Pandas and Polars via SMatrix
 
     for col in df_nw.columns:
         if df_nw[col].is_null().any():
@@ -349,10 +349,13 @@ def aggregate(
         S_nw = nw.maybe_reset_index(S_nw)
         S_df = S_nw.to_native()
     else:
-        S_df = pd.DataFrame.sparse.from_spmatrix(
-            S_dum.T, columns=list(bottom_levels), index=category_list
+        S_df = SMatrix(
+            sparse_matrix=S_dum.T,
+            row_labels=np.asarray(category_list),
+            col_labels=np.asarray(list(bottom_levels)),
+            id_col=_id_col,
+            backend=backend,
         )
-        S_df = S_df.reset_index(names=_id_col)
 
     return Y_df, S_df, tags
 
@@ -378,7 +381,7 @@ def aggregate_temporal(
         spec (dict[str, int]): Dictionary of temporal levels. Each key should be a string with the value representing the number of bottom-level timesteps contained in the aggregation.
         exog_vars (Optional[dict[str, Union[str, list[str]]]], optional): dictionary of string keys & values that can either be a list of strings or a single string
             keys correspond to column names and the values represent the aggregation(s) that will be applied to each column. Accepted values are those from Pandas or Polars aggregation Functions, check the respective docs for guidance. Default is None.
-        sparse_s (bool, optional): Return `S_df` as a sparse Pandas dataframe. Default is False.
+        sparse_s (bool, optional): Return `S_df` as an `SMatrix` (sparse summing matrix wrapper) instead of a dense DataFrame. Works with both Pandas and Polars inputs. Default is False.
         id_col (str, optional): Column that will identify each serie after aggregation. Default is 'unique_id'.
         time_col (str, optional): Column that identifies each timestep, its values can be timestamps or integers. Default is 'ds'.
         id_time_col (str, optional): Column that will identify each timestep after aggregation. Default is 'temporal_id'.
@@ -1029,3 +1032,188 @@ def _lasso(
     :meta private:
     """
     return _lib_recon._lasso(np.asfortranarray(X), y, lambda_reg, max_iters, tol)
+
+
+class SMatrix:
+    """Lightweight wrapper around a scipy.sparse summing matrix with labels.
+
+    Stores the hierarchical summing matrix S natively as a
+    ``scipy.sparse.csc_matrix``.  Dense NumPy arrays and
+    Pandas/Polars DataFrames are materialised only on demand via
+    :meth:`to_dense` and :meth:`to_frame`.
+
+    Parameters
+    ----------
+    sparse_matrix : scipy.sparse.spmatrix
+        Summing matrix of shape ``(n_series, n_bottom)``.
+    row_labels : np.ndarray
+        Unique-id labels for every row (all hierarchical series).
+    col_labels : np.ndarray
+        Unique-id labels for every column (bottom-level series).
+    id_col : str
+        Name of the identifier column (default ``"unique_id"``).
+    backend : str or nw.Implementation
+        Narwhals backend hint (``"pandas"`` or ``"polars"``).
+    """
+
+    def __init__(
+        self,
+        sparse_matrix: sparse.spmatrix,
+        row_labels: np.ndarray,
+        col_labels: np.ndarray,
+        id_col: str = "unique_id",
+        backend: Any = "pandas",
+    ):
+        self._sparse = sparse.csc_matrix(sparse_matrix)
+        self.row_labels = np.asarray(row_labels)
+        self.col_labels = np.asarray(col_labels)
+        self.id_col = id_col
+        self.backend = backend
+        self._col_index = {name: i for i, name in enumerate(col_labels)}
+        # Lazily cached representations
+        self._dense: np.ndarray | None = None
+        self._csr: sparse.csr_matrix | None = None
+        self._frames: dict = {}
+
+    # ------------------------------------------------------------------
+    # Core accessors
+    # ------------------------------------------------------------------
+
+    def check_bottom_identity(self) -> bool:
+        """Check that the bottom n_bottom x n_bottom block of S is an identity matrix.
+
+        Uses sparse operations to avoid dense allocations.
+        """
+        n_bottom = self._sparse.shape[1]
+        bottom_block = self._sparse[-n_bottom:, :]
+        bottom_coo = bottom_block.tocoo()
+        return (
+            bottom_coo.shape[0] == bottom_coo.shape[1]
+            and bottom_coo.nnz == n_bottom
+            and np.allclose(bottom_coo.data, 1.0)
+            and np.array_equal(bottom_coo.row, bottom_coo.col)
+        )
+
+    def clear_cache(self) -> None:
+        """Release cached dense, CSR, and DataFrame representations.
+
+        Call this after reconciliation to free memory when the
+        ``SMatrix`` is long-lived but cached representations are no
+        longer needed.
+        """
+        self._dense = None
+        self._csr = None
+        self._frames = {}
+
+    def to_sparse(self) -> sparse.csc_matrix:
+        """Return the underlying sparse matrix (zero-copy)."""
+        return self._sparse
+
+    def to_csr(self) -> sparse.csr_matrix:
+        """Return the matrix as CSR (efficient for row slicing), cached."""
+        if self._csr is None:
+            self._csr = sparse.csr_matrix(self._sparse)
+        return self._csr
+
+    def to_dense(self) -> np.ndarray:
+        """Return a dense ``float64`` NumPy array, cached after first call."""
+        if self._dense is None:
+            self._dense = self._sparse.toarray().astype(np.float64, copy=False)
+        return self._dense
+
+    def to_frame(self, backend: str | None = None):
+        """Materialise S as a Pandas or Polars DataFrame.
+
+        The result is cached on the first call (per backend).
+
+        Parameters
+        ----------
+        backend : str, optional
+            ``"pandas"`` or ``"polars"``.  Defaults to the backend that
+            was used to create the original input data.
+
+        Returns
+        -------
+        DataFrame
+            A native Pandas or Polars DataFrame with the id column
+            followed by one column per bottom-level series.
+        """
+        backend = backend or self.backend
+        if backend in self._frames:
+            return self._frames[backend]
+
+        dense = self.to_dense()
+        data = {self.id_col: self.row_labels}
+        data.update(zip(self.col_labels, dense.T, strict=False))
+
+        frame_nw = nw.from_dict(data, backend=backend)
+        frame_nw = nw.maybe_reset_index(frame_nw)
+        self._frames[backend] = frame_nw.to_native()
+        return self._frames[backend]
+
+    # ------------------------------------------------------------------
+    # Backward-compatible properties
+    # ------------------------------------------------------------------
+
+    @property
+    def sparse_shape(self) -> tuple[int, int]:
+        """``(n_series, n_bottom)`` — shape of the underlying sparse matrix.
+
+        Alias for :attr:`shape`.
+        """
+        return self._sparse.shape
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """``(n_series, n_bottom)`` — shape of the underlying sparse matrix."""
+        return self._sparse.shape
+
+    @property
+    def frame_shape(self) -> tuple[int, int]:
+        """``(n_series, n_bottom + 1)`` — shape matching the DataFrame representation (includes id column)."""
+        rows, cols = self._sparse.shape
+        return (rows, cols + 1)
+
+    @property
+    def columns(self):
+        """Column names matching the DataFrame representation.
+
+        Returns a pandas Index for compatibility with DataFrame.columns API.
+        """
+        import pandas as pd
+
+        return pd.Index([self.id_col] + list(self.col_labels))
+
+    def __len__(self) -> int:
+        return self._sparse.shape[0]
+
+    def __getitem__(self, key):
+        """Support ``S_matrix['unique_id']`` and ``S_matrix[col_name]``."""
+        if isinstance(key, str):
+            if key == self.id_col:
+                return self.row_labels
+            idx = self._col_index.get(key)
+            if idx is not None:
+                return self._sparse[:, idx].toarray().ravel()
+            raise KeyError(key)
+        # Fall back to frame for complex indexing
+        return self.to_frame()[key]
+
+    def __repr__(self) -> str:
+        nnz = self._sparse.nnz
+        density = nnz / max(1, self._sparse.shape[0] * self._sparse.shape[1])
+        return (
+            f"SMatrix(shape={self.sparse_shape}, nnz={nnz}, "
+            f"density={density:.4f}, id_col='{self.id_col}')"
+        )
+
+    def _repr_html_(self) -> str:
+        """Jupyter notebook display — show truncated DataFrame."""
+        return self.to_frame()._repr_html_()
+
+    def __array__(self, dtype=None):
+        """Support ``np.asarray(S_matrix)`` — returns dense values without id col."""
+        arr = self.to_dense()
+        if dtype is not None:
+            return arr.astype(dtype, copy=False)
+        return arr
