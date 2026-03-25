@@ -454,3 +454,16 @@ class Combine(_BaseLagTransform):
     @property
     def update_samples(self):
         return max(self.tfm1.update_samples, self.tfm2.update_samples)
+
+    def take(self, idxs: np.ndarray) -> "Combine":
+        out = copy.deepcopy(self)
+        out.tfm1 = self.tfm1.take(idxs)
+        out.tfm2 = self.tfm2.take(idxs)
+        return out
+
+    @staticmethod
+    def stack(transforms: Sequence["Combine"]) -> "Combine":
+        out = copy.deepcopy(transforms[0])
+        out.tfm1 = transforms[0].tfm1.stack([tfm.tfm1 for tfm in transforms])
+        out.tfm2 = transforms[0].tfm2.stack([tfm.tfm2 for tfm in transforms])
+        return out

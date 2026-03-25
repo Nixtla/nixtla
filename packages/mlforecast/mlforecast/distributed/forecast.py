@@ -367,11 +367,7 @@ class DistributedMLForecast:
         exclude_cols = {id_col, time_col, target_col}
         if weight_col is not None:
             exclude_cols.add(weight_col)
-        features = [
-            x
-            for x in fa.get_column_names(prep)
-            if x not in exclude_cols
-        ]
+        features = [x for x in fa.get_column_names(prep) if x not in exclude_cols]
         self.models_ = {}
         if SPARK_INSTALLED and isinstance(data, SparkDataFrame):
             featurizer = VectorAssembler(
@@ -386,7 +382,7 @@ class DistributedMLForecast:
                 self.models_[name] = model.extract_local_model(trained_model)
         elif DASK_INSTALLED and isinstance(data, dd.DataFrame):
             X, y = prep[features], prep[target_col]
-            if weights:=weight_col:
+            if weights := weight_col:
                 weights = prep[weight_col]
             for name, model in self.models.items():
                 trained_model = clone(model).fit(X, y, sample_weight=weights)
@@ -397,7 +393,9 @@ class DistributedMLForecast:
                 raise NotImplementedError(
                     "Only spark and dask engines currently support sample weights."
                 )
-            prep_selected = prep.select_columns(cols=features + [target_col]).materialize()
+            prep_selected = prep.select_columns(
+                cols=features + [target_col]
+            ).materialize()
             X = RayDMatrix(
                 prep_selected,
                 label=target_col,
@@ -815,13 +813,8 @@ class DistributedMLForecast:
             ]
             out = {}
             for name, partition_tfms in by_transform:
-                # Check if transform has _core_tfm before stacking
-                if hasattr(partition_tfms[0], '_core_tfm'):
-                    # Standard transforms with state - need to stack
-                    out[name] = partition_tfms[0].stack(partition_tfms)
-                else:
-                    # Composite transforms like Combine - already configured, use first instance
-                    out[name] = partition_tfms[0]
+                # All transforms now support stack(), treat uniformly
+                out[name] = partition_tfms[0].stack(partition_tfms)
             return out
 
         uids = possibly_concat_indices([ts.uids for ts in all_ts])
@@ -849,8 +842,8 @@ class DistributedMLForecast:
             last_dates = last_dates[sort_idxs]
             statics = ufp.take_rows(statics, sort_idxs)
             statics = ufp.drop_index_if_pandas(statics)
-            for tfm in combined_core_lag_tfms.values():
-                tfm._core_tfm = tfm._core_tfm.take(sort_idxs)
+            for name, tfm in combined_core_lag_tfms.items():
+                combined_core_lag_tfms[name] = tfm.take(sort_idxs)
             if combined_target_tfms is not None:
                 combined_target_tfms = [
                     tfm.take(sort_idxs) for tfm in combined_target_tfms
