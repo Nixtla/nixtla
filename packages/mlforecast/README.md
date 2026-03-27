@@ -93,6 +93,9 @@ use Conformal Prediction to produce prediciton intervals.
 Validation](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/cross_validation.html):
 robust model’s performance evaluation.
 
+🔁 [M5: Reuse CV Splits + Global/Grouped Rolling Means](https://nixtlaverse.nixtla.io/mlforecast/docs/how-to-guides/hyperparameter_optimization):
+optimize with cached CV windows while tuning global and grouped rolling features in one workflow.
+
 🔌 [Predict Demand
 Peaks](https://nixtlaverse.nixtla.io/mlforecast/docs/tutorials/electricity_peak_forecasting.html):
 electricity load forecasting for detecting daily peaks and reducing
