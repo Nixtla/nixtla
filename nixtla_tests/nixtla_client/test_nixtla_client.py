@@ -162,6 +162,29 @@ def test_forecast_date_features_multiple_series_and_different_ends(
         assert actual == expected
 
 
+def test_nixtla_model_header(nixtla_test_client, air_passengers_df):
+    # model specified: header must be present and match
+    with capture_request():
+        nixtla_test_client.forecast(
+            df=air_passengers_df,
+            h=12,
+            time_col="timestamp",
+            target_col="value",
+            model="timegpt-1-long-horizon",
+        )
+        assert CAPTURED_REQUEST["headers"]["nixtla-model"] == "timegpt-1-long-horizon"
+
+    # model not specified: header must be absent
+    with capture_request():
+        nixtla_test_client.forecast(
+            df=air_passengers_df,
+            h=12,
+            time_col="timestamp",
+            target_col="value",
+        )
+        assert "nixtla-model" not in CAPTURED_REQUEST["headers"]
+
+
 def test_compression(nixtla_test_client, series_1MB_payload):
     with capture_request():
         nixtla_test_client.forecast(
