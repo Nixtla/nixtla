@@ -182,7 +182,7 @@ def test_nixtla_model_header(nixtla_test_client, air_passengers_df, model):
         assert CAPTURED_REQUEST["headers"]["nixtla-model"] == model
 
 
-def test_get_request_has_no_nixtla_model_header(nixtla_test_client):
+def test_get_finetuned_models_has_no_nixtla_model_header(nixtla_test_client):
     with capture_request():
         nixtla_test_client.finetuned_models()
         assert CAPTURED_REQUEST["method"] == "GET"
