@@ -19,8 +19,8 @@ CAPTURED_REQUEST = None
 
 
 class CapturingClient(httpx.Client):
-    def post(self, *args, **kwargs):
-        request = self.build_request("POST", *args, **kwargs)
+    def _capture(self, method: str, *args, **kwargs):
+        request = self.build_request(method, *args, **kwargs)
         global CAPTURED_REQUEST
         CAPTURED_REQUEST = {
             "headers": dict(request.headers),
@@ -28,7 +28,14 @@ class CapturingClient(httpx.Client):
             "method": request.method,
             "url": str(request.url),
         }
+
+    def post(self, *args, **kwargs):
+        self._capture("POST", *args, **kwargs)
         return super().post(*args, **kwargs)
+
+    def get(self, *args, **kwargs):
+        self._capture("GET", *args, **kwargs)
+        return super().get(*args, **kwargs)
 
 
 @contextmanager
@@ -160,6 +167,26 @@ def test_forecast_date_features_multiple_series_and_different_ends(
         )[1:].tolist()
         actual = fcst_test_series.query("unique_id == @uid")["ds"].tolist()
         assert actual == expected
+
+
+@pytest.mark.parametrize("model", ["timegpt-1", "timegpt-1-long-horizon"])
+def test_nixtla_model_header(nixtla_test_client, air_passengers_df, model):
+    with capture_request():
+        nixtla_test_client.forecast(
+            df=air_passengers_df,
+            h=12,
+            time_col="timestamp",
+            target_col="value",
+            model=model,
+        )
+        assert CAPTURED_REQUEST["headers"]["nixtla-model"] == model
+
+
+def test_get_request_has_no_nixtla_model_header(nixtla_test_client):
+    with capture_request():
+        nixtla_test_client.finetuned_models()
+        assert CAPTURED_REQUEST["method"] == "GET"
+        assert "nixtla-model" not in CAPTURED_REQUEST["headers"]
 
 
 def test_compression(nixtla_test_client, series_1MB_payload):
