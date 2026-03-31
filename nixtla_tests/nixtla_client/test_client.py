@@ -1,5 +1,6 @@
 import logging
 import os
+from unittest.mock import MagicMock
 import pytest
 import pandas as pd
 
@@ -185,3 +186,43 @@ def test_setting_one_as_historic_and_other_as_future(
         train, h=5, X_df=future[["unique_id", "ds", "year"]], hist_exog_list=["month"]
     )
     assert nixtla_test_client.weights_x["features"].tolist() == ["year", "month"]
+
+
+def _make_empty_body_response(status_code: int) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.content = b""
+    resp.json.side_effect = Exception("No JSON content")
+    return resp
+
+
+def test_get_request_empty_body_raises_api_error():
+    """_get_request must raise ApiError (not JSONDecodeError) when the server
+    returns a non-200 status with an empty body."""
+    client = NixtlaClient(api_key="dummy", max_retries=1, max_wait_time=1)
+    mock_http_client = MagicMock()
+    mock_http_client.get.return_value = _make_empty_body_response(408)
+
+    with pytest.raises(ApiError) as excinfo:
+        client._get_request(mock_http_client, "/model_params")
+
+    assert excinfo.value.status_code == 408
+
+
+def test_get_request_empty_body_is_retried():
+    """A 408 with empty body must be retried by the retry strategy rather than
+    propagating immediately as a JSONDecodeError."""
+    client = NixtlaClient(
+        api_key="dummy",
+        max_retries=3,
+        retry_interval=0,
+        max_wait_time=10,
+    )
+    mock_http_client = MagicMock()
+    mock_http_client.get.return_value = _make_empty_body_response(408)
+
+    with pytest.raises(ApiError) as excinfo:
+        client._retry_strategy(client._get_request)(mock_http_client, "/model_params")
+
+    assert excinfo.value.status_code == 408
+    assert mock_http_client.get.call_count == 3
