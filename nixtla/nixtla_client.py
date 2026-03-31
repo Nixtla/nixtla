@@ -1,6 +1,7 @@
 __all__ = ["ApiError", "NixtlaClient"]
 
 import datetime
+from http import HTTPStatus
 import logging
 import math
 import os
@@ -207,7 +208,14 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
             httpx.WriteError,
             httpx.WriteTimeout,
         )
-        retriable_codes = [408, 409, 429, 502, 503, 504]
+        retriable_codes = [
+            HTTPStatus.REQUEST_TIMEOUT,
+            HTTPStatus.CONFLICT,
+            HTTPStatus.TOO_MANY_REQUESTS,
+            HTTPStatus.BAD_GATEWAY,
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            HTTPStatus.GATEWAY_TIMEOUT,
+        ]
         return isinstance(exc, retriable_exceptions) or (
             isinstance(exc, ApiError) and exc.status_code in retriable_codes
         )
@@ -1029,7 +1037,13 @@ class NixtlaClient:
         params: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         resp = client.get(endpoint, params=params)
-        resp_body = resp.json()
+        try:
+            resp_body = resp.json()
+        except Exception:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=f"Could not parse JSON: {resp.content}",
+            )
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=resp_body)
         return resp_body
