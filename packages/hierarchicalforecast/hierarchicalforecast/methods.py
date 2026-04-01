@@ -1958,8 +1958,10 @@ class OptimalCombination(MinTrace):
 
     This reconciliation algorithm was proposed by Hyndman et al. 2011, the method uses generalized least squares
     estimator using the coherency errors covariance matrix. Consider the covariance of the base forecast
-    $\\textrm{Var}(\epsilon_{h}) = \Sigma_{h}$, the $\mathbf{P}$ matrix of this method is defined by:
-    $$ \mathbf{P} = \\left(\mathbf{S}^{\intercal}\Sigma_{h}^{\dagger}\mathbf{S}\\right)^{-1}\mathbf{S}^{\intercal}\Sigma^{\dagger}_{h}$$
+    $\textrm{Var}(\epsilon_{h}) = \Sigma_{h}$, the $\mathbf{P}$ matrix of this method is defined by:
+    ```math
+    \mathbf{P} = \left(\mathbf{S}^{\intercal}\Sigma_{h}^{\dagger}\mathbf{S}\right)^{-1}\mathbf{S}^{\intercal}\Sigma^{\dagger}_{h}
+    ```
     where $\Sigma_{h}^{\dagger}$ denotes the variance pseudo-inverse. The method was later proven equivalent to
     `MinTrace` variants.
 
@@ -2002,11 +2004,15 @@ class ERM(HReconciler):
     and the validation data to obtain an optimal reconciliation matrix P.
 
     The exact solution for $\mathbf{P}$ (`method='closed'`) follows the expression:
-    $$\mathbf{P}^{*} = \\left(\mathbf{S}^{\intercal}\mathbf{S}\\right)^{-1}\mathbf{Y}^{\intercal}\hat{\mathbf{Y}}\\left(\hat{\mathbf{Y}}\hat{\mathbf{Y}}\\right)^{-1}$$
+    ```math
+    \mathbf{P}^{*} = \left(\mathbf{S}^{\intercal}\mathbf{S}\right)^{-1}\mathbf{Y}^{\intercal}\hat{\mathbf{Y}}\left(\hat{\mathbf{Y}}\hat{\mathbf{Y}}\right)^{-1}
+    ```
 
     The alternative Lasso regularized $\mathbf{P}$ solution (`method='reg_bu'`) is useful when the observations
     of validation data is limited or the exact solution has low numerical stability.
-    $$\mathbf{P}^{*} = \\text{argmin}_{\mathbf{P}} ||\mathbf{Y}-\mathbf{S} \mathbf{P} \hat{Y} ||^{2}_{2} + \lambda ||\mathbf{P}-\mathbf{P}_{\\text{BU}}||_{1}$$
+    ```math
+    \mathbf{P}^{*} = \text{argmin}_{\mathbf{P}} ||\mathbf{Y}-\mathbf{S} \mathbf{P} \hat{Y} ||^{2}_{2} + \lambda ||\mathbf{P}-\mathbf{P}_{\text{BU}}||_{1}
+    ```
 
     Args:
         method: str, one of `closed`, `reg` and `reg_bu`.
