@@ -170,6 +170,36 @@ def test_neural_forecast_val_monitor_invalid():
         )
 
 
+# test that fit raises ValueError when series are too short for input_size + h
+def test_fit_raises_on_short_series():
+    # 10 timestamps, h=12, input_size=24 → train_size=10 < 24
+    series = generate_series(n_series=2, min_length=10, max_length=10, equal_ends=True)
+    model = NHITS(h=12, input_size=24, max_steps=2)
+    nf = NeuralForecast(models=[model], freq="D")
+    with pytest.raises(ValueError, match="requires at least"):
+        nf.fit(series)
+
+
+# test that fit passes when start_padding_enabled=True relaxes the constraint
+def test_fit_short_series_with_start_padding():
+    # 10 timestamps, h=12, input_size=24 but padding enabled → only needs 1 timestamp
+    series = generate_series(n_series=2, min_length=10, max_length=10, equal_ends=True)
+    model = NHITS(h=12, input_size=24, max_steps=2, start_padding_enabled=True)
+    nf = NeuralForecast(models=[model], freq="D")
+    nf.fit(series)  # should not raise
+
+
+# test that cross_validation raises ValueError when series are too short (refit=True
+# calls fit() per window, which validates the training slice length)
+def test_cross_validation_raises_on_short_series():
+    # 30 timestamps, h=12, n_windows=1 → train slice=18 timestamps < input_size=24
+    series = generate_series(n_series=2, min_length=30, max_length=30, equal_ends=True)
+    model = NHITS(h=12, input_size=24, max_steps=2)
+    nf = NeuralForecast(models=[model], freq="D")
+    with pytest.raises(ValueError, match="requires at least"):
+        nf.cross_validation(series, n_windows=1, refit=True)
+
+
 # test fit+cross_validation behaviour
 def test_neural_forecast_fit_cross_validation(setup_airplane_data):
     AirPassengersPanel_train, _ = setup_airplane_data
