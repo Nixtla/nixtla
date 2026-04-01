@@ -973,7 +973,7 @@ class NixtlaClient:
                     nan=np.nan,
                     posinf=np.finfo(np.float32).max,
                     neginf=np.finfo(np.float32).min,
-                    copy=False,
+                    copy=True,
                 )
             else:
                 x = np.ascontiguousarray(x)
