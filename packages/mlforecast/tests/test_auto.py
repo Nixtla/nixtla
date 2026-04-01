@@ -76,6 +76,8 @@ def test_automlforecast_pipeline(weekly_data):
     assert not preds.empty
     fitted_vals = auto_mlf.forecast_fitted_values(level=[95])
     assert not fitted_vals.empty
+    assert "h" in fitted_vals.columns
+    assert not any(col.startswith("h_") for col in fitted_vals.columns)
     
 def test_automlforecast_weight_col(weekly_data):
 

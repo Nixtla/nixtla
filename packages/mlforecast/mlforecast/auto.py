@@ -621,26 +621,50 @@ class AutoMLForecast:
     def forecast_fitted_values(
         self,
         level: Optional[List[Union[int, float]]] = None,
+        *,
+        h: int = 1,
+        train_df: Optional[DataFrame] = None,
     ) -> DataFrame:
         """Access in-sample predictions.
 
         Args:
             level (list of ints or floats, optional): Confidence levels between 0 and 100 for prediction intervals.
                 Defaults to None.
+            h (int): Forecast horizon for fitted values. Defaults to 1.
+            train_df (pandas or polars DataFrame, optional): Training data to use when computing
+                recursive fitted values for ``h>1`` on demand. Defaults to None.
 
         Returns:
-            (pandas or polars DataFrame): Dataframe with predictions for the training set
+            pandas or polars DataFrame: DataFrame with the following columns:
+
+            - ``id_col``: series identifier.
+            - ``time_col``: timestamp of the predicted observation.
+            - ``target_col``: actual observed value.
+            - ``h``: number of steps ahead the prediction was made. For recursive models
+              this equals the ``h`` argument. For direct models (``max_horizon``) it
+              reflects the specific horizon step (1-indexed) at which each row was
+              predicted, ranging from 1 to ``max_horizon``.
+            - One column per model with the fitted (in-sample) predictions.
+            - If ``level`` is provided, additional columns with the lower and upper
+              bounds of the prediction intervals for each model and confidence level.
         """
         fitted_vals = None
         for name, model in self.models_.items():
-            model_fitted = model.forecast_fitted_values(level=level)
+            model_fitted = model.forecast_fitted_values(
+                level=level,
+                h=h,
+                train_df=train_df,
+            )
             if fitted_vals is None:
                 fitted_vals = model_fitted
             else:
+                join_keys = [model.ts.id_col, model.ts.time_col]
+                if "h" in fitted_vals.columns and "h" in model_fitted.columns:
+                    join_keys.append("h")
                 fitted_vals = ufp.join(
                     fitted_vals,
                     ufp.drop_columns(model_fitted, model.ts.target_col),
-                    on=[model.ts.id_col, model.ts.time_col],
+                    on=join_keys,
                     how="inner",
                 )
         return fitted_vals

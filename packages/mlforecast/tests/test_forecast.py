@@ -134,7 +134,15 @@ def test_fitted_target(fcst2, setup_forecast_data):
     # check fitted + max_horizon
     max_horizon = 7
     fcst2.fit(train, fitted=True, max_horizon=max_horizon)
-    max_horizon_fitted_values = fcst2.forecast_fitted_values()
+    default_direct_fitted_values = fcst2.forecast_fitted_values()
+    assert default_direct_fitted_values["h"].eq(1).all()
+    max_horizon_fitted_values = pd.concat(
+        [
+            fcst2.forecast_fitted_values(h=horizon_idx)
+            for horizon_idx in range(1, max_horizon + 1)
+        ],
+        ignore_index=True,
+    )
     # h is 1 to max_horizon
     np.testing.assert_equal(
         np.sort(max_horizon_fitted_values['h'].unique()),
@@ -143,7 +151,7 @@ def test_fitted_target(fcst2, setup_forecast_data):
     # predictions for the first horizon are equal to the recursive
     pd.testing.assert_frame_equal(
         fitted_vals.reset_index(drop=True),
-        max_horizon_fitted_values[max_horizon_fitted_values['h'] == 1].drop(columns='h'),
+        max_horizon_fitted_values[max_horizon_fitted_values['h'] == 1].reset_index(drop=True),
     )
     # restored values match
     xx = max_horizon_fitted_values[lambda x: x['unique_id'].eq('H413')].pivot_table(
@@ -156,6 +164,222 @@ def test_fitted_target(fcst2, setup_forecast_data):
             xx.loc[first_ds + h :, 1].values,
             xx.loc[: last_ds - h, h + 1].values,
         )
+
+
+def test_recursive_forecast_fitted_values_on_demand_h():
+    df = generate_daily_series(2, min_length=50, max_length=50)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, static_features=[])
+
+    fitted_h1 = fcst.forecast_fitted_values()
+    fitted_h3 = fcst.forecast_fitted_values(h=3)
+
+    assert "h" in fitted_h1.columns
+    assert "h" in fitted_h3.columns
+    assert fitted_h1["h"].eq(1).all()
+    assert fitted_h3["h"].eq(3).all()
+    assert fitted_h3.shape[0] < fitted_h1.shape[0]
+
+    assert np.isfinite(fitted_h1["LinearRegression"].to_numpy()).all()
+    assert np.isfinite(fitted_h3["LinearRegression"].to_numpy()).all()
+    overlap = fitted_h1[["unique_id", "ds", "LinearRegression"]].merge(
+        fitted_h3[["unique_id", "ds", "LinearRegression"]],
+        on=["unique_id", "ds"],
+        suffixes=("_h1", "_h3"),
+    )
+    assert len(overlap) > 0
+    assert not np.allclose(overlap["LinearRegression_h1"], overlap["LinearRegression_h3"])
+
+
+def test_recursive_forecast_fitted_values_on_demand_h_matches_slow_baseline():
+    h = 3
+    df = generate_daily_series(2, min_length=40, max_length=40)
+    df["x"] = np.linspace(0.0, 1.0, len(df))
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+        lag_transforms={1: [RollingMean(3)]},
+    )
+    fcst.fit(df, fitted=True, static_features=[])
+
+    fast = fcst.forecast_fitted_values(h=h).sort_values(["unique_id", "ds"]).reset_index(drop=True)
+
+    train_pd = df.sort_values(["unique_id", "ds"]).reset_index(drop=True)
+    one_step_pd = fcst.fcst_fitted_values_[["unique_id", "ds"]].copy()
+    valid_one_step_times = {
+        uid: set(group["ds"].tolist())
+        for uid, group in one_step_pd.groupby("unique_id", observed=True)
+    }
+    static = [c for c in fcst.ts.static_features_.columns if c != "unique_id"]
+    exclude = {"unique_id", "ds", "y", *static}
+    if fcst.ts.weight_col is not None:
+        exclude.add(fcst.ts.weight_col)
+    dynamic = [c for c in train_pd.columns if c not in exclude]
+
+    rows = []
+    original_ts = fcst.ts
+    for uid, group in train_pd.groupby("unique_id", observed=True):
+        group = group.sort_values("ds").reset_index(drop=True)
+        valid_uid_times = valid_one_step_times.get(uid, set())
+        for target_idx in range(h - 1, len(group)):
+            origin_idx = target_idx - h
+            if origin_idx < 0:
+                continue
+            hist = group.iloc[: origin_idx + 1]
+            future = group.iloc[origin_idx + 1 : origin_idx + h + 1]
+            if future.shape[0] < h:
+                continue
+            if future.iloc[0]["ds"] not in valid_uid_times:
+                continue
+            X_df = future[["unique_id", "ds", *dynamic]] if dynamic else None
+            try:
+                preds = fcst.predict(h=h, new_df=hist, X_df=X_df)
+            finally:
+                fcst.ts = original_ts
+            pred_last = preds.iloc[-1]
+            rows.append(
+                {
+                    "unique_id": group.iloc[target_idx]["unique_id"],
+                    "ds": group.iloc[target_idx]["ds"],
+                    "y": group.iloc[target_idx]["y"],
+                    "h": h,
+                    "LinearRegression": pred_last["LinearRegression"],
+                }
+            )
+    expected = pd.DataFrame(rows).sort_values(["unique_id", "ds"]).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(fast, expected)
+
+
+def test_recursive_forecast_fitted_values_on_demand_uses_cached_train_snapshot():
+    h = 3
+    df = generate_daily_series(2, min_length=40, max_length=40)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, static_features=[])
+    before = fcst.forecast_fitted_values(h=h).sort_values(["unique_id", "ds"]).reset_index(drop=True)
+
+    # Mutate caller-side dataframe after fit; cached train snapshot should be unaffected.
+    df.loc[:, "y"] = df["y"] + 1000
+    after = fcst.forecast_fitted_values(h=h).sort_values(["unique_id", "ds"]).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(before, after)
+
+
+def test_recursive_forecast_fitted_values_on_demand_h_rejects_global_group_tfms():
+    df = generate_daily_series(2, min_length=50, max_length=50)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1],
+        lag_transforms={1: [RollingMean(2, global_=True)]},
+    )
+    fcst.fit(df, fitted=True, static_features=[])
+
+    with pytest.raises(ValueError, match="not supported.*global or grouped lag transforms"):
+        fcst.forecast_fitted_values(h=2)
+
+
+def test_recursive_forecast_fitted_values_on_demand_h_with_static_features():
+    df = generate_daily_series(2, min_length=50, max_length=50, n_static_features=1, static_as_categorical=False)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, static_features=['static_0'])
+
+    # Should not raise a KeyError due to missing static columns in hist
+    fitted_h3 = fcst.forecast_fitted_values(h=3)
+    assert "h" in fitted_h3.columns
+    assert fitted_h3["h"].eq(3).all()
+    assert np.isfinite(fitted_h3["LinearRegression"].to_numpy()).all()
+
+
+def test_recursive_forecast_fitted_values_on_demand_h_with_train_df_override():
+    h = 3
+    df = generate_daily_series(2, min_length=50, max_length=50)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, static_features=[], cache_train_df=False)
+
+    assert not hasattr(fcst, "_fitted_train_df_")
+    fitted_h3 = fcst.forecast_fitted_values(h=h, train_df=df)
+    assert "h" in fitted_h3.columns
+    assert fitted_h3["h"].eq(h).all()
+    assert np.isfinite(fitted_h3["LinearRegression"].to_numpy()).all()
+
+
+def test_recursive_forecast_fitted_values_on_demand_h_requires_train_df_without_cache():
+    df = generate_daily_series(2, min_length=50, max_length=50)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, static_features=[], cache_train_df=False)
+
+    with pytest.raises(ValueError, match="Pass `train_df` to `forecast_fitted_values`"):
+        fcst.forecast_fitted_values(h=3)
+
+
+def test_direct_forecast_fitted_values_h_filter():
+    df = generate_daily_series(2, min_length=40, max_length=40)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, max_horizon=3, static_features=[])
+
+    fitted_default = fcst.forecast_fitted_values()
+    fitted_h2 = fcst.forecast_fitted_values(h=2)
+
+    assert fitted_default["h"].eq(1).all()
+    assert fitted_h2["h"].eq(2).all()
+    assert fitted_h2.shape[0] > 0
+    with pytest.raises(ValueError, match="No fitted values found for h=4"):
+        fcst.forecast_fitted_values(h=4)
+
+
+def test_direct_forecast_fitted_values_requires_h_metadata():
+    df = generate_daily_series(2, min_length=40, max_length=40)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, max_horizon=3, static_features=[])
+    fcst.fcst_fitted_values_ = fcst.fcst_fitted_values_.drop(columns=["h"])
+
+    with pytest.raises(ValueError, match="missing horizon information"):
+        fcst.forecast_fitted_values(h=2)
+
+
+def test_forecast_fitted_values_positional_level_compat():
+    df = generate_daily_series(2, min_length=40, max_length=40)
+    fcst = MLForecast(
+        models=LinearRegression(),
+        freq="D",
+        lags=[1, 7],
+    )
+    fcst.fit(df, fitted=True, static_features=[])
+
+    positional = fcst.forecast_fitted_values([80])
+    keyword = fcst.forecast_fitted_values(level=[80])
+
+    pd.testing.assert_frame_equal(positional, keyword)
 
 
 def test_new_df_argument(fitted_fcst, setup_forecast_data, predictions):
@@ -768,6 +992,10 @@ def test_polars_pandas_compatibility(polars_pandas_test_data, max_horizon, as_nu
     fcst_pl = MLForecast(**data['cfg_pl'])
     fcst_pl.fit(data['series_pl'], max_horizon=max_horizon, as_numpy=as_numpy, **data['fit_kwargs'])
     fitted_pl = fcst_pl.forecast_fitted_values()
+    if max_horizon is not None:
+        fitted_pl = pl.concat(
+            [fcst_pl.forecast_fitted_values(h=hidx) for hidx in range(1, max_horizon + 1)]
+        )
     preds_pl = fcst_pl.predict(X_df=data['prices_pl'], **data['predict_kwargs'])
     preds_pl_subset = fcst_pl.predict(X_df=data['prices_pl'], ids=fcst_pl.ts.uids[[0, 6]], **data['predict_kwargs'])
     cv_pl = fcst_pl.cross_validation(data['series_pl'], as_numpy=as_numpy, **data['cv_kwargs'])
@@ -776,6 +1004,11 @@ def test_polars_pandas_compatibility(polars_pandas_test_data, max_horizon, as_nu
     fcst_pd = MLForecast(**data['cfg_pd'])
     fcst_pd.fit(data['series_pd'], max_horizon=max_horizon, as_numpy=as_numpy, **data['fit_kwargs'])
     fitted_pd = fcst_pd.forecast_fitted_values()
+    if max_horizon is not None:
+        fitted_pd = pd.concat(
+            [fcst_pd.forecast_fitted_values(h=hidx) for hidx in range(1, max_horizon + 1)],
+            ignore_index=True,
+        )
     preds_pd = fcst_pd.predict(X_df=data['prices_pd'], **data['predict_kwargs'])
     preds_pd_subset = fcst_pd.predict(X_df=data['prices_pd'], ids=fcst_pd.ts.uids[[0, 6]], **data['predict_kwargs'])
     assert preds_pd_subset['unique_id'].unique().tolist() == ['id_0', 'id_6']
