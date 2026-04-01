@@ -3,12 +3,184 @@ import optuna
 import pandas as pd
 import pytest
 from datasetsforecast.m4 import M4, M4Evaluation, M4Info
+from sklearn.base import BaseEstimator
 from utilsforecast.losses import smape
 
 from mlforecast import MLForecast
 from mlforecast.lag_transforms import ExpandingMean, RollingMean
-from mlforecast.optimization import mlforecast_objective
+from mlforecast.optimization import _get_categorical_static_features, mlforecast_objective
 from mlforecast.target_transforms import Differences, LocalBoxCox, LocalStandardScaler
+from mlforecast.utils import generate_daily_series
+
+
+def test_get_categorical_static_features_pandas():
+    df = pd.DataFrame({
+        "cat_col": pd.Categorical(["x", "y"]),
+        "str_col": ["foo", "bar"],
+        "num_col": [1.0, 2.0],
+    })
+    result = _get_categorical_static_features(df, ["cat_col", "str_col", "num_col"])
+    assert set(result) == {"cat_col", "str_col"}
+
+
+def test_get_categorical_static_features_polars():
+    pl = pytest.importorskip("polars")
+    df = pl.DataFrame({
+        "cat_col": pl.Series(["x", "y"], dtype=pl.Categorical),
+        "str_col": pl.Series(["foo", "bar"], dtype=pl.String),
+        "enum_col": pl.Series(["a", "b"]).cast(pl.Enum(["a", "b"])),
+        "num_col": pl.Series([1.0, 2.0]),
+    })
+    result = _get_categorical_static_features(df, ["cat_col", "str_col", "enum_col", "num_col"])
+    assert set(result) == {"cat_col", "str_col", "enum_col"}
+
+
+def test_get_categorical_static_features_warns_on_missing():
+    df = pd.DataFrame({
+        "cat_col": pd.Categorical(["x", "y"]),
+        "num_col": [1.0, 2.0],
+    })
+    with pytest.warns(UserWarning, match="Ignoring unrecognized static features"):
+        result = _get_categorical_static_features(
+            df, ["cat_col", "missing_col", "num_col"]
+        )
+    assert result == ["cat_col"]
+
+
+class DummyCatBoostRegressor(BaseEstimator):
+    fit_cat_features = []
+
+    def __init__(self, cat_features=None):
+        self.cat_features = cat_features
+
+    def fit(self, X, y):
+        type(self).fit_cat_features.append(list(self.cat_features or []))
+        self.mean_ = float(y.mean())
+        return self
+
+    def predict(self, X):
+        return [self.mean_] * len(X)
+
+
+def test_mlforecast_objective_passes_only_categorical_static_features_to_catboost(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "mlforecast.optimization.CatBoostRegressor",
+        DummyCatBoostRegressor,
+    )
+    DummyCatBoostRegressor.fit_cat_features = []
+
+    df = generate_daily_series(2, min_length=30, max_length=30)
+    store_type = {"id_0": "a", "id_1": "b"}
+    store_size = {"id_0": 100.0, "id_1": 200.0}
+    df["store_type"] = df["unique_id"].map(store_type)
+    df["store_size"] = df["unique_id"].map(store_size).astype(float)
+
+    def config_fn(trial):  # noqa: ARG001
+        return {
+            "model_params": {},
+            "mlf_init_params": {"lags": [1]},
+            "mlf_fit_params": {
+                "static_features": ["store_type", "store_size"],
+            },
+        }
+
+    def loss(df: pd.DataFrame, train_df: pd.DataFrame) -> float:  # noqa: ARG001
+        return abs(df["y"] - df["model"]).mean()
+
+    objective = mlforecast_objective(
+        df=df,
+        config_fn=config_fn,
+        loss=loss,
+        model=DummyCatBoostRegressor(),
+        freq="D",
+        n_windows=1,
+        h=2,
+    )
+    score = objective(optuna.trial.FixedTrial({}))
+
+    assert isinstance(score, float)
+    assert DummyCatBoostRegressor.fit_cat_features
+    assert all(features == ["store_type"] for features in DummyCatBoostRegressor.fit_cat_features)
+
+
+def test_mlforecast_objective_respects_explicit_cat_features(monkeypatch):
+    monkeypatch.setattr(
+        "mlforecast.optimization.CatBoostRegressor",
+        DummyCatBoostRegressor,
+    )
+    DummyCatBoostRegressor.fit_cat_features = []
+
+    df = generate_daily_series(2, min_length=30, max_length=30)
+    df["store_type"] = df["unique_id"].map({"id_0": "a", "id_1": "b"})
+    df["store_size"] = df["unique_id"].map({"id_0": 100.0, "id_1": 200.0}).astype(float)
+
+    explicit_cat_features = ["store_size"]  # intentionally override with numeric column
+
+    def config_fn(trial):  # noqa: ARG001
+        return {
+            "model_params": {"cat_features": explicit_cat_features},
+            "mlf_init_params": {"lags": [1]},
+            "mlf_fit_params": {"static_features": ["store_type", "store_size"]},
+        }
+
+    def loss(df: pd.DataFrame, train_df: pd.DataFrame) -> float:  # noqa: ARG001
+        return abs(df["y"] - df["model"]).mean()
+
+    objective = mlforecast_objective(
+        df=df,
+        config_fn=config_fn,
+        loss=loss,
+        model=DummyCatBoostRegressor(),
+        freq="D",
+        n_windows=1,
+        h=2,
+    )
+    objective(optuna.trial.FixedTrial({}))
+
+    # Auto-detection must not override the user's explicit cat_features
+    assert all(
+        features == explicit_cat_features
+        for features in DummyCatBoostRegressor.fit_cat_features
+    )
+
+
+def test_mlforecast_objective_saves_cat_features_in_user_attrs(monkeypatch):
+    monkeypatch.setattr(
+        "mlforecast.optimization.CatBoostRegressor",
+        DummyCatBoostRegressor,
+    )
+    DummyCatBoostRegressor.fit_cat_features = []
+
+    df = generate_daily_series(2, min_length=30, max_length=30)
+    df["store_type"] = df["unique_id"].map({"id_0": "a", "id_1": "b"})
+    df["store_size"] = df["unique_id"].map({"id_0": 100.0, "id_1": 200.0}).astype(float)
+
+    def config_fn(trial):  # noqa: ARG001
+        return {
+            "model_params": {},
+            "mlf_init_params": {"lags": [1]},
+            "mlf_fit_params": {"static_features": ["store_type", "store_size"]},
+        }
+
+    def loss(df: pd.DataFrame, train_df: pd.DataFrame) -> float:  # noqa: ARG001
+        return abs(df["y"] - df["model"]).mean()
+
+    objective = mlforecast_objective(
+        df=df,
+        config_fn=config_fn,
+        loss=loss,
+        model=DummyCatBoostRegressor(),
+        freq="D",
+        n_windows=1,
+        h=2,
+    )
+    study = optuna.create_study()
+    study.optimize(objective, n_trials=1)
+
+    saved_model_params = study.best_trial.user_attrs["config"]["model_params"]
+    assert saved_model_params.get("cat_features") == ["store_type"]
 
 
 @pytest.fixture(scope="module")
