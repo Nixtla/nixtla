@@ -6,6 +6,7 @@ __all__ = ['tst_flags', 'to_skip', 'mapper', 'print_execs', 'print_hide', 'other
 
 # %% cli.ipynb 1
 from functools import partial
+from typing import Optional
 
 from fastcore.script import call_parse
 from nbdev.config import get_config
@@ -76,8 +77,8 @@ mapper = {
 # %% cli.ipynb 10
 @call_parse
 def print_dir_in_nb(nb_path:str,
-                    dir:str=None,
-                    dir_name:str=None,
+                    dir:Optional[str]=None,
+                    dir_name:Optional[str]=None,
                     ):
     if dir_name not in mapper.keys():
         raise ValueError(f'Choose processor from the the following: {mapper.keys()}')
@@ -93,4 +94,3 @@ def print_dir_in_nb(nb_path:str,
 
     processor = NBProcessor(nb_path, mapper[dir_name])
     processor.process()
-

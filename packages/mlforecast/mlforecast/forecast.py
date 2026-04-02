@@ -36,6 +36,7 @@ from mlforecast.core import (
     TimeSeries,
     _get_model_name,
     _name_models,
+    _validate_horizon_params,
 )
 
 from .grouped_array import GroupedArray
@@ -177,6 +178,10 @@ class MLForecast:
             lag_transforms_namer=lag_transforms_namer,
         )
 
+    @property
+    def horizon_features_(self) -> Dict[int, List[str]]:
+        return self.ts.horizon_features_
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(models=[{', '.join(self.models.keys())}], "
@@ -213,6 +218,152 @@ class MLForecast:
     ) -> None:
         validate_df(df, id_col, time_col, self.freq)
 
+    def _get_dynamic_exog_cols(
+        self,
+        df_columns: List[str],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]] = None,
+        weight_col: Optional[str] = None,
+    ) -> List[str]:
+        if static_features is None:
+            static_cols = set(c for c in df_columns if c not in (time_col, target_col))
+        else:
+            static_cols = set(static_features)
+            static_cols.add(id_col)
+        if weight_col is not None:
+            static_cols.discard(weight_col)
+        lag_cols = set(self.ts.transforms.keys())
+        date_cols = set(self.ts._date_feature_names)
+        exclude = static_cols | lag_cols | date_cols | {id_col, time_col, target_col}
+        if weight_col is not None:
+            exclude.add(weight_col)
+        return [c for c in df_columns if c not in exclude]
+
+    def _resolve_horizon_features(
+        self,
+        df: DFType,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]],
+        max_horizon: Optional[int],
+        horizons: Optional[List[int]],
+        horizon_features: Optional[Dict[int, List[str]]],
+        horizon_feature_templates: Optional[List[str]],
+        weight_col: Optional[str],
+    ) -> Dict[int, List[str]]:
+        if horizon_features is not None and horizon_feature_templates is not None:
+            raise ValueError(
+                "Only one of `horizon_features` and `horizon_feature_templates` can be provided."
+            )
+        if horizon_features is None and horizon_feature_templates is None:
+            return {}
+        if max_horizon is None and horizons is None:
+            arg_name = (
+                "`horizon_features`"
+                if horizon_features is not None
+                else "`horizon_feature_templates`"
+            )
+            raise ValueError(
+                f"{arg_name} is only supported when using `max_horizon` or `horizons`."
+            )
+        _, effective_max_horizon = _validate_horizon_params(max_horizon, horizons)
+        assert effective_max_horizon is not None
+        exog_cols = self._get_dynamic_exog_cols(
+            list(df.columns),
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            static_features=static_features,
+            weight_col=weight_col,
+        )
+        exog_col_set = set(exog_cols)
+        if horizon_features is not None:
+            if not isinstance(horizon_features, dict):
+                raise ValueError(
+                    "`horizon_features` must be a dictionary that maps horizons to feature lists."
+                )
+            resolved = {}
+            for horizon, cols in horizon_features.items():
+                if not isinstance(horizon, int) or horizon <= 0:
+                    raise ValueError("`horizon_features` keys must be positive integers.")
+                if horizon > effective_max_horizon:
+                    raise ValueError(
+                        f"`horizon_features` includes horizon {horizon}, but the maximum configured horizon is {effective_max_horizon}."
+                    )
+                if not isinstance(cols, list) or any(not isinstance(col, str) for col in cols):
+                    raise ValueError(
+                        "Each value in `horizon_features` must be a list of column names."
+                    )
+                if not cols:
+                    warnings.warn(
+                        f"`horizon_features` includes an empty list for horizon {horizon}. "
+                        "This entry has no effect and can be removed.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                resolved[horizon] = list(dict.fromkeys(cols))
+        else:
+            templates = list(horizon_feature_templates or [])
+            compiled_patterns = []
+            for template in templates:
+                if not isinstance(template, str):
+                    raise ValueError(
+                        "All entries in `horizon_feature_templates` must be strings."
+                    )
+                if template.count("{h}") != 1:
+                    raise ValueError(
+                        "Each template in `horizon_feature_templates` must include exactly one '{h}' placeholder."
+                    )
+                pattern_str = (
+                    "^"
+                    + re.escape(template).replace(r"\{h\}", r"(?P<h>[1-9]\d*)")
+                    + "$"
+                )
+                compiled_patterns.append(re.compile(pattern_str))
+            resolved = {}
+            matched_cols = set()
+            for col in exog_cols:
+                matched_horizon = None
+                for compiled_pattern in compiled_patterns:
+                    match = compiled_pattern.match(col)
+                    if match is None:
+                        continue
+                    horizon = int(match.group("h"))
+                    if horizon > effective_max_horizon:
+                        raise ValueError(
+                            f"Column '{col}' maps to horizon {horizon}, but the maximum configured horizon is {effective_max_horizon}."
+                        )
+                    if matched_horizon is not None and matched_horizon != horizon:
+                        raise ValueError(
+                            f"Column '{col}' matches multiple horizon templates with conflicting horizons."
+                        )
+                    matched_horizon = horizon
+                if matched_horizon is not None:
+                    resolved.setdefault(matched_horizon, []).append(col)
+                    matched_cols.add(col)
+            if templates and not matched_cols:
+                raise ValueError(
+                    "No dynamic exogenous columns matched `horizon_feature_templates`. "
+                    "Please verify the template patterns."
+                )
+        unknown_cols = sorted(
+            {
+                col
+                for cols in resolved.values()
+                for col in cols
+                if col not in exog_col_set
+            }
+        )
+        if unknown_cols:
+            raise ValueError(
+                "The following `horizon_features` columns were not found among the dynamic exogenous features: "
+                f"{unknown_cols}."
+            )
+        return resolved
+
     def preprocess(
         self,
         df: DFType,
@@ -224,6 +375,8 @@ class MLForecast:
         keep_last_n: Optional[int] = None,
         max_horizon: Optional[int] = None,
         horizons: Optional[List[int]] = None,
+        horizon_features: Optional[Dict[int, List[str]]] = None,
+        horizon_feature_templates: Optional[List[str]] = None,
         return_X_y: bool = False,
         as_numpy: bool = False,
         weight_col: Optional[str] = None,
@@ -241,6 +394,11 @@ class MLForecast:
             keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Defaults to None.
             max_horizon (int, optional): Train this many models, where each model will predict a specific horizon. Defaults to None.
             horizons (list of int, optional): Train models only for specific horizons (1-indexed). Mutually exclusive with max_horizon. Defaults to None.
+            horizon_features (dict of int to list of str, optional): Explicit mapping of 1-indexed horizons to dynamic exogenous columns.
+                Only supported when using `max_horizon` or `horizons`. Defaults to None.
+            horizon_feature_templates (list of str, optional): Template patterns for horizon-specific dynamic exogenous features.
+                Each template must include exactly one '{h}' placeholder (1-indexed), for example: ['feature_h{h}'].
+                Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None.
             return_X_y (bool): Return a tuple with the features and the target. If False will return a single dataframe. Defaults to False.
             as_numpy (bool): Cast features to numpy array. Only works for `return_X_y=True`. Defaults to True.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
@@ -252,6 +410,18 @@ class MLForecast:
         # Run data validations if requested
         if validate_data:
             self._validate_data(df, id_col, time_col)
+        self.ts.horizon_features_ = self._resolve_horizon_features(
+            df=df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            static_features=static_features,
+            max_horizon=max_horizon,
+            horizons=horizons,
+            horizon_features=horizon_features,
+            horizon_feature_templates=horizon_feature_templates,
+            weight_col=weight_col,
+        )
 
         return self.ts.fit_transform(
             df,
@@ -342,6 +512,8 @@ class MLForecast:
         keep_last_n: Optional[int] = None,
         max_horizon: Optional[int] = None,
         horizons: Optional[List[int]] = None,
+        horizon_features: Optional[Dict[int, List[str]]] = None,
+        horizon_feature_templates: Optional[List[str]] = None,
         n_windows: int = 2,
         h: int = 1,
         as_numpy: bool = False,
@@ -377,6 +549,8 @@ class MLForecast:
             keep_last_n=keep_last_n,
             max_horizon=max_horizon,
             horizons=horizons,
+            horizon_features=horizon_features,
+            horizon_feature_templates=horizon_feature_templates,
             prediction_intervals=None,
             as_numpy=as_numpy,
         )
@@ -464,7 +638,10 @@ class MLForecast:
         else:
             # Use the passed y array which has shape (n_rows, max_horizon)
             # y was already extracted from prep by _extract_X_y and contains expanded targets
-            exog_cols = self.ts._get_dynamic_exog_cols(list(original_df.columns)) if original_df is not None else []
+            exog_cols = self.ts._get_dynamic_exog_cols(self.ts.features_order_)
+            common_exog_cols, horizon_exog_map = self.ts._split_horizon_exog_cols(
+                exog_cols, self.horizon_features_
+            )
 
             # Only allocate entries for trained horizons (sparse or dense).
             trained_horizons = sorted({h for hm in self.models_.values() for h in hm})
@@ -480,16 +657,45 @@ class MLForecast:
 
             # Precompute per-horizon aligned features and validity masks once,
             # shared across all models to avoid redundant joins per model.
-            x_cols = list(X.columns) if hasattr(X, 'columns') else None
+            x_cols: Optional[List[str]] = list(X.columns) if hasattr(X, "columns") else None
+            feature_idx = {c: i for i, c in enumerate(self.ts.features_order_)}
             horizon_cache = {}  # h -> (X_h, valid_mask)
             for h in trained_horizons:
                 y_h = y[:, h] if y.ndim == 2 else y
                 valid_target = ~np.isnan(y_h)
-
-                if h == 0 or not exog_cols or original_df is None:
-                    horizon_cache[h] = (X, valid_target)
+                x_cols_h: Optional[List[str]]
+                if self.horizon_features_:
+                    x_cols_h = self.ts._get_cols_for_horizon(
+                        h, common_exog_cols, horizon_exog_map, exog_cols
+                    )
                 else:
-                    non_exog_cols = [c for c in x_cols if c not in exog_cols] if x_cols else None
+                    x_cols_h = x_cols
+                exog_cols_h = (
+                    [c for c in x_cols_h if c in exog_cols]
+                    if x_cols_h is not None
+                    else exog_cols
+                )
+                if not hasattr(X, "columns"):
+                    if x_cols_h is not None:
+                        col_idx = np.array([feature_idx[c] for c in x_cols_h], dtype=np.int32)
+                        X_h = X[:, col_idx]
+                    else:
+                        X_h = X
+                    horizon_cache[h] = (X_h, valid_target)
+                    continue
+
+                if h == 0 or not exog_cols_h or original_df is None:
+                    if x_cols_h is not None:
+                        X_h = X[x_cols_h]
+                    else:
+                        X_h = X
+                    horizon_cache[h] = (X_h, valid_target)
+                else:
+                    non_exog_cols = (
+                        [c for c in x_cols_h if c not in exog_cols]
+                        if x_cols_h is not None
+                        else None
+                    )
                     offset_times = ufp.offset_times(base[time_col], self.ts.freq, h)
 
                     if isinstance(base, pl_DataFrame):
@@ -498,35 +704,35 @@ class MLForecast:
                             .with_columns(pl_Series('_offset_time', offset_times))
                             .with_row_index('_row_idx')
                         )
-                        exog_source = original_df[[id_col, time_col] + exog_cols]
+                        exog_source = original_df[[id_col, time_col] + exog_cols_h]
                         exog_renamed = exog_source.rename({time_col: '_offset_time'})
                         merged = lookup_df.join(exog_renamed, on=[id_col, '_offset_time'], how='left')
                         merged = merged.sort('_row_idx')
                         if non_exog_cols:
                             X_h = X[non_exog_cols]
-                            for col in exog_cols:
+                            for col in exog_cols_h:
                                 X_h = X_h.with_columns(merged[col].alias(col))
-                            X_h = X_h[x_cols]
+                            X_h = X_h[x_cols_h]
                         else:
                             X_h = X
                     else:
                         lookup_df = base[[id_col]].copy()
                         lookup_df['_offset_time'] = offset_times
                         lookup_df['_row_idx'] = np.arange(len(base))
-                        exog_source = original_df[[id_col, time_col] + exog_cols]
+                        exog_source = original_df[[id_col, time_col] + exog_cols_h]
                         exog_renamed = exog_source.rename(columns={time_col: '_offset_time'})
                         merged = lookup_df.merge(exog_renamed, on=[id_col, '_offset_time'], how='left')
                         merged = merged.sort_values('_row_idx')
                         if non_exog_cols:
                             X_h = X[non_exog_cols].copy()
-                            for col in exog_cols:
+                            for col in exog_cols_h:
                                 X_h[col] = merged[col].values
-                            X_h = X_h[x_cols]
+                            X_h = X_h[x_cols_h]
                         else:
                             X_h = X
 
                     valid = valid_target.copy()
-                    for col in exog_cols:
+                    for col in exog_cols_h:
                         valid &= ~ufp.is_nan_or_none(X_h[col]).to_numpy()
                     horizon_cache[h] = (X_h, valid)
 
@@ -706,6 +912,8 @@ class MLForecast:
         keep_last_n: Optional[int] = None,
         max_horizon: Optional[int] = None,
         horizons: Optional[List[int]] = None,
+        horizon_features: Optional[Dict[int, List[str]]] = None,
+        horizon_feature_templates: Optional[List[str]] = None,
         prediction_intervals: Optional[PredictionIntervals] = None,
         fitted: bool = False,
         as_numpy: bool = False,
@@ -726,6 +934,11 @@ class MLForecast:
             keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Defaults to None.
             max_horizon (int, optional): Train this many models, where each model will predict a specific horizon. Defaults to None.
             horizons (list of int, optional): Train models only for specific horizons (1-indexed). For example, `horizons=[7, 14]` trains models only for steps 7 and 14. Mutually exclusive with max_horizon. Defaults to None.
+            horizon_features (dict of int to list of str, optional): Explicit mapping of 1-indexed horizons to dynamic exogenous columns.
+                Only supported when using `max_horizon` or `horizons`. Defaults to None.
+            horizon_feature_templates (list of str, optional): Template patterns for horizon-specific dynamic exogenous features.
+                Each template must include exactly one '{h}' placeholder (1-indexed), for example: ['feature_h{h}'].
+                Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None.
             prediction_intervals (PredictionIntervals, optional): Configuration to calibrate prediction intervals (Conformal Prediction). Defaults to None.
             fitted (bool): Save in-sample predictions. Defaults to False.
             as_numpy (bool): Cast features to numpy array. Defaults to True.
@@ -757,6 +970,8 @@ class MLForecast:
                 keep_last_n=keep_last_n,
                 max_horizon=max_horizon,
                 horizons=horizons,
+                horizon_features=horizon_features,
+                horizon_feature_templates=horizon_feature_templates,
                 n_windows=prediction_intervals.n_windows,
                 h=prediction_intervals.h,
                 as_numpy=as_numpy,
@@ -774,6 +989,8 @@ class MLForecast:
                 keep_last_n=keep_last_n,
                 max_horizon=max_horizon,
                 horizons=horizons,
+                horizon_features=horizon_features,
+                horizon_feature_templates=horizon_feature_templates,
                 return_X_y=False,
                 as_numpy=False,
                 weight_col=weight_col,
@@ -830,6 +1047,8 @@ class MLForecast:
                 dropna=dropna,
                 keep_last_n=keep_last_n,
                 max_horizon=max_horizon,
+                horizon_features=horizon_features,
+                horizon_feature_templates=horizon_feature_templates,
                 return_X_y=not fitted,
                 as_numpy=as_numpy,
                 weight_col=weight_col,
@@ -1079,6 +1298,7 @@ class MLForecast:
             new_ts.max_horizon = self.ts.max_horizon
             new_ts._horizons = self.ts._horizons
             new_ts.as_numpy = self.ts.as_numpy
+            new_ts.horizon_features_ = copy.deepcopy(self.ts.horizon_features_)
             ts = new_ts
         else:
             ts = self.ts
@@ -1177,6 +1397,8 @@ class MLForecast:
         refit: Union[bool, int] = True,
         max_horizon: Optional[int] = None,
         horizons: Optional[List[int]] = None,
+        horizon_features: Optional[Dict[int, List[str]]] = None,
+        horizon_feature_templates: Optional[List[str]] = None,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         prediction_intervals: Optional[PredictionIntervals] = None,
@@ -1204,6 +1426,11 @@ class MLForecast:
             keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Defaults to None.
             max_horizon (int, optional): Train this many models, where each model will predict a specific horizon. Defaults to None.
             horizons (list of int, optional): Train models only for specific horizons (1-indexed). Mutually exclusive with max_horizon. Defaults to None.
+            horizon_features (dict of int to list of str, optional): Explicit mapping of 1-indexed horizons to dynamic exogenous columns.
+                Only supported when using `max_horizon` or `horizons`. Defaults to None.
+            horizon_feature_templates (list of str, optional): Template patterns for horizon-specific dynamic exogenous features.
+                Each template must include exactly one '{h}' placeholder (1-indexed), for example: ['feature_h{h}'].
+                Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None.
             refit (bool or int): Retrain model for each cross validation window. If False, the models are trained at the beginning and then used to predict each window. If positive int, the models are retrained every `refit` windows. Defaults to True.
             before_predict_callback (callable, optional): Function to call on the features before computing the predictions. This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure. The series identifier is on the index. Defaults to None.
             after_predict_callback (callable, optional): Function to call on the predictions before updating the targets. This function will take a pandas Series with the predictions and should return another one with the same structure. The series identifier is on the index. Defaults to None.
@@ -1248,6 +1475,8 @@ class MLForecast:
                     keep_last_n=keep_last_n,
                     max_horizon=max_horizon,
                     horizons=horizons,
+                    horizon_features=horizon_features,
+                    horizon_feature_templates=horizon_feature_templates,
                     prediction_intervals=prediction_intervals,
                     fitted=fitted,
                     as_numpy=as_numpy,
@@ -1274,6 +1503,8 @@ class MLForecast:
                     keep_last_n=keep_last_n,
                     max_horizon=max_horizon,
                     horizons=horizons,
+                    horizon_features=horizon_features,
+                    horizon_feature_templates=horizon_feature_templates,
                     return_X_y=False,
                     weight_col=weight_col,
                     validate_data=False,
