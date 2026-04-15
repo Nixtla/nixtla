@@ -705,6 +705,29 @@ def test_cv_weight_col(refit):
     assert not np.allclose(result_uniform['lr'].values, result_skewed['lr'].values)
 
 
+@pytest.mark.parametrize("max_horizon", [None, 2])
+def test_cv_refit_false_with_grouped_expanding_mean(max_horizon, grouped_expanding_mean_df):
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1],
+        lag_transforms={1: [ExpandingMean(groupby=["cat_code"])]},
+    )
+
+    cv = fcst.cross_validation(
+        grouped_expanding_mean_df,
+        n_windows=2,
+        h=2,
+        static_features=["cat_code"],
+        refit=False,
+        max_horizon=max_horizon,
+    )
+
+    assert not cv.empty
+    assert "LinearRegression" in cv.columns
+    assert cv["LinearRegression"].notna().all()
+
+
 def test_cv_input_size(setup_forecast_data, fcst):
     _, train, _ = setup_forecast_data
     horizon = 48

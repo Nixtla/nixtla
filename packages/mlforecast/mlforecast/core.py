@@ -280,6 +280,33 @@ class TimeSeries:
             local[name] = tfm
         return local
 
+    def _initialize_lag_transform_states(self) -> None:
+        """Materialize lag transform state for subsequent update-based prediction.
+
+        This is needed when a new ``TimeSeries`` instance is created from historical
+        data right before calling ``predict(new_df=...)``. Local, global and grouped
+        transforms all need to see a full ``transform`` pass so stateful transforms
+        like ``ExpandingMean`` can initialize their internal buffers before the
+        first ``update(...)`` call.
+        """
+        core_tfms = self._get_core_lag_tfms()
+        if core_tfms:
+            self._compute_transforms(core_tfms, updates_only=False)
+        global_tfms = self._get_global_tfms()
+        if global_tfms:
+            if self._global_ga is None:
+                raise RuntimeError(
+                    "Global lag transform state is missing. This is likely a bug; please open an issue."
+                )
+            self._global_ga.apply_transforms(
+                transforms=global_tfms, updates_only=False
+            )
+        group_tfms = self._get_group_tfms()
+        if group_tfms:
+            for group_cols, tfms in group_tfms.items():
+                state = self._group_states[group_cols]
+                state["ga"].apply_transforms(transforms=tfms, updates_only=False)
+
     def _check_aligned_ends(self) -> None:
         """Check that all series end at the same timestamp when using global/group transforms."""
         if not (self._get_global_tfms() or self._get_group_tfms()):

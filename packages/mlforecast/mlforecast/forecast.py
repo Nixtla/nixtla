@@ -1291,10 +1291,9 @@ class MLForecast:
                 keep_last_n=self.ts.keep_last_n,
                 weight_col=self.ts.weight_col,
             )
-            core_tfms = new_ts._get_core_lag_tfms()
-            if core_tfms:
-                # populate the stats needed for the updates
-                new_ts._compute_transforms(core_tfms, updates_only=False)
+            # Populate any stateful lag transforms before the first update-based
+            # prediction step. This includes pooled global/group transforms.
+            new_ts._initialize_lag_transform_states()
             new_ts.max_horizon = self.ts.max_horizon
             new_ts._horizons = self.ts._horizons
             new_ts.as_numpy = self.ts.as_numpy
