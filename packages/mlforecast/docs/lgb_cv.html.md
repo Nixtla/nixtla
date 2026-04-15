@@ -158,13 +158,6 @@ cv.cv_preds_
 The individual models we trained are saved, so calling `predict` returns
 the predictions from every model trained.
 
-------------------------------------------------------------------------
-
-<a
-href="<https://github.com/Nixtla/mlforecast/blob/main/mlforecast/lgb_cv.py#L485>"
-target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
-
-
 ```python
 preds = cv.predict(horizon)
 preds
