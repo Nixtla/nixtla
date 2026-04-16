@@ -92,6 +92,26 @@ def test_nested_combine_take(grouped_array):
     assert subset_tfm.operator == operator.sub
     assert subset_tfm.tfm1.operator == operator.add
 
+    # Numerical correctness: subset update() matches a fresh fit on the same 3 groups
+    indptr = grouped_array.indptr
+    parts = [grouped_array.data[indptr[i]:indptr[i + 1]] for i in idxs]
+    new_indptr = np.zeros(len(idxs) + 1, dtype=indptr.dtype)
+    for j, part in enumerate(parts):
+        new_indptr[j + 1] = new_indptr[j] + len(part)
+    subset_ga = CoreGroupedArray(np.concatenate(parts), new_indptr)
+
+    fresh_tfm = Combine(
+        Combine(
+            RollingMean(window_size=7, min_samples=1),
+            RollingMean(window_size=5, min_samples=1),
+            operator.add
+        ),
+        RollingMean(window_size=3, min_samples=1),
+        operator.sub
+    )._set_core_tfm(1)
+    fresh_tfm.transform(subset_ga)
+    np.testing.assert_allclose(subset_tfm.update(subset_ga), fresh_tfm.update(subset_ga))
+
 def test_combine_stack(grouped_array):
     tfm1 = Combine(
         RollingMean(window_size=7, min_samples=1),
@@ -111,6 +131,11 @@ def test_combine_stack(grouped_array):
 
     assert isinstance(stacked_tfm, Combine)
     assert stacked_tfm.operator == operator.add
+
+    # Numerical correctness: stacking a single fitted transform should reproduce its update()
+    single_stacked = Combine.stack([tfm1])
+    tfm1.transform(grouped_array)  # reset internal state
+    np.testing.assert_allclose(single_stacked.update(grouped_array), tfm1.update(grouped_array))
 
 
 def test_combine_stack_behavioral(grouped_array):
