@@ -20,6 +20,7 @@ from typing import (
 
 import cloudpickle
 import fsspec
+import narwhals as nw
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
@@ -44,6 +45,7 @@ from .grouped_array import GroupedArray
 if TYPE_CHECKING:
     from mlforecast.lgb_cv import LightGBMCV
 from .data_validation import validate_df
+from .compat import CatBoostRegressor
 from .target_transforms import _BaseGroupedArrayTargetTransform
 from .utils import PredictionIntervals, _resolve_num_threads
 
@@ -476,6 +478,12 @@ class MLForecast:
                 else:
                     fit_kwargs["sample_weight"] = X[weight_col]
                     X = ufp.drop_columns(X, weight_col)
+            if isinstance(model, CatBoostRegressor):
+                if isinstance(X, pl_DataFrame):
+                    X = X.to_pandas()
+                sample_weight = fit_kwargs.get("sample_weight")
+                if isinstance(sample_weight, pl_Series):
+                    fit_kwargs["sample_weight"] = sample_weight.to_numpy()
             return clone(model).fit(X, y, **fit_kwargs)
 
         self.models_: Dict[str, Union[BaseEstimator, Dict[int, BaseEstimator]]] = {}
@@ -1565,7 +1573,7 @@ class MLForecast:
                 # Sparse horizons: expect only predictions for trained horizons <= h
                 assert internal_horizons is not None
                 n_trained_horizons = sum(th < h for th in internal_horizons)
-                n_series = valid[id_col].nunique()
+                n_series = nw.from_native(valid[id_col], series_only=True).n_unique()
                 expected_rows = n_trained_horizons * n_series
             else:
                 expected_rows = valid.shape[0]

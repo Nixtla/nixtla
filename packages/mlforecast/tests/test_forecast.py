@@ -36,6 +36,7 @@ set_config(display='text')
 warnings.simplefilter('ignore', UserWarning)
 
 
+
 def test_conformal_method():
     with pytest.raises(ValueError):
         _get_conformal_method('my_method')
@@ -1896,6 +1897,89 @@ def test_horizons_cross_validation_with_target_transforms():
     n_windows = 2
     n_horizons = 2  # [7, 14]
     assert cv_results.shape[0] == n_series * n_windows * n_horizons
+
+
+def test_polars_catboost_cross_validation():
+    catboost = pytest.importorskip("catboost")
+    df = generate_daily_series(
+        3,
+        min_length=80,
+        max_length=80,
+        equal_ends=True,
+        engine="polars",
+    )
+    fcst = MLForecast(
+        models=[catboost.CatBoostRegressor(iterations=10, verbose=0)],
+        freq="1d",
+        lags=[1, 2, 7],
+        date_features=["weekday"],
+    )
+
+    cv_results = fcst.cross_validation(
+        df=df,
+        h=7,
+        n_windows=2,
+        step_size=7,
+        refit=False,
+    )
+
+    n_series = df["unique_id"].n_unique()
+    assert cv_results.shape[0] == n_series * 2 * 7
+
+
+def test_polars_catboost_horizons_cross_validation():
+    catboost = pytest.importorskip("catboost")
+    df = generate_daily_series(
+        3,
+        min_length=100,
+        max_length=100,
+        equal_ends=True,
+        engine="polars",
+    )
+    fcst = MLForecast(
+        models=[catboost.CatBoostRegressor(iterations=10, verbose=0)],
+        freq="1d",
+        lags=[1, 7, 14],
+    )
+
+    cv_results = fcst.cross_validation(
+        df=df,
+        h=14,
+        horizons=[7, 14],
+        n_windows=2,
+        refit=False,
+    )
+
+    n_series = df["unique_id"].n_unique()
+    assert cv_results.shape[0] == n_series * 2 * 2
+
+
+def test_horizons_cross_validation_polars_refit_false_as_numpy():
+    df = generate_daily_series(
+        4,
+        min_length=100,
+        max_length=100,
+        equal_ends=True,
+        engine="polars",
+    )
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="1d",
+        lags=[1, 7, 14],
+    )
+
+    cv_results = fcst.cross_validation(
+        df=df,
+        n_windows=2,
+        h=14,
+        horizons=[7, 14],
+        refit=False,
+        as_numpy=True,
+    )
+
+    n_series = df["unique_id"].n_unique()
+    assert cv_results.shape[0] == n_series * 2 * 2
+    assert "LinearRegression" in cv_results.columns
 
 
 def test_fit_with_validate_data_clean():

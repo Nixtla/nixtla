@@ -43,6 +43,7 @@ from mlforecast.target_transforms import (
     _BaseGroupedArrayTargetTransform,
 )
 
+from .compat import CatBoostRegressor
 from .grouped_array import GroupedArray
 from .lag_transforms import Lag, _BaseLagTransform
 from .utils import _ShortSeriesException, _resolve_num_threads
@@ -1153,7 +1154,10 @@ class TimeSeries:
                     new_x = self._get_features_for_next_step(X_df)
                     if before_predict_callback is not None:
                         new_x = before_predict_callback(new_x)
-                    predictions = model.predict(new_x)
+                    model_x = new_x
+                    if isinstance(model, CatBoostRegressor) and isinstance(new_x, pl_DataFrame):
+                        model_x = new_x.to_pandas()
+                    predictions = model.predict(model_x)
                     if after_predict_callback is not None:
                         predictions = after_predict_callback(predictions)
                     self._update_y(predictions)
@@ -1280,6 +1284,8 @@ class TimeSeries:
                             )
                             model_x = new_x[h_cols]
                     horizon_model = model[h]
+                    if isinstance(horizon_model, CatBoostRegressor) and isinstance(model_x, pl_DataFrame):
+                        model_x = model_x.to_pandas()
                     preds = horizon_model.predict(model_x)
                     if len(preds) != len(self.uids):
                         raise ValueError(f"Model returned {len(preds)} predictions but expected {len(self.uids)}")
