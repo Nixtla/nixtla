@@ -89,5 +89,5 @@ jobs:
       - name: Run pytest
         env:
           RAY_ENABLE_UV_RUN_RUNTIME_ENV: 0
-        run: uv run pytest
+        run: uv run pytest --reruns=2 --reruns-delay=2 --only-rerun="Socket recv error"
 

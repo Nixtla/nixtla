@@ -40,7 +40,7 @@ jobs:
         with:
           mode: simulation
           token: ${{ secrets.CODESPEED_TOKEN }}
-          run: uv run pytest tests/test_pipeline.py --codspeed -n 2 --no-cov
+          run: uv run pytest tests/test_pipeline.py --codspeed -n 2 --no-cov -p no:rerunfailures
 
   performance-tests:
     runs-on: ubuntu-latest
