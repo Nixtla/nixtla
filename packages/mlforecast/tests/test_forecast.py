@@ -1267,6 +1267,24 @@ def test_direct_forecasting_perfect_exogenous_fit():
     )
 
 
+def test_date_feature_dummies_raw_source_column_not_required_as_exog():
+    """Raw source column (e.g. 'dayofweek') is excluded from required exog when dummies are used."""
+    df = generate_daily_series(2, n_static_features=0)
+    df["dayofweek"] = df["ds"].dt.dayofweek
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek"],
+        date_features_as_dummies=True,
+    )
+    fcst.fit(df, static_features=[])
+    assert fcst.ts._get_dynamic_exog_cols(fcst.ts.features_order_) == []
+    assert "dayofweek" not in fcst.ts.features_order_
+    preds = fcst.predict(h=2)
+    assert preds["LinearRegression"].notna().all()
+
+
 @pytest.mark.parametrize("horizons", [
     [1, 3],
     [1, 3, 5, 7],

@@ -46,7 +46,12 @@ from mlforecast.target_transforms import (
 from .compat import CatBoostRegressor
 from .grouped_array import GroupedArray
 from .lag_transforms import Lag, _BaseLagTransform
-from .utils import _ShortSeriesException, _resolve_num_threads
+from .utils import (
+    _DUMMY_FEATURE_VALUES,
+    _ShortSeriesException,
+    _compute_date_dummies,
+    _resolve_num_threads,
+)
 
 date_features_dtypes = {
     "year": np.uint16,
@@ -209,8 +214,10 @@ class TimeSeries:
         num_threads: int = 1,
         target_transforms: Optional[List[TargetTransform]] = None,
         lag_transforms_namer: Optional[Callable] = None,
+        date_features_as_dummies: bool = False,
     ):
         self.freq = freq
+        self.date_features_as_dummies = date_features_as_dummies
         num_threads = _resolve_num_threads(num_threads)
         if not isinstance(num_threads, int) or num_threads < 1:
             warnings.warn("Setting num_threads to 1.")
@@ -322,8 +329,18 @@ class TimeSeries:
             )
 
     @property
-    def _date_feature_names(self):
-        return [f.__name__ if callable(f) else f for f in self.date_features]
+    def _date_feature_names(self) -> List[str]:
+        names: List[str] = []
+        for f in self.date_features:
+            if (self.date_features_as_dummies
+                    and isinstance(f, str)
+                    and f in _DUMMY_FEATURE_VALUES):
+                names.extend(f"{f}_{v}" for v in _DUMMY_FEATURE_VALUES[f])
+            elif callable(f):
+                names.append(f.__name__)
+            else:
+                names.append(f)
+        return names
 
     @property
     def features(self) -> List[str]:
@@ -334,7 +351,10 @@ class TimeSeries:
         """Identify user-provided exogenous columns that need time-alignment."""
         static_cols = set(self.static_features_.columns)
         lag_cols = set(self.transforms.keys())
-        date_cols = {f.__name__ if callable(f) else f for f in self.date_features}
+        date_cols = set(self._date_feature_names) | {
+            f for f in self.date_features
+            if self.date_features_as_dummies and isinstance(f, str) and f in _DUMMY_FEATURE_VALUES
+        }
         exclude = static_cols | lag_cols | date_cols | {self.id_col, self.time_col, self.target_col}
         if self.weight_col is not None:
             exclude.add(self.weight_col)
@@ -491,7 +511,11 @@ class TimeSeries:
                     "are dynamic please set `static_features=[]`."
                 )
         self.static_features_ = statics_on_ends
-        self.features_order_ = [c for c in df.columns if c not in to_drop] + [
+        raw_date_sources = {
+            f for f in self.date_features
+            if self.date_features_as_dummies and isinstance(f, str) and f in _DUMMY_FEATURE_VALUES
+        }
+        self.features_order_ = [c for c in df.columns if c not in to_drop and c not in raw_date_sources] + [
             f for f in self.features if f not in df.columns
         ]
         self._group_states: Dict[Tuple[str, ...], Dict[str, Any]] = {}
@@ -597,24 +621,36 @@ class TimeSeries:
             )
         return out
 
-    def _compute_date_feature(self, dates, feature):
+    def _compute_date_feature(self, dates, feature) -> Dict[str, Any]:
+        """Compute date feature(s) and return as a ``{col_name: values}`` dict."""
+        if (self.date_features_as_dummies
+                and isinstance(feature, str)
+                and feature in _DUMMY_FEATURE_VALUES):
+            return _compute_date_dummies(dates, feature)
+
         if callable(feature):
             feat_name = feature.__name__
             feat_vals = feature(dates)
+            if isinstance(feat_vals, pd.DataFrame):
+                return {col: np.asarray(feat_vals[col]) for col in feat_vals.columns}
+            if isinstance(feat_vals, (pd.Index, pd.Series)):
+                feat_vals = np.asarray(feat_vals)
+            return {feat_name: feat_vals}
+
+        # regular string feature
+        feat_name = feature
+        if isinstance(dates, pd.DatetimeIndex):
+            if feature in ("week", "weekofyear"):
+                dates = dates.isocalendar()
+            feat_vals = getattr(dates, feature)
+            if isinstance(feat_vals, (pd.Index, pd.Series)):
+                feat_vals = np.asarray(feat_vals)
+                feat_dtype = date_features_dtypes.get(feature)
+                if feat_dtype is not None:
+                    feat_vals = feat_vals.astype(feat_dtype)
         else:
-            feat_name = feature
-            if isinstance(dates, pd.DatetimeIndex):
-                if feature in ("week", "weekofyear"):
-                    dates = dates.isocalendar()
-                feat_vals = getattr(dates, feature)
-            else:
-                feat_vals = getattr(dates.dt, feature)()
-        if isinstance(feat_vals, (pd.Index, pd.Series)):
-            feat_vals = np.asarray(feat_vals)
-            feat_dtype = date_features_dtypes.get(feature)
-            if feat_dtype is not None:
-                feat_vals = feat_vals.astype(feat_dtype)
-        return feat_name, feat_vals
+            feat_vals = getattr(dates.dt, feature)()
+        return {feat_name: feat_vals}
 
     def _transform(
         self,
@@ -771,9 +807,19 @@ class TimeSeries:
                 df = ufp.assign_columns(df, feat, features[feat])
 
         # date features
-        names = [f.__name__ if callable(f) else f for f in self.date_features]
+        def _feature_in_df(f, cols):
+            if (self.date_features_as_dummies
+                    and isinstance(f, str)
+                    and f in _DUMMY_FEATURE_VALUES):
+                return all(
+                    f"{f}_{v}" in cols for v in _DUMMY_FEATURE_VALUES[f]
+                )
+            name = f.__name__ if callable(f) else f
+            return name in cols
+
+        df_cols = set(df.columns)
         date_features = [
-            f for f, name in zip(self.date_features, names) if name not in df
+            f for f in self.date_features if not _feature_in_df(f, df_cols)
         ]
         if date_features:
             unique_dates = df[self.time_col].unique()
@@ -783,16 +829,30 @@ class TimeSeries:
                 date2pos = {date: i for i, date in enumerate(unique_dates)}
                 restore_idxs = df[self.time_col].map(date2pos)
                 for feature in date_features:
-                    feat_name, feat_vals = self._compute_date_feature(
+                    for feat_name, feat_vals in self._compute_date_feature(
                         unique_dates, feature
-                    )
-                    df[feat_name] = feat_vals[restore_idxs]
+                    ).items():
+                        df[feat_name] = feat_vals[restore_idxs]
             elif isinstance(df, pl_DataFrame):
                 exprs = []
+                nw_feats: Dict[str, Any] = {}
                 for feat in date_features:  # type: ignore
-                    name, vals = self._compute_date_feature(pl.col(self.time_col), feat)
-                    exprs.append(vals.alias(name))
-                feats = unique_dates.to_frame().with_columns(*exprs)
+                    if (self.date_features_as_dummies
+                            and isinstance(feat, str)
+                            and feat in _DUMMY_FEATURE_VALUES):
+                        nw_feats.update(_compute_date_dummies(unique_dates, feat))
+                    else:
+                        for name, vals in self._compute_date_feature(
+                            pl.col(self.time_col), feat
+                        ).items():
+                            exprs.append(vals.alias(name))
+                feats = unique_dates.to_frame()
+                if exprs:
+                    feats = feats.with_columns(*exprs)
+                for col_name, col_vals in nw_feats.items():
+                    feats = feats.with_columns(
+                        pl.Series(name=col_name, values=col_vals)
+                    )
                 df = df.join(feats, on=self.time_col, how="left")
 
         # assemble return
@@ -1044,8 +1104,10 @@ class TimeSeries:
                     features[name] = vals[group_idx]
 
         for feature in self.date_features:
-            feat_name, feat_vals = self._compute_date_feature(self.curr_dates, feature)
-            features[feat_name] = feat_vals
+            for feat_name, feat_vals in self._compute_date_feature(
+                self.curr_dates, feature
+            ).items():
+                features[feat_name] = feat_vals
 
         if isinstance(self.last_dates, pl_Series):
             df_constructor = pl_DataFrame

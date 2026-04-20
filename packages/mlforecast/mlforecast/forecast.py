@@ -148,6 +148,7 @@ class MLForecast:
         num_threads: int = 1,
         target_transforms: Optional[List[TargetTransform]] = None,
         lag_transforms_namer: Optional[Callable] = None,
+        date_features_as_dummies: bool = False,
     ):
         """Forecasting pipeline
 
@@ -160,6 +161,7 @@ class MLForecast:
             num_threads (int): Number of threads to use when computing the features. Use -1 to use all available CPU cores. Defaults to 1.
             target_transforms (list of transformers, optional): Transformations that will be applied to the target before computing the features and restored after the forecasting step. Defaults to None.
             lag_transforms_namer (callable, optional): Function that takes a transformation (either function or class), a lag and extra arguments and produces a name. Defaults to None.
+            date_features_as_dummies (bool): If True, string date features with a known finite range (e.g. 'dayofweek', 'month') are expanded into binary indicator columns named '{feature}_{value}' instead of being kept as ordinal integers. Defaults to False.
         """
         if not isinstance(models, dict) and not isinstance(models, list):
             models = [models]
@@ -178,6 +180,7 @@ class MLForecast:
             num_threads=num_threads,
             target_transforms=target_transforms,
             lag_transforms_namer=lag_transforms_namer,
+            date_features_as_dummies=date_features_as_dummies,
         )
 
     @property
@@ -852,6 +855,7 @@ class MLForecast:
                 num_threads=self.ts.num_threads,
                 target_transforms=copy.deepcopy(self.ts.target_transforms),
                 lag_transforms_namer=self.ts.lag_transforms_namer,
+                date_features_as_dummies=self.ts.date_features_as_dummies,
             )
             temp_ts._fit(
                 hist,
@@ -1289,6 +1293,7 @@ class MLForecast:
                 num_threads=self.ts.num_threads,
                 target_transforms=self.ts.target_transforms,
                 lag_transforms_namer=self.ts.lag_transforms_namer,
+                date_features_as_dummies=self.ts.date_features_as_dummies,
             )
             new_ts._fit(
                 new_df,

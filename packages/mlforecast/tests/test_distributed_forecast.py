@@ -124,3 +124,24 @@ def test_dask_distributed_weight_col_affects_predictions(small_ordered_series):
     preds_skewed = _fit_and_forecast(skewed_weights)
 
     assert not np.allclose(preds_uniform["stub"], preds_skewed["stub"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests are not supported on Windows")
+@pytest.mark.skipif(sys.version_info <= (3, 9), reason="Distributed tests are not supported on Python < 3.10")
+def test_date_feature_dummies_distributed():
+    """date_features_as_dummies=True expands date columns into dummies in DistributedMLForecast."""
+    series = generate_daily_series(2, n_static_features=0)
+    partitioned = _make_partitioned_series(series, npartitions=2)
+    fcst = DistributedMLForecast(
+        models={"stub": _RecordingDaskRegressor()},
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek"],
+        date_features_as_dummies=True,
+    )
+    fcst.fit(partitioned, static_features=[], dropna=False)
+    local = fcst.to_local()
+    assert "dayofweek_0" in local.ts.features_order_
+    assert "dayofweek" not in local.ts.features_order_
+    preds = fcst.predict(h=2).compute()
+    assert preds["stub"].notna().all()

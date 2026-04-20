@@ -24,7 +24,11 @@ from mlforecast.lag_transforms import (
     RollingStd,
 )
 from mlforecast.target_transforms import Differences, LocalStandardScaler
-from mlforecast.utils import generate_daily_series, generate_prices_for_series
+from mlforecast.utils import (
+    _DUMMY_FEATURE_VALUES,
+    generate_daily_series,
+    generate_prices_for_series,
+)
 
 
 @pytest.fixture
@@ -1963,3 +1967,143 @@ def test_timeseries_num_threads_minus_one(series):
     prep_single = ts_single.fit_transform(series, "unique_id", "ds", "y")
 
     pd.testing.assert_frame_equal(prep_multi, prep_single)
+
+
+# ---------------------------------------------------------------------------
+# date_features_as_dummies tests
+# ---------------------------------------------------------------------------
+
+def test_date_feature_dummies_column_names():
+    """_date_feature_names expands dummy features; non-dummy features stay ordinal."""
+    ts = TimeSeries(
+        freq="D",
+        date_features=["dayofweek", "year"],
+        date_features_as_dummies=True,
+    )
+    names = ts._date_feature_names
+    expected = [f"dayofweek_{i}" for i in range(7)] + ["year"]
+    assert names == expected
+
+
+def test_date_feature_dummies_pandas(series):
+    """dayofweek expands to 7 binary uint8 columns on a pandas DataFrame."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    for i in range(7):
+        col = f"dayofweek_{i}"
+        assert col in result.columns, f"missing column {col}"
+        assert result[col].isin([0, 1]).all(), f"{col} has values outside {{0, 1}}"
+    # Original ordinal column should not be present
+    assert "dayofweek" not in result.columns
+
+
+def test_date_feature_dummies_polars(series):
+    """dayofweek expands to 7 binary columns on a polars DataFrame."""
+    pl_series = pl.from_pandas(series)
+    ts = TimeSeries(
+        freq="1d",  # polars offset format
+        lags=[1],
+        date_features=["dayofweek"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(pl_series, id_col="unique_id", time_col="ds", target_col="y")
+    result_pd = result.to_pandas()
+    for i in range(7):
+        col = f"dayofweek_{i}"
+        assert col in result_pd.columns, f"missing column {col}"
+        assert result_pd[col].isin([0, 1]).all()
+    assert "dayofweek" not in result_pd.columns
+
+
+def test_date_feature_dummies_mixed(series):
+    """Features in _DUMMY_FEATURE_VALUES are dummified; others stay ordinal."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek", "year"],  # year not in _DUMMY_FEATURE_VALUES
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    assert "dayofweek_0" in result.columns  # dummy
+    assert "dayofweek" not in result.columns  # ordinal version removed
+    assert "year" in result.columns  # stays ordinal
+
+
+def test_date_feature_dummies_false_default(series):
+    """date_features_as_dummies=False (default) keeps ordinal behavior."""
+    ts = TimeSeries(freq="D", lags=[1], date_features=["dayofweek"])
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    assert "dayofweek" in result.columns
+    assert "dayofweek_0" not in result.columns
+
+
+def test_date_feature_dummies_predict(series):
+    """End-to-end fit + predict works with date_features_as_dummies=True."""
+    from mlforecast.forecast import MLForecast
+    from sklearn.linear_model import Ridge
+
+    fcst = MLForecast(
+        models={"ridge": Ridge()},
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek", "month"],
+        date_features_as_dummies=True,
+    )
+    fcst.fit(series)
+    preds = fcst.predict(7)
+    assert preds.shape[0] == series["unique_id"].nunique() * 7
+    assert "ridge" in preds.columns
+
+
+def test_date_feature_dummies_quarter(series):
+    """quarter dummy creates 4 binary columns (values 1-4)."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["quarter"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    for q in range(1, 5):
+        col = f"quarter_{q}"
+        assert col in result.columns, f"missing {col}"
+        assert result[col].isin([0, 1]).all()
+    # Exactly one quarter indicator is 1 per row
+    quarter_cols = [f"quarter_{q}" for q in range(1, 5)]
+    assert (result[quarter_cols].sum(axis=1) == 1).all()
+
+
+def test_date_feature_dummies_month_values(series):
+    """month dummy has 12 columns and exactly one is 1 per row."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["month"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    month_cols = [f"month_{m}" for m in range(1, 13)]
+    for col in month_cols:
+        assert col in result.columns
+    assert (result[month_cols].sum(axis=1) == 1).all()
+
+
+def test_date_feature_dummies_all_supported(series):
+    """Every feature in _DUMMY_FEATURE_VALUES can be dummified without error."""
+    # Use a series that covers all hours/minutes/seconds by overriding frequency
+    for feature in _DUMMY_FEATURE_VALUES:
+        ts = TimeSeries(
+            freq="D",
+            lags=[1],
+            date_features=[feature],
+            date_features_as_dummies=True,
+        )
+        result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+        expected_cols = [f"{feature}_{v}" for v in _DUMMY_FEATURE_VALUES[feature]]
+        for col in expected_cols:
+            assert col in result.columns, f"feature={feature}: missing {col}"
