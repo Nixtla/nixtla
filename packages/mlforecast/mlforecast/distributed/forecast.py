@@ -5,6 +5,7 @@ import copy
 from collections import namedtuple
 from typing import Any, Callable, Iterable, List, Optional
 
+import base64
 import cloudpickle
 import fsspec
 
@@ -59,6 +60,8 @@ WindowInfo = namedtuple(
 
 class DistributedMLForecast:
     """Multi backend distributed pipeline"""
+
+    _PARTITION_FIELDS = ("ts", "train", "valid", "first_uid", "all_uids", "x_df")
 
     def __init__(
         self,
@@ -170,6 +173,8 @@ class DistributedMLForecast:
                     cloudpickle.dumps(ts),
                     cloudpickle.dumps(None),
                     cloudpickle.dumps(None),
+                    str(ts.uids[0]),
+                    cloudpickle.dumps(list(ts.uids)),
                 ]
             ]
         if window_info is None:
@@ -209,13 +214,16 @@ class DistributedMLForecast:
                 cloudpickle.dumps(ts),
                 cloudpickle.dumps(transformed),
                 cloudpickle.dumps(valid),
+                str(ts.uids[0]),
+                cloudpickle.dumps(list(ts.uids)),
             ]
         ]
 
     @staticmethod
     def _retrieve_df(items: List[List[Any]]) -> Iterable[pd.DataFrame]:
-        for _, serialized_train, _ in items:
-            yield cloudpickle.loads(serialized_train)
+        for row in items:
+            data = dict(zip(DistributedMLForecast._PARTITION_FIELDS, row))
+            yield cloudpickle.loads(data["train"])
 
     def _preprocess_partitions(
         self,
@@ -241,6 +249,12 @@ class DistributedMLForecast:
             # If a Dataset is partitioned using `.repartition(num_partitions)`
             # we will have akward results.
             partition = dict(by=id_col)
+        elif SPARK_INSTALLED and isinstance(data, SparkDataFrame):
+            # Spark DataFrames are not pre-partitioned by id_col (unlike Dask
+            # DataFrames which callers typically set up with unique_id as index).
+            # Without explicit grouping, rows for the same series can land in
+            # different Spark partitions, causing duplicate series in predictions.
+            partition = dict(by=id_col)
         else:
             partition = None
         res = fa.transform(
@@ -258,7 +272,7 @@ class DistributedMLForecast:
                 "fit_ts_only": fit_ts_only,
                 "weight_col": weight_col,
             },
-            schema="ts:binary,train:binary,valid:binary",
+            schema="ts:binary,train:binary,valid:binary,first_uid:str,all_uids:binary",
             engine=self.engine,
             as_fugue=True,
             partition=partition,
@@ -452,24 +466,78 @@ class DistributedMLForecast:
         )
 
     @staticmethod
+    def _attach_x_df(
+        part: pd.DataFrame, uid_to_xdf: dict
+    ) -> Iterable[pd.DataFrame]:
+        """Attach each partition's packed X_df blob to its rows, matched on first_uid.
+
+        Used in place of ``fa.join`` for Step 4 of ``_build_x_df_per_partition``:
+        on Ray, ``fa.join`` is routed through DuckDB and materialises the result
+        locally (DuckDataFrame -> ArrowDataFrame), which breaks distributed
+        execution. ``fa.transform`` with this function stays on the engine's
+        native map runtime (RayMapEngine, DaskMapEngine, etc.).
+        """
+        part = part.copy()
+        part["x_df"] = part["first_uid"].map(uid_to_xdf)
+        yield part
+
+    @staticmethod
+    def _pack_x_df(part: pd.DataFrame, partition_key_col: str) -> Iterable[pd.DataFrame]:
+        """Serialize one partition's X_df rows as a base64 string, keyed by first_uid.
+
+        Base64 encoding avoids binary-column type issues when the packed blob flows
+        through Dask / Spark joins before reaching ``_predict``.
+        """
+        partition_key = part[partition_key_col].iloc[0]
+        x_df_clean = part.drop(columns=[partition_key_col])
+        encoded = base64.b64encode(cloudpickle.dumps(x_df_clean)).decode("ascii")
+        yield pd.DataFrame(
+            {
+                "first_uid": [partition_key],
+                "x_df": [encoded],
+            }
+        )
+
+    @staticmethod
     def _predict(
         items: List[List[Any]],
         models,
         horizon,
         before_predict_callback=None,
         after_predict_callback=None,
-        X_df=None,
         ids=None,
         schema=None,
     ) -> Iterable[pd.DataFrame]:
-        for serialized_ts, _, serialized_valid in items:
+        for row in items:
+            data = dict(zip(DistributedMLForecast._PARTITION_FIELDS, row))
+            serialized_ts = data["ts"]
+            serialized_valid = data["valid"]
+            # x_df is absent when predict is called without X_df.
+            # Stored as a base64-encoded string to survive Dask/Spark type inference.
+            x_df_b64 = data.get("x_df")
+            # After a left join in _build_x_df_per_partition, partitions with no
+            # matching X_df rows get NaN (not None) in the x_df column. NaN is not
+            # None, so the decode below would raise a TypeError without this guard.
+            if x_df_b64 is not None and pd.isna(x_df_b64):
+                x_df_b64 = None
+
             valid = cloudpickle.loads(serialized_valid)
-            if valid is not None:
-                X_df = valid
             ts = cloudpickle.loads(serialized_ts)
+            x_df = (
+                cloudpickle.loads(base64.b64decode(x_df_b64))
+                if x_df_b64 is not None
+                else None
+            )
+
+            if valid is not None:
+                X_df_for_ts = valid
+            else:
+                X_df_for_ts = x_df
+
+            partition_ids = ids
             if ids is not None:
-                ids = ts.uids.intersection(ids).tolist()
-                if not ids:
+                partition_ids = ts.uids.intersection(ids).tolist()
+                if not partition_ids:
                     yield pd.DataFrame(
                         {
                             field.name: pd.Series(dtype=field.type.to_pandas_dtype())
@@ -482,8 +550,8 @@ class DistributedMLForecast:
                 horizon=horizon,
                 before_predict_callback=before_predict_callback,
                 after_predict_callback=after_predict_callback,
-                X_df=X_df,
-                ids=ids,
+                X_df=X_df_for_ts,
+                ids=partition_ids,
             )
             if valid is not None:
                 res = res.merge(valid, how="left")
@@ -497,12 +565,82 @@ class DistributedMLForecast:
         models_schema = [(model, "double") for model in self.models.keys()]
         return Schema(ids_schema + models_schema)
 
+    def _build_x_df_per_partition(
+        self,
+        partition_results: fugue.AnyDataFrame,
+        X_df: fugue.AnyDataFrame,
+    ) -> fugue.AnyDataFrame:
+        """Join per-partition X_df slices into partition_results as a binary column.
+
+        This avoids materialising all of X_df on any single node. Instead:
+        1. The driver loads only the tiny ``ts`` bytes to extract per-partition UIDs.
+        2. A distributed join keys every X_df row to its owning partition.
+        3. Each partition's X_df rows are serialised into a single binary blob.
+        4. That blob is joined back into partition_results so each worker only ever
+           loads its own slice.
+        """
+        id_col = self._base_ts.id_col
+
+        # Step 1 — build uid → first_uid mapping on the driver (all_uids column only, small).
+        ts_df = fa.as_pandas(fa.select_columns(partition_results, ["all_uids", "first_uid"]))
+        uid_map_df = (
+            ts_df
+            .assign(all_uids=ts_df["all_uids"].apply(cloudpickle.loads))
+            .explode("all_uids")
+            .rename(columns={"all_uids": id_col, "first_uid": "__partition_key__"})
+            [[id_col, "__partition_key__"]]
+            .reset_index(drop=True)
+        )
+
+        # Step 2 — distributed join: tag every X_df row with its partition key.
+        # Pass engine so the join runs on the right backend (Dask / Spark / Ray / pandas).
+        X_df_keyed = fa.join(
+            X_df, uid_map_df, how="inner", on=[id_col], engine=self.engine
+        )
+
+        # Step 3 — pack each partition's X_df into a single base64 string (distributed).
+        # Collect to pandas (N rows only — one blob per partition) so the
+        # downstream join with partition_results keeps the original distributed type.
+        # We use base64 (str) rather than raw binary so that the column survives
+        # Dask/Spark type inference when joined back into partition_results.
+        x_df_packed = fa.as_pandas(
+            fa.transform(
+                X_df_keyed,
+                DistributedMLForecast._pack_x_df,
+                schema="first_uid:str,x_df:str",
+                partition={"by": "__partition_key__"},
+                params={"partition_key_col": "__partition_key__"},
+                engine=self.engine,
+            )
+        )
+
+        # Step 4 — attach each partition's packed X_df blob to partition_results.
+        # We avoid ``fa.join`` here because Fugue's Ray engine routes joins
+        # through DuckDB and materialises the result as an ArrowDataFrame,
+        # which takes the pipeline off Ray. ``fa.transform`` with the
+        # ``_attach_x_df`` mapper stays on the engine's native map runtime on
+        # all backends (Ray / Dask / Spark / pandas) and preserves the
+        # distributed type of ``partition_results``.
+        #
+        # ``x_df_packed`` is tiny (one row per partition) so we materialise the
+        # uid→blob lookup on the driver and broadcast it via ``params``.
+        uid_to_xdf = dict(zip(x_df_packed["first_uid"], x_df_packed["x_df"]))
+        return fa.transform(
+            partition_results,
+            DistributedMLForecast._attach_x_df,
+            schema="ts:binary,train:binary,valid:binary,first_uid:str,"
+            "all_uids:binary,x_df:str",
+            params={"uid_to_xdf": uid_to_xdf},
+            engine=self.engine,
+            as_fugue=True,
+        )
+
     def predict(
         self,
         h: int,
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
-        X_df: Optional[pd.DataFrame] = None,
+        X_df: Optional[fugue.AnyDataFrame] = None,
         new_df: Optional[fugue.AnyDataFrame] = None,
         ids: Optional[List[str]] = None,
     ) -> fugue.AnyDataFrame:
@@ -516,7 +654,10 @@ class DistributedMLForecast:
             after_predict_callback (callable, optional): Function to call on the predictions before updating the targets.
                 This function will take a pandas Series with the predictions and should return another one with the same structure.
                 The series identifier is on the index. Defaults to None.
-            X_df (pandas DataFrame, optional): Dataframe with the future exogenous features. Should have the id column and the time column.
+            X_df (pandas, Dask, Spark or Ray DataFrame, optional): Dataframe with the future exogenous features.
+                Should have the id column and the time column.
+                Distributed DataFrames (Dask, Spark, Ray) are processed per-partition so that no single
+                node needs to hold the entire X_df in memory at once.
                 Defaults to None.
             new_df (dask or spark DataFrame, optional): Series data of new observations for which forecasts are to be generated.
                 This dataframe should have the same structure as the one used to fit the model, including any features and time series data.
@@ -541,8 +682,8 @@ class DistributedMLForecast:
         else:
             partition_results = self._partition_results
         schema = self._get_predict_schema()
-        if X_df is not None and not isinstance(X_df, pd.DataFrame):
-            raise ValueError("`X_df` should be a pandas DataFrame")
+        if X_df is not None:
+            partition_results = self._build_x_df_per_partition(partition_results, X_df)
         res = fa.transform(
             partition_results,
             DistributedMLForecast._predict,
@@ -551,7 +692,6 @@ class DistributedMLForecast:
                 "horizon": h,
                 "before_predict_callback": before_predict_callback,
                 "after_predict_callback": after_predict_callback,
-                "X_df": X_df,
                 "ids": ids,
                 "schema": schema,
             },
@@ -665,8 +805,9 @@ class DistributedMLForecast:
 
     @staticmethod
     def _save_ts(items: List[List[Any]], path: str) -> Iterable[pd.DataFrame]:
-        for serialized_ts, _, _ in items:
-            ts = cloudpickle.loads(serialized_ts)
+        for row in items:
+            data = dict(zip(DistributedMLForecast._PARTITION_FIELDS, row))
+            ts = cloudpickle.loads(data["ts"])
             first_uid = ts.uids[0]
             last_uid = ts.uids[-1]
             ts.save(f"{path}/ts_{first_uid}-{last_uid}.pkl")
@@ -700,6 +841,8 @@ class DistributedMLForecast:
                     "ts": [cloudpickle.dumps(ts)],
                     "train": [cloudpickle.dumps(None)],
                     "valid": [cloudpickle.dumps(None)],
+                    "first_uid": [str(ts.uids[0])],
+                    "all_uids": [cloudpickle.dumps(list(ts.uids))],
                 }
             )
 
@@ -719,7 +862,7 @@ class DistributedMLForecast:
         partition_results = fa.transform(
             names_df,
             DistributedMLForecast._load_ts,
-            schema="ts:binary,train:binary,valid:binary",
+            schema="ts:binary,train:binary,valid:binary,first_uid:str,all_uids:binary",
             partition="per_row",
             params={"protocol": protocol},
             engine=engine,
@@ -740,12 +883,13 @@ class DistributedMLForecast:
 
     @staticmethod
     def _update(items: List[List[Any]], new_df) -> Iterable[List[Any]]:
-        for serialized_ts, serialized_transformed, serialized_valid in items:
-            ts = cloudpickle.loads(serialized_ts)
+        for row in items:
+            data = dict(zip(DistributedMLForecast._PARTITION_FIELDS, row))
+            ts = cloudpickle.loads(data["ts"])
             partition_mask = ufp.is_in(new_df[ts.id_col], ts.uids)
             partition_df = ufp.filter_with_mask(new_df, partition_mask)
             ts.update(partition_df)
-            yield [cloudpickle.dumps(ts), serialized_transformed, serialized_valid]
+            yield [cloudpickle.dumps(ts), data["train"], data["valid"], str(ts.uids[0]), cloudpickle.dumps(list(ts.uids))]
 
     def update(self, df: pd.DataFrame) -> None:
         """Update the values of the stored series.
@@ -759,7 +903,7 @@ class DistributedMLForecast:
             self._partition_results,
             DistributedMLForecast._update,
             params={"new_df": df},
-            schema="ts:binary,train:binary,valid:binary",
+            schema="ts:binary,train:binary,valid:binary,first_uid:str,all_uids:binary",
             engine=self.engine,
             as_fugue=True,
         )

@@ -77,7 +77,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
-        run: uv sync --group dev --upgrade-package mkdocstrings-parser --extra dask --extra spark
+        run: uv sync --group dev --upgrade-package mkdocstrings-parser --extra dask --extra spark --extra ray
 
       - name: Install lightgbm on macOS
         if: matrix.os == 'macos-latest'
