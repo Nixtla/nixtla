@@ -1187,16 +1187,27 @@ class NixtlaClient:
         self,
         df: DFType,
         X_df: Optional[DFType],
-        id_col: str,
+        id_col: Optional[str],
         time_col: str,
         target_col: str,
         model: _Model,
         validate_api_key: bool,
         freq: Optional[_FreqType],
-    ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
+    ) -> tuple[DFType, Optional[DFType], str, bool, _FreqType]:
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email support@nixtla.io")
-        drop_id = id_col not in df.columns
+        if id_col is None:
+            id_col = "unique_id"
+            drop_id = True
+        elif id_col not in df.columns:
+            raise ValueError(
+                f"id_col='{id_col}' not found in dataframe columns: "
+                f"{list(df.columns)}. "
+                "If your data doesn't have an ID column "
+                "(single series), you can set id_col=None."
+            )
+        else:
+            drop_id = False
         if drop_id:
             df = ufp.copy_if_pandas(df, deep=False)
             df = ufp.assign_columns(df, id_col, 0)
@@ -1245,7 +1256,7 @@ class NixtlaClient:
                 "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
                 "for an end to end example."
             )
-        return df, X_df, drop_id, freq
+        return df, X_df, id_col, drop_id, freq
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Check API key status.
@@ -1283,7 +1294,7 @@ class NixtlaClient:
         self,
         df: DataFrame,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         finetune_steps: _NonNegativeInt = 10,
@@ -1350,7 +1361,7 @@ class NixtlaClient:
             raise ValueError("Can only fine-tune on pandas or polars dataframes.")
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, X_df, drop_id, freq = self._run_validations(
+        df, X_df, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -1550,7 +1561,7 @@ class NixtlaClient:
         df: AnyDFType,
         h: _PositiveInt,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         X_df: Optional[AnyDFType] = None,
@@ -1705,7 +1716,7 @@ class NixtlaClient:
         self.__dict__.pop("feature_contributions", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, X_df, drop_id, freq = self._run_validations(
+        df, X_df, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=X_df,
             id_col=id_col,
@@ -2001,7 +2012,7 @@ class NixtlaClient:
         self,
         df: AnyDFType,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
@@ -2102,7 +2113,7 @@ class NixtlaClient:
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        df, _, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -2277,7 +2288,7 @@ class NixtlaClient:
         detection_size: _PositiveInt,
         threshold_method: _ThresholdMethod = "univariate",
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         level: Union[int, float] = 99,
@@ -2419,7 +2430,7 @@ class NixtlaClient:
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        df, _, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
@@ -2586,7 +2597,7 @@ class NixtlaClient:
         df: AnyDFType,
         h: _PositiveInt,
         freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
+        id_col: Optional[str] = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
         level: Optional[list[Union[int, float]]] = None,
@@ -2735,7 +2746,7 @@ class NixtlaClient:
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        df, _, id_col, drop_id, freq = self._run_validations(
             df=df,
             X_df=None,
             id_col=id_col,
