@@ -15,8 +15,10 @@ examples_docs:
 
 format_docs:
 	# replace _docs with docs
-	sed -i -e 's/_docs/docs/g' ./docs-scripts/docs-final-formatting.bash
+	sed -i.bak -e 's/_docs/docs/g' ./docs-scripts/docs-final-formatting.bash && rm ./docs-scripts/docs-final-formatting.bash.bak
 	bash ./docs-scripts/docs-final-formatting.bash
+	find docs/mintlify -name "*.mdx" -exec sed -i.bak '/^:::/d' {} + && find docs/mintlify -name "*.bak" -delete
+	find docs/mintlify/docs -name "*.mdx" ! -name "*.html.mdx" -type f -exec sh -c 'mv "$$1" "$${1%.mdx}.html.mdx"' _ {} \;
 
 
 preview_docs:

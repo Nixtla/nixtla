@@ -940,3 +940,153 @@ def test_cutoff_aggregation_equivalence(engine):
                 f"Drop-then-eval: {no_cutoff_values}\n"
                 f"Eval-then-average: {averaged_values}"
             )
+
+# ========================================
+# ParetoFrontier Tests
+# ========================================
+
+def test_pareto_frontier_is_dominated():
+    from utilsforecast.model_selection import ParetoFrontier
+    A = np.array([1.0, 1.0])
+    B = np.array([0.5, 0.5])
+    C = np.array([1.0, 0.5])
+    D = np.array([1.5, 1.5])
+
+    data = np.array([A, B, C, D])
+    directions = np.array([1.0, 1.0])  # minimize both
+    result = ParetoFrontier.is_dominated(data, directions)
+
+    assert result[0]       # A is dominated by B
+    assert not result[1]   # B is not dominated by anything
+    assert result[2]       # C is dominated by B (equal mae, better rmse)
+    assert result[3]       # D is dominated by A, B, C
+
+    # Maximize first, minimize second: A and B do not dominate each other
+    directions_mixed = np.array([-1.0, 1.0])
+    result_mixed = ParetoFrontier.is_dominated(np.array([A, B]), directions_mixed)
+    assert not result_mixed[0]
+    assert not result_mixed[1]
+
+
+def test_pareto_frontier_evaluate_output():
+    from utilsforecast.model_selection import ParetoFrontier
+    # Output of evaluate(agg_fn="mean")
+    # models are columns, metrics are rows
+    df = pd.DataFrame({
+        "metric": ["rmse", "mae"],
+        "model1": [1.0, 1.0], # optimal
+        "model2": [1.5, 1.5], # dominated by model1
+        "model3": [0.8, 1.5], # optimal (better rmse than model1)
+    })
+    
+    pareto_df = ParetoFrontier.find_non_dominated(df)
+    
+    # model1 and model3 are non-dominated
+    assert "model1" in pareto_df.columns
+    assert "model3" in pareto_df.columns
+    assert "model2" not in pareto_df.columns
+    assert "metric" in pareto_df.columns
+    
+    assert pareto_df.shape == (2, 3) # metric + 2 models
+    
+    # test maximization
+    pareto_df_max = ParetoFrontier.find_non_dominated(df, maximization=["rmse"])
+    # If we maximize rmse, model2 has 1.5, model3 has 0.8, model1 has 1.0
+    # model2 is optimal for rmse (1.5)
+    # model1 is optimal for mae (1.0)
+    # model3 is not optimal for anything (worse rmse than model2, worse mae than model1)
+    # model3 (0.8 rmse, 1.5 mae)
+    # model2 (1.5 rmse, 1.5 mae). Since we MAXIMIZE rmse and MINIMIZE mae:
+    # model2 is better than model3 on rmse (1.5 > 0.8) and equal on mae (1.5 == 1.5)
+    # so model2 dominates model3!
+    assert "model2" in pareto_df_max.columns
+    assert "model1" in pareto_df_max.columns
+    assert "model3" not in pareto_df_max.columns
+
+
+def test_pareto_frontier_fallback_format():
+    from utilsforecast.model_selection import ParetoFrontier
+    # Rows are models, columns are metrics
+    df = pd.DataFrame({
+        "model": ["model1", "model2", "model3"],
+        "rmse": [1.0, 1.5, 0.8],
+        "mae": [1.0, 1.5, 1.5]
+    })
+    
+    pareto_df = ParetoFrontier.find_non_dominated(df, metrics=["rmse", "mae"])
+    # model1 (1.0, 1.0) and model3 (0.8, 1.5) are optimal
+    assert len(pareto_df) == 2
+    assert "model1" in pareto_df["model"].values
+    assert "model3" in pareto_df["model"].values
+    assert "model2" not in pareto_df["model"].values
+
+def test_pareto_frontier_polars():
+    from utilsforecast.model_selection import ParetoFrontier
+    import polars as pl
+    df = pl.DataFrame({
+        "metric": ["rmse", "mae"],
+        "model1": [1.0, 1.0],
+        "model2": [1.5, 1.5],
+        "model3": [0.8, 1.5],
+    })
+    
+    pareto_df = ParetoFrontier.find_non_dominated(df)
+    assert isinstance(pareto_df, pl.DataFrame)
+    assert "model1" in pareto_df.columns
+    assert "model3" in pareto_df.columns
+    assert "model2" not in pareto_df.columns
+
+
+def test_plot_pareto_2d():
+    import matplotlib
+    matplotlib.use("Agg")
+    from utilsforecast.model_selection import ParetoFrontier
+    df = pd.DataFrame({
+        "metric": ["rmse", "mae", "mape"],
+        "model1": [1.0, 1.0, 0.1],
+        "model2": [1.5, 1.5, 0.2],
+        "model3": [0.8, 1.5, 0.15],
+    })
+
+    ax = ParetoFrontier.plot_pareto_2d(df, metric_x="rmse", metric_y="mae")
+    assert ax is not None
+    import matplotlib.pyplot as plt
+    plt.close("all")
+
+
+def test_plot_pareto_2d_no_model_column():
+    # plot_pareto_2d should auto-assign numeric indices as model labels when
+    # the input DataFrame has only metric columns and no "model" column.
+    import matplotlib
+    matplotlib.use("Agg")
+    from utilsforecast.model_selection import ParetoFrontier
+    df = pd.DataFrame({
+        "rmse": [1.0, 1.5, 0.8],
+        "mae":  [1.0, 1.5, 1.5],
+    })
+
+    ax = ParetoFrontier.plot_pareto_2d(df, metric_x="rmse", metric_y="mae")
+    assert ax is not None
+
+    import matplotlib.pyplot as plt
+    plt.close("all")
+
+
+def test_plot_pareto_2d_polars():
+    # plot_pareto_2d should return a valid axes object when given a polars
+    # DataFrame in evaluate() output format (metric column, models as columns).
+    import matplotlib
+    matplotlib.use("Agg")
+    from utilsforecast.model_selection import ParetoFrontier
+    df = pl.DataFrame({
+        "metric": ["rmse", "mae"],
+        "model1": [1.0, 1.0],
+        "model2": [1.5, 1.5],
+        "model3": [0.8, 1.5],
+    })
+
+    ax = ParetoFrontier.plot_pareto_2d(df, metric_x="rmse", metric_y="mae")
+    assert ax is not None
+
+    import matplotlib.pyplot as plt
+    plt.close("all")
