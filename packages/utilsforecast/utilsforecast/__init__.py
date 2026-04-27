@@ -1,1 +1,3 @@
-__version__ = "0.2.15"
+from importlib.metadata import version
+
+__version__ = version("utilsforecast")
