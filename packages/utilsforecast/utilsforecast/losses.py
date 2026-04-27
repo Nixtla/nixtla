@@ -1069,8 +1069,8 @@ def linex(
     The Linex loss penalizes over- and under-forecasting
     asymmetrically depending on the parameter a.
 
-    - If a > 0, under-forecasting (y > y_hat) is penalized more.
-    - If a < 0, over-forecasting (y_hat > y) is penalized more.
+    - If a > 0, under-forecasting ($y > \hat{y}$) is penalized more.
+    - If a < 0, over-forecasting ($\hat{y} > y$) is penalized more.
     - a must not be 0.
 
     Args:
@@ -1080,7 +1080,7 @@ def linex(
         raise ValueError("Parameter a in Linex loss must be non-zero.")
 
     def gen_expr(model):
-        error = nw.col(model) - nw.col(target_col)
+        error = nw.col(target_col) - nw.col(model)
         return ((error * a).exp() - error * a - 1).alias(model)
 
     return _nw_agg_expr(

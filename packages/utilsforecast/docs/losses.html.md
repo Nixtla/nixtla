@@ -8,11 +8,10 @@ The most important train signal is the forecast error, which is the
 difference between the observed value $y_{\tau}$ and the prediction
 $\hat{y}_{\tau}$, at time $y_{\tau}$:
 
-$$
-
+```math
 e_{\tau} = y_{\tau}-\hat{y}_{\tau} \qquad \qquad \tau \in \{t+1,\dots,t+H \}
 
-$$
+```
 
 The train loss summarizes the forecast errors in different evaluation
 metrics.
@@ -22,11 +21,10 @@ metrics.
 
 ### Mean Absolute Error
 
-$$
-
+```math
 \mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|
+```
 
-$$
 ![](./imgs/losses/mae_loss.png)
 
 ::: utilsforecast.losses.mae
@@ -39,11 +37,9 @@ $$
 
 ### Mean Squared Error
 
-$$
-
+```math
 \mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}
-
-$$
+```
 
 ![](./imgs/losses/mse_loss.png)
 
@@ -57,11 +53,9 @@ $$
 
 ### Root Mean Squared Error
 
-$$
-
+```math
 \mathrm{RMSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sqrt{\frac{1}{H} \sum^{t+H}_{\tau=t+1} (y_{\tau} - \hat{y}_{\tau})^{2}}
-
-$$
+```
 
 ![](./imgs/losses/rmse_loss.png)
 ::: utilsforecast.losses.rmse
@@ -74,11 +68,9 @@ $$
 
 ### Bias
 
-$$
-
+```math
 \mathrm{Bias}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} (\hat{y}_{\tau} - \mathbf{y}_{\tau})
-
-$$
+```
 
 ::: utilsforecast.losses.bias
     handler: python
@@ -90,11 +82,9 @@ $$
 
 ### Cumulative Forecast Error
 
-$$
-
+```math
 \mathrm{CFE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sum^{t+H}_{\tau=t+1} (\hat{y}_{\tau} - \mathbf{y}_{\tau})
-
-$$
+```
 
 ::: utilsforecast.losses.cfe
     handler: python
@@ -106,11 +96,9 @@ $$
 
 ### Absolute Periods In Stock
 
-$$
-
+```math
 \mathrm{PIS}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|
-
-$$
+```
 
 ::: utilsforecast.losses.pis
     handler: python
@@ -122,9 +110,9 @@ $$
 
 ### Linex
 
-$$
+```math
 \mathrm{Linex}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} (e^{a(y_{\tau} - \hat{y}_{\tau})} - a(y_{\tau} - \hat{y}_{\tau}) - 1)
-$$
+```
 
 where must be $a\neq0$.
 
@@ -140,11 +128,10 @@ where must be $a\neq0$.
 
 ### Mean Absolute Percentage Error
 
-$$
-
+```math
 \mathrm{MAPE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|}
+```
 
-$$
 
 ![](./imgs/losses/mape_loss.png)
 ::: utilsforecast.losses.mape
@@ -157,11 +144,9 @@ $$
 
 ### Symmetric Mean Absolute Percentage Error
 
-$$
-
+```math
 \mathrm{SMAPE}_{2}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{|y_{\tau}|+|\hat{y}_{\tau}|}
-
-$$
+```
 
 ::: utilsforecast.losses.smape
     handler: python
@@ -175,12 +160,10 @@ $$
 
 ### Mean Absolute Scaled Error
 
-$$
-
+```math
 \mathrm{MASE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau}) = 
 \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau})}
-
-$$
+```
 
 ![](./imgs/losses/mase_loss.png)
 
@@ -195,11 +178,9 @@ $$
 
 ### Relative Mean Absolute Error
 
-$$
-
+```math
 \mathrm{RMAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}, \mathbf{\hat{y}}^{base}_{\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau}-\hat{y}_{\tau}|}{\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{base}_{\tau})}
-
-$$
+```
 
 ![](./imgs/losses/rmae_loss.png)
 
@@ -213,11 +194,9 @@ $$
 
 ### Normalized Deviation
 
-$$
-
+```math
 \mathrm{ND}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{\sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|}{\sum^{t+H}_{\tau=t+1} | y_{\tau} |}
-
-$$
+```
 
 ::: utilsforecast.losses.nd
     handler: python
@@ -229,12 +208,10 @@ $$
 
 ### Mean Squared Scaled Error
 
-$$
-
+```math
 \mathrm{MSSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau}) = 
 \frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{(y_{\tau}-\hat{y}_{\tau})^2}{\mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau})}
-
-$$
+```
 
 ::: utilsforecast.losses.msse
     handler: python
@@ -246,12 +223,10 @@ $$
 
 ### Root Mean Squared Scaled Error
 
-$$
-
+```math
 \mathrm{RMSSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau}) = 
 \sqrt{\frac{1}{H} \sum^{t+H}_{\tau=t+1} \frac{(y_{\tau}-\hat{y}_{\tau})^2}{\mathrm{MSE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau})}}
-
-$$
+```
 
 
 ::: utilsforecast.losses.rmsse
@@ -264,11 +239,9 @@ $$
 
 ### Scaled Absolute Periods In Stock
 
-$$
-
+```math
 \mathrm{PIS}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \sum^{t+H}_{\tau=t+1} \frac{|y_{\tau} - \hat{y}_{\tau}|}{\bar{y}}
-
-$$
+```
 
 where $\bar{y}=\frac{1}{H}\sum^{t+H}_{\tau=t+1} y_{\tau}$.
 
@@ -285,14 +258,12 @@ where $\bar{y}=\frac{1}{H}\sum^{t+H}_{\tau=t+1} y_{\tau}$.
 
 ### Quantile Loss
 
-$$
-
+```math
 \mathrm{QL}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{(q)}_{\tau}) = 
 \frac{1}{H} \sum^{t+H}_{\tau=t+1} 
 \Big( (1-q)\,( \hat{y}^{(q)}_{\tau} - y_{\tau} )_{+} 
 + q\,( y_{\tau} - \hat{y}^{(q)}_{\tau} )_{+} \Big)
-
-$$
+```
 
 ![](./imgs/losses/q_loss.png)
 
@@ -306,14 +277,12 @@ $$
 
 ### Scaled Quantile Loss
 
-$$
-
+```math
 \mathrm{SQL}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{(q)}_{\tau}) = 
 \frac{1}{H} \sum^{t+H}_{\tau=t+1} 
 \frac{(1-q)\,( \hat{y}^{(q)}_{\tau} - y_{\tau} )_{+} 
 + q\,( y_{\tau} - \hat{y}^{(q)}_{\tau} )_{+}}{\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau})}
-
-$$
+```
 
 ::: utilsforecast.losses.scaled_quantile_loss
     handler: python
@@ -324,13 +293,11 @@ $$
       
 ### Multi-Quantile Loss
 
-$$
-
+```math
 \mathrm{MQL}(\mathbf{y}_{\tau},
 [\mathbf{\hat{y}}^{(q_{1})}_{\tau}, ... ,\hat{y}^{(q_{n})}_{\tau}]) = 
 \frac{1}{n} \sum_{q_{i}} \mathrm{QL}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{(q_{i})}_{\tau})
-
-$$
+```
 
 ![](./imgs/losses/mq_loss.png)
 
@@ -344,13 +311,11 @@ $$
 
 ### Scaled Multi-Quantile Loss
 
-$$
-
+```math
 \mathrm{MQL}(\mathbf{y}_{\tau},
 [\mathbf{\hat{y}}^{(q_{1})}_{\tau}, ... ,\hat{y}^{(q_{n})}_{\tau}]) = 
 \frac{1}{n} \sum_{q_{i}} \frac{\mathrm{QL}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{(q_{i})}_{\tau})}{\mathrm{MAE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}^{season}_{\tau})}
-
-$$
+```
 
 ::: utilsforecast.losses.scaled_mqloss
     handler: python
@@ -382,12 +347,10 @@ $$
 
 ### CRPS
 
-$$
-
+```math
 \mathrm{sCRPS}(\hat{F}_{\tau}, \mathbf{y}_{\tau}) = \frac{2}{N} \sum_{i}
 \int^{1}_{0} \frac{\mathrm{QL}(\hat{F}_{i,\tau}, y_{i,\tau})_{q}}{\sum_{i} | y_{i,\tau} |} dq
-
-$$
+```
 
 Where $\hat{F}_{\tau}$ is the an estimated multivariate distribution,
 and $y_{i,\tau}$ are its realizations.
@@ -405,17 +368,14 @@ and $y_{i,\tau}$ are its realizations.
 For a set of forecasts $\{\mu_i\}_{i=1}^N$ and observations
 $\{y_i\}_{i=1}^N$, the mean Tweedie deviance with power $p$ is
 
-$$
-
+```math
 \mathrm{TD}_{p}(\boldsymbol{\mu}, \mathbf{y})
 = \frac{1}{N} \sum_{i=1}^{N} d_{p}(y_i, \mu_i)
-
-$$
+```
 
 where the unit-scaled deviance for each pair $(y,\mu)$ is
 
-$$
-
+```math
 d_{p}(y,\mu)
 =
 2
@@ -434,8 +394,7 @@ y\,\ln\!\frac{y}{\mu}\;-\;(y-\mu),
 -2\Bigl[\ln\!\frac{y}{\mu}\;-\;\frac{y-\mu}{\mu}\Bigr],
 & p = 2\quad(\text{Gamma deviance}).
 \end{cases}
-
-$$
+```
 
 - $y_i$ are the true values, $\mu_i$ the predicted means.  
 - $p$ controls the variance relationship
