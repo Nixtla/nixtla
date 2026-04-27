@@ -8,10 +8,13 @@ import pytest
 from conftest import assert_raises_with_message
 from polars import Series as pl_Series
 
+import utilsforecast.processing as ufp
 from utilsforecast.compat import POLARS_INSTALLED
 from utilsforecast.data import generate_series
 from utilsforecast.processing import (
     DataFrameProcessor,
+    _find_boundaries,
+    _ranges_to_indexer,
     _multiply_pl_freq,
     add_insample_levels,
     anti_join,
@@ -548,6 +551,38 @@ def test_cv_times(step_size, expected_ds, expected_cutoff):
     pd.testing.assert_frame_equal(actual, expected)
 
 
+def test_backtest_vectorized_helpers_match_expected_indices():
+    times = np.array(
+        [
+            "2020-01-01",
+            "2020-01-02",
+            "2020-01-04",
+            "2020-01-01",
+            "2020-01-03",
+            "2020-01-05",
+            "2020-01-07",
+            "2020-01-02",
+            "2020-01-06",
+        ],
+        dtype="datetime64[ns]",
+    )
+    indptr = np.array([0, 3, 7, 9])
+    bounds = np.array(
+        ["2020-01-02", "2020-01-05", "2019-12-31"], dtype="datetime64[ns]"
+    )
+
+    np.testing.assert_array_equal(
+        _find_boundaries(times, indptr, bounds), np.array([2, 6, 7])
+    )
+    np.testing.assert_array_equal(
+        _ranges_to_indexer(
+            starts=np.array([0, 3, 6, 8]),
+            stops=np.array([2, 3, 5, 10]),
+        ),
+        np.array([0, 1, 8, 9]),
+    )
+
+
 @pytest.mark.parametrize(
     "values, lookup, expected", [([1, 2, 3], [1], [True, False, False])]
 )
@@ -770,6 +805,152 @@ def test_short_stories():
         assert any("will be dropped" in str(w.message) for w in issued_warnings)
 
 
+def test_backtest_splits_empty_dataframe(engine):
+    if engine == "pandas":
+        series = pd.DataFrame(
+            {
+                "unique_id": pd.Series([], dtype=object),
+                "ds": pd.Series([], dtype="datetime64[ns]"),
+                "y": pd.Series([], dtype=np.float64),
+            }
+        )
+        freq = pd.offsets.Day()
+    else:
+        series = pl.DataFrame(
+            schema={
+                "unique_id": pl.Utf8,
+                "ds": pl.Datetime,
+                "y": pl.Float64,
+            }
+        )
+        freq = "1d"
+
+    assert_raises_with_message(
+        lambda: list(
+            backtest_splits(
+                series,
+                n_windows=1,
+                h=1,
+                id_col="unique_id",
+                time_col="ds",
+                freq=freq,
+            )
+        ),
+        "at least 2 samples are required",
+    )
+
+
+def test_backtest_splits_incomparable_ids_fall_back_to_mask_path(monkeypatch):
+    series = pd.DataFrame(
+        {
+            "unique_id": ["a", 1, "a", 1, "a", 1],
+            "ds": pd.to_datetime(
+                [
+                    "2020-01-01",
+                    "2020-01-01",
+                    "2020-01-02",
+                    "2020-01-02",
+                    "2020-01-03",
+                    "2020-01-03",
+                ]
+            ),
+            "y": np.arange(6),
+        }
+    )
+    mask_calls = 0
+    orig_mask = ufp._single_split
+
+    def counting_mask(*args, **kwargs):
+        nonlocal mask_calls
+        mask_calls += 1
+        return orig_mask(*args, **kwargs)
+
+    def fail_fast_path(*args, **kwargs):
+        raise AssertionError("incomparable ids should use the mask-based splitter")
+
+    monkeypatch.setattr(ufp, "_single_split", counting_mask)
+    monkeypatch.setattr(ufp, "_single_split_sorted", fail_fast_path)
+
+    splits = list(
+        backtest_splits(
+            series,
+            n_windows=1,
+            h=1,
+            id_col="unique_id",
+            time_col="ds",
+            freq=pd.offsets.Day(),
+        )
+    )
+
+    assert len(splits) == 1
+    assert mask_calls == 1
+
+
+def test_backtest_splits_missing_ids_fall_back_to_mask_path(monkeypatch, engine):
+    if engine == "pandas":
+        series = pd.DataFrame(
+            {
+                "unique_id": pd.Categorical([None, None, "a", "a", "b", "b"]),
+                "ds": pd.to_datetime(
+                    [
+                        "2020-01-01",
+                        "2020-01-02",
+                        "2020-01-01",
+                        "2020-01-02",
+                        "2020-01-01",
+                        "2020-01-02",
+                    ]
+                ),
+                "y": np.arange(6),
+            }
+        )
+        freq = pd.offsets.Day()
+    else:
+        series = pl.DataFrame(
+            {
+                "unique_id": [None, None, "a", "a", "b", "b"],
+                "ds": [
+                    dt(2020, 1, 1),
+                    dt(2020, 1, 2),
+                    dt(2020, 1, 1),
+                    dt(2020, 1, 2),
+                    dt(2020, 1, 1),
+                    dt(2020, 1, 2),
+                ],
+                "y": np.arange(6),
+            },
+            schema_overrides={"unique_id": pl.Utf8},
+        )
+        freq = "1d"
+    mask_calls = 0
+    orig_mask = ufp._single_split
+
+    def counting_mask(*args, **kwargs):
+        nonlocal mask_calls
+        mask_calls += 1
+        return orig_mask(*args, **kwargs)
+
+    def fail_fast_path(*args, **kwargs):
+        raise AssertionError("missing ids should use the mask-based splitter")
+
+    monkeypatch.setattr(ufp, "_single_split", counting_mask)
+    monkeypatch.setattr(ufp, "_single_split_sorted", fail_fast_path)
+
+    splits = list(
+        backtest_splits(
+            series,
+            n_windows=1,
+            h=1,
+            id_col="unique_id",
+            time_col="ds",
+            freq=freq,
+        )
+    )
+
+    assert len(splits) == 1
+    assert mask_calls == 1
+
+
 def _test_backtest_splits(df, n_windows, h, step_size, input_size):
     max_dates = df.groupby("unique_id", observed=True)["ds"].max()
     day_offset = pd.offsets.Day()
@@ -849,6 +1030,141 @@ def test_backtest_splits_polars_alignment():
 
         pl.testing.assert_series_equal(valid_starts["ds"], expected_valid_starts)
         pl.testing.assert_series_equal(valid_ends["ds"], expected_valid_ends)
+
+
+@pytest.mark.parametrize("engine", ["pandas"] + (["polars"] if POLARS_INSTALLED else []))
+def test_backtest_splits_sorted_uses_fast_path(monkeypatch, engine):
+    """Sorted inputs should use the lower-memory boundary-based splitter."""
+    series = generate_series(20, freq="D", min_length=100, max_length=300, engine=engine)
+    n_windows = 3
+    freq = pd.offsets.Day() if engine == "pandas" else "1d"
+    fast_calls = 0
+    orig_fast = ufp._single_split_sorted
+
+    def counting_fast(*args, **kwargs):
+        nonlocal fast_calls
+        fast_calls += 1
+        return orig_fast(*args, **kwargs)
+
+    def fail_mask_path(*args, **kwargs):
+        raise AssertionError("sorted inputs should not use the mask-based splitter")
+
+    def fail_sort_indices(*args, **kwargs):
+        raise AssertionError("backtest_splits should only check sortedness")
+
+    monkeypatch.setattr(ufp, "maybe_compute_sort_indices", fail_sort_indices)
+    monkeypatch.setattr(ufp, "_single_split_sorted", counting_fast)
+    monkeypatch.setattr(ufp, "_single_split", fail_mask_path)
+
+    splits = list(
+        backtest_splits(
+            series,
+            n_windows=n_windows,
+            h=14,
+            id_col="unique_id",
+            time_col="ds",
+            freq=freq,
+        )
+    )
+
+    assert len(splits) == n_windows
+    assert fast_calls == n_windows
+
+
+@pytest.mark.parametrize("engine", ["pandas"] + (["polars"] if POLARS_INSTALLED else []))
+def test_backtest_splits_unsorted_falls_back_to_mask_path(monkeypatch, engine):
+    """Unsorted inputs should preserve the original mask-based behavior."""
+    series = generate_series(20, freq="D", min_length=100, max_length=300, engine=engine)
+    if engine == "pandas":
+        permuted = series.sample(frac=1.0, random_state=0)
+        freq = pd.offsets.Day()
+    else:
+        permuted = series.sample(fraction=1.0, shuffle=True, seed=0)
+        freq = "1d"
+    n_windows = 3
+    mask_calls = 0
+    orig_mask = ufp._single_split
+
+    def counting_mask(*args, **kwargs):
+        nonlocal mask_calls
+        mask_calls += 1
+        return orig_mask(*args, **kwargs)
+
+    def fail_fast_path(*args, **kwargs):
+        raise AssertionError("unsorted inputs should not use the fast splitter")
+
+    def fail_sort_indices(*args, **kwargs):
+        raise AssertionError("backtest_splits should not materialize sort indices")
+
+    monkeypatch.setattr(ufp, "maybe_compute_sort_indices", fail_sort_indices)
+    monkeypatch.setattr(ufp, "_single_split", counting_mask)
+    monkeypatch.setattr(ufp, "_single_split_sorted", fail_fast_path)
+
+    splits = list(
+        backtest_splits(
+            permuted,
+            n_windows=n_windows,
+            h=14,
+            id_col="unique_id",
+            time_col="ds",
+            freq=freq,
+        )
+    )
+
+    assert len(splits) == n_windows
+    assert mask_calls == n_windows
+
+
+@pytest.mark.parametrize("engine", ["pandas"] + (["polars"] if POLARS_INSTALLED else []))
+def test_backtest_splits_sorted_matches_original(engine):
+    series = generate_series(
+        20, freq="D", min_length=100, max_length=300, engine=engine
+    )
+    freq = pd.offsets.Day() if engine == "pandas" else "1d"
+    kwargs = dict(
+        n_windows=3,
+        h=14,
+        id_col="unique_id",
+        time_col="ds",
+        freq=freq,
+    )
+    if engine == "pandas":
+        fast = [
+            (train.reset_index(drop=True), valid.reset_index(drop=True))
+            for _, train, valid in backtest_splits(series, **kwargs)
+        ]
+        shuffled = series.sample(frac=1.0, random_state=0)
+        slow = [
+            (
+                train.sort_values(["unique_id", "ds"]).reset_index(drop=True),
+                valid.sort_values(["unique_id", "ds"]).reset_index(drop=True),
+            )
+            for _, train, valid in backtest_splits(shuffled, **kwargs)
+        ]
+
+        for (fast_train, fast_valid), (slow_train, slow_valid) in zip(fast, slow):
+            pd.testing.assert_frame_equal(fast_train, slow_train)
+            pd.testing.assert_frame_equal(fast_valid, slow_valid)
+    else:
+        fast = [
+            (
+                train.sort(["unique_id", "ds"]),
+                valid.sort(["unique_id", "ds"]),
+            )
+            for _, train, valid in backtest_splits(series, **kwargs)
+        ]
+        shuffled = series.sample(fraction=1.0, shuffle=True, seed=0)
+        slow = [
+            (
+                train.sort(["unique_id", "ds"]),
+                valid.sort(["unique_id", "ds"]),
+            )
+            for _, train, valid in backtest_splits(shuffled, **kwargs)
+        ]
+
+        for (fast_train, fast_valid), (slow_train, slow_valid) in zip(fast, slow):
+            pl.testing.assert_frame_equal(fast_train, slow_train)
+            pl.testing.assert_frame_equal(fast_valid, slow_valid)
 
 
 def test_add_insample_levels_agreement():

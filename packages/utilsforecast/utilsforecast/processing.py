@@ -111,6 +111,34 @@ def maybe_compute_sort_indices(
     return sort_idxs
 
 
+def _is_sorted(df: DataFrame, id_col: str, time_col: str) -> bool:
+    ids = df[id_col]
+    times = df[time_col]
+    if isinstance(df, pd.DataFrame):
+        if ids.hasnans:
+            return False
+        if isinstance(ids.dtype, pd.CategoricalDtype):
+            ids = ids.cat.codes
+        ids = ids.to_numpy()
+        times = times.to_numpy()
+    elif ids.has_nulls():
+        return False
+    try:
+        ids_are_sorted = (ids[:-1] <= ids[1:]).all()
+    except TypeError:
+        return False
+    if not ids_are_sorted:
+        return False
+    try:
+        times_are_sorted = (
+            (times[:-1] < times[1:])
+            | (ids[:-1] != ids[1:])
+        ).all()
+    except TypeError:
+        return False
+    return bool(times_are_sorted)
+
+
 def assign_columns(
     df: DataFrame,
     names: Union[str, List[str]],
@@ -710,6 +738,91 @@ class DataFrameProcessor:
         return process_df(df, self.id_col, self.time_col, self.target_col)
 
 
+def _find_boundaries(
+    times: np.ndarray,
+    indptr: np.ndarray,
+    bounds: np.ndarray,
+) -> np.ndarray:
+    if indptr.size <= 1:
+        return np.empty(0, dtype=np.int64)
+    sizes = np.diff(indptr)
+    counts = np.add.reduceat(times <= np.repeat(bounds, sizes), indptr[:-1])
+    return indptr[:-1] + counts.astype(np.int64, copy=False)
+
+
+def _ranges_to_indexer(starts: np.ndarray, stops: np.ndarray) -> np.ndarray:
+    lens = np.maximum(stops - starts, 0)
+    total = int(lens.sum())
+    offsets = np.zeros(lens.size + 1, dtype=np.int64)
+    np.cumsum(lens, out=offsets[1:])
+    return (
+        np.repeat(starts, lens)
+        + np.arange(total, dtype=np.int64)
+        - np.repeat(offsets[:-1], lens)
+    )
+
+
+def _single_split_sorted(
+    df: DataFrame,
+    uids: Series,
+    indptr: np.ndarray,
+    times: np.ndarray,
+    last_times: Series,
+    i_window: int,
+    n_windows: int,
+    h: int,
+    id_col: str,
+    freq: Union[int, str, pd.offsets.BaseOffset],
+    step_size: Optional[int] = None,
+    input_size: Optional[int] = None,
+    allow_partial_horizons: bool = False,
+) -> Tuple[DataFrame, np.ndarray, np.ndarray]:
+    if step_size is None:
+        step_size = h
+    if allow_partial_horizons:
+        test_size = step_size * n_windows
+    else:
+        test_size = h + step_size * (n_windows - 1)
+    offset = test_size - i_window * step_size
+    train_ends = offset_times(last_times, freq, -offset)
+    valid_ends = offset_times(train_ends, freq, h)
+    train_stops = _find_boundaries(times, indptr, np.asarray(train_ends))
+    valid_stops = _find_boundaries(times, indptr, np.asarray(valid_ends))
+    if input_size is None:
+        train_starts = indptr[:-1].astype(np.int64, copy=True)
+    else:
+        train_start_times = offset_times(train_ends, freq, -input_size)
+        train_starts = _find_boundaries(times, indptr, np.asarray(train_start_times))
+    train_sizes = train_stops - train_starts
+    zeros_mask = train_sizes == 0
+    if zeros_mask.all():
+        raise ValueError(
+            "All series are too short for the cross validation settings, "
+            f"at least {offset + 1} samples are required.\n"
+            "Please reduce `n_windows` or `h`."
+        )
+    if zeros_mask.any():
+        ids = filter_with_mask(uids, zeros_mask)
+        warnings.warn(
+            "The following series are too short for the window "
+            f"and will be dropped: {reprlib.repr(list(ids))}"
+        )
+        valid_stops = valid_stops.copy()
+        valid_stops[zeros_mask] = train_stops[zeros_mask]
+    if isinstance(df, pd.DataFrame):
+        cutoffs = pd.DataFrame(
+            {
+                id_col: uids.reset_index(drop=True),
+                "cutoff": pd.Series(train_ends).reset_index(drop=True),
+            }
+        )
+    else:
+        cutoffs = pl_DataFrame({id_col: uids, "cutoff": train_ends})
+    train_idxs = _ranges_to_indexer(train_starts, train_stops)
+    valid_idxs = _ranges_to_indexer(train_stops, valid_stops)
+    return cutoffs, train_idxs, valid_idxs
+
+
 def _single_split(
     df: DataFrame,
     i_window: int,
@@ -790,6 +903,33 @@ def backtest_splits(
     input_size: Optional[int] = None,
     allow_partial_horizons: bool = False,
 ) -> Generator[Tuple[DataFrame, DataFrame, DataFrame], None, None]:
+    if _is_sorted(df=df, id_col=id_col, time_col=time_col):
+        id_counts = counts_by_id(df, id_col)
+        uids = id_counts[id_col]
+        sizes = id_counts["counts"].to_numpy()
+        indptr = np.append(0, sizes.cumsum()).astype(np.int64)
+        times = df[time_col].to_numpy()
+        last_times = take_rows(df[time_col], indptr[1:] - 1)
+        for i in range(n_windows):
+            cutoffs, train_idxs, valid_idxs = _single_split_sorted(
+                df=df,
+                uids=uids,
+                indptr=indptr,
+                times=times,
+                last_times=last_times,
+                i_window=i,
+                n_windows=n_windows,
+                h=h,
+                id_col=id_col,
+                freq=freq,
+                step_size=step_size,
+                input_size=input_size,
+                allow_partial_horizons=allow_partial_horizons,
+            )
+            train = take_rows(df, train_idxs)
+            valid = take_rows(df, valid_idxs)
+            yield cutoffs, train, valid
+        return
     if isinstance(df, pd.DataFrame):
         max_dates = df.groupby(id_col, observed=True)[time_col].transform("max")
     else:
