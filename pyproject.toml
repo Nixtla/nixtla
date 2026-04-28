@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "nixtla"
-version = "0.7.3"
+version = "0.7.4.dev1"
 description = "Python SDK for Nixtla API (TimeGPT)"
 authors = [
     {name = "Nixtla", email = "business@nixtla.io"}
@@ -37,7 +37,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black",
     "datasetsforecast",
     "fire",
     "hierarchicalforecast",
@@ -70,9 +69,9 @@ dev = [
 ]
 distributed = [
     "fugue[dask,ray,spark]>=0.9.6",
-    "dask<=2024.12.1",
+    "dask",
     "pandas<2.2",
-    "ray<=2.52.1",
+    "ray<=2.54.0",
 ]
 plotting = [
     "utilsforecast[plotting]",

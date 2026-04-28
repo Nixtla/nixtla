@@ -62,7 +62,7 @@ All necessary code and detailed instructions for reproducing the experiment are 
 
 ### **Instructions**
 
-1. **Get an API Key** from the [Nixtla Dashboard](https://dashboard.nixtla.io/). Copy it and paste it into the `.env.example` file. Rename the file to `.env`.
+1. **Get an API Key** from the [Nixtla Dashboard](https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/experiments/vn1-competition). Copy it and paste it into the `.env.example` file. Rename the file to `.env`.
 
 2. **Set up [uv](https://github.com/astral-sh/uv):**
 
