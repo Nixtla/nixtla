@@ -17,6 +17,7 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Sequence,
     Tuple,
     Union,
 )
@@ -215,6 +216,7 @@ class TimeSeries:
         target_transforms: Optional[List[TargetTransform]] = None,
         lag_transforms_namer: Optional[Callable] = None,
         date_features_as_dummies: bool = False,
+        drop_auxiliary_columns: Union[bool, Sequence[str]] = True,
     ):
         self.freq = freq
         self.date_features_as_dummies = date_features_as_dummies
@@ -243,6 +245,7 @@ class TimeSeries:
                     "Can't use a lambda as a date feature because the function name gets used as the feature name."
                 )
         self.lag_transforms_namer = lag_transforms_namer
+        self.drop_auxiliary_columns = drop_auxiliary_columns
         self.transforms = _parse_transforms(
             lags=self.lags,
             lag_transforms=self.lag_transforms,
@@ -518,6 +521,24 @@ class TimeSeries:
         self.features_order_ = [c for c in df.columns if c not in to_drop and c not in raw_date_sources] + [
             f for f in self.features if f not in df.columns
         ]
+        if self.drop_auxiliary_columns is True:
+            to_exclude = {
+                col
+                for tfm in self.transforms.values()
+                if isinstance(tfm, _BaseLagTransform)
+                for col in (getattr(tfm, "groupby", None) or [])
+            }
+        elif self.drop_auxiliary_columns is False:
+            to_exclude = set()
+        else:
+            to_exclude = set(self.drop_auxiliary_columns)
+            unknown = [f for f in to_exclude if f not in self.features_order_]
+            if unknown:
+                warnings.warn(
+                    f"The following drop_auxiliary_columns were not found in the feature set: {unknown}",
+                    UserWarning,
+                )
+        self.features_order_ = [f for f in self.features_order_ if f not in to_exclude]
         self._group_states: Dict[Tuple[str, ...], Dict[str, Any]] = {}
         group_tfms = self._get_group_tfms()
         if group_tfms:
