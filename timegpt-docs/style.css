@@ -9,7 +9,7 @@
 
 @font-face {
   font-family: "NeueMontreal";
-  src: url("./fonts/ppneuemontreal-medium.otf") format("opentype");
+  src: url("./fonts/PPNeueMontreal-Medium.woff2") format("woff2");
   font-weight: 500;
   font-display: swap;
 }
@@ -23,9 +23,7 @@
 
 @font-face {
   font-family: "Supply";
-  src:
-    url("./fonts/PPSupplyMono-Regular.woff2") format("woff2"),
-    url("./fonts/Supply-Regular.otf") format("opentype");
+  src: url("./fonts/PPSupplyMono-Regular.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
