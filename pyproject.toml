@@ -71,7 +71,7 @@ distributed = [
     "fugue[dask,ray,spark]>=0.9.6",
     "dask",
     "pandas<2.2",
-    "ray<=2.54.0",
+    "ray<=2.55.0",
 ]
 plotting = [
     "utilsforecast[plotting]",
