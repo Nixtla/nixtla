@@ -3,6 +3,7 @@ name: Upload Python Packages
 on:
   push:
     tags: ['v*']
+    branches: ['main']   # tag must be reachable from main branch
 
 jobs:
   deploy:

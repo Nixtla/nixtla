@@ -125,7 +125,7 @@ _ExtraParamDataType = Annotated[
     Optional[Dict[str, Any]], AfterValidator(validate_extra_params)
 ]
 extra_param_checker = TypeAdapter(_ExtraParamDataType)
-_Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
+_Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape", "poisson"]
 _Model = str
 _FinetuneDepth = Literal[1, 2, 3, 4, 5]
 _Freq = Union[str, int, pd.offsets.BaseOffset]
