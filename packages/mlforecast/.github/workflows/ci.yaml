@@ -36,7 +36,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@658a901452bb54c799643e060733b7afe9121b8d # 4.14.0
+        uses: CodSpeedHQ/action@c381be0bfd20e844fb45594f6aa182ffcd94545c # 4.15.0
         with:
           mode: simulation
           token: ${{ secrets.CODESPEED_TOKEN }}
