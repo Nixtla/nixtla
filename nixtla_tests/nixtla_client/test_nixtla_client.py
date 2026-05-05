@@ -314,6 +314,43 @@ def test_num_partitions_same_results_parametrized(
 
 
 @pytest.mark.parametrize(
+    "method_name,method_kwargs",
+    [
+        ("forecast", {"h": 7}),
+        ("cross_validation", {"h": 7, "n_windows": 2}),
+        (
+            "detect_anomalies_online",
+            {"h": 20, "detection_size": 5, "threshold_method": "univariate"},
+        ),
+    ],
+)
+def test_num_partitions_hist_exog_no_x_df(
+    nixtla_test_client, df_freq_generator, method_name, method_kwargs
+):
+    # Regression for GH #806: when hist_exog_list is set but X_df is None,
+    # _partition_series previously raised because series["X"] was populated
+    # but series["X_future"] was None (only reached when h > 0, i.e.
+    # forecast / cross_validation). detect_anomalies lacks hist_exog_list so
+    # it is covered by test_num_partitions_same_results_parametrized instead.
+    df = df_freq_generator(n_series=4, min_length=200, max_length=220, freq="D")
+    df["hist_exog"] = 1.0
+
+    method_mapper = {
+        "forecast": nixtla_test_client.forecast,
+        "cross_validation": nixtla_test_client.cross_validation,
+        "detect_anomalies_online": nixtla_test_client.detect_anomalies_online,
+    }
+
+    check_num_partitions_same_results(
+        method=method_mapper[method_name],
+        num_partitions=2,
+        df=df,
+        hist_exog_list=["hist_exog"],
+        **method_kwargs,
+    )
+
+
+@pytest.mark.parametrize(
     "freq,h",
     [
         ("D", 7),
