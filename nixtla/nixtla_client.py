@@ -329,9 +329,12 @@ def _partition_series(
         else:
             part_series["X"] = [x[part_idxs] for x in series["X"]]
             if h > 0:
-                part_series["X_future"] = [
-                    x[i * h : (i + series_per_part) * h] for x in series["X_future"]
-                ]
+                if series["X_future"] is None: 
+                    part_series["X_future"] = None
+                else:
+                    part_series["X_future"] = [
+                        x[i * h : (i + series_per_part) * h] for x in series["X_future"]
+                    ]
         if "categorical_exog" in series:
             part_series["categorical_exog"] = series["categorical_exog"]
         parts.append({"series": part_series, **payload})
