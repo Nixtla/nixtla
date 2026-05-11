@@ -513,7 +513,7 @@ class Bootstrap:
     base sample paths that are latered reconciled. This clever idea and its
     simplicity allows to generate coherent bootstraped prediction intervals
     for any reconciliation strategy. This class is meant to be used as the `sampler`
-    input as other `HierarchicalForecast` [reconciliation classes](./methods).
+    input as other `HierarchicalForecast` [reconciliation classes](./methods.html).
 
     Given a boostraped set of simulated sample paths:
     ```math

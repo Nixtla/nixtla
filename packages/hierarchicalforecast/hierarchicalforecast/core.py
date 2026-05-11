@@ -228,8 +228,8 @@ class HierarchicalReconciliation:
     HierarchicaForecast methods for a collection of time series and base predictions stored in
     pandas DataFrames. The `Y_df` dataframe identifies series and datestamps with the unique_id and ds columns while the
     y column denotes the target time series variable. The `Y_h` dataframe stores the base predictions,
-    example ([AutoARIMA](../../../statsforecast/src/core/models.html#autoarima),
-    [ETS](../../../statsforecast/src/core/models.html#autoets), etc.).
+    example ([AutoARIMA](../statsforecast/src/core/models.html#autoarima),
+    [ETS](../statsforecast/src/core/models.html#autoets), etc.).
 
     Args:
         - reconcilers (list[HReconciler]): A list of instantiated classes of the [reconciliation methods](./methods.html) module.
@@ -913,7 +913,7 @@ class HierarchicalReconciliation:
 
         Args:
             Y_hat_df (Frame): DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile.
-            S_df (Frame): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](./utils#function-aggregate).
+            S_df (Frame): DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](./utils.html#aggregate).
             tags (dict[str, np.ndarray]): Each key is a level and its value contains tags associated to that level.
             Y_df (Optional[Frame], optional): DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`.
                 If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns. Default is None.
