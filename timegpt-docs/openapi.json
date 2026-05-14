@@ -2059,9 +2059,10 @@
     },
     "/v2/historic_forecast": {
       "post": {
-        "summary": "Foundational Time Series Model Multi Series Historic",
-        "description": "Based on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "summary": "Foundational Time Series Model Multi Series Historic (Deprecated)",
+        "description": "**Deprecated:** This endpoint is deprecated and will be removed in a future release. Please use [`/v2/cross_validation`](#tag/default/POST/v2/cross_validation) instead, which offers equivalent in-sample evaluation capabilities through rolling-window cross validation.\n\nBased on the provided data, this endpoint predicts the in-sample period (historical period) values of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the predicted values for the historical period. Usually useful for anomaly detection. Get your token for private beta at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_historic_forecast_v2_historic_forecast_post",
+        "deprecated": true,
         "requestBody": {
           "content": {
             "application/json": {
