@@ -226,3 +226,17 @@ def test_get_request_empty_body_is_retried():
 
     assert excinfo.value.status_code == 408
     assert mock_http_client.get.call_count == 3
+
+
+def test_client_version_header_is_registered(monkeypatch):
+    monkeypatch.setattr(
+        "nixtla.nixtla_client._resolve_nixtla_client_version", lambda: "9.9.9"
+    )
+    client = NixtlaClient(api_key="dummy")
+    assert client._client_kwargs["headers"]["nixtla-client-version"] == "9.9.9"
+
+
+def test_client_version_header_not_registered_without_metadata(monkeypatch):
+    monkeypatch.setattr("nixtla.nixtla_client._resolve_nixtla_client_version", lambda: None)
+    client = NixtlaClient(api_key="dummy")
+    assert "nixtla-client-version" not in client._client_kwargs["headers"]

@@ -2,6 +2,7 @@ __all__ = ["ApiError", "NixtlaClient"]
 
 import datetime
 from http import HTTPStatus
+from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
@@ -96,6 +97,13 @@ DistributedDFType = TypeVar(
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
+
+
+def _resolve_nixtla_client_version() -> Optional[str]:
+    try:
+        return version("nixtla")
+    except PackageNotFoundError:
+        return None
 
 
 def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -944,12 +952,16 @@ class NixtlaClient:
             api_key = os.environ["NIXTLA_API_KEY"]
         if base_url is None:
             base_url = os.getenv("NIXTLA_BASE_URL") or "https://api.nixtla.io"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        client_version = _resolve_nixtla_client_version()
+        if client_version is not None:
+            headers["nixtla-client-version"] = client_version
         self._client_kwargs = {
             "base_url": base_url,
-            "headers": {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            "headers": headers,
             "timeout": timeout,
         }
         self._retry_strategy = _retry_strategy(
