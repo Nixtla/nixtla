@@ -30,6 +30,7 @@
         "pages": [
           "docs/how-to-guides/exogenous_features.html",
           "docs/how-to-guides/lag_transforms_guide.html",
+          "docs/how-to-guides/pooled_lag_transforms.html",
           "docs/how-to-guides/hyperparameter_optimization.html",
           "docs/how-to-guides/sklearn_pipelines.html",
           "docs/how-to-guides/sample_weights.html",

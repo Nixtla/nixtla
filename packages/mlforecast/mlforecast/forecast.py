@@ -419,6 +419,21 @@ class MLForecast:
         # Run data validations if requested
         if validate_data:
             self._validate_data(df, id_col, time_col)
+        else:
+            has_pooled = any(
+                getattr(v, "global_", False) or getattr(v, "groupby", None)
+                for v in self.ts.transforms.values()
+            )
+            if has_pooled:
+                warnings.warn(
+                    "Pooled (global/groupby) lag transforms assume a continuous, "
+                    "gap-free time grid. Data validation has been disabled "
+                    "(validate_data=False), so timestamp gaps may silently "
+                    "produce incorrect feature values. Consider enabling "
+                    "validation or pre-validating your data.",
+                    UserWarning,
+                    stacklevel=2,
+                )
         self.ts.horizon_features_ = self._resolve_horizon_features(
             df=df,
             id_col=id_col,
@@ -1483,24 +1498,30 @@ class MLForecast:
         for i_window, (cutoffs, train, valid) in enumerate(splits):
             should_fit = i_window == 0 or (refit > 0 and i_window % refit == 0)
             if should_fit:
-                self.fit(
-                    train,
-                    id_col=id_col,
-                    time_col=time_col,
-                    target_col=target_col,
-                    static_features=static_features,
-                    dropna=dropna,
-                    keep_last_n=keep_last_n,
-                    max_horizon=max_horizon,
-                    horizons=horizons,
-                    horizon_features=horizon_features,
-                    horizon_feature_templates=horizon_feature_templates,
-                    prediction_intervals=prediction_intervals,
-                    fitted=fitted,
-                    as_numpy=as_numpy,
-                    weight_col=weight_col,
-                    validate_data=False,
-                )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message="Pooled.*validate_data",
+                        category=UserWarning,
+                    )
+                    self.fit(
+                        train,
+                        id_col=id_col,
+                        time_col=time_col,
+                        target_col=target_col,
+                        static_features=static_features,
+                        dropna=dropna,
+                        keep_last_n=keep_last_n,
+                        max_horizon=max_horizon,
+                        horizons=horizons,
+                        horizon_features=horizon_features,
+                        horizon_feature_templates=horizon_feature_templates,
+                        prediction_intervals=prediction_intervals,
+                        fitted=fitted,
+                        as_numpy=as_numpy,
+                        weight_col=weight_col,
+                        validate_data=False,
+                    )
                 cv_models.append(self.models_)
                 if fitted:
                     cv_fitted_values.append(
@@ -1511,22 +1532,28 @@ class MLForecast:
                     for tfm in self.ts.target_transforms:
                         if hasattr(tfm, "store_fitted"):
                             tfm.store_fitted = True
-                prep = self.preprocess(
-                    train,
-                    id_col=id_col,
-                    time_col=time_col,
-                    target_col=target_col,
-                    static_features=static_features,
-                    dropna=dropna,
-                    keep_last_n=keep_last_n,
-                    max_horizon=max_horizon,
-                    horizons=horizons,
-                    horizon_features=horizon_features,
-                    horizon_feature_templates=horizon_feature_templates,
-                    return_X_y=False,
-                    weight_col=weight_col,
-                    validate_data=False,
-                )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message="Pooled.*validate_data",
+                        category=UserWarning,
+                    )
+                    prep = self.preprocess(
+                        train,
+                        id_col=id_col,
+                        time_col=time_col,
+                        target_col=target_col,
+                        static_features=static_features,
+                        dropna=dropna,
+                        keep_last_n=keep_last_n,
+                        max_horizon=max_horizon,
+                        horizons=horizons,
+                        horizon_features=horizon_features,
+                        horizon_feature_templates=horizon_feature_templates,
+                        return_X_y=False,
+                        weight_col=weight_col,
+                        validate_data=False,
+                    )
                 assert not isinstance(prep, tuple)
                 effective_max_horizon = self.ts.max_horizon
                 base = prep[[id_col, time_col]]
