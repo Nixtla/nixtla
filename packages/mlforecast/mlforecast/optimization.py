@@ -108,6 +108,12 @@ def mlforecast_objective(
     """
     def objective(trial: optuna.Trial) -> float:
         config = copy.deepcopy(config_fn(trial))
+        if all(
+            config["mlf_init_params"].get(k) is None
+            for k in ("lags", "lag_transforms", "date_features")
+        ):
+            trial.set_user_attr("config", copy.deepcopy(config))
+            return float("inf")
         model_copy = clone(model)
         model_params = config["model_params"]
         static_features = config["mlf_fit_params"].get("static_features", [])
