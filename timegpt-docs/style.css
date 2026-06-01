@@ -148,10 +148,11 @@ p {
 
 .eyebrow-sm,
 #sidebar-title,
-#table-of-contents button {
+#table-of-contents button,
+#table-of-contents button span {
   font-family: "Supply", monospace !important;
   font-weight: 400 !important;
-  font-size: 12px;
+  font-size: 12px !important;
   text-transform: uppercase;
   font-stretch: expanded;
   line-height: 92%;
@@ -160,7 +161,8 @@ p {
 @media (max-width: 767px) {
   .eyebrow-sm,
   #sidebar-title,
-  #table-of-contents button {
+  #table-of-contents button,
+  #table-of-contents button span {
     line-height: 122%;
   }
 }
