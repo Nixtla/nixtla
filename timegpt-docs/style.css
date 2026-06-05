@@ -316,21 +316,21 @@ html.dark #navigation-items a.nav-anchor:hover {
 }
 
 /* Active navigation item */
-#sidebar-group a[class*="bg-primary"] {
+.sidebar-group a[class*="bg-primary"] {
   background-color: var(--active-nav-item) !important;
   color: var(--primary) !important;
 }
 
-#sidebar-group a[class*="bg-primary"] svg {
+.sidebar-group a[class*="bg-primary"] svg {
   background-color: var(--primary) !important;
 }
 
-html.dark #sidebar-group a[class*="bg-primary"] {
+html.dark .sidebar-group a[class*="bg-primary"] {
   background-color: var(--active-nav-item) !important;
   color: var(--primary) !important;
 }
 
-html.dark #sidebar-group a[class*="bg-primary"] svg {
+html.dark .sidebar-group a[class*="bg-primary"] svg {
   background-color: var(--primary) !important;
 }
 
