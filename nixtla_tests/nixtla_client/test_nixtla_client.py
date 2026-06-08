@@ -458,7 +458,6 @@ def test_shap_features(nixtla_test_client, date_features_result):
     )
 
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
 def test_exogenous_variables_cv(nixtla_test_client, exog_data, hyp):
     df_ex_, df_train, df_test, x_df_test = exog_data
@@ -476,7 +475,6 @@ def test_exogenous_variables_cv(nixtla_test_client, exog_data, hyp):
         rtol=1e-3,
     )
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
 def test_forecast_vs_cv_no_exog(
     nixtla_test_client, train_test_split, air_passengers_renamed_df, hyp
@@ -496,7 +494,6 @@ def test_forecast_vs_cv_no_exog(
     )
 
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
 def test_forecast_vs_cv_insert_y(
     nixtla_test_client, train_test_split, air_passengers_renamed_df, hyp
