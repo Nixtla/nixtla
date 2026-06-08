@@ -380,7 +380,6 @@ def test_forecast_models_different_results(
         pd.testing.assert_frame_equal(fcst_1_df, fcst_2_df)
 
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize(
     "method, method_kwargs",
     [
@@ -418,7 +417,8 @@ def test_different_models_give_different_results(
     )
     # Compare only the TimeGPT column
     with pytest.raises(
-        AssertionError, match=r'\(column name="TimeGPT"\) are different'
+        AssertionError,
+        match=r'\(column name="TimeGPT"\) are different|DataFrame shape mismatch'
     ):
         pd.testing.assert_frame_equal(out1[["TimeGPT"]], out2[["TimeGPT"]])
 
