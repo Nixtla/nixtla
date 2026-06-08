@@ -630,7 +630,9 @@ def _preprocess(
     return processed, X_future, x_cols, futr_cols
 
 
-def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dict:
+def _forecast_payload_to_in_sample(
+    payload: dict, h: int, n_windows: int, full_history: bool = False
+) -> dict:
     # No finetuning for in-sample
     payload["finetune_steps"] = 0
 
@@ -649,6 +651,11 @@ def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dic
     payload["h"] = h
     payload["step_size"] = h
     payload["n_windows"] = n_windows
+
+    # When full_history is requested, the server derives the horizon and number
+    # of windows; the values above are sent as placeholders and ignored.
+    if full_history:
+        payload["full_history"] = True
 
     return payload
 
@@ -1485,6 +1492,7 @@ class NixtlaClient:
         categorical_exog_list: Optional[list[str]],
         validate_api_key: bool,
         add_history: bool,
+        full_history: bool,
         date_features: Union[bool, list[Union[str, Callable]]],
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
@@ -1547,6 +1555,7 @@ class NixtlaClient:
                 categorical_exog_list=categorical_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
+                full_history=full_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1580,6 +1589,7 @@ class NixtlaClient:
         categorical_exog_list: Optional[list[str]] = None,
         validate_api_key: bool = False,
         add_history: bool = False,
+        full_history: bool = False,
         date_features: Union[bool, list[Union[str, Callable]]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-1",
@@ -1654,6 +1664,10 @@ class NixtlaClient:
                 to False.
             add_history (bool): Return fitted values of the model. Defaults
                 to False.
+            full_history (bool): When `add_history=True`, forecast across the
+                entire series history. The in-sample horizon and number of
+                windows are derived server-side instead of client-side. Has no
+                effect unless `add_history=True`. Defaults to False.
             date_features (bool or list[str] or callable, optional): Features
                 computed from the dates. Can be pandas date attributes
                 or functions that will take the dates as input. If True
@@ -1708,6 +1722,7 @@ class NixtlaClient:
                 categorical_exog_list=categorical_exog_list,
                 validate_api_key=validate_api_key,
                 add_history=add_history,
+                full_history=full_history,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
@@ -1875,7 +1890,9 @@ class NixtlaClient:
                         clean_ex_first=clean_ex_first,
                         level=level,
                     )
-                    in_sample_payload = _forecast_payload_to_in_sample(payload, insample_h, n_windows)
+                    in_sample_payload = _forecast_payload_to_in_sample(
+                        payload, insample_h, n_windows, full_history=full_history
+                    )
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_request_with_retries(
                         client, "v2/cross_validation", in_sample_payload
@@ -1895,7 +1912,10 @@ class NixtlaClient:
                         level=level,
                     )
                     in_sample_payloads = [
-                        _forecast_payload_to_in_sample(p, insample_h, n_windows) for p in payloads
+                        _forecast_payload_to_in_sample(
+                            p, insample_h, n_windows, full_history=full_history
+                        )
+                        for p in payloads
                     ]
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
@@ -3246,6 +3266,7 @@ def _forecast_wrapper(
     categorical_exog_list: Optional[list[str]],
     validate_api_key: bool,
     add_history: bool,
+    full_history: bool,
     date_features: Union[bool, list[Union[str, Callable]]],
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
@@ -3279,6 +3300,7 @@ def _forecast_wrapper(
         categorical_exog_list=categorical_exog_list,
         validate_api_key=validate_api_key,
         add_history=add_history,
+        full_history=full_history,
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
