@@ -7,6 +7,7 @@ from nixtla_tests.helpers.checks import check_finetuned_model
 from nixtla_tests.helpers.states import model_ids_object
 
 
+@pytest.mark.skip(reason="server-site transition update")
 class TestTimeSeriesDataSet1:
     def test_finetuning_and_forecasting(self, custom_client, ts_data_set1):
         # Finetune the model
