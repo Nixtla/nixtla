@@ -650,6 +650,11 @@ def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dic
     payload["step_size"] = h
     payload["n_windows"] = n_windows
 
+    # The in-sample forecast (add_history workflow) always runs cross_validation
+    # in full_history mode: the server derives the horizon and number of windows,
+    # so the values above are sent as placeholders and ignored.
+    payload["full_history"] = True
+
     return payload
 
 def _get_in_sample_horizon_and_windows(
@@ -1875,7 +1880,9 @@ class NixtlaClient:
                         clean_ex_first=clean_ex_first,
                         level=level,
                     )
-                    in_sample_payload = _forecast_payload_to_in_sample(payload, insample_h, n_windows)
+                    in_sample_payload = _forecast_payload_to_in_sample(
+                        payload, insample_h, n_windows
+                    )
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_request_with_retries(
                         client, "v2/cross_validation", in_sample_payload
@@ -1895,7 +1902,8 @@ class NixtlaClient:
                         level=level,
                     )
                     in_sample_payloads = [
-                        _forecast_payload_to_in_sample(p, insample_h, n_windows) for p in payloads
+                        _forecast_payload_to_in_sample(p, insample_h, n_windows)
+                        for p in payloads
                     ]
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
