@@ -149,12 +149,12 @@ def test_add_date_features_with_exogenous_variables(
     )
 
 
-# --- _forecast_payload_to_in_sample (full_history passthrough) ---
-def test_forecast_payload_to_in_sample_default_omits_full_history(base_forecast_payload):
+# --- _forecast_payload_to_in_sample (add_history workflow) ---
+def test_forecast_payload_to_in_sample_always_sets_full_history(base_forecast_payload):
     payload = _forecast_payload_to_in_sample(base_forecast_payload, h=4, n_windows=2)
-    # Backward-compatible wire format: key is absent unless requested.
-    assert "full_history" not in payload
-    # In-sample derivation still sets horizon/windows.
+    # The add_history workflow always runs cross_validation in full_history mode.
+    assert payload["full_history"] is True
+    # h/step_size/n_windows are still populated as server-side-ignored placeholders.
     assert payload["h"] == 4
     assert payload["step_size"] == 4
     assert payload["n_windows"] == 2
@@ -162,14 +162,3 @@ def test_forecast_payload_to_in_sample_default_omits_full_history(base_forecast_
     assert payload["finetune_steps"] == 0
     assert "X_future" not in payload["series"]
     assert payload["hist_exog"] == [1]
-
-
-def test_forecast_payload_to_in_sample_full_history_true_sets_flag(base_forecast_payload):
-    payload = _forecast_payload_to_in_sample(
-        base_forecast_payload, h=4, n_windows=2, full_history=True
-    )
-    assert payload["full_history"] is True
-    # h/step_size/n_windows are still populated as ignored placeholders.
-    assert payload["h"] == 4
-    assert payload["step_size"] == 4
-    assert payload["n_windows"] == 2
