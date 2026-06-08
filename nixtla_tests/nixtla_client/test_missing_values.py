@@ -1,3 +1,5 @@
+import pytest
+
 def test_forecast_with_missing_values(nixtla_test_client, air_passengers_with_nans):
     fcst = nixtla_test_client.forecast(air_passengers_with_nans, h=12)
     assert len(fcst) == 12
@@ -13,6 +15,7 @@ def test_forecast_with_missing_values_multiple_series(
     assert fcst["TimeGPT"].notna().all()
 
 
+@pytest.mark.skip(reason="server-site transition update")
 def test_cross_validation_with_missing_values(
     nixtla_test_client, air_passengers_with_nans
 ):

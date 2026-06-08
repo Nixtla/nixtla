@@ -66,6 +66,24 @@ def series_with_gaps():
 
 
 @pytest.fixture
+def base_forecast_payload():
+    # Minimal forecast-style payload with one future and one historical exog
+    # feature. Returned fresh because _forecast_payload_to_in_sample mutates it.
+    return {
+        "series": {
+            "y": [1.0, 2.0, 3.0],
+            "sizes": [3],
+            "X": [[0.1, 0.2, 0.3], [1.0, 1.0, 1.0]],
+            "X_future": [[0.4]],
+        },
+        "h": 1,
+        "step_size": 1,
+        "n_windows": 1,
+        "finetune_steps": 5,
+    }
+
+
+@pytest.fixture
 def df_no_duplicates():
     return pd.DataFrame(
         {
