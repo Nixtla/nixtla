@@ -58,7 +58,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-rerunfailures",
-    "pyarrow<21.0.0",
+    "pyarrow==23.0.1",
     "mlforecast",
     "lightgbm",
     "utilsforecast[plotting]",
