@@ -176,7 +176,6 @@ def test_features_not_in_df_error(
         )
 
 
-@pytest.mark.skip(reason="server-site transition update")
 def test_setting_one_as_historic_and_other_as_future(
     nixtla_test_client, two_short_series_with_time_features_train_future
 ):
