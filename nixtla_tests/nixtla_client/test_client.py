@@ -185,7 +185,8 @@ def test_setting_one_as_historic_and_other_as_future(
     nixtla_test_client.forecast(
         train, h=5, X_df=future[["unique_id", "ds", "year"]], hist_exog_list=["month"]
     )
-    assert nixtla_test_client.weights_x["features"].tolist() == ["year", "month"]
+    # weights_x is in fact None as revised in server-side.
+    assert nixtla_test_client.weights_x is None
 
 
 def _make_empty_body_response(status_code: int) -> MagicMock:
