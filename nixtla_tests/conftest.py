@@ -616,7 +616,7 @@ HYPER_PARAMS_TEST = [
     dict(),
     dict(clean_ex_first=False),
     dict(date_features=["month"]),
-    # dict(level=[80, 90]),
+    dict(level=[80, 90]),
     # dict(level=[80, 90], finetune_steps=2),
 ]
 
