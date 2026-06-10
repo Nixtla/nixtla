@@ -24,6 +24,7 @@ from typing import (
 
 import cloudpickle
 import fsspec
+import narwhals as nw
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
@@ -205,6 +206,29 @@ def _parse_transforms(
                 tfm_name = namer(tfm, lag, *args)
                 transforms[tfm_name] = (lag, tfm, *args)
     return transforms
+
+
+def _static_feature_changes_over_time(start_series, end_series) -> bool:
+    """Whether a static feature differs between each series' start and end.
+
+    Backend-agnostic (narwhals) and null-safe: two missing values count as equal
+    (so an all-null static feature, e.g. a null groupby key, is not flagged as
+    changing), while a missing-vs-present pair counts as a change. Mirrors the
+    dtype-aware "missing" rule used for pooled bucket keys (null, plus NaN for
+    float dtypes).
+    """
+    a = nw.from_native(start_series, series_only=True)
+    b = nw.from_native(end_series, series_only=True)
+    a_missing = a.is_null()
+    b_missing = b.is_null()
+    if a.dtype.is_float():
+        a_missing = a_missing | a.is_nan()
+    if b.dtype.is_float():
+        b_missing = b_missing | b.is_nan()
+    both_missing = a_missing & b_missing
+    both_present_equal = (~a_missing) & (~b_missing) & (a == b)
+    changed = ~(both_missing | both_present_equal)
+    return bool(changed.fill_null(False).any())
 
 
 class TimeSeries:
@@ -502,7 +526,9 @@ class TimeSeries:
             ufp.take_rows(df, series_ends)[static_features]
         )
         for feat in static_features:
-            if (statics_on_starts[feat] != statics_on_ends[feat]).any():
+            if _static_feature_changes_over_time(
+                statics_on_starts[feat], statics_on_ends[feat]
+            ):
                 raise ValueError(
                     f"{feat} is declared as a static feature but its values change "
                     "over time. Please set the `static_features` argument to "

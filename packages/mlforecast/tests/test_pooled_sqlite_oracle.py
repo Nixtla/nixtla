@@ -432,3 +432,84 @@ def test_sparse_windows_nan_vs_value():
         df, transform_std, "RollingStd", lag=3,
         window_size=2, min_samples=2,
     )
+
+
+# ---------------------------------------------------------------------------
+# NULL groupby keys (SQL collapses all NULLs into one partition; our pooled
+# state must do the same). The oracle harness is pandas->SQLite, where to_sql
+# maps NaN/None -> SQL NULL, so it locks the SQL NULL-partition semantics.
+# (Polars-engine-origin NaN behavior is exercised in tests/test_pooled.py.)
+# ---------------------------------------------------------------------------
+
+
+def _groupby_string_null_df():
+    """String groupby key where two series share a NULL brand (-> one bucket)."""
+    return pd.DataFrame({
+        "unique_id": ["a"] * 8 + ["b"] * 8 + ["c"] * 8 + ["d"] * 8,
+        "ds": list(range(8)) * 4,
+        "y": [
+            1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0,
+            2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0,
+            10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0,
+            5.0, 15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0,
+        ],
+        "brand": ["X"] * 8 + [None] * 8 + [None] * 8 + ["Y"] * 8,
+    })
+
+
+def _groupby_numeric_null_df():
+    """Numeric groupby key with NaN (float) shared by two series (-> one bucket)."""
+    df = _groupby_string_null_df()
+    df["brand"] = pd.Series(
+        [1.0] * 8 + [np.nan] * 8 + [np.nan] * 8 + [2.0] * 8
+    )
+    return df
+
+
+@pytest.mark.parametrize(
+    "transform_factory,transform_name", _TRANSFORMS, ids=[t[1] for t in _TRANSFORMS]
+)
+@pytest.mark.parametrize("lag", [1, 2, 3])
+@pytest.mark.parametrize(
+    "df_factory", [_groupby_string_null_df, _groupby_numeric_null_df],
+    ids=["string-null", "numeric-null"],
+)
+def test_sqlite_oracle_groupby_null_key(transform_factory, transform_name, lag, df_factory):
+    df = df_factory()
+    group_cols = ["brand"]
+    transform = transform_factory(group_cols)
+    window_size = _WINDOW_SIZE if transform_name.startswith("Rolling") else None
+    assert_oracle_matches(
+        df, transform, transform_name, lag,
+        group_cols=group_cols,
+        window_size=window_size,
+    )
+
+
+@pytest.mark.parametrize("transform_name,tfm_factory", [
+    ("RollingMean", lambda gc: RollingMean(_WINDOW_SIZE, groupby=gc)),
+    ("RollingStd", lambda gc: RollingStd(_WINDOW_SIZE, groupby=gc)),
+])
+def test_multi_column_groupby_one_null_col(transform_name, tfm_factory):
+    """Multi-column key where exactly one column is NULL: (X, NULL) and
+    (X, 'north') stay distinct, while two (X, NULL) rows share a bucket."""
+    df = pd.DataFrame({
+        "unique_id": ["a"] * 6 + ["b"] * 6 + ["c"] * 6 + ["d"] * 6,
+        "ds": list(range(6)) * 4,
+        "y": [
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+            10.0, 20.0, 30.0, 40.0, 50.0, 60.0,
+            7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            70.0, 80.0, 90.0, 100.0, 110.0, 120.0,
+        ],
+        "brand": ["X"] * 12 + ["Y"] * 12,
+        "region": (["north"] * 6 + [None] * 6) * 2,
+    })
+    group_cols = ["brand", "region"]
+    transform = tfm_factory(group_cols)
+    window_size = _WINDOW_SIZE if transform_name.startswith("Rolling") else None
+    assert_oracle_matches(
+        df, transform, transform_name, lag=1,
+        group_cols=group_cols,
+        window_size=window_size,
+    )

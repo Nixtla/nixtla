@@ -628,3 +628,230 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
     pred_col = list(ts2.transforms.keys())[0]
     pred_vals = features[pred_col].to_numpy()
     assert not np.all(np.isnan(pred_vals)), f"predict returned all NaN for {pred_col}"
+
+
+# ---------------------------------------------------------------------------
+# Null/NaN groupby key support.
+#
+# A missing (null/NaN/None) value in a groupby key column must collapse all
+# missing values into a single bucket (SQL PARTITION BY semantics), identically
+# across pandas/polars and key dtypes, without crashing fit/predict/update.
+# ---------------------------------------------------------------------------
+from mlforecast.pooled import (  # noqa: E402
+    add_bucket_id,
+    lookup_bucket_ids,
+    _attach_bucket_id,
+    _extend_groups,
+)
+
+
+def _bids(df):
+    return np.asarray(df["_bucket_id"])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("key_kind", ["numeric", "string", "categorical"])
+def test_add_bucket_id_collapses_missing(engine, key_kind):
+    if key_kind == "numeric":
+        vals = [0.0, None, 0.0, 1.0, None]
+    else:
+        vals = ["a", None, "a", "b", None]
+    cat = ["g"] if key_kind == "categorical" else None
+    df = _make_df(engine, {"g": vals, "y": [1, 2, 3, 4, 5]}, categorical_cols=cat)
+    merged, groups = add_bucket_id(df, ["g"])
+    bids = _bids(merged)
+    # rows 1 & 4 (missing) share a bucket; rows 0 & 2 (repeated value) share one;
+    # row 3 (distinct value) is its own.
+    assert bids[1] == bids[4]
+    assert bids[0] == bids[2]
+    assert len({int(bids[0]), int(bids[1]), int(bids[3])}) == 3
+    assert len(groups) == 3
+    assert np.all(bids >= 0)  # no -9.2e18 / NaN garbage
+
+
+def test_polars_null_and_nan_collapse_to_one_bucket():
+    # Engine-origin behavior the SQLite oracle can't reach: a polars float column
+    # holding BOTH null and NaN must collapse them into a single missing bucket.
+    df = pl.DataFrame({
+        "g": [0.0, float("nan"), None, 1.0, float("nan"), None],
+        "y": list(range(6)),
+    })
+    merged, groups = add_bucket_id(df, ["g"])
+    bids = _bids(merged)
+    assert len({int(bids[1]), int(bids[2]), int(bids[4]), int(bids[5])}) == 1
+    assert bids[0] != bids[1] and bids[3] != bids[1]
+    assert len(groups) == 3  # 0.0, missing, 1.0
+
+
+def test_null_nan_parity_across_engines():
+    # pandas NaN and polars null/NaN must produce the same bucket structure.
+    pdf = pd.DataFrame({"g": [0.0, np.nan, 0.0, 1.0], "y": [1, 2, 3, 4]})
+    plf = pl.DataFrame({"g": [0.0, float("nan"), 0.0, 1.0], "y": [1, 2, 3, 4]})
+    _, gp = add_bucket_id(pdf, ["g"])
+    _, gl = add_bucket_id(plf, ["g"])
+    assert len(gp) == len(gl) == 3
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_mixed_int_float(engine):
+    # Fit data contaminated to float by a NaN; later clean integer keys must
+    # still match the same buckets (no string "0" vs "0.0" mismatch), and the
+    # int<->float reconcile must not raise on the missing value.
+    fit = _make_df(engine, {"g": [0.0, 1.0, float("nan")], "y": [1, 2, 3]})
+    _, groups = add_bucket_id(fit, ["g"])
+    if engine == "polars":
+        data = pl.DataFrame({"g": pl.Series([0, 1], dtype=pl.Int64)})
+        nan_data = pl.DataFrame({"g": pl.Series([float("nan")], dtype=pl.Float64)})
+    else:
+        data = pd.DataFrame({"g": pd.Series([0, 1], dtype="int64")})
+        nan_data = pd.DataFrame({"g": pd.Series([np.nan], dtype="float64")})
+    bids = lookup_bucket_ids(data, groups, ["g"])
+    assert bids[0] == 0 and bids[1] == 1
+    assert np.all(bids >= 0)
+    # a missing key in lookup data finds the existing missing bucket
+    nan_bid = lookup_bucket_ids(nan_data, groups, ["g"])
+    assert nan_bid[0] == 2
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_fractional_float_does_not_collide_with_int_bucket(engine):
+    # The int<->float reconcile must only int-encode *integral* floats: a
+    # genuinely fractional key 1.5 must NOT match an existing integer bucket 1.
+    if engine == "polars":
+        fit = pl.DataFrame({"g": pl.Series([1, 2], dtype=pl.Int64), "y": [1, 2]})
+        q = pl.DataFrame({"g": pl.Series([1.5, 1.0, 2.0], dtype=pl.Float64)})
+    else:
+        fit = pd.DataFrame({"g": pd.Series([1, 2], dtype="int64"), "y": [1, 2]})
+        q = pd.DataFrame({"g": pd.Series([1.5, 1.0, 2.0], dtype="float64")})
+    _, groups = add_bucket_id(fit, ["g"])
+    res = lookup_bucket_ids(q, groups, ["g"])
+    assert np.isnan(res[0])      # 1.5 unmatched, not bucket 1
+    assert res[1] == 0           # 1.0 matches integer bucket for 1
+    assert res[2] == 1           # 2.0 matches integer bucket for 2
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_large_int_keys_stay_distinct(engine):
+    # The string encoding must never route int keys through float: two distinct
+    # integers above 2**53 (not exactly representable as float64) must stay in
+    # distinct buckets through both creation and lookup. A large-int value cannot
+    # be carried on a float-typed column without precision loss, so this pins the
+    # int-side encoding; the mixed int/float reconcile branch itself is covered by
+    # test_lookup_mixed_int_float and test_fractional_float_does_not_collide_with_int_bucket.
+    a, b = 2 ** 53 + 1, 2 ** 53 + 2
+    if engine == "polars":
+        df = pl.DataFrame({"g": pl.Series([a, b, a], dtype=pl.Int64), "y": [1, 2, 3]})
+    else:
+        df = pd.DataFrame({"g": pd.Series([a, b, a], dtype="int64"), "y": [1, 2, 3]})
+    merged, groups = add_bucket_id(df, ["g"])
+    bids = _bids(merged)
+    assert bids[0] == bids[2] and bids[0] != bids[1]
+    assert len(groups) == 2
+    look = lookup_bucket_ids(df, groups, ["g"])
+    assert look[0] != look[1]
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_mixed_schema_reconcile_does_not_widen_int_side(engine):
+    # Drives the int<->float reconcile branch (float lookup vs integer groups)
+    # and asserts the integer side is never widened to Float64: an integral float
+    # lookup matches the integer bucket, while distinct large integer buckets
+    # built from integer-dtype groups remain distinct (no precision collapse).
+    a, b = 2 ** 53 + 1, 2 ** 53 + 2
+    if engine == "polars":
+        groups_src = pl.DataFrame({"g": pl.Series([a, b, 1], dtype=pl.Int64), "y": [1, 2, 3]})
+        q = pl.DataFrame({"g": pl.Series([1.0], dtype=pl.Float64)})
+    else:
+        groups_src = pd.DataFrame({"g": pd.Series([a, b, 1], dtype="int64"), "y": [1, 2, 3]})
+        q = pd.DataFrame({"g": pd.Series([1.0], dtype="float64")})
+    _, groups = add_bucket_id(groups_src, ["g"])
+    assert len(groups) == 3  # large ints not collapsed by any float widening
+    # float 1.0 reconciles to the integer-1 bucket via the to_int path.
+    look = lookup_bucket_ids(q, groups, ["g"])
+    assert look[0] == 2 and not np.isnan(look[0])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_extend_does_not_duplicate_existing_missing_bucket(engine):
+    fit = _make_df(engine, {"g": ["x", None, "y"], "y": [1, 2, 3]})
+    _, groups = add_bucket_id(fit, ["g"])
+    n0 = len(groups)
+    upd = _make_df(engine, {"g": [None, "z"], "y": [9, 10]})
+    att = _attach_bucket_id(upd, groups, ["g"])
+    ext, groups2 = _extend_groups(att, groups, ["g"])
+    bids = _bids(ext)
+    assert np.all(bids >= 0)
+    # the pre-existing missing bucket is reused; only the new value "z" is added.
+    assert len(groups2) == n0 + 1
+
+
+def test_one_missing_column_keeps_distinct_buckets():
+    # Multi-column key: (X, None) and (X, "n") must be distinct buckets, while
+    # two (X, None) rows collapse together.
+    df = pd.DataFrame({
+        "b": ["X", "X", "X", "Y"],
+        "r": ["n", None, None, "s"],
+        "y": [1, 2, 3, 4],
+    })
+    merged, groups = add_bucket_id(df, ["b", "r"])
+    bids = _bids(merged)
+    assert bids[1] == bids[2]  # both (X, None)
+    assert bids[0] != bids[1]  # (X, "n") distinct from (X, None)
+    assert len(groups) == 3
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_groupby_null_key_fit_predict_update(engine):
+    from sklearn.linear_model import LinearRegression
+    from mlforecast.forecast import MLForecast
+
+    df = _make_df(engine, {
+        "unique_id": ["a"] * 6 + ["b"] * 6 + ["c"] * 6,
+        "ds": list(range(6)) * 3,
+        "y": [float(i) for i in range(18)],
+        "brand": ["x"] * 6 + [None] * 6 + [None] * 6,
+    })
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq=1,
+        lags=[1],
+        lag_transforms={1: [RollingMean(window_size=2, groupby=["brand"])]},
+    )
+    fcst.fit(df, static_features=["brand"])
+    preds = fcst.predict(2)
+    pvals = np.asarray(preds["LinearRegression"])
+    assert np.all(np.isfinite(pvals))  # no IndexError / garbage bucket
+    # update including the null-brand series must not crash
+    upd = _make_df(engine, {
+        "unique_id": ["a", "b", "c"],
+        "ds": [6, 6, 6],
+        "y": [6.0, 7.0, 8.0],
+        "brand": ["x", None, None],
+    })
+    fcst.update(upd)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("kind", ["string-null", "numeric-nan"])
+def test_null_groupby_key_no_static_change_error(engine, kind):
+    # A series whose entire (static) groupby key is missing must NOT raise
+    # "values change over time" (NaN != NaN). Covers pandas object-None,
+    # pandas float-NaN, polars null, and polars float-NaN.
+    if kind == "string-null":
+        brand = ["x", "x", "x", None, None, None]
+    else:
+        brand = [1.0, 1.0, 1.0, float("nan"), float("nan"), float("nan")]
+    df = _make_df(engine, {
+        "unique_id": ["a"] * 3 + ["b"] * 3,
+        "ds": [0, 1, 2] * 2,
+        "y": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        "brand": brand,
+    })
+    ts = TimeSeries(
+        freq=1, lag_transforms={1: [RollingMean(window_size=2, groupby=["brand"])]}
+    )
+    # must not raise
+    ts.fit_transform(
+        df, id_col="unique_id", time_col="ds", target_col="y",
+        dropna=False, static_features=["brand"],
+    )
