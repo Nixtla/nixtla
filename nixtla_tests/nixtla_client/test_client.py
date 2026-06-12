@@ -187,7 +187,8 @@ def test_setting_one_as_historic_and_other_as_future(
     )
 
     # no attribute of weights_x as revised in server-side (no longer has unexpeected weights)
-    assert getattr(nixtla_test_client, "weights_x", None) is None
+    with pytest.raises(AttributeError):
+        _ = nixtla_test_client.weights_x
 
 
 def _make_empty_body_response(status_code: int) -> MagicMock:
