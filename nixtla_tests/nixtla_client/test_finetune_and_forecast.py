@@ -7,7 +7,6 @@ from nixtla_tests.helpers.checks import check_finetuned_model
 from nixtla_tests.helpers.states import model_ids_object
 
 
-@pytest.mark.skip(reason="server-site transition update")
 class TestTimeSeriesDataSet1:
     def test_finetuning_and_forecasting(self, custom_client, ts_data_set1):
         # Finetune the model
@@ -120,7 +119,7 @@ class TestTimeSeriesDataSet1:
         assert single_model.base_model_id == model_ids_object.model_id1
 
     def test_non_existing_model_returns_error(self, custom_client):
-        with pytest.raises(ApiError, match="Model not found"):
+        with pytest.raises(ApiError, match="Finetuned model not found"):
             custom_client.finetuned_model("hi")
 
     @pytest.mark.distributed_run

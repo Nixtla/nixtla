@@ -176,7 +176,6 @@ def test_features_not_in_df_error(
         )
 
 
-@pytest.mark.skip(reason="server-site transition update")
 def test_setting_one_as_historic_and_other_as_future(
     nixtla_test_client, two_short_series_with_time_features_train_future
 ):
@@ -186,7 +185,10 @@ def test_setting_one_as_historic_and_other_as_future(
     nixtla_test_client.forecast(
         train, h=5, X_df=future[["unique_id", "ds", "year"]], hist_exog_list=["month"]
     )
-    assert nixtla_test_client.weights_x["features"].tolist() == ["year", "month"]
+
+    # no attribute of weights_x as revised in server-side (no longer has unexpeected weights)
+    with pytest.raises(AttributeError):
+        _ = nixtla_test_client.weights_x
 
 
 def _make_empty_body_response(status_code: int) -> MagicMock:

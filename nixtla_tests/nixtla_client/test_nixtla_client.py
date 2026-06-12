@@ -273,7 +273,6 @@ def test_forecast_quantiles_output(
     for c1, c2 in zip(exp_q_cols[:-1], exp_q_cols[1:]):
         assert df_qls[c1].lt(df_qls[c2]).all()
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("freq", ["D", "W-THU", "Q-DEC", "15T"])
 @pytest.mark.parametrize(
     "method_name,method_kwargs,exog",
@@ -350,7 +349,6 @@ def test_num_partitions_hist_exog_no_x_df(
     )
 
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize(
     "freq,h",
     [
@@ -380,7 +378,6 @@ def test_forecast_models_different_results(
         pd.testing.assert_frame_equal(fcst_1_df, fcst_2_df)
 
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize(
     "method, method_kwargs",
     [
@@ -418,7 +415,8 @@ def test_different_models_give_different_results(
     )
     # Compare only the TimeGPT column
     with pytest.raises(
-        AssertionError, match=r'\(column name="TimeGPT"\) are different'
+        AssertionError,
+        match=r'\(column name="TimeGPT"\) are different|DataFrame shape mismatch'
     ):
         pd.testing.assert_frame_equal(out1[["TimeGPT"]], out2[["TimeGPT"]])
 
@@ -539,7 +537,6 @@ def test_forecast_and_anomalies_index_vs_columns(
     )
 
 
-@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("freq", ["Y", "W-MON", "Q-DEC", "H"])
 def test_forecast_index_vs_columns_various_freq(
     nixtla_test_client, air_passengers_renamed_df_with_index, freq
