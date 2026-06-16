@@ -1,6 +1,13 @@
+import random
+
+import lightgbm as lgb
+import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
+
+from mlforecast import MLForecast
+from mlforecast.utils import PredictionIntervals, generate_daily_series
 
 
 def assert_raises_with_message(func, expected_msg, *args, **kwargs):
@@ -49,3 +56,57 @@ def grouped_expanding_mean_df():
     df = pd.DataFrame(rows)
     df["cat_code"] = df["cat_code"].astype("int32")
     return df
+
+
+@pytest.fixture
+def setup_forecast_data():
+    df = pd.read_parquet('https://datasets-nixtla.s3.amazonaws.com/m4-hourly.parquet')
+    ids = df['unique_id'].unique()
+    random.seed(0)
+    sample_ids = random.choices(ids, k=4)
+    sample_df = df[df['unique_id'].isin(sample_ids)]
+    horizon = 48
+    valid = sample_df.groupby('unique_id').tail(horizon)
+    train = sample_df.drop(valid.index)
+    return df, train, valid
+
+
+@pytest.fixture
+def weighted_conformal_setup():
+    """Small synthetic dataset + fitted MLForecast for weighted conformal tests."""
+    series = generate_daily_series(4, min_length=60, max_length=80, seed=0)
+    h = 7
+    n_windows = 2
+    fcst = MLForecast(
+        models=lgb.LGBMRegressor(random_state=0, verbosity=-1, n_estimators=5),
+        freq="D",
+        lags=[1, 7],
+        date_features=["dayofweek"],
+        num_threads=1,
+    )
+    pi = PredictionIntervals(method="weighted_conformal_error", n_windows=n_windows, h=h)
+    fcst.fit(series, prediction_intervals=pi)
+    return fcst, series, h, n_windows
+
+
+@pytest.fixture
+def scale_aligned_setup():
+    """Source series at normal scale; target series scaled up ×400."""
+    rng = np.random.default_rng(42)  # noqa: F841
+    n_source = 4
+    source_series = generate_daily_series(n_source, min_length=60, max_length=80, seed=0)
+    target_series = source_series.copy()
+    target_series["y"] = target_series["y"] * 400.0
+
+    h = 7
+    n_windows = 2
+    fcst = MLForecast(
+        models=lgb.LGBMRegressor(random_state=0, verbosity=-1, n_estimators=5),
+        freq="D",
+        lags=[1, 7],
+        date_features=["dayofweek"],
+        num_threads=1,
+    )
+    pi = PredictionIntervals(method="conformal_error", n_windows=n_windows, h=h, scale_estimator="mad")
+    fcst.fit(source_series, prediction_intervals=pi)
+    return fcst, source_series, target_series, h

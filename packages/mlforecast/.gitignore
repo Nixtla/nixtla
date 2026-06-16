@@ -174,3 +174,5 @@ nbs/_extensions
 .quarto
 
 *.png
+
+docs/superpowers

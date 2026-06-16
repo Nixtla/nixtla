@@ -1,4 +1,3 @@
-import random
 import tempfile
 import warnings
 from itertools import product
@@ -17,7 +16,6 @@ from utilsforecast.feature_engineering import fourier, time_features
 from utilsforecast.processing import match_if_categorical
 
 from mlforecast import MLForecast
-from mlforecast.forecast import _get_conformal_method
 from mlforecast.lag_transforms import (
     ExpandingMean,
     ExponentiallyWeightedMean,
@@ -36,22 +34,6 @@ set_config(display='text')
 warnings.simplefilter('ignore', UserWarning)
 
 
-
-def test_conformal_method():
-    with pytest.raises(ValueError):
-        _get_conformal_method('my_method')
-
-@pytest.fixture
-def setup_forecast_data():
-    df = pd.read_parquet('https://datasets-nixtla.s3.amazonaws.com/m4-hourly.parquet')
-    ids = df['unique_id'].unique()
-    random.seed(0)
-    sample_ids = random.choices(ids, k=4)
-    sample_df = df[df['unique_id'].isin(sample_ids)]
-    horizon = 48
-    valid = sample_df.groupby('unique_id').tail(horizon)
-    train = sample_df.drop(valid.index)
-    return df, train, valid
 
 @pytest.fixture
 def fcst():
@@ -391,70 +373,6 @@ def test_new_df_argument(fitted_fcst, setup_forecast_data, predictions):
         fitted_fcst.predict(horizon, new_df=train),
         predictions
     )
-@pytest.fixture
-def fcst_with_intervals(fcst, setup_forecast_data):
-    """Forecast object fitted with prediction intervals."""
-    _, train, _ = setup_forecast_data
-    fcst.fit(
-        train,
-        prediction_intervals=PredictionIntervals(n_windows=3, h=48)
-    )
-    return fcst
-
-@pytest.fixture
-def predictions_w_intervals(fcst_with_intervals):
-    """Predictions with prediction intervals."""
-    return fcst_with_intervals.predict(48, level=[50, 80, 95])
-
-def test_prediction_intervals_lower_horizon(fcst_with_intervals):
-    """Test we can forecast horizon lower than h with prediction intervals."""
-    # Test different horizons
-    preds_h1 = fcst_with_intervals.predict(1, level=[50, 80, 95])
-    preds_h30 = fcst_with_intervals.predict(30, level=[50, 80, 95])
-
-    # Test monotonicity of intervals for h=1
-    monotonic_count = preds_h1.filter(regex='lo|hi').apply(
-        lambda x: x.is_monotonic_increasing,
-        axis=1
-    ).sum()
-    assert monotonic_count == len(preds_h1)
-
-    # Test monotonicity of intervals for h=30
-    monotonic_count = preds_h30.filter(regex='lo|hi').apply(
-        lambda x: x.is_monotonic_increasing,
-        axis=1
-    ).sum()
-    assert monotonic_count == len(preds_h30)
-
-def test_prediction_intervals_error_conditions(fcst_with_intervals):
-    """Test error conditions for prediction intervals."""
-    # Should fail when predicting beyond fitted horizon
-    with pytest.raises(Exception):  # Replace with specific exception if known
-        fcst_with_intervals.predict(49, level=[68])
-
-def test_recover_point_forecasts(predictions, predictions_w_intervals):
-    """Test we can recover point forecasts from interval predictions."""
-    pd.testing.assert_frame_equal(
-        predictions,
-        predictions_w_intervals[predictions.columns]
-    )
-
-def test_recover_mean_forecasts_level_zero(predictions, fcst_with_intervals):
-    """Test we can recover mean forecasts with level 0."""
-    level_zero_preds = fcst_with_intervals.predict(48, level=[0])
-    np.testing.assert_allclose(
-        predictions['LGBMRegressor'].values,
-        level_zero_preds['LGBMRegressor-lo-0'].values,
-    )
-
-def test_prediction_intervals_monotonicity(predictions_w_intervals):
-    """Test monotonicity of prediction intervals."""
-    monotonic_count = predictions_w_intervals.filter(regex='lo|hi').apply(
-        lambda x: x.is_monotonic_increasing,
-        axis=1
-    ).sum()
-    assert monotonic_count == len(predictions_w_intervals)
-
 
 def test_indexed_data_datetime_ds():
     # test indexed data, datetime ds
@@ -2338,6 +2256,55 @@ def test_transfer_learning_with_sparse_horizons():
     # Only horizons 3 and 10 should be returned
     assert preds.shape[0] == n_series * 2
     assert set(preds["unique_id"].unique()) == set(train_b["unique_id"].unique())
+
+
+def test_transfer_learning_intervals():
+    """Transfer learning with level= should produce valid prediction intervals."""
+    train_ab = generate_daily_series(4, min_length=50, max_length=50, n_static_features=0)
+    train_ef = generate_daily_series(2, min_length=50, max_length=50, n_static_features=0)
+    train_ef["unique_id"] = train_ef["unique_id"].cat.rename_categories(
+        {c: f"transfer_{c}" for c in train_ef["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(models=[LinearRegression()], freq="D", lags=[1, 2, 3])
+    fcst.fit(train_ab, prediction_intervals=PredictionIntervals(n_windows=2, h=1))
+
+    saved_cs_df = fcst._cs_df
+
+    preds = fcst.predict(h=5, level=[80, 95], new_df=train_ef)
+
+    # interval columns exist
+    assert "LinearRegression-lo-80" in preds.columns
+    assert "LinearRegression-hi-80" in preds.columns
+    assert "LinearRegression-lo-95" in preds.columns
+    assert "LinearRegression-hi-95" in preds.columns
+
+    # lo <= point <= hi
+    pd_preds = _to_pandas(preds)
+    assert (pd_preds["LinearRegression-lo-80"] <= pd_preds["LinearRegression"]).all()
+    assert (pd_preds["LinearRegression"] <= pd_preds["LinearRegression-hi-80"]).all()
+
+    # _cs_df restored after predict (same object — finally block ran)
+    assert fcst._cs_df is saved_cs_df
+
+    # invalid transfer_conformal raises ValueError
+    with pytest.raises(ValueError, match="TransferConformal.method must be one of"):
+        fcst.predict(h=5, level=[80], new_df=train_ef, transfer_conformal="bogus")
+
+
+def test_transfer_learning_intervals_no_prediction_intervals_raises():
+    """Transfer CP without fitting with PredictionIntervals raises a clear error."""
+    train_ab = generate_daily_series(3, min_length=50, max_length=50, n_static_features=0)
+    train_ef = generate_daily_series(2, min_length=50, max_length=50, n_static_features=0)
+    train_ef["unique_id"] = train_ef["unique_id"].cat.rename_categories(
+        {c: f"transfer_{c}" for c in train_ef["unique_id"].cat.categories}
+    )
+
+    fcst = MLForecast(models=[LinearRegression()], freq="D", lags=[1, 2, 3])
+    fcst.fit(train_ab)
+
+    with pytest.raises(ValueError, match="Transfer-learning prediction intervals require"):
+        fcst.predict(h=5, level=[80], new_df=train_ef)
 
 
 def test_cross_validation_with_horizon_features(horizon_features_data):
