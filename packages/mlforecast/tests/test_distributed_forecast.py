@@ -12,6 +12,9 @@ from mlforecast.distributed.models.dask.lgb import DaskLGBMForecast
 from mlforecast.lag_transforms import ExpandingMean, RollingMean
 from mlforecast.utils import generate_daily_series
 
+if sys.platform != "linux":
+    pytest.skip("Distributed interface is only supported on Linux", allow_module_level=True)
+
 warnings.simplefilter("ignore", FutureWarning)
 
 
@@ -69,8 +72,6 @@ class _RecordingDaskRegressor(BaseEstimator):
         self.model_ = _RecordingLocalModel(weights)
         return self
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests are not supported on Windows")
-@pytest.mark.skipif(sys.version_info <= (3, 9), reason="Distributed tests are not supported on Python < 3.10")
 def test_dask_distributed_forecast(partitioned_series):
     # test existing features provide the same result
     fcst = DistributedMLForecast(
@@ -96,8 +97,6 @@ def test_dask_distributed_forecast(partitioned_series):
     pd.testing.assert_frame_equal(preds1, preds2)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests are not supported on Windows")
-@pytest.mark.skipif(sys.version_info <= (3, 9), reason="Distributed tests are not supported on Python < 3.10")
 def test_dask_distributed_weight_col_affects_predictions(small_ordered_series):
     def _fit_and_forecast(weights):
         weighted = small_ordered_series.copy()
@@ -126,8 +125,6 @@ def test_dask_distributed_weight_col_affects_predictions(small_ordered_series):
     assert not np.allclose(preds_uniform["stub"], preds_skewed["stub"])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests are not supported on Windows")
-@pytest.mark.skipif(sys.version_info <= (3, 9), reason="Distributed tests are not supported on Python < 3.10")
 def test_dask_distributed_forecast_with_x_df():
     """predict() with X_df as a Dask DataFrame must give the same result as pandas X_df."""
     h = 7
@@ -175,8 +172,6 @@ def test_dask_distributed_forecast_with_x_df():
     )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests are not supported on Windows")
-@pytest.mark.skipif(sys.version_info <= (3, 9), reason="Distributed tests are not supported on Python < 3.10")
 def test_dask_distributed_forecast_with_new_df():
     """predict() with new_df must produce predictions for all series without errors."""
     series = generate_daily_series(5, equal_ends=True, min_length=50, max_length=50)
@@ -194,5 +189,3 @@ def test_dask_distributed_forecast_with_new_df():
 
     assert preds.shape[0] == 5 * 5
     assert set(preds["unique_id"]) == set(series["unique_id"])
-
-
