@@ -84,9 +84,9 @@ def test_automlforecast_pipeline(weekly_data):
 def test_automlforecast_weight_col(weekly_data):
 
     def custom_loss(val_df, train_df, weight_col):
+        assert weight_col in val_df
         error = (val_df['y'] - val_df['model']).abs()
-        indices = val_df.index
-        weights = train.loc[indices, weight_col].values
+        weights = val_df[weight_col]
         weighted_sum = sum(e * w for e, w in zip(error, weights))
         total_weight = sum(weights)
 

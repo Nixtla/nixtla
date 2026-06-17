@@ -158,45 +158,31 @@ def mlforecast_objective(
                     weight_col=weight_col,
                     **config["mlf_fit_params"],
                 )
-            static = [c for c in mlf.ts.static_features_.columns if c != id_col]
-            if weight_col:
-                dynamic = [
-                    c
-                    for c in valid.columns
-                    if c not in static + [id_col, time_col, target_col, weight_col]
-                ]
-            else:
-                dynamic = [
-                    c
-                    for c in valid.columns
-                    if c not in static + [id_col, time_col, target_col]
-                ] 
+            static_cols = [c for c in mlf.ts.static_features_.columns if c != id_col]
+            id_cols = [id_col, time_col, target_col]
+            if weight_col is not None:
+                id_cols.append(weight_col)
+            dynamic = [c for c in valid.columns if c not in static_cols + id_cols]
             if dynamic:
                 X_df: Optional[DataFrame] = ufp.drop_columns(
-                    valid, static + [target_col]
+                    valid, static_cols + [target_col]
                 )
             else:
                 X_df = None
-            if weight_col:
-                if isinstance(train, pd.DataFrame):
-                    new_df = None if should_fit else train.drop(columns=[weight_col], errors="ignore")
-                else:
-                    if should_fit:
-                        new_df = None
-                    else:
-                        if weight_col in train.columns:
-                            new_df = train.drop(weight_col)
-                        else:
-                            new_df = train
+            if should_fit:
+                new_df = None
             else:
-                new_df = None if should_fit else train
+                keep_cols = list(train.columns)
+                if weight_col is not None:
+                    keep_cols.remove(weight_col)
+                new_df = train[keep_cols]
             preds = mlf.predict(
                 h=h,
                 X_df=X_df,
                 new_df=new_df,
             )
             result = ufp.join(
-                valid[[id_col, time_col, target_col]],
+                valid[id_cols],
                 preds,
                 on=[id_col, time_col],
             )
@@ -206,10 +192,10 @@ def mlforecast_objective(
                     "Please verify that the passed frequency (freq) matches your series' "
                     "and that there aren't any missing periods."
                 )
-            if weight_col:
-                metric = loss(result, train_df=train, weight_col=weight_col)
-            else: 
-                metric = loss(result, train_df=train)
+            loss_fn_kwargs: dict[str, Any] = {"train_df": train}
+            if weight_col is not None:
+                loss_fn_kwargs["weight_col"] = weight_col
+            metric = loss(result, **loss_fn_kwargs)
             metrics.append(metric)
             trial.report(metric, step=i)
             if trial.should_prune():
