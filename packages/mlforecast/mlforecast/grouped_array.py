@@ -2,6 +2,7 @@ __all__ = ["GroupedArray"]
 
 
 import concurrent.futures
+import warnings
 from typing import Any, Dict, Mapping, Tuple, Union
 
 import numpy as np
@@ -12,8 +13,17 @@ from .compat import shift_array
 from .lag_transforms import _BaseLagTransform
 
 
-@njit(nogil=True)
-def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
+def _shift_py(x: np.ndarray, offset: int) -> np.ndarray:
+    n = x.size
+    out = np.empty_like(x)
+    out[:offset] = np.nan
+    out[offset:] = x[:n - offset]
+    return out
+
+
+def _base_transform_series(
+    shift_fn, data, indptr, updates_only, lag, func, *args
+) -> np.ndarray:
     """Shifts every group in `data` by `lag` and computes `func(shifted, *args)`.
 
     If `updates_only=True` only last value of the transformation for each group is returned,
@@ -22,14 +32,29 @@ def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarra
     if updates_only:
         out = np.empty_like(data[:n_series])
         for i in range(n_series):
-            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
+            lagged = shift_fn(data[indptr[i] : indptr[i + 1]], lag)
             out[i] = func(lagged, *args)[-1]
     else:
         out = np.empty_like(data)
         for i in range(n_series):
-            lagged = shift_array(data[indptr[i] : indptr[i + 1]], lag)
+            lagged = shift_fn(data[indptr[i] : indptr[i + 1]], lag)
             out[indptr[i] : indptr[i + 1]] = func(lagged, *args)
     return out
+
+
+_jitted_transform_series = njit(_base_transform_series, nogil=True)
+
+
+def _transform_series(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
+    return _jitted_transform_series(
+        shift_array, data, indptr, updates_only, lag, func, *args
+    )
+
+
+def _transform_series_nojit(data, indptr, updates_only, lag, func, *args) -> np.ndarray:
+    return _base_transform_series(
+        _shift_py, data, indptr, updates_only, lag, func, *args
+    )
 
 
 class GroupedArray:
@@ -87,7 +112,11 @@ class GroupedArray:
                     results[tfm_name] = tfm.transform(core_ga)
             else:
                 lag, tfm, *args = tfm
-                results[tfm_name] = _transform_series(
+                if hasattr(tfm, "nopython_signatures"):
+                    series_tfm_fn = _transform_series
+                else:
+                    series_tfm_fn = _transform_series_nojit
+                results[tfm_name] = series_tfm_fn(
                     self.data, self.indptr, updates_only, lag - offset, tfm, *args
                 )
         return results
@@ -107,11 +136,16 @@ class GroupedArray:
         offset = 1 if updates_only else 0
         numba_tfms = {}
         core_tfms = {}
+        py_tfms = {}
         for name, tfm in transforms.items():
             if isinstance(tfm, _BaseLagTransform):
                 core_tfms[name] = tfm
             else:
-                numba_tfms[name] = tfm
+                tfm_fn = tfm[1]
+                if hasattr(tfm_fn, "nopython_signatures"):
+                    numba_tfms[name] = tfm
+                else:
+                    py_tfms[name] = tfm
         if numba_tfms:
             with concurrent.futures.ThreadPoolExecutor(num_threads) as executor:
                 for tfm_name, (lag, tfm, *args) in numba_tfms.items():
@@ -135,6 +169,9 @@ class GroupedArray:
                     results[name] = tfm.update(core_ga)
                 else:
                     results[name] = tfm.transform(core_ga)
+        if py_tfms:
+            warnings.warn("Non-numba transforms are computed sequentially")
+            results.update(self.apply_transforms(py_tfms, updates_only))
         return results
 
     def expand_target(self, max_horizon: int) -> np.ndarray:

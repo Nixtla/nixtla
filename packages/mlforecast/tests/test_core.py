@@ -2018,3 +2018,30 @@ def test_date_feature_dummies_all_supported(series):
         expected_cols = [f"{feature}_{v}" for v in _DUMMY_FEATURE_VALUES[feature]]
         for col in expected_cols:
             assert col in result.columns, f"feature={feature}: missing {col}"
+
+
+def test_non_jitted_tfms(series):
+    lags = [1, 2]
+    def my_py_tfm(x):
+        return x
+
+    def assert_same_as_native(df):
+        for lag in lags:
+            np.testing.assert_allclose(df[f"lag{lag}"], df[f"my_py_tfm_lag{lag}"])
+
+    ts = TimeSeries(
+        freq="D",
+        lags=lags,
+        lag_transforms={lag: [my_py_tfm] for lag in lags},
+        num_threads=2,
+    )
+    expected_warning = "Non-numba transforms are computed sequentially"
+    with pytest.warns(UserWarning, match=expected_warning):
+        result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    assert_same_as_native(result)
+
+    cbk = SaveFeatures()
+    with pytest.warns(UserWarning, match=expected_warning):
+        ts.predict({"naive": NaiveModel()}, horizon=5, before_predict_callback=cbk)
+    feats = cbk.get_features()
+    assert_same_as_native(feats)
