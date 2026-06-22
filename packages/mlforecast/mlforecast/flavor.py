@@ -277,8 +277,12 @@ def load_model(model_uri, dst_path=None):
     Returns:
         An ``MLForecast`` model instance.
     """
-    local_model_path = _download_artifact_from_uri(artifact_uri=model_uri, output_path=dst_path)
-    flavor_conf = _get_flavor_configuration(model_path=local_model_path, flavor_name=FLAVOR_NAME)
+    local_model_path = _download_artifact_from_uri(
+        artifact_uri=model_uri, output_path=dst_path
+    )
+    flavor_conf = _get_flavor_configuration(
+        model_path=local_model_path, flavor_name=FLAVOR_NAME
+    )
     _add_code_from_conf_to_system_path(local_model_path, flavor_conf)
     model_file_path = os.path.join(local_model_path, flavor_conf["pickled_model"])
     return MLForecast.load(model_file_path)
@@ -291,7 +295,9 @@ def _load_pyfunc(path):
         path (str): Local filesystem path to the MLflow Model with the ``mlforecast`` flavor.
 
     """
-    pyfunc_flavor_conf = _get_flavor_configuration(model_path=path, flavor_name=pyfunc.FLAVOR_NAME)
+    pyfunc_flavor_conf = _get_flavor_configuration(
+        model_path=path, flavor_name=pyfunc.FLAVOR_NAME
+    )
     path = os.path.join(path, pyfunc_flavor_conf["model_path"])
     return _MLForecastModelWrapper(MLForecast.load(path))
 

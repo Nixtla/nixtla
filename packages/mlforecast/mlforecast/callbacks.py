@@ -1,7 +1,4 @@
-
-
-
-__all__ = ['SaveFeatures']
+__all__ = ["SaveFeatures"]
 
 
 from utilsforecast.compat import DataFrame

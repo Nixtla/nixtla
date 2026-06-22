@@ -1,8 +1,8 @@
 __all__ = [
-    'validate_update_start_dates',
-    'validate_continuity',
-    'validate_update_df',
-    'validate_df',
+    "validate_update_start_dates",
+    "validate_continuity",
+    "validate_update_df",
+    "validate_df",
 ]
 
 
@@ -48,24 +48,24 @@ def validate_update_start_dates(
     df_sorted = nw_df.sort([id_col, time_col])
     stats = (
         df_sorted.group_by(id_col)
-        .agg(nw.col(time_col).min().alias('_min'))
+        .agg(nw.col(time_col).min().alias("_min"))
         .sort(id_col)
     )
 
-    expected_start_native = offset_times(nw_last['_last'].to_native(), freq, 1)
-    expected_start_nw = nw.from_native(expected_start_native, series_only=True).alias('_expected_start')
-
-    expected_df = (
-        nw_last
-        .with_columns(expected_start_nw, nw.col(id_col).cast(nw.String))
-        .select([id_col, '_expected_start'])
+    expected_start_native = offset_times(nw_last["_last"].to_native(), freq, 1)
+    expected_start_nw = nw.from_native(expected_start_native, series_only=True).alias(
+        "_expected_start"
     )
+
+    expected_df = nw_last.with_columns(
+        expected_start_nw, nw.col(id_col).cast(nw.String)
+    ).select([id_col, "_expected_start"])
     stats = stats.with_columns(nw.col(id_col).cast(nw.String))
-    stats = stats.join(expected_df, on=id_col, how='left')
+    stats = stats.join(expected_df, on=id_col, how="left")
 
     bad = stats.filter(
-        ~nw.col('_expected_start').is_null()
-        & (nw.col('_min') != nw.col('_expected_start'))
+        ~nw.col("_expected_start").is_null()
+        & (nw.col("_min") != nw.col("_expected_start"))
     ).select([id_col])
 
     bad_native = nw.to_native(bad)
@@ -105,29 +105,30 @@ def validate_continuity(
 
     nw_df = nw.from_native(df, eager_only=True)
 
-    stats = (
-        nw_df.group_by(id_col)
-        .agg([
-            nw.col(time_col).min().alias('_min'),
-            nw.col(time_col).max().alias('_max'),
-            nw.col(time_col).count().alias('_count'),
-            nw.col(time_col).n_unique().alias('_n_unique'),
-        ])
+    stats = nw_df.group_by(id_col).agg(
+        [
+            nw.col(time_col).min().alias("_min"),
+            nw.col(time_col).max().alias("_max"),
+            nw.col(time_col).count().alias("_count"),
+            nw.col(time_col).n_unique().alias("_n_unique"),
+        ]
     )
 
     # offset_times accepts Union[int, np.ndarray] for n; convert pandas Series to numpy
-    n_steps = (stats['_n_unique'] - 1).to_native()
+    n_steps = (stats["_n_unique"] - 1).to_native()
     if isinstance(n_steps, pd.Series):
         n_steps = n_steps.to_numpy()
 
-    expected_max_native = offset_times(stats['_min'].to_native(), freq, n_steps)
-    expected_max_nw = nw.from_native(expected_max_native, series_only=True).alias('_expected_max')
+    expected_max_native = offset_times(stats["_min"].to_native(), freq, n_steps)
+    expected_max_nw = nw.from_native(expected_max_native, series_only=True).alias(
+        "_expected_max"
+    )
 
     stats = stats.with_columns(expected_max_nw)
 
     bad = stats.filter(
-        (nw.col('_n_unique') != nw.col('_count'))      # duplicates
-        | (nw.col('_max') != nw.col('_expected_max'))  # gaps
+        (nw.col("_n_unique") != nw.col("_count"))  # duplicates
+        | (nw.col("_max") != nw.col("_expected_max"))  # gaps
     ).select([id_col])
 
     bad_native = nw.to_native(bad)
@@ -163,11 +164,13 @@ def validate_update_df(
         ValueError: If any series has an invalid start date or internal gaps/duplicates.
     """
     if isinstance(df, pd.DataFrame):
-        last_dates_df = pd.DataFrame({id_col: uids, '_last': last_dates})
+        last_dates_df = pd.DataFrame({id_col: uids, "_last": last_dates})
     else:
-        last_dates_df = pl.DataFrame({id_col: uids, '_last': last_dates})
+        last_dates_df = pl.DataFrame({id_col: uids, "_last": last_dates})
 
-    has_issues, bad = validate_update_start_dates(df, id_col, time_col, last_dates_df, freq)
+    has_issues, bad = validate_update_start_dates(
+        df, id_col, time_col, last_dates_df, freq
+    )
     if has_issues:
         bad_ids = nw.from_native(bad, eager_only=True)[id_col].to_list()
         raise ValueError(

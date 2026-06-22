@@ -35,6 +35,7 @@ from sklearn.base import BaseEstimator
 def _pascal2camel(pascal_str: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_str).lower()
 
+
 def _normalize_columns(columns):
     if columns is None:
         return None
@@ -59,7 +60,7 @@ def _build_sparse_table(arr, op):
         valid = n - (1 << j) + 1
         if valid <= 0:
             break
-        table[j, :valid] = op(table[j-1, :valid], table[j-1, step:step+valid])
+        table[j, :valid] = op(table[j - 1, :valid], table[j - 1, step : step + valid])
     return table
 
 
@@ -83,7 +84,9 @@ class _BaseLagTransform(BaseEstimator):
         return {
             k: v
             for k, v in inspect.signature(self.__class__.__init__).parameters.items()
-            if k != "self" and v.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            if k != "self"
+            and v.kind
+            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
         }
 
     def _set_core_tfm(self, lag: int) -> "_BaseLagTransform":
@@ -109,8 +112,7 @@ class _BaseLagTransform(BaseEstimator):
         changed_params = [
             f"{name}{getattr(self, name)}"
             for name, arg in init_params.items()
-            if arg.default != getattr(self, name)
-            and name not in {"global_", "groupby"}
+            if arg.default != getattr(self, name) and name not in {"global_", "groupby"}
         ]
         if changed_params:
             result += "_" + "_".join(changed_params)
@@ -127,7 +129,9 @@ class _BaseLagTransform(BaseEstimator):
         return None
 
     def _compute_latest_from_aggs(
-        self, _ts_aggs, _target_ords: Dict[int, int],
+        self,
+        _ts_aggs,
+        _target_ords: Dict[int, int],
     ) -> Optional[Dict[int, float]]:
         """Compute feature value at the target timestamp per bucket from cached aggregates.
 
@@ -230,7 +234,11 @@ class _RollingBase(_BaseLagTransform):
         self.groupby = _normalize_columns(groupby)
         if self.global_ and self.groupby:
             raise ValueError("`global_` and `groupby` can't be used together.")
-        if min_samples is not None and min_samples == 0 and (self.global_ or self.groupby):
+        if (
+            min_samples is not None
+            and min_samples == 0
+            and (self.global_ or self.groupby)
+        ):
             warnings.warn(
                 "min_samples=0 with pooled transforms (global_/groupby) "
                 "produces NaN for timestamps with no observations in the window.",
@@ -295,12 +303,16 @@ def _rolling_mean_from_agg(agg, lag, window_size, min_samples):
     win_sum = upper_sum - lower_sum
     win_cnt = upper_cnt - lower_cnt
     safe_cnt = np.where(win_cnt > 0, win_cnt, 1.0)
-    return np.where((win_cnt >= min_samples) & (win_cnt > 0), win_sum / safe_cnt, np.nan)
+    return np.where(
+        (win_cnt >= min_samples) & (win_cnt > 0), win_sum / safe_cnt, np.nan
+    )
 
 
 class RollingMean(_RollingBase):
     def _compute_latest_from_aggs(
-        self, ts_aggs, target_ords: Dict[int, int],
+        self,
+        ts_aggs,
+        target_ords: Dict[int, int],
     ) -> Optional[Dict[int, float]]:
         if not ts_aggs:
             return None
@@ -391,7 +403,9 @@ class RollingMean(_RollingBase):
             win_sum = upper_sum - lower_sum
             win_cnt = upper_cnt - lower_cnt
             safe_cnt = np.where(win_cnt > 0, win_cnt, 1.0)
-            feat_u = np.where((win_cnt >= min_samples) & (win_cnt > 0), win_sum / safe_cnt, np.nan)
+            feat_u = np.where(
+                (win_cnt >= min_samples) & (win_cnt > 0), win_sum / safe_cnt, np.nan
+            )
             result[idxs] = feat_u[inv]
         return result
 
@@ -451,7 +465,9 @@ class RollingStd(_RollingBase):
         return result
 
     def _compute_latest_from_aggs(
-        self, ts_aggs, target_ords: Dict[int, int],
+        self,
+        ts_aggs,
+        target_ords: Dict[int, int],
     ) -> Optional[Dict[int, float]]:
         if not ts_aggs:
             return None
@@ -472,7 +488,9 @@ class RollingStd(_RollingBase):
             ui = int(np.searchsorted(agg.unique_times, upper, side="right")) - 1
             li = int(np.searchsorted(agg.unique_times, lower, side="right")) - 1
             s = (cum_sum[ui] if ui >= 0 else 0.0) - (cum_sum[li] if li >= 0 else 0.0)
-            sq = (cum_sum_sq[ui] if ui >= 0 else 0.0) - (cum_sum_sq[li] if li >= 0 else 0.0)
+            sq = (cum_sum_sq[ui] if ui >= 0 else 0.0) - (
+                cum_sum_sq[li] if li >= 0 else 0.0
+            )
             c = (cum_cnt[ui] if ui >= 0 else 0.0) - (cum_cnt[li] if li >= 0 else 0.0)
             if c >= min_samples and c > 1:
                 var = (sq - s**2 / c) / (c - 1)
@@ -552,7 +570,9 @@ class RollingMin(_RollingBase):
         return result
 
     def _compute_latest_from_aggs(
-        self, ts_aggs, target_ords: Dict[int, int],
+        self,
+        ts_aggs,
+        target_ords: Dict[int, int],
     ) -> Optional[Dict[int, float]]:
         if not ts_aggs:
             return None
@@ -573,7 +593,9 @@ class RollingMin(_RollingBase):
             li = int(np.searchsorted(agg.unique_times, lower, side="left"))
             c = (cum_cnt[ui] if ui >= 0 else 0.0) - (cum_cnt[li - 1] if li > 0 else 0.0)
             if c >= min_samples and c > 0:
-                val = _query_sparse_table(sparse, np.array([li]), np.array([ui]), np.fmin)
+                val = _query_sparse_table(
+                    sparse, np.array([li]), np.array([ui]), np.fmin
+                )
                 result[bid] = float(val[0])
             else:
                 result[bid] = float("nan")
@@ -621,7 +643,9 @@ class RollingMax(_RollingBase):
         return result
 
     def _compute_latest_from_aggs(
-        self, ts_aggs, target_ords: Dict[int, int],
+        self,
+        ts_aggs,
+        target_ords: Dict[int, int],
     ) -> Optional[Dict[int, float]]:
         if not ts_aggs:
             return None
@@ -642,7 +666,9 @@ class RollingMax(_RollingBase):
             li = int(np.searchsorted(agg.unique_times, lower, side="left"))
             c = (cum_cnt[ui] if ui >= 0 else 0.0) - (cum_cnt[li - 1] if li > 0 else 0.0)
             if c >= min_samples and c > 0:
-                val = _query_sparse_table(sparse, np.array([li]), np.array([ui]), np.fmax)
+                val = _query_sparse_table(
+                    sparse, np.array([li]), np.array([ui]), np.fmax
+                )
                 result[bid] = float(val[0])
             else:
                 result[bid] = float("nan")
@@ -736,7 +762,11 @@ class _Seasonal_RollingBase(_BaseLagTransform):
         self.groupby = _normalize_columns(groupby)
         if self.global_ and self.groupby:
             raise ValueError("`global_` and `groupby` can't be used together.")
-        if min_samples is not None and min_samples == 0 and (self.global_ or self.groupby):
+        if (
+            min_samples is not None
+            and min_samples == 0
+            and (self.global_ or self.groupby)
+        ):
             warnings.warn(
                 "min_samples=0 with pooled transforms (global_/groupby) "
                 "produces NaN for timestamps with no observations in the window.",
@@ -964,10 +994,7 @@ class ExpandingMean(_ExpandingBase):
         if not ts_aggs:
             return None
         lag = self._core_tfm.lag
-        return {
-            bid: _expanding_mean_from_agg(agg, lag)
-            for bid, agg in ts_aggs.items()
-        }
+        return {bid: _expanding_mean_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
 
 def _expanding_std_from_agg(agg, lag):
@@ -1043,10 +1070,7 @@ class ExpandingStd(_ExpandingBase):
         if not ts_aggs:
             return None
         lag = self._core_tfm.lag
-        return {
-            bid: _expanding_std_from_agg(agg, lag)
-            for bid, agg in ts_aggs.items()
-        }
+        return {bid: _expanding_std_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
 
 def _expanding_min_from_agg(agg, lag):
@@ -1110,10 +1134,7 @@ class ExpandingMin(_ExpandingBase):
         if not ts_aggs:
             return None
         lag = self._core_tfm.lag
-        return {
-            bid: _expanding_min_from_agg(agg, lag)
-            for bid, agg in ts_aggs.items()
-        }
+        return {bid: _expanding_min_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
 
 class ExpandingMax(_ExpandingBase):
@@ -1163,10 +1184,7 @@ class ExpandingMax(_ExpandingBase):
         if not ts_aggs:
             return None
         lag = self._core_tfm.lag
-        return {
-            bid: _expanding_max_from_agg(agg, lag)
-            for bid, agg in ts_aggs.items()
-        }
+        return {bid: _expanding_max_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
 
 class ExpandingQuantile(_ExpandingBase):
@@ -1196,9 +1214,16 @@ def _ewm_from_agg(agg, lag, alpha):
     consume_idx = 0
     for k in range(len(agg.unique_times)):
         upper = agg.unique_times[k] - lag
-        while consume_idx < len(agg.unique_times) and agg.unique_times[consume_idx] <= upper:
+        while (
+            consume_idx < len(agg.unique_times)
+            and agg.unique_times[consume_idx] <= upper
+        ):
             if not np.isnan(mean_per_ord[consume_idx]):
-                ewm = mean_per_ord[consume_idx] if np.isnan(ewm) else alpha * mean_per_ord[consume_idx] + (1 - alpha) * ewm
+                ewm = (
+                    mean_per_ord[consume_idx]
+                    if np.isnan(ewm)
+                    else alpha * mean_per_ord[consume_idx] + (1 - alpha) * ewm
+                )
             consume_idx += 1
         feat_u[k] = ewm
     return feat_u
@@ -1271,9 +1296,15 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
             consume_idx = 0
             for k in range(len(unique_ord)):
                 upper = unique_ord[k] - lag
-                while consume_idx < len(unique_ord) and unique_ord[consume_idx] <= upper:
+                while (
+                    consume_idx < len(unique_ord) and unique_ord[consume_idx] <= upper
+                ):
                     if not np.isnan(mean_per_ord[consume_idx]):
-                        ewm = mean_per_ord[consume_idx] if np.isnan(ewm) else alpha * mean_per_ord[consume_idx] + (1 - alpha) * ewm
+                        ewm = (
+                            mean_per_ord[consume_idx]
+                            if np.isnan(ewm)
+                            else alpha * mean_per_ord[consume_idx] + (1 - alpha) * ewm
+                        )
                     consume_idx += 1
                 feat_u[k] = ewm
             result[idxs] = feat_u[inv]
@@ -1310,7 +1341,11 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
                 if agg.unique_times[k] > upper:
                     break
                 if not np.isnan(mean_per_ord[k]):
-                    ewm = mean_per_ord[k] if np.isnan(ewm) else alpha * mean_per_ord[k] + (1 - alpha) * ewm
+                    ewm = (
+                        mean_per_ord[k]
+                        if np.isnan(ewm)
+                        else alpha * mean_per_ord[k] + (1 - alpha) * ewm
+                    )
             result[bid] = float(ewm) if not np.isnan(ewm) else float("nan")
         return result
 
@@ -1319,10 +1354,7 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
             return None
         lag = self._core_tfm.lag
         alpha = self.alpha
-        return {
-            bid: _ewm_from_agg(agg, lag, alpha)
-            for bid, agg in ts_aggs.items()
-        }
+        return {bid: _ewm_from_agg(agg, lag, alpha) for bid, agg in ts_aggs.items()}
 
 
 class Offset(_BaseLagTransform):
@@ -1369,7 +1401,11 @@ class Offset(_BaseLagTransform):
         _ts_aggs=None,
     ) -> Optional[np.ndarray]:
         return self.tfm._compute_bucket_feature(
-            bid_arr, ts_arr, y_arr, ord_arr, _ts_aggs=_ts_aggs,
+            bid_arr,
+            ts_arr,
+            y_arr,
+            ord_arr,
+            _ts_aggs=_ts_aggs,
         )
 
 
@@ -1393,9 +1429,13 @@ class Combine(_BaseLagTransform):
         groupby_1 = getattr(tfm1, "groupby", None)
         groupby_2 = getattr(tfm2, "groupby", None)
         if global_1 != global_2:
-            raise ValueError("Can't combine transforms with different global_ settings.")
+            raise ValueError(
+                "Can't combine transforms with different global_ settings."
+            )
         if (groupby_1 or groupby_2) and groupby_1 != groupby_2:
-            raise ValueError("Can't combine transforms with different groupby settings.")
+            raise ValueError(
+                "Can't combine transforms with different groupby settings."
+            )
         self.global_ = global_1
         self.groupby = groupby_1
 
@@ -1423,22 +1463,14 @@ class Combine(_BaseLagTransform):
         r1 = self.tfm1._compute_ts_level_from_aggs(ts_aggs)
         r2 = self.tfm2._compute_ts_level_from_aggs(ts_aggs)
         if r1 is not None and r2 is not None:
-            return {
-                bid: self.operator(r1[bid], r2[bid])
-                for bid in r1
-                if bid in r2
-            }
+            return {bid: self.operator(r1[bid], r2[bid]) for bid in r1 if bid in r2}
         return None
 
     def _compute_latest_from_aggs(self, ts_aggs, target_ords):
         r1 = self.tfm1._compute_latest_from_aggs(ts_aggs, target_ords)
         r2 = self.tfm2._compute_latest_from_aggs(ts_aggs, target_ords)
         if r1 is not None and r2 is not None:
-            return {
-                bid: self.operator(r1[bid], r2[bid])
-                for bid in r1
-                if bid in r2
-            }
+            return {bid: self.operator(r1[bid], r2[bid]) for bid in r1 if bid in r2}
         return None
 
     def _compute_bucket_feature(
@@ -1450,10 +1482,18 @@ class Combine(_BaseLagTransform):
         _ts_aggs=None,
     ) -> Optional[np.ndarray]:
         v1 = self.tfm1._compute_bucket_feature(
-            bid_arr, ts_arr, y_arr, ord_arr, _ts_aggs=_ts_aggs,
+            bid_arr,
+            ts_arr,
+            y_arr,
+            ord_arr,
+            _ts_aggs=_ts_aggs,
         )
         v2 = self.tfm2._compute_bucket_feature(
-            bid_arr, ts_arr, y_arr, ord_arr, _ts_aggs=_ts_aggs,
+            bid_arr,
+            ts_arr,
+            y_arr,
+            ord_arr,
+            _ts_aggs=_ts_aggs,
         )
         if v1 is not None and v2 is not None:
             return self.operator(v1, v2)

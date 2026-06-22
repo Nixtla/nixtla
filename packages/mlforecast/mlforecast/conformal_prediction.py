@@ -212,9 +212,7 @@ def _apply_scale_alignment(
     uid_arr = cs_df[id_col].to_numpy()
     # hash-based factorization: avoids np.unique's O(n log n) sort on string ids
     codes, uniques = pd.factorize(uid_arr)
-    unique_norm = np.array(
-        [1.0 / source_scales[uid] for uid in uniques], dtype=float
-    )
+    unique_norm = np.array([1.0 / source_scales[uid] for uid in uniques], dtype=float)
     norm_scales = unique_norm[codes]
     for model in model_names:
         vals = cs_df[model].to_numpy().astype(float) * norm_scales
@@ -280,9 +278,11 @@ def _add_conformal_distribution_intervals(
             sym_scores = np.vstack([-scores_pooled, scores_pooled])
             global_q = np.quantile(sym_scores, cuts, axis=0)  # (n_cuts, horizon)
             mean_2d = mean_flat.reshape(n_target, horizon)
-            quantiles = (global_q[:, np.newaxis, :] + mean_2d[np.newaxis, :, :]).reshape(
-                len(cuts), -1
-            ).T  # (n_target * horizon, n_cuts)
+            quantiles = (
+                (global_q[:, np.newaxis, :] + mean_2d[np.newaxis, :, :])
+                .reshape(len(cuts), -1)
+                .T
+            )  # (n_target * horizon, n_cuts)
         else:
             mean = mean_flat.reshape(1, n_series, -1)
             paths = np.vstack([mean - scores, mean + scores])
@@ -325,7 +325,9 @@ def _add_conformal_error_intervals(
             # Compute a single quantile per horizon step, then tile to all target series.
             scores_pooled = scores.reshape(cs_n_windows * n_series, horizon)
             quantiles = np.quantile(scores_pooled, cuts, axis=0)  # (n_levels, horizon)
-            quantiles = np.tile(quantiles, (1, n_target))  # (n_levels, n_target * horizon)
+            quantiles = np.tile(
+                quantiles, (1, n_target)
+            )  # (n_levels, n_target * horizon)
         else:
             quantiles = np.quantile(scores, cuts, axis=0)
             quantiles = quantiles.reshape(len(cuts), -1)
@@ -383,7 +385,9 @@ def _add_signed_transfer_intervals(
             # cs_h=1: compute a single quantile over all scores, broadcast to all steps.
             # Shape: (n_cuts,) -> (n_cuts, horizon) via broadcasting.
             q_flat = np.quantile(scores, all_cuts)  # (n_cuts,)
-            q_per_horizon = np.tile(q_flat[:, np.newaxis], (1, horizon))  # (n_cuts, horizon)
+            q_per_horizon = np.tile(
+                q_flat[:, np.newaxis], (1, horizon)
+            )  # (n_cuts, horizon)
         else:
             scores_2d = scores.reshape(n_cal_series, effective_cs_h)
             # q_per_horizon: (n_cuts, horizon) — per-step quantiles
@@ -391,10 +395,10 @@ def _add_signed_transfer_intervals(
 
         # Bias warnings
         n_lo = len(lo_cuts)
-        q_hi_vals = q_per_horizon[n_lo:]   # (n_hi_cuts, horizon)
-        q_lo_vals = q_per_horizon[:n_lo]   # (n_lo_cuts, horizon)
+        q_hi_vals = q_per_horizon[n_lo:]  # (n_hi_cuts, horizon)
+        q_lo_vals = q_per_horizon[:n_lo]  # (n_lo_cuts, horizon)
         for i, lv in enumerate(level):
-            q_hi_lv = q_hi_vals[i]         # upper quantile for this level
+            q_hi_lv = q_hi_vals[i]  # upper quantile for this level
             q_lo_lv = q_lo_vals[-(i + 1)]  # matching lower quantile
             if np.all(q_hi_lv < 0):
                 warnings.warn(
@@ -417,13 +421,14 @@ def _add_signed_transfer_intervals(
         n_target = len(mean) // horizon
         mean_2d = mean.reshape(n_target, horizon)
         quantiles = (
-            q_per_horizon[:, np.newaxis, :] + mean_2d[np.newaxis, :, :]
-        ).reshape(len(all_cuts), -1).T  # (n_target * horizon, n_cuts)
+            (q_per_horizon[:, np.newaxis, :] + mean_2d[np.newaxis, :, :])
+            .reshape(len(all_cuts), -1)
+            .T
+        )  # (n_target * horizon, n_cuts)
 
-        out_cols = (
-            [f"{model}-lo-{lv}" for lv in reversed(level)]
-            + [f"{model}-hi-{lv}" for lv in level]
-        )
+        out_cols = [f"{model}-lo-{lv}" for lv in reversed(level)] + [
+            f"{model}-hi-{lv}" for lv in level
+        ]
         fcst_df = ufp.assign_columns(fcst_df, out_cols, quantiles)
 
     return fcst_df
@@ -495,8 +500,12 @@ def _add_weighted_conformal_error_intervals(
             # Transfer scenario: pool all source calibration points globally.
             scores_pooled = scores.reshape(cs_n_windows * n_series, horizon)
             if weights is None:
-                quantiles = np.quantile(scores_pooled, cuts, axis=0)  # (n_levels, horizon)
-                quantiles = np.tile(quantiles, (1, n_target))  # (n_levels, n_target * horizon)
+                quantiles = np.quantile(
+                    scores_pooled, cuts, axis=0
+                )  # (n_levels, horizon)
+                quantiles = np.tile(
+                    quantiles, (1, n_target)
+                )  # (n_levels, n_target * horizon)
             else:
                 w_pooled = weights.reshape(cs_n_windows * n_series, cs_h)[:, :horizon]
                 w_test = (
@@ -566,9 +575,11 @@ def _add_weighted_conformal_distribution_intervals(
             if weights is None:
                 sym_scores = np.vstack([-scores_pooled, scores_pooled])
                 global_q = np.quantile(sym_scores, cuts, axis=0)  # (n_cuts, horizon)
-                quantiles = (global_q[:, np.newaxis, :] + mean_2d[np.newaxis, :, :]).reshape(
-                    len(cuts), -1
-                ).T  # (n_target * horizon, n_cuts)
+                quantiles = (
+                    (global_q[:, np.newaxis, :] + mean_2d[np.newaxis, :, :])
+                    .reshape(len(cuts), -1)
+                    .T
+                )  # (n_target * horizon, n_cuts)
             else:
                 w_pooled = weights.reshape(cs_n_windows * n_series, cs_h)[:, :horizon]
                 w_double = np.vstack([w_pooled, w_pooled])
@@ -590,7 +601,9 @@ def _add_weighted_conformal_distribution_intervals(
                     )
         else:
             mean = mean_flat.reshape(1, n_series, -1)
-            paths = np.vstack([mean - scores, mean + scores])  # (2*n_windows, n_series, horizon)
+            paths = np.vstack(
+                [mean - scores, mean + scores]
+            )  # (2*n_windows, n_series, horizon)
             if weights is None:
                 quantiles = np.quantile(paths, cuts, axis=0)
                 quantiles = quantiles.reshape(len(cuts), -1).T
@@ -618,9 +631,11 @@ def _build_clf(estimator: str):
     """Build an sklearn classifier for density-ratio estimation."""
     if estimator == "logistic":
         from sklearn.linear_model import LogisticRegression
+
         return LogisticRegression(max_iter=1000)
     elif estimator == "gradient_boosting":
         from sklearn.ensemble import GradientBoostingClassifier
+
         return GradientBoostingClassifier()
     else:
         raise ValueError(
@@ -691,7 +706,9 @@ def estimate_density_ratio(
             val_src_idx = val_idx[src_val_mask]
             if len(val_src_idx):
                 proba = clf.predict_proba(X_scaled[val_src_idx])
-                source_weights[val_src_idx] = proba[:, 1] / np.clip(proba[:, 0], 1e-10, None)
+                source_weights[val_src_idx] = proba[:, 1] / np.clip(
+                    proba[:, 0], 1e-10, None
+                )
             if return_target_weights:
                 proba_tgt = clf.predict_proba(X_scaled[n_src:])
                 fold_probas_tgt.append(proba_tgt)
@@ -703,7 +720,9 @@ def estimate_density_ratio(
         clf = _build_clf(estimator)
         clf.fit(X_scaled, y)
         proba = clf.predict_proba(X_scaled[:n_src])
-        source_weights = np.clip(proba[:, 1] / np.clip(proba[:, 0], 1e-10, None), 1e-10, None)
+        source_weights = np.clip(
+            proba[:, 1] / np.clip(proba[:, 0], 1e-10, None), 1e-10, None
+        )
         if return_target_weights:
             proba_tgt = clf.predict_proba(X_scaled[n_src:])
             target_weights = proba_tgt[:, 1] / np.clip(proba_tgt[:, 0], 1e-10, None)
@@ -793,7 +812,6 @@ class TransferResult:
     signed: bool = False
 
 
-
 def _robust_scale_ratio(src: np.ndarray, tgt: np.ndarray) -> float:
     """IQR(|tgt_errors|) / IQR(|src_errors|) with std and constant fallbacks."""
     src_abs = np.abs(src)
@@ -839,14 +857,18 @@ def _recalibrate_transfer(
     Uses signed residuals (y − pred) so systematic bias shifts the interval
     instead of merely widening it.
     """
-    effective_n = tc.n_windows if tc.n_windows is not None else prediction_intervals.n_windows
+    effective_n = (
+        tc.n_windows if tc.n_windows is not None else prediction_intervals.n_windows
+    )
     if effective_n < 2:
         raise ValueError(
             f"transfer method 'recalibrate' requires at least 2 window(s), "
             f"got n_windows={effective_n}."
         )
     return TransferResult(
-        cs_df=compute_conformity_scores(backtest_results, model_names, target_col, signed=True),
+        cs_df=compute_conformity_scores(
+            backtest_results, model_names, target_col, signed=True
+        ),
         signed=True,
     )
 
@@ -920,7 +942,9 @@ def _weighted_conformal_transfer(
         clip_quantile=tc.clip_quantile,
         return_target_weights=True,
     )
-    return TransferResult(cs_df=source_cs_df, weights=weights, target_weights=target_weights)
+    return TransferResult(
+        cs_df=source_cs_df, weights=weights, target_weights=target_weights
+    )
 
 
 def _scale_aligned_transfer(
@@ -1087,4 +1111,3 @@ def get_transfer_method_spec(method: str) -> _TransferMethodSpec:
             f"please choose one of {', '.join(_TRANSFER_METHODS.keys())}"
         )
     return _TRANSFER_METHODS[method]
-

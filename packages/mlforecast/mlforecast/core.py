@@ -1,4 +1,4 @@
-__all__ = ['TimeSeries']
+__all__ = ["TimeSeries"]
 
 
 import copy
@@ -363,9 +363,11 @@ class TimeSeries:
     def _date_feature_names(self) -> List[str]:
         names: List[str] = []
         for f in self.date_features:
-            if (self.date_features_as_dummies
-                    and isinstance(f, str)
-                    and f in _DUMMY_FEATURE_VALUES):
+            if (
+                self.date_features_as_dummies
+                and isinstance(f, str)
+                and f in _DUMMY_FEATURE_VALUES
+            ):
                 names.extend(f"{f}_{v}" for v in _DUMMY_FEATURE_VALUES[f])
             elif callable(f):
                 names.append(f.__name__)
@@ -383,10 +385,18 @@ class TimeSeries:
         static_cols = set(self.static_features_.columns)
         lag_cols = set(self.transforms.keys())
         date_cols = set(self._date_feature_names) | {
-            f for f in self.date_features
-            if self.date_features_as_dummies and isinstance(f, str) and f in _DUMMY_FEATURE_VALUES
+            f
+            for f in self.date_features
+            if self.date_features_as_dummies
+            and isinstance(f, str)
+            and f in _DUMMY_FEATURE_VALUES
         }
-        exclude = static_cols | lag_cols | date_cols | {self.id_col, self.time_col, self.target_col}
+        exclude = (
+            static_cols
+            | lag_cols
+            | date_cols
+            | {self.id_col, self.time_col, self.target_col}
+        )
         if self.weight_col is not None:
             exclude.add(self.weight_col)
         return [c for c in df_columns if c not in exclude]
@@ -400,7 +410,10 @@ class TimeSeries:
         if not horizon_features:
             return exog_cols, {}
         matched_cols = {
-            col for cols in horizon_features.values() for col in cols if col in exog_cols
+            col
+            for cols in horizon_features.values()
+            for col in cols
+            if col in exog_cols
         }
         common_exog = [c for c in exog_cols if c not in matched_cols]
         return common_exog, horizon_features
@@ -420,7 +433,9 @@ class TimeSeries:
         # Internal horizons are 0-indexed; user-facing horizon_features keys are
         # 1-indexed, hence the +1 conversion here.
         allowed_exog = common_exog + horizon_exog_map.get(h + 1, [])
-        return [c for c in self.features_order_ if c not in exog_cols or c in allowed_exog]
+        return [
+            c for c in self.features_order_ if c not in exog_cols or c in allowed_exog
+        ]
 
     def __repr__(self):
         return (
@@ -537,12 +552,15 @@ class TimeSeries:
                 )
         self.static_features_ = statics_on_ends
         raw_date_sources = {
-            f for f in self.date_features
-            if self.date_features_as_dummies and isinstance(f, str) and f in _DUMMY_FEATURE_VALUES
+            f
+            for f in self.date_features
+            if self.date_features_as_dummies
+            and isinstance(f, str)
+            and f in _DUMMY_FEATURE_VALUES
         }
-        self.features_order_ = [c for c in df.columns if c not in to_drop and c not in raw_date_sources] + [
-            f for f in self.features if f not in df.columns
-        ]
+        self.features_order_ = [
+            c for c in df.columns if c not in to_drop and c not in raw_date_sources
+        ] + [f for f in self.features if f not in df.columns]
         if self.drop_auxiliary_columns is True:
             to_exclude = {
                 col
@@ -574,9 +592,13 @@ class TimeSeries:
             for group_cols, tfms in group_tfms.items():
                 for col in group_cols:
                     if col not in df.columns:
-                        raise ValueError(f"Groupby column '{col}' not found in dataframe.")
+                        raise ValueError(
+                            f"Groupby column '{col}' not found in dataframe."
+                        )
                 group_cols_list = list(group_cols)
-                missing = [c for c in group_cols_list if c not in self.static_features_.columns]
+                missing = [
+                    c for c in group_cols_list if c not in self.static_features_.columns
+                ]
                 if missing:
                     raise ValueError(
                         "Groupby columns must be static features. "
@@ -600,6 +622,7 @@ class TimeSeries:
                     state._idsorted_to_bucket_pos = idsorted[_pos_col].to_numpy()
                 else:
                     import polars as pl
+
                     tmp = state.bucket_df.select([id_col, time_col]).with_columns(
                         pl.Series(name=_pos_col, values=np.arange(n))
                     )
@@ -653,17 +676,17 @@ class TimeSeries:
             join_df = bucket_df.select(join_cols)
             for name, vals in bucket_vals.items():
                 join_df = join_df.with_columns(pl.Series(name=name, values=vals))
-            joined = df.select(join_cols).join(
-                join_df, on=join_cols, how="left"
-            )
+            joined = df.select(join_cols).join(join_df, on=join_cols, how="left")
             for name in feature_cols:
                 features[name] = joined[name].to_numpy()
 
     def _compute_date_feature(self, dates, feature) -> Dict[str, Any]:
         """Compute date feature(s) and return as a ``{col_name: values}`` dict."""
-        if (self.date_features_as_dummies
-                and isinstance(feature, str)
-                and feature in _DUMMY_FEATURE_VALUES):
+        if (
+            self.date_features_as_dummies
+            and isinstance(feature, str)
+            and feature in _DUMMY_FEATURE_VALUES
+        ):
             return _compute_date_dummies(dates, feature)
 
         if callable(feature):
@@ -749,7 +772,11 @@ class TimeSeries:
             if slow_tfms:
                 bucket_vals = compute_pooled_features(state, slow_tfms)
                 self._join_bucket_features(
-                    features, df_sorted, state.bucket_df, bucket_vals, state.join_cols,
+                    features,
+                    df_sorted,
+                    state.bucket_df,
+                    bucket_vals,
+                    state.join_cols,
                 )
         if group_tfms:
             for group_cols, tfms in group_tfms.items():
@@ -777,7 +804,11 @@ class TimeSeries:
                 if slow_grp:
                     bucket_vals = compute_pooled_features(state, slow_grp)
                     self._join_bucket_features(
-                        features, df_sorted, state.bucket_df, bucket_vals, state.join_cols,
+                        features,
+                        df_sorted,
+                        state.bucket_df,
+                        bucket_vals,
+                        state.join_cols,
                     )
         # filter out the features that already exist in df to avoid overwriting them
         features = {k: v for k, v in features.items() if k not in df}
@@ -856,12 +887,12 @@ class TimeSeries:
 
         # date features
         def _feature_in_df(f, cols):
-            if (self.date_features_as_dummies
-                    and isinstance(f, str)
-                    and f in _DUMMY_FEATURE_VALUES):
-                return all(
-                    f"{f}_{v}" in cols for v in _DUMMY_FEATURE_VALUES[f]
-                )
+            if (
+                self.date_features_as_dummies
+                and isinstance(f, str)
+                and f in _DUMMY_FEATURE_VALUES
+            ):
+                return all(f"{f}_{v}" in cols for v in _DUMMY_FEATURE_VALUES[f])
             name = f.__name__ if callable(f) else f
             return name in cols
 
@@ -885,9 +916,11 @@ class TimeSeries:
                 exprs = []
                 nw_feats: Dict[str, Any] = {}
                 for feat in date_features:  # type: ignore
-                    if (self.date_features_as_dummies
-                            and isinstance(feat, str)
-                            and feat in _DUMMY_FEATURE_VALUES):
+                    if (
+                        self.date_features_as_dummies
+                        and isinstance(feat, str)
+                        and feat in _DUMMY_FEATURE_VALUES
+                    ):
                         nw_feats.update(_compute_date_dummies(unique_dates, feat))
                     else:
                         for name, vals in self._compute_date_feature(
@@ -917,7 +950,9 @@ class TimeSeries:
             # remove original target
             out_cols = [c for c in df.columns if c != self.target_col]
             df = df[out_cols]
-            target_names = [f"{self.target_col}{i}" for i in range(effective_max_horizon)]
+            target_names = [
+                f"{self.target_col}{i}" for i in range(effective_max_horizon)
+            ]
             df = ufp.assign_columns(df, target_names, target)
         else:
             df = ufp.copy_if_pandas(df, deep=False)
@@ -970,7 +1005,9 @@ class TimeSeries:
             exog_lookup = original_df[[self.id_col, self.time_col] + exog_cols]
 
         for h in horizons:
-            h_cols = self._get_cols_for_horizon(h, common_exog_cols, horizon_exog_map, exog_cols)
+            h_cols = self._get_cols_for_horizon(
+                h, common_exog_cols, horizon_exog_map, exog_cols
+            )
             h_cols_set = set(h_cols)
             # exog subset for this horizon — used for time-aligned joining and NaN filtering
             horizon_exog = [c for c in h_cols if c in exog_cols_set]
@@ -1000,12 +1037,14 @@ class TimeSeries:
                     # Polars - use with_row_index()
                     lookup_df = (
                         prep[[self.id_col]]
-                        .with_columns(pl_Series('_offset_time', offset_times))
-                        .with_row_index('_row_idx')
+                        .with_columns(pl_Series("_offset_time", offset_times))
+                        .with_row_index("_row_idx")
                     )
-                    exog_renamed = exog_lookup.rename({self.time_col: '_offset_time'})
-                    merged = lookup_df.join(exog_renamed, on=[self.id_col, '_offset_time'], how='left')
-                    merged = merged.sort('_row_idx')
+                    exog_renamed = exog_lookup.rename({self.time_col: "_offset_time"})
+                    merged = lookup_df.join(
+                        exog_renamed, on=[self.id_col, "_offset_time"], how="left"
+                    )
+                    merged = merged.sort("_row_idx")
 
                     # Assign exog columns to X_h
                     for col in horizon_exog:
@@ -1013,12 +1052,16 @@ class TimeSeries:
                 else:
                     # Pandas
                     lookup_df = prep[[self.id_col]].copy()
-                    lookup_df['_offset_time'] = offset_times
-                    lookup_df['_row_idx'] = np.arange(len(prep))
-                    exog_renamed = exog_lookup.rename(columns={self.time_col: '_offset_time'})
-                    merged = lookup_df.merge(exog_renamed, on=[self.id_col, '_offset_time'], how='left')
+                    lookup_df["_offset_time"] = offset_times
+                    lookup_df["_row_idx"] = np.arange(len(prep))
+                    exog_renamed = exog_lookup.rename(
+                        columns={self.time_col: "_offset_time"}
+                    )
+                    merged = lookup_df.merge(
+                        exog_renamed, on=[self.id_col, "_offset_time"], how="left"
+                    )
                     # Sort by original row order
-                    merged = merged.sort_values('_row_idx')
+                    merged = merged.sort_values("_row_idx")
 
                     # Assign exog columns to X_h
                     for col in horizon_exog:
@@ -1127,7 +1170,8 @@ class TimeSeries:
             slow_tfms: dict = {}
             for name, tfm in global_tfms.items():
                 latest = tfm._compute_latest_from_aggs(
-                    state._ts_aggs, state.next_time_index_by_bucket,
+                    state._ts_aggs,
+                    state.next_time_index_by_bucket,
                 )
                 if latest is not None:
                     features[name] = np.full(n_series, latest[0])
@@ -1136,7 +1180,9 @@ class TimeSeries:
             if slow_tfms:
                 query = state.build_query_arrays(self.curr_dates, n_series)
                 bucket_vals = compute_pooled_features(
-                    state, slow_tfms, query_arrays=query,
+                    state,
+                    slow_tfms,
+                    query_arrays=query,
                 )
                 for name, vals in bucket_vals.items():
                     features[name] = np.full(n_series, vals[-1])
@@ -1148,10 +1194,14 @@ class TimeSeries:
                 slow_tfms = {}
                 for name, tfm in tfms.items():
                     latest = tfm._compute_latest_from_aggs(
-                        state._ts_aggs, state.next_time_index_by_bucket,
+                        state._ts_aggs,
+                        state.next_time_index_by_bucket,
                     )
                     if latest is not None:
-                        max_bid = max(max(latest.keys(), default=-1), int(state.series_bucket_id.max()))
+                        max_bid = max(
+                            max(latest.keys(), default=-1),
+                            int(state.series_bucket_id.max()),
+                        )
                         lookup = np.full(max_bid + 1, np.nan)
                         for bid, val in latest.items():
                             lookup[bid] = val
@@ -1162,7 +1212,9 @@ class TimeSeries:
                     query = state.build_query_arrays(self.curr_dates, n_series)
                     tmp_bid = query[0]
                     bucket_vals = compute_pooled_features(
-                        state, slow_tfms, query_arrays=query,
+                        state,
+                        slow_tfms,
+                        query_arrays=query,
                     )
                     n_orig = len(state.time)
                     for name, vals in bucket_vals.items():
@@ -1171,7 +1223,10 @@ class TimeSeries:
                         val_map = {}
                         for bv, v in zip(new_bid_vals, new_vals):
                             val_map[bv] = v
-                        max_bid = max(max(val_map.keys(), default=-1), int(state.series_bucket_id.max()))
+                        max_bid = max(
+                            max(val_map.keys(), default=-1),
+                            int(state.series_bucket_id.max()),
+                        )
                         lookup = np.full(max_bid + 1, np.nan)
                         for bid, val in val_map.items():
                             lookup[bid] = val
@@ -1237,7 +1292,7 @@ class TimeSeries:
             nulls = new_x.select(pl.all().is_null().any())
             cols_with_nulls = [k for k, v in nulls.to_dicts()[0].items() if v]
         if cols_with_nulls:
-            warnings.warn(f'Found null values in {", ".join(cols_with_nulls)}.')
+            warnings.warn(f"Found null values in {', '.join(cols_with_nulls)}.")
         self._h += 1
         new_x = new_x[self.features_order_]
         if self.as_numpy:
@@ -1287,7 +1342,9 @@ class TimeSeries:
                     if before_predict_callback is not None:
                         new_x = before_predict_callback(new_x)
                     model_x = new_x
-                    if isinstance(model, CatBoostRegressor) and isinstance(new_x, pl_DataFrame):
+                    if isinstance(model, CatBoostRegressor) and isinstance(
+                        new_x, pl_DataFrame
+                    ):
                         model_x = new_x.to_pandas()
                     predictions = model.predict(model_x)
                     if after_predict_callback is not None:
@@ -1349,7 +1406,10 @@ class TimeSeries:
                 # Compute dates for all horizons, then stack and flatten.
                 # horizons_to_predict is 0-indexed; offset_times(dates, freq, n) gives
                 # dates + n*freq, so h + 1 converts 0-indexed h to a 1-step-ahead offset.
-                dates_per_horizon = [ufp.offset_times(self.curr_dates, self.freq, h + 1) for h in horizons_to_predict]
+                dates_per_horizon = [
+                    ufp.offset_times(self.curr_dates, self.freq, h + 1)
+                    for h in horizons_to_predict
+                ]
                 # Stack: each row is a series, each col is a horizon
                 dates_matrix = pl.DataFrame(dates_per_horizon).transpose()
                 # Flatten row by row: [s0_h0, s0_h1, ..., s1_h0, s1_h1, ...]
@@ -1360,7 +1420,10 @@ class TimeSeries:
                 # Compute dates for all horizons, then stack and flatten.
                 # horizons_to_predict is 0-indexed; offset_times(dates, freq, n) gives
                 # dates + n*freq, so h + 1 converts 0-indexed h to a 1-step-ahead offset.
-                dates_per_horizon = [ufp.offset_times(self.curr_dates, self.freq, h + 1) for h in horizons_to_predict]
+                dates_per_horizon = [
+                    ufp.offset_times(self.curr_dates, self.freq, h + 1)
+                    for h in horizons_to_predict
+                ]
                 # Stack: each row is a series, each col is a horizon
                 dates_matrix = np.column_stack(dates_per_horizon)
                 # Flatten row by row: [s0_h0, s0_h1, ..., s1_h0, s1_h1, ...]
@@ -1416,11 +1479,15 @@ class TimeSeries:
                             )
                             model_x = new_x[h_cols]
                     horizon_model = model[h]
-                    if isinstance(horizon_model, CatBoostRegressor) and isinstance(model_x, pl_DataFrame):
+                    if isinstance(horizon_model, CatBoostRegressor) and isinstance(
+                        model_x, pl_DataFrame
+                    ):
                         model_x = model_x.to_pandas()
                     preds = horizon_model.predict(model_x)
                     if len(preds) != len(self.uids):
-                        raise ValueError(f"Model returned {len(preds)} predictions but expected {len(self.uids)}")
+                        raise ValueError(
+                            f"Model returned {len(preds)} predictions but expected {len(self.uids)}"
+                        )
                     predictions[:, out_idx] = preds
 
                 raw_preds = predictions.ravel()
@@ -1574,7 +1641,9 @@ class TimeSeries:
                     ]
                     # Calculate actual predictions per series (handles sparse horizons)
                     preds_per_series = len(preds) // len(self.uids)
-                    indptr = np.arange(0, preds_per_series * (len(self.uids) + 1), preds_per_series)
+                    indptr = np.arange(
+                        0, preds_per_series * (len(self.uids) + 1), preds_per_series
+                    )
                 for tfm in self.target_transforms[::-1]:
                     if isinstance(tfm, _BaseGroupedArrayTargetTransform):
                         for col in model_cols:
@@ -1596,10 +1665,13 @@ class TimeSeries:
         with fsspec.open(path, "rb", protocol=protocol) as f:
             ts = cloudpickle.load(f)
         return ts
-    
+
     def _validate_new_df(self, df: DataFrame) -> None:
         from .data_validation import validate_update_df
-        validate_update_df(df, self.id_col, self.time_col, self.uids, self.last_dates, self.freq)
+
+        validate_update_df(
+            df, self.id_col, self.time_col, self.uids, self.last_dates, self.freq
+        )
 
     def update(self, df: DataFrame, validate_new_data: bool = False) -> None:
         """Update the values of the stored series.
@@ -1632,17 +1704,16 @@ class TimeSeries:
             else:
                 expected_ids = pl.concat([pl.Series(uids), pl.Series(new_ids)]).unique()
                 expected_count = expected_ids.len()
-                counts = (
-                    df.group_by(self.time_col)
-                    .agg(pl.col(self.id_col).n_unique().alias("_n_ids"))
+                counts = df.group_by(self.time_col).agg(
+                    pl.col(self.id_col).n_unique().alias("_n_ids")
                 )
                 bad_times = counts.filter(pl.col("_n_ids") != expected_count)
                 if bad_times.height:
                     raise ValueError(
                         "Global and group lag transforms require updates to include all series for each timestamp."
                     )
-        if validate_new_data:   
-            self._validate_new_df(df=df) 
+        if validate_new_data:
+            self._validate_new_df(df=df)
         id_counts = ufp.counts_by_id(df, self.id_col)
         try:
             sizes = ufp.join(uids, id_counts, on=self.id_col, how="outer_coalesce")

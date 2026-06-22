@@ -1,4 +1,4 @@
-__all__ = ['mlforecast_objective']
+__all__ = ["mlforecast_objective"]
 
 
 import copy
@@ -20,10 +20,14 @@ _TrialToConfig = Callable[[optuna.Trial], Dict[str, Any]]
 CVSplit = Tuple[DataFrame, DataFrame, DataFrame]
 
 
-def _get_categorical_static_features(df: DataFrame, static_features: List[str]) -> List[str]:
+def _get_categorical_static_features(
+    df: DataFrame, static_features: List[str]
+) -> List[str]:
     if not static_features:
         return []
-    missing_features = [feature for feature in static_features if feature not in df.columns]
+    missing_features = [
+        feature for feature in static_features if feature not in df.columns
+    ]
     if missing_features:
         warnings.warn(
             "Ignoring unrecognized static features not found in the dataframe: "
@@ -74,7 +78,7 @@ def mlforecast_objective(
     time_col: str = "ds",
     target_col: str = "y",
     weight_col: Optional[str] = None,
-    cv_splits: Optional[List[CVSplit]] = None
+    cv_splits: Optional[List[CVSplit]] = None,
 ) -> Callable[[optuna.Trial], float]:
     """optuna objective function for the MLForecast class
 
@@ -100,12 +104,13 @@ def mlforecast_objective(
         time_col (str): Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'.
         target_col (str): Column that contains the target. Defaults to 'y'.
         weight_col (str): Column that contains sample weights. Defaults to None.
-        cv_splits (List[Tuple[DataFrame, DataFrame, DataFrame]] | None): Optional cached CV splits (cutoffs, train, valid) to 
+        cv_splits (List[Tuple[DataFrame, DataFrame, DataFrame]] | None): Optional cached CV splits (cutoffs, train, valid) to
             reuse across trials. If None, backtest splits are generated on each trial.
 
     Returns:
         (Callable[[optuna.Trial], float]): optuna objective function
     """
+
     def objective(trial: optuna.Trial) -> float:
         config = copy.deepcopy(config_fn(trial))
         if all(
@@ -128,7 +133,7 @@ def mlforecast_objective(
         trial.set_user_attr("config", copy.deepcopy(config))
         model_copy.set_params(**model_params)
         mlf = MLForecast(
-            models={"model": model_copy}, 
+            models={"model": model_copy},
             freq=freq,
             **config["mlf_init_params"],
         )

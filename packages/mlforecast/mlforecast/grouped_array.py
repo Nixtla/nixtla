@@ -1,4 +1,4 @@
-__all__ = ['GroupedArray']
+__all__ = ["GroupedArray"]
 
 
 import concurrent.futures

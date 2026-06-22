@@ -1,5 +1,15 @@
-__all__ = ['BaseTargetTransform', 'Differences', 'AutoDifferences', 'AutoSeasonalDifferences', 'AutoSeasonalityAndDifferences',
-           'LocalStandardScaler', 'LocalMinMaxScaler', 'LocalRobustScaler', 'LocalBoxCox', 'GlobalSklearnTransformer']
+__all__ = [
+    "BaseTargetTransform",
+    "Differences",
+    "AutoDifferences",
+    "AutoSeasonalDifferences",
+    "AutoSeasonalityAndDifferences",
+    "LocalStandardScaler",
+    "LocalMinMaxScaler",
+    "LocalRobustScaler",
+    "LocalBoxCox",
+    "GlobalSklearnTransformer",
+]
 
 
 import abc
@@ -453,5 +463,7 @@ class GlobalSklearnTransformer(BaseTargetTransform):
         return ufp.assign_columns(df, self.target_col, transformed[:, 0])
 
     @staticmethod
-    def stack(transforms: Sequence["GlobalSklearnTransformer"]) -> "GlobalSklearnTransformer":  # type: ignore[override]
+    def stack(
+        transforms: Sequence["GlobalSklearnTransformer"],  # type: ignore[override]
+    ) -> "GlobalSklearnTransformer":
         return transforms[0]

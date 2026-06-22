@@ -293,12 +293,16 @@ class MLForecast:
             resolved = {}
             for horizon, cols in horizon_features.items():
                 if not isinstance(horizon, int) or horizon <= 0:
-                    raise ValueError("`horizon_features` keys must be positive integers.")
+                    raise ValueError(
+                        "`horizon_features` keys must be positive integers."
+                    )
                 if horizon > effective_max_horizon:
                     raise ValueError(
                         f"`horizon_features` includes horizon {horizon}, but the maximum configured horizon is {effective_max_horizon}."
                     )
-                if not isinstance(cols, list) or any(not isinstance(col, str) for col in cols):
+                if not isinstance(cols, list) or any(
+                    not isinstance(col, str) for col in cols
+                ):
                     raise ValueError(
                         "Each value in `horizon_features` must be a list of column names."
                     )
@@ -515,11 +519,15 @@ class MLForecast:
                 # Create fresh generator for each model (generators are single-use)
                 horizon_gen = generator_factory()
                 for h, X_h, y_h in horizon_gen:
-                    fitted = fit_model(model, X_h, y_h, self.ts.weight_col, model_fit_kwargs)
+                    fitted = fit_model(
+                        model, X_h, y_h, self.ts.weight_col, model_fit_kwargs
+                    )
                     self.models_[name][h] = fitted
         else:
             # Recursive forecasting (unchanged)
-            assert X is not None and y is not None, "X and y are required when generator_factory is not provided"
+            assert X is not None and y is not None, (
+                "X and y are required when generator_factory is not provided"
+            )
             for name, model in self.models.items():
                 model_fit_kwargs = models_fit_kwargs.get(name, None)
                 self.models_[name] = fit_model(
@@ -583,7 +591,7 @@ class MLForecast:
         # For weighted conformal methods, also store full model covariates so
         # that the DRE can use all lag/rolling/date/exogenous features.
         feature_cols = None
-        _pi = getattr(self, 'prediction_intervals', None)
+        _pi = getattr(self, "prediction_intervals", None)
         if _pi is not None and _pi.method.startswith("weighted_conformal"):
             preprocessed_result = self.preprocess(
                 df,
@@ -599,7 +607,9 @@ class MLForecast:
             non_feat = {id_col, time_col, target_col}
             feature_cols = [c for c in preprocessed_result.columns if c not in non_feat]
             feat_df = preprocessed_result[[id_col, time_col] + feature_cols]
-            cv_results = ufp.join(cv_results, feat_df, on=[id_col, time_col], how="left")
+            cv_results = ufp.join(
+                cv_results, feat_df, on=[id_col, time_col], how="left"
+            )
         return compute_conformity_scores(
             cv_results, list(self.models.keys()), target_col, feature_cols=feature_cols
         )
@@ -700,7 +710,9 @@ class MLForecast:
 
             # Precompute per-horizon aligned features and validity masks once,
             # shared across all models to avoid redundant joins per model.
-            x_cols: Optional[List[str]] = list(X.columns) if hasattr(X, "columns") else None
+            x_cols: Optional[List[str]] = (
+                list(X.columns) if hasattr(X, "columns") else None
+            )
             feature_idx = {c: i for i, c in enumerate(self.ts.features_order_)}
             horizon_cache = {}  # h -> (X_h, valid_mask)
             for h in trained_horizons:
@@ -720,7 +732,9 @@ class MLForecast:
                 )
                 if not hasattr(X, "columns"):
                     if x_cols_h is not None:
-                        col_idx = np.array([feature_idx[c] for c in x_cols_h], dtype=np.int32)
+                        col_idx = np.array(
+                            [feature_idx[c] for c in x_cols_h], dtype=np.int32
+                        )
                         X_h = X[:, col_idx]
                     else:
                         X_h = X
@@ -744,13 +758,15 @@ class MLForecast:
                     if isinstance(base, pl_DataFrame):
                         lookup_df = (
                             base[[id_col]]
-                            .with_columns(pl_Series('_offset_time', offset_times))
-                            .with_row_index('_row_idx')
+                            .with_columns(pl_Series("_offset_time", offset_times))
+                            .with_row_index("_row_idx")
                         )
                         exog_source = original_df[[id_col, time_col] + exog_cols_h]
-                        exog_renamed = exog_source.rename({time_col: '_offset_time'})
-                        merged = lookup_df.join(exog_renamed, on=[id_col, '_offset_time'], how='left')
-                        merged = merged.sort('_row_idx')
+                        exog_renamed = exog_source.rename({time_col: "_offset_time"})
+                        merged = lookup_df.join(
+                            exog_renamed, on=[id_col, "_offset_time"], how="left"
+                        )
+                        merged = merged.sort("_row_idx")
                         if non_exog_cols:
                             X_h = X[non_exog_cols]
                             for col in exog_cols_h:
@@ -760,12 +776,16 @@ class MLForecast:
                             X_h = X
                     else:
                         lookup_df = base[[id_col]].copy()
-                        lookup_df['_offset_time'] = offset_times
-                        lookup_df['_row_idx'] = np.arange(len(base))
+                        lookup_df["_offset_time"] = offset_times
+                        lookup_df["_row_idx"] = np.arange(len(base))
                         exog_source = original_df[[id_col, time_col] + exog_cols_h]
-                        exog_renamed = exog_source.rename(columns={time_col: '_offset_time'})
-                        merged = lookup_df.merge(exog_renamed, on=[id_col, '_offset_time'], how='left')
-                        merged = merged.sort_values('_row_idx')
+                        exog_renamed = exog_source.rename(
+                            columns={time_col: "_offset_time"}
+                        )
+                        merged = lookup_df.merge(
+                            exog_renamed, on=[id_col, "_offset_time"], how="left"
+                        )
+                        merged = merged.sort_values("_row_idx")
                         if non_exog_cols:
                             X_h = X[non_exog_cols].copy()
                             for col in exog_cols_h:
@@ -783,7 +803,9 @@ class MLForecast:
                 for h, model in horizon_models.items():
                     X_h, valid = horizon_cache[h]
                     X_valid = ufp.filter_with_mask(X_h, valid)
-                    X_pred = ufp.to_numpy(X_valid) if models_trained_with_numpy else X_valid
+                    X_pred = (
+                        ufp.to_numpy(X_valid) if models_trained_with_numpy else X_valid
+                    )
                     preds_valid = model.predict(X_pred)
                     preds = np.full(len(X_h), np.nan)
                     preds[valid] = preds_valid
@@ -837,7 +859,9 @@ class MLForecast:
         if isinstance(one_step, pd.DataFrame):
             one_step_pd = one_step[[self.ts.id_col, self.ts.time_col]].copy()
         else:
-            one_step_pd = one_step.select([self.ts.id_col, self.ts.time_col]).to_pandas()
+            one_step_pd = one_step.select(
+                [self.ts.id_col, self.ts.time_col]
+            ).to_pandas()
 
         id_col = self.ts.id_col
         time_col = self.ts.time_col
@@ -932,7 +956,9 @@ class MLForecast:
                 row = {
                     id_col: group.iloc[target_idx, group.columns.get_loc(id_col)],
                     time_col: group.iloc[target_idx, group.columns.get_loc(time_col)],
-                    target_col: group.iloc[target_idx, group.columns.get_loc(target_col)],
+                    target_col: group.iloc[
+                        target_idx, group.columns.get_loc(target_col)
+                    ],
                     "h": h,
                 }
                 for model_name in model_names:
@@ -1024,6 +1050,7 @@ class MLForecast:
             )
             if prediction_intervals.scale_estimator is not None:
                 from .conformal_prediction import _compute_series_scales
+
                 self._cs_source_scales_ = _compute_series_scales(
                     df=df,
                     id_col=id_col,
@@ -1068,10 +1095,14 @@ class MLForecast:
                 )
 
             # Train models using generator factory
-            self.fit_models(generator_factory=generator_factory, models_fit_kwargs=models_fit_kwargs)
+            self.fit_models(
+                generator_factory=generator_factory, models_fit_kwargs=models_fit_kwargs
+            )
 
             if fitted:
-                assert not isinstance(prep, tuple)  # return_X_y=False ensures prep is a DataFrame
+                assert not isinstance(
+                    prep, tuple
+                )  # return_X_y=False ensures prep is a DataFrame
                 base = prep[[id_col, time_col]]
                 X, y = self._extract_X_y(prep, target_col, weight_col)
                 # Keep X as DataFrame for exog alignment in _compute_fitted_values
@@ -1175,7 +1206,9 @@ class MLForecast:
             raise ValueError("`h` must be a positive integer.")
         if not self.models_:
             if h != 1:
-                raise ValueError("No fitted models available to compute multi-step fitted values.")
+                raise ValueError(
+                    "No fitted models available to compute multi-step fitted values."
+                )
             res = self.fcst_fitted_values_
             if "h" not in res.columns:
                 res = ufp.assign_columns(res, "h", np.int64(h))
@@ -1386,7 +1419,9 @@ class MLForecast:
                 non_feat = {self.ts.id_col, self.ts.time_col, "cutoff"} | model_cols
                 feat_cols = [c for c in self._cs_df.columns if c not in non_feat]
                 src = (
-                    np.column_stack([self._cs_df[c].to_numpy() for c in feat_cols]).astype(float)
+                    np.column_stack(
+                        [self._cs_df[c].to_numpy() for c in feat_cols]
+                    ).astype(float)
                     if feat_cols
                     else None
                 )
@@ -1397,7 +1432,11 @@ class MLForecast:
 
         _saved_cs_df = None
         if new_df is not None and level is not None:
-            if self._cs_df is None or not hasattr(self, "prediction_intervals") or self.prediction_intervals is None:
+            if (
+                self._cs_df is None
+                or not hasattr(self, "prediction_intervals")
+                or self.prediction_intervals is None
+            ):
                 raise ValueError(
                     "Transfer-learning prediction intervals require that the model was "
                     "fit with `prediction_intervals=PredictionIntervals(...)`."
@@ -1418,7 +1457,9 @@ class MLForecast:
                     if transfer_conformal.n_windows is not None
                     else self.prediction_intervals.n_windows
                 )
-                _max_lag = self.ts.keep_last_n or (max(self.ts.lags) if self.ts.lags else 0)
+                _max_lag = self.ts.keep_last_n or (
+                    max(self.ts.lags) if self.ts.lags else 0
+                )
                 _backtest_results = _frozen_backtest(
                     fcst=self,
                     new_df=new_df,
@@ -1453,7 +1494,9 @@ class MLForecast:
                     time_col=self.ts.time_col,
                     preprocess_fn=(self.preprocess if spec.needs_preprocess else None),
                     source_cs_df=(self._cs_df if spec.needs_source_cs else None),
-                    source_scales=(self._cs_source_scales_ if spec.needs_source_cs else None),
+                    source_scales=(
+                        self._cs_source_scales_ if spec.needs_source_cs else None
+                    ),
                 )
             finally:
                 self.models_ = _saved_models_
@@ -1462,7 +1505,12 @@ class MLForecast:
                 self.prediction_intervals = _saved_pi
                 self._cs_source_scales_ = _saved_source_scales
 
-            if spec.runs_target_cv and _transfer_result is not None and _transfer_result.weights is None and _transfer_result.target_scales is None:
+            if (
+                spec.runs_target_cv
+                and _transfer_result is not None
+                and _transfer_result.weights is None
+                and _transfer_result.target_scales is None
+            ):
                 # recalibrate / error_scaled: swap in the new cs_df for the quantile step.
                 _saved_cs_df = self._cs_df
                 self._cs_df = _transfer_result.cs_df
@@ -1539,11 +1587,19 @@ class MLForecast:
                     conformal_method = _get_conformal_method(
                         self.prediction_intervals.method
                     )
-                    _cs_weights = _transfer_result.weights if _transfer_result is not None else None
-                    _target_weights = _transfer_result.target_weights if _transfer_result is not None else None
+                    _cs_weights = (
+                        _transfer_result.weights
+                        if _transfer_result is not None
+                        else None
+                    )
+                    _target_weights = (
+                        _transfer_result.target_weights
+                        if _transfer_result is not None
+                        else None
+                    )
                     # ESS warning: low effective sample size means weights are extreme.
                     if _cs_weights is not None and level is not None:
-                        ess = float(_cs_weights.sum() ** 2 / (_cs_weights ** 2).sum())
+                        ess = float(_cs_weights.sum() ** 2 / (_cs_weights**2).sum())
                         alpha_min = min((100.0 - lv) / 100.0 for lv in level)
                         ess_needed = 1.0 / alpha_min - 1.0
                         if ess < ess_needed:
@@ -1579,7 +1635,8 @@ class MLForecast:
                         cs_df = self._cs_df
                         if is_transfer:
                             n_series = len(cs_df) // (
-                                self.prediction_intervals.n_windows * self.prediction_intervals.h
+                                self.prediction_intervals.n_windows
+                                * self.prediction_intervals.h
                             )
                         else:
                             n_series = self.ts.ga.n_groups
@@ -1593,6 +1650,7 @@ class MLForecast:
                         and self._cs_source_scales_ is not None
                     ):
                         from .conformal_prediction import _apply_scale_alignment
+
                         cs_df = _apply_scale_alignment(
                             cs_df=cs_df,
                             model_names=list(model_names),
@@ -1620,7 +1678,13 @@ class MLForecast:
                             horizon=h,
                             weights=_cs_weights,
                             is_transfer=is_transfer,
-                            **({} if self.prediction_intervals.method.startswith("conformal_") else {"target_weights": _target_weights}),
+                            **(
+                                {}
+                                if self.prediction_intervals.method.startswith(
+                                    "conformal_"
+                                )
+                                else {"target_weights": _target_weights}
+                            ),
                         )
                     # Per-series σ_tgt scaling: multiply interval half-widths by σ_tgt_j.
                     # Scores are already normalized by σ_src_i, so quantiles are on the
@@ -1832,8 +1896,12 @@ class MLForecast:
                 result = ufp.take_rows(result, sort_idxs)
             # Calculate expected rows accounting for sparse horizons
             internal_horizons = getattr(self.ts, "_horizons", None)
-            full_range = list(range(self.ts.max_horizon)) if self.ts.max_horizon else None
-            is_sparse = internal_horizons is not None and internal_horizons != full_range
+            full_range = (
+                list(range(self.ts.max_horizon)) if self.ts.max_horizon else None
+            )
+            is_sparse = (
+                internal_horizons is not None and internal_horizons != full_range
+            )
             if is_sparse:
                 # Sparse horizons: expect only predictions for trained horizons <= h
                 assert internal_horizons is not None
