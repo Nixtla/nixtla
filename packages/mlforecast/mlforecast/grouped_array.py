@@ -17,7 +17,7 @@ def _shift_py(x: np.ndarray, offset: int) -> np.ndarray:
     n = x.size
     out = np.empty_like(x)
     out[:offset] = np.nan
-    out[offset:] = x[:n - offset]
+    out[offset:] = x[: n - offset]
     return out
 
 
