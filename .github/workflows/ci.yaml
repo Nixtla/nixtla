@@ -45,8 +45,6 @@ jobs:
         run: python -c "from nixtla import NixtlaClient"
 
   run-notebooks-test:
-    # Temporarily disabled: server-site transition update
-    if: false
     permissions:
       contents: write
     runs-on: nixtla-linux-large-public

@@ -64,17 +64,3 @@ nixtla_client.plot(df, anomalies_df_x)
   ![Date features anomalies
   plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-10-output-2.png)
 </Frame>
-
-To see the weight contributions of the date features, use the `weights_x` method:
-
-```python
-nixtla_client.weights_x.plot.barh(
-    x='features',
-    y='weights'
-)
-```
-
-<Frame caption="Bar chart indicating which date features contribute most to anomaly detection.">
-  ![Weights
-  plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/03_anomaly_detection_date_features_files/figure-markdown_strict/cell-11-output-1.png)
-</Frame>

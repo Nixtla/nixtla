@@ -63,20 +63,3 @@ nixtla_client.plot(df, anomalies_df)
     </Frame>
 
 The plot shows the time series with detected anomalies marked in red. The blue line represents the actual values, while the shaded area indicates the confidence interval. Points that fall outside this interval are flagged as anomalies.
-
-### Step 5: Inspect Model Weights (Optional)
-
-Use the `weights_x` method to view the relative weights of the exogenous features to understand their impact:
-
-```python
-nixtla_client.weights_x.plot.barh(
-    x='features',
-    y='weights'
-)
-```
-
-    <Frame caption="Weights of exogenous date features">
-      ![Weights of exogenous date features](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/capabilities/historical-anomaly-detection/02_anomaly_exogenous_files/figure-markdown_strict/cell-12-output-1.png)
-    </Frame>
-
-The horizontal bar plot shows the relative importance of each exogenous feature in the anomaly detection model. Features with larger weights have a stronger influence on the model's predictions. This visualization helps identify which external factors are most significant in determining anomalies in your time series.
