@@ -54,28 +54,42 @@ For a worked walkthrough of all of the above, including the `Combine` /
 the [Lag transformations](docs/how-to-guides/lag_transforms_guide.html)
 how-to guide.
 
-## Pooled mode: `global_` and `groupby`
+## Pooled mode: `global_`, `groupby`, and `partition_by`
 
 Every built-in rolling, expanding, seasonal-rolling, and exponentially weighted
-transform accepts two pooling parameters that let you compute the statistic
+transform accepts three pooling parameters that let you compute the statistic
 across **multiple series at once**:
 
 - **`global_: bool`** — when `True`, the statistic is computed across **all
   series** aggregated by timestamp. Every series receives the same feature
-  value at each timestamp. Requires every series to end at the same timestamp.
+  value at each timestamp.
 - **`groupby: Sequence[str]`** — column names to group by before computing the
   statistic. Columns must be declared as static features when calling
   `fit` / `preprocess`. Series in the same group share the feature value at
   each timestamp; series in different groups get different values.
+- **`partition_by: Sequence[str]`** — column names to partition further along
+  a **dynamic** (time-varying) key, such as `promo` or `regime`. Each unique
+  combination of partition values gets its own bucket. Composes with `global_`
+  (cross-series aggregates within each partition), with `groupby` (group
+  aggregates within each partition), or stands alone (per-(id, partition)
+  buckets — *local* mode). Partition columns must be supplied via `X_df` at
+  prediction.
 
 `global_` and `groupby` are **mutually exclusive** on the same transform.
+`partition_by` composes with either one or stands alone. All pooled modes
+require every series to **end at the same timestamp**, including local
+`partition_by`.
 
 **RANGE semantics.** Pooled transforms use SQL-style
 `RANGE BETWEEN ... PRECEDING` windows over actual timestamps, not row
 positions. Series with staggered starts simply do not contribute to the window
 until they have observations — no synthetic zeros are injected. Pooled mode
 assumes a **continuous, gap-free time grid** within each series; combining
-`validate_data=False` with a pooled transform raises a `UserWarning`.
+`validate_data=False` with a pooled transform raises a `UserWarning`. For
+`partition_by`, ordinals come from the **parent calendar** (global or group
+scope for nonlocal modes, per-id for local mode), so a partition bucket with
+gaps still preserves RANGE window semantics across those gaps rather than
+collapsing to row-based behavior.
 
 **`min_samples` divergence.** In local (per-series) mode, `min_samples` is
 capped at `window_size` by `coreforecast`. In pooled mode, `min_samples`

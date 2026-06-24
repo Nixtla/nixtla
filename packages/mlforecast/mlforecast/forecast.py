@@ -421,16 +421,18 @@ class MLForecast:
             self._validate_data(df, id_col, time_col)
         else:
             has_pooled = any(
-                getattr(v, "global_", False) or getattr(v, "groupby", None)
+                getattr(v, "global_", False)
+                or getattr(v, "groupby", None)
+                or getattr(v, "partition_by", None)
                 for v in self.ts.transforms.values()
             )
             if has_pooled:
                 warnings.warn(
-                    "Pooled (global/groupby) lag transforms assume a continuous, "
-                    "gap-free time grid. Data validation has been disabled "
-                    "(validate_data=False), so timestamp gaps may silently "
-                    "produce incorrect feature values. Consider enabling "
-                    "validation or pre-validating your data.",
+                    "Pooled (global/groupby/partition_by) lag transforms assume "
+                    "a continuous, gap-free time grid. Data validation has been "
+                    "disabled (validate_data=False), so timestamp gaps may "
+                    "silently produce incorrect feature values. Consider "
+                    "enabling validation or pre-validating your data.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -1242,7 +1244,10 @@ class MLForecast:
             if h == 1:
                 res = self.fcst_fitted_values_
             else:
-                if self.ts._get_global_tfms() or self.ts._get_group_tfms():
+                has_nonlocal = any(
+                    mode != "local" for mode, _, _ in self.ts._pooled_states
+                )
+                if has_nonlocal:
                     raise ValueError(
                         "On-demand recursive fitted values for `h>1` are not supported when using "
                         "global or grouped lag transforms."

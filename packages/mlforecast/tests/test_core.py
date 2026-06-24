@@ -52,11 +52,18 @@ def _expanding_mean(x):
 def _rolling_mean(x, window_size):
     return pd.Series(x).rolling(window_size).mean().to_numpy()
 
+
 def test_build_function_transform_name():
     assert _build_function_transform_name(_expanding_mean, 1) == "_expanding_mean_lag1"
-    assert _build_function_transform_name(_rolling_mean, 2, 7) == "_rolling_mean_lag2_window_size7"
+    assert (
+        _build_function_transform_name(_rolling_mean, 2, 7)
+        == "_rolling_mean_lag2_window_size7"
+    )
     assert _build_lag_transform_name(ExpandingMean(), 1) == "expanding_mean_lag1"
-    assert _build_lag_transform_name(RollingMean(7), 2) == "rolling_mean_lag2_window_size7"
+    assert (
+        _build_lag_transform_name(RollingMean(7), 2) == "rolling_mean_lag2_window_size7"
+    )
+
 
 # one duplicate
 def test_name_models_with_duplicates():
@@ -65,30 +72,35 @@ def test_name_models_with_duplicates():
     actual = _name_models(names)
     assert actual == expected
 
+
 # no duplicates
 def test_name_models_without_duplicates():
     names = ["a", "b", "c"]
     actual = _name_models(names)
     assert actual == names
     with pytest.raises(ValueError) as exec:
-        TimeSeries(freq="D", lags=list(range(2))),
+        (TimeSeries(freq="D", lags=list(range(2))),)
     assert "lags must be positive integers" in str(exec.value)
 
     with pytest.raises(ValueError) as exec:
-        TimeSeries(freq="D", lag_transforms={0: 1}),
+        (TimeSeries(freq="D", lag_transforms={0: 1}),)
 
     assert "keys of lag_transforms must be positive integers" in str(exec.value)
+
 
 @pytest.fixture
 def x():
     n = 7 * 14
-    x = pd.DataFrame({
+    x = pd.DataFrame(
+        {
             "id": np.repeat(0, n),
             "ds": np.arange(n),
             "y": np.arange(7)[[x % 7 for x in np.arange(n)]],
-        })
+        }
+    )
     x["y"] = x["ds"] * 0.1 + x["y"]
     return x
+
 
 # differences
 def test_target_transform_differences(x):
@@ -105,20 +117,18 @@ def test_target_transform_differences(x):
     np.testing.assert_allclose(xx["A"], x["y"].tail(14).values)
 
 
-
 class A:
-    def fit(self, X): # noqa
+    def fit(self, X):  # noqa
         return self
 
     def predict(self, X):
         return np.zeros(X.shape[0])
 
 
-
-
 # tfms namer
-def namer(cls, lag, *args): # noqa
+def namer(cls, lag, *args):  # noqa
     return f"hello_from_{type(cls).__name__.lower()}"
+
 
 @pytest.fixture
 def ts():
@@ -129,9 +139,16 @@ def ts():
     )
     return ts
 
+
 def test_tfms_namer(x, ts):
     transformed = ts.fit_transform(x, id_col="id", time_col="ds", target_col="y")
-    assert transformed.columns.tolist() == ["id", "ds", "y", "hello_from_rollingmean", "hello_from_expandingmean"]
+    assert transformed.columns.tolist() == [
+        "id",
+        "ds",
+        "y",
+        "hello_from_rollingmean",
+        "hello_from_expandingmean",
+    ]
     with pytest.raises(ValueError) as exec:
         TimeSeries(freq=1, date_features=[lambda: 1])
 
@@ -140,6 +157,7 @@ def test_tfms_namer(x, ts):
 
 def month_start_or_end(dates):
     return dates.is_month_start | dates.is_month_end
+
 
 @pytest.fixture
 def flow_config():
@@ -151,12 +169,18 @@ def flow_config():
     )
     return flow_config
 
+
 def test_ts_flow_config(flow_config):
     ts = TimeSeries(**flow_config)
     assert TimeSeries(freq=ts.freq).freq == TimeSeries(freq="W-THU").freq
     assert ts.freq == pd.tseries.frequencies.to_offset(flow_config["freq"])
     assert ts.date_features == flow_config["date_features"]
-    assert list(ts.transforms.keys()) == ["lag7", "expanding_mean_lag1", "rolling_mean_lag1_window_size7"]
+    assert list(ts.transforms.keys()) == [
+        "lag7",
+        "expanding_mean_lag1",
+        "rolling_mean_lag1_window_size7",
+    ]
+
 
 # int y is converted to float32
 def test_y_fp32(serie):
@@ -170,6 +194,7 @@ def test_y_fp32(serie):
 # _compute_transforms
 def _shift_array(x, n):
     return np.hstack([np.full(n, np.nan), x[:-n]])
+
 
 def test_compute_transforms(flow_config, serie):
     y = serie.y.values
@@ -188,6 +213,7 @@ def test_compute_transforms(flow_config, serie):
             transforms["rolling_mean_lag1_window_size7"], _rolling_mean(lag_1, 7)
         )
 
+
 # update_y
 def test_update_y(serie):
     ts = TimeSeries(freq="D", lags=[1])
@@ -200,6 +226,7 @@ def test_update_y(serie):
     assert np.diff(ts.ga.indptr) == max_size + 2
     assert ts.ga.data[-2:].tolist() == [1, 2]
 
+
 # _update_features
 def test_update_features(flow_config, serie):
     ts = TimeSeries(**flow_config)
@@ -211,7 +238,6 @@ def test_update_features(flow_config, serie):
     first_prediction_date = last_date + pd.offsets.Day()
 
     y = serie.y.values
-
 
     # these have an offset becase we can now "see" our last y value
     expected = pd.DataFrame(
@@ -228,8 +254,8 @@ def test_update_features(flow_config, serie):
     statics = serie.tail(1).drop(columns=["ds", "y"])
     pd.testing.assert_frame_equal(updates, statics.merge(expected))
 
-
     assert ts.curr_dates[0] == first_prediction_date
+
 
 # _get_predictions
 def test_get_predictions(serie):
@@ -250,6 +276,7 @@ def test_get_predictions(serie):
     )
     pd.testing.assert_frame_equal(preds, expected)
 
+
 @pytest.fixture
 def flow_config2():
     flow_config = dict(
@@ -266,6 +293,7 @@ def flow_config2():
     )
     return flow_config
 
+
 def test_ts_fit_transform(flow_config2, series):
     ts = TimeSeries(**flow_config2)
     _ = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
@@ -274,7 +302,9 @@ def test_ts_fit_transform(flow_config2, series):
         series.groupby("unique_id", observed=True).tail(ts.keep_last_n)["y"],
     )
     assert ts.uids.tolist() == series["unique_id"].unique().tolist()
-    np.testing.assert_array_equal(ts.last_dates, series.groupby("unique_id", observed=True)["ds"].max().values)
+    np.testing.assert_array_equal(
+        ts.last_dates, series.groupby("unique_id", observed=True)["ds"].max().values
+    )
     pd.testing.assert_frame_equal(
         ts.static_features_,
         series.groupby("unique_id", observed=True)
@@ -297,12 +327,17 @@ def test_ts_fit_transform(flow_config2, series):
         .reset_index(drop=True),
     )
 
+
 def test_keep_last_n(flow_config2, series):
     keep_last_n = 15
 
     ts = TimeSeries(**flow_config2)
     df = ts.fit_transform(
-        series, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=keep_last_n
+        series,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        keep_last_n=keep_last_n,
     )
     ts._predict_setup()
 
@@ -314,24 +349,31 @@ def test_keep_last_n(flow_config2, series):
     expected_date_features = ["dayofweek", "month", "year"]
 
     assert ts.features == expected_lags + expected_transforms + expected_date_features
-    assert ts.static_features_.columns.tolist() + ts.features == df.columns.drop(["ds", "y"]).tolist()
+    assert (
+        ts.static_features_.columns.tolist() + ts.features
+        == df.columns.drop(["ds", "y"]).tolist()
+    )
     # we dropped 2 rows because of the lag 2 and 13 more to have the window of size 14
     assert df.shape[0] == series.shape[0] - (2 + 13) * ts.ga.n_groups
     assert ts.ga.data.size == ts.ga.n_groups * keep_last_n
 
-
     series_with_nulls = series.copy()
     series_with_nulls.loc[1, "y"] = np.nan
     with pytest.raises(Exception) as exec:
-        ts.fit_transform(series_with_nulls, id_col="unique_id", time_col="ds", target_col="y")
+        ts.fit_transform(
+            series_with_nulls, id_col="unique_id", time_col="ds", target_col="y"
+        )
     assert "y column contains null values" in str(exec.value)
+
 
 # unsorted df
 def test_unsorted_df(flow_config2, series):
     ts = TimeSeries(**flow_config2)
     df = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
     unordered_series = series.sample(frac=1.0)
-    assert not unordered_series.set_index("ds", append=True).index.is_monotonic_increasing
+    assert not unordered_series.set_index(
+        "ds", append=True
+    ).index.is_monotonic_increasing
     df2 = ts.fit_transform(
         unordered_series, id_col="unique_id", time_col="ds", target_col="y"
     )
@@ -339,6 +381,7 @@ def test_unsorted_df(flow_config2, series):
         df.reset_index(drop=True),
         df2.sort_values(["unique_id", "ds"]).reset_index(drop=True),
     )
+
 
 # existing features arent recomputed
 def test_existing_features():
@@ -353,7 +396,11 @@ def test_existing_features():
     )
     ts = TimeSeries(freq="D", lags=[1, 2], date_features=["year", "month"])
     transformed = ts.fit_transform(
-        df_with_features, id_col="unique_id", time_col="ds", target_col="y", dropna=False
+        df_with_features,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
     )
     pd.testing.assert_series_equal(transformed["lag1"], df_with_features["lag1"])
     pd.testing.assert_series_equal(transformed["month"], df_with_features["month"])
@@ -388,6 +435,7 @@ def test_non_standard_df(flow_config2, series):
 def identity(x):
     return x
 
+
 def test_integer_timestamps(flow_config2, series):
     flow_config_int_ds = copy.deepcopy(flow_config2)
     flow_config_int_ds["date_features"] = [identity]
@@ -401,17 +449,19 @@ def test_integer_timestamps(flow_config2, series):
     int_ds_res["ds"] = pd.to_datetime(int_ds_res["ds"])
     int_ds_res["identity"] = pd.to_datetime(int_ds_res["ds"])
 
-    df = TimeSeries(**flow_config2).fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    df = TimeSeries(**flow_config2).fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y"
+    )
 
     df2 = df.drop(columns=flow_config2["date_features"])
     df2["identity"] = df2["ds"]
     pd.testing.assert_frame_equal(df2, int_ds_res)
 
 
-
 class DummyModel:
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         return X["lag7"].values
+
 
 def test_ts_predict(flow_config2, series):
     horizon = 7
@@ -431,6 +481,7 @@ def test_ts_predict(flow_config2, series):
     pd.testing.assert_series_equal(grouped_preds["ds"].min(), expected_dsmin)
     pd.testing.assert_series_equal(grouped_preds["ds"].max(), expected_dsmax)
 
+
 def test_ts_with_diff_conf(flow_config2, series):
     horizon = 7
 
@@ -444,7 +495,7 @@ def test_ts_with_diff_conf(flow_config2, series):
     ts = TimeSeries(**flow_config_int_ds)
 
     int_ds_series = series.copy()
-    int_ds_series['ds'] = int_ds_series['ds'].astype('int64')
+    int_ds_series["ds"] = int_ds_series["ds"].astype("int64")
 
     ts.fit_transform(int_ds_series, id_col="unique_id", time_col="ds", target_col="y")
     int_ds_predictions = ts.predict({"DummyModel": model}, horizon=horizon)
@@ -456,6 +507,7 @@ def test_ts_with_diff_conf(flow_config2, series):
 class PredictPrice:
     def predict(self, X):
         return X["price"]
+
 
 def test_dynamic_features(flow_config2):
     series = generate_daily_series(20, n_static_features=2, equal_ends=True)
@@ -494,7 +546,6 @@ def test_dynamic_features(flow_config2):
     assert "{'bonjour'}" in str(exec.value)
 
 
-
 class SeasonalNaiveModel:
     def predict(self, X):
         return X["lag7"]
@@ -504,9 +555,12 @@ class NaiveModel:
     def predict(self, X: pd.DataFrame):
         return X["lag1"]
 
+
 def test_ts_update(series):
     two_series = series[series["unique_id"].isin(["id_00", "id_19"])].copy()
-    two_series["unique_id"] = pd.Categorical(two_series["unique_id"], ["id_00", "id_19"])
+    two_series["unique_id"] = pd.Categorical(
+        two_series["unique_id"], ["id_00", "id_19"]
+    )
     ts = TimeSeries(freq="D", lags=[1], date_features=["dayofweek"])
     ts.fit_transform(
         two_series,
@@ -601,9 +655,7 @@ def test_global_lag_transform(engine):
     )
     expected_by_ds = {1: np.nan, 2: 5.5, 3: 8.25, 4: 13.75}
     if engine == "polars":
-        expected = (
-            prep["ds"].to_pandas().map(expected_by_ds).to_numpy()
-        )
+        expected = prep["ds"].to_pandas().map(expected_by_ds).to_numpy()
     else:
         expected = prep["ds"].map(expected_by_ds).to_numpy()
     col = tfm._get_name(1)
@@ -616,11 +668,14 @@ def test_global_lag_transform(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_lag_transform(engine):
-    df = make_groupby_df(engine, [
-        ("a", [1, 2, 3, 4], "x"),
-        ("c", [5, 6, 7, 8], "x"),
-        ("b", [10, 20, 30, 40], "y"),
-    ])
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 2, 3, 4], "x"),
+            ("c", [5, 6, 7, 8], "x"),
+            ("b", [10, 20, 30, 40], "y"),
+        ],
+    )
     tfm = RollingMean(2, groupby=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
@@ -648,10 +703,13 @@ def test_group_lag_transform(engine):
         ("y", 4): 25.0,
     }
     if engine == "polars":
-        expected = np.array([
-            expected_by_key[(b, d)]
-            for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
-        ], dtype=float)
+        expected = np.array(
+            [
+                expected_by_key[(b, d)]
+                for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
+            ],
+            dtype=float,
+        )
     else:
         expected = np.array(
             [expected_by_key[(b, d)] for b, d in zip(prep["brand"], prep["ds"])],
@@ -686,7 +744,7 @@ def test_global_lag_transform_requires_aligned_ends(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, global_=True)]})
     with pytest.raises(
         ValueError,
-        match="Global and group lag transforms require all series to end at the same timestamp",
+        match="Pooled lag transforms require all series to end at the same timestamp",
     ):
         ts.fit_transform(
             df,
@@ -720,7 +778,7 @@ def test_group_lag_transform_requires_aligned_ends(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, groupby=["brand"])]})
     with pytest.raises(
         ValueError,
-        match="Global and group lag transforms require all series to end at the same timestamp",
+        match="Pooled lag transforms require all series to end at the same timestamp",
     ):
         ts.fit_transform(
             df,
@@ -729,6 +787,42 @@ def test_group_lag_transform_requires_aligned_ends(engine):
             target_col="y",
             dropna=False,
             static_features=["brand"],
+        )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_local_partition_lag_transform_requires_aligned_ends(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+                "promo": [0, 1, 0, 1, 0, 1, 0],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+                "promo": [0, 1, 0, 1, 0, 1, 0],
+            }
+        )
+    ts = TimeSeries(
+        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["promo"])]}
+    )
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require all series to end at the same timestamp",
+    ):
+        ts.fit_transform(
+            df,
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
         )
 
 
@@ -774,7 +868,7 @@ def test_global_update_requires_complete_timestamps(engine):
     )
     with pytest.raises(
         ValueError,
-        match="Global and group lag transforms require updates to include all series for each timestamp.",
+        match="Pooled lag transforms require updates to include all series for each timestamp.",
     ):
         ts.update(update_df)
 
@@ -826,7 +920,60 @@ def test_group_update_requires_complete_timestamps(engine):
     )
     with pytest.raises(
         ValueError,
-        match="Global and group lag transforms require updates to include all series for each timestamp.",
+        match="Pooled lag transforms require updates to include all series for each timestamp.",
+    ):
+        ts.update(update_df)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_local_partition_update_requires_complete_timestamps(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+                "promo": [0, 1, 1, 0],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+        update_df = pl.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+                "promo": [0],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+                "promo": [0, 1, 1, 0],
+            }
+        )
+        update_df = pd.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+                "promo": [0],
+            }
+        )
+    ts = TimeSeries(
+        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["promo"])]}
+    )
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require updates to include all series for each timestamp.",
     ):
         ts.update(update_df)
 
@@ -877,7 +1024,7 @@ def test_group_update_new_group_order(engine):
         static_features=["brand"],
     )
     ts.update(update_df)
-    state = ts._pooled_groups[("brand",)]
+    state = ts._pooled_states[("groupby", ("brand",), ())]
     groups = state.groups
     full_df = ufp.vertical_concat([df, update_df])
     if engine == "polars":
@@ -893,10 +1040,13 @@ def test_group_update_new_group_order(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_lag_transform_uses_transformed_target(engine):
-    df = make_groupby_df(engine, [
-        ("a", [1, 2, 3], "x"),
-        ("b", [10, 20, 30], "x"),
-    ])
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 2, 3], "x"),
+            ("b", [10, 20, 30], "x"),
+        ],
+    )
     tfm = RollingMean(1, groupby=["brand"])
     ts = TimeSeries(
         freq=1,
@@ -941,11 +1091,11 @@ def test_global_update_y_appends_observations():
     )
     ts._predict_setup()
     ts._update_features()
-    assert ts._pooled_global is not None
-    orig_len = len(ts._pooled_global.time)
+    global_state = ts._pooled_states[("global", (), ())]
+    orig_len = len(global_state.time)
     n_series = len(ts.uids)
     ts._update_y(np.zeros(n_series))
-    assert len(ts._pooled_global.time) == orig_len + n_series
+    assert len(global_state.time) == orig_len + n_series
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1070,11 +1220,14 @@ def test_global_rolling_quantile(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_rolling_std(engine):
-    df = make_groupby_df(engine, [
-        ("a", [1, 1, 1, 1], "x"),
-        ("c", [3, 3, 3, 3], "x"),
-        ("b", [4, 4, 4, 4], "y"),
-    ])
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 1, 1, 1], "x"),
+            ("c", [3, 3, 3, 3], "x"),
+            ("b", [4, 4, 4, 4], "y"),
+        ],
+    )
     tfm = RollingStd(2, groupby=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
@@ -1101,10 +1254,13 @@ def test_group_rolling_std(engine):
         ("y", 4): 0.0,
     }
     if engine == "polars":
-        expected = np.array([
-            expected_by_key[(b, d)]
-            for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
-        ], dtype=float)
+        expected = np.array(
+            [
+                expected_by_key[(b, d)]
+                for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
+            ],
+            dtype=float,
+        )
     else:
         expected = np.array(
             [expected_by_key[(b, d)] for b, d in zip(prep["brand"], prep["ds"])],
@@ -1120,11 +1276,14 @@ def test_group_rolling_std(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_expanding_mean(engine):
-    df = make_groupby_df(engine, [
-        ("a", [1, 2, 3, 4], "x"),
-        ("c", [5, 6, 7, 8], "x"),
-        ("b", [10, 20, 30, 40], "y"),
-    ])
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 2, 3, 4], "x"),
+            ("c", [5, 6, 7, 8], "x"),
+            ("b", [10, 20, 30, 40], "y"),
+        ],
+    )
     tfm = ExpandingMean(groupby=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
@@ -1150,10 +1309,13 @@ def test_group_expanding_mean(engine):
         ("y", 4): 20.0,
     }
     if engine == "polars":
-        expected = np.array([
-            expected_by_key[(b, d)]
-            for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
-        ], dtype=float)
+        expected = np.array(
+            [
+                expected_by_key[(b, d)]
+                for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
+            ],
+            dtype=float,
+        )
     else:
         expected = np.array(
             [expected_by_key[(b, d)] for b, d in zip(prep["brand"], prep["ds"])],
@@ -1169,11 +1331,14 @@ def test_group_expanding_mean(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_rolling_quantile(engine):
-    df = make_groupby_df(engine, [
-        ("a", [1, 3, 5, 7, 9], "x"),
-        ("c", [0, 2, 4, 6, 8], "x"),
-        ("b", [2, 4, 6, 8, 10], "y"),
-    ])
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 3, 5, 7, 9], "x"),
+            ("c", [0, 2, 4, 6, 8], "x"),
+            ("b", [2, 4, 6, 8, 10], "y"),
+        ],
+    )
     tfm = RollingQuantile(p=0.5, window_size=3, groupby=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
@@ -1346,8 +1511,12 @@ def _make_valid_update(series, engine, freq_config):
             series.group_by("unique_id").agg(pl.col("ds").max()),
             on=["unique_id", "ds"],
         )
-        update1 = last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"]))
-        update2 = last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset2"]))
+        update1 = last_vals.with_columns(
+            pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+        )
+        update2 = last_vals.with_columns(
+            pl.col("ds").dt.offset_by(freq_config["polars_offset2"])
+        )
         update = pl.concat([update1, update2])
         return update.with_columns((pl.col("y") + 1).alias("y"))
     last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
@@ -1361,9 +1530,13 @@ def _make_valid_update(series, engine, freq_config):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
-@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
 def test_update_validation_valid_continuous(engine, freq_name):
-    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
     freq, freq_config = _get_freq_config(freq_name, engine)
     ts = TimeSeries(freq=freq, lags=[1])
     ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
@@ -1372,9 +1545,13 @@ def test_update_validation_valid_continuous(engine, freq_name):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
-@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
 def test_update_validation_invalid_gap(engine, freq_name):
-    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
     freq, freq_config = _get_freq_config(freq_name, engine)
     ts = TimeSeries(freq=freq, lags=[1])
     ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
@@ -1385,8 +1562,12 @@ def test_update_validation_invalid_gap(engine, freq_name):
         )
         update = pl.concat(
             [
-                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
-                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset3"])),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset3"])
+                ),
             ]
         )
     else:
@@ -1403,9 +1584,13 @@ def test_update_validation_invalid_gap(engine, freq_name):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
-@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
 def test_update_validation_invalid_start(engine, freq_name):
-    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
     freq, freq_config = _get_freq_config(freq_name, engine)
     ts = TimeSeries(freq=freq, lags=[1])
     ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
@@ -1417,7 +1602,9 @@ def test_update_validation_invalid_start(engine, freq_name):
         update = pl.concat(
             [
                 last_vals,
-                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
             ]
         )
     else:
@@ -1434,9 +1621,13 @@ def test_update_validation_invalid_start(engine, freq_name):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
-@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
 def test_update_validation_new_series(engine, freq_name):
-    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
     freq, freq_config = _get_freq_config(freq_name, engine)
     ts = TimeSeries(freq=freq, lags=[1])
     ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
@@ -1445,7 +1636,10 @@ def test_update_validation_new_series(engine, freq_name):
     # Create new series with proper timestamps for the frequency
     if engine == "polars":
         if freq_name == "hourly":
-            dates = [datetime.datetime(2020, 1, 1, 0, 0), datetime.datetime(2020, 1, 1, 1, 0)]
+            dates = [
+                datetime.datetime(2020, 1, 1, 0, 0),
+                datetime.datetime(2020, 1, 1, 1, 0),
+            ]
         elif freq_name == "daily":
             dates = [datetime.datetime(2020, 1, 1), datetime.datetime(2020, 1, 2)]
         elif freq_name == "weekly":
@@ -1503,9 +1697,13 @@ def test_update_validation_new_series(engine, freq_name):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
-@pytest.mark.parametrize("freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
 def test_update_validation_frequency_mismatch(engine, freq_name):
-    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
     freq, freq_config = _get_freq_config(freq_name, engine)
     ts = TimeSeries(freq=freq, lags=[1])
     ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
@@ -1517,7 +1715,9 @@ def test_update_validation_frequency_mismatch(engine, freq_name):
         # Create one properly aligned timestamp and one misaligned
         update = pl.concat(
             [
-                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
                 last_vals.with_columns(
                     pl.col("ds")
                     .dt.offset_by(freq_config["polars_offset1"])
@@ -1553,7 +1753,9 @@ def test_update_validation_misaligned_intermediate_timestamp(engine, freq_name):
     [12:00, 13:30, 14:00] should FAIL because 13:30 is not aligned, but currently
     it passes because min (12:00) and max (14:00) are both aligned.
     """
-    series = _generate_series_with_freq(3, freq_name, n_static_features=2, engine=engine)
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
     freq, freq_config = _get_freq_config(freq_name, engine)
     ts = TimeSeries(freq=freq, lags=[1])
     ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
@@ -1568,13 +1770,17 @@ def test_update_validation_misaligned_intermediate_timestamp(engine, freq_name):
         # or [last+1d, last+1.5d, last+2d] for daily (1.5d is misaligned)
         update = pl.concat(
             [
-                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset1"])),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
                 last_vals.with_columns(
                     pl.col("ds")
                     .dt.offset_by(freq_config["polars_offset1"])
                     .dt.offset_by(freq_config["polars_offset_misaligned"])
                 ),
-                last_vals.with_columns(pl.col("ds").dt.offset_by(freq_config["polars_offset2"])),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset2"])
+                ),
             ]
         )
     else:
@@ -1686,6 +1892,7 @@ def test_target_transform_with_keep_last_n(series):
     expected["ds"] += pd.offsets.Day()
     pd.testing.assert_frame_equal(preds, expected)
 
+
 # raise error when omitting the static_features argument and passing them as dynamic in predict
 def test_omit_static_features(series):
     valid = series.groupby("unique_id", observed=True).tail(10)
@@ -1694,10 +1901,8 @@ def test_omit_static_features(series):
     ts.fit_transform(
         train, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=10
     )
-    with pytest.raises(Exception) as exec:
+    with pytest.warns(UserWarning, match="static during fit and will be ignored"):
         ts.predict({"y": NaiveModel()}, 1, X_df=valid.drop(columns=["y"]))
-
-    assert "['static_0', 'static_1']" in str(exec.value)
 
 
 def test_pd_vs_pl():
@@ -1743,6 +1948,7 @@ def test_pd_vs_pl():
     )
     pd.testing.assert_frame_equal(fcst_pl, fcst_pd)
 
+
 # dropped series
 @pytest.mark.parametrize("ordered", "[True, False]")
 def test_dropped_series(ordered):
@@ -1758,14 +1964,14 @@ def test_dropped_series(ordered):
         series["unique_id"].unique()
     )
 
+
 # short series exception
 def test_short_series_exception():
     series = generate_daily_series(2, min_length=5, max_length=15)
     ts = TimeSeries(freq="D", lags=[1], target_transforms=[Differences([20])])
     with pytest.raises(Exception) as exec:
-        ts.fit_transform(series, "unique_id", "ds", "y"),
+        (ts.fit_transform(series, "unique_id", "ds", "y"),)
     assert "are too short for the 'Differences' transformation" in str(exec.value)
-
 
 
 # test predict
@@ -1773,8 +1979,9 @@ class Lag1PlusOneModel:
     def predict(self, X):
         return X["lag1"] + 1
 
+
 def test_lag_predict(series):
-    valid = series.groupby('unique_id', observed=True).tail(10)
+    valid = series.groupby("unique_id", observed=True).tail(10)
     train = series.drop(valid.index)
 
     ts = TimeSeries(freq="D", lags=[1])
@@ -1794,6 +2001,7 @@ def test_lag_predict(series):
         np.testing.assert_allclose(preds2["mod1"], preds2["mod2"])
         pd.testing.assert_frame_equal(preds, preds2)
 
+
 # save & load
 def test_save_and_load():
     series = generate_daily_series(2, n_static_features=2)
@@ -1812,6 +2020,7 @@ def test_save_and_load():
     preds = ts.predict({"model": NaiveModel()}, 10)
     preds2 = ts2.predict({"model": NaiveModel()}, 10)
     pd.testing.assert_frame_equal(preds, preds2)
+
 
 # automatically set keep_last_n for built-in lag transforms
 def test_keep_last_n_for_built_in_lag_transforms(series):
@@ -1841,6 +2050,7 @@ def test_keep_last_n_for_built_in_lag_transforms(series):
     assert ts.keep_last_n == 20
     ts.fit_transform(series, "unique_id", "ds", "y")
     assert ts.keep_last_n == 4
+
 
 # no target nulls when dropna=False
 def test_target_nulls(series):
@@ -1884,6 +2094,7 @@ def test_timeseries_num_threads_minus_one(series):
 # date_features_as_dummies tests
 # ---------------------------------------------------------------------------
 
+
 def test_date_feature_dummies_column_names():
     """_date_feature_names expands dummy features; non-dummy features stay ordinal."""
     ts = TimeSeries(
@@ -1922,7 +2133,9 @@ def test_date_feature_dummies_polars(series):
         date_features=["dayofweek"],
         date_features_as_dummies=True,
     )
-    result = ts.fit_transform(pl_series, id_col="unique_id", time_col="ds", target_col="y")
+    result = ts.fit_transform(
+        pl_series, id_col="unique_id", time_col="ds", target_col="y"
+    )
     result_pd = result.to_pandas()
     for i in range(7):
         col = f"dayofweek_{i}"
@@ -2014,7 +2227,9 @@ def test_date_feature_dummies_all_supported(series):
             date_features=[feature],
             date_features_as_dummies=True,
         )
-        result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+        result = ts.fit_transform(
+            series, id_col="unique_id", time_col="ds", target_col="y"
+        )
         expected_cols = [f"{feature}_{v}" for v in _DUMMY_FEATURE_VALUES[feature]]
         for col in expected_cols:
             assert col in result.columns, f"feature={feature}: missing {col}"
@@ -2022,6 +2237,7 @@ def test_date_feature_dummies_all_supported(series):
 
 def test_non_jitted_tfms(series):
     lags = [1, 2]
+
     def my_py_tfm(x):
         return x
 
@@ -2037,7 +2253,9 @@ def test_non_jitted_tfms(series):
     )
     expected_warning = "Non-numba transforms are computed sequentially"
     with pytest.warns(UserWarning, match=expected_warning):
-        result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+        result = ts.fit_transform(
+            series, id_col="unique_id", time_col="ds", target_col="y"
+        )
     assert_same_as_native(result)
 
     cbk = SaveFeatures()

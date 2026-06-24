@@ -99,11 +99,19 @@ _SQL_TEMPLATES = {
 # ---------------------------------------------------------------------------
 
 
-def _load_to_sqlite(df: pd.DataFrame, conn: sqlite3.Connection, group_cols: Optional[List[str]] = None):
+def _load_to_sqlite(
+    df: pd.DataFrame,
+    conn: sqlite3.Connection,
+    group_cols: Optional[List[str]] = None,
+    partition_cols: Optional[List[str]] = None,
+):
     cols = ["unique_id", "ds", "y"]
     for gc in group_cols or []:
         if gc not in cols:
             cols.append(gc)
+    for pc in partition_cols or []:
+        if pc not in cols:
+            cols.append(pc)
     sub = df[cols].copy()
     sub["y"] = sub["y"].astype(float)
     sub.to_sql("obs", conn, index=False, if_exists="replace")
@@ -130,11 +138,12 @@ def _build_sql(
     window_size: Optional[int],
     min_samples: Optional[int],
     partition_expr: Optional[str],
+    ordinal_partition_expr: Optional[str] = None,
 ) -> str:
     window_clause = _build_window_clause(
         template["window_type"], lag, window_size, partition_expr,
     )
-    dense_rank_partition = f"PARTITION BY {partition_expr} " if partition_expr else ""
+    dense_rank_partition = f"PARTITION BY {ordinal_partition_expr} " if ordinal_partition_expr else ""
     result_expr = template["result_expr"]
     if min_samples is not None:
         result_expr = result_expr.format(min_samples=min_samples)
@@ -162,17 +171,24 @@ def sqlite_oracle(
     window_size: Optional[int] = None,
     min_samples: Optional[int] = None,
     group_cols: Optional[List[str]] = None,
+    partition_cols: Optional[List[str]] = None,
 ) -> np.ndarray:
     template = _SQL_TEMPLATES[transform_name]
     if template["window_type"] == "rolling":
         effective_min = min_samples if min_samples is not None else window_size
     else:
         effective_min = None
-    partition_expr = ", ".join(group_cols) if group_cols else None
-    sql = _build_sql(template, lag, window_size, effective_min, partition_expr)
+    ordinal_scope = ", ".join(group_cols) if group_cols else None
+    all_window_cols = list(group_cols or []) + list(partition_cols or [])
+    window_partition = ", ".join(all_window_cols) if all_window_cols else None
+    sql = _build_sql(
+        template, lag, window_size, effective_min,
+        partition_expr=window_partition,
+        ordinal_partition_expr=ordinal_scope,
+    )
     conn = sqlite3.connect(":memory:")
     try:
-        _load_to_sqlite(df, conn, group_cols)
+        _load_to_sqlite(df, conn, group_cols, partition_cols)
         rows = conn.execute(sql).fetchall()
     finally:
         conn.close()
@@ -193,9 +209,16 @@ def _numpy_result(
     transform,
     lag: int,
     group_cols: Optional[List[str]] = None,
+    partition_cols: Optional[List[str]] = None,
 ) -> np.ndarray:
     ts = TimeSeries(freq=1, lag_transforms={lag: [transform]})
-    static_features = list(group_cols) if group_cols else None
+    static_features: Optional[List[str]]
+    if partition_cols is not None:
+        static_features = [c for c in (group_cols or []) if c != "unique_id"]
+        if not static_features:
+            static_features = []
+    else:
+        static_features = list(group_cols) if group_cols else None
     result_df = ts.fit_transform(
         df,
         id_col="unique_id",
@@ -220,6 +243,7 @@ def assert_oracle_matches(
     transform_name: str,
     lag: int,
     group_cols: Optional[List[str]] = None,
+    partition_cols: Optional[List[str]] = None,
     window_size: Optional[int] = None,
     min_samples: Optional[int] = None,
     atol: float = 1e-10,
@@ -229,8 +253,9 @@ def assert_oracle_matches(
         window_size=window_size,
         min_samples=min_samples,
         group_cols=group_cols,
+        partition_cols=partition_cols,
     )
-    np_result = _numpy_result(df, transform, lag, group_cols)
+    np_result = _numpy_result(df, transform, lag, group_cols, partition_cols)
     np.testing.assert_allclose(np_result, sql_result, atol=atol, equal_nan=True)
 
 
@@ -431,6 +456,247 @@ def test_sparse_windows_nan_vs_value():
     assert_oracle_matches(
         df, transform_std, "RollingStd", lag=3,
         window_size=2, min_samples=2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# partition_by tests
+# ---------------------------------------------------------------------------
+
+
+def _global_partition_df():
+    return pd.DataFrame({
+        "unique_id": ["a"] * 8 + ["b"] * 8,
+        "ds": list(range(8)) * 2,
+        "y": [1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0,
+              2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
+        "promo": [0, 0, 1, 1, 0, 1, 0, 1] * 2,
+    })
+
+
+def _groupby_partition_df():
+    return pd.DataFrame({
+        "unique_id": ["a"] * 8 + ["b"] * 8 + ["c"] * 8 + ["d"] * 8,
+        "ds": list(range(8)) * 4,
+        "y": [
+            1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0,
+            2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0,
+            10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0,
+            5.0, 15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0,
+        ],
+        "brand": ["X"] * 16 + ["Y"] * 16,
+        "promo": [0, 0, 1, 1, 0, 1, 0, 1] * 4,
+    })
+
+
+def _local_partition_df():
+    return pd.DataFrame({
+        "unique_id": ["a"] * 8 + ["b"] * 8,
+        "ds": list(range(8)) * 2,
+        "y": [1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0,
+              2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
+        "promo": [0, 0, 1, 1, 0, 1, 0, 1] * 2,
+    })
+
+
+import warnings as _warnings
+
+_PARTITION_TRANSFORMS = [
+    (lambda mode, gc, pc: RollingMean(_WINDOW_SIZE, **{mode: True, "partition_by": pc}) if mode == "global_"
+     else RollingMean(_WINDOW_SIZE, groupby=gc, partition_by=pc) if gc
+     else RollingMean(_WINDOW_SIZE, partition_by=pc),
+     "RollingMean"),
+    (lambda mode, gc, pc: RollingStd(_WINDOW_SIZE, **{mode: True, "partition_by": pc}) if mode == "global_"
+     else RollingStd(_WINDOW_SIZE, groupby=gc, partition_by=pc) if gc
+     else RollingStd(_WINDOW_SIZE, partition_by=pc),
+     "RollingStd"),
+    (lambda mode, gc, pc: RollingMin(_WINDOW_SIZE, **{mode: True, "partition_by": pc}) if mode == "global_"
+     else RollingMin(_WINDOW_SIZE, groupby=gc, partition_by=pc) if gc
+     else RollingMin(_WINDOW_SIZE, partition_by=pc),
+     "RollingMin"),
+    (lambda mode, gc, pc: RollingMax(_WINDOW_SIZE, **{mode: True, "partition_by": pc}) if mode == "global_"
+     else RollingMax(_WINDOW_SIZE, groupby=gc, partition_by=pc) if gc
+     else RollingMax(_WINDOW_SIZE, partition_by=pc),
+     "RollingMax"),
+    (lambda mode, gc, pc: ExpandingMean(**{mode: True, "partition_by": pc}) if mode == "global_"
+     else ExpandingMean(groupby=gc, partition_by=pc) if gc
+     else ExpandingMean(partition_by=pc),
+     "ExpandingMean"),
+    (lambda mode, gc, pc: ExpandingStd(**{mode: True, "partition_by": pc}) if mode == "global_"
+     else ExpandingStd(groupby=gc, partition_by=pc) if gc
+     else ExpandingStd(partition_by=pc),
+     "ExpandingStd"),
+    (lambda mode, gc, pc: ExpandingMin(**{mode: True, "partition_by": pc}) if mode == "global_"
+     else ExpandingMin(groupby=gc, partition_by=pc) if gc
+     else ExpandingMin(partition_by=pc),
+     "ExpandingMin"),
+    (lambda mode, gc, pc: ExpandingMax(**{mode: True, "partition_by": pc}) if mode == "global_"
+     else ExpandingMax(groupby=gc, partition_by=pc) if gc
+     else ExpandingMax(partition_by=pc),
+     "ExpandingMax"),
+]
+
+
+@pytest.mark.parametrize(
+    "transform_factory,transform_name",
+    _PARTITION_TRANSFORMS,
+    ids=[t[1] for t in _PARTITION_TRANSFORMS],
+)
+@pytest.mark.parametrize("lag", [1, 2, 3])
+@pytest.mark.parametrize("mode", ["global_partition", "groupby_partition", "local_partition"])
+def test_sqlite_oracle_partition_by(transform_factory, transform_name, lag, mode):
+    pc = ["promo"]
+    if mode == "global_partition":
+        df = _global_partition_df()
+        group_cols = None
+        transform = transform_factory("global_", None, pc)
+    elif mode == "groupby_partition":
+        df = _groupby_partition_df()
+        group_cols = ["brand"]
+        transform = transform_factory("groupby", group_cols, pc)
+    else:
+        df = _local_partition_df()
+        group_cols = ["unique_id"]
+        transform = transform_factory("local", None, pc)
+    window_size = _WINDOW_SIZE if transform_name.startswith("Rolling") else None
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        assert_oracle_matches(
+            df, transform, transform_name, lag,
+            group_cols=group_cols,
+            partition_cols=pc,
+            window_size=window_size,
+        )
+
+
+@pytest.mark.parametrize("seed", [42, 123])
+def test_random_partition_data(seed):
+    rng = np.random.default_rng(seed)
+    n_series = 8
+    n_times = 12
+    ids = np.repeat([f"s{i}" for i in range(n_series)], n_times)
+    ds_vals = np.tile(range(n_times), n_series)
+    y_vals = rng.standard_normal(n_series * n_times)
+    promo = np.tile(rng.choice([0, 1], size=n_times), n_series)
+    df = pd.DataFrame({
+        "unique_id": ids, "ds": ds_vals, "y": y_vals, "promo": promo,
+    })
+    for transform_factory, transform_name in _PARTITION_TRANSFORMS:
+        transform = transform_factory("global_", None, ["promo"])
+        window_size = _WINDOW_SIZE if transform_name.startswith("Rolling") else None
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore")
+            assert_oracle_matches(
+                df, transform, transform_name, lag=2,
+                group_cols=None, partition_cols=["promo"],
+                window_size=window_size,
+            )
+
+
+# NULL partition keys: SQL PARTITION BY collapses all NULLs into one partition,
+# and our pooled state must do the same. to_sql maps NaN/None -> SQL NULL, so the
+# oracle locks the SQL NULL-partition semantics for partition_by transforms.
+
+
+def _global_partition_null_df():
+    """global + partition_by where the partition key has NaN (-> one bucket)."""
+    df = _global_partition_df()
+    # float promo with NaN scattered across both series at the same timestamps.
+    df["promo"] = pd.Series(
+        [0.0, np.nan, 1.0, np.nan, 0.0, 1.0, 0.0, np.nan] * 2
+    )
+    return df
+
+
+def _groupby_partition_null_df():
+    """groupby + partition_by where BOTH the group key and the partition key are
+    NULL on some rows.
+
+    Exercises (a) null-scope parent-calendar resolution: series b and c share a
+    NULL brand, so they must resolve to the *same* parent calendar, and (b) a NULL
+    partition (promo) value collapsing into one bucket within each scope — i.e.
+    SQL PARTITION BY (brand, promo) with NULLs treated as equal.
+    """
+    df = _groupby_partition_df()
+    df["brand"] = pd.Series(["X"] * 8 + [None] * 8 + [None] * 8 + ["Y"] * 8)
+    df["promo"] = pd.Series([0.0, np.nan, 1.0, 1.0, np.nan, 1.0, 0.0, np.nan] * 4)
+    return df
+
+
+def _local_partition_null_df():
+    """local + partition_by where the partition key has NaN (-> own bucket)."""
+    df = _local_partition_df()
+    df["promo"] = pd.Series([0.0, np.nan, 1.0, np.nan, 0.0, 1.0, 0.0, np.nan] * 2)
+    return df
+
+
+@pytest.mark.parametrize(
+    "transform_factory,transform_name",
+    _PARTITION_TRANSFORMS,
+    ids=[t[1] for t in _PARTITION_TRANSFORMS],
+)
+@pytest.mark.parametrize("lag", [1, 2, 3])
+@pytest.mark.parametrize(
+    "mode", ["global_partition", "groupby_partition", "local_partition"]
+)
+def test_sqlite_oracle_partition_null_key(transform_factory, transform_name, lag, mode):
+    pc = ["promo"]
+    if mode == "global_partition":
+        df = _global_partition_null_df()
+        group_cols = None
+        transform = transform_factory("global_", None, pc)
+    elif mode == "groupby_partition":
+        df = _groupby_partition_null_df()
+        group_cols = ["brand"]
+        transform = transform_factory("groupby", group_cols, pc)
+    else:
+        df = _local_partition_null_df()
+        group_cols = ["unique_id"]
+        transform = transform_factory("local", None, pc)
+    window_size = _WINDOW_SIZE if transform_name.startswith("Rolling") else None
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        assert_oracle_matches(
+            df, transform, transform_name, lag,
+            group_cols=group_cols,
+            partition_cols=pc,
+            window_size=window_size,
+        )
+
+
+# Fractional-float partition keys: a dynamic partition value of 0.1/0.25/0.5 must
+# bucket the same way SQL `PARTITION BY <REAL>` groups it. Exercises the float->string
+# encoding path end to end against the oracle (string-keyed buckets vs SQL float
+# equality). One representative transform (RollingMean) is enough — the windowing
+# numerics are covered elsewhere; this only checks float key bucketing.
+_DISCOUNT_PATTERN = [0.1, 0.1, 0.25, 0.5, 0.1, 0.25, 0.1, 0.5]  # 8 per series
+
+
+@pytest.mark.parametrize(
+    "mode", ["global_partition", "groupby_partition", "local_partition"]
+)
+def test_sqlite_oracle_partition_fractional_float(mode):
+    pc = ["discount"]
+    if mode == "global_partition":
+        df = _global_partition_df()
+        df["discount"] = _DISCOUNT_PATTERN * 2
+        group_cols = None
+        transform = RollingMean(_WINDOW_SIZE, global_=True, partition_by=pc)
+    elif mode == "groupby_partition":
+        df = _groupby_partition_df()  # static `brand` group key
+        df["discount"] = _DISCOUNT_PATTERN * 4
+        group_cols = ["brand"]
+        transform = RollingMean(_WINDOW_SIZE, groupby=group_cols, partition_by=pc)
+    else:
+        df = _local_partition_df()
+        df["discount"] = _DISCOUNT_PATTERN * 2
+        group_cols = ["unique_id"]
+        transform = RollingMean(_WINDOW_SIZE, partition_by=pc)
+    assert_oracle_matches(
+        df, transform, "RollingMean", lag=1,
+        group_cols=group_cols,
+        partition_cols=pc,
+        window_size=_WINDOW_SIZE,
     )
 
 
