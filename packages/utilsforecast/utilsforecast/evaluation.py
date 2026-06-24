@@ -6,8 +6,9 @@ __all__ = ['evaluate']
 import inspect
 import re
 import reprlib
-from typing import Callable, Dict, List, Optional, get_origin
+from typing import Callable, Dict, List, Optional, Union, get_origin
 
+import narwhals.stable.v2 as nw
 import numpy as np
 import pandas as pd
 
@@ -15,6 +16,8 @@ import utilsforecast.processing as ufp
 
 from .compat import AnyDFType, DFType, DistributedDFType, pl, pl_DataFrame
 from .losses import _get_group_cols
+
+_WEIGHT_COL = "__utilsforecast_weight"
 
 
 def _function_name(f: Callable):
@@ -24,6 +27,11 @@ def _function_name(f: Callable):
     else:
         name = f.__name__
     return name
+
+
+def _check_weights_are_finite(weights: nw.DataFrame) -> None:
+    if not weights[_WEIGHT_COL].is_finite().fill_null(False).all():
+        raise ValueError("`weights` must contain only finite values.")
 
 
 def _quantiles_from_levels(level: List[int]) -> np.ndarray:
@@ -55,6 +63,168 @@ def _get_model_cols(
         if c not in [id_col, time_col, target_col, cutoff_col]
         and not re.search(r"-(?:lo|hi)-\d+", c)
     ]
+
+
+def _get_weights(
+    df: DFType,
+    weights: Union[str, DFType],
+    id_col: str,
+    target_col: str,
+    cutoff_col: str,
+) -> nw.DataFrame:
+    if isinstance(weights, str):
+        if weights != "auto":
+            raise ValueError("`weights` must be 'auto', a dataframe or None.")
+        group_cols = _get_group_cols(df=df, id_col=id_col, cutoff_col=cutoff_col)
+        weights_df = (
+            nw.from_native(df)
+            .group_by(*group_cols)
+            .agg(nw.col(target_col).sum().alias(_WEIGHT_COL))
+        )
+        _check_weights_are_finite(weights_df)
+        return weights_df
+
+    weights_nw = nw.from_native(weights)
+    if "weight" not in weights_nw.columns:
+        raise ValueError("`weights` dataframe must contain a 'weight' column.")
+    if cutoff_col in weights_nw.columns and cutoff_col not in df.columns:
+        raise ValueError(
+            f"`weights` contains '{cutoff_col}', but `df` does not. "
+            "Remove the cutoff column from weights or provide cutoff-level forecasts."
+        )
+    join_cols = [id_col]
+    if cutoff_col in df.columns and cutoff_col in weights_nw.columns:
+        join_cols = [cutoff_col, id_col]
+    missing_cols = set(join_cols) - set(weights_nw.columns)
+    if missing_cols:
+        raise ValueError(
+            f"`weights` dataframe is missing required columns: {missing_cols}."
+        )
+    if weights_nw.select(*join_cols).unique().shape[0] != weights_nw.shape[0]:
+        raise ValueError(
+            "`weights` contains duplicated entries for the aggregation keys."
+        )
+    weights_df = weights_nw.select(
+        *join_cols,
+        nw.col("weight").alias(_WEIGHT_COL),
+    )
+    _check_weights_are_finite(weights_df)
+    return weights_df
+
+
+def _weighted_mean_agg(
+    df: DFType,
+    forecasts_df: DFType,
+    weights: Union[str, DFType],
+    id_col: str,
+    target_col: str,
+    cutoff_col: str,
+    model_cols: List[str],
+) -> DFType:
+    group_cols = [cutoff_col, "metric"] if cutoff_col in df.columns else ["metric"]
+    join_cols = [id_col]
+    weights_df = _get_weights(
+        df=forecasts_df,
+        weights=weights,
+        id_col=id_col,
+        target_col=target_col,
+        cutoff_col=cutoff_col,
+    )
+    if cutoff_col in df.columns and cutoff_col in weights_df.columns:
+        join_cols = [cutoff_col, id_col]
+
+    df_nw = nw.from_native(df).join(weights_df, on=join_cols, how="left")
+    if df_nw[_WEIGHT_COL].is_null().any():
+        raise ValueError("`weights` is missing entries for some evaluation rows.")
+
+    weighted_cols = [f"__utilsforecast_weighted_{i}" for i, _ in enumerate(model_cols)]
+    effective_weight_cols = [
+        f"__utilsforecast_effective_weight_{i}" for i, _ in enumerate(model_cols)
+    ]
+    valid_count_cols = [
+        f"__utilsforecast_valid_count_{i}" for i, _ in enumerate(model_cols)
+    ]
+    df_nw = df_nw.with_columns(
+        *[
+            nw.when(
+                (~nw.col(model).is_null())
+                & (~nw.col(model).is_nan().fill_null(False))
+            )
+            .then(nw.col(model) * nw.col(_WEIGHT_COL))
+            .otherwise(None)
+            .alias(weighted_col)
+            for model, weighted_col in zip(model_cols, weighted_cols)
+        ],
+        *[
+            nw.when(
+                (~nw.col(model).is_null())
+                & (~nw.col(model).is_nan().fill_null(False))
+            )
+            .then(nw.col(_WEIGHT_COL))
+            .otherwise(None)
+            .alias(effective_weight_col)
+            for model, effective_weight_col in zip(model_cols, effective_weight_cols)
+        ],
+        *[
+            nw.when(
+                (~nw.col(model).is_null())
+                & (~nw.col(model).is_nan().fill_null(False))
+            )
+            .then(1)
+            .otherwise(0)
+            .alias(valid_count_col)
+            for model, valid_count_col in zip(model_cols, valid_count_cols)
+        ]
+    )
+    df_nw = df_nw.group_by(*group_cols).agg(
+        *[
+            nw.col(weighted_col).sum().alias(model)
+            for model, weighted_col in zip(model_cols, weighted_cols)
+        ],
+        *[
+            nw.col(effective_weight_col).sum().alias(effective_weight_col)
+            for effective_weight_col in effective_weight_cols
+        ],
+        *[
+            nw.col(valid_count_col).sum().alias(valid_count_col)
+            for valid_count_col in valid_count_cols
+        ],
+    )
+    for effective_weight_col, valid_count_col in zip(
+        effective_weight_cols, valid_count_cols
+    ):
+        if (
+            (df_nw[effective_weight_col] == 0)
+            & (df_nw[valid_count_col] > 0)
+        ).any():
+            raise ValueError(
+                "The sum of weights for non-missing metric values must be "
+                "different from zero."
+            )
+
+    return (
+        df_nw
+        .with_columns(
+            *[
+                nw.when(nw.col(effective_weight_col) != 0)
+                .then(nw.col(effective_weight_col))
+                .otherwise(float("nan"))
+                .alias(effective_weight_col)
+                for effective_weight_col in effective_weight_cols
+            ]
+        )
+        .with_columns(
+            *[
+                (nw.col(model) / nw.col(effective_weight_col)).alias(model)
+                for model, effective_weight_col in zip(
+                    model_cols, effective_weight_cols
+                )
+            ]
+        )
+        .select(*group_cols, *model_cols)
+        .sort(*group_cols)
+        .to_native()
+    )
 
 
 def _evaluate_wrapper(
@@ -95,6 +265,7 @@ def _distributed_evaluate(
     models: Optional[List[str]],
     train_df: Optional[DFType],
     level: Optional[List[int]],
+    weights: Optional[Union[str, DFType]],
     id_col: str,
     time_col: str,
     target_col: str,
@@ -103,6 +274,12 @@ def _distributed_evaluate(
 ) -> DistributedDFType:
     import fugue.api as fa
 
+    if agg_fn == "weighted_mean":
+        raise NotImplementedError(
+            "`agg_fn='weighted_mean'` is not supported in distributed evaluation."
+        )
+    if weights is not None:
+        raise NotImplementedError("`weights` is not supported in distributed evaluation.")
     if agg_fn is not None:
         raise ValueError("`agg_fn` is not supported in distributed")
     df_cols = fa.get_column_names(df)
@@ -170,6 +347,7 @@ def evaluate(
     target_col: str = "y",
     cutoff_col: str = "cutoff",
     agg_fn: Optional[str] = None,
+    weights: Optional[Union[str, AnyDFType]] = None,
 ) -> AnyDFType:
     """Evaluate forecast using different metrics.
 
@@ -195,12 +373,23 @@ def evaluate(
             each forecast cross-validation fold. Defaults to 'cutoff'.
         agg_fn (str, optional): Statistic to compute on the scores by id to reduce
             them to a single number. Defaults to None.
+        weights (str, pandas or polars DataFrame, optional): Weights to use when
+            `agg_fn='weighted_mean'`. If 'auto', weights are computed as the sum
+            of the target in the forecast/evaluation window, not from `train_df`.
+            If a dataframe, it must contain `id_col` and `weight`; if `cutoff_col`
+            is present in `df`, it can also contain `cutoff_col` for cutoff-level
+            weights. If `df` has `cutoff_col` but the weights dataframe does not,
+            the same per-series weight is used for every cutoff.
 
     Returns:
         pandas, polars, dask or spark DataFrame: Metrics with one row per
             (id, metric) combination and one column per model. If `agg_fn` is
             not `None`, there is only one row per metric.
     """
+    if weights is not None and agg_fn != "weighted_mean":
+        raise ValueError("`weights` can only be used with `agg_fn='weighted_mean'`.")
+    if agg_fn == "weighted_mean" and weights is None:
+        raise ValueError("`agg_fn='weighted_mean'` requires setting `weights`.")
     if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
         return _distributed_evaluate(
             df=df,
@@ -208,6 +397,7 @@ def evaluate(
             models=models,
             train_df=train_df,
             level=level,
+            weights=weights,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
@@ -218,6 +408,7 @@ def evaluate(
         model_cols = _get_model_cols(df.columns, id_col, time_col, target_col, cutoff_col)
     else:
         model_cols = models
+    forecasts_df = df
 
     # interval cols
     if level is not None:
@@ -327,11 +518,23 @@ def evaluate(
     model_cols = [c for c in df.columns if c not in id_cols]
     df = df[id_cols + model_cols]
     if agg_fn is not None:
-        group_cols = id_cols[1:]  # exclude id_col
-        df = ufp.group_by_agg(
-            df,
-            by=group_cols,
-            aggs={m: agg_fn for m in model_cols},
-            maintain_order=True,
-        )
+        if agg_fn == "weighted_mean":
+            assert weights is not None
+            df = _weighted_mean_agg(
+                df=df,
+                forecasts_df=forecasts_df,
+                weights=weights,
+                id_col=id_col,
+                target_col=target_col,
+                cutoff_col=cutoff_col,
+                model_cols=model_cols,
+            )
+        else:
+            group_cols = id_cols[1:]  # exclude id_col
+            df = ufp.group_by_agg(
+                df,
+                by=group_cols,
+                aggs={m: agg_fn for m in model_cols},
+                maintain_order=True,
+            )
     return df

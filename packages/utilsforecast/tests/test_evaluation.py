@@ -217,6 +217,315 @@ def test_evaluate(setup_series, setup_models, setup_metrics):
     )
 
 
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_evaluate_weighted_mean(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b", "c", "c"],
+            "ds": [1, 2, 1, 2, 1, 2],
+            "y": [0, 0, 0, 0, 0, 0],
+            "model": [1, 1, 2, 2, 3, 3],
+        }
+    )
+    weights = pd.DataFrame(
+        {
+            "unique_id": ["a", "b", "c"],
+            "weight": [1, 2, 3],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+        weights = pl.from_pandas(weights)
+
+    result = evaluate(
+        df=df,
+        metrics=[mse],
+        models=["model"],
+        weights=weights,
+        agg_fn="weighted_mean",
+    )
+
+    result_nw = nw.from_native(result)
+    assert result_nw.shape == (1, 2)
+    assert result_nw["metric"].item() == "mse"
+    np.testing.assert_allclose(result_nw["model"].to_numpy(), [6.0])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_evaluate_weighted_mean_excludes_missing_metric_values(engine):
+    def metric_with_missing(df, models, id_col="unique_id", target_col="y"):
+        result = nw.from_native(
+            mse(df=df, models=models, id_col=id_col, target_col=target_col)
+        )
+        return (
+            result.with_columns(
+                nw.when(nw.col(id_col) == "a")
+                .then(float("nan"))
+                .otherwise(nw.col("model"))
+                .alias("model")
+            )
+            .to_native()
+        )
+
+    def metric_all_missing(df, models, id_col="unique_id", target_col="y"):
+        result = nw.from_native(
+            mse(df=df, models=models, id_col=id_col, target_col=target_col)
+        )
+        return result.with_columns(nw.lit(float("nan")).alias("model")).to_native()
+
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [0, 0, 0, 0],
+            "model": [1, 1, 2, 2],
+        }
+    )
+    weights = pd.DataFrame(
+        {
+            "unique_id": ["a", "b"],
+            "weight": [10.0, 1.0],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+        weights = pl.from_pandas(weights)
+
+    result = evaluate(
+        df=df,
+        metrics=[metric_with_missing],
+        models=["model"],
+        weights=weights,
+        agg_fn="weighted_mean",
+    )
+
+    result_nw = nw.from_native(result)
+    assert result_nw["metric"].item() == "metric_with_missing"
+    np.testing.assert_allclose(result_nw["model"].to_numpy().astype(float), [4.0])
+
+    result = evaluate(
+        df=df,
+        metrics=[metric_all_missing],
+        models=["model"],
+        weights=weights,
+        agg_fn="weighted_mean",
+    )
+
+    result_nw = nw.from_native(result)
+    assert result_nw["metric"].item() == "metric_all_missing"
+    assert np.isnan(result_nw["model"].to_numpy().astype(float)).all()
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_evaluate_weighted_mean_uses_effective_denominator(engine):
+    def metric_with_missing(df, models, id_col="unique_id", target_col="y"):
+        result = nw.from_native(
+            mse(df=df, models=models, id_col=id_col, target_col=target_col)
+        )
+        return (
+            result.with_columns(
+                nw.when(nw.col(id_col) == "b")
+                .then(float("nan"))
+                .otherwise(nw.col("model"))
+                .alias("model")
+            )
+            .to_native()
+        )
+
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [0, 0, 0, 0],
+            "model": [1, 1, 2, 2],
+        }
+    )
+    weights = pd.DataFrame(
+        {
+            "unique_id": ["a", "b"],
+            "weight": [1.0, -1.0],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+        weights = pl.from_pandas(weights)
+
+    result = evaluate(
+        df=df,
+        metrics=[metric_with_missing],
+        models=["model"],
+        weights=weights,
+        agg_fn="weighted_mean",
+    )
+
+    result_nw = nw.from_native(result)
+    np.testing.assert_allclose(result_nw["model"].to_numpy().astype(float), [1.0])
+
+    with pytest.raises(ValueError, match="non-missing metric values"):
+        evaluate(
+            df=df,
+            metrics=[mse],
+            models=["model"],
+            weights=weights,
+            agg_fn="weighted_mean",
+        )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_evaluate_auto_weighted_mean(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [1, 1, 2, 2],
+            "model": [2, 2, 4, 4],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+
+    result = evaluate(
+        df=df,
+        metrics=[mse],
+        models=["model"],
+        weights="auto",
+        agg_fn="weighted_mean",
+    )
+
+    result_nw = nw.from_native(result)
+    assert result_nw.shape == (1, 2)
+    assert result_nw["metric"].item() == "mse"
+    np.testing.assert_allclose(result_nw["model"].to_numpy(), [3.0])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_evaluate_cutoff_weighted_mean(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b", "a", "a", "b", "b"],
+            "cutoff": [1, 1, 1, 1, 2, 2, 2, 2],
+            "ds": [2, 3, 2, 3, 4, 5, 4, 5],
+            "y": [0, 0, 0, 0, 0, 0, 0, 0],
+            "model": [1, 1, 3, 3, 2, 2, 4, 4],
+        }
+    )
+    weights = pd.DataFrame(
+        {
+            "unique_id": ["a", "b", "a", "b"],
+            "cutoff": [1, 1, 2, 2],
+            "weight": [10, 1, 1, 3],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+        weights = pl.from_pandas(weights)
+
+    result = evaluate(
+        df=df,
+        metrics=[mse],
+        models=["model"],
+        weights=weights,
+        cutoff_col="cutoff",
+        agg_fn="weighted_mean",
+    )
+
+    result_nw = nw.from_native(result).sort("cutoff")
+    assert result_nw.shape == (2, 3)
+    np.testing.assert_allclose(
+        result_nw["model"].to_numpy(),
+        [(1 * 10 + 9 * 1) / 11, (4 * 1 + 16 * 3) / 4],
+    )
+
+
+def test_evaluate_weights_validation(setup_series):
+    weights = pd.DataFrame({"unique_id": [0], "weight": [1.0]})
+    with pytest.raises(ValueError, match="agg_fn='weighted_mean'"):
+        evaluate(
+            df=setup_series,
+            metrics=[mse],
+            models=["model0"],
+            weights=weights,
+        )
+
+    with pytest.raises(ValueError, match="requires setting `weights`"):
+        evaluate(
+            df=setup_series,
+            metrics=[mse],
+            models=["model0"],
+            agg_fn="weighted_mean",
+        )
+
+
+def test_evaluate_positional_api_compatibility():
+    df = pd.DataFrame(
+        {
+            "id": ["a", "a", "b", "b"],
+            "time": [1, 2, 1, 2],
+            "target": [0, 0, 0, 0],
+            "prediction": [1, 1, 3, 3],
+        }
+    )
+
+    result = evaluate(
+        df,
+        [mse],
+        ["prediction"],
+        None,
+        None,
+        "id",
+        "time",
+        "target",
+        "cutoff",
+        "mean",
+    )
+
+    expected = pd.DataFrame({"metric": ["mse"], "prediction": [5.0]})
+    pd.testing.assert_frame_equal(result, expected)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("weight", [np.nan, np.inf])
+def test_evaluate_weighted_mean_rejects_non_finite_weights(engine, weight):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [0, 0, 0, 0],
+            "model": [1, 1, 2, 2],
+        }
+    )
+    weights = pd.DataFrame(
+        {
+            "unique_id": ["a", "b"],
+            "weight": [1.0, weight],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+        weights = pl.from_pandas(weights)
+
+    with pytest.raises(ValueError, match="finite"):
+        evaluate(
+            df=df,
+            metrics=[mse],
+            models=["model"],
+            weights=weights,
+            agg_fn="weighted_mean",
+        )
+
+
+def test_distributed_evaluate_weighted_mean_not_implemented(setup_series):
+    dask_df = dd.from_pandas(setup_series, npartitions=2)
+    with pytest.raises(NotImplementedError, match="weighted_mean"):
+        evaluate(
+            dask_df,
+            metrics=[mse],
+            models=["model0"],
+            weights="auto",
+            agg_fn="weighted_mean",
+        )
+
+
 def daily_mase(y, y_hat, y_train):
     return ds_losses.mase(y, y_hat, y_train, seasonality=7)
 
