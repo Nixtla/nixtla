@@ -77,7 +77,12 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: uv sync --group dev --upgrade-package mkdocstrings-parser --extra dask --extra spark --extra ray
+
+      - name: Install dependencies
+        if: matrix.os != 'ubuntu-latest'
+        run: uv sync --group dev --upgrade-package mkdocstrings-parser
 
       - name: Install lightgbm on macOS
         if: matrix.os == 'macos-latest'
@@ -90,4 +95,3 @@ jobs:
         env:
           RAY_ENABLE_UV_RUN_RUNTIME_ENV: 0
         run: uv run pytest --reruns=2 --reruns-delay=2 --only-rerun="Socket recv error"
-

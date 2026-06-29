@@ -1,19 +1,20 @@
 import sys
 import warnings
 
-import dask.dataframe as dd
 import numpy as np
 import pandas as pd
 import pytest
 from sklearn.base import BaseEstimator
 
+if sys.platform != "linux":
+    pytest.skip("Distributed interface is only supported on Linux", allow_module_level=True)
+
+import dask.dataframe as dd
+
 from mlforecast.distributed import DistributedMLForecast
 from mlforecast.distributed.models.dask.lgb import DaskLGBMForecast
 from mlforecast.lag_transforms import ExpandingMean, RollingMean
 from mlforecast.utils import generate_daily_series
-
-if sys.platform != "linux":
-    pytest.skip("Distributed interface is only supported on Linux", allow_module_level=True)
 
 warnings.simplefilter("ignore", FutureWarning)
 
