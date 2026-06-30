@@ -41,4 +41,4 @@ fig = plot_series(
 fig.savefig('imgs/plotting.png', bbox_inches='tight')
 ```
 
-![](imgs/plotting.png)
+![plot](https://raw.githubusercontent.com/Nixtla/utilsforecast/refs/heads/main/docs/mintlify/imgs/plotting.png)
