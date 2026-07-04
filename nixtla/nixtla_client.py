@@ -1522,12 +1522,18 @@ class NixtlaClient:
             ) -> pd.DataFrame:
                 return X_df.assign(**{"_in_sample": False, target_col: 0.0})[df_cols]
 
+            # Pre-compute schema and column names before transforming df.
+            # fa.get_schema() on a post-transform Ray Dataset can return an
+            # empty schema, triggering SchemaError: Schema can't be empty.
+            _df_schema = fa.get_schema(df).copy()
+            _df_schema.append("_in_sample:bool")
+            _df_cols = fa.get_column_names(df) + ["_in_sample"]
             df = fa.transform(df, format_df, schema="*,_in_sample:bool")
             X_df = fa.transform(
                 X_df,
                 format_X_df,
-                schema=fa.get_schema(df),
-                params={"target_col": target_col, "df_cols": fa.get_column_names(df)},
+                schema=_df_schema,
+                params={"target_col": target_col, "df_cols": _df_cols},
             )
             df = fa.union(df, X_df)
         result_df = fa.transform(
