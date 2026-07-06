@@ -30,7 +30,7 @@ jobs:
           - [macos-14, macosx_arm64]
     steps:
       - name: Clone repo
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -46,7 +46,7 @@ jobs:
           version: "latest"
 
       - name: Build wheels and run tests
-        uses: pypa/cibuildwheel@v3.4.0
+        uses: pypa/cibuildwheel@v4.1.0
         env:
           CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
           CIBW_BUILD_FRONTEND: build[uv]
