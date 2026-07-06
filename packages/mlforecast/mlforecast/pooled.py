@@ -1,5 +1,6 @@
 __all__ = ["PooledState", "compute_pooled_features"]
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -7,7 +8,6 @@ import narwhals as nw
 import numpy as np
 import utilsforecast.processing as ufp
 
-from .grouped_array import GroupedArray
 from .lag_transforms import _BaseLagTransform
 
 
@@ -175,8 +175,6 @@ class _TimestampAggregates:
     unique_times: np.ndarray
     sums: np.ndarray
     counts: np.ndarray
-    n_rows: np.ndarray
-    is_balanced: bool
     sum_sq: np.ndarray
     mins: np.ndarray
     maxs: np.ndarray
@@ -198,8 +196,6 @@ def _build_ts_aggs(
         y_valid = np.where(valid, y_b, 0.0)
         sums = np.bincount(inv, weights=y_valid, minlength=m)
         counts = np.bincount(inv, weights=valid.astype(float), minlength=m)
-        n_rows = np.bincount(inv, minlength=m).astype(float)
-        is_balanced = bool(n_rows.size > 0 and np.all(n_rows == n_rows[0]))
         sum_sq = np.bincount(inv, weights=np.where(valid, y_b**2, 0.0), minlength=m)
         mins = np.full(m, np.inf)
         maxs = np.full(m, -np.inf)
@@ -215,8 +211,6 @@ def _build_ts_aggs(
             unique_times=unique_ord,
             sums=sums,
             counts=counts,
-            n_rows=n_rows,
-            is_balanced=is_balanced,
             sum_sq=sum_sq,
             mins=mins,
             maxs=maxs,
@@ -312,15 +306,10 @@ class PooledState:
 
     **Ordering contract**: ``bucket_id``, ``time``, ``time_index``, and ``y``
     arrays are positionally aligned — row *i* in each describes the same
-    observation.  ``ga`` is **not** positionally aligned with these arrays
-    after mutations (``append_predictions`` / ``append_observations``):
-    ``ga.append_several`` interleaves new values within each group, while the
-    flat arrays append at the tail.  ``ga`` is only used for
-    ``_initialize_lag_transform_states`` (called once before any mutations);
-    all feature computation uses the flat arrays via ``compute_pooled_features``.
+    observation.  All feature computation uses these flat arrays (and the
+    derived ``_ts_aggs``) via ``compute_pooled_features``.
     """
 
-    ga: GroupedArray
     bucket_df: Any
     groups: Any
     group_cols: Optional[List[str]]
@@ -351,6 +340,58 @@ class PooledState:
             )
         return nw.to_native(nw.from_native(self.groups).get_column("_bucket_id").sort())
 
+    # Mutable fields touched during recursive prediction. ``snapshot``/``restore``
+    # let ``TimeSeries._backup`` save and roll back state cheaply (see below);
+    # keep this list in sync with the fields mutated by ``append_predictions`` /
+    # ``append_observations`` / ``update_series_bucket_id``.
+    _MUTABLE_REF_FIELDS = (
+        "bucket_df",
+        "groups",
+        "series_bucket_id",
+        "bucket_id",
+        "time",
+        "time_index",
+        "y",
+        "_idsorted_to_bucket_pos",
+    )
+    _MUTABLE_DICT_FIELDS = (
+        "next_time_index_by_bucket",
+        "_parent_time_grids",
+        "_bucket_to_parent_id",
+        "_scope_key_to_parent_id",
+    )
+
+    def snapshot(self):
+        """Cheap structural backup for recursive prediction.
+
+        Prediction only ever **replaces** the array fields wholesale
+        (``np.append`` / ``np.concatenate`` produce new arrays) and rebinds
+        attributes on the ``_TimestampAggregates`` instances — it never mutates
+        a shared array in place. So a faithful backup needs only reference
+        copies of the arrays plus shallow copies of the mutable containers and
+        of each aggregate instance; no array data is duplicated (unlike a full
+        ``deepcopy`` of every pooled state per model per ``predict``).
+        """
+        snap = {f: getattr(self, f) for f in self._MUTABLE_REF_FIELDS}
+        for f in self._MUTABLE_DICT_FIELDS:
+            v = getattr(self, f)
+            snap[f] = None if v is None else dict(v)
+        # lists are reassigned wholesale today, but copy them defensively so a
+        # future in-place ``append`` can't corrupt the backup.
+        snap["_parent_to_buckets"] = (
+            None
+            if self._parent_to_buckets is None
+            else {k: list(v) for k, v in self._parent_to_buckets.items()}
+        )
+        # each agg instance is mutated in place (``agg.sums = np.append(...)``),
+        # so copy the instances; their arrays are replaced wholesale, share them.
+        snap["_ts_aggs"] = {bid: copy.copy(agg) for bid, agg in self._ts_aggs.items()}
+        return snap
+
+    def restore(self, snap):
+        for field_name, value in snap.items():
+            setattr(self, field_name, value)
+
     @classmethod
     def from_global(
         cls,
@@ -366,33 +407,14 @@ class PooledState:
         global_df = ufp.sort(global_df, by=[time_col, id_col])
         global_df = ufp.drop_index_if_pandas(global_df)
         ts_raw = global_df[time_col].to_numpy()
+        # cast through ga_data_dtype before float to keep numerics bit-identical
+        # with the model's working dtype (e.g. float32 rounding).
         y_raw = global_df[target_col].to_numpy().astype(ga_data_dtype)
-        global_df_nw = nw.from_native(global_df)
-        global_df_nw = global_df_nw.with_row_index(name="_bucket_pos").with_columns(
-            nw.col("_bucket_pos").cast(nw.Int64)
-        )
-        process_df_nw = global_df_nw.select(
-            [
-                nw.lit(0).cast(nw.Int64).alias("_bucket_id"),
-                "_bucket_pos",
-                target_col,
-            ]
-        )
-        global_df = nw.to_native(global_df_nw)
-        process_df = nw.to_native(process_df_nw)
-        processed = ufp.process_df(
-            process_df,
-            id_col="_bucket_id",
-            time_col="_bucket_pos",
-            target_col=target_col,
-        )
-        ga = GroupedArray(processed.data[:, 0], processed.indptr)
         unique_ts = np.unique(ts_raw)
         ord_raw = np.searchsorted(unique_ts, ts_raw).astype(np.int64)
         bid_arr = np.zeros(len(global_df), dtype=np.int64)
         y_float = y_raw.astype(float)
         return cls(
-            ga=ga,
             bucket_df=global_df,
             groups=None,
             group_cols=None,
@@ -425,40 +447,11 @@ class PooledState:
         bucket_df = ufp.drop_index_if_pandas(bucket_df)
         bucket_df, groups = add_bucket_id(bucket_df, group_cols_list)
         ts_raw = bucket_df[time_col].to_numpy()
+        # cast through ga_data_dtype before float to keep numerics bit-identical
+        # with the model's working dtype (e.g. float32 rounding).
         y_raw = bucket_df[target_col].to_numpy().astype(ga_data_dtype)
         bid_raw = bucket_df["_bucket_id"].to_numpy()
-        bucket_df_nw = nw.from_native(bucket_df)
-        bucket_df_nw = bucket_df_nw.with_columns(
-            (nw.col("_bucket_id").cum_count() - 1).cast(nw.Int64).alias("_global_idx")
-        )
-        group_starts = bucket_df_nw.group_by("_bucket_id").agg(
-            nw.col("_global_idx").min().alias("_group_start")
-        )
-        bucket_df_nw = (
-            bucket_df_nw.join(group_starts, on="_bucket_id", how="left")
-            .with_columns(
-                (nw.col("_global_idx") - nw.col("_group_start"))
-                .cast(nw.Int64)
-                .alias("_bucket_pos")
-            )
-            .drop(["_global_idx", "_group_start"])
-        )
-        process_df_nw = bucket_df_nw.select(["_bucket_id", "_bucket_pos", target_col])
-        bucket_df = nw.to_native(bucket_df_nw)
-        process_df = nw.to_native(process_df_nw)
-        processed = ufp.process_df(
-            process_df,
-            id_col="_bucket_id",
-            time_col="_bucket_pos",
-            target_col=target_col,
-        )
-        if processed.sort_idxs is not None:
-            bucket_df = ufp.take_rows(bucket_df, processed.sort_idxs)
-            ts_raw = ts_raw[processed.sort_idxs]
-            y_raw = y_raw[processed.sort_idxs]
-            bid_raw = bid_raw[processed.sort_idxs]
         bucket_df = ufp.drop_index_if_pandas(bucket_df)
-        ga = GroupedArray(processed.data[:, 0], processed.indptr)
         bid_arr = bid_raw.astype(np.int64)
         ord_arr, next_by_bucket = _compute_time_index(bid_arr, ts_raw)
         series_bucket_id = lookup_bucket_ids(
@@ -466,7 +459,6 @@ class PooledState:
         ).astype(np.int64, copy=False)
         y_float = y_raw.astype(float)
         return cls(
-            ga=ga,
             bucket_df=bucket_df,
             groups=groups,
             group_cols=group_cols_list,
@@ -529,42 +521,11 @@ class PooledState:
         bucket_df = ufp.drop_index_if_pandas(bucket_df)
         bucket_df, groups = add_bucket_id(bucket_df, key_cols)
         ts_raw = bucket_df[time_col].to_numpy()
+        # cast through ga_data_dtype before float to keep numerics bit-identical
+        # with the model's working dtype (e.g. float32 rounding).
         y_raw = bucket_df[target_col].to_numpy().astype(ga_data_dtype)
         bid_raw = bucket_df["_bucket_id"].to_numpy()
-
-        bucket_df_nw = nw.from_native(bucket_df)
-        bucket_df_nw = bucket_df_nw.with_columns(
-            (nw.col("_bucket_id").cum_count() - 1).cast(nw.Int64).alias("_global_idx")
-        )
-        group_starts = bucket_df_nw.group_by("_bucket_id").agg(
-            nw.col("_global_idx").min().alias("_group_start")
-        )
-        bucket_df_nw = (
-            bucket_df_nw.join(group_starts, on="_bucket_id", how="left")
-            .with_columns(
-                (nw.col("_global_idx") - nw.col("_group_start"))
-                .cast(nw.Int64)
-                .alias("_bucket_pos")
-            )
-            .drop(["_global_idx", "_group_start"])
-        )
-        process_df_nw = bucket_df_nw.select(["_bucket_id", "_bucket_pos", target_col])
-        bucket_df = nw.to_native(bucket_df_nw)
-        process_df = nw.to_native(process_df_nw)
-
-        processed = ufp.process_df(
-            process_df,
-            id_col="_bucket_id",
-            time_col="_bucket_pos",
-            target_col=target_col,
-        )
-        if processed.sort_idxs is not None:
-            bucket_df = ufp.take_rows(bucket_df, processed.sort_idxs)
-            ts_raw = ts_raw[processed.sort_idxs]
-            y_raw = y_raw[processed.sort_idxs]
-            bid_raw = bid_raw[processed.sort_idxs]
         bucket_df = ufp.drop_index_if_pandas(bucket_df)
-        ga = GroupedArray(processed.data[:, 0], processed.indptr)
         bid_arr = bid_raw.astype(np.int64)
 
         if mode == "local":
@@ -646,7 +607,6 @@ class PooledState:
 
         y_float = y_raw.astype(float)
         return cls(
-            ga=ga,
             bucket_df=bucket_df,
             groups=groups,
             group_cols=group_cols_list,
@@ -713,8 +673,6 @@ class PooledState:
                     unique_times=np.array([], dtype=np.intp),
                     sums=np.array([], dtype=np.float64),
                     counts=np.array([], dtype=np.intp),
-                    n_rows=np.array([], dtype=np.float64),
-                    is_balanced=True,
                     sum_sq=np.array([], dtype=np.float64),
                     mins=np.array([], dtype=np.float64),
                     maxs=np.array([], dtype=np.float64),
@@ -816,9 +774,6 @@ class PooledState:
                 agg.unique_times = np.append(agg.unique_times, next_ord)
                 agg.sums = np.append(agg.sums, np.sum(np.where(valid, new_y, 0.0)))
                 agg.counts = np.append(agg.counts, np.sum(valid))
-                nr = float(n_series)
-                agg.n_rows = np.append(agg.n_rows, nr)
-                agg.is_balanced = agg.is_balanced and (nr == agg.n_rows[0])
                 agg.sum_sq = np.append(
                     agg.sum_sq, np.sum(np.where(valid, new_y**2, 0.0))
                 )
@@ -829,27 +784,9 @@ class PooledState:
                 agg.maxs = np.append(
                     agg.maxs, np.max(valid_vals) if len(valid_vals) > 0 else np.nan
                 )
-            new_sizes = np.array([n_series], dtype=np.int32)
-            new_values = new_arr.astype(self.ga.data.dtype)
-            self.ga = self.ga.append_several(
-                new_sizes=new_sizes,
-                new_values=new_values,
-                new_groups=np.array([False]),
-            )
         else:
             sort_order = np.argsort(self.series_bucket_id, kind="stable")
             sorted_bids = self.series_bucket_id[sort_order]
-            new_values = new_arr[sort_order].astype(self.ga.data.dtype, copy=False)
-            ga_n_groups = len(self.ga.indptr) - 1
-            n_groups = len(self.groups)
-            new_sizes = np.zeros(n_groups, dtype=np.int32)
-            np.add.at(new_sizes, self.series_bucket_id[sort_order], 1)
-            new_groups_mask = np.arange(n_groups) >= ga_n_groups
-            self.ga = self.ga.append_several(
-                new_sizes=new_sizes,
-                new_values=new_values,
-                new_groups=new_groups_mask,
-            )
             new_ts = np.full(n_series, new_ts_val, dtype=self.time.dtype)
             self.time = np.concatenate([self.time, new_ts[sort_order]])
             self.y = np.concatenate([self.y, new_arr[sort_order].astype(float)])
@@ -870,9 +807,6 @@ class PooledState:
                     agg.unique_times = np.append(agg.unique_times, new_ord)
                     agg.sums = np.append(agg.sums, np.sum(np.where(valid, y_bid, 0.0)))
                     agg.counts = np.append(agg.counts, np.sum(valid))
-                    nr = float(len(y_bid))
-                    agg.n_rows = np.append(agg.n_rows, nr)
-                    agg.is_balanced = agg.is_balanced and (nr == agg.n_rows[0])
                     agg.sum_sq = np.append(
                         agg.sum_sq, np.sum(np.where(valid, y_bid**2, 0.0))
                     )
@@ -916,13 +850,6 @@ class PooledState:
             self.time_index = np.concatenate([old_idx, new_idx])
             self.next_time_index_by_bucket[0] = len(unique_all)
             self._ts_aggs = _build_ts_aggs(self.bucket_id, self.time_index, self.y)
-            new_values = new_df[target_col].to_numpy().astype(ga_data_dtype)
-            new_sizes = np.array([len(new_values)], dtype=np.int32)
-            self.ga = self.ga.append_several(
-                new_sizes=new_sizes,
-                new_values=new_values,
-                new_groups=np.array([False]),
-            )
             old_len = len(self.bucket_df)
             new_df_nw = nw.from_native(new_df)
             new_rows_nw = new_df_nw.with_row_index(name="_bucket_pos").with_columns(
@@ -945,27 +872,15 @@ class PooledState:
             bucket_df = _attach_bucket_id(bucket_df, groups, group_cols_list)
             bucket_df, groups = _extend_groups(bucket_df, groups, group_cols_list)
             self.groups = groups
-            id_counts = ufp.counts_by_id(bucket_df, "_bucket_id")
-            uids = old_uids
-            uids, new_ids = ufp.match_if_categorical(uids, bucket_df["_bucket_id"])
+            # match_if_categorical normalizes (possibly categorical) bucket ids
+            # against the existing registry; new_ids feeds new_bid below.
+            _, new_ids = ufp.match_if_categorical(old_uids, bucket_df["_bucket_id"])
             bucket_df = ufp.assign_columns(bucket_df, "_bucket_id", new_ids)
             bucket_df = ufp.sort(bucket_df, by=["_bucket_id", time_col, id_col])
             values = bucket_df[target_col].to_numpy().astype(ga_data_dtype, copy=False)
             new_ts = bucket_df[time_col].to_numpy()
             new_y = values.astype(float)
             new_bid = bucket_df["_bucket_id"].to_numpy().astype(np.int64)
-            try:
-                sizes = ufp.join(uids, id_counts, on="_bucket_id", how="outer_coalesce")
-            except (KeyError, ValueError):
-                sizes = ufp.join(uids, id_counts, on="_bucket_id", how="outer")
-            sizes = ufp.fill_null(sizes, {"counts": 0})
-            sizes = ufp.sort(sizes, by="_bucket_id")
-            new_groups_mask = ~ufp.is_in(sizes["_bucket_id"], uids)
-            self.ga = self.ga.append_several(
-                new_sizes=sizes["counts"].to_numpy().astype(np.int32),
-                new_values=values,
-                new_groups=new_groups_mask.to_numpy(),
-            )
             self.time = np.concatenate([self.time, new_ts])
             self.y = np.concatenate([self.y, new_y])
             self.bucket_id = np.concatenate([self.bucket_id, new_bid])

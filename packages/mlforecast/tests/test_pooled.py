@@ -261,15 +261,12 @@ def test_compute_pooled_features_raises_for_unsupported():
     """Transforms returning None from _compute_bucket_feature raise NotImplementedError."""
     from mlforecast.pooled import PooledState, compute_pooled_features
     from mlforecast.lag_transforms import _BaseLagTransform
-    from mlforecast.grouped_array import GroupedArray
 
     class DummyTransform(_BaseLagTransform):
         pass
 
-    ga = GroupedArray(np.array([1.0, 2.0]), np.array([0, 2], dtype=np.int32))
     state = PooledState(
-        ga=ga,
-        bucket_df=pd.DataFrame({"uid": ["a", "a"], "ds": [1, 2], "_bucket_pos": [0, 1]}),
+        bucket_df=pd.DataFrame({"uid": ["a", "a"], "ds": [1, 2]}),
         groups=None,
         group_cols=None,
         series_bucket_id=np.array([0]),

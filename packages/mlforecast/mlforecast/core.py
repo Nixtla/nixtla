@@ -346,18 +346,15 @@ class TimeSeries:
         """Materialize lag transform state for subsequent update-based prediction.
 
         This is needed when a new ``TimeSeries`` instance is created from historical
-        data right before calling ``predict(new_df=...)``. Local, global and grouped
-        transforms all need to see a full ``transform`` pass so stateful transforms
-        like ``ExpandingMean`` can initialize their internal buffers before the
-        first ``update(...)`` call.
+        data right before calling ``predict(new_df=...)``. Local (coreforecast)
+        transforms need a full ``transform`` pass so stateful transforms like
+        ``ExpandingMean`` can initialize their internal buffers before the first
+        ``update(...)`` call. Pooled transforms keep their state in ``_ts_aggs``
+        (built at construction), so they need no warm-up pass.
         """
         core_tfms = self._get_core_lag_tfms()
         if core_tfms:
             self._compute_transforms(core_tfms, updates_only=False)
-        pooled_tfms = self._get_pooled_tfms()
-        for key, tfms in pooled_tfms.items():
-            state = self._pooled_states[key]
-            state.ga.apply_transforms(transforms=tfms, updates_only=False)
 
     def _check_aligned_ends(self) -> None:
         """Check that all series end at the same timestamp when using pooled lag transforms."""
@@ -1363,13 +1360,18 @@ class TimeSeries:
     def _backup(self) -> Iterator[None]:
         ga = copy.copy(self.ga)
         lag_tfms = copy.deepcopy(self.transforms)
-        pooled_states = copy.deepcopy(getattr(self, "_pooled_states", {}))
+        # Pooled states are only appended to during prediction, so a cheap
+        # structural snapshot (references + shallow container copies) restores
+        # them faithfully without deep-copying every aggregate array per model.
+        pooled_states = getattr(self, "_pooled_states", {})
+        pooled_snaps = {key: state.snapshot() for key, state in pooled_states.items()}
         try:
             yield
         finally:
             self.ga = ga
             self.transforms = lag_tfms
-            self._pooled_states = pooled_states
+            for key, snap in pooled_snaps.items():
+                self._pooled_states[key].restore(snap)
 
     def _predict_setup(self) -> None:
         # TODO: move to utils

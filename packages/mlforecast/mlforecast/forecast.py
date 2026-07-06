@@ -1387,6 +1387,8 @@ class MLForecast:
                 date_features_as_dummies=self.ts.date_features_as_dummies,
                 drop_auxiliary_columns=self.ts.drop_auxiliary_columns,
             )
+            # Builds `_pooled_states` (global/groupby/partition_by), whose
+            # `_ts_aggs` are computed from the full `new_df` history here.
             new_ts._fit(
                 new_df,
                 id_col=self.ts.id_col,
@@ -1396,8 +1398,8 @@ class MLForecast:
                 keep_last_n=self.ts.keep_last_n,
                 weight_col=self.ts.weight_col,
             )
-            # Populate any stateful lag transforms before the first update-based
-            # prediction step. This includes pooled global/group transforms.
+            # Warms up local (coreforecast) lag-transform buffers before the
+            # first update-based prediction step.
             new_ts._initialize_lag_transform_states()
             new_ts.max_horizon = self.ts.max_horizon
             new_ts._horizons = self.ts._horizons

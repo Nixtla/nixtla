@@ -1030,12 +1030,23 @@ def test_group_update_new_group_order(engine):
     if engine == "polars":
         full_df = full_df.join(groups, on=["brand"], how="left")
         full_df = ufp.sort(full_df, by=["_bucket_id", "ds", "unique_id"])
-        expected = full_df["y"].to_numpy()
     else:
         full_df = full_df.merge(groups, on=["brand"], how="left")
         full_df = full_df.sort_values(["_bucket_id", "ds", "unique_id"])
-        expected = full_df["y"].to_numpy()
-    np.testing.assert_allclose(state.ga.data, expected)
+    # The dead `ga` mirror was removed; the surviving flat arrays
+    # (bucket_id, y) carry the grouped observations. Tail-appended rather than
+    # interleaved per-bucket, so compare the per-bucket y multiset (sort by
+    # (bucket_id, y)) against the expected grouping.
+    expected_pairs = sorted(
+        zip(full_df["_bucket_id"].to_numpy().tolist(), full_df["y"].to_numpy().tolist())
+    )
+    got_pairs = sorted(zip(state.bucket_id.tolist(), state.y.tolist()))
+    np.testing.assert_allclose(
+        [p[1] for p in got_pairs], [p[1] for p in expected_pairs]
+    )
+    np.testing.assert_array_equal(
+        [p[0] for p in got_pairs], [p[0] for p in expected_pairs]
+    )
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
