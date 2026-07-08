@@ -362,9 +362,9 @@ def check_anomalies_same_results_num_partitions(
 
 
 def check_anomalies_dataframe(nixtla_client: NixtlaClient, df: fugue.AnyDataFrame):
-    check_anomalies(nixtla_client, df, num_partitions=1)
-    check_anomalies(nixtla_client, df, level=90, num_partitions=1)
-    check_anomalies_same_results_num_partitions(nixtla_client, df)
+    check_anomalies(nixtla_client, df, num_partitions=1, model="timegpt-1")
+    check_anomalies(nixtla_client, df, level=90, num_partitions=1, model="timegpt-1")
+    check_anomalies_same_results_num_partitions(nixtla_client, df, model="timegpt-1")
 
 
 def check_online_anomalies(

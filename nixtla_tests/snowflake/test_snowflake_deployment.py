@@ -391,7 +391,7 @@ class TestExampleScripts:
 
         def compare_anomaly(test_case, data):
             client_result = nixtla_client.detect_anomalies(
-                df=data, **test_case.nixtla_params
+                df=data, model="timegpt-1", **test_case.nixtla_params
             )
             return client_result
 
