@@ -179,6 +179,21 @@ class _BaseLagTransform(BaseEstimator):
     def update_samples(self) -> int:
         return -1
 
+    @property
+    def _is_finite_window(self) -> bool:
+        """Whether this transform reads only a bounded window of recent history.
+
+        A pooled state may be trimmed under ``keep_last_n`` only if *every* one
+        of its transforms is finite-window: the dropped prefix can then never
+        enter a window, so trimming is prediction-neutral. Unbounded transforms
+        (Expanding*/EWM) recompute over the full aggregate vectors at predict —
+        pooled has no carried accumulator — so they must keep full history.
+
+        Defaults to ``False`` so an unknown/custom transform is never silently
+        trimmed (it keeps full history; correctness over the perf win).
+        """
+        return False
+
 
 class Lag(_BaseLagTransform):
     def __init__(self, lag: int):
@@ -197,6 +212,10 @@ class Lag(_BaseLagTransform):
     @property
     def update_samples(self) -> int:
         return self.lag
+
+    @property
+    def _is_finite_window(self) -> bool:
+        return True
 
 
 class _RollingBase(_BaseLagTransform):
@@ -264,6 +283,10 @@ class _RollingBase(_BaseLagTransform):
     @property
     def update_samples(self) -> int:
         return self._lag + self.window_size
+
+    @property
+    def _is_finite_window(self) -> bool:
+        return True
 
     def _compute_bucket_feature(
         self,
@@ -817,6 +840,10 @@ class _Seasonal_RollingBase(_BaseLagTransform):
     def update_samples(self) -> int:
         return self._lag + self.season_length * self.window_size
 
+    @property
+    def _is_finite_window(self) -> bool:
+        return True
+
     def _compute_bucket_feature(
         self,
         bid_arr: np.ndarray,
@@ -945,6 +972,13 @@ class _ExpandingBase(_BaseLagTransform):
     @property
     def update_samples(self) -> int:
         return 1
+
+    @property
+    def _is_finite_window(self) -> bool:
+        # Pooled Expanding* recomputes cumsum over the FULL aggregate vectors at
+        # predict (no carried accumulator, unlike the local coreforecast path),
+        # so its window is effectively unbounded -- its state is never trimmed.
+        return False
 
     def _compute_bucket_feature(
         self,
@@ -1341,6 +1375,13 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
     def update_samples(self) -> int:
         return 1
 
+    @property
+    def _is_finite_window(self) -> bool:
+        # Pooled EWM consumes every observed bucket-aggregate mean up to the lag
+        # at predict (no carried running state), so it depends on the full
+        # history -- its state is never trimmed.
+        return False
+
     def _compute_bucket_feature(
         self,
         bid_arr: np.ndarray,
@@ -1464,6 +1505,10 @@ class Offset(_BaseLagTransform):
     def update_samples(self) -> int:
         return self.tfm.update_samples + self.n
 
+    @property
+    def _is_finite_window(self) -> bool:
+        return self.tfm._is_finite_window
+
     def _compute_ts_level_from_aggs(self, ts_aggs):
         return self.tfm._compute_ts_level_from_aggs(ts_aggs)
 
@@ -1541,6 +1586,10 @@ class Combine(_BaseLagTransform):
     @property
     def update_samples(self):
         return max(self.tfm1.update_samples, self.tfm2.update_samples)
+
+    @property
+    def _is_finite_window(self) -> bool:
+        return self.tfm1._is_finite_window and self.tfm2._is_finite_window
 
     def _compute_ts_level_from_aggs(self, ts_aggs):
         r1 = self.tfm1._compute_ts_level_from_aggs(ts_aggs)

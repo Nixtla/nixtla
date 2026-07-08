@@ -342,7 +342,7 @@ class DistributedMLForecast:
             static_features (list of str, optional): Names of the features that are static and will be repeated when forecasting.
                 Defaults to None.
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
-            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/groupby/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
                 Defaults to None.
 
         Returns:
@@ -447,7 +447,7 @@ class DistributedMLForecast:
             static_features (list of str, optional): Names of the features that are static and will be repeated when forecasting.
                 Defaults to None.
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
-            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/groupby/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
                 Defaults to None.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
 
@@ -734,7 +734,7 @@ class DistributedMLForecast:
             static_features (list of str, optional): Names of the features that are static and will be repeated when forecasting.
                 Defaults to None.
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
-            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it.
+            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/groupby/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
                 Defaults to None.
             refit (bool): Retrain model for each cross validation window.
                 If False, the models are trained at the beginning and then used to predict each window. Defaults to True.

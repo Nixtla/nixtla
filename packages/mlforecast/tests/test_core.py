@@ -1022,6 +1022,7 @@ def test_group_update_new_group_order(engine):
         target_col="y",
         dropna=False,
         static_features=["brand"],
+        keep_last_n=10_000,  # full-history check: disable pooled trim
     )
     ts.update(update_df)
     state = ts._pooled_states[("groupby", ("brand",), ())]

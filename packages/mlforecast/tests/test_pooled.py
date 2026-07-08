@@ -49,6 +49,7 @@ def test_new_series_new_group_update_then_predict(engine, lag):
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
         dropna=False, static_features=["brand"],
+        keep_last_n=10_000,  # full-history check: disable pooled trim
     )
     assert ts._pooled_states[("groupby", ("brand",), ())] is not None
     state = ts._pooled_states[("groupby", ("brand",), ())]
@@ -197,6 +198,7 @@ def test_staggered_series_start(engine, lag):
     ts = TimeSeries(freq=1, lag_transforms={lag: [RollingMean(2, global_=True)]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False,
     )
     state = ts._pooled_states[("global", (), ())]
@@ -509,6 +511,7 @@ def test_partition_ordinals_have_parent_gaps(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     state = ts._pooled_states[("local", (), ("promo",))]
@@ -776,6 +779,7 @@ def test_local_partition_update_advances_sibling_calendar(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     part_key = ("local", (), ("promo",))
@@ -826,6 +830,7 @@ def test_new_partition_bucket_uses_existing_parent_calendar(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     part_key = ("local", (), ("promo",))
@@ -863,6 +868,7 @@ def test_global_partition_update_advances_sibling_calendar(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     part_key = ("nonlocal", (), ("promo",))
@@ -898,6 +904,7 @@ def test_groupby_partition_update_advances_sibling_calendar(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=["brand"],
     )
     part_key = ("nonlocal", ("brand",), ("promo",))
@@ -1095,6 +1102,7 @@ def test_global_partition_new_bucket_inherits_parent_calendar(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     part_key = ("nonlocal", (), ("promo",))
@@ -1138,6 +1146,7 @@ def test_partition_datetime_update_new_bucket(engine):
     ts = TimeSeries(freq=freq, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     # Update with a new partition value — this triggers _resolve_parent_for_bucket
@@ -1322,6 +1331,7 @@ def test_partition_update_batch_multiple_ids_new_buckets(engine):
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df, id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     key = ("nonlocal", (), ("promo",))
@@ -1380,6 +1390,7 @@ def test_partition_update_sparse_then_dense(engine):
     ts_incr = _build()
     ts_incr.fit_transform(
         _make_df(engine, base), id_col="unique_id", time_col="ds", target_col="y",
+        keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False, static_features=[],
     )
     rows = [base]
@@ -1394,6 +1405,7 @@ def test_partition_update_sparse_then_dense(engine):
     ts_scratch.fit_transform(
         _make_df(engine, combined), id_col="unique_id", time_col="ds", target_col="y",
         dropna=False, static_features=[],
+        keep_last_n=10_000,  # full-history check: disable pooled trim
     )
 
     key = ("nonlocal", (), ("promo",))
@@ -2697,7 +2709,7 @@ def test_target_transforms_with_pooled_preprocess(engine):
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        prep = fcst.preprocess(df, static_features=[], dropna=False)
+        prep = fcst.preprocess(df, static_features=[], dropna=False, keep_last_n=10_000)
     if engine == "polars":
         prep = prep.to_pandas()
 

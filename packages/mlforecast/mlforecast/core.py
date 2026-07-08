@@ -342,6 +342,36 @@ class TimeSeries:
             local[name] = tfm
         return local
 
+    def _trim_pooled_states(self) -> None:
+        """Trim each pooled state's history under ``keep_last_n``.
+
+        Parity with the ``self.ga`` trim: a pooled state whose transforms are
+        *all* finite-window drops its unused history prefix, while a state
+        containing any Expanding*/EWM transform keeps full history (pooled has
+        no carried accumulator -- it recomputes over the full aggregate vectors
+        at predict, so trimming those would move predictions).
+
+        Retention is ``max(keep_last_n, W_state)`` ordinals, where ``W_state``
+        is the state's largest finite window. The floor is required and is where
+        pooled legitimately diverges from the local coreforecast path: local
+        rolling survives an undersized explicit ``keep_last_n`` because
+        coreforecast carries a per-transform window buffer; pooled has none (the
+        aggregates *are* the buffer), so trimming below ``W_state`` would compute
+        windows off a truncated prefix. When ``keep_last_n`` is inferred it
+        already equals the global max window, so the floor is then a no-op.
+        """
+        if self.keep_last_n is None:
+            return
+        for key, tfms in self._get_pooled_tfms().items():
+            state = self._pooled_states.get(key)
+            if state is None:
+                continue
+            tfm_list = list(tfms.values())
+            if not all(tfm._is_finite_window for tfm in tfm_list):
+                continue
+            w_state = max(tfm.update_samples for tfm in tfm_list)
+            state.trim_to_last(max(self.keep_last_n, w_state))
+
     def _initialize_lag_transform_states(self) -> None:
         """Materialize lag transform state for subsequent update-based prediction.
 
@@ -910,6 +940,7 @@ class TimeSeries:
             self.keep_last_n = max(update_samples)
         if self.keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
+            self._trim_pooled_states()
         del self._restore_idxs, self._sort_idxs
 
         # lag transforms
