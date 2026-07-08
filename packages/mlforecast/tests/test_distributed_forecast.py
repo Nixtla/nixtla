@@ -7,7 +7,9 @@ import pytest
 from sklearn.base import BaseEstimator
 
 if sys.platform != "linux":
-    pytest.skip("Distributed interface is only supported on Linux", allow_module_level=True)
+    pytest.skip(
+        "Distributed interface is only supported on Linux", allow_module_level=True
+    )
 
 import dask.dataframe as dd
 
@@ -72,6 +74,7 @@ class _RecordingDaskRegressor(BaseEstimator):
             )
         self.model_ = _RecordingLocalModel(weights)
         return self
+
 
 def test_dask_distributed_forecast(partitioned_series):
     # test existing features provide the same result
@@ -145,7 +148,10 @@ def test_dask_distributed_forecast_with_x_df():
 
     # build future exog: one row per (unique_id, future date)
     last_dates = (
-        series.groupby("unique_id")["ds"].max().reset_index().rename(columns={"ds": "last_ds"})
+        series.groupby("unique_id")["ds"]
+        .max()
+        .reset_index()
+        .rename(columns={"ds": "last_ds"})
     )
     future_rows = []
     for _, row in last_dates.iterrows():
@@ -190,3 +196,36 @@ def test_dask_distributed_forecast_with_new_df():
 
     assert preds.shape[0] == 5 * 5
     assert set(preds["unique_id"]) == set(series["unique_id"])
+
+
+@pytest.mark.parametrize(
+    "pooled_kwargs",
+    [
+        {"global_": True},
+        {"groupby": ["brand"]},
+        {"partition_by": ["promo"]},
+    ],
+)
+def test_distributed_rejects_pooled_transforms(pooled_kwargs):
+    """Pooled transforms can't be sharded by id, so init must fail loudly.
+
+    The distributed engines compute features independently per partition, so a
+    transform that aggregates across series would only see its own slice. The
+    guard fires at construction (no engine needed).
+    """
+    with pytest.raises(NotImplementedError, match="Pooled lag transforms"):
+        DistributedMLForecast(
+            models=[DaskLGBMForecast(verbosity=-1, random_state=0)],
+            freq="D",
+            lag_transforms={1: [RollingMean(window_size=7, **pooled_kwargs)]},
+        )
+
+
+def test_distributed_allows_local_transforms():
+    """A plain (per-series) lag transform must still construct fine."""
+    DistributedMLForecast(
+        models=[DaskLGBMForecast(verbosity=-1, random_state=0)],
+        freq="D",
+        lags=[1, 2],
+        lag_transforms={1: [RollingMean(window_size=7)]},
+    )

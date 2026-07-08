@@ -125,6 +125,25 @@ class DistributedMLForecast:
             lag_transforms_namer=lag_transforms_namer,
             date_features_as_dummies=date_features_as_dummies,
         )
+        pooled_tfms = self._base_ts._get_pooled_tfms()
+        if pooled_tfms:
+            pooled_names = sorted(
+                name for tfms in pooled_tfms.values() for name in tfms
+            )
+            raise NotImplementedError(
+                "Pooled lag transforms (those configured with `global_`, "
+                "`groupby` or `partition_by`) are not supported by "
+                "DistributedMLForecast. The distributed engines shard the data "
+                "by the id column and compute features independently on each "
+                "partition, so a transform that aggregates across series (the "
+                "whole dataset for `global_`, a group for `groupby`) would only "
+                "see the series in its own partition and silently produce "
+                "incorrect results. Partition-based transforms rely on the same "
+                "cross-series parent-calendar machinery, which assumes a single "
+                f"TimeSeries owns every series. Offending feature(s): "
+                f"{pooled_names}. Use the local (non-distributed) MLForecast for "
+                "these transforms."
+            )
         self.engine = engine
         self.num_partitions = num_partitions
 
@@ -466,9 +485,7 @@ class DistributedMLForecast:
         )
 
     @staticmethod
-    def _attach_x_df(
-        part: pd.DataFrame, uid_to_xdf: dict
-    ) -> Iterable[pd.DataFrame]:
+    def _attach_x_df(part: pd.DataFrame, uid_to_xdf: dict) -> Iterable[pd.DataFrame]:
         """Attach each partition's packed X_df blob to its rows, matched on first_uid.
 
         Used in place of ``fa.join`` for Step 4 of ``_build_x_df_per_partition``:
@@ -482,7 +499,9 @@ class DistributedMLForecast:
         yield part
 
     @staticmethod
-    def _pack_x_df(part: pd.DataFrame, partition_key_col: str) -> Iterable[pd.DataFrame]:
+    def _pack_x_df(
+        part: pd.DataFrame, partition_key_col: str
+    ) -> Iterable[pd.DataFrame]:
         """Serialize one partition's X_df rows as a base64 string, keyed by first_uid.
 
         Base64 encoding avoids binary-column type issues when the packed blob flows
@@ -582,13 +601,15 @@ class DistributedMLForecast:
         id_col = self._base_ts.id_col
 
         # Step 1 — build uid → first_uid mapping on the driver (all_uids column only, small).
-        ts_df = fa.as_pandas(fa.select_columns(partition_results, ["all_uids", "first_uid"]))
+        ts_df = fa.as_pandas(
+            fa.select_columns(partition_results, ["all_uids", "first_uid"])
+        )
         uid_map_df = (
-            ts_df
-            .assign(all_uids=ts_df["all_uids"].apply(cloudpickle.loads))
+            ts_df.assign(all_uids=ts_df["all_uids"].apply(cloudpickle.loads))
             .explode("all_uids")
-            .rename(columns={"all_uids": id_col, "first_uid": "__partition_key__"})
-            [[id_col, "__partition_key__"]]
+            .rename(columns={"all_uids": id_col, "first_uid": "__partition_key__"})[
+                [id_col, "__partition_key__"]
+            ]
             .reset_index(drop=True)
         )
 
@@ -889,7 +910,13 @@ class DistributedMLForecast:
             partition_mask = ufp.is_in(new_df[ts.id_col], ts.uids)
             partition_df = ufp.filter_with_mask(new_df, partition_mask)
             ts.update(partition_df)
-            yield [cloudpickle.dumps(ts), data["train"], data["valid"], str(ts.uids[0]), cloudpickle.dumps(list(ts.uids))]
+            yield [
+                cloudpickle.dumps(ts),
+                data["train"],
+                data["valid"],
+                str(ts.uids[0]),
+                cloudpickle.dumps(list(ts.uids)),
+            ]
 
     def update(self, df: pd.DataFrame) -> None:
         """Update the values of the stored series.
