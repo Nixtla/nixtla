@@ -25,7 +25,7 @@ def test_custom_business_hours(
     assert [
         (model, freq.lower())
         for (model, freq) in nixtla_test_client._model_params.keys()
-    ] == [("timegpt-1", "cbh")]
+    ] == [("timegpt-2.1", "cbh")]
 
 
 def test_integer_freq(integer_freq_series):
@@ -36,7 +36,7 @@ def test_integer_freq(integer_freq_series):
     train_ends = integer_freq_series.groupby("unique_id", observed=True)["ds"].max()
     fcst_ends = fcst.groupby("unique_id", observed=True)["ds"].max()
     pd.testing.assert_series_equal(fcst_ends, train_ends + 7)
-    assert list(nixtla_test_client._model_params.keys()) == [("timegpt-1", "MS")]
+    assert list(nixtla_test_client._model_params.keys()) == [("timegpt-2.1", "MS")]
 
 
 def test_api_key_fail():
