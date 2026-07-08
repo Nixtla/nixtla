@@ -9,7 +9,9 @@ from nixtla.nixtla_client import NixtlaClient
 from typing import Callable
 
 # setting used for distributed related tests
-ATOL = 1e-3
+# timegpt-2.1 (the default model) shows slightly larger numerical variance
+# across partitions than timegpt-1, so the tolerance is relaxed accordingly.
+ATOL = 1e-2
 
 
 # test num partitions

@@ -100,6 +100,7 @@ def test_forecast_warning(nixtla_test_client, air_passengers_df, caplog):
         h=100,
         time_col="timestamp",
         target_col="value",
+        model="timegpt-1",
     )
     assert 'The specified horizon "h" exceeds the model horizon' in caplog.text
 
@@ -121,6 +122,7 @@ def test_forecast_error(nixtla_test_client, air_passengers_df, kwargs):
             time_col="timestamp",
             target_col="value",
             level=[90, 95],
+            model="timegpt-1",
             **kwargs,
         )
 
