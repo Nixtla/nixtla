@@ -621,10 +621,14 @@ def check_finetuned_model(
 
     # forecast
     local_fcst = nixtla_client.forecast(
-        df=fa.as_pandas(df), h=5, finetuned_model_id=model_id2,
+        df=fa.as_pandas(df), h=5, finetuned_model_id=model_id2, model="timegpt-1",
     )
     distr_fcst = (
-        fa.as_pandas(nixtla_client.forecast(df=df, h=5, finetuned_model_id=model_id2))
+        fa.as_pandas(
+            nixtla_client.forecast(
+                df=df, h=5, finetuned_model_id=model_id2, model="timegpt-1"
+            )
+        )
         .sort_values(["unique_id", "ds"])
         .reset_index(drop=True)
     )
@@ -638,12 +642,20 @@ def check_finetuned_model(
 
     # cross-validation
     local_cv = nixtla_client.cross_validation(
-        df=fa.as_pandas(df), n_windows=2, h=5, finetuned_model_id=model_id2
+        df=fa.as_pandas(df),
+        n_windows=2,
+        h=5,
+        finetuned_model_id=model_id2,
+        model="timegpt-1",
     )
     distr_cv = (
         fa.as_pandas(
             nixtla_client.cross_validation(
-                df=df, n_windows=2, h=5, finetuned_model_id=model_id2
+                df=df,
+                n_windows=2,
+                h=5,
+                finetuned_model_id=model_id2,
+                model="timegpt-1",
             )
         )
         .sort_values(["unique_id", "ds"])
@@ -659,11 +671,13 @@ def check_finetuned_model(
 
     # anomaly detection
     local_anomaly = nixtla_client.detect_anomalies(
-        df=fa.as_pandas(df), finetuned_model_id=model_id2
+        df=fa.as_pandas(df), finetuned_model_id=model_id2, model="timegpt-1"
     )
     distr_anomaly = (
         fa.as_pandas(
-            nixtla_client.detect_anomalies(df=df, finetuned_model_id=model_id2)
+            nixtla_client.detect_anomalies(
+                df=df, finetuned_model_id=model_id2, model="timegpt-1"
+            )
         )
         .sort_values(["unique_id", "ds"])
         .reset_index(drop=True)
