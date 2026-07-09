@@ -30,12 +30,12 @@ jobs:
           ]
     steps:
       - name: Clone repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: "true"
 
       - name: Build wheels and run tests
-        uses: pypa/cibuildwheel@v3.3.1
+        uses: pypa/cibuildwheel@v4.1.0
         with:
           extras: "uv"
         env:
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Clone repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # 6.0.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # 7.0.0
         with:
           submodules: "true"
 
@@ -66,7 +66,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@4deb3275dd364fb96fb074c953133d29ec96f80f # 4.10.6
+        uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # 4.17.6
         with:
           mode: simulation
           token: ${{ secrets.CODESPEED_TOKEN }}
