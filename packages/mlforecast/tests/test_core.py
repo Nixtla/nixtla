@@ -19,6 +19,7 @@ from mlforecast.core import (
 )
 from mlforecast.lag_transforms import (
     ExpandingMean,
+    LookupLag,
     RollingMean,
     RollingQuantile,
     RollingStd,
@@ -1083,6 +1084,94 @@ def test_group_lag_transform_uses_transformed_target(engine):
     # ds=3: window ts=2 -> {1, 10} -> mean=5.5
     expected = np.array([np.nan, 5.5, np.nan, 5.5])
     np.testing.assert_allclose(result, expected, equal_nan=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_lag_partition_by_uses_previous_matching_occurrence(engine):
+    dates = pd.date_range("2021-01-01", "2024-12-31", freq="D")
+    easter = {
+        2021: "2021-04-04",
+        2022: "2022-04-17",
+        2023: "2023-04-09",
+        2024: "2024-03-31",
+    }
+    rows = []
+    for i, uid in enumerate(["store_1", "store_2"]):
+        df_uid = pd.DataFrame(
+            {
+                "unique_id": uid,
+                "ds": dates,
+                "y": np.arange(len(dates), dtype=float) + 10_000 * i,
+            }
+        )
+        df_uid["holiday_name"] = "no_holiday"
+        for dt in easter.values():
+            df_uid.loc[df_uid["ds"] == dt, "holiday_name"] = "easter"
+        df_uid.loc[df_uid["ds"].dt.strftime("%m-%d") == "12-25", "holiday_name"] = (
+            "christmas"
+        )
+        rows.append(df_uid)
+    df = pd.concat(rows, ignore_index=True)
+    if engine == "polars":
+        df = pl.from_pandas(df).with_columns(pl.col("unique_id").cast(pl.Categorical))
+
+    tfm = LookupLag(partition_by=["holiday_name"])
+    freq = "1d" if engine == "polars" else "D"
+    ts = TimeSeries(freq=freq, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+        dropna=False,
+    )
+    prep_pd = prep.to_pandas() if engine == "polars" else prep
+    col = tfm._get_name(1)
+    holidays = prep_pd[prep_pd["holiday_name"].isin(["easter", "christmas"])].copy()
+    expected = holidays.groupby(
+        ["unique_id", "holiday_name"], sort=False, observed=True
+    )["y"].shift(1)
+    np.testing.assert_allclose(holidays[col].to_numpy(), expected.to_numpy())
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_lag_partition_by_uses_transformed_target(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 100.0, 3.0, 200.0, 10.0, 1000.0, 30.0, 2000.0],
+            "event": ["x", "promo", "x", "promo", "x", "promo", "x", "promo"],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df).with_columns(pl.col("unique_id").cast(pl.Categorical))
+
+    tfm = LookupLag(partition_by=["event"])
+    ts = TimeSeries(
+        freq=1,
+        lag_transforms={1: [tfm]},
+        target_transforms=[LocalStandardScaler()],
+    )
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+        dropna=False,
+    )
+    prep_pd = prep.to_pandas() if engine == "polars" else prep
+    col = tfm._get_name(1)
+    expected = prep_pd.groupby(["unique_id", "event"], sort=False, observed=True)[
+        "y"
+    ].shift(1)
+    np.testing.assert_allclose(
+        prep_pd[col].to_numpy(),
+        expected.to_numpy(),
+        equal_nan=True,
+    )
 
 
 def test_global_update_y_appends_observations():

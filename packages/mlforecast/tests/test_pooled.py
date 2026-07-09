@@ -12,6 +12,7 @@ from mlforecast.lag_transforms import (
     ExpandingMin,
     ExpandingStd,
     ExponentiallyWeightedMean,
+    LookupLag,
     RollingMax,
     RollingMean,
     RollingMin,
@@ -3737,3 +3738,250 @@ def test_partition_by_nonlocal_default_min_samples_unchanged(engine):
     np.testing.assert_array_equal(default_vals, explicit_ws)
     # the guard still bites on partially-filled windows, unlike min_samples=1
     assert np.isnan(default_vals).sum() > np.isnan(explicit_one).sum()
+
+
+def test_lookup_lag_requires_partition_by():
+    with pytest.raises(ValueError, match="LookupLag requires `partition_by`"):
+        LookupLag()
+    with pytest.raises(ValueError, match="LookupLag requires `partition_by`"):
+        LookupLag(partition_by=None)
+    with pytest.raises(ValueError, match="LookupLag requires `partition_by`"):
+        LookupLag(partition_by=[])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_lag_predict_uses_previous_occurrence(engine):
+    """Predict looks up the previous matching-occurrence target via X_df."""
+    from mlforecast.forecast import MLForecast
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 10,
+            "ds": list(range(1, 11)),
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
+            "promo": [0, 0, 1, 0, 0, 1, 0, 0, 1, 0],  # promo=1 at ds 3,6,9 (y 30,60,90)
+        },
+    )
+    tfm = LookupLag(partition_by=["promo"])
+    col = tfm._get_name(1)
+    captured = []
+
+    def save_features(x):
+        captured.append(x[col].to_numpy().copy())
+        return x
+
+    fcst = MLForecast(
+        models=[HistGradientBoostingRegressor(max_iter=10)],
+        freq=1,
+        lags=[1],
+        lag_transforms={1: [tfm]},
+    )
+    fcst.fit(df, id_col="unique_id", time_col="ds", target_col="y", static_features=[])
+    future_df = _make_df(engine, {"unique_id": ["a"], "ds": [11], "promo": [1]})
+    preds = fcst.predict(h=1, X_df=future_df, before_predict_callback=save_features)
+    assert len(preds) == 1
+    # future step is promo=1; the previous promo occurrence is ds=9 (y=90)
+    np.testing.assert_allclose(captured[0][0], 90.0)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_lag_predict_multistep_transformed(engine):
+    """Multi-step predict with dynamic keys stays on the transformed scale."""
+    from mlforecast.forecast import MLForecast
+    from mlforecast.target_transforms import LocalStandardScaler
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    rows = {
+        "unique_id": ["a"] * 10,
+        "ds": list(range(1, 11)),
+        "y": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
+        "promo": [0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+    }
+    tfm = LookupLag(partition_by=["promo"])
+    col = tfm._get_name(1)
+
+    # Expected transformed-target values via a separate preprocess pass.
+    fexp = MLForecast(
+        models=[HistGradientBoostingRegressor(max_iter=10)],
+        freq=1,
+        lags=[1],
+        lag_transforms={1: [LookupLag(partition_by=["promo"])]},
+        target_transforms=[LocalStandardScaler()],
+    )
+    prep = fexp.preprocess(_make_df(engine, rows), static_features=[], dropna=False)
+    prep_pd = prep.to_pandas() if engine == "polars" else prep
+    exp_promo1 = prep_pd[prep_pd["promo"] == 1]["y"].to_numpy()[-1]  # ds=9 transformed
+    exp_promo0 = prep_pd[prep_pd["promo"] == 0]["y"].to_numpy()[-1]  # ds=10 transformed
+
+    captured = []
+
+    def save_features(x):
+        captured.append(x[col].to_numpy().copy())
+        return x
+
+    fcst = MLForecast(
+        models=[HistGradientBoostingRegressor(max_iter=10)],
+        freq=1,
+        lags=[1],
+        lag_transforms={1: [tfm]},
+        target_transforms=[LocalStandardScaler()],
+    )
+    fcst.fit(
+        _make_df(engine, rows),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a"],
+            "ds": [11, 12],
+            "promo": [1, 0],
+        },
+    )
+    preds = fcst.predict(h=2, X_df=future_df, before_predict_callback=save_features)
+    assert len(preds) == 2
+    # step 0 (ds=11, promo=1): previous promo=1 occurrence, transformed scale
+    np.testing.assert_allclose(captured[0][0], exp_promo1)
+    # step 1 (ds=12, promo=0): bucket (a,0) unchanged by ds=11 (which was promo=1)
+    np.testing.assert_allclose(captured[1][0], exp_promo0)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_lag_predict_survives_keep_last_n_trim(engine):
+    """LookupLag reaches a far-back occurrence even under an aggressive
+    keep_last_n (its pooled state is not finite-window, so it is not trimmed)."""
+    from mlforecast.forecast import MLForecast
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 12,
+            "ds": list(range(1, 13)),
+            "y": [
+                10.0,
+                20.0,
+                30.0,
+                40.0,
+                50.0,
+                60.0,
+                70.0,
+                80.0,
+                90.0,
+                100.0,
+                110.0,
+                120.0,
+            ],
+            "promo": [
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],  # single promo far back (ds=3, y=30)
+        },
+    )
+    tfm = LookupLag(partition_by=["promo"])
+    col = tfm._get_name(1)
+    captured = []
+
+    def save_features(x):
+        captured.append(x[col].to_numpy().copy())
+        return x
+
+    fcst = MLForecast(
+        models=[HistGradientBoostingRegressor(max_iter=10)],
+        freq=1,
+        lags=[1],
+        lag_transforms={1: [tfm]},
+    )
+    fcst.fit(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+        keep_last_n=2,
+    )
+    future_df = _make_df(engine, {"unique_id": ["a"], "ds": [13], "promo": [1]})
+    preds = fcst.predict(h=1, X_df=future_df, before_predict_callback=save_features)
+    assert len(preds) == 1
+    # future promo step reaches the far-back promo occurrence (ds=3, y=30), not NaN
+    np.testing.assert_allclose(captured[0][0], 30.0)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("lag", [1, 2, 7, 52])
+def test_lookup_lag_predict_various_lags(engine, lag):
+    """Predict looks up the correct occurrence across a range of lag values
+    (exercises the _compute_latest_from_aggs fast path and its [-lag] indexing)."""
+    from mlforecast.forecast import MLForecast
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    n = 120
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * n,
+            "ds": list(range(n)),
+            "y": [float(i) for i in range(n)],  # y == ds index
+            "promo": [1] * n,  # one partition value → bucket is the whole series
+        },
+    )
+    tfm = LookupLag(partition_by=["promo"])
+    col = tfm._get_name(lag)
+    captured = []
+
+    def save_features(x):
+        captured.append(x[col].to_numpy().copy())
+        return x
+
+    fcst = MLForecast(
+        models=[HistGradientBoostingRegressor(max_iter=5)],
+        freq=1,
+        lags=[1],
+        lag_transforms={lag: [tfm]},
+    )
+    fcst.fit(df, id_col="unique_id", time_col="ds", target_col="y", static_features=[])
+    future_df = _make_df(engine, {"unique_id": ["a"], "ds": [n], "promo": [1]})
+    preds = fcst.predict(h=1, X_df=future_df, before_predict_callback=save_features)
+    assert len(preds) == 1
+    # future step looks up the occurrence `lag` back; since y == ds index, that is y[n - lag]
+    np.testing.assert_allclose(captured[0][0], float(n - lag))
+
+
+def test_lookup_lag_compute_latest_from_aggs_nan_and_empty():
+    """Fast predict path (_compute_latest_from_aggs): NaN when a bucket has
+    fewer than `lag` occurrences or the looked-up occurrence has no valid
+    observation; None when there are no aggregates."""
+    from mlforecast.pooled import _build_ts_aggs
+
+    # bucket 0: 3 valid obs (10,20,30); bucket 1: single obs (< lag); bucket 2:
+    # the lag-back occurrence (index -2) is NaN-valued.
+    bid = np.array([0, 0, 0, 1, 2, 2, 2])
+    ordv = np.array([0, 1, 2, 0, 0, 1, 2])
+    y = np.array([10.0, 20.0, 30.0, 99.0, 5.0, np.nan, 7.0])
+    aggs = _build_ts_aggs(bid, ordv, y)
+
+    tfm = LookupLag(partition_by=["x"])
+    tfm._set_core_tfm(2)  # lag = 2
+    result = tfm._compute_latest_from_aggs(aggs, {0: 3, 1: 1, 2: 3})
+
+    np.testing.assert_allclose(result[0], 20.0)  # occurrence 2 back = index -2 = 20.0
+    assert np.isnan(result[1])  # only 1 occurrence, < lag=2 -> NaN
+    assert np.isnan(result[2])  # lag-back occurrence has NaN y (count==0) -> NaN
+
+    # No aggregates -> None (falls through to the slow path in core.py).
+    assert tfm._compute_latest_from_aggs({}, {}) is None

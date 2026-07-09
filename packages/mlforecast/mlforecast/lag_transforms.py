@@ -15,6 +15,7 @@ __all__ = [
     "ExpandingMax",
     "ExpandingQuantile",
     "ExponentiallyWeightedMean",
+    "LookupLag",
     "Offset",
     "Combine",
 ]
@@ -248,6 +249,116 @@ def _resolve_min_samples(tfm: _WindowTransform) -> int:
     if tfm.partition_by and not tfm.global_ and not tfm.groupby:
         return 1
     return tfm.window_size
+
+
+class LookupLag(_BaseLagTransform):
+    """Look up the target from a previous matching occurrence.
+
+    The lag value is provided by the ``lag_transforms`` dictionary key. For
+    example, ``lag_transforms={1: [LookupLag(partition_by=["holiday_name"])]}``
+    returns the previous target value observed within each
+    ``(unique_id, holiday_name)`` bucket.
+
+    ``partition_by`` is required: it defines the matching buckets and is what
+    makes this a lookup rather than a plain :class:`Lag`. Like other pooled
+    transforms, the partition columns may vary over time and must be supplied
+    via ``X_df`` at prediction.
+
+    Args:
+        partition_by (Sequence[str]): Dynamic column names used to define the
+            matching buckets within each series. Required.
+    """
+
+    def __init__(
+        self,
+        partition_by: Optional[Sequence[str]] = None,
+    ):
+        self.partition_by = _normalize_columns(partition_by)
+        if self.partition_by is None:
+            raise ValueError(
+                "LookupLag requires `partition_by`; it defines the buckets "
+                "used for the occurrence lookup."
+            )
+        self._core_tfm = None
+
+    def _set_core_tfm(self, lag: int) -> "LookupLag":
+        self._core_tfm = core_tfms.Lag(lag=lag)
+        return self
+
+    def _get_name(self, lag: int) -> str:
+        prefix = ""
+        if self.partition_by:
+            part_str = "__".join(self.partition_by)
+            prefix = f"partby_{part_str}_"
+        return f"{prefix}lookup_lag{lag}"
+
+    def _compute_bucket_feature(
+        self,
+        bid_arr: np.ndarray,
+        ord_arr: np.ndarray,
+        y_arr: np.ndarray,
+        _ts_aggs=None,
+    ) -> np.ndarray:
+        lag = self._core_tfm.lag
+        n = len(y_arr)
+        result = np.full(n, np.nan)
+        if n == 0:
+            return result
+        order = np.lexsort((np.arange(n), ord_arr, bid_arr))
+        ordered_bid = bid_arr[order]
+        bounds = np.r_[
+            0,
+            np.flatnonzero(ordered_bid[1:] != ordered_bid[:-1]) + 1,
+            n,
+        ]
+        for start, end in zip(bounds[:-1], bounds[1:]):
+            if end - start <= lag:
+                continue
+            idxs = order[start:end]
+            result[idxs[lag:]] = y_arr[idxs[:-lag]]
+        return result
+
+    def _compute_latest_from_aggs(
+        self,
+        ts_aggs,
+        _target_ords,
+    ) -> Optional[Dict[int, float]]:
+        # Fast predict path: the looked-up value is the target `lag` occurrences
+        # back. In local partition mode each bucket is a single series (one
+        # observation per timestamp), so ``agg.sums[-lag] / agg.counts[-lag]`` is
+        # exactly that occurrence's value -- NaN when it has no valid observation
+        # (``counts == 0``), matching the row-level ``_compute_bucket_feature``
+        # result for the appended query row. This avoids re-sorting the full
+        # history and building unused aggregates at every recursive step.
+        if not ts_aggs:
+            return None
+        lag = self._core_tfm.lag
+        result: Dict[int, float] = {}
+        for bid, agg in ts_aggs.items():
+            if len(agg.unique_times) < lag:
+                result[bid] = float("nan")
+            else:
+                count = agg.counts[-lag]
+                result[bid] = agg.sums[-lag] / count if count > 0 else float("nan")
+        return result
+
+    @property
+    def update_samples(self) -> int:
+        if self._core_tfm is None:
+            return -1
+        # LookupLag's pooled state is never trimmed under ``keep_last_n`` (it is
+        # not finite-window; see ``_is_finite_window``), so it keeps full bucket
+        # history at predict. This value only feeds the ``self.ga`` keep_last_n
+        # inference and the regular-``ga`` core-``Lag`` output it governs -- which
+        # the pooled result overwrites; pooled trimming ignores it. ``lag`` is the
+        # minimal safe value.
+        return self._core_tfm.lag
+
+    @property
+    def _is_finite_window(self) -> bool:
+        # A matching occurrence can be arbitrarily far back, so LookupLag needs
+        # unbounded history; its pooled state must never be trimmed.
+        return False
 
 
 class _RollingBase(_BaseLagTransform):
