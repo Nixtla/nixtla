@@ -3621,12 +3621,490 @@ def test_slow_path_quantile_with_partition_by(engine, mode):
             )
 
 
+# ---------------------------------------------------------------------------
+# time_agg: pre-aggregate rows sharing a timestamp within each bucket, then
+# apply the transform over that per-timestamp series.
+# ---------------------------------------------------------------------------
+import operator as _operator  # noqa: E402
+
+from sklearn.base import clone as _sk_clone  # noqa: E402
+
+from mlforecast.lag_transforms import (  # noqa: E402
+    Combine,
+    ExpandingQuantile,
+    Offset,
+    RollingQuantile,
+    SeasonalRollingMean,
+)
+from mlforecast.pooled import (  # noqa: E402
+    _build_ts_aggs,
+    _collapse_rows_by_time,
+    _reaggregate_ts_aggs,
+    compute_pooled_features,
+)
+
+
+def _one_bucket_aggs():
+    # ord 0: [1, 3]; ord 1: [nan] (all-NaN); ord 2: [5]
+    bid = np.array([0, 0, 0, 0])
+    ordv = np.array([0, 0, 1, 2])
+    y = np.array([1.0, 3.0, np.nan, 5.0])
+    return bid, ordv, y, _build_ts_aggs(bid, ordv, y)
+
+
+def test_reaggregate_ts_aggs_values_and_nan():
+    _, _, _, aggs = _one_bucket_aggs()
+    expected = {
+        "sum": dict(
+            sums=[4.0, 0.0, 5.0],
+            counts=[1.0, 0.0, 1.0],
+            sum_sq=[16.0, 0.0, 25.0],
+            mins=[4.0, np.nan, 5.0],
+        ),
+        "count": dict(
+            sums=[2.0, 0.0, 1.0],
+            counts=[1.0, 1.0, 1.0],
+            sum_sq=[4.0, 0.0, 1.0],
+            mins=[2.0, 0.0, 1.0],
+        ),
+        "mean": dict(
+            sums=[2.0, 0.0, 5.0],
+            counts=[1.0, 0.0, 1.0],
+            sum_sq=[4.0, 0.0, 25.0],
+            mins=[2.0, np.nan, 5.0],
+        ),
+        "min": dict(
+            sums=[1.0, 0.0, 5.0],
+            counts=[1.0, 0.0, 1.0],
+            sum_sq=[1.0, 0.0, 25.0],
+            mins=[1.0, np.nan, 5.0],
+        ),
+        "max": dict(
+            sums=[3.0, 0.0, 5.0],
+            counts=[1.0, 0.0, 1.0],
+            sum_sq=[9.0, 0.0, 25.0],
+            mins=[3.0, np.nan, 5.0],
+        ),
+    }
+    for agg, exp in expected.items():
+        r = _reaggregate_ts_aggs(aggs, agg)[0]
+        np.testing.assert_allclose(r.sums, exp["sums"], equal_nan=True)
+        np.testing.assert_allclose(r.counts, exp["counts"], equal_nan=True)
+        np.testing.assert_allclose(r.sum_sq, exp["sum_sq"], equal_nan=True)
+        np.testing.assert_allclose(r.mins, exp["mins"], equal_nan=True)
+        # min/max aggs keep the observed extremes; others store v in both mins/maxs
+        maxs_exp = exp["mins"] if agg != "count" else exp["mins"]
+        np.testing.assert_allclose(r.maxs, maxs_exp, equal_nan=True)
+        np.testing.assert_array_equal(r.unique_times, aggs[0].unique_times)
+
+
+def test_reaggregate_ts_aggs_does_not_mutate_input():
+    _, _, _, aggs = _one_bucket_aggs()
+    before = {
+        f: getattr(aggs[0], f).copy()
+        for f in ("sums", "counts", "sum_sq", "mins", "maxs", "unique_times")
+    }
+    for agg in ("sum", "count", "mean", "min", "max"):
+        _reaggregate_ts_aggs(aggs, agg)
+    for f, arr in before.items():
+        np.testing.assert_allclose(getattr(aggs[0], f), arr, equal_nan=True)
+
+
+@pytest.mark.parametrize("time_agg", ["sum", "count", "mean", "min", "max"])
+def test_collapse_matches_reaggregate(time_agg):
+    """_build_ts_aggs(collapse(rows)) == _reaggregate_ts_aggs(_build_ts_aggs(rows))."""
+    rng = np.random.default_rng(0)
+    bid = np.repeat([0, 1], 10)
+    ordv = np.tile([0, 0, 1, 2, 2, 2, 3, 4, 4, 5], 2)
+    y = rng.standard_normal(20)
+    y[3] = np.nan  # partial-NaN and all-NaN timestamps
+    y[7] = np.nan
+    raw_aggs = _build_ts_aggs(bid, ordv, y)
+    direct = _reaggregate_ts_aggs(raw_aggs, time_agg)
+    cb, co, cy, inv = _collapse_rows_by_time(bid, ordv, y, time_agg)
+    via_collapse = _build_ts_aggs(cb, co, cy)
+    assert set(direct) == set(via_collapse)
+    for b in direct:
+        for f in ("sums", "counts", "sum_sq", "mins", "maxs", "unique_times"):
+            np.testing.assert_allclose(
+                getattr(direct[b], f),
+                getattr(via_collapse[b], f),
+                equal_nan=True,
+                err_msg=f"{time_agg} bucket {b} field {f}",
+            )
+    # inv maps every raw row to its (bucket, ord) collapsed row
+    np.testing.assert_array_equal(cb[inv], bid)
+    np.testing.assert_array_equal(co[inv], ordv)
+    # supplying the pre-built aggregate cache must give the identical collapse
+    cb2, co2, cy2, inv2 = _collapse_rows_by_time(bid, ordv, y, time_agg, raw_aggs)
+    np.testing.assert_array_equal(cb2, cb)
+    np.testing.assert_array_equal(co2, co)
+    np.testing.assert_allclose(cy2, cy, equal_nan=True)
+    np.testing.assert_array_equal(inv2, inv)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_time_agg_sum_literal(engine):
+    """Rolling mean of daily sums: hand-computed preprocess + one-step predict."""
+    y_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y_b = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    # daily sums s = [11, 22, 33, 44, 55, 66]; window=3, lag=1, min_samples=3
+    tfms = [RollingMean(window_size=3, groupby=["grp"], time_agg="sum")]
+    out = _fit_and_collect(engine, 1, tfms, y_a, y_b, 6, grp="X")
+    col = "groupby_grp_rolling_mean_lag1_window_size3_time_aggsum"
+    np.testing.assert_allclose(
+        out[col]["preprocess"],
+        [np.nan, np.nan, np.nan, 22.0, 33.0, 44.0],
+        equal_nan=True,
+    )
+    # predict returns one value per series; both a and b are in group X -> 55
+    np.testing.assert_allclose(out[col]["predict"], [55.0, 55.0])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_time_agg_mean_differs_from_sum_and_rowpooled(engine):
+    y_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y_b = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    tfms = [
+        RollingMean(window_size=3, groupby=["grp"], time_agg="mean"),
+        RollingMean(window_size=3, groupby=["grp"]),  # row-pooled reference
+    ]
+    out = _fit_and_collect(engine, 1, tfms, y_a, y_b, 6, grp="X")
+    mean_col = "groupby_grp_rolling_mean_lag1_window_size3_time_aggmean"
+    row_col = "groupby_grp_rolling_mean_lag1_window_size3"
+    # daily means = [5.5, 11, 16.5, 22, 27.5, 33]
+    np.testing.assert_allclose(
+        out[mean_col]["preprocess"],
+        [np.nan, np.nan, np.nan, 11.0, 16.5, 22.0],
+        equal_nan=True,
+    )
+    np.testing.assert_allclose(out[mean_col]["predict"], [27.5, 27.5])
+    # time_agg='mean' differs from row-pooled: min_samples counts timestamps
+    # (2 < 3 at k=2 -> NaN), whereas row-pooling counts rows (4 >= 3 -> 8.25).
+    row_pre = out[row_col]["preprocess"]
+    mean_pre = out[mean_col]["preprocess"]
+    assert np.isnan(mean_pre[2]) and np.isfinite(row_pre[2])
+    # where both are defined (k>=3) the values agree for this balanced bucket
+    np.testing.assert_allclose(row_pre[3:], mean_pre[3:])
+
+
+_TIME_AGG_FACTORIES = [
+    (lambda m: RollingMean(window_size=4, **m), "RollingMean"),
+    (lambda m: RollingStd(window_size=4, **m), "RollingStd"),
+    (lambda m: RollingMin(window_size=4, **m), "RollingMin"),
+    (lambda m: RollingMax(window_size=4, **m), "RollingMax"),
+    (lambda m: ExpandingMean(**m), "ExpandingMean"),
+    (lambda m: ExpandingStd(**m), "ExpandingStd"),
+    (lambda m: ExpandingMin(**m), "ExpandingMin"),
+    (lambda m: ExpandingMax(**m), "ExpandingMax"),
+    (lambda m: ExponentiallyWeightedMean(alpha=0.3, **m), "EWM"),
+]
+
+
+@pytest.mark.parametrize(
+    "tfm_factory",
+    [f[0] for f in _TIME_AGG_FACTORIES],
+    ids=[f[1] for f in _TIME_AGG_FACTORIES],
+)
+@pytest.mark.parametrize("time_agg", ["sum", "count", "mean", "min", "max"])
+@pytest.mark.parametrize("lag", _LAGS)
+def test_fast_vs_slow_time_agg(tfm_factory, time_agg, lag):
+    """Fast (aggregate adapter) vs slow (row-collapse via wiped cache) match."""
+    rng = np.random.default_rng(7)
+    n_series, n_times = 6, 12
+    ids = np.repeat([f"s{i}" for i in range(n_series)], n_times)
+    times = np.tile(range(n_times), n_series)
+    y = rng.standard_normal(n_series * n_times)
+    grps = np.repeat(["A"] * 4 + ["B"] * 2, n_times)  # unbalanced buckets
+    df = pd.DataFrame({"unique_id": ids, "ds": times, "y": y, "grp": grps})
+
+    tfm = tfm_factory({"groupby": ["grp"], "time_agg": time_agg})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
+        ts.fit_transform(
+            df,
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=["grp"],
+        )
+    col = tfm._get_name(lag)
+    fitted = ts.transforms[col]
+    state = ts._pooled_states[("groupby", ("grp",), ())]
+
+    fast = compute_pooled_features(state, {col: fitted})
+    saved = state._ts_aggs
+    state._ts_aggs = {}
+    slow = compute_pooled_features(state, {col: fitted})
+    state._ts_aggs = saved
+    np.testing.assert_allclose(
+        fast[col],
+        slow[col],
+        atol=1e-10,
+        equal_nan=True,
+        err_msg=f"fast vs slow mismatch for {col}",
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_time_agg_multistep_predict(engine):
+    """Multi-step recursive predict stays finite and reproducible with time_agg."""
+    from sklearn.linear_model import LinearRegression
+    from mlforecast import MLForecast
+
+    rng = np.random.default_rng(3)
+    rows = []
+    for uid in ["a", "b", "c"]:
+        grp = "X" if uid != "c" else "Y"
+        for t in range(15):
+            rows.append((uid, t, float(rng.standard_normal() + 5), grp))
+    df = _make_df(
+        engine,
+        {
+            "unique_id": [r[0] for r in rows],
+            "ds": [r[1] for r in rows],
+            "y": [r[2] for r in rows],
+            "grp": [r[3] for r in rows],
+        },
+    )
+    fcst = MLForecast(
+        models=[LinearRegression()],
+        freq=1,
+        lags=[1],
+        lag_transforms={
+            1: [RollingMean(window_size=3, groupby=["grp"], time_agg="sum")]
+        },
+    )
+    fcst.fit(df, static_features=["grp"])
+    p1 = fcst.predict(4)
+    p2 = fcst.predict(4)
+    v1 = (
+        p1["LinearRegression"].to_numpy()
+        if engine == "polars"
+        else p1["LinearRegression"].values
+    )
+    v2 = (
+        p2["LinearRegression"].to_numpy()
+        if engine == "polars"
+        else p2["LinearRegression"].values
+    )
+    assert np.all(np.isfinite(v1))
+    np.testing.assert_allclose(v1, v2)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_ewm_time_agg_mean_is_noop(engine):
+    """Pooled EWM uses bucket means by default, so explicit time_agg='mean'
+    must match the default contract exactly."""
+    y_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y_b = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    out_explicit = _fit_and_collect(
+        engine,
+        1,
+        [ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"], time_agg="mean")],
+        y_a,
+        y_b,
+        6,
+        grp="X",
+    )
+    out_default = _fit_and_collect(
+        engine,
+        1,
+        [ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"])],
+        y_a,
+        y_b,
+        6,
+        grp="X",
+    )
+    col = "groupby_grp_exponentially_weighted_mean_lag1_alpha0.5"
+    np.testing.assert_allclose(
+        out_explicit[col]["preprocess"],
+        out_default[col]["preprocess"],
+        equal_nan=True,
+    )
+    np.testing.assert_allclose(
+        out_explicit[col]["predict"], out_default[col]["predict"]
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_time_agg_quantile_slow_path_literal(engine):
+    """RollingQuantile has no fast path: time_agg goes through row-collapse."""
+    y_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y_b = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    # daily sums [11,22,33,44,55,66]; median over window=3 == middle value
+    tfms = [RollingQuantile(p=0.5, window_size=3, groupby=["grp"], time_agg="sum")]
+    out = _fit_and_collect(engine, 1, tfms, y_a, y_b, 6, grp="X")
+    col = "groupby_grp_rolling_quantile_lag1_p0.5_window_size3_time_aggsum"
+    np.testing.assert_allclose(
+        out[col]["preprocess"],
+        [np.nan, np.nan, np.nan, 22.0, 33.0, 44.0],
+        equal_nan=True,
+    )
+    np.testing.assert_allclose(out[col]["predict"], [55.0, 55.0])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_time_agg_seasonal_slow_path_literal(engine):
+    y_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y_b = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    # daily sums [11,22,33,44,55,66]; season_length=2, window=2, lag=1
+    tfms = [
+        SeasonalRollingMean(
+            season_length=2, window_size=2, groupby=["grp"], time_agg="sum"
+        )
+    ]
+    out = _fit_and_collect(engine, 1, tfms, y_a, y_b, 6, grp="X")
+    col = (
+        "groupby_grp_seasonal_rolling_mean_lag1_season_length2_window_size2_time_aggsum"
+    )
+    np.testing.assert_allclose(
+        out[col]["preprocess"],
+        [np.nan, np.nan, np.nan, 22.0, 33.0, 44.0],
+        equal_nan=True,
+    )
+    np.testing.assert_allclose(out[col]["predict"], [55.0, 55.0])
+
+
+def test_time_agg_min_samples_counts_timestamps():
+    """min_samples counts observed timestamps, not rows, when time_agg is set."""
+    y_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y_b = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    # window covers 3 timestamps; each timestamp has 2 rows (row count would be 6).
+    # min_samples=4 > 3 timestamps -> all NaN; without time_agg row-count 6 >= 4.
+    tfms = [RollingMean(window_size=3, min_samples=4, global_=True, time_agg="sum")]
+    out = _fit_and_collect("pandas", 1, tfms, y_a, y_b, 6)
+    col = "global_rolling_mean_lag1_window_size3_min_samples4_time_aggsum"
+    assert np.all(np.isnan(out[col]["preprocess"]))
+    # min_samples=3 == 3 timestamps -> produces values
+    tfms2 = [RollingMean(window_size=3, min_samples=3, global_=True, time_agg="sum")]
+    out2 = _fit_and_collect("pandas", 1, tfms2, y_a, y_b, 6)
+    col2 = "global_rolling_mean_lag1_window_size3_min_samples3_time_aggsum"
+    assert np.any(~np.isnan(out2[col2]["preprocess"]))
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda **k: RollingMean(window_size=3, **k),
+        lambda **k: ExpandingMean(**k),
+        lambda **k: ExponentiallyWeightedMean(alpha=0.5, **k),
+        lambda **k: SeasonalRollingMean(season_length=2, window_size=2, **k),
+        lambda **k: RollingQuantile(p=0.5, window_size=3, **k),
+        lambda **k: ExpandingQuantile(p=0.5, **k),
+    ],
+)
+def test_time_agg_validation_errors(factory):
+    # bad agg name
+    with pytest.raises(ValueError, match="time_agg must be one of"):
+        factory(global_=True, time_agg="median")
+    # requires a pooled scope
+    with pytest.raises(ValueError, match="time_agg requires"):
+        factory(time_agg="sum")
+    # partition_by alone is still local -> rejected
+    with pytest.raises(ValueError, match="time_agg requires"):
+        factory(partition_by=["promo"], time_agg="sum")
+    # accepted combinations (ignore the unrelated partitioned-EWM warning)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        factory(global_=True, time_agg="sum")
+        factory(groupby=["g"], time_agg="sum")
+        factory(global_=True, partition_by=["promo"], time_agg="sum")
+        factory(groupby=["g"], partition_by=["promo"], time_agg="sum")
+
+
+def test_ewm_time_agg_none_rejected():
+    with pytest.raises(ValueError, match="does not accept time_agg=None"):
+        ExponentiallyWeightedMean(alpha=0.5, time_agg=None)
+
+
+def test_time_agg_min_samples_zero_warning_still_fires():
+    with pytest.warns(UserWarning, match="min_samples=0"):
+        RollingMean(window_size=3, min_samples=0, global_=True, time_agg="sum")
+
+
+def test_time_agg_feature_name():
+    assert "time_aggsum" in RollingMean(
+        window_size=3, groupby=["cat"], time_agg="sum"
+    )._get_name(7)
+    # default None keeps names unchanged
+    assert "time_agg" not in RollingMean(window_size=3, groupby=["cat"])._get_name(7)
+    assert "time_agg" not in ExponentiallyWeightedMean(
+        alpha=0.5, groupby=["cat"]
+    )._get_name(7)
+    assert "time_agg" not in ExponentiallyWeightedMean(
+        alpha=0.5, groupby=["cat"], time_agg="mean"
+    )._get_name(7)
+    assert "time_aggsum" in ExponentiallyWeightedMean(
+        alpha=0.5, groupby=["cat"], time_agg="sum"
+    )._get_name(7)
+
+
+def test_time_agg_offset_delegates_to_inner():
+    inner = RollingMean(window_size=3, global_=True, time_agg="sum")
+    off = Offset(inner, 1)
+    # the wrapper doesn't mirror time_agg (its hooks delegate to the inner
+    # transform, which applies its own re-aggregation), but the feature name
+    # still carries it
+    assert off.time_agg is None
+    assert off.tfm.time_agg == "sum"
+    assert "time_aggsum" in off._get_name(1)
+
+
+def test_offset_effective_lag_must_be_positive():
+    with pytest.raises(ValueError, match="effective lag"):
+        Offset(RollingMean(window_size=2), -1)._set_core_tfm(1)
+    with pytest.raises(ValueError, match="effective lag"):
+        Offset(
+            RollingMean(window_size=2, global_=True, time_agg="count"), -2
+        )._set_core_tfm(2)
+    # a negative shift is fine while the effective lag stays >= 1
+    off = Offset(RollingMean(window_size=2), -1)._set_core_tfm(3)
+    assert off._core_tfm.lag == 2
+
+
+def test_ewm_time_agg_mean_skips_reaggregation():
+    """time_agg='mean' is EWM's native update rule, so _maybe_reagg must be an
+    identity (same object) instead of a full-copy re-aggregation."""
+    ewm = ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"])
+    _, _, _, aggs = _one_bucket_aggs()
+    assert ewm._maybe_reagg(aggs) is aggs
+    # other aggregates still re-aggregate
+    ewm_sum = ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"], time_agg="sum")
+    assert ewm_sum._maybe_reagg(aggs) is not aggs
+
+
+def test_time_agg_combine_mixed():
+    t1 = RollingMean(window_size=3, groupby=["grp"], time_agg="sum")
+    t2 = RollingMean(window_size=3, groupby=["grp"], time_agg="mean")
+    c = Combine(t1, t2, _operator.truediv)
+    name = c._get_name(1)
+    assert "time_aggsum" in name and "time_aggmean" in name
+
+    y_a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y_b = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    out = _fit_and_collect("pandas", 1, [c], y_a, y_b, 6, grp="X")
+    # sum / mean over a balanced 2-series bucket == 2 everywhere it's defined
+    pre = out[name]["preprocess"]
+    finite = pre[~np.isnan(pre)]
+    np.testing.assert_allclose(finite, np.full(len(finite), 2.0))
+
+
+def test_time_agg_sklearn_clone_roundtrip():
+    tfm = RollingMean(window_size=3, global_=True, time_agg="sum")
+    assert tfm.get_params()["time_agg"] == "sum"
+    cloned = _sk_clone(tfm)
+    assert cloned.time_agg == "sum"
+    assert cloned._get_name(1) == tfm._get_name(1)
+
+
 # === min_samples default resolution ===
 # In local partition mode min_samples=None defaults to 1 (SQL RANGE semantics);
 # every other mode keeps the window_size default.
 
 from mlforecast.lag_transforms import (  # noqa: E402
-    SeasonalRollingMean,
     _resolve_min_samples,
 )
 

@@ -8,7 +8,7 @@ import narwhals as nw
 import numpy as np
 import utilsforecast.processing as ufp
 
-from .lag_transforms import _BaseLagTransform
+from .lag_transforms import _BaseLagTransform, _TIME_AGGS
 
 
 def _dedupe_preserve_order(items):
@@ -216,6 +216,192 @@ def _build_ts_aggs(
             maxs=maxs,
         )
     return aggs
+
+
+def _time_agg_values(agg: _TimestampAggregates, time_agg: str) -> np.ndarray:
+    """Per-timestamp collapsed value ``v_t`` for one bucket's aggregates.
+
+    ``time_agg`` is one of :data:`_TIME_AGGS`.  A timestamp that has rows but
+    no non-NaN target (``counts == 0``) is *unobserved* for
+    ``sum``/``mean``/``min``/``max`` and gets NaN, matching SQL aggregates over
+    all-NULL groups returning NULL.  For ``count`` the value is the non-NaN row
+    count — 0 there is a genuine observation (SQL ``COUNT`` over all-NULL
+    returns 0).  This is the single source of the per-aggregate value
+    derivation, shared by the fast (:func:`_reaggregate_ts_aggs`) and slow
+    (:func:`_collapse_rows_by_time`) paths so they cannot diverge.
+    """
+    if time_agg not in _TIME_AGGS:
+        raise ValueError(f"time_agg must be one of {_TIME_AGGS}; got {time_agg!r}.")
+    if time_agg == "count":
+        return agg.counts.astype(float)
+    if time_agg == "min":
+        return agg.mins.astype(float)
+    if time_agg == "max":
+        return agg.maxs.astype(float)
+    obs = agg.counts > 0
+    if time_agg == "sum":
+        return np.where(obs, agg.sums, np.nan)
+    # "mean"
+    v = np.full(len(agg.unique_times), np.nan)
+    np.divide(agg.sums, agg.counts, out=v, where=obs)
+    return v
+
+
+class _ReaggregatedAggregates:
+    """Lazy ``_TimestampAggregates`` stand-in over a ``time_agg``-collapsed bucket.
+
+    The collapsed value ``v_t`` (:func:`_time_agg_values`) at each observed
+    timestamp becomes a unit-count observation — ``sums=v``, ``counts=1``,
+    ``sum_sq=v**2``, ``mins=maxs=v`` — while unobserved timestamps (NaN in the
+    value array) keep ``counts=0``, zeroed ``sums``/``sum_sq`` (so they never
+    poison the cumulative sums the helpers take) and NaN ``mins``/``maxs`` (the
+    range helpers use NaN-skipping fmin/fmax and the count guard excludes
+    them).
+
+    Everything is derived on demand: the value array itself is only computed on
+    first field access (so re-aggregating before an unsupported hook that
+    returns ``None`` does no numpy work at all), and each of the five aggregate
+    fields — of which a given helper reads at most three — is derived on access
+    rather than materialized up front.  Accessors return freshly allocated
+    arrays except ``mins``/``maxs``, which return the shared value array and
+    must not be mutated.
+    """
+
+    def __init__(self, source: "_TimestampAggregates", time_agg: str):
+        self.unique_times = source.unique_times
+        self._source = source
+        self._time_agg = time_agg
+        self._values_cache: Optional[np.ndarray] = None
+        self._obs_cache: Optional[np.ndarray] = None
+
+    @property
+    def _values(self) -> np.ndarray:
+        if self._values_cache is None:
+            self._values_cache = _time_agg_values(self._source, self._time_agg)
+        return self._values_cache
+
+    @property
+    def _obs(self) -> np.ndarray:
+        if self._obs_cache is None:
+            self._obs_cache = ~np.isnan(self._values)
+        return self._obs_cache
+
+    @property
+    def sums(self) -> np.ndarray:
+        return np.where(self._obs, self._values, 0.0)
+
+    @property
+    def counts(self) -> np.ndarray:
+        return self._obs.astype(float)
+
+    @property
+    def sum_sq(self) -> np.ndarray:
+        return np.where(self._obs, self._values**2, 0.0)
+
+    @property
+    def mins(self) -> np.ndarray:
+        return self._values
+
+    @property
+    def maxs(self) -> np.ndarray:
+        return self._values
+
+
+def _reaggregate_ts_aggs(
+    ts_aggs: Dict[int, _TimestampAggregates], time_agg: str
+) -> Dict[int, _ReaggregatedAggregates]:
+    """Collapse each bucket's per-timestamp aggregates to a single value per
+    timestamp, returning lazy ``_TimestampAggregates``-compatible views shaped
+    so the existing rolling/expanding/ewm helpers compute the transform *over
+    the per-timestamp aggregated series* (e.g. a rolling mean of daily sums).
+    See :func:`_time_agg_values` for the value/NaN conventions and
+    :class:`_ReaggregatedAggregates` for the field layout.
+
+    The input is the shared ``PooledState._ts_aggs`` cache and is never
+    mutated.  ``unique_times`` is intentionally shared by reference
+    (``append_predictions`` reassigns it via ``np.append`` rather than mutating
+    in place) and preserved exactly, because the fit-path fast mapping indexes
+    results by that grid.  Callers must recompute this per call — never cache
+    it, or it goes stale after ``append_predictions`` extends the underlying
+    aggregates.
+    """
+    if time_agg not in _TIME_AGGS:
+        raise ValueError(f"time_agg must be one of {_TIME_AGGS}; got {time_agg!r}.")
+    return {bid: _ReaggregatedAggregates(agg, time_agg) for bid, agg in ts_aggs.items()}
+
+
+def _collapse_rows_by_time(
+    bid_arr: np.ndarray,
+    ord_arr: np.ndarray,
+    y_arr: np.ndarray,
+    time_agg: str,
+    ts_aggs: Optional[Dict[int, _TimestampAggregates]] = None,
+):
+    """Collapse raw ``(bucket, ordinal, y)`` rows to one row per
+    ``(bucket, timestamp)`` holding the ``time_agg`` aggregate, for the
+    row-level (slow-path) transforms that have no aggregate-cache fast path.
+
+    ``ts_aggs`` is an optional pre-built per-timestamp aggregate cache for
+    exactly these rows (``PooledState._ts_aggs`` at fit, the query-array
+    aggregates at predict); when supplied the collapse is derived from it in
+    O(unique timestamps) instead of re-aggregating every raw row.
+
+    Returns ``(bid2, ord2, y2, inv)`` with one entry per unique
+    ``(bucket, ord)`` and ``inv`` mapping every input row to its collapsed row,
+    so ``vals[inv]`` broadcasts per-timestamp results back to the raw rows.
+    All-NaN timestamps get ``y2 = NaN`` for ``sum``/``mean``/``min``/``max`` (so
+    the row loops' NaN filtering treats them as unobserved) and ``y2 = 0`` for
+    ``count`` (a genuine zero observation).  This mirrors
+    :func:`_reaggregate_ts_aggs` — both derive values via
+    :func:`_time_agg_values` — i.e.
+    ``_build_ts_aggs(*_collapse_rows_by_time(rows, a)[:3])`` equals
+    ``_reaggregate_ts_aggs(_build_ts_aggs(rows), a)``.
+    """
+    if not ts_aggs:  # absent or wiped cache: aggregate the raw rows
+        ts_aggs = _build_ts_aggs(bid_arr, ord_arr, y_arr)
+    # group the input rows by bucket once (argsort + slices) instead of a
+    # full-array mask per bucket
+    order = np.argsort(bid_arr, kind="stable")
+    sorted_bids = bid_arr[order]
+    group_bids, group_starts = np.unique(sorted_bids, return_index=True)
+    group_ends = np.append(group_starts[1:], len(order))
+    row_groups = {
+        int(b): order[s:e] for b, s, e in zip(group_bids, group_starts, group_ends)
+    }
+    # -1 sentinel: every input row must map to a collapsed row below. Callers
+    # always build ``ts_aggs`` from exactly these rows, so no row can reference a
+    # bucket absent from ``ts_aggs``; the assert turns a silent out-of-bounds
+    # gather (garbage ``vals[inv]``) into a loud failure if that ever breaks.
+    inv = np.full(len(bid_arr), -1, dtype=np.int64)
+    bids, ords, ys = [], [], []
+    offset = 0
+    for bid, agg in ts_aggs.items():
+        m = len(agg.unique_times)
+        if m == 0:
+            continue
+        bids.append(np.full(m, bid))
+        ords.append(agg.unique_times)
+        ys.append(_time_agg_values(agg, time_agg))
+        rows = row_groups.get(int(bid))
+        if rows is not None:
+            inv[rows] = offset + np.searchsorted(agg.unique_times, ord_arr[rows])
+        offset += m
+    assert (inv >= 0).all(), (
+        "every input row must map to a collapsed (bucket, timestamp)"
+    )
+    if not bids:
+        return (
+            np.empty(0, dtype=bid_arr.dtype),
+            np.empty(0, dtype=ord_arr.dtype),
+            np.empty(0, dtype=float),
+            inv,
+        )
+    return (
+        np.concatenate(bids).astype(bid_arr.dtype),
+        np.concatenate(ords).astype(ord_arr.dtype),
+        np.concatenate(ys),
+        inv,
+    )
 
 
 def _compute_time_index(bid_arr, ts_arr):

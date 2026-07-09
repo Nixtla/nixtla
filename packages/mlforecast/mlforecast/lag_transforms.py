@@ -49,6 +49,39 @@ def _normalize_columns(columns):
     return list(dict.fromkeys(columns))
 
 
+# Allowed per-timestamp aggregations for the pooled ``time_agg`` option. Defined
+# here (not in pooled.py) so ``_validate_time_agg`` can run at construction time
+# without importing pooled.py, which imports this module (avoids a cycle).
+_TIME_AGGS = ("sum", "count", "mean", "min", "max")
+
+
+def _validate_time_agg(time_agg, global_, groupby, *, allow_none=True, scope_exempt=()):
+    """Validate a ``time_agg`` value at construction time.
+
+    ``allow_none`` and ``scope_exempt`` encode per-transform policy:
+    ``ExponentiallyWeightedMean`` rejects ``None`` (its update rule is
+    inherently a per-timestamp bucket-mean pass) and exempts ``"mean"`` from
+    the pooled-scope requirement.
+    """
+    if time_agg is None:
+        if allow_none:
+            return
+        raise ValueError(
+            "This transform does not accept time_agg=None; use "
+            'time_agg="mean" for its bucket-mean update rule.'
+        )
+    if time_agg not in _TIME_AGGS:
+        allowed = f"one of {_TIME_AGGS}" + (" or None" if allow_none else "")
+        raise ValueError(f"time_agg must be {allowed}; got {time_agg!r}.")
+    if time_agg not in scope_exempt and not (global_ or groupby):
+        raise ValueError(
+            "time_agg requires a pooled aggregation scope: set global_=True or "
+            "groupby=[...] (optionally combined with partition_by). In local or "
+            "partition_by-only mode each (bucket, timestamp) has a single row, so "
+            "time_agg would be a no-op."
+        )
+
+
 def _build_sparse_table(arr, op):
     n = len(arr)
     if n == 0:
@@ -81,6 +114,13 @@ def _query_sparse_table(table, lefts, rights, op):
 
 
 class _BaseLagTransform(BaseEstimator):
+    # Pooled per-timestamp pre-aggregation; redefined as an instance attribute
+    # by the pooled-capable transforms. The class-level default gives every
+    # transform — including wrappers like Offset/Combine, which delegate to
+    # inner transforms that apply their own re-aggregation — a uniform answer
+    # to ``tfm.time_agg``.
+    time_agg: Optional[str] = None
+
     def _get_init_signature(self):
         return {
             k: v
@@ -96,6 +136,7 @@ class _BaseLagTransform(BaseEstimator):
         init_args.pop("global", None)
         init_args.pop("groupby", None)
         init_args.pop("partition_by", None)
+        init_args.pop("time_agg", None)
         self._core_tfm = getattr(core_tfms, self.__class__.__name__)(
             lag=lag, **init_args
         )
@@ -125,30 +166,110 @@ class _BaseLagTransform(BaseEstimator):
             result += "_" + "_".join(changed_params)
         return result
 
-    def _compute_bucket_feature(
-        self,
-        _bid_arr: np.ndarray,
-        _ord_arr: np.ndarray,
-        _y_arr: np.ndarray,
-        _ts_aggs=None,
+    # The public pooled hooks below are template methods: they guard empty
+    # inputs, apply the ``time_agg`` re-aggregation exactly once, and dispatch
+    # to the ``*_impl`` methods, which return ``None`` on the base class when a
+    # transform doesn't support that path. Subclasses override the ``_impl``
+    # methods and never handle ``time_agg`` themselves — a transform that gains
+    # an ``_impl`` cannot skip the re-aggregation step. ``Offset`` and
+    # ``Combine`` override the public hooks instead, so each inner transform
+    # applies its own re-aggregation. Re-aggregation is lazy (see
+    # ``_ReaggregatedAggregates``), so applying it before an unsupported
+    # ``_impl`` that returns ``None`` costs nothing.
+    def _bucket_feature_from_aggs_impl(
+        self, _bid_arr, _ord_arr, _ts_aggs
     ) -> Optional[np.ndarray]:
         return None
 
+    def _bucket_feature_rows_impl(
+        self, _bid_arr, _ord_arr, _y_arr
+    ) -> Optional[np.ndarray]:
+        return None
+
+    def _latest_from_aggs_impl(
+        self, _ts_aggs, _target_ords
+    ) -> Optional[Dict[int, float]]:
+        return None
+
+    def _ts_level_from_aggs_impl(self, _ts_aggs) -> Optional[Dict[int, np.ndarray]]:
+        return None
+
+    @property
+    def _pooled_time_agg(self) -> Optional[str]:
+        """``time_agg`` as the pooled hooks must apply it; overridden when a
+        transform's own computation already implies the aggregation."""
+        return self.time_agg
+
+    def _compute_bucket_feature(
+        self,
+        bid_arr: np.ndarray,
+        ord_arr: np.ndarray,
+        y_arr: np.ndarray,
+        _ts_aggs=None,
+    ) -> Optional[np.ndarray]:
+        if _ts_aggs:
+            out = self._bucket_feature_from_aggs_impl(
+                bid_arr, ord_arr, self._maybe_reagg(_ts_aggs)
+            )
+            if out is not None:
+                return out
+        if self._pooled_time_agg:
+            return self._compute_bucket_feature_collapsed(
+                bid_arr, ord_arr, y_arr, _ts_aggs
+            )
+        return self._bucket_feature_rows_impl(bid_arr, ord_arr, y_arr)
+
     def _compute_latest_from_aggs(
         self,
-        _ts_aggs,
-        _target_ords: Dict[int, int],
+        ts_aggs,
+        target_ords: Dict[int, int],
     ) -> Optional[Dict[int, float]]:
         """Compute feature value at the target timestamp per bucket from cached aggregates.
 
-        ``_target_ords`` maps bucket_id to the time-index ordinal at which to
+        ``target_ords`` maps bucket_id to the time-index ordinal at which to
         evaluate the statistic (typically ``next_time_index_by_bucket``).
         Returns None if this transform doesn't support the fast path.
         """
-        return None
+        if not ts_aggs:
+            return None
+        return self._latest_from_aggs_impl(self._maybe_reagg(ts_aggs), target_ords)
 
-    def _compute_ts_level_from_aggs(self, _ts_aggs):
-        return None
+    def _compute_ts_level_from_aggs(self, ts_aggs):
+        if not ts_aggs:
+            return None
+        return self._ts_level_from_aggs_impl(self._maybe_reagg(ts_aggs))
+
+    def _maybe_reagg(self, ts_aggs):
+        """Return per-timestamp aggregates collapsed by ``_pooled_time_agg``,
+        or unchanged when no re-aggregation applies. The ``pooled`` import is
+        deferred because ``pooled`` imports this module.
+        """
+        time_agg = self._pooled_time_agg
+        if not time_agg or not ts_aggs:
+            return ts_aggs
+        from .pooled import _reaggregate_ts_aggs
+
+        return _reaggregate_ts_aggs(ts_aggs, time_agg)
+
+    def _compute_bucket_feature_collapsed(self, bid_arr, ord_arr, y_arr, ts_aggs=None):
+        """Row-level ``time_agg`` for transforms without an aggregate fast path.
+
+        Collapse the raw rows to one per ``(bucket, timestamp)`` holding the
+        ``time_agg`` aggregate — derived from the cached per-timestamp
+        aggregates when supplied — run the ordinary row-level computation on
+        that collapsed series (with ``time_agg`` disabled to avoid recursion),
+        then broadcast each per-timestamp result back to every original row
+        sharing that timestamp.
+        """
+        from .pooled import _collapse_rows_by_time
+
+        cb, co, cy, inv = _collapse_rows_by_time(
+            bid_arr, ord_arr, y_arr, self._pooled_time_agg, ts_aggs
+        )
+        inner = copy.copy(self)
+        inner.time_agg = None
+        cvals = inner._compute_bucket_feature(cb, co, cy)
+        return cvals[inv]
 
     def _get_configured_lag(self) -> int:
         return self._core_tfm.lag
@@ -371,6 +492,7 @@ class _RollingBase(_BaseLagTransform):
         global_: bool = False,
         groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
+        time_agg: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -395,6 +517,9 @@ class _RollingBase(_BaseLagTransform):
                 combined with ``global_`` or ``groupby``, the default remains
                 ``window_size``, counted across all series in the (group, partition)
                 bucket.
+                When ``time_agg`` is set, ``min_samples`` instead counts observed
+                **timestamps** in the window (each contributes at most one aggregated
+                value), not rows.
             global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
                 Requires all series to end at the same timestamp. Defaults to False.
             groupby (Sequence[str], optional): Column names to group by before computing the statistic.
@@ -406,6 +531,15 @@ class _RollingBase(_BaseLagTransform):
                 aggregates within each partition), ``groupby`` (group aggregates within each
                 partition), or stands alone (per-(id, partition) buckets, *local* mode).
                 See the Pooled lag transforms guide for details. Defaults to None.
+            time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within
+                each bucket into a single value before applying the transform, e.g.
+                ``RollingMean(window_size=7, groupby=["category"], time_agg="sum")`` is a
+                rolling mean of the category's daily sums. One of ``"sum"``, ``"count"``,
+                ``"mean"``, ``"min"``, ``"max"``. Requires ``global_`` or ``groupby``
+                (raises ``ValueError`` otherwise, since local/partition-only modes have a
+                single row per (bucket, timestamp) and the aggregation would be an
+                identity). Defaults to None, which treats each row as an individual
+                pooled sample.
         """
         if "global" in kwargs:
             global_ = kwargs.pop("global")
@@ -420,8 +554,10 @@ class _RollingBase(_BaseLagTransform):
         self.global_ = global_
         self.groupby = _normalize_columns(groupby)
         self.partition_by = _normalize_columns(partition_by)
+        self.time_agg = time_agg
         if self.global_ and self.groupby:
             raise ValueError("`global_` and `groupby` can't be used together.")
+        _validate_time_agg(time_agg, self.global_, self.groupby)
         if (
             min_samples is not None
             and min_samples == 0
@@ -441,12 +577,11 @@ class _RollingBase(_BaseLagTransform):
     def _is_finite_window(self) -> bool:
         return True
 
-    def _compute_bucket_feature(
+    def _bucket_feature_rows_impl(
         self,
         bid_arr: np.ndarray,
         ord_arr: np.ndarray,
         y_arr: np.ndarray,
-        _ts_aggs=None,
     ) -> np.ndarray:
         lag = self._core_tfm.lag
         w = self.window_size
@@ -498,13 +633,11 @@ def _rolling_mean_from_agg(agg, lag, window_size, min_samples):
 
 
 class RollingMean(_RollingBase):
-    def _compute_latest_from_aggs(
+    def _latest_from_aggs_impl(
         self,
         ts_aggs,
         target_ords: Dict[int, int],
-    ) -> Optional[Dict[int, float]]:
-        if not ts_aggs:
-            return None
+    ) -> Dict[int, float]:
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -525,9 +658,7 @@ class RollingMean(_RollingBase):
             result[bid] = s / c if c >= min_samples and c > 0 else float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -536,18 +667,7 @@ class RollingMean(_RollingBase):
             for bid, agg in ts_aggs.items()
         }
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return self._compute_row_level(bid_arr, y_arr, ord_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -561,7 +681,7 @@ class RollingMean(_RollingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_row_level(self, bid_arr, y_arr, ord_arr):
+    def _bucket_feature_rows_impl(self, bid_arr, ord_arr, y_arr):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -626,18 +746,7 @@ class RollingStd(_RollingBase):
     def _window_stat(self, vals: np.ndarray) -> float:
         return float(np.std(vals, ddof=1)) if len(vals) > 1 else np.nan
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return super()._compute_bucket_feature(bid_arr, ord_arr, y_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -651,13 +760,11 @@ class RollingStd(_RollingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(
+    def _latest_from_aggs_impl(
         self,
         ts_aggs,
         target_ords: Dict[int, int],
-    ) -> Optional[Dict[int, float]]:
-        if not ts_aggs:
-            return None
+    ) -> Dict[int, float]:
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -687,9 +794,7 @@ class RollingStd(_RollingBase):
                 result[bid] = float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -731,18 +836,7 @@ class RollingMin(_RollingBase):
     def _window_stat(self, vals: np.ndarray) -> float:
         return float(np.min(vals))
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return super()._compute_bucket_feature(bid_arr, ord_arr, y_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -755,13 +849,11 @@ class RollingMin(_RollingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(
+    def _latest_from_aggs_impl(
         self,
         ts_aggs,
         target_ords: Dict[int, int],
-    ) -> Optional[Dict[int, float]]:
-        if not ts_aggs:
-            return None
+    ) -> Dict[int, float]:
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -787,9 +879,7 @@ class RollingMin(_RollingBase):
                 result[bid] = float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -803,18 +893,7 @@ class RollingMax(_RollingBase):
     def _window_stat(self, vals: np.ndarray) -> float:
         return float(np.max(vals))
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return super()._compute_bucket_feature(bid_arr, ord_arr, y_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -827,13 +906,11 @@ class RollingMax(_RollingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(
+    def _latest_from_aggs_impl(
         self,
         ts_aggs,
         target_ords: Dict[int, int],
-    ) -> Optional[Dict[int, float]]:
-        if not ts_aggs:
-            return None
+    ) -> Dict[int, float]:
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -859,9 +936,7 @@ class RollingMax(_RollingBase):
                 result[bid] = float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         w = self.window_size
         min_samples = _resolve_min_samples(self)
@@ -890,6 +965,7 @@ class RollingQuantile(_RollingBase):
         global_: bool = False,
         groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
+        time_agg: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(
@@ -898,6 +974,7 @@ class RollingQuantile(_RollingBase):
             global_=global_,
             groupby=groupby,
             partition_by=partition_by,
+            time_agg=time_agg,
             **kwargs,
         )
         self.p = p
@@ -934,6 +1011,7 @@ class _Seasonal_RollingBase(_BaseLagTransform):
         global_: bool = False,
         groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
+        time_agg: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -960,6 +1038,8 @@ class _Seasonal_RollingBase(_BaseLagTransform):
                 ``partition_by`` is combined with ``global_`` or ``groupby``, the
                 default remains ``window_size``, counted across all series in the
                 (group, partition) bucket.
+                When ``time_agg`` is set, ``min_samples`` instead counts observed
+                **timestamps** in the window, not rows.
             global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
                 Requires all series to end at the same timestamp. Defaults to False.
             groupby (Sequence[str], optional): Column names to group by before computing the statistic.
@@ -971,6 +1051,10 @@ class _Seasonal_RollingBase(_BaseLagTransform):
                 aggregates within each partition), ``groupby`` (group aggregates within each
                 partition), or stands alone (per-(id, partition) buckets, *local* mode).
                 See the Pooled lag transforms guide for details. Defaults to None.
+            time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within
+                each bucket into a single value before applying the transform. One of
+                ``"sum"``, ``"count"``, ``"mean"``, ``"min"``, ``"max"``. Requires
+                ``global_`` or ``groupby``. Defaults to None.
         """
         if "global" in kwargs:
             global_ = kwargs.pop("global")
@@ -986,8 +1070,10 @@ class _Seasonal_RollingBase(_BaseLagTransform):
         self.global_ = global_
         self.groupby = _normalize_columns(groupby)
         self.partition_by = _normalize_columns(partition_by)
+        self.time_agg = time_agg
         if self.global_ and self.groupby:
             raise ValueError("`global_` and `groupby` can't be used together.")
+        _validate_time_agg(time_agg, self.global_, self.groupby)
         if (
             min_samples is not None
             and min_samples == 0
@@ -1007,12 +1093,11 @@ class _Seasonal_RollingBase(_BaseLagTransform):
     def _is_finite_window(self) -> bool:
         return True
 
-    def _compute_bucket_feature(
+    def _bucket_feature_rows_impl(
         self,
         bid_arr: np.ndarray,
         ord_arr: np.ndarray,
         y_arr: np.ndarray,
-        _ts_aggs=None,
     ) -> np.ndarray:
         lag = self._core_tfm.lag
         sl = self.season_length
@@ -1077,6 +1162,7 @@ class SeasonalRollingQuantile(_Seasonal_RollingBase):
         global_: bool = False,
         groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
+        time_agg: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(
@@ -1086,6 +1172,7 @@ class SeasonalRollingQuantile(_Seasonal_RollingBase):
             global_=global_,
             groupby=groupby,
             partition_by=partition_by,
+            time_agg=time_agg,
             **kwargs,
         )
         self.p = p
@@ -1109,6 +1196,10 @@ class _ExpandingBase(_BaseLagTransform):
             aggregates within each partition), ``groupby`` (group aggregates within each
             partition), or stands alone (per-(id, partition) buckets, *local* mode).
             See the Pooled lag transforms guide for details. Defaults to None.
+        time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within each
+            bucket into a single value before applying the transform. One of ``"sum"``,
+            ``"count"``, ``"mean"``, ``"min"``, ``"max"``. Requires ``global_`` or
+            ``groupby``. Defaults to None.
     """
 
     def __init__(
@@ -1116,6 +1207,7 @@ class _ExpandingBase(_BaseLagTransform):
         global_: bool = False,
         groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
+        time_agg: Optional[str] = None,
         **kwargs,
     ):
         if "global" in kwargs:
@@ -1129,8 +1221,10 @@ class _ExpandingBase(_BaseLagTransform):
         self.global_ = global_
         self.groupby = _normalize_columns(groupby)
         self.partition_by = _normalize_columns(partition_by)
+        self.time_agg = time_agg
         if self.global_ and self.groupby:
             raise ValueError("`global_` and `groupby` can't be used together.")
+        _validate_time_agg(time_agg, self.global_, self.groupby)
 
     @property
     def update_samples(self) -> int:
@@ -1143,12 +1237,11 @@ class _ExpandingBase(_BaseLagTransform):
         # so its window is effectively unbounded -- its state is never trimmed.
         return False
 
-    def _compute_bucket_feature(
+    def _bucket_feature_rows_impl(
         self,
         bid_arr: np.ndarray,
         ord_arr: np.ndarray,
         y_arr: np.ndarray,
-        _ts_aggs=None,
     ) -> np.ndarray:
         lag = self._core_tfm.lag
         n = len(bid_arr)
@@ -1194,18 +1287,7 @@ class ExpandingMean(_ExpandingBase):
     def _expanding_stat(self, vals: np.ndarray) -> float:
         return float(np.mean(vals))
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return super()._compute_bucket_feature(bid_arr, ord_arr, y_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         n = len(bid_arr)
         result = np.full(n, np.nan)
@@ -1216,9 +1298,7 @@ class ExpandingMean(_ExpandingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(self, ts_aggs, target_ords):
-        if not ts_aggs:
-            return None
+    def _latest_from_aggs_impl(self, ts_aggs, target_ords):
         lag = self._core_tfm.lag
         result: Dict[int, float] = {}
         for bid, agg in ts_aggs.items():
@@ -1235,9 +1315,7 @@ class ExpandingMean(_ExpandingBase):
             result[bid] = s / c if c > 0 else float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         return {bid: _expanding_mean_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
@@ -1262,18 +1340,7 @@ class ExpandingStd(_ExpandingBase):
     def _expanding_stat(self, vals: np.ndarray) -> float:
         return float(np.std(vals, ddof=1)) if len(vals) > 1 else np.nan
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return super()._compute_bucket_feature(bid_arr, ord_arr, y_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         n = len(bid_arr)
         result = np.full(n, np.nan)
@@ -1284,9 +1351,7 @@ class ExpandingStd(_ExpandingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(self, ts_aggs, target_ords):
-        if not ts_aggs:
-            return None
+    def _latest_from_aggs_impl(self, ts_aggs, target_ords):
         lag = self._core_tfm.lag
         result: Dict[int, float] = {}
         for bid, agg in ts_aggs.items():
@@ -1310,9 +1375,7 @@ class ExpandingStd(_ExpandingBase):
                 result[bid] = float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         return {bid: _expanding_std_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
@@ -1335,18 +1398,7 @@ class ExpandingMin(_ExpandingBase):
     def _expanding_stat(self, vals: np.ndarray) -> float:
         return float(np.min(vals))
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return super()._compute_bucket_feature(bid_arr, ord_arr, y_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         n = len(bid_arr)
         result = np.full(n, np.nan)
@@ -1357,9 +1409,7 @@ class ExpandingMin(_ExpandingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(self, ts_aggs, target_ords):
-        if not ts_aggs:
-            return None
+    def _latest_from_aggs_impl(self, ts_aggs, target_ords):
         lag = self._core_tfm.lag
         result: Dict[int, float] = {}
         for bid, agg in ts_aggs.items():
@@ -1373,9 +1423,7 @@ class ExpandingMin(_ExpandingBase):
             result[bid] = float(prefix_min[ui]) if ui >= 0 else float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         return {bid: _expanding_min_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
@@ -1384,18 +1432,7 @@ class ExpandingMax(_ExpandingBase):
     def _expanding_stat(self, vals: np.ndarray) -> float:
         return float(np.max(vals))
 
-    def _compute_bucket_feature(
-        self,
-        bid_arr: np.ndarray,
-        ord_arr: np.ndarray,
-        y_arr: np.ndarray,
-        _ts_aggs=None,
-    ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
-        return super()._compute_bucket_feature(bid_arr, ord_arr, y_arr)
-
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         n = len(bid_arr)
         result = np.full(n, np.nan)
@@ -1406,9 +1443,7 @@ class ExpandingMax(_ExpandingBase):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(self, ts_aggs, target_ords):
-        if not ts_aggs:
-            return None
+    def _latest_from_aggs_impl(self, ts_aggs, target_ords):
         lag = self._core_tfm.lag
         result: Dict[int, float] = {}
         for bid, agg in ts_aggs.items():
@@ -1422,9 +1457,7 @@ class ExpandingMax(_ExpandingBase):
             result[bid] = float(prefix_max[ui]) if ui >= 0 else float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         return {bid: _expanding_max_from_agg(agg, lag) for bid, agg in ts_aggs.items()}
 
@@ -1446,10 +1479,15 @@ class ExpandingQuantile(_ExpandingBase):
         global_: bool = False,
         groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
+        time_agg: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(
-            global_=global_, groupby=groupby, partition_by=partition_by, **kwargs
+            global_=global_,
+            groupby=groupby,
+            partition_by=partition_by,
+            time_agg=time_agg,
+            **kwargs,
         )
         self.p = p
 
@@ -1462,8 +1500,13 @@ class ExpandingQuantile(_ExpandingBase):
 
 
 def _ewm_from_agg(agg, lag, alpha):
-    mean_per_ord = np.full(len(agg.counts), np.nan)
-    np.divide(agg.sums, agg.counts, out=mean_per_ord, where=agg.counts > 0)
+    # ``agg`` may be a lazy ``_ReaggregatedAggregates`` view whose ``counts`` /
+    # ``sums`` are recomputed on every attribute access. Hoist ``counts`` once
+    # and size off ``unique_times`` (a plain cached array, always the same
+    # length) so we don't materialize the derived arrays more than needed.
+    counts = agg.counts
+    mean_per_ord = np.full(len(agg.unique_times), np.nan)
+    np.divide(agg.sums, counts, out=mean_per_ord, where=counts > 0)
     feat_u = np.full(len(agg.unique_times), np.nan)
     ewm = np.nan
     consume_idx = 0
@@ -1500,6 +1543,13 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
             aggregates within each partition), ``groupby`` (group aggregates within each
             partition), or stands alone (per-(id, partition) buckets, *local* mode).
             See the Pooled lag transforms guide for details. Defaults to None.
+        time_agg (str): Pre-aggregate all rows sharing a timestamp within each
+            bucket into a single value before applying the transform. One of ``"sum"``,
+            ``"count"``, ``"mean"``, ``"min"``, ``"max"``. Values other than
+            ``"mean"`` require ``global_`` or ``groupby``. Defaults to ``"mean"``,
+            which matches EWM's bucket-mean update rule: each timestamp contributes
+            its bucket aggregate mean exactly once, regardless of how many rows
+            aggregated there. ``None`` is not accepted.
     """
 
     def __init__(
@@ -1508,6 +1558,7 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
         global_: bool = False,
         groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
+        time_agg: str = "mean",
         **kwargs,
     ):
         if "global" in kwargs:
@@ -1522,8 +1573,16 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
         self.global_ = global_
         self.groupby = _normalize_columns(groupby)
         self.partition_by = _normalize_columns(partition_by)
+        self.time_agg = time_agg
         if self.global_ and self.groupby:
             raise ValueError("`global_` and `groupby` can't be used together.")
+        _validate_time_agg(
+            time_agg,
+            self.global_,
+            self.groupby,
+            allow_none=False,
+            scope_exempt=("mean",),
+        )
         if self.partition_by:
             warnings.warn(
                 "Partitioned EWM skips timestamps where the partition bucket "
@@ -1539,21 +1598,26 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
         return 1
 
     @property
+    def _pooled_time_agg(self) -> Optional[str]:
+        # "mean" is EWM's native update rule: the row/aggregate paths already
+        # consume per-timestamp bucket means (sums/counts), weighting each
+        # observed timestamp once, so re-aggregating (or collapsing rows)
+        # would be a full-copy identity.
+        return None if self.time_agg == "mean" else self.time_agg
+
+    @property
     def _is_finite_window(self) -> bool:
         # Pooled EWM consumes every observed bucket-aggregate mean up to the lag
         # at predict (no carried running state), so it depends on the full
         # history -- its state is never trimmed.
         return False
 
-    def _compute_bucket_feature(
+    def _bucket_feature_rows_impl(
         self,
         bid_arr: np.ndarray,
         ord_arr: np.ndarray,
         y_arr: np.ndarray,
-        _ts_aggs=None,
     ) -> np.ndarray:
-        if _ts_aggs:
-            return self._compute_from_aggregates(bid_arr, ord_arr, _ts_aggs)
         lag = self._core_tfm.lag
         alpha = self.alpha
         n = len(bid_arr)
@@ -1591,7 +1655,7 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_from_aggregates(self, bid_arr, ord_arr, ts_aggs):
+    def _bucket_feature_from_aggs_impl(self, bid_arr, ord_arr, ts_aggs):
         lag = self._core_tfm.lag
         alpha = self.alpha
         n = len(bid_arr)
@@ -1603,9 +1667,7 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
             result[idxs] = feat_u[inv]
         return result
 
-    def _compute_latest_from_aggs(self, ts_aggs, target_ords):
-        if not ts_aggs:
-            return None
+    def _latest_from_aggs_impl(self, ts_aggs, target_ords):
         lag = self._core_tfm.lag
         alpha = self.alpha
         result: Dict[int, float] = {}
@@ -1614,8 +1676,9 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
                 result[bid] = float("nan")
                 continue
             t = target_ords[bid]
-            mean_per_ord = np.full(len(agg.counts), np.nan)
-            np.divide(agg.sums, agg.counts, out=mean_per_ord, where=agg.counts > 0)
+            counts = agg.counts
+            mean_per_ord = np.full(len(agg.unique_times), np.nan)
+            np.divide(agg.sums, counts, out=mean_per_ord, where=counts > 0)
             ewm = np.nan
             upper = t - lag
             for k in range(len(agg.unique_times)):
@@ -1630,9 +1693,7 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
             result[bid] = float(ewm) if not np.isnan(ewm) else float("nan")
         return result
 
-    def _compute_ts_level_from_aggs(self, ts_aggs):
-        if not ts_aggs:
-            return None
+    def _ts_level_from_aggs_impl(self, ts_aggs):
         lag = self._core_tfm.lag
         alpha = self.alpha
         return {bid: _ewm_from_agg(agg, lag, alpha) for bid, agg in ts_aggs.items()}
@@ -1652,11 +1713,20 @@ class Offset(_BaseLagTransform):
         self.global_ = getattr(tfm, "global_", False)
         self.groupby = getattr(tfm, "groupby", None)
         self.partition_by = getattr(tfm, "partition_by", None)
+        # time_agg is intentionally not mirrored (unlike the mode attributes
+        # above, nothing reads it on the wrapper): the delegated hooks apply
+        # the inner transform's own re-aggregation.
 
     def _get_name(self, lag: int) -> str:
         return self.tfm._get_name(lag + self.n)
 
     def _set_core_tfm(self, lag: int) -> "Offset":
+        if lag + self.n < 1:
+            raise ValueError(
+                f"Offset(n={self.n}) applied to lag {lag} produces an "
+                f"effective lag of {lag + self.n}; the effective lag must be "
+                "at least 1."
+            )
         self.tfm = copy.deepcopy(self.tfm)._set_core_tfm(lag + self.n)
         self._core_tfm = self.tfm._core_tfm
         return self
@@ -1729,6 +1799,9 @@ class Combine(_BaseLagTransform):
                 "Can't combine transforms with different partition_by settings."
             )
         self.partition_by = partition_by_1
+        # time_agg needs no reconciliation: it doesn't affect the pooled mode key,
+        # and each inner transform applies its own re-aggregation at hook entry, so
+        # mixing (e.g. rolling mean of sums / rolling mean of means) is intentional.
 
     def _set_core_tfm(self, lag: int) -> "Combine":
         self.tfm1 = copy.deepcopy(self.tfm1)._set_core_tfm(lag)
