@@ -1,6 +1,6 @@
 [project]
 name = "coreforecast"
-version = "0.0.17"
+version = "0.0.18"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.20.0"]
 license = { text = "Apache-2.0" }
@@ -42,7 +42,7 @@ build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 build-dir = "build"
-cmake.verbose = true
+build.verbose = true
 logging.level = "INFO"
 sdist.exclude = ["docs", "tests", "*.yml"]
 sdist.reproducible = true
