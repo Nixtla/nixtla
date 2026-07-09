@@ -468,6 +468,7 @@ def check_anomalies_dataframe_diff_cols(
         time_col=time_col,
         target_col=target_col,
         num_partitions=1,
+        model="timegpt-1",
     )
     check_anomalies(
         nixtla_client,
@@ -477,9 +478,15 @@ def check_anomalies_dataframe_diff_cols(
         target_col=target_col,
         level=90,
         num_partitions=1,
+        model="timegpt-1",
     )
     check_anomalies_same_results_num_partitions(
-        nixtla_client, df, id_col=id_col, time_col=time_col, target_col=target_col
+        nixtla_client,
+        df,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        model="timegpt-1",
     )
 
 
