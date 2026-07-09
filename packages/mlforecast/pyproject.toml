@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlforecast"
-version = "1.0.31"
+version = "1.1.0"
 description = "Scalable machine learning based time series forecasting"
 authors = [{name = "José Morales", email = "jmoralz92@gmail.com"}]
 license = {text = "Apache Software License 2.0"}
