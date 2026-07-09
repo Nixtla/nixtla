@@ -38,29 +38,39 @@ def _make_df(engine, rows, categorical_cols=None):
 def test_new_series_new_group_update_then_predict(engine, lag):
     """Regression: new series in a new group must get correct bucket ID
     and produce valid predictions after update()."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b"],
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
-        "brand": ["x", "x", "x", "y", "y", "y"],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b"],
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
+            "brand": ["x", "x", "x", "y", "y", "y"],
+        },
+    )
     tfm = RollingMean(2, groupby=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["brand"],
-        keep_last_n=10_000,  # full-history check: disable pooled trim
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+        keep_last_n=10_000,
     )
     assert ts._pooled_states[("groupby", ("brand",), ())] is not None
     state = ts._pooled_states[("groupby", ("brand",), ())]
     assert len(np.unique(state.bucket_id)) == 2
 
-    update_df = _make_df(engine, {
-        "unique_id": ["a", "b", "c"],
-        "ds": [4, 4, 4],
-        "y": [40.0, 400.0, 1000.0],
-        "brand": ["x", "y", "z"],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b", "c"],
+            "ds": [4, 4, 4],
+            "y": [40.0, 400.0, 1000.0],
+            "brand": ["x", "y", "z"],
+        },
+    )
     ts.update(update_df)
 
     state = ts._pooled_states[("groupby", ("brand",), ())]
@@ -75,9 +85,9 @@ def test_new_series_new_group_update_then_predict(engine, lag):
     if engine == "pandas":
         uid_to_brand = dict(zip(statics["unique_id"], statics["brand"]))
     else:
-        uid_to_brand = dict(zip(
-            statics["unique_id"].to_list(), statics["brand"].to_list()
-        ))
+        uid_to_brand = dict(
+            zip(statics["unique_id"].to_list(), statics["brand"].to_list())
+        )
     assert uid_to_brand["a"] == "x"
     assert uid_to_brand["b"] == "y"
     assert uid_to_brand["c"] == "z"
@@ -99,24 +109,33 @@ def test_new_series_new_group_update_then_predict(engine, lag):
 @pytest.mark.parametrize("lag", _LAGS)
 def test_global_update_preserves_bucket_df(engine, lag):
     """After update(), bucket_df should include both old and new observations."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "b", "b"],
-        "ds": [1, 2, 1, 2],
-        "y": [1.0, 2.0, 10.0, 20.0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [1.0, 2.0, 10.0, 20.0],
+        },
+    )
     ts = TimeSeries(freq=1, lag_transforms={lag: [RollingMean(2, global_=True)]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         dropna=False,
     )
     assert ("global", (), ()) in ts._pooled_states
     orig_len = len(ts._pooled_states[("global", (), ())].bucket_df)
 
-    update_df = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [3, 3],
-        "y": [3.0, 30.0],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [3, 3],
+            "y": [3.0, 30.0],
+        },
+    )
     ts.update(update_df)
     new_len = len(ts._pooled_states[("global", (), ())].bucket_df)
     assert new_len == orig_len + 2
@@ -126,26 +145,36 @@ def test_global_update_preserves_bucket_df(engine, lag):
 @pytest.mark.parametrize("lag", _LAGS)
 def test_group_update_preserves_bucket_df(engine, lag):
     """After update(), group bucket_df should include new observations."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "b", "b"],
-        "ds": [1, 2, 1, 2],
-        "y": [1.0, 2.0, 10.0, 20.0],
-        "brand": ["x", "x", "x", "x"],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [1.0, 2.0, 10.0, 20.0],
+            "brand": ["x", "x", "x", "x"],
+        },
+    )
     tfm = RollingMean(2, groupby=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["brand"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
     )
     orig_len = len(ts._pooled_states[("groupby", ("brand",), ())].bucket_df)
 
-    update_df = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [3, 3],
-        "y": [3.0, 30.0],
-        "brand": ["x", "x"],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [3, 3],
+            "y": [3.0, 30.0],
+            "brand": ["x", "x"],
+        },
+    )
     ts.update(update_df)
     new_len = len(ts._pooled_states[("groupby", ("brand",), ())].bucket_df)
     assert new_len == orig_len + 2
@@ -155,30 +184,42 @@ def test_group_update_preserves_bucket_df(engine, lag):
 @pytest.mark.parametrize("lag", _LAGS)
 def test_global_sequential_updates(engine, lag):
     """Sequential update() calls correctly increment time_index."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "b", "b"],
-        "ds": [1, 2, 1, 2],
-        "y": [1.0, 2.0, 10.0, 20.0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [1.0, 2.0, 10.0, 20.0],
+        },
+    )
     ts = TimeSeries(freq=1, lag_transforms={lag: [RollingMean(2, global_=True)]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         dropna=False,
     )
-    update1 = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [3, 3],
-        "y": [3.0, 30.0],
-    })
+    update1 = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [3, 3],
+            "y": [3.0, 30.0],
+        },
+    )
     ts.update(update1)
     state = ts._pooled_states[("global", (), ())]
     assert state.next_time_index_by_bucket[0] == 3
 
-    update2 = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [4, 4],
-        "y": [4.0, 40.0],
-    })
+    update2 = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [4, 4],
+            "y": [4.0, 40.0],
+        },
+    )
     ts.update(update2)
     state = ts._pooled_states[("global", (), ())]
     assert state.next_time_index_by_bucket[0] == 4
@@ -190,14 +231,20 @@ def test_global_sequential_updates(engine, lag):
 @pytest.mark.parametrize("lag", _LAGS)
 def test_staggered_series_start(engine, lag):
     """Series starting at different timestamps don't inject zeros."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b"],
-        "ds": [1, 2, 3, 2, 3],
-        "y": [1.0, 2.0, 3.0, 20.0, 30.0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b"],
+            "ds": [1, 2, 3, 2, 3],
+            "y": [1.0, 2.0, 3.0, 20.0, 30.0],
+        },
+    )
     ts = TimeSeries(freq=1, lag_transforms={lag: [RollingMean(2, global_=True)]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
         dropna=False,
     )
@@ -223,8 +270,12 @@ def test_categorical_groupby_update_with_new_group(engine, lag):
     tfm = RollingMean(2, groupby=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["brand"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
     )
     state = ts._pooled_states[("groupby", ("brand",), ())]
     assert len(np.unique(state.bucket_id)) == 1
@@ -268,7 +319,9 @@ def test_compute_pooled_features_raises_for_unsupported():
         pass
 
     state = PooledState(
-        bucket_df=pd.DataFrame({"uid": ["a", "a"], "ds": [1, 2]}),
+        bucket_df=pd.DataFrame(
+            {"uid": ["a", "a"], "ds": [1, 2], "_bucket_pos": [0, 1]}
+        ),
         groups=None,
         group_cols=None,
         series_bucket_id=np.array([0]),
@@ -289,17 +342,24 @@ def test_compute_pooled_features_raises_for_unsupported():
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_local_fit_transform(engine):
     """partition_by with local mode (no global_/groupby) creates correct buckets."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
-        "ds": [1, 2, 3, 4, 1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 1, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 1, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     # partition_by creates a partition state
     part_key = ("local", (), ("promo",))
@@ -316,17 +376,24 @@ def test_partition_by_local_fit_transform(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_global_fit_transform(engine):
     """partition_by with global_ creates global+partition buckets."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
-        "ds": [1, 2, 3, 4, 1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 1, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 1, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, global_=True, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     part_key = ("nonlocal", (), ("promo",))
     assert part_key in ts._pooled_states
@@ -341,18 +408,25 @@ def test_partition_by_global_fit_transform(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_groupby_fit_transform(engine):
     """partition_by with groupby creates group+partition buckets."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
-        "ds": [1, 2, 3, 4, 1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
-        "brand": ["x", "x", "x", "x", "y", "y", "y", "y"],
-        "promo": [0, 0, 1, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "brand": ["x", "x", "x", "x", "y", "y", "y", "y"],
+            "promo": [0, 0, 1, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, groupby=["brand"], partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["brand"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
     )
     part_key = ("nonlocal", ("brand",), ("promo",))
     assert part_key in ts._pooled_states
@@ -372,14 +446,65 @@ def test_partition_by_local_predict(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.linear_model import LinearRegression
 
-    df = _make_df(engine, {
-        "unique_id": ["a"]*12 + ["b"]*12,
-        "ds": list(range(1, 13)) + list(range(1, 13)),
-        "y": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
-              10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0],
-        "promo": [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1,
-                  0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 12 + ["b"] * 12,
+            "ds": list(range(1, 13)) + list(range(1, 13)),
+            "y": [
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+                5.0,
+                6.0,
+                7.0,
+                8.0,
+                9.0,
+                10.0,
+                11.0,
+                12.0,
+                10.0,
+                20.0,
+                30.0,
+                40.0,
+                50.0,
+                60.0,
+                70.0,
+                80.0,
+                90.0,
+                100.0,
+                110.0,
+                120.0,
+            ],
+            "promo": [
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+            ],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     fcst = MLForecast(
         models=[LinearRegression()],
@@ -387,14 +512,20 @@ def test_partition_by_local_predict(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
-    future_df = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [13, 13],
-        "promo": [1, 0],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [13, 13],
+            "promo": [1, 0],
+        },
+    )
     preds = fcst.predict(h=1, X_df=future_df)
     assert len(preds) == 2
 
@@ -402,19 +533,27 @@ def test_partition_by_local_predict(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_not_in_local_tfms(engine):
     """Transforms with partition_by should not appear in local transforms."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b"],
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
-        "promo": [0, 0, 1, 0, 1, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b"],
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+            "promo": [0, 0, 1, 0, 1, 0],
+        },
+    )
     from mlforecast.lag_transforms import Lag
+
     tfm_local = Lag(1)
     tfm_part = RollingMean(2, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm_local, tfm_part]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     local_tfms = ts._get_local_tfms(ts.transforms)
     for t in local_tfms.values():
@@ -424,28 +563,38 @@ def test_partition_by_not_in_local_tfms(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_update(engine):
     """update() with partition_by states works correctly."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b"],
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
-        "promo": [0, 0, 1, 0, 1, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b"],
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+            "promo": [0, 0, 1, 0, 1, 0],
+        },
+    )
     tfm = RollingMean(2, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
     orig_len = len(state.bucket_df)
 
-    update_df = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [4, 4],
-        "y": [4.0, 40.0],
-        "promo": [1, 0],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [4, 4],
+            "y": [4.0, 40.0],
+            "promo": [1, 0],
+        },
+    )
     ts.update(update_df)
     state = ts._pooled_states[part_key]
     assert len(state.bucket_df) == orig_len + 2
@@ -454,43 +603,80 @@ def test_partition_by_update(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_local_numeric_values(engine):
     """Verify rolling mean per (id, promo) bucket matches hand-computed values."""
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 6 + ["b"] * 6,
-        "ds": list(range(1, 7)) * 2,
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0,
-              100.0, 200.0, 300.0, 400.0, 500.0, 600.0],
-        "promo": [0, 0, 0, 1, 0, 1,
-                  1, 1, 0, 0, 1, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 6 + ["b"] * 6,
+            "ds": list(range(1, 7)) * 2,
+            "y": [
+                10.0,
+                20.0,
+                30.0,
+                40.0,
+                50.0,
+                60.0,
+                100.0,
+                200.0,
+                300.0,
+                400.0,
+                500.0,
+                600.0,
+            ],
+            "promo": [0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     col = tfm._get_name(1)
     vals = result[col].to_numpy()
-    expected = np.array([
-        np.nan, 10.0, 15.0, np.nan, 30.0, 40.0,   # series a
-        np.nan, 100.0, np.nan, 300.0, np.nan, 400.0,  # series b
-    ])
+    expected = np.array(
+        [
+            np.nan,
+            10.0,
+            15.0,
+            np.nan,
+            30.0,
+            40.0,  # series a
+            np.nan,
+            100.0,
+            np.nan,
+            300.0,
+            np.nan,
+            400.0,  # series b
+        ]
+    )
     np.testing.assert_allclose(vals, expected, equal_nan=True)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_global_numeric_values(engine):
     """Verify rolling mean per (promo) bucket with global parent calendar."""
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 3 + ["b"] * 3,
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
-        "promo": [0, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 3 + ["b"] * 3,
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
+            "promo": [0, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     col = tfm._get_name(1)
     vals = result[col].to_numpy()
@@ -501,18 +687,25 @@ def test_partition_by_global_numeric_values(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_ordinals_have_parent_gaps(engine):
     """Verify ordinals are [0,2,4] not [0,1,2] when partition has gaps."""
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 5,
-        "ds": [1, 2, 3, 4, 5],
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "promo": [0, 1, 0, 1, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 5,
+            "ds": [1, 2, 3, 4, 5],
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "promo": [0, 1, 0, 1, 0],
+        },
+    )
     tfm = RollingMean(2, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        dropna=False,
+        static_features=[],
     )
     state = ts._pooled_states[("local", (), ("promo",))]
     # Bucket (a,0): ds=[1,3,5] → parent ordinals [0,2,4] (NOT [0,1,2])
@@ -532,17 +725,24 @@ def test_partition_range_semantics_with_gaps(engine):
     instead average the two preceding *observations* (ts=1 and ts=3) -> 20, which
     is what this guards against.
     """
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 5,
-        "ds": [1, 2, 3, 4, 5],
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "promo": [1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 5,
+            "ds": [1, 2, 3, 4, 5],
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "promo": [1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     out = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     col = tfm._get_name(1)
     if engine == "polars":
@@ -563,17 +763,24 @@ def test_partition_expanding_with_parent_gaps(engine):
     offset is applied in parent-ordinal space, so the gap at ordinal 3 (ts=4,
     unobserved) does not change which observations fall inside the window.
     """
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 5,
-        "ds": [1, 2, 3, 4, 5],
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "promo": [1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 5,
+            "ds": [1, 2, 3, 4, 5],
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "promo": [1, 0, 1, 0, 1],
+        },
+    )
     tfm = ExpandingMean(partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     out = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     col = tfm._get_name(1)
     if engine == "polars":
@@ -589,14 +796,16 @@ def test_partition_by_dynamic_keys_multistep(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.ensemble import HistGradientBoostingRegressor
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 10 + ["b"] * 10,
-        "ds": list(range(1, 11)) * 2,
-        "y": [float(i) for i in range(1, 11)]
-           + [float(i * 10) for i in range(1, 11)],
-        "promo": [0, 0, 0, 0, 0, 1, 1, 1, 1, 1,
-                  1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 10 + ["b"] * 10,
+            "ds": list(range(1, 11)) * 2,
+            "y": [float(i) for i in range(1, 11)]
+            + [float(i * 10) for i in range(1, 11)],
+            "promo": [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(3, min_samples=1, partition_by=["promo"])
     fcst = MLForecast(
         models=[HistGradientBoostingRegressor(max_iter=10)],
@@ -604,14 +813,20 @@ def test_partition_by_dynamic_keys_multistep(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
-    future_df = _make_df(engine, {
-        "unique_id": ["a", "a", "b", "b"],
-        "ds": [11, 12, 11, 12],
-        "promo": [1, 0, 0, 1],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [11, 12, 11, 12],
+            "promo": [1, 0, 0, 1],
+        },
+    )
     preds = fcst.predict(h=2, X_df=future_df)
     assert len(preds) == 4
     if engine == "pandas":
@@ -627,12 +842,15 @@ def test_predict_ids_with_nonlocal_partition_raises(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.linear_model import LinearRegression
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4 + ["b"] * 4,
-        "ds": [1, 2, 3, 4, 1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 1, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 1, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])
     fcst = MLForecast(
         models=[LinearRegression()],
@@ -640,14 +858,20 @@ def test_predict_ids_with_nonlocal_partition_raises(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
-    future_df = _make_df(engine, {
-        "unique_id": ["a"],
-        "ds": [5],
-        "promo": [0],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"],
+            "ds": [5],
+            "promo": [0],
+        },
+    )
     with pytest.raises(ValueError, match="Cannot use `ids`"):
         fcst.predict(h=1, X_df=future_df, ids=["a"])
 
@@ -655,16 +879,22 @@ def test_predict_ids_with_nonlocal_partition_raises(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_default_static_features_with_partition_cols(engine):
     """static_features=None should auto-exclude partition_by columns."""
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4 + ["b"] * 4,
-        "ds": [1, 2, 3, 4, 1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 1, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 1, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         dropna=False,
     )
     assert "promo" not in ts.static_features_.columns
@@ -674,17 +904,24 @@ def test_default_static_features_with_partition_cols(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_by_backup_restore(engine):
     """_backup() correctly restores partition_by state."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b"],
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
-        "promo": [0, 0, 1, 0, 1, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b"],
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+            "promo": [0, 0, 1, 0, 1, 0],
+        },
+    )
     tfm = RollingMean(2, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     part_key = ("local", (), ("promo",))
     orig_y_len = len(ts._pooled_states[part_key].y)
@@ -712,12 +949,15 @@ def test_local_partition_prediction_advances_sibling_calendar(engine):
     # Series "a": promo alternates 0,1,0,1,...
     # Bucket (a,0): ds=[1,3,5,7,9] y=[10,30,50,70,90] parent ordinals [0,2,4,6,8]
     # Bucket (a,1): ds=[2,4,6,8,10] y=[20,40,60,80,100] parent ordinals [1,3,5,7,9]
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 10,
-        "ds": list(range(1, 11)),
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
-        "promo": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 10,
+            "ds": list(range(1, 11)),
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
+            "promo": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     col = tfm._get_name(1)
     captured = []
@@ -736,7 +976,10 @@ def test_local_partition_prediction_advances_sibling_calendar(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
     # Predict 2 steps: promo=[1, 0]
@@ -748,11 +991,14 @@ def test_local_partition_prediction_advances_sibling_calendar(engine):
     #   lag=1, window=2 → ordinals [9,10]. bucket(a,0) has last obs at ord 8.
     #   Neither ord 9 nor 10 has an obs for (a,0). → NaN
     #   Key check: parent calendar advanced to length 11 for BOTH buckets.
-    future_df = _make_df(engine, {
-        "unique_id": ["a", "a"],
-        "ds": [11, 12],
-        "promo": [1, 0],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a"],
+            "ds": [11, 12],
+            "promo": [1, 0],
+        },
+    )
     preds = fcst.predict(h=2, X_df=future_df, before_predict_callback=save_features)
     assert len(preds) == 2
     assert len(captured) == 2
@@ -768,31 +1014,41 @@ def test_local_partition_update_advances_sibling_calendar(engine):
     - ALL sibling buckets have next_time_index = 6 (not just the updated one)
     - Feature values are correct when querying after update
     """
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 5,
-        "ds": [1, 2, 3, 4, 5],
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "promo": [0, 1, 0, 1, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 5,
+            "ds": [1, 2, 3, 4, 5],
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "promo": [0, 1, 0, 1, 0],
+        },
+    )
     # RollingMean(1, min_samples=1): returns lag-1 value within the bucket
     tfm = RollingMean(1, min_samples=1, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        keep_last_n=10_000,
+        dropna=False,
+        static_features=[],
     )
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
     for bid in state.next_time_index_by_bucket:
         assert state.next_time_index_by_bucket[bid] == 5
 
-    update_df = _make_df(engine, {
-        "unique_id": ["a"],
-        "ds": [6],
-        "y": [60.0],
-        "promo": [1],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"],
+            "ds": [6],
+            "y": [60.0],
+            "promo": [1],
+        },
+    )
     ts.update(update_df)
     state = ts._pooled_states[part_key]
     # After update at ds=6 with promo=1, parent calendar = [1,2,3,4,5,6]
@@ -820,18 +1076,25 @@ def test_local_partition_update_advances_sibling_calendar(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_new_partition_bucket_uses_existing_parent_calendar(engine):
     """New partition bucket created during prediction inherits parent ordinal."""
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4,
-        "ds": [1, 2, 3, 4],
-        "y": [10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4,
+            "ds": [1, 2, 3, 4],
+            "y": [10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        dropna=False,
+        static_features=[],
     )
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
@@ -840,15 +1103,19 @@ def test_new_partition_bucket_uses_existing_parent_calendar(engine):
     # Trigger prediction setup so we can call update_series_bucket_id
     ts._predict_setup()
     if isinstance(df, pd.DataFrame):
-        context_df = pd.DataFrame({
-            "unique_id": ["a"],
-            "promo": [1],
-        })
+        context_df = pd.DataFrame(
+            {
+                "unique_id": ["a"],
+                "promo": [1],
+            }
+        )
     else:
-        context_df = pl.DataFrame({
-            "unique_id": ["a"],
-            "promo": [1],
-        })
+        context_df = pl.DataFrame(
+            {
+                "unique_id": ["a"],
+                "promo": [1],
+            }
+        )
     state.update_series_bucket_id(context_df, "unique_id")
     # New bucket for promo=1 should inherit parent calendar length = 4
     new_bid = int(state.series_bucket_id[0])
@@ -858,18 +1125,25 @@ def test_new_partition_bucket_uses_existing_parent_calendar(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_global_partition_update_advances_sibling_calendar(engine):
     """Global+partition: update advances all sibling bucket ordinals."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b"],
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
-        "promo": [0, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b"],
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
+            "promo": [0, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        dropna=False,
+        static_features=[],
     )
     part_key = ("nonlocal", (), ("promo",))
     state = ts._pooled_states[part_key]
@@ -877,12 +1151,15 @@ def test_global_partition_update_advances_sibling_calendar(engine):
     for bid in state.next_time_index_by_bucket:
         assert state.next_time_index_by_bucket[bid] == 3
 
-    update_df = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [4, 4],
-        "y": [40.0, 400.0],
-        "promo": [1, 1],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [4, 4],
+            "y": [40.0, 400.0],
+            "promo": [1, 1],
+        },
+    )
     ts.update(update_df)
     state = ts._pooled_states[part_key]
     # Parent calendar now [1,2,3,4], ALL buckets should be at 4
@@ -893,19 +1170,26 @@ def test_global_partition_update_advances_sibling_calendar(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_groupby_partition_update_advances_sibling_calendar(engine):
     """Groupby+partition: update advances sibling buckets within each group."""
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b"],
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
-        "brand": ["x", "x", "x", "y", "y", "y"],
-        "promo": [0, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b"],
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
+            "brand": ["x", "x", "x", "y", "y", "y"],
+            "promo": [0, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, groupby=["brand"], partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=["brand"],
+        dropna=False,
+        static_features=["brand"],
     )
     part_key = ("nonlocal", ("brand",), ("promo",))
     state = ts._pooled_states[part_key]
@@ -913,13 +1197,16 @@ def test_groupby_partition_update_advances_sibling_calendar(engine):
     for bid in state.next_time_index_by_bucket:
         assert state.next_time_index_by_bucket[bid] == 3
 
-    update_df = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [4, 4],
-        "y": [40.0, 400.0],
-        "brand": ["x", "y"],
-        "promo": [1, 0],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [4, 4],
+            "y": [40.0, 400.0],
+            "brand": ["x", "y"],
+            "promo": [1, 0],
+        },
+    )
     ts.update(update_df)
     state = ts._pooled_states[part_key]
     for bid in state.next_time_index_by_bucket:
@@ -932,12 +1219,15 @@ def test_partition_assignment_missing_key_error(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.linear_model import LinearRegression
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4,
-        "ds": [1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0],
-        "promo": [0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4,
+            "ds": [1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0],
+            "promo": [0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     fcst = MLForecast(
         models=[LinearRegression()],
@@ -945,15 +1235,21 @@ def test_partition_assignment_missing_key_error(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
     # X_df missing "promo" column but has another exogenous feature
-    future_df = _make_df(engine, {
-        "unique_id": ["a"],
-        "ds": [5],
-        "other_feature": [1.0],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"],
+            "ds": [5],
+            "other_feature": [1.0],
+        },
+    )
     with pytest.raises(ValueError, match="X_df is missing future values"):
         fcst.predict(h=1, X_df=future_df)
 
@@ -964,12 +1260,15 @@ def test_partition_predict_requires_x_df(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.linear_model import LinearRegression
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4,
-        "ds": [1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0],
-        "promo": [0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4,
+            "ds": [1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0],
+            "promo": [0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     fcst = MLForecast(
         models=[LinearRegression()],
@@ -977,7 +1276,10 @@ def test_partition_predict_requires_x_df(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
     with pytest.raises(ValueError, match="X_df is required for prediction"):
@@ -990,12 +1292,15 @@ def test_local_unseen_partition_predict(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.ensemble import HistGradientBoostingRegressor
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4,
-        "ds": [1, 2, 3, 4],
-        "y": [10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4,
+            "ds": [1, 2, 3, 4],
+            "y": [10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(1, min_samples=1, partition_by=["promo"])
     col = tfm._get_name(1)
     captured = []
@@ -1013,14 +1318,20 @@ def test_local_unseen_partition_predict(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
-    future_df = _make_df(engine, {
-        "unique_id": ["a"],
-        "ds": [5],
-        "promo": [1],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"],
+            "ds": [5],
+            "promo": [1],
+        },
+    )
     preds = fcst.predict(h=1, X_df=future_df, before_predict_callback=save_features)
     assert len(preds) == 1
     # Unseen bucket promo=1 has no historical data → feature is NaN
@@ -1042,12 +1353,15 @@ def test_global_partition_unseen_bucket_predict(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.ensemble import HistGradientBoostingRegressor
 
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
-        "ds": [1, 2, 3, 4, 1, 2, 3, 4],
-        "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 0, 0, 0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0, 0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(1, min_samples=1, global_=True, partition_by=["promo"])
     col = tfm._get_name(1)
     captured = []
@@ -1065,14 +1379,20 @@ def test_global_partition_unseen_bucket_predict(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
-    future_df = _make_df(engine, {
-        "unique_id": ["a", "b"],
-        "ds": [5, 5],
-        "promo": [1, 1],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b"],
+            "ds": [5, 5],
+            "promo": [1, 1],
+        },
+    )
     preds = fcst.predict(h=1, X_df=future_df, before_predict_callback=save_features)
     assert len(preds) == 2
     # Unseen bucket promo=1 has no historical data → feature is NaN
@@ -1092,18 +1412,25 @@ def test_global_partition_new_bucket_inherits_parent_calendar(engine):
     When parent_scope_cols is None, _resolve_parent_for_bucket must still
     find the global parent (scope_key=()) and inherit its calendar length.
     """
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b"],
-        "ds": [1, 2, 3, 1, 2, 3],
-        "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
-        "promo": [0, 0, 0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b"],
+            "ds": [1, 2, 3, 1, 2, 3],
+            "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
+            "promo": [0, 0, 0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(1, min_samples=1, global_=True, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        dropna=False,
+        static_features=[],
     )
     part_key = ("nonlocal", (), ("promo",))
     state = ts._pooled_states[part_key]
@@ -1112,15 +1439,19 @@ def test_global_partition_new_bucket_inherits_parent_calendar(engine):
 
     # Create unseen promo=1 bucket via update_series_bucket_id
     if isinstance(df, pd.DataFrame):
-        context_df = pd.DataFrame({
-            "unique_id": ["a", "b"],
-            "promo": [1, 1],
-        })
+        context_df = pd.DataFrame(
+            {
+                "unique_id": ["a", "b"],
+                "promo": [1, 1],
+            }
+        )
     else:
-        context_df = pl.DataFrame({
-            "unique_id": ["a", "b"],
-            "promo": [1, 1],
-        })
+        context_df = pl.DataFrame(
+            {
+                "unique_id": ["a", "b"],
+                "promo": [1, 1],
+            }
+        )
     state.update_series_bucket_id(context_df, "unique_id")
     new_bid = int(state.series_bucket_id[0])
     # New bucket must inherit global parent calendar length = 3, not 0
@@ -1135,29 +1466,39 @@ def test_partition_datetime_update_new_bucket(engine):
     which raises DTypePromotionError with datetime timestamps.
     """
     dates = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-04"])
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4,
-        "ds": dates,
-        "y": [10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4,
+            "ds": dates,
+            "y": [10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(1, min_samples=1, partition_by=["promo"])
     freq = "1d" if engine == "polars" else "D"
     ts = TimeSeries(freq=freq, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        dropna=False,
+        static_features=[],
     )
     # Update with a new partition value — this triggers _resolve_parent_for_bucket
     # which creates a new parent grid. With the dtype fix, the grid dtype
     # matches the existing datetime64 dtype.
-    update_df = _make_df(engine, {
-        "unique_id": ["a"],
-        "ds": pd.to_datetime(["2020-01-05"]),
-        "y": [50.0],
-        "promo": [1],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"],
+            "ds": pd.to_datetime(["2020-01-05"]),
+            "y": [50.0],
+            "promo": [1],
+        },
+    )
     ts.update(update_df)
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
@@ -1176,12 +1517,15 @@ def test_partition_backup_restore_with_dynamic_buckets(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.ensemble import HistGradientBoostingRegressor
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4,
-        "ds": [1, 2, 3, 4],
-        "y": [10.0, 20.0, 30.0, 40.0],
-        "promo": [0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4,
+            "ds": [1, 2, 3, 4],
+            "y": [10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(1, min_samples=1, partition_by=["promo"])
     fcst = MLForecast(
         models=[HistGradientBoostingRegressor(max_iter=10)],
@@ -1189,7 +1533,10 @@ def test_partition_backup_restore_with_dynamic_buckets(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
     part_key = ("local", (), ("promo",))
@@ -1198,16 +1545,18 @@ def test_partition_backup_restore_with_dynamic_buckets(engine):
     n_parents_before = len(state_before._parent_time_grids or {})
     n_bucket_map_before = len(state_before._bucket_to_parent_id or {})
     parent_grid_lens_before = {
-        pid: len(grid)
-        for pid, grid in (state_before._parent_time_grids or {}).items()
+        pid: len(grid) for pid, grid in (state_before._parent_time_grids or {}).items()
     }
 
     # Predict with unseen promo=1 — creates dynamic bucket inside _backup()
-    future_df = _make_df(engine, {
-        "unique_id": ["a"],
-        "ds": [5],
-        "promo": [1],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"],
+            "ds": [5],
+            "promo": [1],
+        },
+    )
     fcst.predict(h=1, X_df=future_df)
 
     # After predict, fitted state should be restored
@@ -1231,12 +1580,15 @@ def test_partition_predict_multi_horizon_multiple_unseen(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.ensemble import HistGradientBoostingRegressor
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 5 + ["b"] * 5,
-        "ds": list(range(1, 6)) * 2,
-        "y": [float(i) for i in range(1, 6)] + [float(i * 10) for i in range(1, 6)],
-        "promo": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 5 + ["b"] * 5,
+            "ds": list(range(1, 6)) * 2,
+            "y": [float(i) for i in range(1, 6)] + [float(i * 10) for i in range(1, 6)],
+            "promo": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])
     col = tfm._get_name(1)
     captured = []
@@ -1252,11 +1604,14 @@ def test_partition_predict_multi_horizon_multiple_unseen(engine):
     )
     fcst.fit(df, id_col="unique_id", time_col="ds", target_col="y", static_features=[])
     # promo values 2 and 3 are never seen during fit; alternate across 4 horizons
-    future_df = _make_df(engine, {
-        "unique_id": ["a"] * 4 + ["b"] * 4,
-        "ds": [6, 7, 8, 9] * 2,
-        "promo": [2, 3, 2, 3, 2, 3, 2, 3],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [6, 7, 8, 9] * 2,
+            "promo": [2, 3, 2, 3, 2, 3, 2, 3],
+        },
+    )
     preds = fcst.predict(h=4, X_df=future_df, before_predict_callback=save_features)
     assert len(preds) == 8
     # step 0 hits the brand-new promo=2 bucket with no history -> NaN feature
@@ -1280,12 +1635,15 @@ def test_local_partition_recursive_h3_consistency(engine):
     from mlforecast.forecast import MLForecast
     from sklearn.ensemble import HistGradientBoostingRegressor
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 5,
-        "ds": [1, 2, 3, 4, 5],
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "promo": [1, 1, 1, 1, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 5,
+            "ds": [1, 2, 3, 4, 5],
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "promo": [1, 1, 1, 1, 1],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     col = tfm._get_name(1)
     feats = []
@@ -1300,11 +1658,14 @@ def test_local_partition_recursive_h3_consistency(engine):
         lag_transforms={1: [tfm]},
     )
     fcst.fit(df, id_col="unique_id", time_col="ds", target_col="y", static_features=[])
-    future_df = _make_df(engine, {
-        "unique_id": ["a"] * 3,
-        "ds": [6, 7, 8],
-        "promo": [1, 1, 1],
-    })
+    future_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 3,
+            "ds": [6, 7, 8],
+            "promo": [1, 1, 1],
+        },
+    )
     preds = fcst.predict(h=3, X_df=future_df, before_predict_callback=save_features)
     if engine == "pandas":
         p = preds.iloc[:, -1].to_numpy()
@@ -1321,30 +1682,40 @@ def test_partition_update_batch_multiple_ids_new_buckets(engine):
     """A single update() carrying several series, each with an unseen partition
     value, registers one new bucket per value and advances every parent calendar.
     """
-    df = _make_df(engine, {
-        "unique_id": ["a", "a", "a", "b", "b", "b", "c", "c", "c"],
-        "ds": [1, 2, 3, 1, 2, 3, 1, 2, 3],
-        "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
-        "promo": [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "a", "b", "b", "b", "c", "c", "c"],
+            "ds": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+            "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
+            "promo": [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        dropna=False,
+        static_features=[],
     )
     key = ("nonlocal", (), ("promo",))
     state = ts._pooled_states[key]
     assert len(state.groups) == 1  # only promo=0 seen at fit
 
     # one batch at ds=4: three series, three never-seen promo values
-    update_df = _make_df(engine, {
-        "unique_id": ["a", "b", "c"],
-        "ds": [4, 4, 4],
-        "y": [4.0, 40.0, 400.0],
-        "promo": [1, 2, 3],
-    })
+    update_df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b", "c"],
+            "ds": [4, 4, 4],
+            "y": [4.0, 40.0, 400.0],
+            "promo": [1, 2, 3],
+        },
+    )
     ts.update(update_df)
     state = ts._pooled_states[key]
     assert len(state.groups) == 4  # promo {0, 1, 2, 3}
@@ -1359,8 +1730,13 @@ def test_partition_update_sparse_then_dense(engine):
     the resulting state must match a from-scratch fit on the combined data
     (same per-bucket aggregates and parent calendars).
     """
+
     def _aggs_by_key(state):
-        groups = state.groups.to_pandas() if hasattr(state.groups, "to_pandas") else state.groups
+        groups = (
+            state.groups.to_pandas()
+            if hasattr(state.groups, "to_pandas")
+            else state.groups
+        )
         out = {}
         for bid, agg in state._ts_aggs.items():
             bkey = tuple(groups.iloc[bid].tolist())
@@ -1374,12 +1750,16 @@ def test_partition_update_sparse_then_dense(engine):
     def _build():
         return TimeSeries(
             freq=1,
-            lag_transforms={1: [RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])]},
+            lag_transforms={
+                1: [RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])]
+            },
         )
 
     base = {
-        "unique_id": ["a", "a", "a", "b", "b", "b"], "ds": [1, 2, 3, 1, 2, 3],
-        "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], "promo": [0, 0, 0, 0, 0, 0],
+        "unique_id": ["a", "a", "a", "b", "b", "b"],
+        "ds": [1, 2, 3, 1, 2, 3],
+        "y": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+        "promo": [0, 0, 0, 0, 0, 0],
     }
     dense_steps = [
         {"ds": 4, "promo": [1, 0], "y": [4.0, 40.0]},
@@ -1389,30 +1769,43 @@ def test_partition_update_sparse_then_dense(engine):
 
     ts_incr = _build()
     ts_incr.fit_transform(
-        _make_df(engine, base), id_col="unique_id", time_col="ds", target_col="y",
+        _make_df(engine, base),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         keep_last_n=10_000,  # full-history check: disable pooled trim
-        dropna=False, static_features=[],
+        dropna=False,
+        static_features=[],
     )
     rows = [base]
     for step in dense_steps:
-        u = {"unique_id": ["a", "b"], "ds": [step["ds"], step["ds"]],
-             "y": step["y"], "promo": step["promo"]}
+        u = {
+            "unique_id": ["a", "b"],
+            "ds": [step["ds"], step["ds"]],
+            "y": step["y"],
+            "promo": step["promo"],
+        }
         ts_incr.update(_make_df(engine, u))
         rows.append(u)
 
     combined = {k: sum((r[k] for r in rows), []) for k in base}
     ts_scratch = _build()
     ts_scratch.fit_transform(
-        _make_df(engine, combined), id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        _make_df(engine, combined),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
         keep_last_n=10_000,  # full-history check: disable pooled trim
     )
 
     key = ("nonlocal", (), ("promo",))
     si, ss = ts_incr._pooled_states[key], ts_scratch._pooled_states[key]
     assert _aggs_by_key(si) == _aggs_by_key(ss)
-    assert {pid: grid.tolist() for pid, grid in si._parent_time_grids.items()} == \
-        {pid: grid.tolist() for pid, grid in ss._parent_time_grids.items()}
+    assert {pid: grid.tolist() for pid, grid in si._parent_time_grids.items()} == {
+        pid: grid.tolist() for pid, grid in ss._parent_time_grids.items()
+    }
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1423,19 +1816,26 @@ def test_partition_static_features_explicit_with_partition_cols(engine):
     fitted static set keeps brand/region but drops promo (it is dynamic and
     re-supplied via X_df at predict), and promo never enters features_order_.
     """
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4 + ["b"] * 4,
-        "ds": [1, 2, 3, 4] * 2,
-        "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
-        "brand": ["x"] * 4 + ["y"] * 4,
-        "region": ["N"] * 4 + ["S"] * 4,
-        "promo": [0, 1, 0, 1, 1, 0, 1, 0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [1, 2, 3, 4] * 2,
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "brand": ["x"] * 4 + ["y"] * 4,
+            "region": ["N"] * 4 + ["S"] * 4,
+            "promo": [0, 1, 0, 1, 1, 0, 1, 0],
+        },
+    )
     tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["brand", "region"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand", "region"],
     )
     static_cols = set(ts.static_features_.columns)
     assert {"brand", "region"} <= static_cols
@@ -1451,17 +1851,24 @@ def test_partition_rolling_min_samples_boundary(engine):
     bucket: at ds=2 the window holds 1 observation (< min_samples) -> NaN; at
     ds=3 it holds exactly 2 (== min_samples) -> the mean (10+20)/2 = 15.
     """
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 5,
-        "ds": [1, 2, 3, 4, 5],
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "promo": [1, 1, 1, 1, 1],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 5,
+            "ds": [1, 2, 3, 4, 5],
+            "y": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "promo": [1, 1, 1, 1, 1],
+        },
+    )
     tfm = RollingMean(3, min_samples=2, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     out = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     col = tfm._get_name(1)
     if engine == "polars":
@@ -1481,17 +1888,22 @@ def test_partition_cv_fold_independent(engine):
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     n_times = 12
-    df = _make_df(engine, {
-        "unique_id": ["a"] * n_times + ["b"] * n_times,
-        "ds": list(range(1, n_times + 1)) * 2,
-        "y": [float(i) for i in range(1, n_times + 1)]
-           + [float(i * 10) for i in range(1, n_times + 1)],
-        "promo": ([0, 1] * (n_times // 2)) * 2,
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * n_times + ["b"] * n_times,
+            "ds": list(range(1, n_times + 1)) * 2,
+            "y": [float(i) for i in range(1, n_times + 1)]
+            + [float(i * 10) for i in range(1, n_times + 1)],
+            "promo": ([0, 1] * (n_times // 2)) * 2,
+        },
+    )
     fcst = MLForecast(
         models=[HistGradientBoostingRegressor(max_iter=5)],
         freq=1,
-        lag_transforms={1: [RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])]},
+        lag_transforms={
+            1: [RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])]
+        },
     )
     cv = fcst.cross_validation(df, n_windows=2, h=2, static_features=[])
     assert len(cv) == 2 * 2 * 2  # n_windows * h * n_series
@@ -1536,9 +1948,7 @@ class TestValidateDataWarning:
             fcst.preprocess(df, static_features=["brand"], validate_data=False)
 
     def test_warns_groupby(self):
-        fcst = self._make_fcst(
-            {1: [RollingMean(window_size=2, groupby=["brand"])]}
-        )
+        fcst = self._make_fcst({1: [RollingMean(window_size=2, groupby=["brand"])]})
         df = self._make_simple_df()
         with pytest.warns(UserWarning, match="Pooled.*validate_data"):
             fcst.preprocess(df, static_features=["brand"], validate_data=False)
@@ -1572,15 +1982,22 @@ def test_ewm_lag_semantics(engine):
 
     Regression test for the two-pointer fix in _ewm_from_agg.
     """
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4 + ["b"] * 4,
-        "ds": list(range(4)) * 2,
-        "y": [6.0, 7.0, 8.0, 9.0, 6.0, 7.0, 8.0, 9.0],
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": list(range(4)) * 2,
+            "y": [6.0, 7.0, 8.0, 9.0, 6.0, 7.0, 8.0, 9.0],
+        },
+    )
     tfm = ExponentiallyWeightedMean(alpha=0.5, global_=True)
     ts = TimeSeries(freq=1, lag_transforms={2: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y", dropna=False,
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
     )
     col = tfm._get_name(2)
     if engine == "pandas":
@@ -1605,17 +2022,24 @@ def test_ewm_lag_semantics(engine):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_ewm_lag_semantics_groupby(engine):
     """EWM lag semantics hold in groupby mode too."""
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 4 + ["b"] * 4,
-        "ds": list(range(4)) * 2,
-        "y": [6.0, 7.0, 8.0, 9.0, 6.0, 7.0, 8.0, 9.0],
-        "grp": ["X"] * 8,
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": list(range(4)) * 2,
+            "y": [6.0, 7.0, 8.0, 9.0, 6.0, 7.0, 8.0, 9.0],
+            "grp": ["X"] * 8,
+        },
+    )
     tfm = ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"])
     ts = TimeSeries(freq=1, lag_transforms={2: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["grp"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["grp"],
     )
     col = tfm._get_name(2)
     if engine == "pandas":
@@ -1644,8 +2068,12 @@ def _fit_and_collect(engine, lag, tfms, y_a, y_b, n_times, grp=None):
     ts = TimeSeries(freq=1, lag_transforms={lag: tfms})
     static = ["grp"] if grp else None
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=static,
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=static,
     )
     ts._predict_setup()
     features = ts._update_features()
@@ -1685,22 +2113,42 @@ def test_pooled_transforms_lag3_global(engine):
     # Rolling window=3: uses obs in [k-3-2, k-3] = [k-5, k-3]
     #   k=0..3: not enough → NaN; k=4: t0,t1 → count=4≥3 → mean=2.5; k=5: t0,t1,t2 → count=6≥3 → mean=3.5
     expected = {
-        "global_rolling_mean_lag3_window_size3":     ([nan, nan, nan, nan, 2.5, 3.5],       [5.5, 5.5]),
-        "global_rolling_std_lag3_window_size3":       ([nan, nan, nan, nan, 1.290994, 1.870829], [1.870829, 1.870829]),
-        "global_rolling_min_lag3_window_size3":       ([nan, nan, nan, nan, 1.0, 1.0],       [3.0, 3.0]),
-        "global_rolling_max_lag3_window_size3":       ([nan, nan, nan, nan, 4.0, 6.0],       [8.0, 8.0]),
-        "global_expanding_mean_lag3":                 ([nan, nan, nan, 1.5, 2.5, 3.5],       [4.5, 4.5]),
-        "global_expanding_std_lag3":                  ([nan, nan, nan, 0.707107, 1.290994, 1.870829], [2.449490, 2.449490]),
-        "global_expanding_min_lag3":                  ([nan, nan, nan, 1.0, 1.0, 1.0],       [1.0, 1.0]),
-        "global_expanding_max_lag3":                  ([nan, nan, nan, 2.0, 4.0, 6.0],       [8.0, 8.0]),
+        "global_rolling_mean_lag3_window_size3": (
+            [nan, nan, nan, nan, 2.5, 3.5],
+            [5.5, 5.5],
+        ),
+        "global_rolling_std_lag3_window_size3": (
+            [nan, nan, nan, nan, 1.290994, 1.870829],
+            [1.870829, 1.870829],
+        ),
+        "global_rolling_min_lag3_window_size3": (
+            [nan, nan, nan, nan, 1.0, 1.0],
+            [3.0, 3.0],
+        ),
+        "global_rolling_max_lag3_window_size3": (
+            [nan, nan, nan, nan, 4.0, 6.0],
+            [8.0, 8.0],
+        ),
+        "global_expanding_mean_lag3": ([nan, nan, nan, 1.5, 2.5, 3.5], [4.5, 4.5]),
+        "global_expanding_std_lag3": (
+            [nan, nan, nan, 0.707107, 1.290994, 1.870829],
+            [2.449490, 2.449490],
+        ),
+        "global_expanding_min_lag3": ([nan, nan, nan, 1.0, 1.0, 1.0], [1.0, 1.0]),
+        "global_expanding_max_lag3": ([nan, nan, nan, 2.0, 4.0, 6.0], [8.0, 8.0]),
     }
     for col, (exp_pre, exp_pred) in expected.items():
         np.testing.assert_allclose(
-            out[col]["preprocess"], exp_pre, atol=1e-5, equal_nan=True,
+            out[col]["preprocess"],
+            exp_pre,
+            atol=1e-5,
+            equal_nan=True,
             err_msg=f"preprocess mismatch for {col}",
         )
         np.testing.assert_allclose(
-            out[col]["predict"], exp_pred, atol=1e-5,
+            out[col]["predict"],
+            exp_pred,
+            atol=1e-5,
             err_msg=f"predict mismatch for {col}",
         )
 
@@ -1726,35 +2174,55 @@ def test_pooled_transforms_lag2_groupby(engine):
 
     nan = np.nan
     expected = {
-        "groupby_grp_rolling_mean_lag2_window_size3":  [nan, nan, nan, 8.25, 11.0],
-        "groupby_grp_rolling_min_lag2_window_size3":   [nan, nan, nan, 1.0, 1.0],
-        "groupby_grp_rolling_max_lag2_window_size3":   [nan, nan, nan, 20.0, 30.0],
-        "groupby_grp_expanding_mean_lag2":             [nan, nan, 5.5, 8.25, 11.0],
-        "groupby_grp_expanding_min_lag2":              [nan, nan, 1.0, 1.0, 1.0],
-        "groupby_grp_expanding_max_lag2":              [nan, nan, 10.0, 20.0, 30.0],
-        "groupby_grp_exponentially_weighted_mean_lag2_alpha0.5": [nan, nan, 5.5, 8.25, 12.375],
+        "groupby_grp_rolling_mean_lag2_window_size3": [nan, nan, nan, 8.25, 11.0],
+        "groupby_grp_rolling_min_lag2_window_size3": [nan, nan, nan, 1.0, 1.0],
+        "groupby_grp_rolling_max_lag2_window_size3": [nan, nan, nan, 20.0, 30.0],
+        "groupby_grp_expanding_mean_lag2": [nan, nan, 5.5, 8.25, 11.0],
+        "groupby_grp_expanding_min_lag2": [nan, nan, 1.0, 1.0, 1.0],
+        "groupby_grp_expanding_max_lag2": [nan, nan, 10.0, 20.0, 30.0],
+        "groupby_grp_exponentially_weighted_mean_lag2_alpha0.5": [
+            nan,
+            nan,
+            5.5,
+            8.25,
+            12.375,
+        ],
     }
     for col, exp_pre in expected.items():
         np.testing.assert_allclose(
-            out[col]["preprocess"], exp_pre, atol=1e-5, equal_nan=True,
+            out[col]["preprocess"],
+            exp_pre,
+            atol=1e-5,
+            equal_nan=True,
             err_msg=f"preprocess mismatch for {col}",
         )
 
 
-@pytest.mark.parametrize("tfm_factory", [
-    lambda m: RollingMean(window_size=4, **m),
-    lambda m: RollingStd(window_size=4, **m),
-    lambda m: RollingMin(window_size=4, **m),
-    lambda m: RollingMax(window_size=4, **m),
-    lambda m: ExpandingMean(**m),
-    lambda m: ExpandingStd(**m),
-    lambda m: ExpandingMin(**m),
-    lambda m: ExpandingMax(**m),
-    lambda m: ExponentiallyWeightedMean(alpha=0.3, **m),
-], ids=[
-    "RollingMean", "RollingStd", "RollingMin", "RollingMax",
-    "ExpandingMean", "ExpandingStd", "ExpandingMin", "ExpandingMax", "EWM",
-])
+@pytest.mark.parametrize(
+    "tfm_factory",
+    [
+        lambda m: RollingMean(window_size=4, **m),
+        lambda m: RollingStd(window_size=4, **m),
+        lambda m: RollingMin(window_size=4, **m),
+        lambda m: RollingMax(window_size=4, **m),
+        lambda m: ExpandingMean(**m),
+        lambda m: ExpandingStd(**m),
+        lambda m: ExpandingMin(**m),
+        lambda m: ExpandingMax(**m),
+        lambda m: ExponentiallyWeightedMean(alpha=0.3, **m),
+    ],
+    ids=[
+        "RollingMean",
+        "RollingStd",
+        "RollingMin",
+        "RollingMax",
+        "ExpandingMean",
+        "ExpandingStd",
+        "ExpandingMin",
+        "ExpandingMax",
+        "EWM",
+    ],
+)
 @pytest.mark.parametrize("lag", _LAGS)
 def test_fast_vs_slow_equivalence(tfm_factory, lag):
     """Fast path (aggregate-based) matches slow path (row-level) at every lag.
@@ -1777,8 +2245,12 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
     tfm_g = tfm_factory({"global_": True})
     ts = TimeSeries(freq=1, lag_transforms={lag: [tfm_g]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["grp"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["grp"],
     )
     state = ts._pooled_states[("global", (), ())]
     col = tfm_g._get_name(lag)
@@ -1791,14 +2263,21 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
     state._ts_aggs = saved_aggs
 
     np.testing.assert_allclose(
-        fast[col], slow[col], atol=1e-10, equal_nan=True,
+        fast[col],
+        slow[col],
+        atol=1e-10,
+        equal_nan=True,
         err_msg=f"fit fast vs slow mismatch for {col}",
     )
 
     # --- preprocess path: global _compute_ts_level_from_aggs ---
     result_fast = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["grp"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["grp"],
     )
     fast_pre = result_fast[col].values
 
@@ -1807,14 +2286,20 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
         lag_transforms={lag: [tfm_factory({"global_": True})]},
     )
     ts_slow._fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=["grp"],
     )
     ts_slow._pooled_states[("global", (), ())]._ts_aggs = {}
     result_slow = ts_slow._transform(df=df, dropna=False)
     slow_pre = result_slow[col].values
     np.testing.assert_allclose(
-        fast_pre, slow_pre, atol=1e-10, equal_nan=True,
+        fast_pre,
+        slow_pre,
+        atol=1e-10,
+        equal_nan=True,
         err_msg=f"preprocess global fast vs slow for {col}",
     )
 
@@ -1822,8 +2307,12 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
     tfm_grp = tfm_factory({"groupby": ["grp"]})
     ts_grp = TimeSeries(freq=1, lag_transforms={lag: [tfm_grp]})
     result_grp = ts_grp.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["grp"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["grp"],
     )
     col_grp = tfm_grp._get_name(lag)
     fast_grp_pre = result_grp[col_grp].values
@@ -1833,7 +2322,10 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
         lag_transforms={lag: [tfm_factory({"groupby": ["grp"]})]},
     )
     ts_grp_slow._fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=["grp"],
     )
     for st in ts_grp_slow._pooled_states.values():
@@ -1842,15 +2334,22 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
     result_grp_slow = ts_grp_slow._transform(df=df, dropna=False)
     slow_grp_pre = result_grp_slow[col_grp].values
     np.testing.assert_allclose(
-        fast_grp_pre, slow_grp_pre, atol=1e-10, equal_nan=True,
+        fast_grp_pre,
+        slow_grp_pre,
+        atol=1e-10,
+        equal_nan=True,
         err_msg=f"preprocess groupby fast vs slow for {col_grp}",
     )
 
     # --- predict path: _compute_latest_from_aggs ---
     ts2 = TimeSeries(freq=1, lag_transforms={lag: [tfm_factory({"global_": True})]})
     ts2.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["grp"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["grp"],
     )
     ts2._predict_setup()
     features = ts2._update_features()
@@ -1859,20 +2358,31 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
     assert not np.all(np.isnan(pred_vals)), f"predict returned all NaN for {pred_col}"
 
 
-@pytest.mark.parametrize("tfm_factory", [
-    lambda m: RollingMean(window_size=4, **m),
-    lambda m: RollingStd(window_size=4, **m),
-    lambda m: RollingMin(window_size=4, **m),
-    lambda m: RollingMax(window_size=4, **m),
-    lambda m: ExpandingMean(**m),
-    lambda m: ExpandingStd(**m),
-    lambda m: ExpandingMin(**m),
-    lambda m: ExpandingMax(**m),
-    lambda m: ExponentiallyWeightedMean(alpha=0.3, **m),
-], ids=[
-    "RollingMean", "RollingStd", "RollingMin", "RollingMax",
-    "ExpandingMean", "ExpandingStd", "ExpandingMin", "ExpandingMax", "EWM",
-])
+@pytest.mark.parametrize(
+    "tfm_factory",
+    [
+        lambda m: RollingMean(window_size=4, **m),
+        lambda m: RollingStd(window_size=4, **m),
+        lambda m: RollingMin(window_size=4, **m),
+        lambda m: RollingMax(window_size=4, **m),
+        lambda m: ExpandingMean(**m),
+        lambda m: ExpandingStd(**m),
+        lambda m: ExpandingMin(**m),
+        lambda m: ExpandingMax(**m),
+        lambda m: ExponentiallyWeightedMean(alpha=0.3, **m),
+    ],
+    ids=[
+        "RollingMean",
+        "RollingStd",
+        "RollingMin",
+        "RollingMax",
+        "ExpandingMean",
+        "ExpandingStd",
+        "ExpandingMin",
+        "ExpandingMax",
+        "EWM",
+    ],
+)
 @pytest.mark.parametrize("lag", _LAGS)
 def test_fast_vs_slow_partition(tfm_factory, lag):
     """Fast path matches slow path for partition_by (global+partition and groupby+partition)."""
@@ -1885,14 +2395,20 @@ def test_fast_vs_slow_partition(tfm_factory, lag):
     y = rng.standard_normal(n_series * n_times)
     promo = np.tile(np.where(np.arange(n_times) % 3 == 0, "Y", "N"), n_series)
     grp = np.repeat(["A"] * (n_series // 2) + ["B"] * (n_series // 2), n_times)
-    df = pd.DataFrame({"unique_id": ids, "ds": times, "y": y, "promo": promo, "grp": grp})
+    df = pd.DataFrame(
+        {"unique_id": ids, "ds": times, "y": y, "promo": promo, "grp": grp}
+    )
 
     # --- global + partition_by: fit path ---
     tfm_gp = tfm_factory({"global_": True, "partition_by": ["promo"]})
     ts = TimeSeries(freq=1, lag_transforms={lag: [tfm_gp]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["promo"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["promo"],
     )
     key = ("nonlocal", (), ("promo",))
     state = ts._pooled_states[key]
@@ -1906,23 +2422,35 @@ def test_fast_vs_slow_partition(tfm_factory, lag):
     state._ts_aggs = saved_aggs
 
     np.testing.assert_allclose(
-        fast[col], slow[col], atol=1e-10, equal_nan=True,
+        fast[col],
+        slow[col],
+        atol=1e-10,
+        equal_nan=True,
         err_msg=f"fit global+partition fast vs slow for {col}",
     )
 
     # --- global + partition_by: preprocess path ---
     result_fast = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["promo"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["promo"],
     )
     fast_pre = result_fast[col].values
 
     ts_slow = TimeSeries(
         freq=1,
-        lag_transforms={lag: [tfm_factory({"global_": True, "partition_by": ["promo"]})]},
+        lag_transforms={
+            lag: [tfm_factory({"global_": True, "partition_by": ["promo"]})]
+        },
     )
     ts_slow._fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=["promo"],
     )
     for st in ts_slow._pooled_states.values():
@@ -1930,7 +2458,10 @@ def test_fast_vs_slow_partition(tfm_factory, lag):
         st._idsorted_to_bucket_pos = None
     slow_pre = ts_slow._transform(df=df, dropna=False)[col].values
     np.testing.assert_allclose(
-        fast_pre, slow_pre, atol=1e-10, equal_nan=True,
+        fast_pre,
+        slow_pre,
+        atol=1e-10,
+        equal_nan=True,
         err_msg=f"preprocess global+partition fast vs slow for {col}",
     )
 
@@ -1939,16 +2470,25 @@ def test_fast_vs_slow_partition(tfm_factory, lag):
     ts_grp = TimeSeries(freq=1, lag_transforms={lag: [tfm_grp]})
     col_grp = tfm_grp._get_name(lag)
     fast_grp = ts_grp.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["grp"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["grp"],
     )[col_grp].values
 
     ts_grp_slow = TimeSeries(
         freq=1,
-        lag_transforms={lag: [tfm_factory({"groupby": ["grp"], "partition_by": ["promo"]})]},
+        lag_transforms={
+            lag: [tfm_factory({"groupby": ["grp"], "partition_by": ["promo"]})]
+        },
     )
     ts_grp_slow._fit(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=["grp"],
     )
     for st in ts_grp_slow._pooled_states.values():
@@ -1956,7 +2496,10 @@ def test_fast_vs_slow_partition(tfm_factory, lag):
         st._idsorted_to_bucket_pos = None
     slow_grp = ts_grp_slow._transform(df=df, dropna=False)[col_grp].values
     np.testing.assert_allclose(
-        fast_grp, slow_grp, atol=1e-10, equal_nan=True,
+        fast_grp,
+        slow_grp,
+        atol=1e-10,
+        equal_nan=True,
         err_msg=f"preprocess groupby+partition fast vs slow for {col_grp}",
     )
 
@@ -1980,18 +2523,29 @@ def test_fast_vs_slow_local_partition_with_nan(engine, lag):
     # and (with min_samples=1) produces non-NaN values — otherwise the fast vs slow
     # comparison is vacuously all-NaN and would not catch a dropped-row join.
     promo = [None, None, None, None, None, 0.0, 0.0, 1.0, 1.0, 0.0] * n_series
-    df = _make_df(engine, {
-        "unique_id": ids.tolist(), "ds": times.tolist(),
-        "y": y.tolist(), "promo": promo,
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ids.tolist(),
+            "ds": times.tolist(),
+            "y": y.tolist(),
+            "promo": promo,
+        },
+    )
 
     tfm = RollingMean(window_size=2, min_samples=1, partition_by=["promo"])
     col = tfm._get_name(lag)
     ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
-    fast = np.asarray(ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
-    )[col])
+    fast = np.asarray(
+        ts.fit_transform(
+            df,
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=[],
+        )[col]
+    )
 
     ts_slow = TimeSeries(
         freq=1,
@@ -2000,7 +2554,11 @@ def test_fast_vs_slow_local_partition_with_nan(engine, lag):
         },
     )
     ts_slow._fit(
-        df, id_col="unique_id", time_col="ds", target_col="y", static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
     )
     for st in ts_slow._pooled_states.values():
         st._ts_aggs = {}
@@ -2008,7 +2566,10 @@ def test_fast_vs_slow_local_partition_with_nan(engine, lag):
     slow = np.asarray(ts_slow._transform(df=df, dropna=False)[col])
 
     np.testing.assert_allclose(
-        fast, slow, atol=1e-10, equal_nan=True,
+        fast,
+        slow,
+        atol=1e-10,
+        equal_nan=True,
         err_msg=f"local+partition NaN fast vs slow for {col}",
     )
     # the NaN-partition rows must receive values from the slow-path join, not be
@@ -2028,18 +2589,25 @@ def test_partition_predict_x_df_partition_column_has_nan(engine):
     times = np.tile(range(n_times), n_series)
     y = np.random.default_rng(3).standard_normal(n_series * n_times)
     promo = np.tile([0.0, np.nan, 1.0, np.nan, 0.0, 1.0, 0.0, np.nan], n_series)
-    df = _make_df(engine, {
-        "unique_id": ids.tolist(), "ds": times.tolist(),
-        "y": y.tolist(), "promo": promo.tolist(),
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ids.tolist(),
+            "ds": times.tolist(),
+            "y": y.tolist(),
+            "promo": promo.tolist(),
+        },
+    )
     fcst = MLForecast(
         models=[LinearRegression()],
         freq=1,
         lags=[1],
         lag_transforms={
-            1: [RollingMean(
-                window_size=2, min_samples=1, global_=True, partition_by=["promo"]
-            )]
+            1: [
+                RollingMean(
+                    window_size=2, min_samples=1, global_=True, partition_by=["promo"]
+                )
+            ]
         },
     )
     fcst.fit(df, static_features=[])
@@ -2052,10 +2620,14 @@ def test_partition_predict_x_df_partition_column_has_nan(engine):
     fut_ids = np.repeat([f"s{i}" for i in range(n_series)], h)
     fut_ds = np.tile([n_times, n_times + 1], n_series)
     fut_promo = np.full(n_series * h, np.nan)
-    X_df = _make_df(engine, {
-        "unique_id": fut_ids.tolist(), "ds": fut_ds.tolist(),
-        "promo": fut_promo.tolist(),
-    })
+    X_df = _make_df(
+        engine,
+        {
+            "unique_id": fut_ids.tolist(),
+            "ds": fut_ds.tolist(),
+            "promo": fut_promo.tolist(),
+        },
+    )
     preds = fcst.predict(h, X_df=X_df)
     pvals = np.asarray(preds["LinearRegression"])
     assert np.all(np.isfinite(pvals))  # no IndexError / dropped NaN-partition rows
@@ -2071,20 +2643,27 @@ def test_groupby_partition_null_scope_resolves_at_predict(engine):
     import narwhals as nw
 
     # discount is numeric with NaN on series b and c (they share the null scope).
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 6 + ["b"] * 6 + ["c"] * 6,
-        "ds": list(range(6)) * 3,
-        "y": [float(i) for i in range(18)],
-        "discount": [0.25] * 6 + [float("nan")] * 6 + [float("nan")] * 6,
-        "promo": [0, 1, 0, 1, 0, 1] * 3,
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 6 + ["b"] * 6 + ["c"] * 6,
+            "ds": list(range(6)) * 3,
+            "y": [float(i) for i in range(18)],
+            "discount": [0.25] * 6 + [float("nan")] * 6 + [float("nan")] * 6,
+            "promo": [0, 1, 0, 1, 0, 1] * 3,
+        },
+    )
     tfm = RollingMean(
         window_size=2, min_samples=1, groupby=["discount"], partition_by=["promo"]
     )
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["discount"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["discount"],
     )
     state = ts._pooled_states[("nonlocal", ("discount",), ("promo",))]
 
@@ -2093,7 +2672,8 @@ def test_groupby_partition_null_scope_resolves_at_predict(engine):
     bids = groups_nw.get_column("_bucket_id").to_numpy()
     discounts = groups_nw.get_column("discount").to_numpy()
     null_scope_bids = [
-        int(b) for b, d in zip(bids, discounts)
+        int(b)
+        for b, d in zip(bids, discounts)
         if d is None or (isinstance(d, float) and np.isnan(d))
     ]
     null_parents = {state._bucket_to_parent_id[b] for b in null_scope_bids}
@@ -2102,11 +2682,14 @@ def test_groupby_partition_null_scope_resolves_at_predict(engine):
 
     # predict-time context: null-discount series b takes an UNSEEN promo value (9),
     # forcing a brand-new bucket whose parent must be resolved from its scope.
-    ctx = _make_df(engine, {
-        "unique_id": ["a", "b", "c"],
-        "discount": [0.25, float("nan"), float("nan")],
-        "promo": [0, 9, 1],
-    })
+    ctx = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b", "c"],
+            "discount": [0.25, float("nan"), float("nan")],
+            "promo": [0, 9, 1],
+        },
+    )
     state.update_series_bucket_id(ctx, "unique_id")  # must not raise
 
     new_bid = int(state.series_bucket_id[1])  # series b, the (NaN, 9) combo
@@ -2124,17 +2707,25 @@ def test_fractional_float_partition_feature_parity_across_engines():
     y = np.random.default_rng(5).standard_normal(n_series * n_times)
     discount = [0.1, 0.1, 0.25, 0.5, 0.1, 0.25, 0.1, 0.5] * n_series
     rows = {
-        "unique_id": ids.tolist(), "ds": times.tolist(),
-        "y": y.tolist(), "discount": discount,
+        "unique_id": ids.tolist(),
+        "ds": times.tolist(),
+        "y": y.tolist(),
+        "discount": discount,
     }
     outs = []
     for engine in ["pandas", "polars"]:
-        tfm = RollingMean(window_size=2, min_samples=1, global_=True, partition_by=["discount"])
+        tfm = RollingMean(
+            window_size=2, min_samples=1, global_=True, partition_by=["discount"]
+        )
         col = tfm._get_name(1)
         ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
         res = ts.fit_transform(
-            _make_df(engine, rows), id_col="unique_id", time_col="ds",
-            target_col="y", dropna=False, static_features=[],
+            _make_df(engine, rows),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=[],
         )
         outs.append(np.asarray(res[col]))
     np.testing.assert_allclose(outs[0], outs[1], atol=1e-12, equal_nan=True)
@@ -2159,7 +2750,10 @@ def test_prediction_fast_path_partition(engine):
     tfm = RollingMean(window_size=3, global_=True, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
         static_features=[],
     )
     ts._predict_setup()
@@ -2175,22 +2769,46 @@ def test_partition_ewm_skips_missing_parent_ordinals():
     """EWM on a partition bucket with gapped parent ordinals [0,1,4,5]
     decays only across observed bucket timestamps, not across missing
     parent ordinals 2 and 3."""
-    df = pd.DataFrame({
-        "unique_id": ["a"] * 8 + ["b"] * 8,
-        "ds": list(range(8)) * 2,
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0,
-              12.0, 22.0, 32.0, 42.0, 52.0, 62.0, 72.0, 82.0],
-        "promo": [0, 0, 1, 1, 0, 0, 1, 1] * 2,
-    })
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a"] * 8 + ["b"] * 8,
+            "ds": list(range(8)) * 2,
+            "y": [
+                10.0,
+                20.0,
+                30.0,
+                40.0,
+                50.0,
+                60.0,
+                70.0,
+                80.0,
+                12.0,
+                22.0,
+                32.0,
+                42.0,
+                52.0,
+                62.0,
+                72.0,
+                82.0,
+            ],
+            "promo": [0, 0, 1, 1, 0, 0, 1, 1] * 2,
+        }
+    )
 
     alpha = 0.5
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        tfm = ExponentiallyWeightedMean(alpha=alpha, global_=True, partition_by=["promo"])
+        tfm = ExponentiallyWeightedMean(
+            alpha=alpha, global_=True, partition_by=["promo"]
+        )
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     col = tfm._get_name(1)
     vals = result[col].values
@@ -2216,33 +2834,61 @@ def test_partition_ewm_skips_missing_parent_ordinals():
         chunk = vals[start : start + 8]
         p = promo[start : start + 8]
         np.testing.assert_allclose(
-            chunk[p == 0], expected_p0, atol=1e-10, equal_nan=True,
+            chunk[p == 0],
+            expected_p0,
+            atol=1e-10,
+            equal_nan=True,
         )
         np.testing.assert_allclose(
-            chunk[p == 1], expected_p1, atol=1e-10, equal_nan=True,
+            chunk[p == 1],
+            expected_p1,
+            atol=1e-10,
+            equal_nan=True,
         )
 
 
 def test_global_partition_ewm_uses_timestamp_mean_once():
     """Multiple series in the same partition bucket at the same timestamp
     contribute their aggregate mean once to EWM, not once per row."""
-    df = pd.DataFrame({
-        "unique_id": ["a"] * 5 + ["b"] * 5 + ["c"] * 5,
-        "ds": list(range(5)) * 3,
-        "y": [10.0, 20.0, 30.0, 40.0, 50.0,
-              12.0, 22.0, 32.0, 42.0, 52.0,
-              14.0, 24.0, 34.0, 44.0, 54.0],
-        "promo": [0] * 15,
-    })
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a"] * 5 + ["b"] * 5 + ["c"] * 5,
+            "ds": list(range(5)) * 3,
+            "y": [
+                10.0,
+                20.0,
+                30.0,
+                40.0,
+                50.0,
+                12.0,
+                22.0,
+                32.0,
+                42.0,
+                52.0,
+                14.0,
+                24.0,
+                34.0,
+                44.0,
+                54.0,
+            ],
+            "promo": [0] * 15,
+        }
+    )
 
     alpha = 0.5
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        tfm = ExponentiallyWeightedMean(alpha=alpha, global_=True, partition_by=["promo"])
+        tfm = ExponentiallyWeightedMean(
+            alpha=alpha, global_=True, partition_by=["promo"]
+        )
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     result = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     col = tfm._get_name(1)
     vals = result[col].values
@@ -2262,7 +2908,10 @@ def test_global_partition_ewm_uses_timestamp_mean_once():
     # above only hold when each timestamp contributes its mean once.
     for i in range(3):
         np.testing.assert_allclose(
-            vals[i * 5 : (i + 1) * 5], expected, atol=1e-10, equal_nan=True,
+            vals[i * 5 : (i + 1) * 5],
+            expected,
+            atol=1e-10,
+            equal_nan=True,
         )
 
 
@@ -2323,10 +2972,12 @@ def test_add_bucket_id_collapses_missing(engine, key_kind):
 def test_polars_null_and_nan_collapse_to_one_bucket():
     # Engine-origin behavior the SQLite oracle can't reach: a polars float column
     # holding BOTH null and NaN must collapse them into a single missing bucket.
-    df = pl.DataFrame({
-        "g": [0.0, float("nan"), None, 1.0, float("nan"), None],
-        "y": list(range(6)),
-    })
+    df = pl.DataFrame(
+        {
+            "g": [0.0, float("nan"), None, 1.0, float("nan"), None],
+            "y": list(range(6)),
+        }
+    )
     merged, groups = add_bucket_id(df, ["g"])
     bids = _bids(merged)
     assert len({int(bids[1]), int(bids[2]), int(bids[4]), int(bids[5])}) == 1
@@ -2376,9 +3027,9 @@ def test_fractional_float_does_not_collide_with_int_bucket(engine):
         q = pd.DataFrame({"g": pd.Series([1.5, 1.0, 2.0], dtype="float64")})
     _, groups = add_bucket_id(fit, ["g"])
     res = lookup_bucket_ids(q, groups, ["g"])
-    assert np.isnan(res[0])      # 1.5 unmatched, not bucket 1
-    assert res[1] == 0           # 1.0 matches integer bucket for 1
-    assert res[2] == 1           # 2.0 matches integer bucket for 2
+    assert np.isnan(res[0])  # 1.5 unmatched, not bucket 1
+    assert res[1] == 0  # 1.0 matches integer bucket for 1
+    assert res[2] == 1  # 2.0 matches integer bucket for 2
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -2389,7 +3040,7 @@ def test_large_int_keys_stay_distinct(engine):
     # be carried on a float-typed column without precision loss, so this pins the
     # int-side encoding; the mixed int/float reconcile branch itself is covered by
     # test_lookup_mixed_int_float and test_fractional_float_does_not_collide_with_int_bucket.
-    a, b = 2 ** 53 + 1, 2 ** 53 + 2
+    a, b = 2**53 + 1, 2**53 + 2
     if engine == "polars":
         df = pl.DataFrame({"g": pl.Series([a, b, a], dtype=pl.Int64), "y": [1, 2, 3]})
     else:
@@ -2408,12 +3059,16 @@ def test_mixed_schema_reconcile_does_not_widen_int_side(engine):
     # and asserts the integer side is never widened to Float64: an integral float
     # lookup matches the integer bucket, while distinct large integer buckets
     # built from integer-dtype groups remain distinct (no precision collapse).
-    a, b = 2 ** 53 + 1, 2 ** 53 + 2
+    a, b = 2**53 + 1, 2**53 + 2
     if engine == "polars":
-        groups_src = pl.DataFrame({"g": pl.Series([a, b, 1], dtype=pl.Int64), "y": [1, 2, 3]})
+        groups_src = pl.DataFrame(
+            {"g": pl.Series([a, b, 1], dtype=pl.Int64), "y": [1, 2, 3]}
+        )
         q = pl.DataFrame({"g": pl.Series([1.0], dtype=pl.Float64)})
     else:
-        groups_src = pd.DataFrame({"g": pd.Series([a, b, 1], dtype="int64"), "y": [1, 2, 3]})
+        groups_src = pd.DataFrame(
+            {"g": pd.Series([a, b, 1], dtype="int64"), "y": [1, 2, 3]}
+        )
         q = pd.DataFrame({"g": pd.Series([1.0], dtype="float64")})
     _, groups = add_bucket_id(groups_src, ["g"])
     assert len(groups) == 3  # large ints not collapsed by any float widening
@@ -2436,7 +3091,9 @@ def test_fractional_float_keys_stay_distinct(engine):
     assert bids[5] == bids[2]  # 0.1 repeat
     assert bids[6] == bids[0]  # 1.0000000001 repeat
     # the five distinct floats occupy five distinct buckets (no str-cast collision)
-    assert len({int(bids[0]), int(bids[1]), int(bids[2]), int(bids[3]), int(bids[4])}) == 5
+    assert (
+        len({int(bids[0]), int(bids[1]), int(bids[2]), int(bids[3]), int(bids[4])}) == 5
+    )
     look = lookup_bucket_ids(df, groups, ["g"])
     np.testing.assert_array_equal(look.astype(np.int64), bids.astype(np.int64))
 
@@ -2458,11 +3115,13 @@ def test_extend_does_not_duplicate_existing_missing_bucket(engine):
 def test_one_missing_column_keeps_distinct_buckets():
     # Multi-column key: (X, None) and (X, "n") must be distinct buckets, while
     # two (X, None) rows collapse together.
-    df = pd.DataFrame({
-        "b": ["X", "X", "X", "Y"],
-        "r": ["n", None, None, "s"],
-        "y": [1, 2, 3, 4],
-    })
+    df = pd.DataFrame(
+        {
+            "b": ["X", "X", "X", "Y"],
+            "r": ["n", None, None, "s"],
+            "y": [1, 2, 3, 4],
+        }
+    )
     merged, groups = add_bucket_id(df, ["b", "r"])
     bids = _bids(merged)
     assert bids[1] == bids[2]  # both (X, None)
@@ -2475,12 +3134,15 @@ def test_groupby_null_key_fit_predict_update(engine):
     from sklearn.linear_model import LinearRegression
     from mlforecast.forecast import MLForecast
 
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 6 + ["b"] * 6 + ["c"] * 6,
-        "ds": list(range(6)) * 3,
-        "y": [float(i) for i in range(18)],
-        "brand": ["x"] * 6 + [None] * 6 + [None] * 6,
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 6 + ["b"] * 6 + ["c"] * 6,
+            "ds": list(range(6)) * 3,
+            "y": [float(i) for i in range(18)],
+            "brand": ["x"] * 6 + [None] * 6 + [None] * 6,
+        },
+    )
     fcst = MLForecast(
         models=[LinearRegression()],
         freq=1,
@@ -2492,12 +3154,15 @@ def test_groupby_null_key_fit_predict_update(engine):
     pvals = np.asarray(preds["LinearRegression"])
     assert np.all(np.isfinite(pvals))  # no IndexError / garbage bucket
     # update including the null-brand series must not crash
-    upd = _make_df(engine, {
-        "unique_id": ["a", "b", "c"],
-        "ds": [6, 6, 6],
-        "y": [6.0, 7.0, 8.0],
-        "brand": ["x", None, None],
-    })
+    upd = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b", "c"],
+            "ds": [6, 6, 6],
+            "y": [6.0, 7.0, 8.0],
+            "brand": ["x", None, None],
+        },
+    )
     fcst.update(upd)
 
 
@@ -2511,19 +3176,26 @@ def test_null_groupby_key_no_static_change_error(engine, kind):
         brand = ["x", "x", "x", None, None, None]
     else:
         brand = [1.0, 1.0, 1.0, float("nan"), float("nan"), float("nan")]
-    df = _make_df(engine, {
-        "unique_id": ["a"] * 3 + ["b"] * 3,
-        "ds": [0, 1, 2] * 2,
-        "y": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        "brand": brand,
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 3 + ["b"] * 3,
+            "ds": [0, 1, 2] * 2,
+            "y": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            "brand": brand,
+        },
+    )
     ts = TimeSeries(
         freq=1, lag_transforms={1: [RollingMean(window_size=2, groupby=["brand"])]}
     )
     # must not raise
     ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=["brand"],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
     )
 
 
@@ -2580,8 +3252,12 @@ def test_polars_shuffled_rows_feature_parity_with_pandas():
         col = tfm._get_name(1)
         ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
         res = ts.fit_transform(
-            _make_df(engine, rows), id_col="unique_id", time_col="ds",
-            target_col="y", dropna=False, static_features=[],
+            _make_df(engine, rows),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=[],
         )
         fit_outs.append(np.asarray(res[col], dtype=float))
         ts._predict_setup()
@@ -2614,8 +3290,12 @@ def test_polars_shuffled_rows_slow_path_parity_with_pandas():
         col = tfm._get_name(1)
         ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
         res = ts.fit_transform(
-            _make_df(engine, rows), id_col="unique_id", time_col="ds",
-            target_col="y", dropna=False, static_features=[],
+            _make_df(engine, rows),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=[],
         )
         outs.append(np.asarray(res[col], dtype=float))
     np.testing.assert_allclose(outs[0], outs[1], atol=1e-12, equal_nan=True)
@@ -2643,12 +3323,14 @@ def test_append_predictions_preserves_time_dtype(engine):
     freq = "1d" if engine == "polars" else "D"
     ts = TimeSeries(freq=freq, lag_transforms={1: tfms})
     ts.fit_transform(
-        _make_df(engine, rows), id_col="unique_id", time_col="ds",
-        target_col="y", dropna=False, static_features=[],
+        _make_df(engine, rows),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
-    dtypes_before = {
-        key: state.time.dtype for key, state in ts._pooled_states.items()
-    }
+    dtypes_before = {key: state.time.dtype for key, state in ts._pooled_states.items()}
     ts._predict_setup()
     for step in range(2):
         features = ts._update_features()
@@ -2663,8 +3345,9 @@ def test_append_predictions_preserves_time_dtype(engine):
             assert grid.dtype == state.time.dtype, (key, pid)
 
 
-def _diffed_range_mean_oracle(ids, times, diffs, promos, qid, qt, qpromo, scope,
-                              lag=1, window=2):
+def _diffed_range_mean_oracle(
+    ids, times, diffs, promos, qid, qt, qpromo, scope, lag=1, window=2
+):
     """Expected RANGE rolling mean over a differenced target.
 
     Fixtures use a contiguous integer calendar shared by all series, so parent
@@ -2696,14 +3379,20 @@ def test_target_transforms_with_pooled_preprocess(engine):
     times = np.tile(np.arange(n_times), n_series)
     y = rng.standard_normal(n_series * n_times).cumsum()
     promos = np.tile([0, 1], n_series * n_times // 2)
-    df = _make_df(engine, {
-        "unique_id": ids.tolist(), "ds": times.tolist(),
-        "y": y.tolist(), "promo": promos.tolist(),
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ids.tolist(),
+            "ds": times.tolist(),
+            "y": y.tolist(),
+            "promo": promos.tolist(),
+        },
+    )
     g_tfm = RollingMean(2, min_samples=1, global_=True)
     p_tfm = RollingMean(2, min_samples=1, partition_by=["promo"])
     fcst = MLForecast(
-        models=[LinearRegression()], freq=1,
+        models=[LinearRegression()],
+        freq=1,
         target_transforms=[Differences([1])],
         lag_transforms={1: [g_tfm, p_tfm]},
     )
@@ -2716,15 +3405,26 @@ def test_target_transforms_with_pooled_preprocess(engine):
     diffs = pd.Series(y).groupby(ids).diff().to_numpy()
     for scope, tfm in [("global", g_tfm), ("local", p_tfm)]:
         col = tfm._get_name(1)
-        expected = np.array([
-            _diffed_range_mean_oracle(
-                ids, times, diffs, promos, row.unique_id, row.ds,
-                row.promo, scope,
-            )
-            for row in prep.itertuples()
-        ])
+        expected = np.array(
+            [
+                _diffed_range_mean_oracle(
+                    ids,
+                    times,
+                    diffs,
+                    promos,
+                    row.unique_id,
+                    row.ds,
+                    row.promo,
+                    scope,
+                )
+                for row in prep.itertuples()
+            ]
+        )
         np.testing.assert_allclose(
-            prep[col].to_numpy(), expected, atol=1e-12, equal_nan=True,
+            prep[col].to_numpy(),
+            expected,
+            atol=1e-12,
+            equal_nan=True,
         )
 
     # the pooled states' target must be the differenced values
@@ -2750,46 +3450,63 @@ def test_target_transforms_with_pooled_predict(engine):
     n_times, slope = 12, 3.0
     ids = np.repeat(["a", "b"], n_times)
     times = np.tile(np.arange(n_times), 2)
-    y = np.concatenate([10.0 + slope * np.arange(n_times),
-                        100.0 + slope * np.arange(n_times)])
+    y = np.concatenate(
+        [10.0 + slope * np.arange(n_times), 100.0 + slope * np.arange(n_times)]
+    )
     promos = np.tile([0, 1], n_times)
-    df = _make_df(engine, {
-        "unique_id": ids.tolist(), "ds": times.tolist(),
-        "y": y.tolist(), "promo": promos.tolist(),
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ids.tolist(),
+            "ds": times.tolist(),
+            "y": y.tolist(),
+            "promo": promos.tolist(),
+        },
+    )
     fcst = MLForecast(
-        models=[LinearRegression()], freq=1,
+        models=[LinearRegression()],
+        freq=1,
         target_transforms=[Differences([1])],
-        lag_transforms={1: [
-            RollingMean(2, min_samples=1, global_=True),
-            RollingMean(2, min_samples=1, partition_by=["promo"]),
-        ]},
+        lag_transforms={
+            1: [
+                RollingMean(2, min_samples=1, global_=True),
+                RollingMean(2, min_samples=1, partition_by=["promo"]),
+            ]
+        },
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         fcst.fit(df, static_features=[], dropna=True)
         # promo parity matches the training pattern so each step's partition
         # window is non-empty
-        X_df = _make_df(engine, {
-            "unique_id": ["a", "a", "b", "b"],
-            "ds": [12, 13, 12, 13],
-            "promo": [0, 1, 0, 1],
-        })
+        X_df = _make_df(
+            engine,
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [12, 13, 12, 13],
+                "promo": [0, 1, 0, 1],
+            },
+        )
         preds = fcst.predict(h=2, X_df=X_df)
     if engine == "polars":
         preds = preds.to_pandas()
     preds = preds.sort_values(["unique_id", "ds"])
-    expected = np.array([
-        y[n_times - 1] + slope * np.array([1, 2]),
-        y[2 * n_times - 1] + slope * np.array([1, 2]),
-    ]).ravel()
+    expected = np.array(
+        [
+            y[n_times - 1] + slope * np.array([1, 2]),
+            y[2 * n_times - 1] + slope * np.array([1, 2]),
+        ]
+    ).ravel()
     np.testing.assert_allclose(
-        preds["LinearRegression"].to_numpy(), expected, rtol=1e-6,
+        preds["LinearRegression"].to_numpy(),
+        expected,
+        rtol=1e-6,
     )
 
 
-def _range_quantile_oracle(hist, qid, qt, qpromo, mode, p=0.5, lag=1, window=3,
-                           min_samples=1):
+def _range_quantile_oracle(
+    hist, qid, qt, qpromo, mode, p=0.5, lag=1, window=3, min_samples=1
+):
     """Expected RANGE rolling quantile per bucket. ``hist`` is a list of
     (id, t, y, promo) rows on a contiguous integer calendar (ordinals == t)."""
     lo, hi = qt - lag - window + 1, qt - lag
@@ -2797,8 +3514,7 @@ def _range_quantile_oracle(hist, qid, qt, qpromo, mode, p=0.5, lag=1, window=3,
         vals = [r[2] for r in hist if lo <= r[1] <= hi and r[3] == qpromo]
     else:  # local: bucket key is (id, promo)
         vals = [
-            r[2] for r in hist
-            if lo <= r[1] <= hi and r[0] == qid and r[3] == qpromo
+            r[2] for r in hist if lo <= r[1] <= hi and r[0] == qid and r[3] == qpromo
         ]
     vals = [v for v in vals if not np.isnan(v)]
     if len(vals) < max(min_samples, 1):
@@ -2820,28 +3536,41 @@ def test_slow_path_quantile_with_partition_by(engine, mode):
     times = np.tile(np.arange(n_times), n_series)
     y = rng.standard_normal(n_series * n_times)
     promos = np.tile([0, 1, 0, 0, 1, 1, 0, 1, 0, 1], n_series)
-    df = _make_df(engine, {
-        "unique_id": ids.tolist(), "ds": times.tolist(),
-        "y": y.tolist(), "promo": promos.tolist(),
-    })
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ids.tolist(),
+            "ds": times.tolist(),
+            "y": y.tolist(),
+            "promo": promos.tolist(),
+        },
+    )
     tfm = RollingQuantile(
-        0.5, 3, min_samples=1, global_=(mode == "global"),
+        0.5,
+        3,
+        min_samples=1,
+        global_=(mode == "global"),
         partition_by=["promo"],
     )
     col = tfm._get_name(1)
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     res = ts.fit_transform(
-        df, id_col="unique_id", time_col="ds", target_col="y",
-        dropna=False, static_features=[],
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
     )
     hist = list(zip(ids, times, y, promos))
-    expected_fit = np.array([
-        _range_quantile_oracle(hist, i, t, pr, mode)
-        for i, t, _, pr in hist
-    ])
+    expected_fit = np.array(
+        [_range_quantile_oracle(hist, i, t, pr, mode) for i, t, _, pr in hist]
+    )
     np.testing.assert_allclose(
-        np.asarray(res[col], dtype=float), expected_fit,
-        atol=1e-12, equal_nan=True,
+        np.asarray(res[col], dtype=float),
+        expected_fit,
+        atol=1e-12,
+        equal_nan=True,
     )
 
     # two recursive steps through the build_query_arrays slow predict path;
@@ -2849,24 +3578,39 @@ def test_slow_path_quantile_with_partition_by(engine, mode):
     # id/time columns dropped, so mimic that shape here
     uid_order = [f"s{i}" for i in range(n_series)]
     step_promos = {10: [0, 0, 1], 11: [1, 0, 1]}
-    X_df = _make_df(engine, {
-        "promo": [v for i in range(n_series)
-                  for v in (step_promos[10][i], step_promos[11][i])],
-    })
+    X_df = _make_df(
+        engine,
+        {
+            "promo": [
+                v
+                for i in range(n_series)
+                for v in (step_promos[10][i], step_promos[11][i])
+            ],
+        },
+    )
     ts._predict_setup()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for step, t_query in enumerate([10, 11]):
             new_x = ts._get_features_for_next_step(X_df)
             vals = np.asarray(new_x[col], dtype=float)
-            expected = np.array([
-                _range_quantile_oracle(
-                    hist, uid, t_query, step_promos[t_query][i], mode,
-                )
-                for i, uid in enumerate(uid_order)
-            ])
+            expected = np.array(
+                [
+                    _range_quantile_oracle(
+                        hist,
+                        uid,
+                        t_query,
+                        step_promos[t_query][i],
+                        mode,
+                    )
+                    for i, uid in enumerate(uid_order)
+                ]
+            )
             np.testing.assert_allclose(
-                vals, expected, atol=1e-12, equal_nan=True,
+                vals,
+                expected,
+                atol=1e-12,
+                equal_nan=True,
             )
             fake_preds = np.arange(n_series, dtype=float) + 10 * (step + 1)
             ts._update_y(fake_preds)
@@ -2874,3 +3618,122 @@ def test_slow_path_quantile_with_partition_by(engine, mode):
                 (uid, t_query, fake_preds[i], step_promos[t_query][i])
                 for i, uid in enumerate(uid_order)
             )
+
+
+# === min_samples default resolution ===
+# In local partition mode min_samples=None defaults to 1 (SQL RANGE semantics);
+# every other mode keeps the window_size default.
+
+from mlforecast.lag_transforms import (  # noqa: E402
+    SeasonalRollingMean,
+    _resolve_min_samples,
+)
+
+
+def test_min_samples_default_resolution():
+    assert _resolve_min_samples(RollingMean(7)) == 7
+    assert _resolve_min_samples(RollingMean(7, global_=True)) == 7
+    assert _resolve_min_samples(RollingMean(7, groupby=["brand"])) == 7
+    assert _resolve_min_samples(RollingMean(7, partition_by=["promo"])) == 1
+    assert (
+        _resolve_min_samples(RollingMean(7, global_=True, partition_by=["promo"])) == 7
+    )
+    assert (
+        _resolve_min_samples(RollingMean(7, groupby=["brand"], partition_by=["promo"]))
+        == 7
+    )
+    # explicit values are never overridden
+    assert (
+        _resolve_min_samples(RollingMean(7, min_samples=3, partition_by=["promo"])) == 3
+    )
+    assert (
+        _resolve_min_samples(
+            SeasonalRollingMean(season_length=7, window_size=4, partition_by=["promo"])
+        )
+        == 1
+    )
+    assert (
+        _resolve_min_samples(
+            SeasonalRollingMean(season_length=7, window_size=4, global_=True)
+        )
+        == 4
+    )
+
+
+def _fit_transform_values(engine, df, tfm):
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    out = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
+    )
+    if engine == "polars":
+        out = out.to_pandas()
+    return out[tfm._get_name(1)].to_numpy(dtype=float)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_partition_by_local_default_min_samples_is_one(engine):
+    """On a dense panel with interleaved promo days, a 7-step window almost
+    never holds 7 same-promo observations (the window spans calendar steps
+    while only same-promo rows count), so the window_size default would make
+    the feature ~100% NaN. Local partition mode defaults to 1 instead."""
+    n = 30
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * n,
+            "ds": list(range(1, n + 1)),
+            "y": [float(i) for i in range(1, n + 1)],
+            "promo": [0, 1] * (n // 2),
+        },
+    )
+    default_vals = _fit_transform_values(
+        engine, df, RollingMean(7, partition_by=["promo"])
+    )
+    explicit_one = _fit_transform_values(
+        engine, df, RollingMean(7, min_samples=1, partition_by=["promo"])
+    )
+    np.testing.assert_array_equal(default_vals, explicit_one)
+    # usable feature: only the empty-lookback rows at the start are NaN
+    assert np.isnan(default_vals).mean() < 0.2
+    # the local-mode default (window_size) would have produced all NaN here
+    old_default = _fit_transform_values(
+        engine, df, RollingMean(7, min_samples=7, partition_by=["promo"])
+    )
+    assert np.isnan(old_default).all()
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_partition_by_nonlocal_default_min_samples_unchanged(engine):
+    """global_ + partition_by keeps the window_size default (counts sum
+    across series in the (partition) bucket)."""
+    n = 12
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * n + ["b"] * n,
+            "ds": list(range(1, n + 1)) * 2,
+            "y": [float(i) for i in range(1, 2 * n + 1)],
+            "promo": [0, 1] * (n // 2) * 2,
+        },
+    )
+    default_vals = _fit_transform_values(
+        engine, df, RollingMean(4, global_=True, partition_by=["promo"])
+    )
+    explicit_ws = _fit_transform_values(
+        engine,
+        df,
+        RollingMean(4, min_samples=4, global_=True, partition_by=["promo"]),
+    )
+    explicit_one = _fit_transform_values(
+        engine,
+        df,
+        RollingMean(4, min_samples=1, global_=True, partition_by=["promo"]),
+    )
+    np.testing.assert_array_equal(default_vals, explicit_ws)
+    # the guard still bites on partially-filled windows, unlike min_samples=1
+    assert np.isnan(default_vals).sum() > np.isnan(explicit_one).sum()
