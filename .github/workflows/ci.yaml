@@ -67,11 +67,27 @@ jobs:
 
       - name: Run nbconvert
         run: |
+          run_nbconvert_with_retry() {
+            local nb="$1"
+            local max_attempts=3
+            local delay=10
+            local attempt=1
+            until jupyter nbconvert --to notebook --execute --inplace "$nb"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Failed to execute $nb after $attempt attempts"
+                return 1
+              fi
+              echo "Attempt $attempt failed for $nb, retrying in ${delay}s..."
+              attempt=$((attempt + 1))
+              sleep "$delay"
+            done
+          }
+
           find nbs/docs/ -name "*.ipynb" -print0 | while IFS= read -r -d '' nb; do
             if [[ "$(basename "$nb")" == "19_computing_at_scale_ray_distributed.ipynb" ]]; then
               echo "Skipping $nb..."
               continue
             fi
             echo "Running $nb..."
-            jupyter nbconvert --to notebook --execute --inplace "$nb"
+            run_nbconvert_with_retry "$nb"
           done
