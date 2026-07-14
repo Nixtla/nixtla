@@ -11,6 +11,7 @@ import pytest
 import utilsforecast.processing as ufp
 import xgboost as xgb
 from sklearn import set_config
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import LinearRegression
 from utilsforecast.feature_engineering import fourier, time_features
 from utilsforecast.processing import match_if_categorical
@@ -2638,3 +2639,46 @@ def test_predict_x_df_missing_horizon_features(horizon_features_data):
 
     with pytest.raises(ValueError, match="X_df is missing future values"):
         fcst.predict(h=H, X_df=future_missing)
+
+
+def test_forecast_fitted_values_mutation_isolation():
+    # the returned frame must not share buffers with the cached fitted
+    # values; in-place mutation by the caller must not corrupt later calls
+    series = generate_daily_series(2, min_length=50, max_length=50)
+    fcst = MLForecast(models=[LinearRegression()], freq="D", lags=[1])
+    fcst.fit(series, fitted=True)
+    res1 = fcst.forecast_fitted_values()
+    expected = res1.copy(deep=True)
+    # .loc writes into the existing buffers (unlike column assignment, which
+    # replaces them), so this catches buffer sharing with the cache
+    res1.loc[:, "LinearRegression"] = -1.0
+    res1.loc[:, "h"] = -5
+    res2 = fcst.forecast_fitted_values()
+    pd.testing.assert_frame_equal(res2, expected)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_predict_warns_on_null_exog(engine):
+    series = generate_daily_series(2, engine=engine)
+    if engine == "polars":
+        series = series.with_columns(pl.lit(1.0).alias("ex1"))
+        freq = "1d"
+    else:
+        series = series.assign(ex1=1.0)
+        freq = "D"
+    # NaN-tolerant model so predict survives past the warning
+    fcst = MLForecast(
+        models=[HistGradientBoostingRegressor(max_iter=5)],
+        freq=freq,
+        lags=[1],
+    )
+    fcst.fit(series, static_features=[])
+    future = fcst.make_future_dataframe(2)
+    if engine == "polars":
+        future = future.with_columns(
+            pl.Series("ex1", [1.0, None, 2.0, None], dtype=pl.Float64)
+        )
+    else:
+        future["ex1"] = [1.0, np.nan, 2.0, np.nan]
+    with pytest.warns(UserWarning, match="Found null values in ex1"):
+        fcst.predict(2, X_df=future)

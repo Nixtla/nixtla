@@ -45,6 +45,7 @@ from mlforecast.target_transforms import (
 )
 
 from .compat import CatBoostRegressor
+from .data_validation import _index_to_series
 from .grouped_array import GroupedArray
 from .lag_transforms import Lag, _BaseLagTransform
 from .pooled import (
@@ -235,8 +236,30 @@ def _static_feature_changes_over_time(start_series, end_series) -> bool:
     return bool(changed.fill_null(False).any())
 
 
+def _to_native_index(values, *, df):
+    """Wrap ids/dates into the backend-native container mlforecast exposes as
+    ``TimeSeries.uids`` / ``TimeSeries.last_dates``.
+
+    pandas -> ``pd.Index``, polars -> ``pl.Series``. Centralized here because these
+    attributes are observable API (tests rely on ``.tolist()`` and fancy indexing),
+    so their native type must be produced in exactly one place.
+    """
+    if isinstance(df, pd.DataFrame):
+        return pd.Index(values)
+    return pl_Series(values)
+
+
 class TimeSeries:
     """Utility class for storing and transforming time series data."""
+
+    # Per-predict state (set in ``_predict_setup``, used in the horizon loop).
+    # Declared here so mypy has a type regardless of method processing order.
+    # _uniform_dates defaults to False so the date-feature broadcast fast
+    # path stays off if the feature computation runs without a prior
+    # ``_predict_setup`` (the non-broadcast path is always correct).
+    _uniform_dates: bool = False
+    _feature_null_cols: List[str]
+    _xdf_null_cols: Optional[List[str]]
 
     def __init__(
         self,
@@ -390,10 +413,8 @@ class TimeSeries:
         """Check that all series end at the same timestamp when using pooled lag transforms."""
         if not self._get_pooled_tfms():
             return
-        if isinstance(self.last_dates, pd.Index):
-            aligned = self.last_dates.nunique() == 1
-        else:
-            aligned = self.last_dates.n_unique() == 1
+        last_dates = _index_to_series(self.last_dates)
+        aligned = nw.from_native(last_dates, series_only=True).n_unique() == 1
         if not aligned:
             raise ValueError(
                 "Pooled lag transforms require all series to end at the same timestamp "
@@ -518,12 +539,8 @@ class TimeSeries:
         if data.ndim == 2:
             data = data[:, 0]
         ga = GroupedArray(data, indptr)
-        if isinstance(df, pd.DataFrame):
-            self.uids = pd.Index(uids)
-            self.last_dates = pd.Index(times)
-        else:
-            self.uids = uids
-            self.last_dates = pl_Series(times)
+        self.uids = _to_native_index(uids, df=df)
+        self.last_dates = _to_native_index(times, df=df)
         self._check_aligned_ends()
         if self._sort_idxs is not None:
             self._restore_idxs: Optional[np.ndarray] = np.empty(
@@ -742,16 +759,13 @@ class TimeSeries:
         feature_cols = list(bucket_vals.keys())
         if not feature_cols:
             return
-        if isinstance(df, pd.DataFrame):
-            join_df = bucket_df[join_cols].copy()
-            for name, vals in bucket_vals.items():
-                join_df[name] = vals
-            left = df[join_cols]
-        else:
-            join_df = bucket_df.select(join_cols)
-            for name, vals in bucket_vals.items():
-                join_df = join_df.with_columns(pl.Series(name=name, values=vals))
-            left = df.select(join_cols)
+        nw_bucket = nw.from_native(bucket_df, eager_only=True)
+        backend = nw.get_native_namespace(nw_bucket)
+        join_df = nw_bucket.select(join_cols)
+        for name, vals in bucket_vals.items():
+            join_df = join_df.with_columns(nw.new_series(name, vals, backend=backend))
+        join_df = join_df.to_native()
+        left = nw.from_native(df, eager_only=True).select(join_cols).to_native()
         joined = nw.to_native(
             _order_preserving_left_join(
                 nw.from_native(left), nw.from_native(join_df), on=join_cols
@@ -772,6 +786,7 @@ class TimeSeries:
         if callable(feature):
             feat_name = feature.__name__
             feat_vals = feature(dates)
+            # callable-returned native types have no narwhals equivalent
             if isinstance(feat_vals, pd.DataFrame):
                 return {col: np.asarray(feat_vals[col]) for col in feat_vals.columns}
             if isinstance(feat_vals, (pd.Index, pd.Series)):
@@ -780,6 +795,7 @@ class TimeSeries:
 
         # regular string feature
         feat_name = feature
+        # DatetimeIndex date-attribute access has no narwhals equivalent
         if isinstance(dates, pd.DatetimeIndex):
             if feature in ("week", "weekofyear"):
                 dates = dates.isocalendar()
@@ -923,9 +939,9 @@ class TimeSeries:
                     "These series won't show up if you use `MLForecast.forecast_fitted_values()`.\n"
                     "You can set `dropna=False` or use transformations that require less samples to mitigate this"
                 )
-        elif isinstance(df, pd.DataFrame):
-            # we'll be assigning columns below, so we need to copy
-            df = df.copy(deep=False)
+        else:
+            # we'll be assigning columns below; copy_if_pandas is a no-op on polars (immutable)
+            df = ufp.copy_if_pandas(df, deep=False)
 
         # once we've computed the features and target we can slice the series
         update_samples = [
@@ -965,6 +981,7 @@ class TimeSeries:
         ]
         if date_features:
             unique_dates = df[self.time_col].unique()
+            # pandas positional-map fast path; narwhals rewrite would regress this hot path
             if isinstance(df, pd.DataFrame):
                 # all kinds of trickery to make this fast
                 unique_dates = pd.Index(unique_dates)
@@ -975,6 +992,7 @@ class TimeSeries:
                         unique_dates, feature
                     ).items():
                         df[feat_name] = feat_vals[restore_idxs]
+            # backend-specific date-feature fast path (pandas positional-map + polars expr build); kept for performance
             elif isinstance(df, pl_DataFrame):
                 exprs = []
                 nw_feats: Dict[str, Any] = {}
@@ -1209,7 +1227,17 @@ class TimeSeries:
             state.append_predictions(self.curr_dates, new_arr, len(new_arr))
 
     def _update_features(self) -> DataFrame:
-        """Compute the current values of all the features using the latest values of the time series."""
+        """Compute the current values of all the features using the latest values of the time series.
+
+        Expects the per-predict state from ``_predict_setup`` (``curr_dates``,
+        ``static_features_``, pooled states); ``_uniform_dates`` safely
+        defaults to False if setup hasn't run.
+        """
+        features_df = self._compute_features_df()
+        return ufp.horizontal_concat([self.static_features_, features_df])
+
+    def _compute_features_df(self) -> DataFrame:
+        """Advance ``curr_dates`` one step and compute the features frame (without statics)."""
         self.curr_dates: Union[pd.Index, pl_Series] = ufp.offset_times(
             self.curr_dates, self.freq, 1
         )
@@ -1268,34 +1296,87 @@ class TimeSeries:
                             lookup[bid] = val
                         features[name] = lookup[state.series_bucket_id]
 
+        if self._uniform_dates and self.date_features:
+            # all series are on the same timestamp, so date features are
+            # constant across series: compute them on a single date and
+            # broadcast instead of recomputing on n_series identical dates.
+            # restricted to non-callables, which are guaranteed elementwise
+            broadcast_idx = np.zeros(len(self.uids), dtype=np.int64)
         for feature in self.date_features:
-            for feat_name, feat_vals in self._compute_date_feature(
-                self.curr_dates, feature
-            ).items():
-                features[feat_name] = feat_vals
+            if self._uniform_dates and not callable(feature):
+                for feat_name, feat_vals in self._compute_date_feature(
+                    self.curr_dates[:1], feature
+                ).items():
+                    features[feat_name] = feat_vals[broadcast_idx]
+            else:
+                for feat_name, feat_vals in self._compute_date_feature(
+                    self.curr_dates, feature
+                ).items():
+                    features[feat_name] = feat_vals
 
+        # native-container boundary — uids/df constructor selected per backend
         if isinstance(self.last_dates, pl_Series):
             df_constructor = pl_DataFrame
         else:
             df_constructor = pd.DataFrame
-        features_df = df_constructor(features)[self.features]
-        return ufp.horizontal_concat([self.static_features_, features_df])
+        self._feature_null_cols = self._null_cols_in_feature_values(
+            features, nan_is_null=df_constructor is pd.DataFrame
+        )
+        features_df = df_constructor(features)
+        if list(features_df.columns) != self.features:
+            features_df = features_df[self.features]
+        return features_df
+
+    def _null_cols_in_feature_values(
+        self, features: Dict[str, Any], nan_is_null: bool
+    ) -> List[str]:
+        """Names of computed features containing nulls, in ``self.features`` order.
+
+        Runs once per horizon step, so it checks the raw feature values
+        (numpy arrays or native series) before the frame is assembled instead
+        of scanning the assembled frame, keeping the per-step null diagnostic
+        vectorized. NaN counts as null only when ``nan_is_null`` (the pandas
+        backend), matching each backend's null semantics.
+        """
+        null_names = set()
+        for name, vals in features.items():
+            if isinstance(vals, np.ndarray):
+                kind = vals.dtype.kind
+                if kind == "f":
+                    has_null = nan_is_null and bool(np.isnan(vals).any())
+                elif kind in "Mm":
+                    has_null = bool(np.isnat(vals).any())
+                elif kind == "O":
+                    has_null = bool(pd.isnull(vals).any())
+                else:
+                    # int/uint/bool arrays can't hold nulls
+                    has_null = False
+            else:
+                try:
+                    has_null = bool(
+                        nw.from_native(vals, series_only=True).is_null().any()
+                    )
+                except TypeError:
+                    has_null = bool(pd.isnull(np.asarray(vals)).any())
+            if has_null:
+                null_names.add(name)
+        return [c for c in self.features if c in null_names]
 
     def _get_raw_predictions(self) -> np.ndarray:
         return np.array(self.y_pred).ravel("F")
 
     def _get_future_ids(self, h: int):
+        # native-container boundary — uids/df constructor selected per backend
         if isinstance(self.uids, pl_Series):
-            uids = pl.concat([self.uids for _ in range(h)]).sort()
-        else:
-            uids = pd.Series(
-                np.repeat(self.uids, h), name=self.id_col, dtype=self.uids.dtype
-            )
-        return uids
+            idxs = np.repeat(np.arange(len(self.uids)), h)
+            return self.uids.gather(idxs).sort()
+        repeated = np.repeat(np.asarray(self.uids), h)
+        return pd.Series(repeated, name=self.id_col, dtype=self.uids.dtype)
 
     def _get_predictions(self) -> DataFrame:
         """Get all the predicted values with their corresponding ids and datestamps."""
         h = len(self.y_pred)
+        # native-container boundary — uids/df constructor selected per backend
         if isinstance(self.uids, pl_Series):
             df_constructor = pl_DataFrame
         else:
@@ -1368,21 +1449,43 @@ class TimeSeries:
         X_row = None
         if X_df is not None:
             X_row = self._update_partition_assignments(X_df)
-        new_x = self._update_features()
+        # same frame _update_features builds, but with the statics trimmed to
+        # model features (_statics_keep) so columns dropped by the
+        # features_order_ selection below aren't carried through every step
+        features_df = self._compute_features_df()
+        new_x = ufp.horizontal_concat([self._statics_keep, features_df])
+        # statics were scanned in _predict_setup and computed features while
+        # building them in _update_features; assembled here in new_x column
+        # order (statics, features, X_row) so the warning matches a full scan
+        cols_with_nulls = self._static_null_cols + self._feature_null_cols
         if X_df is not None:
             if X_row is None:
                 X_row = self._current_step_rows(X_df)
+            if self._xdf_null_cols is None:
+                # X_df is fixed for the whole predict; scan it once so the
+                # common no-nulls case skips the per-step check entirely
+                xdf_nw = nw.from_native(X_df, eager_only=True)
+                if xdf_nw.columns:
+                    xdf_null_counts = xdf_nw.null_count().row(0)
+                    self._xdf_null_cols = [
+                        c for c, n in zip(xdf_nw.columns, xdf_null_counts) if n
+                    ]
+                else:
+                    self._xdf_null_cols = []
+            if self._xdf_null_cols:
+                row_nw = nw.from_native(X_row, eager_only=True).select(
+                    self._xdf_null_cols
+                )
+                row_null_counts = row_nw.null_count().row(0)
+                cols_with_nulls += [
+                    c for c, n in zip(self._xdf_null_cols, row_null_counts) if n
+                ]
             new_x = ufp.horizontal_concat([new_x, X_row])
-        if isinstance(new_x, pd.DataFrame):
-            nulls = new_x.isnull().any()
-            cols_with_nulls = nulls[nulls].index.tolist()
-        else:
-            nulls = new_x.select(pl.all().is_null().any())
-            cols_with_nulls = [k for k, v in nulls.to_dicts()[0].items() if v]
         if cols_with_nulls:
             warnings.warn(f"Found null values in {', '.join(cols_with_nulls)}.")
         self._h += 1
-        new_x = new_x[self.features_order_]
+        if list(new_x.columns) != self.features_order_:
+            new_x = new_x[self.features_order_]
         if self.as_numpy:
             new_x = ufp.to_numpy(new_x)
         return new_x
@@ -1406,6 +1509,7 @@ class TimeSeries:
 
     def _predict_setup(self) -> None:
         # TODO: move to utils
+        # native-container boundary — clone/copy method selected per backend
         if isinstance(self.last_dates, pl_Series):
             self.curr_dates = self.last_dates.clone()
         else:
@@ -1413,6 +1517,42 @@ class TimeSeries:
         self.test_dates: List[Union[pd.Index, pl_Series]] = []
         self.y_pred = []
         self._h = 0
+        # Null-diagnostic state for _get_features_for_next_step. Statics are
+        # fixed for the whole predict, so scan them once here (boundary)
+        # instead of once per horizon step (hot loop).
+        self._feature_null_cols = []
+        self._xdf_null_cols = None
+        # when all series end at the same timestamp, per-step date features
+        # are constant across series and can be computed on a single date
+        last_dates = _index_to_series(self.last_dates)
+        self._uniform_dates = bool(
+            nw.from_native(last_dates, series_only=True).n_unique() == 1
+        )
+        # _predict_setup runs once per model; the statics-derived state below
+        # is fixed for the whole predict, so reuse it across models
+        # (TimeSeries.predict clears _static_null_src per call)
+        if getattr(self, "_static_null_src", None) is self.static_features_:
+            return
+        self._static_null_src = self.static_features_
+        self._static_null_cols: List[str] = []
+        statics_nw = nw.from_native(self.static_features_, eager_only=True)
+        if statics_nw.columns:
+            static_null_counts = statics_nw.null_count().row(0)
+            self._static_null_cols = [
+                c for c, n in zip(statics_nw.columns, static_null_counts) if n
+            ]
+        # cache the statics restricted to actual model features (usually all
+        # but the id column, which can itself be a feature when the user lists
+        # it in static_features) so the per-step feature assembly doesn't
+        # carry columns that the features_order_ selection drops at the end.
+        # when no static column is a feature keep the full frame: it provides
+        # the row count of new_x (e.g. no computed features at all)
+        feature_set = set(self.features_order_)
+        static_cols = [c for c in statics_nw.columns if c in feature_set]
+        if static_cols and static_cols != statics_nw.columns:
+            self._statics_keep = self.static_features_[static_cols]
+        else:
+            self._statics_keep = self.static_features_
 
     def _predict_recursive(
         self,
@@ -1431,6 +1571,7 @@ class TimeSeries:
                     if before_predict_callback is not None:
                         new_x = before_predict_callback(new_x)
                     model_x = new_x
+                    # sklearn models consume pandas/numpy; native conversion at the model boundary
                     if isinstance(model, CatBoostRegressor) and isinstance(
                         new_x, pl_DataFrame
                     ):
@@ -1499,6 +1640,7 @@ class TimeSeries:
                     ufp.offset_times(self.curr_dates, self.freq, h + 1)
                     for h in horizons_to_predict
                 ]
+                # backend-specific date-matrix build at prediction assembly
                 # Stack: each row is a series, each col is a horizon
                 dates_matrix = pl.DataFrame(dates_per_horizon).transpose()
                 # Flatten row by row: [s0_h0, s0_h1, ..., s1_h0, s1_h1, ...]
@@ -1568,6 +1710,7 @@ class TimeSeries:
                             )
                             model_x = new_x[h_cols]
                     horizon_model = model[h]
+                    # sklearn models consume pandas/numpy; native conversion at the model boundary
                     if isinstance(horizon_model, CatBoostRegressor) and isinstance(
                         model_x, pl_DataFrame
                     ):
@@ -1662,6 +1805,8 @@ class TimeSeries:
                     f"{sorted(required_future_cols)}."
                 )
         with self._maybe_subset(idxs):
+            # invalidate the per-predict statics cache in _predict_setup
+            self._static_null_src = None
             if X_df is not None:
                 if self.id_col not in X_df or self.time_col not in X_df:
                     raise ValueError(
@@ -1788,9 +1933,7 @@ class TimeSeries:
             validate_new_data: If True, validate continuity, start dates, and frequency.
         """
         validate_format(df, self.id_col, self.time_col, self.target_col)
-        uids = self.uids
-        if isinstance(uids, pd.Index):
-            uids = pd.Series(uids)
+        uids = _index_to_series(self.uids)
         uids, new_ids = ufp.match_if_categorical(uids, df[self.id_col])
         df = ufp.copy_if_pandas(df, deep=False)
         df = ufp.assign_columns(df, self.id_col, new_ids)
@@ -1799,26 +1942,24 @@ class TimeSeries:
         values = values.astype(self.ga.data.dtype, copy=False)
         self._check_aligned_ends()
         if self._pooled_states:
-            if isinstance(df, pd.DataFrame):
-                expected_ids = pd.Index(uids).union(pd.Index(new_ids))
-                expected_count = len(expected_ids)
-                counts = df.groupby(self.time_col, observed=True)[self.id_col].nunique()
-                bad_times = counts[counts != expected_count]
-                if not bad_times.empty:
-                    raise ValueError(
-                        "Pooled lag transforms require updates to include all series for each timestamp."
-                    )
-            else:
-                expected_ids = pl.concat([pl.Series(uids), pl.Series(new_ids)]).unique()
-                expected_count = expected_ids.len()
-                counts = df.group_by(self.time_col).agg(
-                    pl.col(self.id_col).n_unique().alias("_n_ids")
+            uids_nw = nw.from_native(_index_to_series(uids), series_only=True).alias(
+                "_uid"
+            )
+            new_ids_nw = nw.from_native(
+                _index_to_series(new_ids), series_only=True
+            ).alias("_uid")
+            expected_count = nw.concat(
+                [uids_nw.to_frame(), new_ids_nw.to_frame()], how="vertical"
+            )["_uid"].n_unique()
+            counts = (
+                nw.from_native(df, eager_only=True)
+                .group_by(self.time_col)
+                .agg(nw.col(self.id_col).n_unique().alias("_n_ids"))
+            )
+            if counts.filter(nw.col("_n_ids") != expected_count).shape[0] > 0:
+                raise ValueError(
+                    "Pooled lag transforms require updates to include all series for each timestamp."
                 )
-                bad_times = counts.filter(pl.col("_n_ids") != expected_count)
-                if bad_times.height:
-                    raise ValueError(
-                        "Pooled lag transforms require updates to include all series for each timestamp."
-                    )
         if validate_new_data:
             self._validate_new_df(df=df)
         id_counts = ufp.counts_by_id(df, self.id_col)
@@ -1838,9 +1979,8 @@ class TimeSeries:
         last_dates = ufp.sort(last_dates, by=self.id_col)
         self.last_dates = ufp.cast(last_dates[self.time_col], self.last_dates.dtype)
         self.uids = ufp.sort(sizes[self.id_col])
-        if isinstance(df, pd.DataFrame):
-            self.uids = pd.Index(self.uids)
-            self.last_dates = pd.Index(self.last_dates)
+        self.uids = _to_native_index(self.uids, df=df)
+        self.last_dates = _to_native_index(self.last_dates, df=df)
         if new_groups.any():
             if self.target_transforms is not None:
                 raise ValueError("Can not update target_transforms with new series.")

@@ -5,12 +5,12 @@ import copy
 import warnings
 from typing import Any, Callable, Dict, Optional, Union, List, Tuple
 
+import narwhals as nw
 import numpy as np
-import pandas as pd
 import optuna
 import utilsforecast.processing as ufp
 from sklearn.base import BaseEstimator, clone
-from utilsforecast.compat import DataFrame, pl
+from utilsforecast.compat import DataFrame
 
 from . import MLForecast
 from .compat import CatBoostRegressor
@@ -35,32 +35,12 @@ def _get_categorical_static_features(
             UserWarning,
         )
     static_features = [feature for feature in static_features if feature in df.columns]
-    if isinstance(df, pd.DataFrame):
-        return [
-            feature
-            for feature in static_features
-            if (
-                isinstance(df[feature].dtype, pd.CategoricalDtype)
-                or pd.api.types.is_object_dtype(df[feature].dtype)
-                or pd.api.types.is_string_dtype(df[feature].dtype)
-            )
-        ]
-    if pl is not None and isinstance(df, pl.DataFrame):
-        categorical_dtypes = [pl.Categorical]
-        if hasattr(pl, "Enum"):
-            categorical_dtypes.append(pl.Enum)
-        if hasattr(pl, "String"):
-            categorical_dtypes.append(pl.String)
-        if hasattr(pl, "Utf8"):
-            categorical_dtypes.append(pl.Utf8)
-        schema = df.schema
-        return [
-            feature
-            for feature in static_features
-            if schema.get(feature) is not None
-            and isinstance(schema[feature], tuple(categorical_dtypes))
-        ]
-    return []
+    schema = nw.from_native(df, eager_only=True).schema
+    return [
+        feature
+        for feature in static_features
+        if schema[feature] in (nw.Categorical, nw.Enum, nw.String, nw.Object)
+    ]
 
 
 def mlforecast_objective(

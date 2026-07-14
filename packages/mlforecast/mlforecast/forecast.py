@@ -63,6 +63,21 @@ _get_conformal_method = get_conformal_method  # backward compat
 _get_transfer_method_spec = get_transfer_method_spec
 
 
+def _ensure_h_int64(res):
+    """Cast the ``h`` column to Int64, preserving the input backend.
+
+    Deep-copies the pandas result so callers can mutate it without writing
+    through to the cached ``fcst_fitted_values_`` (narwhals' ``with_columns``
+    shares column buffers on pandas without copy-on-write).
+    """
+    res = (
+        nw.from_native(res, eager_only=True)
+        .with_columns(nw.col("h").cast(nw.Int64))
+        .to_native()
+    )
+    return ufp.copy_if_pandas(res, deep=True)
+
+
 def _frozen_backtest(
     fcst: "MLForecast",
     new_df: DFType,
@@ -503,6 +518,7 @@ class MLForecast:
                     fit_kwargs["sample_weight"] = X[weight_col]
                     X = ufp.drop_columns(X, weight_col)
             if isinstance(model, CatBoostRegressor):
+                # CatBoost consumes pandas, not polars; convert at the model input boundary
                 if isinstance(X, pl_DataFrame):
                     X = X.to_pandas()
                 sample_weight = fit_kwargs.get("sample_weight")
@@ -852,12 +868,14 @@ class MLForecast:
                 )
             train_df = self._fitted_train_df_
 
+        # pandas-only algorithm; converts to pandas at its boundary
         if isinstance(train_df, pd.DataFrame):
             train_pd = train_df.copy()
         else:
             train_pd = train_df.to_pandas()
 
         one_step = self.fcst_fitted_values_
+        # pandas-only algorithm; converts to pandas at its boundary
         if isinstance(one_step, pd.DataFrame):
             one_step_pd = one_step[[self.ts.id_col, self.ts.time_col]].copy()
         else:
@@ -880,6 +898,7 @@ class MLForecast:
             exclude.add(self.ts.weight_col)
         dynamic = [c for c in train_pd.columns if c not in exclude]
         model_names = list(self.models_.keys())
+        # pandas-only algorithm; converts to pandas at its boundary
         if isinstance(self.ts.static_features_, pd.DataFrame):
             static_features_pd = self.ts.static_features_.copy(deep=True)
         else:
@@ -1214,12 +1233,7 @@ class MLForecast:
             res = self.fcst_fitted_values_
             if "h" not in res.columns:
                 res = ufp.assign_columns(res, "h", np.int64(h))
-            if isinstance(res, pd.DataFrame):
-                res = res.copy()
-                res["h"] = res["h"].astype(np.int64)
-            else:
-                res = res.with_columns(pl.col("h").cast(pl.Int64))
-            return res
+            return _ensure_h_int64(res)
 
         first_model = next(iter(self.models_.values()))
         is_direct = isinstance(first_model, dict)
@@ -1230,12 +1244,16 @@ class MLForecast:
                     "Direct fitted values are missing horizon information. "
                     "Please refit the model with the current version."
                 )
-            if isinstance(res, pd.DataFrame):
-                res = res[res["h"].eq(h)].reset_index(drop=True)
-                available = sorted(self.fcst_fitted_values_["h"].unique().tolist())
-            else:
-                res = res.filter(pl.col("h") == h)
-                available = sorted(self.fcst_fitted_values_["h"].unique().to_list())
+            res = ufp.drop_index_if_pandas(
+                nw.to_native(
+                    nw.from_native(res, eager_only=True).filter(nw.col("h") == h)
+                )
+            )
+            available = sorted(
+                nw.from_native(self.fcst_fitted_values_, eager_only=True)["h"]
+                .unique()
+                .to_list()
+            )
             if len(res) == 0:
                 raise ValueError(
                     f"No fitted values found for h={h}. Available horizons: {available}."
@@ -1260,17 +1278,14 @@ class MLForecast:
                 res_pd = self._compute_recursive_fitted_values_on_demand(
                     h, train_df=train_df
                 )
+                # convert the pandas-only recursive result back to the origin backend
                 if isinstance(self.fcst_fitted_values_, pd.DataFrame):
                     res = res_pd
                 else:
                     res = pl.from_pandas(res_pd)
         if "h" not in res.columns:
             res = ufp.assign_columns(res, "h", np.int64(h))
-        if isinstance(res, pd.DataFrame):
-            res = res.copy()
-            res["h"] = res["h"].astype(np.int64)
-        else:
-            res = res.with_columns(pl.col("h").cast(pl.Int64))
+        res = _ensure_h_int64(res)
         if level is not None:
             res = ufp.add_insample_levels(
                 res,
@@ -1541,10 +1556,11 @@ class MLForecast:
                     )
                     warnings.warn(warn_msg, UserWarning)
                 else:
-                    if isinstance(self._cs_df, pl_DataFrame):
-                        cs_ids = set(self._cs_df[self.ts.id_col].unique().to_list())
-                    else:
-                        cs_ids = set(self._cs_df[self.ts.id_col].unique().tolist())
+                    cs_ids = set(
+                        nw.from_native(self._cs_df, eager_only=True)[self.ts.id_col]
+                        .unique()
+                        .to_list()
+                    )
                     if ids is None:
                         active_ids = set(self.ts.uids)
                         if cs_ids != active_ids and new_df is None:

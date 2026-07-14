@@ -2364,3 +2364,123 @@ def test_non_jitted_tfms(series):
         ts.predict({"naive": NaiveModel()}, horizon=5, before_predict_callback=cbk)
     feats = cbk.get_features()
     assert_same_as_native(feats)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("equal_ends", [True, False])
+def test_predict_date_features_per_series(engine, equal_ends):
+    # uniform last dates take a broadcast fast path in _update_features;
+    # staggered last dates compute per-series. Both must yield the date
+    # feature of each series' own next timestamp at every step.
+    horizon = 3
+    series = generate_daily_series(
+        3, n_static_features=1, equal_ends=equal_ends, engine=engine
+    )
+    freq = "1d" if engine == "polars" else "D"
+    ts = TimeSeries(freq=freq, lags=[1], date_features=["day"])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    cbk = SaveFeatures()
+    ts.predict({"Naive": NaiveModel()}, horizon, before_predict_callback=cbk)
+    feats = cbk.get_features()
+    if engine == "polars":
+        expected = np.concatenate(
+            [
+                ts.last_dates.dt.offset_by(f"{k}d").dt.day().to_numpy()
+                for k in range(1, horizon + 1)
+            ]
+        )
+    else:
+        expected = np.concatenate(
+            [
+                np.asarray((ts.last_dates + pd.Timedelta(days=k)).day)
+                for k in range(1, horizon + 1)
+            ]
+        )
+    np.testing.assert_array_equal(np.asarray(feats["day"]), expected)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_predict_warns_on_null_statics(engine):
+    series = generate_daily_series(
+        2, n_static_features=1, static_as_categorical=False, engine=engine
+    )
+    if engine == "polars":
+        first_uid = series["unique_id"][0]
+        series = series.with_columns(
+            pl.when(pl.col("unique_id") == first_uid)
+            .then(None)
+            .otherwise(pl.col("static_0"))
+            .alias("static_0")
+        )
+        freq = "1d"
+    else:
+        first_uid = series["unique_id"].iloc[0]
+        series.loc[series["unique_id"] == first_uid, "static_0"] = np.nan
+        freq = "D"
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    with pytest.warns(UserWarning, match="Found null values in static_0"):
+        ts.predict({"Naive": NaiveModel()}, 2)
+
+
+def test_predict_warns_on_null_computed_features():
+    # a lag longer than every series produces NaN feature values during
+    # predict; pandas treats NaN as null so the diagnostic must fire
+    series = generate_daily_series(2, min_length=20, max_length=30)
+    ts = TimeSeries(freq="D", lags=[1, 50])
+    ts.fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y", dropna=False
+    )
+    with pytest.warns(UserWarning, match="Found null values in lag50"):
+        ts.predict({"Naive": NaiveModel()}, 1)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_update_validation_categorical_ids(engine):
+    series = generate_daily_series(2, engine=engine)
+    if engine == "polars":
+        series = series.with_columns(pl.col("unique_id").cast(pl.Categorical))
+        freq = "1d"
+    else:
+        series["unique_id"] = series["unique_id"].astype("category")
+        freq = "D"
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update = last_vals.with_columns(pl.col("ds").dt.offset_by("1d"))
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        update = last_vals.assign(ds=last_vals["ds"] + pd.Timedelta(days=1))
+    ts.update(update, validate_new_data=True)
+
+
+def test_update_validation_polars_ns_timestamps():
+    # nanosecond-precision timestamps are not representable as python
+    # datetimes; validation must not round-trip them through python objects.
+    # n is chosen so the update's timestamp (n ns = 1us) crosses a
+    # microsecond boundary: a us-truncating round-trip would then expect a
+    # start of 0us and reject the valid update
+    n = 1000
+    times = pl.Series("ds", np.arange(n), dtype=pl.Int64).cast(pl.Datetime("ns"))
+    series = pl.DataFrame(
+        {
+            "unique_id": ["a"] * n + ["b"] * n,
+            "ds": pl.concat([times, times]),
+            "y": np.arange(2 * n, dtype=np.float64),
+        }
+    )
+    ts = TimeSeries(freq="1ns", lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    next_time = pl.Series("ds", [n], dtype=pl.Int64).cast(pl.Datetime("ns"))
+    update = pl.DataFrame(
+        {
+            "unique_id": ["a", "b"],
+            "ds": pl.concat([next_time, next_time]),
+            "y": [1.0, 2.0],
+        }
+    )
+    ts.update(update, validate_new_data=True)

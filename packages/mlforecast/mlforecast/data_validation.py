@@ -11,8 +11,17 @@ from typing import Tuple, Union
 
 import narwhals as nw
 import pandas as pd
-from utilsforecast.compat import DFType, pl
+from utilsforecast.compat import DFType
 from utilsforecast.processing import offset_times
+
+
+def _index_to_series(x):
+    """Wrap a ``pd.Index`` into a ``pd.Series`` (pass anything else through).
+
+    ``pd.Index`` is not a valid narwhals input, so this normalizes
+    ``uids``/``last_dates`` before ``nw.from_native``.
+    """
+    return pd.Series(x) if isinstance(x, pd.Index) else x
 
 
 def validate_update_start_dates(
@@ -114,10 +123,9 @@ def validate_continuity(
         ]
     )
 
-    # offset_times accepts Union[int, np.ndarray] for n; convert pandas Series to numpy
+    # offset_times accepts a native numpy array (pandas) or a native Series (polars);
+    # `.to_native()` yields the right type per backend without an explicit branch
     n_steps = (stats["_n_unique"] - 1).to_native()
-    if isinstance(n_steps, pd.Series):
-        n_steps = n_steps.to_numpy()
 
     expected_max_native = offset_times(stats["_min"].to_native(), freq, n_steps)
     expected_max_nw = nw.from_native(expected_max_native, series_only=True).alias(
@@ -163,10 +171,13 @@ def validate_update_df(
     Raises:
         ValueError: If any series has an invalid start date or internal gaps/duplicates.
     """
-    if isinstance(df, pd.DataFrame):
-        last_dates_df = pd.DataFrame({id_col: uids, "_last": last_dates})
-    else:
-        last_dates_df = pl.DataFrame({id_col: uids, "_last": last_dates})
+    # build the frame from the native series so dtypes survive (categorical ids,
+    # nanosecond-precision timestamps); a python-list round-trip would lose both
+    uids_nw = nw.from_native(_index_to_series(uids), series_only=True).alias(id_col)
+    last_nw = nw.from_native(_index_to_series(last_dates), series_only=True).alias(
+        "_last"
+    )
+    last_dates_df = uids_nw.to_frame().with_columns(last_nw).to_native()
 
     has_issues, bad = validate_update_start_dates(
         df, id_col, time_col, last_dates_df, freq
