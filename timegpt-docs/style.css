@@ -1,46 +1,52 @@
-/* ─── Fonts ──────────────────────────────────────────────────────────────── */
+/* Fonts */
 
 @font-face {
   font-family: "NeueMontreal";
-  src: url("./fonts/PPNeueMontreal-Book.woff2") format("woff2");
+  src: url("/fonts/PPNeueMontreal-Book.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
 
 @font-face {
   font-family: "NeueMontreal";
-  src: url("./fonts/PPNeueMontreal-Medium.woff2") format("woff2");
+  src: url("/fonts/PPNeueMontreal-Medium.woff2") format("woff2");
   font-weight: 500;
   font-display: swap;
 }
 
 @font-face {
   font-family: "Supply";
-  src: url("./fonts/PPSupplyMono-Ultralight.woff2") format("woff2");
+  src: url("/fonts/PPSupplyMono-Ultralight.woff2") format("woff2");
   font-weight: 200;
   font-display: swap;
 }
 
 @font-face {
   font-family: "Supply";
-  src: url("./fonts/PPSupplyMono-Regular.woff2") format("woff2");
+  src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
 
-/* ─── Design tokens — light mode ─────────────────────────────────────────── */
+/* Tokens — light */
 
 :root {
   --background: #f6f4f0;
   --primary: #222121;
   --primary-foreground: #f6f4f0;
+
+  /* Website button parity */
+  --alt: #222121;
+  --hover-alt: #2e2b27;
+  --surface: #eae9e6;
+
   --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: #222121;
   --accent: #bfd1ff;
   --radius: 0rem;
 
-  /* Active Nav Item */
+  /* Active nav item */
   --active-nav-item: #d9d9d9;
 
   /* Card */
@@ -52,9 +58,10 @@
   --feedback-btn-bg: var(--secondary);
   --feedback-btn-color: var(--secondary-foreground);
 
-  /* Table */
-  --table-border: rgba(0, 0, 0, 0.1);
-  --table-header-bg: var(--background);
+  /* Table — blog parity */
+  --table-bg: #ffffff;
+  --table-header-bg: #e7e7e7;
+  --table-border: var(--border);
 
   /* Dropdown */
   --dropdown-bg: #ffffff;
@@ -65,18 +72,24 @@
   --button-height: 34px;
 }
 
-/* ─── Design tokens — dark mode ──────────────────────────────────────────── */
+/* Tokens — dark */
 
 html.dark {
   --background: #222121;
   --primary: #dedddd;
   --primary-foreground: #222121;
+
+  /* Website button parity */
+  --alt: #f6f4f0;
+  --hover-alt: #eae9e6;
+  --surface: #2e2b27;
+
   --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: rgba(212, 212, 216, 0.6);
   --accent: #9187e8;
 
-  /* Active Nav Item */
+  /* Active nav item */
   --active-nav-item: rgba(222, 221, 221, 0.1);
 
   /* Card */
@@ -88,9 +101,10 @@ html.dark {
   --feedback-btn-bg: rgba(255, 255, 255, 0.1);
   --feedback-btn-color: var(--primary);
 
-  /* Table */
-  --table-border: rgba(255, 255, 255, 0.1);
-  --table-header-bg: var(--background);
+  /* Table — blog parity */
+  --table-bg: #171614;
+  --table-header-bg: #201f1d;
+  --table-border: var(--border);
 
   /* Dropdown */
   --dropdown-bg: var(--secondary);
@@ -98,7 +112,7 @@ html.dark {
   --dropdown-border: var(--secondary);
 }
 
-/* ─── Base ───────────────────────────────────────────────────────────────── */
+/* Base */
 
 html,
 body {
@@ -167,7 +181,7 @@ p {
   }
 }
 
-/* ─── Navbar ─────────────────────────────────────────────────────────────── */
+/* Navbar */
 
 #navbar img,
 .nav-logo {
@@ -192,8 +206,23 @@ html.dark #navbar-transition {
   line-height: 92%;
 }
 
+/* "Book a meeting" — outline */
 #navbar nav li:not(#topbar-cta-button) a {
-  padding: 4px 8px !important;
+  height: var(--button-height) !important;
+  padding: 0 14px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  background: var(--background) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--primary) !important;
+  transition: background-color 0.2s ease !important;
+}
+
+#navbar nav li:not(#topbar-cta-button) a:hover {
+  background: var(--surface) !important;
+  color: var(--primary) !important;
 }
 
 #topbar-cta-button a {
@@ -201,18 +230,34 @@ html.dark #navbar-transition {
   height: var(--button-height) !important;
   display: inline-flex !important;
   align-items: center !important;
-  line-height: normal !important;
+  justify-content: center !important;
+  line-height: 1 !important;
 }
 
+/* "Get Started" — primary */
 #topbar-cta-button a span.absolute {
-  background: var(--primary) !important;
+  background: var(--alt) !important;
+  transition: background-color 0.2s ease !important;
 }
 
+#topbar-cta-button a:hover span.absolute {
+  background: var(--hover-alt) !important;
+}
+
+#topbar-cta-button a div,
 #topbar-cta-button a div span {
   background: transparent !important;
+  color: var(--primary-foreground) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
 }
 
-/* CTA button — secondary style */
+#topbar-cta-button svg {
+  color: var(--primary-foreground) !important;
+}
+
+/* CTA — secondary */
 a.font-semibold {
   background: var(--background);
   border: 1px solid var(--primary);
@@ -223,7 +268,7 @@ a.font-semibold {
   color: var(--primary);
 }
 
-/* CTA button — primary (dark) style */
+/* CTA — primary (dark) */
 a.font-semibold[class*="bg-primary"],
 a.font-semibold[class*="dark"],
 #hero a.font-semibold:first-child {
@@ -247,16 +292,7 @@ html.dark a.font-semibold svg {
   background: var(--primary);
 }
 
-html.dark #topbar-cta-button a span {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-html.dark #topbar-cta-button svg {
-  color: var(--primary-foreground);
-}
-
-/* ─── Navigation items ───────────────────────────────────────────────────── */
+/* Nav items */
 
 #navigation-items ul {
   display: flex;
@@ -309,28 +345,50 @@ html.dark #navigation-items a.nav-anchor:hover {
   background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
-/* ─── Sidebar ────────────────────────────────────────────────────────────── */
+/* Sidebar */
+
+/* Paint sidebar as canvas */
+div:has(> div > #navigation-items) {
+  background-color: var(--background) !important;
+}
 
 #sidebar-title {
   padding: 8px !important;
 }
 
-/* Active navigation item */
-.sidebar-group a[class*="bg-primary"] {
-  background-color: var(--active-nav-item) !important;
+/* Nav item states */
+#navigation-items .sidebar-group a,
+#navigation-items .sidebar-group button {
+  border-left: 2px solid transparent !important;
+  color: color-mix(in srgb, var(--primary) 60%, transparent) !important;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease !important;
+}
+
+/* Inactive icon = muted */
+#navigation-items .sidebar-group a svg {
+  background-color: color-mix(in srgb, var(--primary) 60%, transparent) !important;
+}
+
+/* Hover */
+#navigation-items .sidebar-group a:hover,
+#navigation-items .sidebar-group button:hover {
+  background-color: color-mix(in srgb, var(--primary) 8%, transparent) !important;
   color: var(--primary) !important;
 }
 
-.sidebar-group a[class*="bg-primary"] svg {
-  background-color: var(--primary) !important;
-}
-
-html.dark .sidebar-group a[class*="bg-primary"] {
-  background-color: var(--active-nav-item) !important;
+/* Active page indicator */
+#navigation-items .sidebar-group a[class*="bg-primary"] {
+  border-left-color: var(--primary) !important;
+  background-color: color-mix(in srgb, var(--primary) 8%, transparent) !important;
   color: var(--primary) !important;
 }
 
-html.dark .sidebar-group a[class*="bg-primary"] svg {
+/* Hover/active icons */
+#navigation-items .sidebar-group a:hover svg,
+#navigation-items .sidebar-group a[class*="bg-primary"] svg {
   background-color: var(--primary) !important;
 }
 
@@ -344,7 +402,7 @@ a.link {
   border: none !important;
 }
 
-/* ─── Code ───────────────────────────────────────────────────────────────── */
+/* Code */
 
 :not(pre) > code {
   --code-bg: #ececec;
@@ -361,9 +419,73 @@ pre code {
   color: unset !important;
 }
 
-/* ─── Table of contents ──────────────────────────────────────────────────── */
+/* Code blocks — blog style */
+.code-block {
+  --blog-code-bg: #171614;
+  --blog-code-border: rgba(246, 244, 240, 0.22);
+  --blog-code-text: #f4f1ea;
+  --blog-code-muted: rgba(244, 241, 234, 0.62);
+  /* Strip Mintlify chrome */
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
 
-/* ─── Content layout ─────────────────────────────────────────────────────── */
+/* Title header */
+.code-block [data-component-part="code-block-header"] {
+  min-height: 2.25rem;
+  padding: 0.375rem 0.625rem 0.375rem 1rem;
+  background-color: var(--blog-code-bg) !important;
+  border-bottom: 1px solid var(--blog-code-border) !important;
+  border-radius: 0 !important;
+}
+.code-block [data-component-part="code-block-header-filename"],
+.code-block [data-component-part="code-block-header-filename"] span {
+  color: var(--blog-code-muted) !important;
+}
+
+/* Dark surface, sharp corners */
+.code-block [data-component-part="code-block-root"],
+.code-block pre.shiki {
+  --shiki-dark-bg: var(--blog-code-bg) !important;
+  background-color: var(--blog-code-bg) !important;
+  color: var(--blog-code-text) !important;
+  border-radius: 0 !important;
+}
+
+/* Force dark tokens in light */
+html:not(.dark) .code-block .shiki,
+html:not(.dark) .code-block .shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+/* Bottom fade → dark surface */
+.code-block [data-fade-overlay] {
+  --fade-color-light: var(--blog-code-bg) !important;
+  --fade-color-dark: var(--blog-code-bg) !important;
+}
+
+/* Copy button */
+.code-block [data-testid="copy-code-button"] {
+  border: 1px solid var(--blog-code-border) !important;
+  border-radius: 0 !important;
+}
+.code-block [data-testid="copy-code-button"],
+.code-block [data-testid="copy-code-button"] svg {
+  color: var(--blog-code-muted) !important;
+}
+.code-block [data-testid="copy-code-button"]:hover,
+.code-block [data-testid="copy-code-button"]:hover svg {
+  color: var(--blog-code-text) !important;
+}
+.code-block [data-testid="copy-code-button"]:hover {
+  background-color: rgba(246, 244, 240, 0.08) !important;
+}
+
+/* TOC */
+
+/* Content layout */
 
 #content-area {
   display: flex;
@@ -412,7 +534,7 @@ details.accordion :not(summary) span[data-as="p"] {
   max-width: 420px;
 }
 
-/* Desktop (sm+): absolute layout — eyebrow row + context menu + full-width title */
+/* Desktop header layout */
 @media (min-width: 640px) {
   #header > div > .eyebrow {
     padding-right: 180px;
@@ -452,9 +574,9 @@ details.accordion :not(summary) span[data-as="p"] {
   font-weight: 600;
 }
 
-/* ─── Cards ──────────────────────────────────────────────────────────────── */
+/* Cards */
 
-/* Grid container: border collapse */
+/* Grid: border collapse */
 .card-group {
   gap: 0 !important;
   border-top: 1px solid var(--card-border);
@@ -494,6 +616,16 @@ html.dark div.card:hover {
   --tw-ring-color: transparent !important;
 }
 
+/* Linked-card hover border */
+@layer utilities {
+  div.card[role="link"]:hover,
+  a.card[href]:hover {
+    border-right-color: var(--primary) !important;
+    border-bottom-color: var(--primary) !important;
+    box-shadow: inset 1px 1px 0 0 var(--primary) !important;
+  }
+}
+
 html.dark a.card svg,
 html.dark div.card svg {
   background: var(--primary);
@@ -520,11 +652,11 @@ html.dark div.card svg {
   background-color: var(--primary) !important;
 }
 
-/* Inner wrapper */
-[data-component-part="card-content-container"] > .w-full {
+/* Title+desc wrapper; skip table */
+[data-component-part="card-content-container"] .w-full:not(table) {
   display: flex !important;
   flex-direction: column !important;
-  gap: 30px !important;
+  gap: 14px !important;
 }
 
 /* Title */
@@ -549,7 +681,7 @@ html.dark div.card svg {
   opacity: 0.7;
 }
 
-/* ─── Accordion ──────────────────────────────────────────────────────────── */
+/* Accordion */
 
 details.accordion,
 details.accordion summary {
@@ -564,51 +696,104 @@ html.dark details.accordion summary:hover {
   background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
-/* ─── Tables ─────────────────────────────────────────────────────────────── */
+/* Steps */
 
-.mdx-content table {
-  display: table;
-  width: 100%;
-  overflow-x: auto;
+/* Step badge: inverted tokens */
+[data-component-part="step-number"] > div {
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+/* Tables — blog parity */
+
+/* Wrapper = bordered surface */
+[data-table-wrapper] {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 1.5rem 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--table-border);
+  background-color: var(--table-bg);
+}
+
+[data-table-wrapper] div.table {
+  padding: 0 !important;
+}
+
+/* Transparent, collapse */
+[data-table-wrapper] table {
+  margin: 0 !important;
+  border: 0 !important;
+  border-collapse: collapse;
+  background-color: transparent !important;
   font-size: 0.875rem;
+  color: var(--primary);
 }
 
-.mdx-content table tr {
+/* Header bg on cells only */
+[data-table-wrapper] table thead,
+[data-table-wrapper] table tbody,
+[data-table-wrapper] table tr {
+  background-color: transparent !important;
+}
+
+[data-table-wrapper] table th,
+[data-table-wrapper] table td {
+  padding: 0.875rem 1rem;
+  border-right: 1px solid var(--table-border) !important;
   border-bottom: 1px solid var(--table-border) !important;
-}
-
-.mdx-content table th {
   text-align: left;
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
-  padding-right: 2rem;
-  background-color: var(--table-header-bg);
   vertical-align: middle;
-  white-space: nowrap;
-  font-size: 0.84375rem;
-  font-weight: 400;
-  text-transform: uppercase;
-  font-family: "Supply", monospace;
-  font-stretch: expanded;
-  line-height: 92%;
-  letter-spacing: -1.08px;
-  color: var(--primary);
-}
-
-.mdx-content table td {
-  padding-top: 1.5rem;
-  padding-bottom: 1.5rem;
-  padding-right: 2rem;
-  white-space: nowrap;
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   font-weight: 400;
   color: var(--primary);
+  background-color: transparent !important;
 }
 
-/* ─── Banner ─────────────────────────────────────────────────────────────── */
+[data-table-wrapper] table thead th,
+[data-table-wrapper] table th {
+  background-color: var(--table-header-bg) !important;
+  font-weight: 500;
+}
 
+/* Dividers between cells */
+[data-table-wrapper] table th:last-child,
+[data-table-wrapper] table td:last-child {
+  border-right: 0 !important;
+}
+
+[data-table-wrapper] table tbody tr:last-child td {
+  border-bottom: 0 !important;
+}
+
+/* First column centered */
+[data-table-wrapper] table th:first-child,
+[data-table-wrapper] table td:first-child {
+  text-align: center;
+}
+
+/* Frame */
+
+/* Strip <Frame> chrome */
+.frame {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.frame > div.absolute {
+  display: none !important;
+}
+
+/* Caption: no rounding */
+.frame [data-component-part="frame-caption"] {
+  border-radius: 0 !important;
+}
+
+/* Banner */
+
+/* Banner bg via docs.json */
 #banner {
-  background-color: var(--accent) !important;
   border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
   height: auto !important;
   max-height: none !important;
@@ -621,10 +806,12 @@ html.dark details.accordion summary:hover {
   }
 }
 
-#banner,
-#banner * {
-  color: var(--primary) !important;
-  background-color: var(--accent) !important;
+/* Banner text = --primary */
+@layer utilities {
+  #banner,
+  #banner * {
+    color: var(--primary) !important;
+  }
 }
 
 #banner a:hover {
@@ -653,7 +840,7 @@ html.dark details.accordion summary:hover {
   color: var(--primary) !important;
 }
 
-/* ─── Pagination ─────────────────────────────────────────────────────────── */
+/* Pagination */
 
 #pagination {
   font-family: "NeueMontreal", sans-serif !important;
@@ -700,7 +887,7 @@ html.dark details.accordion summary:hover {
   text-decoration: underline;
 }
 
-/* ─── Feedback toolbar ───────────────────────────────────────────────────── */
+/* Feedback toolbar */
 
 .feedback-toolbar p {
   color: var(--primary) !important;
@@ -736,7 +923,7 @@ html.dark details.accordion summary:hover {
   display: none !important;
 }
 
-/* ─── Page context buttons & dropdown ────────────────────────────────────── */
+/* Page context + dropdown */
 
 [role="menu"][data-orientation="vertical"] {
   background-color: var(--dropdown-bg) !important;
@@ -781,14 +968,14 @@ html.dark [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
   font-stretch: expanded !important;
 }
 
-/* ─── Tabs ───────────────────────────────────────────────────────────────── */
+/* Tabs */
 
 [data-component-part="tab-button"][data-active="true"] svg {
   color: var(--primary) !important;
   background-color: var(--primary) !important;
 }
 
-/* ─── Chat assistant ─────────────────────────────────────────────────────── */
+/* Chat assistant */
 
 #content-area > div:has(.chat-assistant-floating-input) {
   margin-top: -80px !important;
@@ -799,16 +986,17 @@ html.dark [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
   background-color: transparent !important;
 }
 
-/* ─── Utilities ──────────────────────────────────────────────────────────── */
+/* Utilities */
 
 a {
   border-radius: var(--radius) !important;
   border: 1px solid transparent;
 }
 
-.bg-gradient-to-b {
+.bg-gradient-to-b,
+.bg-linear-to-b {
   background-color: transparent;
-  background-image: none;
+  background-image: none !important;
 }
 
 .rounded-md,
@@ -819,4 +1007,32 @@ a {
 .rounded-2xl,
 .rounded-search {
   border-radius: calc(var(--radius) + 0.125rem) !important;
+}
+
+/* Film grain (nixtla.io noise) */
+
+:root {
+  --grain-opacity: 0.08;
+  --grain-size: 160px;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  /* png tile, matches nixtla.io */
+  background-image: url("/tex_noise.png");
+  background-repeat: repeat;
+  background-size: var(--grain-size);
+  filter: grayscale(1) contrast(1.5);
+  opacity: var(--grain-opacity);
+}
+
+/* Opt out for high contrast */
+@media (prefers-contrast: more) {
+  body::after {
+    display: none;
+  }
 }
