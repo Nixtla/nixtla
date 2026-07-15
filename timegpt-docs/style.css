@@ -1022,8 +1022,8 @@ body::after {
   inset: 0;
   z-index: 9999;
   pointer-events: none;
-  /* png tile, matches nixtla.io */
-  background-image: url("/tex_noise.png");
+  /* both roots: / and /docs */
+  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
   background-repeat: repeat;
   background-size: var(--grain-size);
   filter: grayscale(1) contrast(1.5);
