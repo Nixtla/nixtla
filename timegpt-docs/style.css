@@ -34,6 +34,14 @@
   --background: #f6f4f0;
   --primary: #222121;
   --primary-foreground: #f6f4f0;
+
+  /* Website button parity — the site's Button uses bg-alt/text-canvas for the
+     primary variant and --hover-alt on hover; --surface is its outline/ghost
+     hover. These flip per theme so button rules need no dark-mode override. */
+  --alt: #222121;
+  --hover-alt: #2e2b27;
+  --surface: #eae9e6;
+
   --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: #222121;
@@ -52,9 +60,10 @@
   --feedback-btn-bg: var(--secondary);
   --feedback-btn-color: var(--secondary-foreground);
 
-  /* Table */
-  --table-border: rgba(0, 0, 0, 0.1);
-  --table-header-bg: var(--background);
+  /* Table — website blog-table parity (elevated white surface) */
+  --table-bg: #ffffff;
+  --table-header-bg: #e7e7e7;
+  --table-border: var(--border);
 
   /* Dropdown */
   --dropdown-bg: #ffffff;
@@ -71,6 +80,12 @@ html.dark {
   --background: #222121;
   --primary: #dedddd;
   --primary-foreground: #222121;
+
+  /* Website button parity (see light-mode note) */
+  --alt: #f6f4f0;
+  --hover-alt: #eae9e6;
+  --surface: #2e2b27;
+
   --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: rgba(212, 212, 216, 0.6);
@@ -88,9 +103,10 @@ html.dark {
   --feedback-btn-bg: rgba(255, 255, 255, 0.1);
   --feedback-btn-color: var(--primary);
 
-  /* Table */
-  --table-border: rgba(255, 255, 255, 0.1);
-  --table-header-bg: var(--background);
+  /* Table — website blog-table parity (elevated near-black surface) */
+  --table-bg: #171614;
+  --table-header-bg: #201f1d;
+  --table-border: var(--border);
 
   /* Dropdown */
   --dropdown-bg: var(--secondary);
@@ -192,8 +208,25 @@ html.dark #navbar-transition {
   line-height: 92%;
 }
 
+/* "Book a meeting" nav link — website outline button: bg-canvas / text-ink,
+   1px --border, hover → --surface. Keeps the docs' Supply-mono nav typography;
+   only the color/bg/border/hover treatment is ported. */
 #navbar nav li:not(#topbar-cta-button) a {
-  padding: 4px 8px !important;
+  height: var(--button-height) !important;
+  padding: 0 14px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  background: var(--background) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--primary) !important;
+  transition: background-color 0.2s ease !important;
+}
+
+#navbar nav li:not(#topbar-cta-button) a:hover {
+  background: var(--surface) !important;
+  color: var(--primary) !important;
 }
 
 #topbar-cta-button a {
@@ -201,15 +234,33 @@ html.dark #navbar-transition {
   height: var(--button-height) !important;
   display: inline-flex !important;
   align-items: center !important;
-  line-height: normal !important;
+  justify-content: center !important;
+  line-height: 1 !important;
 }
 
+/* Primary CTA ("Get Started") — website primary button: bg-alt / text-canvas,
+   hover → --hover-alt. --alt and --primary-foreground flip per theme, so this
+   one block covers light AND dark (no html.dark override needed). */
 #topbar-cta-button a span.absolute {
-  background: var(--primary) !important;
+  background: var(--alt) !important;
+  transition: background-color 0.2s ease !important;
 }
 
+#topbar-cta-button a:hover span.absolute {
+  background: var(--hover-alt) !important;
+}
+
+#topbar-cta-button a div,
 #topbar-cta-button a div span {
   background: transparent !important;
+  color: var(--primary-foreground) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
+}
+
+#topbar-cta-button svg {
+  color: var(--primary-foreground) !important;
 }
 
 /* CTA button — secondary style */
@@ -245,15 +296,6 @@ html.dark a.font-semibold {
 
 html.dark a.font-semibold svg {
   background: var(--primary);
-}
-
-html.dark #topbar-cta-button a span {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-html.dark #topbar-cta-button svg {
-  color: var(--primary-foreground);
 }
 
 /* ─── Navigation items ───────────────────────────────────────────────────── */
@@ -311,26 +353,60 @@ html.dark #navigation-items a.nav-anchor:hover {
 
 /* ─── Sidebar ────────────────────────────────────────────────────────────── */
 
+/* Paint the sidebar with the canvas token so it reads as the same surface as
+   the page instead of Mintlify's default gray/white panel. The scroll
+   container has no stable id, so we reach it via its #navigation-items
+   descendant. */
+div:has(> div > #navigation-items) {
+  background-color: var(--background) !important;
+}
+
 #sidebar-title {
   padding: 8px !important;
 }
 
-/* Active navigation item */
-.sidebar-group a[class*="bg-primary"] {
-  background-color: var(--active-nav-item) !important;
+/* Sidebar nav item states, ported from the nixtla blog TOC — only the
+   inactive / hover / active color treatment; typography, spacing and icons
+   keep Mintlify's defaults. Token map: ink → --primary, ink-muted →
+   --primary @60%, surface → an adaptive --primary tint that reads correctly on
+   both the light and dark canvas. Every item carries a 2px transparent
+   left border so the active item can fill it in as an indicator without
+   shifting anything. */
+#navigation-items .sidebar-group a,
+#navigation-items .sidebar-group button {
+  border-left: 2px solid transparent !important;
+  color: color-mix(in srgb, var(--primary) 60%, transparent) !important;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease !important;
+}
+
+/* Inactive icon follows the muted text color (mask icons live on page links;
+   collapsible buttons only have a stroked chevron, which keeps currentColor). */
+#navigation-items .sidebar-group a svg {
+  background-color: color-mix(in srgb, var(--primary) 60%, transparent) !important;
+}
+
+/* Hover */
+#navigation-items .sidebar-group a:hover,
+#navigation-items .sidebar-group button:hover {
+  background-color: color-mix(in srgb, var(--primary) 8%, transparent) !important;
   color: var(--primary) !important;
 }
 
-.sidebar-group a[class*="bg-primary"] svg {
-  background-color: var(--primary) !important;
-}
-
-html.dark .sidebar-group a[class*="bg-primary"] {
-  background-color: var(--active-nav-item) !important;
+/* Active page (Mintlify tags it with bg-primary* utility classes). The
+   #navigation-items prefix keeps this above the base rule's transparent
+   border-left so the indicator actually shows. */
+#navigation-items .sidebar-group a[class*="bg-primary"] {
+  border-left-color: var(--primary) !important;
+  background-color: color-mix(in srgb, var(--primary) 8%, transparent) !important;
   color: var(--primary) !important;
 }
 
-html.dark .sidebar-group a[class*="bg-primary"] svg {
+/* Hover + active icons go full --primary */
+#navigation-items .sidebar-group a:hover svg,
+#navigation-items .sidebar-group a[class*="bg-primary"] svg {
   background-color: var(--primary) !important;
 }
 
@@ -359,6 +435,90 @@ html.dark :not(pre) > code {
 pre code {
   background-color: unset !important;
   color: unset !important;
+}
+
+/* Code blocks — match the nixtla website blog. Structured as "title + code":
+   the block's own title (e.g. ```python N-HiTS Deep Learning Forecast → the
+   header filename) is the label, separated from the code body by a single
+   divider line — NO border wrapping the whole element and NO rounded corners
+   (design system uses sharp corners). We do NOT inject the language; blocks
+   without a title simply have no header. Always dark in both themes: Mintlify
+   renders code with Shiki dual themes (github-light-default + dark-plus), so we
+   force the dark-plus token colors in light mode too and paint a dark surface
+   everywhere. Font stays Mintlify's existing mono stack — nothing new imported. */
+.code-block {
+  --blog-code-bg: #171614;
+  --blog-code-border: rgba(246, 244, 240, 0.22);
+  --blog-code-text: #f4f1ea;
+  --blog-code-muted: rgba(244, 241, 234, 0.62);
+  /* Kill the wrapping border, the rounded corners and the light padding-frame
+     (bg-gray-50 + p-0.5) Mintlify puts on titled blocks. */
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* Existing title header (only present when the fence has a title). Same
+   background as the code body — the single bottom-border divider line is what
+   separates the label from the code, not a background change. */
+.code-block [data-component-part="code-block-header"] {
+  min-height: 2.25rem;
+  padding: 0.375rem 0.625rem 0.375rem 1rem;
+  background-color: var(--blog-code-bg) !important;
+  border-bottom: 1px solid var(--blog-code-border) !important;
+  border-radius: 0 !important;
+}
+.code-block [data-component-part="code-block-header-filename"],
+.code-block [data-component-part="code-block-header-filename"] span {
+  color: var(--blog-code-muted) !important;
+}
+
+/* Dark surface + sharp corners for the body. Light mode: our background-color
+   wins over the inline background-color:#fff + bg-white. Dark mode: Mintlify
+   paints the surface with its own more-specific
+   `html.dark .code-block-background { background: var(--shiki-dark-bg) !important }`,
+   so rather than out-specifying it we redefine --shiki-dark-bg to our color and
+   let its own rule paint #171614 (!important beats the inline #0B0C0E). */
+.code-block [data-component-part="code-block-root"],
+.code-block pre.shiki {
+  --shiki-dark-bg: var(--blog-code-bg) !important;
+  background-color: var(--blog-code-bg) !important;
+  color: var(--blog-code-text) !important;
+  border-radius: 0 !important;
+}
+
+/* Force Shiki's dark-theme token colors in light mode (dark mode already uses
+   them). --shiki-dark is set inline on <pre> and each token span, so
+   var(--shiki-dark) resolves per token; !important beats the inline light
+   `color`. */
+html:not(.dark) .code-block .shiki,
+html:not(.dark) .code-block .shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+/* Tall-block bottom fade → fade to our dark surface instead of white. */
+.code-block [data-fade-overlay] {
+  --fade-color-light: var(--blog-code-bg) !important;
+  --fade-color-dark: var(--blog-code-bg) !important;
+}
+
+/* Copy button: square + bordered, cream palette (both the in-header copy on
+   titled blocks and the floating copy on untitled ones share this testid). */
+.code-block [data-testid="copy-code-button"] {
+  border: 1px solid var(--blog-code-border) !important;
+  border-radius: 0 !important;
+}
+.code-block [data-testid="copy-code-button"],
+.code-block [data-testid="copy-code-button"] svg {
+  color: var(--blog-code-muted) !important;
+}
+.code-block [data-testid="copy-code-button"]:hover,
+.code-block [data-testid="copy-code-button"]:hover svg {
+  color: var(--blog-code-text) !important;
+}
+.code-block [data-testid="copy-code-button"]:hover {
+  background-color: rgba(246, 244, 240, 0.08) !important;
 }
 
 /* ─── Table of contents ──────────────────────────────────────────────────── */
@@ -494,6 +654,30 @@ html.dark div.card:hover {
   --tw-ring-color: transparent !important;
 }
 
+/* Linked cards only ([role="link"], or an <a> that is itself the card): on
+   hover show the FULL border in the brand color — WITHOUT moving any content.
+   The collapsed card grid gives each card only a right+bottom border. Instead
+   of adding real top/left borders (which would grow the box and shift content
+   1px), we keep the border WIDTHS untouched and:
+     • recolor the existing right+bottom borders to --primary (color change
+       only → zero layout impact), and
+     • paint the top+left edges with an inset box-shadow (offset 1px 1px, so it
+       renders as 1px lines on the top and left inner edges) — box-shadow never
+       affects layout.
+   The result is a uniform 1px --primary border flush on all four sides with no
+   reflow. This lives in @layer utilities because Mintlify's hover:border-primary!
+   is a layered !important rule, and for !important a layered rule beats an
+   unlayered one — inside the same layer our higher #card specificity wins.
+   Plain (non-link) cards keep the flat grid. */
+@layer utilities {
+  div.card[role="link"]:hover,
+  a.card[href]:hover {
+    border-right-color: var(--primary) !important;
+    border-bottom-color: var(--primary) !important;
+    box-shadow: inset 1px 1px 0 0 var(--primary) !important;
+  }
+}
+
 html.dark a.card svg,
 html.dark div.card svg {
   background: var(--primary);
@@ -520,11 +704,16 @@ html.dark div.card svg {
   background-color: var(--primary) !important;
 }
 
-/* Inner wrapper */
-[data-component-part="card-content-container"] > .w-full {
+/* Inner wrapper (title + description). Descendant, not direct child, so it also
+   matches linked cards where the wrapper is nested inside the <a>. 14px gap
+   between the title and the text below it. `:not(table)` is critical: a
+   markdown table inside a Card renders as <table class="w-full">, and without
+   the exclusion this rule forced `display: flex` onto it — collapsing the
+   column layout so cells sat compact on the left with a full-width gap. */
+[data-component-part="card-content-container"] .w-full:not(table) {
   display: flex !important;
   flex-direction: column !important;
-  gap: 30px !important;
+  gap: 14px !important;
 }
 
 /* Title */
@@ -564,51 +753,140 @@ html.dark details.accordion summary:hover {
   background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
+/* ─── Steps ──────────────────────────────────────────────────────────────── */
+
+/* Step number badge: invert the tokens so the circle reads as a solid marker.
+   Mintlify ships it as a light fill with dark text (bg-gray-50 / text-gray-900);
+   we flip it to bg = --primary (the ink color) and text = --primary-foreground,
+   which IS the canvas/background color in both themes — so light mode gets a
+   near-black circle with cream text, and dark mode a light circle with dark
+   text. The "1" and the (hover) anchor icon inherit via currentColor. */
+[data-component-part="step-number"] > div {
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
 /* ─── Tables ─────────────────────────────────────────────────────────────── */
 
-.mdx-content table {
-  display: table;
-  width: 100%;
-  overflow-x: auto;
+/* Tables — website blog-table parity (mirrors .table-scroll-wrapper + table).
+
+   KEY: the elevated bordered surface lives on the SCROLL WRAPPER, not on the
+   <table>. This is what the website does, and it sidesteps two problems caused
+   by styling/​sizing the <table> directly inside Mintlify's nested flex +
+   display:table + contain:inline-size wrapper:
+     • Narrow tables read as a full-width framed box — any space beside the
+       columns is the wrapper's own --table-bg, so it looks uniform instead of
+       the malformed "gray header spans full width but columns sit compact".
+     • Wide tables keep Mintlify's native horizontal scroll. We do NOT force the
+       table's width anymore, so its cells' min-width overflow the viewport and
+       it scrolls again instead of squishing.
+
+   Scoped to [data-table-wrapper] (the wrapper Mintlify puts around EVERY
+   content table) so Card- and Frame-nested tables match alike — a <Card> table
+   lives outside .mdx-content, which is why the earlier .mdx-content scoping
+   missed it. That was a CSS-scoping issue, not an MDX one. */
+
+/* Wrapper = the bordered data surface. Also neutralizes Mintlify's full-bleed
+   negative margins so the frame aligns with the text column (like the website),
+   and drops its inner padding so the cell grid sits flush against the border. */
+[data-table-wrapper] {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 1.5rem 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--table-border);
+  background-color: var(--table-bg);
+}
+
+[data-table-wrapper] div.table {
+  padding: 0 !important;
+}
+
+/* Table itself: transparent + border-collapse, natural sizing (Mintlify's
+   w-full fills narrow tables; wide ones overflow the viewport and scroll). */
+[data-table-wrapper] table {
+  margin: 0 !important;
+  border: 0 !important;
+  border-collapse: collapse;
+  background-color: transparent !important;
   font-size: 0.875rem;
+  color: var(--primary);
 }
 
-.mdx-content table tr {
+/* No full-width row/section fills — the header color sits on the cells only. */
+[data-table-wrapper] table thead,
+[data-table-wrapper] table tbody,
+[data-table-wrapper] table tr {
+  background-color: transparent !important;
+}
+
+[data-table-wrapper] table th,
+[data-table-wrapper] table td {
+  padding: 0.875rem 1rem;
+  border-right: 1px solid var(--table-border) !important;
   border-bottom: 1px solid var(--table-border) !important;
-}
-
-.mdx-content table th {
   text-align: left;
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
-  padding-right: 2rem;
-  background-color: var(--table-header-bg);
   vertical-align: middle;
-  white-space: nowrap;
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   font-weight: 400;
-  text-transform: uppercase;
-  font-family: "Supply", monospace;
-  font-stretch: expanded;
-  line-height: 92%;
-  letter-spacing: -1.08px;
   color: var(--primary);
+  background-color: transparent !important;
 }
 
-.mdx-content table td {
-  padding-top: 1.5rem;
-  padding-bottom: 1.5rem;
-  padding-right: 2rem;
-  white-space: nowrap;
-  font-size: 0.84375rem;
-  font-weight: 400;
-  color: var(--primary);
+[data-table-wrapper] table thead th,
+[data-table-wrapper] table th {
+  background-color: var(--table-header-bg) !important;
+  font-weight: 500;
+}
+
+/* Column dividers only between cells — no trailing right border, and the last
+   row drops its bottom border since the wrapper frame closes those edges. */
+[data-table-wrapper] table th:last-child,
+[data-table-wrapper] table td:last-child {
+  border-right: 0 !important;
+}
+
+[data-table-wrapper] table tbody tr:last-child td {
+  border-bottom: 0 !important;
+}
+
+/* Blog convention: first column is centered (row labels / indices). */
+[data-table-wrapper] table th:first-child,
+[data-table-wrapper] table td:first-child {
+  text-align: center;
+}
+
+/* ─── Frame ──────────────────────────────────────────────────────────────── */
+
+/* Mintlify's <Frame> wraps tables/images in a decorative box — a gray fill, a
+   dotted grid overlay, rounded corners and an inset border ring — which clashes
+   with the flat design system. Strip the chrome so the content sits directly on
+   the page, keeping only the caption below (the frame's two decorative layers
+   are its only `absolute inset-0` direct children; the table wrapper and caption
+   are `relative`, so they're untouched). */
+.frame {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.frame > div.absolute {
+  display: none !important;
+}
+
+/* Caption keeps its position below the content but drops the rounded shape. */
+.frame [data-component-part="frame-caption"] {
+  border-radius: 0 !important;
 }
 
 /* ─── Banner ─────────────────────────────────────────────────────────────── */
 
+/* Banner background is owned by docs.json → banner.color ({ light, dark } set
+   to our --accent). That renders server-side in the <head>, so the accent is
+   painted on first paint — no black→accent flash from this late-injected CSS.
+   Do NOT re-add background-color here: an !important override would silently
+   win over banner.color and reintroduce the flash. */
 #banner {
-  background-color: var(--accent) !important;
   border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
   height: auto !important;
   max-height: none !important;
@@ -621,10 +899,18 @@ html.dark details.accordion summary:hover {
   }
 }
 
-#banner,
-#banner * {
-  color: var(--primary) !important;
-  background-color: var(--accent) !important;
+/* Banner text + links must use our --primary token, but Mintlify forces white
+   on every banner child via [&_*]:text-white/95!, a rule that lives in
+   Tailwind's `utilities` cascade layer. For !important declarations, a LAYERED
+   rule beats an UNLAYERED one (layer precedence is resolved before
+   specificity), so a plain `#banner *` override can never win. Placing our
+   override in the same `utilities` layer puts both on equal footing, and there
+   our higher #id specificity wins. */
+@layer utilities {
+  #banner,
+  #banner * {
+    color: var(--primary) !important;
+  }
 }
 
 #banner a:hover {
@@ -806,9 +1092,10 @@ a {
   border: 1px solid transparent;
 }
 
-.bg-gradient-to-b {
+.bg-gradient-to-b,
+.bg-linear-to-b {
   background-color: transparent;
-  background-image: none;
+  background-image: none !important;
 }
 
 .rounded-md,
@@ -819,4 +1106,43 @@ a {
 .rounded-2xl,
 .rounded-search {
   border-radius: calc(var(--radius) + 0.125rem) !important;
+}
+
+/* ─── Film grain ─────────────────────────────────────────────────────────── */
+
+/* Replicates the website's noise-shaders aesthetic (grayscale, contrast 1.5,
+   8% opacity) so the docs read as one surface with nixtla.io.
+
+   A single `body::after` overlay covers the full viewport with `position:
+   fixed`, texturing every surface uniformly (page, cards, tables, sidebar,
+   navbar). Because it's viewport-fixed it stays put while content scrolls, so
+   on bounded surfaces (code blocks, accordions) the noise appears to drift
+   across them — accepted for now as a minor tradeoff for a simple, robust
+   single-layer overlay. `pointer-events: none` keeps it purely decorative. */
+
+:root {
+  --grain-opacity: 0.08;
+  --grain-size: 160px;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  /* Deliberately png, not webp: matches the tile used on nixtla.io and avoids
+     Chrome's webp subpixel decode differences. ~64KB, cached once. */
+  background-image: url("/tex_noise.png");
+  background-repeat: repeat;
+  background-size: var(--grain-size);
+  filter: grayscale(1) contrast(1.5);
+  opacity: var(--grain-opacity);
+}
+
+/* Opt out for high-contrast preference — the noise reduces legibility there. */
+@media (prefers-contrast: more) {
+  body::after {
+    display: none;
+  }
 }
