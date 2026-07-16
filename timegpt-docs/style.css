@@ -34,6 +34,7 @@
   --background: #f6f4f0;
   --primary: #222121;
   --primary-foreground: #f6f4f0;
+  --primary-muted: #22212195; /* muted — secondary UI color */
 
   /* Website button parity */
   --alt: #222121;
@@ -68,6 +69,13 @@
   --dropdown-text: var(--secondary-foreground);
   --dropdown-border: var(--card-border);
 
+  /* Accordion surface */
+  --accordion-bg: #ffffff;
+
+  /* Code group surface */
+  --code-group-bg: #ffffff;
+  --code-group-border: rgba(0, 0, 0, 0.1);
+
   /* Buttons */
   --button-height: 34px;
 }
@@ -78,6 +86,7 @@ html.dark {
   --background: #222121;
   --primary: #dedddd;
   --primary-foreground: #222121;
+  --primary-muted: #dedddd95; /* muted — secondary UI color */
 
   /* Website button parity */
   --alt: #f6f4f0;
@@ -110,6 +119,13 @@ html.dark {
   --dropdown-bg: var(--secondary);
   --dropdown-text: var(--secondary-foreground);
   --dropdown-border: var(--secondary);
+
+  /* Accordion surface */
+  --accordion-bg: #000000;
+
+  /* Code group surface */
+  --code-group-bg: #000000;
+  --code-group-border: rgba(255, 255, 255, 0.1);
 }
 
 /* Base */
@@ -119,6 +135,12 @@ body {
   background-color: var(--background);
   font-family: "NeueMontreal", sans-serif;
   font-weight: 400;
+}
+
+/* Smooth scroll for in-page anchors (TOC clicks). <html> is the scroll
+   container; headings already carry scroll-margin-top for the navbar offset. */
+html {
+  scroll-behavior: smooth;
 }
 
 html.dark > body {
@@ -206,6 +228,17 @@ html.dark #navbar-transition {
   line-height: 92%;
 }
 
+/* Navbar CTA group: 8px gap between buttons + 8px from the right edge.
+   Neutralize Tailwind `space-x-2` (margin-based) so `gap` is the only spacing. */
+#navbar nav ul {
+  gap: 8px !important;
+  margin-inline-end: 8px !important;
+}
+
+#navbar nav ul > li {
+  margin: 0 !important;
+}
+
 /* "Book a meeting" — outline */
 #navbar nav li:not(#topbar-cta-button) a {
   height: var(--button-height) !important;
@@ -255,6 +288,106 @@ html.dark #navbar-transition {
 
 #topbar-cta-button svg {
   color: var(--primary-foreground) !important;
+}
+
+/* ── Navbar button hover text-shift ─────────────────────────────────────────
+   Ports the website's `.button-text-shift` effect. That component reads the
+   label from `data-hover-label` (`content: attr(...)`), set by JS. Mintlify's
+   navbar HTML is fixed — we can't add data attributes, and CSS `content`
+   cannot read an element's text, so we hardcode each label.
+
+   Mechanism (same as the component): the real text is made transparent so it
+   only holds the button's width, and TWO full-size pseudo layers carry the
+   visible label — `::before` sits in place, `::after` waits one box below. On
+   hover both slide up exactly one box: `::before` exits the top, `::after`
+   lands in place. Both layers cover the same box, so translateY(±100%) always
+   clears the clip cleanly (the earlier bug: translating the small text line by
+   its own height didn't clear the taller button, leaving both labels stacked). */
+
+/* Outline buttons — "Book a meeting" and the mobile-only "Get Started".
+   No icon, so the overlay fills the whole button; only the label differs. */
+#navbar nav li:not(#topbar-cta-button) a {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* Real text kept for width + accessible name, but hidden. */
+#navbar nav li:not(#topbar-cta-button) a > span {
+  color: transparent;
+}
+
+#navbar nav li:not(#topbar-cta-button) a::before,
+#navbar nav li:not(#topbar-cta-button) a::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#navbar nav li:not(#topbar-cta-button) a::before {
+  transform: translateY(0);
+}
+
+#navbar nav li:not(#topbar-cta-button) a::after {
+  transform: translateY(100%);
+}
+
+#navbar nav li:not(#topbar-cta-button) a:hover::before {
+  transform: translateY(-100%);
+}
+
+#navbar nav li:not(#topbar-cta-button) a:hover::after {
+  transform: translateY(0);
+}
+
+/* Per-button labels (CSS `content` can't read the element's text). */
+#navbar nav li.navbar-link a::before,
+#navbar nav li.navbar-link a::after {
+  content: "Book a meeting";
+}
+
+#navbar nav li:not(.navbar-link):not(#topbar-cta-button) a::before,
+#navbar nav li:not(.navbar-link):not(#topbar-cta-button) a::after {
+  content: "Get Started";
+}
+
+/* "Get Started" (primary CTA) keeps its arrow icon, so the swap is scoped to
+   the text `span` (a full-button overlay would sit on top of the arrow — the
+   same reason the React component bails on icon buttons). The span is its own
+   clip box, so the two layers swap within the text's height and the arrow
+   stays put. */
+#topbar-cta-button a div > span {
+  position: relative;
+  overflow: hidden;
+  color: transparent;
+}
+
+#topbar-cta-button a div > span::before,
+#topbar-cta-button a div > span::after {
+  content: "Get Started";
+  position: absolute;
+  inset: 0;
+  color: var(--primary-foreground);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#topbar-cta-button a div > span::before {
+  transform: translateY(0);
+}
+
+#topbar-cta-button a div > span::after {
+  transform: translateY(100%);
+}
+
+#topbar-cta-button a:hover div > span::before {
+  transform: translateY(-100%);
+}
+
+#topbar-cta-button a:hover div > span::after {
+  transform: translateY(0);
 }
 
 /* CTA — secondary */
@@ -352,6 +485,11 @@ div:has(> div > #navigation-items) {
   background-color: var(--background) !important;
 }
 
+/* Sidebar group header (e.g. INTRODUCTION): 500, not 600. */
+.sidebar-group-header {
+  font-weight: 400 !important;
+}
+
 #sidebar-title {
   padding: 8px !important;
 }
@@ -369,20 +507,32 @@ div:has(> div > #navigation-items) {
 
 /* Inactive icon = muted */
 #navigation-items .sidebar-group a svg {
-  background-color: color-mix(in srgb, var(--primary) 60%, transparent) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--primary) 60%,
+    transparent
+  ) !important;
 }
 
 /* Hover */
 #navigation-items .sidebar-group a:hover,
 #navigation-items .sidebar-group button:hover {
-  background-color: color-mix(in srgb, var(--primary) 8%, transparent) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--primary) 8%,
+    transparent
+  ) !important;
   color: var(--primary) !important;
 }
 
 /* Active page indicator */
 #navigation-items .sidebar-group a[class*="bg-primary"] {
   border-left-color: var(--primary) !important;
-  background-color: color-mix(in srgb, var(--primary) 8%, transparent) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--primary) 8%,
+    transparent
+  ) !important;
   color: var(--primary) !important;
 }
 
@@ -454,9 +604,10 @@ pre code {
   border-radius: 0 !important;
 }
 
-/* Force dark tokens in light */
-html:not(.dark) .code-block .shiki,
-html:not(.dark) .code-block .shiki span {
+/* Force dark tokens in light (standalone blocks only; code groups are themed
+   #fff/#000 and keep the native light syntax theme in light mode). */
+html:not(.dark) .code-block:not(.code-group *) .shiki,
+html:not(.dark) .code-block:not(.code-group *) .shiki span {
   color: var(--shiki-dark) !important;
 }
 
@@ -483,7 +634,113 @@ html:not(.dark) .code-block .shiki span {
   background-color: rgba(246, 244, 240, 0.08) !important;
 }
 
+/* Code group (tabbed code blocks) */
+
+/* Themed surface (#fff light / #000 dark), sharp corners — our design.
+   `body` prefix so it out-specifies the global .rounded-2xl utility. */
+body .code-group,
+.code-group [data-component-part="code-block-root"],
+.code-group pre.shiki,
+.code-group .code-block {
+  border-radius: 0 !important;
+}
+
+.code-group {
+  background-color: var(--code-group-bg) !important;
+  border: 1px solid var(--code-group-border) !important;
+}
+
+/* Code surface = themed; keep native syntax theme per mode (light theme on
+   #fff, dark theme on #000). Plain (unspanned) text uses --primary. */
+.code-group [data-component-part="code-block-root"],
+.code-group pre.shiki {
+  background-color: var(--code-group-bg) !important;
+  --shiki-dark-bg: #000000 !important;
+  color: var(--primary) !important;
+}
+
+/* Filename header + nested block chrome themed */
+.code-group [data-component-part="code-block-header"] {
+  background-color: var(--code-group-bg) !important;
+  border-bottom-color: var(--code-group-border) !important;
+}
+
+.code-group .code-block {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.code-group [data-fade-overlay] {
+  --fade-color-light: #ffffff !important;
+  --fade-color-dark: #000000 !important;
+}
+
+/* Tabs: active = --primary, inactive = --primary-muted */
+.code-group [role="tab"] {
+  color: var(--primary-muted) !important;
+}
+
+.code-group [role="tab"][aria-selected="true"] {
+  color: var(--primary) !important;
+}
+
+.code-group [role="tab"] svg {
+  background-color: currentColor !important;
+}
+
+/* Active-tab underline indicator = --primary */
+.code-group [role="tab"] [class*="bg-primary"] {
+  background-color: var(--primary) !important;
+}
+
+/* Hide the group-level copy button (far right of the tab bar); each block still
+   has its own copy button in its header. */
+.code-group
+  > [data-component-part="code-group-tab-bar"]
+  [data-testid="copy-code-button"] {
+  display: none !important;
+}
+
 /* TOC */
+
+/* Table of contents: inactive items use --primary-muted, the active item (and
+   hover) uses --primary. */
+#table-of-contents-content a,
+.toc a {
+  color: var(--primary-muted) !important;
+  transition: color 0.15s ease;
+}
+
+#table-of-contents-content a:hover,
+.toc a:hover,
+#table-of-contents-content .toc-item[data-active="true"] > a,
+#table-of-contents-content a[aria-current="location"],
+.toc a[aria-current="location"] {
+  color: var(--primary) !important;
+}
+
+/* The "mint" theme doesn't render the vertical rail that other Mintlify themes
+   (e.g. Greptile's) draw next to the TOC, so we build it here: a faint left
+   border on every item, highlighted on the active one — that's the "you are
+   here" indicator. Border lives on the <li> so anchor padding keeps the
+   existing depth indentation. */
+#table-of-contents-content .toc-item {
+  border-left: 1.5px solid color-mix(in srgb, var(--primary) 14%, transparent);
+  padding-left: 0.75rem;
+  transition: border-color 0.15s ease;
+}
+
+#table-of-contents-content .toc-item[data-active="true"] {
+  border-left-color: var(--primary);
+}
+
+/* Subtle weight on the active label so it reads clearly even though --primary
+   is grayscale (mirrors Greptile's text-shadow trick). */
+#table-of-contents-content .toc-item[data-active="true"] > a,
+#table-of-contents-content a[aria-current="location"],
+.toc a[aria-current="location"] {
+  text-shadow: -0.15px 0 0 currentColor, 0.15px 0 0 currentColor;
+}
 
 /* Content layout */
 
@@ -571,7 +828,7 @@ details.accordion :not(summary) span[data-as="p"] {
 
 #content-side-layout a.font-medium {
   color: var(--primary);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Cards */
@@ -688,6 +945,13 @@ details.accordion summary {
   border-radius: 0 !important;
 }
 
+/* Accordion surface: #fff (light) / #000 (dark). Needs html:not(.dark)/html.dark
+   to out-specify the global `.bg-background-light` override, which is (0,2,1). */
+html:not(.dark) details.accordion,
+html.dark details.accordion {
+  background-color: var(--accordion-bg) !important;
+}
+
 details.accordion summary:hover {
   background-color: var(--secondary) !important;
 }
@@ -702,6 +966,13 @@ html.dark details.accordion summary:hover {
 [data-component-part="step-number"] > div {
   background-color: var(--primary) !important;
   color: var(--primary-foreground) !important;
+}
+
+/* Step icon/number sits on the --primary badge, so it must use the foreground
+   token — otherwise the icon (bg-gray-900) is dark-on-dark and invisible
+   (e.g. steps inside an accordion). */
+[data-component-part="step-number"] > div svg {
+  background-color: var(--primary-foreground) !important;
 }
 
 /* Tables — blog parity */
@@ -1009,6 +1280,55 @@ a {
   border-radius: calc(var(--radius) + 0.125rem) !important;
 }
 
+/* Mobile sidebar & iOS safe areas */
+
+/* Mintlify paints a full-viewport fixed <span id="background-color"> using its
+   built-in white background token (bg-background-light). On iOS 26 Safari the
+   status-bar/toolbar tint is sampled from a fixed element's background-color,
+   so this white layer is what makes the bar show white / look transparent with
+   content bleeding under the notch. Repaint it (and the token utilities) with
+   our canvas so every candidate Safari can sample is --background. */
+#background-color,
+.bg-background-light,
+html:not(.dark) .bg-background-light {
+  background-color: var(--background) !important;
+}
+
+html.dark #background-color,
+html.dark .bg-background-dark,
+.dark\:bg-background-dark {
+  background-color: var(--background) !important;
+}
+
+/* Paint the mobile sidebar scroll container as canvas (was white).
+   Scoped to the sidebar so code-block scroll areas keep their own bg. */
+#sidebar,
+#sidebar-content,
+#sidebar [data-component-part^="scroll-area"],
+#sidebar-content [data-component-part^="scroll-area"],
+[data-component-part="scroll-area"]:has(#navigation-items),
+[data-component-part="scroll-area"]:has(#navigation-items)
+  [data-component-part^="scroll-area"] {
+  background-color: var(--background) !important;
+}
+
+/* Keep the scrollbar thumb visible over the canvas */
+#sidebar [data-component-part="scroll-area-scrollbar"],
+#sidebar-content [data-component-part="scroll-area-scrollbar"],
+[data-component-part="scroll-area"]:has(#navigation-items)
+  [data-component-part="scroll-area-scrollbar"] {
+  background-color: transparent !important;
+}
+
+/* Mobile navbar: opaque canvas (like the site), matching how the working
+   default Mintlify docs rely on solid top layers. */
+@media (max-width: 1023px) {
+  #navbar,
+  #navbar-transition {
+    background-color: var(--background) !important;
+  }
+}
+
 /* Film grain (nixtla.io noise) */
 
 :root {
@@ -1018,9 +1338,16 @@ a {
 
 body::after {
   content: "";
+  /* Fixed so the grain stays static while content scrolls (no "chasing" — that
+     was an `absolute`-only artifact), but BELOW the chrome (navbar z-30, sticky
+     bars z-20) and above content. This keeps the opaque navbar as the top layer
+     at the notch, so iOS 26 Safari samples IT (canvas) for the status bar tint
+     instead of this near-transparent grain — which is what made content bleed
+     through. The grain therefore only overlays the reading area, never the
+     navbar/breadcrumb chrome. */
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 10;
   pointer-events: none;
   /* both roots: / and /docs */
   background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
@@ -1030,9 +1357,48 @@ body::after {
   opacity: var(--grain-opacity);
 }
 
+/* Reusable grain layer for a specific block.
+   Unlike the full-viewport body::after, this is a grain overlay SCOPED to a
+   single element (absolute, inset:0). Because it lives inside its block and is
+   not a separate fixed full-viewport layer, it never becomes the element iOS 26
+   samples for the status-bar tint. Add `grain-layer` to any block, or use the
+   selectors below. Applied to #navbar, which on mobile also contains the
+   breadcrumb/hamburger bar — so both get grain in one shot. */
+.grain-layer {
+  position: relative;
+}
+
+.grain-layer::after,
+#navbar::after,
+#banner::after,
+#sidebar::after,
+#mobile-nav::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
+  background-repeat: repeat;
+  background-size: var(--grain-size);
+  filter: grayscale(1) contrast(1.5);
+  opacity: var(--grain-opacity);
+}
+
+/* The desktop sidebar's inner content (#sidebar-content) is z-10, so its grain
+   must sit above that to be visible. */
+#sidebar::after {
+  z-index: 11;
+}
+
 /* Opt out for high contrast */
 @media (prefers-contrast: more) {
-  body::after {
+  body::after,
+  .grain-layer::after,
+  #navbar::after,
+  #banner::after,
+  #sidebar::after,
+  #mobile-nav::after {
     display: none;
   }
 }
