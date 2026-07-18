@@ -449,11 +449,71 @@ html.dark #navbar-transition {
   transform: translateY(0);
 }
 
+/* "Ask Assistant" toolbar button — outline variant (like "Book a meeting") with
+   the same hover text-shift. Shift scoped to the label span so the sparkle icon
+   stays put. box-shadow/filter reset kills the ring + dark:brightness. */
+#assistant-entry {
+  background: var(--background) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  color: var(--primary) !important;
+  transition: var(--transition-hover) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+#assistant-entry:hover {
+  background: var(--hover) !important;
+}
+
+#assistant-entry svg {
+  color: var(--primary) !important;
+}
+
+#assistant-entry span {
+  position: relative;
+  overflow: hidden;
+  color: transparent !important;
+}
+
+#assistant-entry span::before,
+#assistant-entry span::after {
+  content: "Ask Assistant";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  color: var(--primary);
+  transition: transform var(--duration-shift) var(--ease-standard);
+  pointer-events: none;
+}
+
+#assistant-entry span::before {
+  transform: translateY(0);
+}
+
+#assistant-entry span::after {
+  transform: translateY(115%);
+}
+
+#assistant-entry:is(:hover, :focus-visible) span::before {
+  transform: translateY(-115%);
+}
+
+#assistant-entry:is(:hover, :focus-visible) span::after {
+  transform: translateY(0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   #navbar nav li:not(#topbar-cta-button) a::before,
   #navbar nav li:not(#topbar-cta-button) a::after,
   #topbar-cta-button a div > span::before,
-  #topbar-cta-button a div > span::after {
+  #topbar-cta-button a div > span::after,
+  #assistant-entry span::before,
+  #assistant-entry span::after {
     transition: none;
   }
 }
@@ -2029,6 +2089,7 @@ body::after {
 #sidebar::after,
 #mobile-nav::after,
 #search-bar-entry::after,
+.chat-assistant-sheet::after,
 [data-radix-menu-content]::after,
 [data-component-part="theme-preference-menu-content"]::after,
 [role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
@@ -2056,6 +2117,7 @@ body::after {
   #sidebar::after,
   #mobile-nav::after,
   #search-bar-entry::after,
+  .chat-assistant-sheet::after,
   [data-radix-menu-content]::after,
   [data-component-part="theme-preference-menu-content"]::after,
   [role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
