@@ -45,7 +45,7 @@
 
   --code-block-radius: 0;
 
-  --page-title-max-width: 30rem;
+  --page-title-max-width: 35rem;
 
   --image-link-badge-height: 28px;
 
@@ -1889,7 +1889,7 @@ details.expandable .primitive-param-field {
    part of the same control family. Targeted via the textarea's box ancestor. */
 div:has(> div > #chat-assistant-textarea) {
   background-color: var(--chat-input-bg) !important;
-  border-radius: 9999px !important;
+  border-radius: 0px !important;
   box-shadow: var(--chat-shadow) !important;
 }
 
@@ -1903,6 +1903,15 @@ div:has(> div > #chat-assistant-textarea) {
    renders fully. */
 div:has(> .chat-assistant-floating-input) {
   overflow: visible !important;
+}
+
+/* Intercom launcher: 60px, theme-aware surface (#fff / #000). Target the stable
+   .intercom-launcher class only — Intercom's hashed classes (e.g. intercom-…)
+   change per build. !important to beat Intercom's runtime-injected CSS. */
+.intercom-launcher {
+  width: 60px !important;
+  height: 60px !important;
+  background: var(--chat-input-bg) !important;
 }
 
 /* Send button: --alt surface with --primary-foreground icon (beats the inline
