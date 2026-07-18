@@ -1,4 +1,4 @@
-/* Fonts */
+/* ================================  FONTS  ================================= */
 
 @font-face {
   font-family: "NeueMontreal";
@@ -16,44 +16,42 @@
 
 @font-face {
   font-family: "Supply";
-  src: url("/fonts/PPSupplyMono-Ultralight.woff2") format("woff2");
-  font-weight: 200;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Supply";
   src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
 
-/* Tokens — light */
+/* ============================  TOKENS · LIGHT  ============================ */
 
 :root {
   --background: #f6f4f0;
   --primary: #222121;
   --primary-foreground: #f6f4f0;
-  --primary-muted: #22212195; /* muted — secondary UI color */
+  --primary-muted: #22212195;
 
-  /* Website button parity */
   --alt: #222121;
-  --hover-alt: #2e2b27;
   --surface: #eae9e6;
+
+  --hover: var(--surface);
+  --hover-alt: #2e2b27;
+  --nav-tint: color-mix(in srgb, var(--primary) 8%, transparent);
+  --toc-rail: color-mix(in srgb, var(--primary) 14%, transparent);
 
   --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: #222121;
-  --accent: #bfd1ff;
+  --accent: #bfd1ff; /* brand accent */
   --radius: 0rem;
 
-  /* Active nav item */
-  --active-nav-item: #d9d9d9;
+  --code-block-radius: 0;
+
+  --page-title-max-width: 30rem;
+
+  --image-link-badge-height: 28px;
 
   /* Card */
   --card-bg: rgba(252, 252, 252, 0.5);
-  --card-bg-hover: rgba(245, 245, 245, 0.9);
-  --card-border: var(--secondary);
+  --card-border: var(--primary);
 
   /* Feedback toolbar */
   --feedback-btn-bg: var(--secondary);
@@ -68,43 +66,97 @@
   --dropdown-bg: #ffffff;
   --dropdown-text: var(--secondary-foreground);
   --dropdown-border: var(--card-border);
+  --dropdown-hover: var(--hover);
 
   /* Accordion surface */
   --accordion-bg: #ffffff;
 
-  /* Code group surface */
-  --code-group-bg: #ffffff;
-  --code-group-border: rgba(0, 0, 0, 0.1);
+  --code-group-bg: #000000;
+  --code-group-border: var(--blog-code-border);
+
+  /* Code palette (always-dark frame, both themes) */
+  --blog-code-bg: #171614;
+  --blog-code-header-bg: #201f1d;
+  --blog-code-border: rgba(246, 244, 240, 0.22);
+  --blog-code-text: #f4f1ea;
+  --blog-code-muted: rgba(244, 241, 234, 0.62);
+  --code-hover-overlay: rgba(246, 244, 240, 0.08);
+  --code-tab-hover: #2e2b27;
 
   /* Buttons */
   --button-height: 34px;
+
+  /* Motion */
+  --ease-standard: ease;
+  --duration-fast: 0.15s;
+  --duration-base: 0.2s;
+  --duration-shift: 220ms;
+  --transition-hover: background-color var(--duration-base) var(--ease-standard);
+
+  /* FONTS */
+  --font-sans: "NeueMontreal", sans-serif;
+  --font-mono: "Supply", monospace;
+
+  /* FONTS WEIGHT */
+  --font-weight-regular: 400;
+  /* Override medium from mintlify to our own 400 weight instead of changing it in mintlify classes, our DLS only uses 400 weight */
+  --font-weight-medium: 400;
+  --font-weight-semibold: 400;
+
+  /* SPACE TOKENS */
+  --space-2: 0.125rem;
+  --space-4: 0.25rem;
+  --space-6: 0.375rem;
+  --space-8: 0.5rem;
+  --space-10: 0.625rem;
+  --space-12: 0.75rem;
+  --space-14: 0.875rem;
+  --space-16: 1rem;
+  --space-20: 1.25rem;
+  --space-24: 1.5rem;
+  --space-32: 2rem;
+  --space-40: 2.5rem;
+  --space-48: 3rem;
+  --space-56: 3.5rem;
+  --space-64: 4rem;
+
+  /* SPACING LAYOUT */
+  --spacing-header-description: var(--space-8);
+  --spacing-content-area: var(--space-40);
+  --spacing-footer-top: var(--space-20);
+  --spacing-component-top: var(--space-20);
+
+  /* SPACING MDX CONTENT */
+  --spacing-mdx-content: var(--space-20);
+  --spacing-mdx-content-prose-headers: var(--space-32);
+  --spacing-mdx-content-prose-headers-small: var(--space-20);
+  --spacing-mdx-content-prose-li: var(--space-8);
+
+  --spacing-list-steps-gap: var(--space-40);
 }
 
-/* Tokens — dark */
+/* ============================  TOKENS · DARK  ============================= */
 
 html.dark {
   --background: #222121;
   --primary: #dedddd;
   --primary-foreground: #222121;
-  --primary-muted: #dedddd95; /* muted — secondary UI color */
+  --primary-muted: #dedddd95;
 
-  /* Website button parity */
   --alt: #f6f4f0;
-  --hover-alt: #eae9e6;
   --surface: #2e2b27;
+
+  --hover: var(--surface);
+  --hover-alt: #eae9e6;
 
   --secondary: #ececec;
   --secondary-foreground: #222121;
   --border: rgba(212, 212, 216, 0.6);
   --accent: #9187e8;
 
-  /* Active nav item */
-  --active-nav-item: rgba(222, 221, 221, 0.1);
-
   /* Card */
   --card-bg: rgba(255, 255, 255, 0.03);
-  --card-bg-hover: rgba(255, 255, 255, 0.06);
-  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border: var(--primary);
 
   /* Feedback toolbar */
   --feedback-btn-bg: rgba(255, 255, 255, 0.1);
@@ -116,29 +168,47 @@ html.dark {
   --table-border: var(--border);
 
   /* Dropdown */
-  --dropdown-bg: var(--secondary);
+  --dropdown-bg: var(--alt);
   --dropdown-text: var(--secondary-foreground);
   --dropdown-border: var(--secondary);
+  --dropdown-hover: var(--hover-alt);
 
   /* Accordion surface */
   --accordion-bg: #000000;
 
-  /* Code group surface */
   --code-group-bg: #000000;
-  --code-group-border: rgba(255, 255, 255, 0.1);
+  --code-group-border: var(--blog-code-border);
 }
 
-/* Base */
+/* =============================  SYSTEM NOTES  ============================= */
+
+/*
+  BREAKPOINTS (viewport px — var() is invalid in @media conditions):
+    640  min   header desktop layout
+    767  max   mobile (eyebrow-sm, banner)
+    991  max / 992 min   copy-page CTA swap (tablet <-> desktop)
+    1023 max   navbar bg on tablet-down
+  Reuse these exact values for new media queries.
+
+  MINTLIFY-COUPLED SELECTORS — re-verify on every Mintlify upgrade (they read
+  Mintlify's DOM shape or Tailwind utility classes, both of which can change):
+    div:has(> div > #navigation-items)           sidebar wrapper
+    [class*="bg-primary"]                         active nav / CTA state
+    #page-context-menu.ml-auto / .mt-3           copy-page CTA variants
+    #header .mt-2.text-lg / .w-full:not(table)   header + card utility hooks
+    #api-playground-2-operation-page .mt-6...    generated id + utility
+  Quick audit before upgrading: grep  :has(   [class*=   #api-playground
+*/
+
+/* =================================  BASE  ================================= */
 
 html,
 body {
   background-color: var(--background);
-  font-family: "NeueMontreal", sans-serif;
-  font-weight: 400;
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-regular);
 }
 
-/* Smooth scroll for in-page anchors (TOC clicks). <html> is the scroll
-   container; headings already carry scroll-margin-top for the navbar offset. */
 html {
   scroll-behavior: smooth;
 }
@@ -151,17 +221,18 @@ html.dark > body {
 h1 {
   font-size: 50px;
   font-style: normal;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   line-height: 112%;
   letter-spacing: -0.5px;
   color: var(--primary);
+  max-width: var(--page-title-max-width);
 }
 
 h2,
 h2 span {
   font-size: 30px;
   font-style: normal;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   line-height: 95%;
 }
 
@@ -169,13 +240,13 @@ p {
   color: var(--primary);
   font-size: 16px;
   font-style: normal;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   line-height: 24px;
 }
 
 .eyebrow {
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
+  font-family: var(--font-mono) !important;
+  font-weight: var(--font-weight-regular) !important;
   font-size: 14px;
   text-transform: uppercase;
   font-stretch: expanded;
@@ -186,8 +257,8 @@ p {
 #sidebar-title,
 #table-of-contents button,
 #table-of-contents button span {
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
+  font-family: var(--font-mono) !important;
+  font-weight: var(--font-weight-regular) !important;
   font-size: 12px !important;
   text-transform: uppercase;
   font-stretch: expanded;
@@ -203,7 +274,7 @@ p {
   }
 }
 
-/* Navbar */
+/* ================================  NAVBAR  ================================ */
 
 #navbar img,
 .nav-logo {
@@ -220,29 +291,22 @@ html.dark #navbar-transition {
 }
 
 #navbar nav a {
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
+  font-family: var(--font-mono) !important;
+  font-weight: var(--font-weight-regular) !important;
   font-size: 0.74375rem;
   text-transform: uppercase;
   font-stretch: expanded;
   line-height: 92%;
 }
 
-/* Navbar CTA group: 8px gap between buttons + 8px from the right edge.
-   Neutralize Tailwind `space-x-2` (margin-based) so `gap` is the only spacing. */
-#navbar nav ul {
-  gap: 8px !important;
-  margin-inline-end: 8px !important;
+#navbar nav ul > li:not(:last-child) {
+  margin-inline-start: 0 !important;
+  margin-inline-end: var(--space-8) !important;
 }
 
-#navbar nav ul > li {
-  margin: 0 !important;
-}
-
-/* "Book a meeting" — outline */
 #navbar nav li:not(#topbar-cta-button) a {
   height: var(--button-height) !important;
-  padding: 0 14px !important;
+  padding: 0 var(--space-14) !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -250,16 +314,16 @@ html.dark #navbar-transition {
   background: var(--background) !important;
   border: 1px solid var(--border) !important;
   color: var(--primary) !important;
-  transition: background-color 0.2s ease !important;
+  transition: var(--transition-hover) !important;
 }
 
 #navbar nav li:not(#topbar-cta-button) a:hover {
-  background: var(--surface) !important;
+  background: var(--hover) !important;
   color: var(--primary) !important;
 }
 
 #topbar-cta-button a {
-  padding: 4px 8px !important;
+  padding: var(--space-4) var(--space-8) !important;
   height: var(--button-height) !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -267,14 +331,14 @@ html.dark #navbar-transition {
   line-height: 1 !important;
 }
 
-/* "Get Started" — primary */
 #topbar-cta-button a span.absolute {
   background: var(--alt) !important;
-  transition: background-color 0.2s ease !important;
+  transition: var(--transition-hover) !important;
 }
 
 #topbar-cta-button a:hover span.absolute {
   background: var(--hover-alt) !important;
+  opacity: 1 !important;
 }
 
 #topbar-cta-button a div,
@@ -290,28 +354,11 @@ html.dark #navbar-transition {
   color: var(--primary-foreground) !important;
 }
 
-/* ── Navbar button hover text-shift ─────────────────────────────────────────
-   Ports the website's `.button-text-shift` effect. That component reads the
-   label from `data-hover-label` (`content: attr(...)`), set by JS. Mintlify's
-   navbar HTML is fixed — we can't add data attributes, and CSS `content`
-   cannot read an element's text, so we hardcode each label.
-
-   Mechanism (same as the component): the real text is made transparent so it
-   only holds the button's width, and TWO full-size pseudo layers carry the
-   visible label — `::before` sits in place, `::after` waits one box below. On
-   hover both slide up exactly one box: `::before` exits the top, `::after`
-   lands in place. Both layers cover the same box, so translateY(±100%) always
-   clears the clip cleanly (the earlier bug: translating the small text line by
-   its own height didn't clear the taller button, leaving both labels stacked). */
-
-/* Outline buttons — "Book a meeting" and the mobile-only "Get Started".
-   No icon, so the overlay fills the whole button; only the label differs. */
 #navbar nav li:not(#topbar-cta-button) a {
   position: relative !important;
   overflow: hidden !important;
 }
 
-/* Real text kept for width + accessible name, but hidden. */
 #navbar nav li:not(#topbar-cta-button) a > span {
   color: transparent;
 }
@@ -324,7 +371,8 @@ html.dark #navbar-transition {
   align-items: center;
   justify-content: center;
   color: var(--primary);
-  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--duration-shift) var(--ease-standard);
+  pointer-events: none;
 }
 
 #navbar nav li:not(#topbar-cta-button) a::before {
@@ -332,18 +380,17 @@ html.dark #navbar-transition {
 }
 
 #navbar nav li:not(#topbar-cta-button) a::after {
-  transform: translateY(100%);
+  transform: translateY(115%);
 }
 
-#navbar nav li:not(#topbar-cta-button) a:hover::before {
-  transform: translateY(-100%);
+#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::before {
+  transform: translateY(-115%);
 }
 
-#navbar nav li:not(#topbar-cta-button) a:hover::after {
+#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::after {
   transform: translateY(0);
 }
 
-/* Per-button labels (CSS `content` can't read the element's text). */
 #navbar nav li.navbar-link a::before,
 #navbar nav li.navbar-link a::after {
   content: "Book a meeting";
@@ -354,15 +401,13 @@ html.dark #navbar-transition {
   content: "Get Started";
 }
 
-/* "Get Started" (primary CTA) keeps its arrow icon, so the swap is scoped to
-   the text `span` (a full-button overlay would sit on top of the arrow — the
-   same reason the React component bails on icon buttons). The span is its own
-   clip box, so the two layers swap within the text's height and the arrow
-   stays put. */
 #topbar-cta-button a div > span {
   position: relative;
   overflow: hidden;
-  color: transparent;
+  height: var(--button-height);
+  margin-block: calc(-1 * var(--space-4));
+  box-sizing: border-box;
+  color: transparent !important;
 }
 
 #topbar-cta-button a div > span::before,
@@ -370,8 +415,13 @@ html.dark #navbar-transition {
   content: "Get Started";
   position: absolute;
   inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
   color: var(--primary-foreground);
-  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--duration-shift) var(--ease-standard);
+  pointer-events: none;
 }
 
 #topbar-cta-button a div > span::before {
@@ -379,23 +429,100 @@ html.dark #navbar-transition {
 }
 
 #topbar-cta-button a div > span::after {
-  transform: translateY(100%);
+  transform: translateY(115%);
 }
 
-#topbar-cta-button a:hover div > span::before {
-  transform: translateY(-100%);
+#topbar-cta-button a:is(:hover, :focus-visible) div > span::before {
+  transform: translateY(-115%);
 }
 
-#topbar-cta-button a:hover div > span::after {
+#topbar-cta-button a:is(:hover, :focus-visible) div > span::after {
   transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #navbar nav li:not(#topbar-cta-button) a::before,
+  #navbar nav li:not(#topbar-cta-button) a::after,
+  #topbar-cta-button a div > span::before,
+  #topbar-cta-button a div > span::after {
+    transition: none;
+  }
+}
+
+#page-context-menu-button {
+  background: var(--background) !important;
+  border-color: var(--border) !important;
+  color: var(--primary) !important;
+  transition: var(--transition-hover) !important;
+}
+
+#page-context-menu-button:hover {
+  background: var(--hover) !important;
+}
+
+#page-context-menu button[aria-haspopup="menu"] {
+  background: var(--background) !important;
+  border-color: var(--border) !important;
+  color: var(--primary) !important;
+  transition: var(--transition-hover) !important;
+}
+
+#page-context-menu button[aria-haspopup="menu"]:hover {
+  background: var(--hover) !important;
+}
+
+#page-context-menu button[aria-haspopup="menu"] svg {
+  color: var(--primary) !important;
+}
+
+#page-context-menu-button span.grid {
+  position: relative;
+  overflow: hidden;
+}
+
+#page-context-menu-button span.grid > span:not(.invisible),
+#page-context-menu-button span.grid::after {
+  transition: transform var(--duration-shift) var(--ease-standard);
+}
+
+#page-context-menu-button span.grid > span:not(.invisible) {
+  transform: translateY(0);
+}
+
+#page-context-menu-button span.grid::after {
+  content: "Copy page";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(115%);
+  pointer-events: none;
+}
+
+#page-context-menu-button:is(:hover, :focus-visible)
+  span.grid
+  > span:not(.invisible) {
+  transform: translateY(-115%);
+}
+
+#page-context-menu-button:is(:hover, :focus-visible) span.grid::after {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #page-context-menu-button span.grid > span:not(.invisible),
+  #page-context-menu-button span.grid::after {
+    transition: none;
+  }
 }
 
 /* CTA — secondary */
 a.font-semibold {
   background: var(--background);
   border: 1px solid var(--primary);
-  font-family: "Supply", monospace;
-  font-weight: 400;
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-regular);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--primary);
@@ -425,7 +552,7 @@ html.dark a.font-semibold svg {
   background: var(--primary);
 }
 
-/* Nav items */
+/* ==============================  NAV ITEMS  =============================== */
 
 #navigation-items ul {
   display: flex;
@@ -437,7 +564,7 @@ html.dark a.font-semibold svg {
   display: flex !important;
   align-items: center !important;
   gap: 0 !important;
-  padding: 6px 8px !important;
+  padding: var(--space-6) var(--space-8) !important;
   margin-left: 0 !important;
   margin-bottom: 0 !important;
   border: none !important;
@@ -446,8 +573,8 @@ html.dark a.font-semibold svg {
   color: var(--primary) !important;
   opacity: 0.7;
   transition:
-    opacity 0.2s ease,
-    background-color 0.2s ease;
+    opacity var(--duration-base) var(--ease-standard),
+    background-color var(--duration-base) var(--ease-standard);
 }
 
 #navigation-items a.nav-anchor div,
@@ -460,79 +587,55 @@ html.dark a.font-semibold svg {
 }
 
 #navigation-items a.nav-anchor:hover svg {
-  background-color: rgb(156 163 175) !important;
-}
-
-html.dark #navigation-items a.nav-anchor:hover svg {
-  background-color: rgb(107 114 128) !important;
+  background-color: var(--primary) !important;
 }
 
 #navigation-items a.nav-anchor:hover {
   opacity: 1;
-  background-color: var(--secondary) !important;
+  background-color: var(--nav-tint) !important;
   text-decoration: none !important;
   color: var(--primary) !important;
 }
 
-html.dark #navigation-items a.nav-anchor:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
-}
+/* ===============================  SIDEBAR  ================================ */
 
-/* Sidebar */
-
-/* Paint sidebar as canvas */
 div:has(> div > #navigation-items) {
   background-color: var(--background) !important;
 }
 
-/* Sidebar group header (e.g. INTRODUCTION): 500, not 600. */
 .sidebar-group-header {
-  font-weight: 400 !important;
+  font-weight: var(--font-weight-regular) !important;
 }
 
 #sidebar-title {
-  padding: 8px !important;
+  padding: var(--space-8) !important;
 }
 
 /* Nav item states */
 #navigation-items .sidebar-group a,
 #navigation-items .sidebar-group button {
   border-left: 2px solid transparent !important;
-  color: color-mix(in srgb, var(--primary) 60%, transparent) !important;
+  color: var(--primary-muted) !important;
   transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease !important;
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard) !important;
 }
 
-/* Inactive icon = muted */
 #navigation-items .sidebar-group a svg {
-  background-color: color-mix(
-    in srgb,
-    var(--primary) 60%,
-    transparent
-  ) !important;
+  background-color: var(--primary-muted) !important;
 }
 
 /* Hover */
 #navigation-items .sidebar-group a:hover,
 #navigation-items .sidebar-group button:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--primary) 8%,
-    transparent
-  ) !important;
+  background-color: var(--nav-tint) !important;
   color: var(--primary) !important;
 }
 
-/* Active page indicator */
 #navigation-items .sidebar-group a[class*="bg-primary"] {
   border-left-color: var(--primary) !important;
-  background-color: color-mix(
-    in srgb,
-    var(--primary) 8%,
-    transparent
-  ) !important;
+  background-color: var(--nav-tint) !important;
   color: var(--primary) !important;
 }
 
@@ -542,7 +645,6 @@ div:has(> div > #navigation-items) {
   background-color: var(--primary) !important;
 }
 
-/* Remove border from list links */
 ul li a {
   border-bottom: none !important;
 }
@@ -552,7 +654,16 @@ a.link {
   border: none !important;
 }
 
-/* Code */
+.prose :where(a):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  font-weight: var(--font-weight-semibold) !important;
+}
+
+.prose
+  :where(strong):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  font-weight: var(--font-weight-semibold) !important;
+}
+
+/* =================================  CODE  ================================= */
 
 :not(pre) > code {
   --code-bg: #ececec;
@@ -569,24 +680,29 @@ pre code {
   color: unset !important;
 }
 
-/* Code blocks — blog style */
+@layer utilities {
+  .code-block,
+  .code-block *,
+  .code-group,
+  .code-group * {
+    border-radius: var(--code-block-radius) !important;
+  }
+}
+
 .code-block {
-  --blog-code-bg: #171614;
-  --blog-code-border: rgba(246, 244, 240, 0.22);
-  --blog-code-text: #f4f1ea;
-  --blog-code-muted: rgba(244, 241, 234, 0.62);
-  /* Strip Mintlify chrome */
-  border: 0 !important;
+  border: 1px solid var(--blog-code-border) !important;
   border-radius: 0 !important;
   padding: 0 !important;
-  background: transparent !important;
+  background: var(--blog-code-bg) !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
 
 /* Title header */
 .code-block [data-component-part="code-block-header"] {
   min-height: 2.25rem;
   padding: 0.375rem 0.625rem 0.375rem 1rem;
-  background-color: var(--blog-code-bg) !important;
+  background-color: var(--blog-code-header-bg) !important;
   border-bottom: 1px solid var(--blog-code-border) !important;
   border-radius: 0 !important;
 }
@@ -595,7 +711,52 @@ pre code {
   color: var(--blog-code-muted) !important;
 }
 
-/* Dark surface, sharp corners */
+.code-block {
+  --lang-label: "Code";
+}
+.code-block[language="python"] {
+  --lang-label: "Python";
+}
+.code-block[language="bash"] {
+  --lang-label: "Bash";
+}
+.code-block[language="shell"],
+.code-block[language="shellscript"] {
+  --lang-label: "Shell";
+}
+.code-block[language="r"] {
+  --lang-label: "R";
+}
+.code-block[language="md"],
+.code-block[language="markdown"] {
+  --lang-label: "Markdown";
+}
+.code-block[language="text"],
+.code-block[language="plaintext"],
+.code-block[language="txt"] {
+  --lang-label: "Text";
+}
+
+.code-block [data-component-part="code-block-header-filename"]::before {
+  content: var(--lang-label) " - ";
+}
+
+.code-block:not(:has([data-component-part="code-block-header"]))::before {
+  content: var(--lang-label) " - Example";
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.375rem 0.625rem 0.375rem 1rem;
+  font-size: 0.875rem;
+  color: var(--blog-code-muted);
+  background-color: var(--blog-code-header-bg);
+  border-bottom: 1px solid var(--blog-code-border);
+}
+
+.code-group .code-block::before {
+  content: none !important;
+}
+
 .code-block [data-component-part="code-block-root"],
 .code-block pre.shiki {
   --shiki-dark-bg: var(--blog-code-bg) !important;
@@ -604,17 +765,13 @@ pre code {
   border-radius: 0 !important;
 }
 
-/* Force dark tokens in light (standalone blocks only; code groups are themed
-   #fff/#000 and keep the native light syntax theme in light mode). */
-html:not(.dark) .code-block:not(.code-group *) .shiki,
-html:not(.dark) .code-block:not(.code-group *) .shiki span {
+html:not(.dark) .code-block .shiki,
+html:not(.dark) .code-block .shiki span {
   color: var(--shiki-dark) !important;
 }
 
-/* Bottom fade → dark surface */
 .code-block [data-fade-overlay] {
-  --fade-color-light: var(--blog-code-bg) !important;
-  --fade-color-dark: var(--blog-code-bg) !important;
+  display: none !important;
 }
 
 /* Copy button */
@@ -631,84 +788,215 @@ html:not(.dark) .code-block:not(.code-group *) .shiki span {
   color: var(--blog-code-text) !important;
 }
 .code-block [data-testid="copy-code-button"]:hover {
-  background-color: rgba(246, 244, 240, 0.08) !important;
+  background-color: var(--code-hover-overlay) !important;
 }
 
-/* Code group (tabbed code blocks) */
+.code-block:not(:has([data-component-part="code-block-header"]))
+  [data-floating-buttons] {
+  top: 0 !important;
+  bottom: auto !important;
+  height: 2.25rem !important;
+  right: 0.625rem !important;
+  align-items: center !important;
+}
 
-/* Themed surface (#fff light / #000 dark), sharp corners — our design.
-   `body` prefix so it out-specifies the global .rounded-2xl utility. */
-body .code-group,
-.code-group [data-component-part="code-block-root"],
-.code-group pre.shiki,
-.code-group .code-block {
+body .code-group {
   border-radius: 0 !important;
-}
-
-.code-group {
   background-color: var(--code-group-bg) !important;
   border: 1px solid var(--code-group-border) !important;
+  padding: var(--space-16) !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  position: relative;
+  isolation: isolate;
 }
 
-/* Code surface = themed; keep native syntax theme per mode (light theme on
-   #fff, dark theme on #000). Plain (unspanned) text uses --primary. */
-.code-group [data-component-part="code-block-root"],
-.code-group pre.shiki {
-  background-color: var(--code-group-bg) !important;
-  --shiki-dark-bg: #000000 !important;
-  color: var(--primary) !important;
-}
-
-/* Filename header + nested block chrome themed */
-.code-group [data-component-part="code-block-header"] {
-  background-color: var(--code-group-bg) !important;
-  border-bottom-color: var(--code-group-border) !important;
+body .code-group::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
+  background-repeat: repeat;
+  background-size: var(--grain-size);
+  filter: grayscale(1) contrast(1.5);
+  opacity: var(--grain-opacity);
 }
 
 .code-group .code-block {
-  background: transparent !important;
-  border: 0 !important;
+  border: 1px solid var(--blog-code-border) !important;
+  margin: 0 !important;
 }
 
-.code-group [data-fade-overlay] {
-  --fade-color-light: #ffffff !important;
-  --fade-color-dark: #000000 !important;
+.code-group [data-component-part="code-group-tab-bar"] + div {
+  margin-top: var(--space-16) !important;
 }
 
-/* Tabs: active = --primary, inactive = --primary-muted */
+@layer utilities {
+  body .code-group [role="tabpanel"] [data-component-part="code-block-root"],
+  body .code-group [role="tabpanel"] pre.shiki {
+    border-radius: 0 !important;
+  }
+
+  body
+    .code-group:has(.code-block)
+    [role="tabpanel"]
+    > [data-component-part="code-block-root"] {
+    height: auto !important;
+  }
+
+  body
+    .code-group:has(.code-block)
+    [role="tabpanel"]
+    > [data-component-part="code-block-root"]
+    > [data-component-part="scroll-area-viewport"] {
+    padding: 0 !important;
+  }
+
+  body
+    .code-group:not(:has(.code-block))
+    [role="tabpanel"]
+    > [data-component-part="code-block-root"]
+    > [data-component-part="scroll-area-viewport"] {
+    overflow-y: auto !important;
+  }
+}
+
 .code-group [role="tab"] {
-  color: var(--primary-muted) !important;
+  color: var(--blog-code-muted) !important;
 }
 
 .code-group [role="tab"][aria-selected="true"] {
-  color: var(--primary) !important;
+  color: var(--blog-code-text) !important;
 }
 
 .code-group [role="tab"] svg {
   background-color: currentColor !important;
 }
 
-/* Active-tab underline indicator = --primary */
 .code-group [role="tab"] [class*="bg-primary"] {
-  background-color: var(--primary) !important;
+  background-color: var(--blog-code-text) !important;
 }
 
-/* Hide the group-level copy button (far right of the tab bar); each block still
-   has its own copy button in its header. */
-.code-group
+.code-group [role="tab"]:hover > div:first-child {
+  background-color: var(--code-tab-hover) !important;
+}
+
+.code-group:has(.code-block)
   > [data-component-part="code-group-tab-bar"]
   [data-testid="copy-code-button"] {
   display: none !important;
 }
 
-/* TOC */
+.code-group:not(:has(.code-block)) [data-component-part="code-block-root"],
+.code-group:not(:has(.code-block)) pre.shiki {
+  background-color: var(--code-group-bg) !important;
+  --shiki-dark-bg: var(--code-group-bg) !important;
+  color: var(--blog-code-text) !important;
+}
+html:not(.dark) .code-group:not(:has(.code-block)) .shiki,
+html:not(.dark) .code-group:not(:has(.code-block)) .shiki span {
+  color: var(--shiki-dark) !important;
+}
 
-/* Table of contents: inactive items use --primary-muted, the active item (and
-   hover) uses --primary. */
+.code-group:not(:has(.code-block))
+  [role="tabpanel"]
+  > [data-component-part="code-block-root"] {
+  position: relative;
+}
+.code-group:not(:has(.code-block))
+  [role="tabpanel"]
+  > [data-component-part="code-block-root"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
+  background-repeat: repeat;
+  background-size: var(--grain-size);
+  filter: grayscale(1) contrast(1.5);
+  opacity: var(--grain-opacity);
+}
+
+.code-group:not(:has(.code-block))
+  [data-component-part="code-group-tab-bar"]
+  span {
+  color: var(--blog-code-text) !important;
+}
+
+.code-group
+  [data-component-part="code-group-tab-bar"]
+  button[aria-haspopup="menu"]
+  > div {
+  border: 1px solid var(--blog-code-border) !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+}
+.code-group
+  [data-component-part="code-group-tab-bar"]
+  button[aria-haspopup="menu"]
+  > div,
+.code-group
+  [data-component-part="code-group-tab-bar"]
+  button[aria-haspopup="menu"]
+  > div
+  * {
+  color: var(--primary-foreground) !important;
+}
+html.dark
+  .code-group
+  [data-component-part="code-group-tab-bar"]
+  button[aria-haspopup="menu"]
+  > div,
+html.dark
+  .code-group
+  [data-component-part="code-group-tab-bar"]
+  button[aria-haspopup="menu"]
+  > div
+  * {
+  color: var(--primary) !important;
+}
+.code-group
+  [data-component-part="code-group-tab-bar"]
+  button[aria-haspopup="menu"]
+  > div:hover {
+  background-color: var(--code-hover-overlay) !important;
+  color: var(--blog-code-text) !important;
+}
+
+.code-group:not(:has(.code-block))
+  > [data-component-part="code-group-tab-bar"]
+  [data-testid="copy-code-button"] {
+  display: flex !important;
+  border: 1px solid var(--blog-code-border) !important;
+  border-radius: 0 !important;
+  color: var(--blog-code-muted) !important;
+}
+.code-group:not(:has(.code-block))
+  > [data-component-part="code-group-tab-bar"]
+  [data-testid="copy-code-button"]:hover {
+  background-color: var(--code-hover-overlay) !important;
+  color: var(--blog-code-text) !important;
+}
+.code-group:not(:has(.code-block))
+  > [data-component-part="code-group-tab-bar"]
+  [data-testid="copy-code-button"]
+  svg {
+  color: inherit !important;
+}
+
+/* ==========================  TABLE OF CONTENTS  =========================== */
+
+#table-of-contents-content {
+  margin-top: var(--space-12);
+}
+
 #table-of-contents-content a,
 .toc a {
   color: var(--primary-muted) !important;
-  transition: color 0.15s ease;
+  transition: color var(--duration-fast) var(--ease-standard);
 }
 
 #table-of-contents-content a:hover,
@@ -719,42 +1007,214 @@ body .code-group,
   color: var(--primary) !important;
 }
 
-/* The "mint" theme doesn't render the vertical rail that other Mintlify themes
-   (e.g. Greptile's) draw next to the TOC, so we build it here: a faint left
-   border on every item, highlighted on the active one — that's the "you are
-   here" indicator. Border lives on the <li> so anchor padding keeps the
-   existing depth indentation. */
-#table-of-contents-content .toc-item {
-  border-left: 1.5px solid color-mix(in srgb, var(--primary) 14%, transparent);
-  padding-left: 0.75rem;
-  transition: border-color 0.15s ease;
+#table-of-contents-content .toc-item > ul {
+  margin-left: 0;
+  padding-left: 0;
 }
 
-#table-of-contents-content .toc-item[data-active="true"] {
+#table-of-contents-content .toc-item[data-depth="0"] > a {
+  border-left: 1.5px solid var(--toc-rail);
+  padding-left: 1rem;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+#table-of-contents-content .toc-item:not([data-depth="0"]) {
+  border-left: 1.5px solid var(--toc-rail);
+  padding-left: 1rem;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+#table-of-contents-content .toc-item[data-depth="0"][data-active="true"] > a,
+#table-of-contents-content .toc-item[data-active="true"]:not([data-depth="0"]) {
   border-left-color: var(--primary);
 }
 
-/* Subtle weight on the active label so it reads clearly even though --primary
-   is grayscale (mirrors Greptile's text-shadow trick). */
 #table-of-contents-content .toc-item[data-active="true"] > a,
 #table-of-contents-content a[aria-current="location"],
 .toc a[aria-current="location"] {
-  text-shadow: -0.15px 0 0 currentColor, 0.15px 0 0 currentColor;
+  text-shadow:
+    -0.15px 0 0 currentColor,
+    0.15px 0 0 currentColor;
 }
 
-/* Content layout */
+/* ============================  CONTENT LAYOUT  ============================ */
 
 #content-area {
   display: flex;
   flex-direction: column;
-  gap: 80px;
+  gap: var(--spacing-content-area);
+}
+
+#footer {
+  margin-top: var(--spacing-footer-top) !important;
 }
 
 .mdx-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--spacing-mdx-content);
   margin: 0;
+}
+
+.prose :where(h2):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: var(--spacing-mdx-content-prose-headers) !important;
+  margin-bottom: 0 !important;
+}
+
+.prose
+  :where(h2):not(
+    :where([class~="not-prose"], [class~="not-prose"] *)
+  ):first-child {
+  margin-top: 0 !important;
+}
+
+.prose
+  span
+  + :where(h2):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: var(--space-20) !important;
+}
+
+.prose :where(h3):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: var(--spacing-mdx-content-prose-headers-small) !important;
+  margin-bottom: 0 !important;
+}
+
+.prose
+  span
+  + :where(h3):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: var(--space-20) !important;
+}
+
+.prose
+  :where(h2):not(:where([class~="not-prose"], [class~="not-prose"] *))
+  + :where(h3):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: 0 !important;
+}
+
+.prose :where(h1):not(:where([class~="not-prose"], [class~="not-prose"] *)),
+.prose :where(h4):not(:where([class~="not-prose"], [class~="not-prose"] *)),
+.prose :where(ul):not(:where([class~="not-prose"], [class~="not-prose"] *)),
+.prose :where(p):not(:where([class~="not-prose"], [class~="not-prose"] *)),
+.prose :where(ol):not(:where([class~="not-prose"], [class~="not-prose"] *)),
+.prose :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.prose :where(table):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--table-border) !important;
+  background-color: var(--table-bg) !important;
+  font-size: 0.875rem;
+  color: var(--primary);
+}
+
+.prose
+  :where(table th):not(:where([class~="not-prose"], [class~="not-prose"] *)),
+.prose
+  :where(table td):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  padding: 0.875rem 1rem;
+  border-right: 1px solid var(--table-border) !important;
+  border-bottom: 1px solid var(--table-border) !important;
+  text-align: left;
+  vertical-align: middle;
+  font-weight: var(--font-weight-regular);
+  color: var(--primary);
+  background-color: transparent !important;
+}
+
+.prose
+  :where(table th):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  background-color: var(--table-header-bg) !important;
+  font-weight: var(--font-weight-semibold);
+}
+
+.prose
+  :where(table th:last-child):not(
+    :where([class~="not-prose"], [class~="not-prose"] *)
+  ),
+.prose
+  :where(table td:last-child):not(
+    :where([class~="not-prose"], [class~="not-prose"] *)
+  ) {
+  border-right: 0 !important;
+}
+
+.prose
+  :where(table tbody tr:last-child td):not(
+    :where([class~="not-prose"], [class~="not-prose"] *)
+  ) {
+  border-bottom: 0 !important;
+}
+
+.prose
+  :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  position: relative;
+  margin: 0 !important;
+  padding: var(--space-32) !important;
+  background-color: var(--surface);
+  border: none !important;
+  color: var(--primary) !important;
+  font-style: normal !important;
+  font-weight: var(--font-weight-regular) !important;
+  overflow: hidden;
+}
+
+.prose
+  :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
+  :where(p):first-of-type::before,
+.prose
+  :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
+  :where(p):last-of-type::after {
+  content: "" !important;
+}
+
+.prose
+  :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
+  > * {
+  position: relative;
+  z-index: 1;
+}
+
+.prose
+  :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
+  :where(p) {
+  line-height: 1.6 !important;
+}
+
+.prose
+  :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
+  :where(p)
+  + :where(p) {
+  margin-top: var(--space-16) !important;
+}
+
+[data-component-part="card-content-container"] {
+  padding: 0 !important;
+  padding-block: 0 !important;
+  padding-inline: 0 !important;
+}
+
+.prose :where(li):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  margin-top: var(--spacing-mdx-content-prose-li) !important;
+  margin-bottom: var(--spacing-mdx-content-prose-li) !important;
+}
+
+.prose
+  :where(li):not(
+    :where([class~="not-prose"], [class~="not-prose"] *)
+  ):first-child {
+  margin-top: 0 !important;
+}
+
+.prose
+  :where(li):not(
+    :where([class~="not-prose"], [class~="not-prose"] *)
+  ):last-child {
+  margin-bottom: 0 !important;
 }
 
 .mdx-content br {
@@ -767,23 +1227,108 @@ body .code-group,
 }
 
 details.accordion :not(summary) span[data-as="p"] {
-  margin-bottom: 20px !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
 
 .mdx-content hr {
-  margin-top: 20px !important;
-  margin-bottom: 20px !important;
+  margin-top: var(--space-20) !important;
+  margin-bottom: calc(-1 * var(--spacing-mdx-content)) !important;
+}
+
+.prose :where(hr):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  border-color: var(--border) !important;
 }
 
 [role="list"].steps {
-  margin-top: 20px !important;
-  margin-bottom: 20px !important;
+  margin-top: var(--spacing-component-top) !important;
+  margin-bottom: 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-list-steps-gap);
+}
+
+[data-rmiz-portal] {
+  margin-block: 0 !important;
+}
+
+img[alt="Open In Colab"] {
+  height: var(--image-link-badge-height) !important;
+  width: auto !important;
+  line-height: 0 !important;
+}
+
+a:has(img[alt="Open In Colab"]) [data-rmiz],
+a:has(img[alt="Open In Colab"]) [data-rmiz-content] {
+  display: inline-flex !important;
+}
+
+a:has(img[alt="Open In Colab"]) [data-rmiz-ghost],
+a:has(img[alt="Open In Colab"]) [data-rmiz-ghost] button {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+span[data-as="p"]:has(img[alt="Open In Colab"]) {
+  line-height: 0 !important;
+}
+
+[role="listitem"].step {
+  padding-bottom: 0px !important;
+}
+
+[data-component-part="accordion-content"] {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--space-20) !important;
+  margin-top: var(--space-20) !important;
+  margin-bottom: var(--space-20) !important;
+  margin-inline: var(--space-20) !important;
+  overflow: visible !important;
+}
+
+[data-component-part="accordion-content"] .steps {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+[data-component-part="frame-caption"] {
+  margin-top: var(--space-20) !important;
+  padding-bottom: 0 !important;
+}
+
+.callout {
+  margin-block: 0 !important;
+}
+
+.accordion-group {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  border-color: var(--border);
+}
+
+[data-component-part="tabs-list"] {
+  margin-bottom: 0 !important;
+}
+
+[data-component-part="tab-content"]:not(.hidden) {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--space-20) !important;
+  margin-top: var(--space-20) !important;
+}
+
+[data-component-part="tab-button"] {
+  margin-top: 0 !important;
+  margin-bottom: -1px !important;
+  padding-top: 0 !important;
+  padding-bottom: var(--space-4) !important;
 }
 
 #header {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 0px;
   position: relative;
 }
 
@@ -791,11 +1336,10 @@ details.accordion :not(summary) span[data-as="p"] {
   max-width: 420px;
 }
 
-/* Desktop header layout */
 @media (min-width: 640px) {
   #header > div > .eyebrow {
     padding-right: 180px;
-    height: 40px;
+    height: var(--spacing-header-description);
     display: flex;
     align-items: center;
   }
@@ -804,7 +1348,7 @@ details.accordion :not(summary) span[data-as="p"] {
     flex-direction: column !important;
     align-items: flex-start !important;
     position: static !important;
-    margin-top: 24px !important;
+    margin-top: 0px !important;
   }
 
   #page-title {
@@ -812,13 +1356,35 @@ details.accordion :not(summary) span[data-as="p"] {
     flex: none !important;
   }
 
-  #header #page-context-menu {
+  #header .mt-2.text-lg {
+    margin-top: var(--spacing-header-description) !important;
+  }
+}
+
+@media (max-width: 991px) {
+  #page-context-menu.ml-auto {
+    display: none !important;
+  }
+
+  #page-context-menu.mt-3 {
+    display: flex !important;
+    margin-top: var(--space-16) !important;
+  }
+}
+
+@media (min-width: 992px) {
+  #page-context-menu.mt-3 {
+    display: none !important;
+  }
+
+  #header #page-context-menu.ml-auto {
+    display: flex !important;
     position: absolute !important;
-    top: 5px !important;
+    top: 0px !important;
     right: 0 !important;
-    margin-left: 0 !important;
+    margin-top: 0 !important;
     align-items: center !important;
-    justify-content: center !important;
+    justify-content: flex-end !important;
   }
 }
 
@@ -828,59 +1394,48 @@ details.accordion :not(summary) span[data-as="p"] {
 
 #content-side-layout a.font-medium {
   color: var(--primary);
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
 }
 
-/* Cards */
+/* ================================  CARDS  ================================= */
 
-/* Grid: border collapse */
-.card-group {
-  gap: 0 !important;
-  border-top: 1px solid var(--card-border);
-  border-left: 1px solid var(--card-border);
-}
-
-/* Card */
 a.card,
 div.card {
   margin: 0 !important;
   padding: 0 !important;
   background: var(--card-bg) !important;
-  border: none !important;
-  border-right: 1px solid var(--card-border) !important;
-  border-bottom: 1px solid var(--card-border) !important;
+  border: 1px solid var(--card-border) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   outline: none !important;
   --tw-ring-offset-shadow: 0 0 0 0 transparent !important;
   --tw-ring-shadow: 0 0 0 0 transparent !important;
   --tw-ring-color: transparent !important;
-  transition: background-color 0.2s ease;
+  transition: var(--transition-hover);
+}
+
+.card-group {
+  gap: 0 !important;
+  border-top: 1px solid var(--card-border);
+  border-left: 1px solid var(--card-border);
+}
+
+.card-group a.card,
+.card-group div.card {
+  border-top: none !important;
+  border-left: none !important;
 }
 
 a.card:hover,
 div.card:hover,
 html.dark a.card:hover,
 html.dark div.card:hover {
-  background: var(--card-bg-hover) !important;
-  border: none !important;
-  border-right: 1px solid var(--card-border) !important;
-  border-bottom: 1px solid var(--card-border) !important;
+  background: var(--hover) !important;
   box-shadow: none !important;
   outline: none !important;
   --tw-ring-offset-shadow: 0 0 0 0 transparent !important;
   --tw-ring-shadow: 0 0 0 0 transparent !important;
   --tw-ring-color: transparent !important;
-}
-
-/* Linked-card hover border */
-@layer utilities {
-  div.card[role="link"]:hover,
-  a.card[href]:hover {
-    border-right-color: var(--primary) !important;
-    border-bottom-color: var(--primary) !important;
-    box-shadow: inset 1px 1px 0 0 var(--primary) !important;
-  }
 }
 
 html.dark a.card svg,
@@ -890,98 +1445,169 @@ html.dark div.card svg {
 
 /* Content container */
 [data-component-part="card-content-container"] {
-  padding: 40px 30px !important;
+  padding: var(--space-32) var(--space-32) !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 30px !important;
+  gap: var(--space-24) !important;
 }
 
 /* Icon */
 [data-component-part="card-icon"] {
-  width: 24px !important;
-  height: 24px !important;
+  width: var(--space-24) !important;
+  height: var(--space-24) !important;
   flex-shrink: 0;
 }
 
 [data-component-part="card-icon"] svg {
-  width: 24px !important;
-  height: 24px !important;
+  width: var(--space-24) !important;
+  height: var(--space-24) !important;
   background-color: var(--primary) !important;
 }
 
-/* Title+desc wrapper; skip table */
 [data-component-part="card-content-container"] .w-full:not(table) {
   display: flex !important;
   flex-direction: column !important;
-  gap: 14px !important;
+  gap: var(--space-16) !important;
 }
 
 /* Title */
 [data-component-part="card-title"] {
   font-size: 26px !important;
   font-style: normal !important;
-  font-weight: 400 !important;
+  font-weight: var(--font-weight-regular) !important;
   line-height: 100% !important;
-  font-family: "NeueMontreal", sans-serif !important;
+  font-family: var(--font-sans) !important;
   color: var(--primary) !important;
   margin: 0 !important;
+}
+
+[data-component-part="card-title"]:empty {
+  display: none !important;
 }
 
 /* Description */
 [data-component-part="card-content"] {
   font-size: 16px !important;
   font-style: normal !important;
-  font-weight: 400 !important;
+  font-weight: var(--font-weight-regular) !important;
   line-height: 24px !important;
   color: var(--primary) !important;
   margin: 0 !important;
   opacity: 0.7;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
 }
 
-/* Accordion */
+[data-component-part="card-content"]:empty {
+  display: none !important;
+}
+
+/* ==============================  ACCORDION  =============================== */
 
 details.accordion,
 details.accordion summary {
   border-radius: 0 !important;
 }
 
-/* Accordion surface: #fff (light) / #000 (dark). Needs html:not(.dark)/html.dark
-   to out-specify the global `.bg-background-light` override, which is (0,2,1). */
+details.accordion {
+  margin-bottom: 0 !important;
+}
+
 html:not(.dark) details.accordion,
 html.dark details.accordion {
   background-color: var(--accordion-bg) !important;
 }
 
 details.accordion summary:hover {
-  background-color: var(--secondary) !important;
+  background-color: var(--hover) !important;
 }
 
-html.dark details.accordion summary:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+[data-component-part="accordion-button"] {
+  border-bottom: 1px solid transparent;
 }
 
-/* Steps */
+[data-component-part="accordion-button"][aria-expanded="true"] {
+  border-bottom-color: var(--border);
+}
 
-/* Step badge: inverted tokens */
+details.accordion {
+  border-color: var(--border) !important;
+}
+
+[data-component-part="tab-content"] > details.accordion + details.accordion {
+  margin-top: calc(-1 * var(--space-20)) !important;
+  border-top: none !important;
+}
+
+details.expandable,
+details.expandable summary,
+details.expandable .expandable-content {
+  border-radius: 0 !important;
+}
+
+html:not(.dark) details.expandable,
+html.dark details.expandable {
+  background-color: var(--accordion-bg) !important;
+  border-color: var(--border) !important;
+}
+
+details.expandable > summary {
+  color: var(--primary-muted) !important;
+}
+
+details.expandable > summary:hover {
+  background-color: var(--hover) !important;
+  color: var(--primary) !important;
+}
+
+details.expandable > summary svg[data-component-part="icon-svg"] {
+  background-color: var(--primary-muted) !important;
+}
+
+details.expandable .expandable-content {
+  border-top-color: var(--border) !important;
+}
+
+details.expandable .array-param-field,
+details.expandable .primitive-param-field {
+  border-color: var(--border) !important;
+}
+
+/* ================================  STEPS  ================================= */
+
 [data-component-part="step-number"] > div {
   background-color: var(--primary) !important;
   color: var(--primary-foreground) !important;
 }
 
-/* Step icon/number sits on the --primary badge, so it must use the foreground
-   token — otherwise the icon (bg-gray-900) is dark-on-dark and invisible
-   (e.g. steps inside an accordion). */
 [data-component-part="step-number"] > div svg {
   background-color: var(--primary-foreground) !important;
 }
 
-/* Tables — blog parity */
+:has(> [data-component-part="step-title"]),
+[data-component-part="step-content"] {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--space-20) !important;
+}
 
-/* Wrapper = bordered surface */
+[data-component-part="step-title"] {
+  margin: 0 !important;
+}
+
+[data-component-part="step-line"] {
+  top: 2.75rem !important;
+  bottom: auto !important;
+  height: 100% !important;
+}
+
+/* ================================  TABLES  ================================ */
+
 [data-table-wrapper] {
   width: 100% !important;
   max-width: 100% !important;
-  margin: 1.5rem 0 !important;
+  margin: 0rem 0 !important;
   padding: 0 !important;
   border: 1px solid var(--table-border);
   background-color: var(--table-bg);
@@ -991,7 +1617,6 @@ html.dark details.accordion summary:hover {
   padding: 0 !important;
 }
 
-/* Transparent, collapse */
 [data-table-wrapper] table {
   margin: 0 !important;
   border: 0 !important;
@@ -1001,7 +1626,6 @@ html.dark details.accordion summary:hover {
   color: var(--primary);
 }
 
-/* Header bg on cells only */
 [data-table-wrapper] table thead,
 [data-table-wrapper] table tbody,
 [data-table-wrapper] table tr {
@@ -1016,7 +1640,7 @@ html.dark details.accordion summary:hover {
   text-align: left;
   vertical-align: middle;
   font-size: 0.875rem;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular);
   color: var(--primary);
   background-color: transparent !important;
 }
@@ -1024,10 +1648,9 @@ html.dark details.accordion summary:hover {
 [data-table-wrapper] table thead th,
 [data-table-wrapper] table th {
   background-color: var(--table-header-bg) !important;
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
 }
 
-/* Dividers between cells */
 [data-table-wrapper] table th:last-child,
 [data-table-wrapper] table td:last-child {
   border-right: 0 !important;
@@ -1037,13 +1660,12 @@ html.dark details.accordion summary:hover {
   border-bottom: 0 !important;
 }
 
-/* First column centered */
 [data-table-wrapper] table th:first-child,
 [data-table-wrapper] table td:first-child {
   text-align: center;
 }
 
-/* Frame */
+/* ================================  FRAME  ================================= */
 
 /* Strip <Frame> chrome */
 .frame {
@@ -1061,9 +1683,8 @@ html.dark details.accordion summary:hover {
   border-radius: 0 !important;
 }
 
-/* Banner */
+/* ================================  BANNER  ================================ */
 
-/* Banner bg via docs.json */
 #banner {
   border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
   height: auto !important;
@@ -1072,12 +1693,11 @@ html.dark details.accordion summary:hover {
 
 @media (max-width: 767px) {
   #banner {
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
+    padding-top: var(--space-4) !important;
+    padding-bottom: var(--space-4) !important;
   }
 }
 
-/* Banner text = --primary */
 @layer utilities {
   #banner,
   #banner * {
@@ -1093,8 +1713,8 @@ html.dark details.accordion summary:hover {
 
 #banner p,
 #banner p a {
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
+  font-family: var(--font-mono) !important;
+  font-weight: var(--font-weight-regular) !important;
   font-size: 12px !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
@@ -1111,26 +1731,26 @@ html.dark details.accordion summary:hover {
   color: var(--primary) !important;
 }
 
-/* Pagination */
+/* ==============================  PAGINATION  ============================== */
 
 #pagination {
-  font-family: "NeueMontreal", sans-serif !important;
+  font-family: var(--font-sans) !important;
   font-size: 30px !important;
-  font-weight: 400 !important;
+  font-weight: var(--font-weight-regular) !important;
   line-height: 100% !important;
   color: var(--primary) !important;
 }
 
 #pagination a span {
   font-size: 20px !important;
-  font-weight: 400 !important;
+  font-weight: var(--font-weight-regular) !important;
   line-height: 120% !important;
   color: var(--primary) !important;
 }
 
 #pagination svg {
-  height: 10px !important;
-  width: 10px !important;
+  height: var(--space-10) !important;
+  width: var(--space-10) !important;
   stroke: var(--primary) !important;
 }
 
@@ -1144,7 +1764,7 @@ html.dark details.accordion summary:hover {
 
 #pagination {
   flex-wrap: wrap !important;
-  gap: 20px !important;
+  gap: var(--space-20) !important;
   align-items: start !important;
   justify-content: space-between !important;
 }
@@ -1158,13 +1778,13 @@ html.dark details.accordion summary:hover {
   text-decoration: underline;
 }
 
-/* Feedback toolbar */
+/* ===========================  FEEDBACK TOOLBAR  =========================== */
 
 .feedback-toolbar p {
   color: var(--primary) !important;
-  font-family: "NeueMontreal", sans-serif !important;
+  font-family: var(--font-sans) !important;
   font-size: 12px !important;
-  font-weight: 400 !important;
+  font-weight: var(--font-weight-regular) !important;
   line-height: 16px !important;
 }
 
@@ -1172,7 +1792,7 @@ html.dark details.accordion summary:hover {
 .feedback-toolbar a {
   background: var(--feedback-btn-bg) !important;
   color: var(--feedback-btn-color) !important;
-  padding: 2px 6px !important;
+  padding: var(--space-2) var(--space-6) !important;
   border-radius: var(--radius) !important;
   border: none !important;
 }
@@ -1181,8 +1801,8 @@ html.dark details.accordion summary:hover {
 .feedback-toolbar button *,
 .feedback-toolbar a,
 .feedback-toolbar a * {
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
+  font-family: var(--font-mono) !important;
+  font-weight: var(--font-weight-regular) !important;
   font-size: 10px !important;
   text-transform: uppercase !important;
   line-height: 22px !important;
@@ -1193,8 +1813,6 @@ html.dark details.accordion summary:hover {
 .feedback-toolbar a svg {
   display: none !important;
 }
-
-/* Page context + dropdown */
 
 [role="menu"][data-orientation="vertical"] {
   background-color: var(--dropdown-bg) !important;
@@ -1211,17 +1829,17 @@ html.dark details.accordion summary:hover {
   box-shadow: none !important;
 }
 
-html.dark [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
-  background-color: rgba(0, 0, 0, 0.08) !important;
+[role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
+  background-color: var(--dropdown-hover) !important;
 }
 
 #page-context-menu-button,
 #page-context-menu-button + button {
   border-radius: 0 !important;
-  background-color: var(--secondary) !important;
-  color: var(--secondary-foreground) !important;
-  font-family: "Supply", monospace !important;
-  font-weight: 400 !important;
+  background-color: var(--background) !important;
+  color: var(--primary) !important;
+  font-family: var(--font-mono) !important;
+  font-weight: var(--font-weight-regular) !important;
   font-size: 12px !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
@@ -1233,20 +1851,20 @@ html.dark [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
 
 #page-context-menu-button *,
 #page-context-menu-button + button * {
-  font-family: "Supply", monospace !important;
+  font-family: var(--font-mono) !important;
   font-size: 12px !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
 }
 
-/* Tabs */
+/* =================================  TABS  ================================= */
 
 [data-component-part="tab-button"][data-active="true"] svg {
   color: var(--primary) !important;
   background-color: var(--primary) !important;
 }
 
-/* Chat assistant */
+/* ============================  CHAT ASSISTANT  ============================ */
 
 #content-area > div:has(.chat-assistant-floating-input) {
   margin-top: -80px !important;
@@ -1257,7 +1875,7 @@ html.dark [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
   background-color: transparent !important;
 }
 
-/* Utilities */
+/* ==============================  UTILITIES  =============================== */
 
 a {
   border-radius: var(--radius) !important;
@@ -1280,14 +1898,6 @@ a {
   border-radius: calc(var(--radius) + 0.125rem) !important;
 }
 
-/* Mobile sidebar & iOS safe areas */
-
-/* Mintlify paints a full-viewport fixed <span id="background-color"> using its
-   built-in white background token (bg-background-light). On iOS 26 Safari the
-   status-bar/toolbar tint is sampled from a fixed element's background-color,
-   so this white layer is what makes the bar show white / look transparent with
-   content bleeding under the notch. Repaint it (and the token utilities) with
-   our canvas so every candidate Safari can sample is --background. */
 #background-color,
 .bg-background-light,
 html:not(.dark) .bg-background-light {
@@ -1300,8 +1910,6 @@ html.dark .bg-background-dark,
   background-color: var(--background) !important;
 }
 
-/* Paint the mobile sidebar scroll container as canvas (was white).
-   Scoped to the sidebar so code-block scroll areas keep their own bg. */
 #sidebar,
 #sidebar-content,
 #sidebar [data-component-part^="scroll-area"],
@@ -1312,7 +1920,6 @@ html.dark .bg-background-dark,
   background-color: var(--background) !important;
 }
 
-/* Keep the scrollbar thumb visible over the canvas */
 #sidebar [data-component-part="scroll-area-scrollbar"],
 #sidebar-content [data-component-part="scroll-area-scrollbar"],
 [data-component-part="scroll-area"]:has(#navigation-items)
@@ -1320,16 +1927,12 @@ html.dark .bg-background-dark,
   background-color: transparent !important;
 }
 
-/* Mobile navbar: opaque canvas (like the site), matching how the working
-   default Mintlify docs rely on solid top layers. */
 @media (max-width: 1023px) {
   #navbar,
   #navbar-transition {
     background-color: var(--background) !important;
   }
 }
-
-/* Film grain (nixtla.io noise) */
 
 :root {
   --grain-opacity: 0.08;
@@ -1338,18 +1941,10 @@ html.dark .bg-background-dark,
 
 body::after {
   content: "";
-  /* Fixed so the grain stays static while content scrolls (no "chasing" — that
-     was an `absolute`-only artifact), but BELOW the chrome (navbar z-30, sticky
-     bars z-20) and above content. This keeps the opaque navbar as the top layer
-     at the notch, so iOS 26 Safari samples IT (canvas) for the status bar tint
-     instead of this near-transparent grain — which is what made content bleed
-     through. The grain therefore only overlays the reading area, never the
-     navbar/breadcrumb chrome. */
   position: fixed;
   inset: 0;
   z-index: 10;
   pointer-events: none;
-  /* both roots: / and /docs */
   background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
   background-repeat: repeat;
   background-size: var(--grain-size);
@@ -1357,14 +1952,12 @@ body::after {
   opacity: var(--grain-opacity);
 }
 
-/* Reusable grain layer for a specific block.
-   Unlike the full-viewport body::after, this is a grain overlay SCOPED to a
-   single element (absolute, inset:0). Because it lives inside its block and is
-   not a separate fixed full-viewport layer, it never becomes the element iOS 26
-   samples for the status-bar tint. Add `grain-layer` to any block, or use the
-   selectors below. Applied to #navbar, which on mobile also contains the
-   breadcrumb/hamburger bar — so both get grain in one shot. */
 .grain-layer {
+  position: relative;
+}
+
+/* Search button needs position:relative so its grain ::after anchors to it. */
+#search-bar-entry {
   position: relative;
 }
 
@@ -1372,7 +1965,11 @@ body::after {
 #navbar::after,
 #banner::after,
 #sidebar::after,
-#mobile-nav::after {
+#mobile-nav::after,
+#search-bar-entry::after,
+[data-radix-menu-content]::after,
+[data-component-part="theme-preference-menu-content"]::after,
+[role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1385,20 +1982,25 @@ body::after {
   opacity: var(--grain-opacity);
 }
 
-/* The desktop sidebar's inner content (#sidebar-content) is z-10, so its grain
-   must sit above that to be visible. */
 #sidebar::after {
   z-index: 11;
 }
 
-/* Opt out for high contrast */
 @media (prefers-contrast: more) {
   body::after,
   .grain-layer::after,
   #navbar::after,
   #banner::after,
   #sidebar::after,
-  #mobile-nav::after {
+  #mobile-nav::after,
+  #search-bar-entry::after,
+  [data-radix-menu-content]::after,
+  [data-component-part="theme-preference-menu-content"]::after,
+  [role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
     display: none;
   }
+}
+
+#api-playground-2-operation-page :where(.mt-6.space-y-4) > * + * {
+  margin-top: 0px !important;
 }
