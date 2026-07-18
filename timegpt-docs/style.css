@@ -71,6 +71,12 @@
   /* Accordion surface */
   --accordion-bg: #ffffff;
 
+  /* Chat assistant */
+  --chat-input-bg: #ffffff;
+  --chat-shadow:
+    0 1px 6px 0 rgba(0, 0, 0, 0.06), 0 2px 32px 0 rgba(0, 0, 0, 0.16);
+  --chat-launcher-gap: 72px; /* mobile: room reserved for the Intercom launcher */
+
   --code-group-bg: #000000;
   --code-group-border: var(--blog-code-border);
 
@@ -175,6 +181,9 @@ html.dark {
 
   /* Accordion surface */
   --accordion-bg: #000000;
+
+  /* Chat assistant */
+  --chat-input-bg: #000000;
 
   --code-group-bg: #000000;
   --code-group-border: var(--blog-code-border);
@@ -1873,6 +1882,50 @@ details.expandable .primitive-param-field {
 
 .chat-assistant-floating-input::before {
   background-color: transparent !important;
+}
+
+/* Chat input box (the rounded container wrapping the textarea): solid tokenized
+   bg (#fff / #000), pill radius + the Intercom launcher shadow so it reads as
+   part of the same control family. Targeted via the textarea's box ancestor. */
+div:has(> div > #chat-assistant-textarea) {
+  background-color: var(--chat-input-bg) !important;
+  border-radius: 9999px !important;
+  box-shadow: var(--chat-shadow) !important;
+}
+
+/* Textarea itself stays transparent over the box bg. */
+.chat-assistant-input {
+  background-color: transparent !important;
+}
+
+/* The sticky wrapper around the chat input has overflow:hidden, which clips the
+   pill's box-shadow into a rectangle. Let it overflow so the rounded shadow
+   renders fully. */
+div:has(> .chat-assistant-floating-input) {
+  overflow: visible !important;
+}
+
+/* Send button: --alt surface with --primary-foreground icon (beats the inline
+   background:black and the bg-primary utility). */
+.chat-assistant-send-button {
+  background: var(--alt) !important;
+}
+
+.chat-assistant-send-button svg {
+  color: var(--primary-foreground) !important;
+}
+
+/* Mobile: place the input and the Intercom launcher on one row — input fills the
+   width minus the launcher's reserved space on the right (~80/20). NOTE: the
+   Intercom launcher is a separate fixed widget that only renders in the live
+   env; fine-tune --chat-launcher-gap there. */
+@media (max-width: 767px) {
+  div:has(> div > #chat-assistant-textarea) {
+    width: auto !important; /* override w-full so margin-right actually reserves space */
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: var(--chat-launcher-gap) !important;
+  }
 }
 
 /* ==============================  UTILITIES  =============================== */
