@@ -2140,8 +2140,10 @@ details.expandable .primitive-param-field {
 }
 
 /* Desktop assistant panel: solid #fff / #000 surface (the mobile drawer —
-   [role="dialog"] — keeps its default background). */
-.chat-assistant-sheet:not([role="dialog"]) {
+   [role="dialog"] — keeps its default background). Covers both the inner sheet
+   and its outer sticky wrapper so no cream shows behind it. */
+.chat-assistant-sheet:not([role="dialog"]),
+div:has(> #chat-assistant-sheet) {
   background-color: var(--chat-input-bg) !important;
 }
 
@@ -2329,6 +2331,7 @@ body::after {
 #assistant-entry::after,
 .chat-assistant-sheet::after,
 [data-component-part="search-modal"]::after,
+[data-component-part="search-input-container"]::after,
 [data-radix-menu-content]::after,
 [data-component-part="theme-preference-menu-content"]::after,
 [role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
@@ -2348,6 +2351,11 @@ body::after {
   z-index: 11;
 }
 
+/* Grain follows the input's rounded-2xl so it doesn't poke past the corners. */
+[data-component-part="search-input-container"]::after {
+  border-radius: inherit;
+}
+
 @media (prefers-contrast: more) {
   body::after,
   .grain-layer::after,
@@ -2359,6 +2367,7 @@ body::after {
   #assistant-entry::after,
   .chat-assistant-sheet::after,
   [data-component-part="search-modal"]::after,
+  [data-component-part="search-input-container"]::after,
   [data-radix-menu-content]::after,
   [data-component-part="theme-preference-menu-content"]::after,
   [role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
