@@ -45,7 +45,7 @@
 
   --code-block-radius: 0;
 
-  --page-title-max-width: 35rem;
+  --page-title-max-width: 34rem;
 
   --image-link-badge-height: 28px;
 
@@ -97,6 +97,9 @@
   --duration-fast: 0.15s;
   --duration-base: 0.2s;
   --duration-shift: 220ms;
+  --shift-distance: 115%; /* text/icon hover-shift travel */
+  --duration-slow: 0.4s;
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --transition-hover: background-color var(--duration-base) var(--ease-standard);
 
   /* FONTS */
@@ -389,11 +392,11 @@ html.dark #navbar-transition {
 }
 
 #navbar nav li:not(#topbar-cta-button) a::after {
-  transform: translateY(115%);
+  transform: translateY(var(--shift-distance));
 }
 
 #navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::before {
-  transform: translateY(-115%);
+  transform: translateY(calc(-1 * var(--shift-distance)));
 }
 
 #navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::after {
@@ -438,14 +441,210 @@ html.dark #navbar-transition {
 }
 
 #topbar-cta-button a div > span::after {
-  transform: translateY(115%);
+  transform: translateY(var(--shift-distance));
 }
 
 #topbar-cta-button a:is(:hover, :focus-visible) div > span::before {
-  transform: translateY(-115%);
+  transform: translateY(calc(-1 * var(--shift-distance)));
 }
 
 #topbar-cta-button a:is(:hover, :focus-visible) div > span::after {
+  transform: translateY(0);
+}
+
+/* Get Started arrow: the SAME reversible two-layer shift as the label. The inline
+   arrow can't be duplicated via content, so it's reproduced as a mask on the two
+   free pseudos of the content div; the real svg is hidden but keeps its width. */
+#topbar-cta-button a div {
+  position: relative;
+  overflow: hidden;
+}
+
+#topbar-cta-button a div > svg {
+  visibility: hidden;
+}
+
+#topbar-cta-button a div::before,
+#topbar-cta-button a div::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.75rem;
+  background-color: var(--primary-foreground);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25'/%3E%3C/svg%3E")
+    center / 0.75rem no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25'/%3E%3C/svg%3E")
+    center / 0.75rem no-repeat;
+  transition: transform var(--duration-shift) var(--ease-standard);
+  pointer-events: none;
+}
+
+#topbar-cta-button a div::before {
+  transform: translateY(0);
+}
+
+#topbar-cta-button a div::after {
+  transform: translateY(var(--shift-distance));
+}
+
+#topbar-cta-button a:is(:hover, :focus-visible) div::before {
+  transform: translateY(calc(-1 * var(--shift-distance)));
+}
+
+#topbar-cta-button a:is(:hover, :focus-visible) div::after {
+  transform: translateY(0);
+}
+
+/* ---- Icon hover swap. Same technique + same --duration-shift as the text-shift
+   so text and icon move as one piece. Real icon hidden; two masked pseudo layers
+   (or real-icon-exit + one masked pseudo where a pseudo is taken by grain). ---- */
+
+/* Copy-page "More actions" chevron (icon-only; rotation baked into the mask so
+   the swap is vertical). */
+#page-context-menu button[aria-haspopup="menu"] {
+  position: relative;
+}
+#page-context-menu button[aria-haspopup="menu"] > svg {
+  visibility: hidden;
+}
+#page-context-menu button[aria-haspopup="menu"]::before,
+#page-context-menu button[aria-haspopup="menu"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25' transform='rotate(90 9 9)'/%3E%3C/svg%3E")
+    center / 0.75rem no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25' transform='rotate(90 9 9)'/%3E%3C/svg%3E")
+    center / 0.75rem no-repeat;
+  transition: transform var(--duration-shift) var(--ease-standard);
+  pointer-events: none;
+}
+#page-context-menu button[aria-haspopup="menu"]::before {
+  transform: translateY(0);
+}
+#page-context-menu button[aria-haspopup="menu"]::after {
+  transform: translateY(150%);
+}
+#page-context-menu button[aria-haspopup="menu"]:hover::before {
+  transform: translateY(-150%);
+}
+#page-context-menu button[aria-haspopup="menu"]:hover::after {
+  transform: translateY(0);
+}
+
+/* Copy-page button copy icon (icon+text; the label shifts via span.grid). */
+#page-context-menu-button {
+  overflow: hidden;
+}
+#page-context-menu-button div {
+  position: relative;
+}
+#page-context-menu-button div > svg {
+  visibility: hidden;
+}
+#page-context-menu-button div::before,
+#page-context-menu-button div::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.5rem;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.25 5.25H7.25C6.14543 5.25 5.25 6.14543 5.25 7.25V14.25C5.25 15.3546 6.14543 16.25 7.25 16.25H14.25C15.3546 16.25 16.25 15.3546 16.25 14.25V7.25C16.25 6.14543 15.3546 5.25 14.25 5.25Z'/%3E%3Cpath d='M2.80103 11.998L1.77203 5.07397C1.61003 3.98097 2.36403 2.96397 3.45603 2.80197L10.38 1.77297C11.313 1.63397 12.19 2.16297 12.528 3.00097'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.25 5.25H7.25C6.14543 5.25 5.25 6.14543 5.25 7.25V14.25C5.25 15.3546 6.14543 16.25 7.25 16.25H14.25C15.3546 16.25 16.25 15.3546 16.25 14.25V7.25C16.25 6.14543 15.3546 5.25 14.25 5.25Z'/%3E%3Cpath d='M2.80103 11.998L1.77203 5.07397C1.61003 3.98097 2.36403 2.96397 3.45603 2.80197L10.38 1.77297C11.313 1.63397 12.19 2.16297 12.528 3.00097'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: transform var(--duration-shift) var(--ease-standard);
+  pointer-events: none;
+}
+#page-context-menu-button div::before {
+  transform: translateY(0);
+}
+#page-context-menu-button div::after {
+  transform: translateY(150%);
+}
+#page-context-menu-button:hover div::before {
+  transform: translateY(-150%);
+}
+#page-context-menu-button:hover div::after {
+  transform: translateY(0);
+}
+
+/* Theme toggle (icon-only, 3 dynamic icons): real icon exits, matching masked
+   copy enters. position (not display) keeps the component's display:none hiding
+   of inactive icons; clipped by the button's overflow-hidden. */
+#theme-preference-menu-trigger {
+  position: relative;
+}
+#theme-preference-menu-trigger span[data-theme-preference-icon] > svg {
+  transition: transform var(--duration-shift) var(--ease-standard);
+}
+#theme-preference-menu-trigger:hover span[data-theme-preference-icon] > svg {
+  transform: translateY(-150%);
+}
+#theme-preference-menu-trigger span[data-theme-preference-icon]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: currentColor;
+  transition: transform var(--duration-shift) var(--ease-standard);
+  transform: translateY(150%);
+  pointer-events: none;
+}
+#theme-preference-menu-trigger:hover span[data-theme-preference-icon]::after {
+  transform: translateY(0);
+}
+#theme-preference-menu-trigger
+  span[data-theme-preference-icon="system"]::after {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 15.5L9 14.5L13.5 15.5'/%3E%3Cpath d='M9 11.75V14.5'/%3E%3Cpath d='M14.25 2.75H3.75C2.64543 2.75 1.75 3.64543 1.75 4.75V9.75C1.75 10.8546 2.64543 11.75 3.75 11.75H14.25C15.3546 11.75 16.25 10.8546 16.25 9.75V4.75C16.25 3.64543 15.3546 2.75 14.25 2.75Z'/%3E%3C/svg%3E")
+    center / 1rem no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 15.5L9 14.5L13.5 15.5'/%3E%3Cpath d='M9 11.75V14.5'/%3E%3Cpath d='M14.25 2.75H3.75C2.64543 2.75 1.75 3.64543 1.75 4.75V9.75C1.75 10.8546 2.64543 11.75 3.75 11.75H14.25C15.3546 11.75 16.25 10.8546 16.25 9.75V4.75C16.25 3.64543 15.3546 2.75 14.25 2.75Z'/%3E%3C/svg%3E")
+    center / 1rem no-repeat;
+}
+#theme-preference-menu-trigger span[data-theme-preference-icon="light"]::after {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 1.25V2.25'/%3E%3Cpath d='M14.48 3.52002L13.773 4.22702'/%3E%3Cpath d='M16.75 9H15.75'/%3E%3Cpath d='M14.48 14.4799L13.773 13.7729'/%3E%3Cpath d='M9 16.75V15.75'/%3E%3Cpath d='M3.52 14.4799L4.227 13.7729'/%3E%3Cpath d='M1.25 9H2.25'/%3E%3Cpath d='M3.52 3.52002L4.227 4.22702'/%3E%3Cpath d='M9 13.25C11.3472 13.25 13.25 11.3472 13.25 9C13.25 6.65279 11.3472 4.75 9 4.75C6.65279 4.75 4.75 6.65279 4.75 9C4.75 11.3472 6.65279 13.25 9 13.25Z'/%3E%3C/svg%3E")
+    center / 1rem no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 1.25V2.25'/%3E%3Cpath d='M14.48 3.52002L13.773 4.22702'/%3E%3Cpath d='M16.75 9H15.75'/%3E%3Cpath d='M14.48 14.4799L13.773 13.7729'/%3E%3Cpath d='M9 16.75V15.75'/%3E%3Cpath d='M3.52 14.4799L4.227 13.7729'/%3E%3Cpath d='M1.25 9H2.25'/%3E%3Cpath d='M3.52 3.52002L4.227 4.22702'/%3E%3Cpath d='M9 13.25C11.3472 13.25 13.25 11.3472 13.25 9C13.25 6.65279 11.3472 4.75 9 4.75C6.65279 4.75 4.75 6.65279 4.75 9C4.75 11.3472 6.65279 13.25 9 13.25Z'/%3E%3C/svg%3E")
+    center / 1rem no-repeat;
+}
+#theme-preference-menu-trigger span[data-theme-preference-icon="dark"]::after {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 11.75C9.548 11.75 6.75 8.95201 6.75 5.50001C6.75 4.14801 7.183 2.90101 7.912 1.87801C4.548 2.50601 2 5.45301 2 9.00001C2 13.004 5.246 16.25 9.25 16.25C12.622 16.25 15.448 13.944 16.259 10.826C15.309 11.409 14.196 11.75 13 11.75Z'/%3E%3C/svg%3E")
+    center / 1rem no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 11.75C9.548 11.75 6.75 8.95201 6.75 5.50001C6.75 4.14801 7.183 2.90101 7.912 1.87801C4.548 2.50601 2 5.45301 2 9.00001C2 13.004 5.246 16.25 9.25 16.25C12.622 16.25 15.448 13.944 16.259 10.826C15.309 11.409 14.196 11.75 13 11.75Z'/%3E%3C/svg%3E")
+    center / 1rem no-repeat;
+}
+
+/* Assistant sparkle (icon+text; label shifts via its span). ::after is the grain,
+   so the incoming copy uses ::before while the real sparkle exits. */
+#assistant-entry > svg {
+  transition: transform var(--duration-shift) var(--ease-standard);
+}
+#assistant-entry:hover > svg {
+  transform: translateY(-150%);
+}
+#assistant-entry::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.5rem;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5.65799 2.99L4.39499 2.569L3.97399 1.306C3.83699 0.898 3.16199 0.898 3.02499 1.306L2.60399 2.569L1.34099 2.99C1.13699 3.058 0.998993 3.249 0.998993 3.464C0.998993 3.679 1.13699 3.87 1.34099 3.938L2.60399 4.359L3.02499 5.622C3.09299 5.826 3.28499 5.964 3.49999 5.964C3.71499 5.964 3.90599 5.826 3.97499 5.622L4.39599 4.359L5.65899 3.938C5.86299 3.87 6.00099 3.679 6.00099 3.464C6.00099 3.249 5.86199 3.058 5.65799 2.99Z' fill='%23000'/%3E%3Cpath d='M9.5 2.75L11.412 7.587L16.25 9.5L11.412 11.413L9.5 16.25L7.587 11.413L2.75 9.5L7.587 7.587L9.5 2.75Z' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5.65799 2.99L4.39499 2.569L3.97399 1.306C3.83699 0.898 3.16199 0.898 3.02499 1.306L2.60399 2.569L1.34099 2.99C1.13699 3.058 0.998993 3.249 0.998993 3.464C0.998993 3.679 1.13699 3.87 1.34099 3.938L2.60399 4.359L3.02499 5.622C3.09299 5.826 3.28499 5.964 3.49999 5.964C3.71499 5.964 3.90599 5.826 3.97499 5.622L4.39599 4.359L5.65899 3.938C5.86299 3.87 6.00099 3.679 6.00099 3.464C6.00099 3.249 5.86199 3.058 5.65799 2.99Z' fill='%23000'/%3E%3Cpath d='M9.5 2.75L11.412 7.587L16.25 9.5L11.412 11.413L9.5 16.25L7.587 11.413L2.75 9.5L7.587 7.587L9.5 2.75Z' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: transform var(--duration-shift) var(--ease-standard);
+  transform: translateY(150%);
+  pointer-events: none;
+}
+#assistant-entry:hover::before {
   transform: translateY(0);
 }
 
@@ -496,11 +695,11 @@ html.dark #navbar-transition {
 }
 
 #assistant-entry span::after {
-  transform: translateY(115%);
+  transform: translateY(var(--shift-distance));
 }
 
 #assistant-entry:is(:hover, :focus-visible) span::before {
-  transform: translateY(-115%);
+  transform: translateY(calc(-1 * var(--shift-distance)));
 }
 
 #assistant-entry:is(:hover, :focus-visible) span::after {
@@ -565,14 +764,14 @@ html.dark #navbar-transition {
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: translateY(115%);
+  transform: translateY(var(--shift-distance));
   pointer-events: none;
 }
 
 #page-context-menu-button:is(:hover, :focus-visible)
   span.grid
   > span:not(.invisible) {
-  transform: translateY(-115%);
+  transform: translateY(calc(-1 * var(--shift-distance)));
 }
 
 #page-context-menu-button:is(:hover, :focus-visible) span.grid::after {
@@ -1828,7 +2027,7 @@ details.expandable .primitive-param-field {
 }
 
 #pagination a {
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity var(--duration-slow) var(--ease-in-out);
 }
 
 #pagination {
@@ -1938,6 +2137,12 @@ details.expandable .primitive-param-field {
 #content-area > div:has(.chat-assistant-floating-input) {
   margin-top: -80px !important;
   margin-bottom: -80px !important;
+}
+
+/* Desktop assistant panel: solid #fff / #000 surface (the mobile drawer —
+   [role="dialog"] — keeps its default background). */
+.chat-assistant-sheet:not([role="dialog"]) {
+  background-color: var(--chat-input-bg) !important;
 }
 
 .chat-assistant-floating-input::before {
@@ -2078,8 +2283,40 @@ body::after {
   position: relative;
 }
 
-/* Search button needs position:relative so its grain ::after anchors to it. */
+/* Search button: --border outline (no ring/shadow); position:relative so its
+   grain ::after anchors to it. */
 #search-bar-entry {
+  position: relative;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+
+/* Theme toggle: match the toolbar outline (--border, sharp) + --primary icon,
+   with the Book-a-meeting hover (--hover surface). */
+#theme-preference-menu-trigger {
+  height: 100% !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0 !important;
+  color: var(--primary) !important;
+  box-shadow: none !important;
+  transition: var(--transition-hover) !important;
+}
+
+#theme-preference-menu-trigger:hover {
+  background: var(--hover) !important;
+}
+
+#theme-preference-menu-trigger svg {
+  color: var(--primary) !important;
+}
+
+/* space-x-4 containers: 8px inline gap between children. */
+:where(.space-x-4 > :not(:last-child)) {
+  margin-inline-end: var(--space-8) !important;
+}
+
+/* Search modal needs position:relative so its grain ::after anchors to it. */
+[data-component-part="search-modal"] {
   position: relative;
 }
 
@@ -2089,7 +2326,9 @@ body::after {
 #sidebar::after,
 #mobile-nav::after,
 #search-bar-entry::after,
+#assistant-entry::after,
 .chat-assistant-sheet::after,
+[data-component-part="search-modal"]::after,
 [data-radix-menu-content]::after,
 [data-component-part="theme-preference-menu-content"]::after,
 [role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
@@ -2117,7 +2356,9 @@ body::after {
   #sidebar::after,
   #mobile-nav::after,
   #search-bar-entry::after,
+  #assistant-entry::after,
   .chat-assistant-sheet::after,
+  [data-component-part="search-modal"]::after,
   [data-radix-menu-content]::after,
   [data-component-part="theme-preference-menu-content"]::after,
   [role="dialog"]:has(> nav[aria-label="Mobile menu"])::after {
