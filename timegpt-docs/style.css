@@ -2146,8 +2146,10 @@ details.expandable .primitive-param-field {
 
 /* Desktop assistant panel: solid #fff / #000 surface (the mobile drawer —
    [role="dialog"] — keeps its default background). Covers both the inner sheet
-   and its outer sticky wrapper so no cream shows behind it. */
-.chat-assistant-sheet:not([role="dialog"]),
+   and its outer sticky wrapper so no cream shows behind it. The #id selector is
+   needed to outrank the global html:not(.dark) .bg-background-light rule (0,2,1),
+   which otherwise repaints the sheet with --background (cream). */
+#chat-assistant-sheet:not([role="dialog"]),
 div:has(> #chat-assistant-sheet) {
   background-color: var(--chat-input-bg) !important;
 }
