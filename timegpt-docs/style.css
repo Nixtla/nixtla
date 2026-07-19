@@ -2048,6 +2048,11 @@ details.expandable .primitive-param-field {
 
 /* ===========================  FEEDBACK TOOLBAR  =========================== */
 
+/* Drop Mintlify's pb-16 (64px) below the toolbar. */
+.feedback-toolbar {
+  padding-bottom: 0px !important;
+}
+
 .feedback-toolbar p {
   color: var(--primary) !important;
   font-family: var(--font-sans) !important;
