@@ -2,23 +2,21 @@
 
 ## Development setup
 
-Requirements: Python 3.10+, [uv](https://github.com/astral-sh/uv), Git.
+Requirements: Python 3.10+, [uv](https://github.com/astral-sh/uv), Git, and a
+[Rust toolchain](https://rustup.rs/).
 
 ```bash
 git clone https://github.com/Nixtla/synforecast.git
 cd synforecast
-uv sync --all-extras
+uv sync --all-groups
 uv run pre-commit install  # optional: run ruff on every commit
 ```
 
-Building the Rust extension is optional (a pure NumPy fallback is used when it is absent):
+`uv sync` builds and installs the Rust extension. After changing Rust code,
+rebuild it in the development environment with:
 
 ```bash
-# One-time: install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Build and install into the venv
-maturin develop --release
+uv run maturin develop --release
 ```
 
 Verify the setup:

@@ -6,7 +6,9 @@ updates:
       interval: weekly
     groups:
       ci-dependencies:
+        applies-to: version-updates
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: uv
     directory: /
@@ -15,7 +17,9 @@ updates:
     labels: ["dependencies", "python:uv"]
     groups:
       python-dependencies:
+        applies-to: version-updates
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: cargo
     directory: /rust
@@ -24,7 +28,10 @@ updates:
     labels: ["dependencies", "rust"]
     groups:
       rust-dependencies:
+        applies-to: version-updates
         patterns: ["*"]
+        # Rust's 0.x minor releases may contain breaking changes.
+        update-types: ["patch"]
 
   - package-ecosystem: pre-commit
     directory: /
@@ -33,4 +40,7 @@ updates:
     labels: ["dependencies"]
     groups:
       pre-commit-dependencies:
+        applies-to: version-updates
         patterns: ["*"]
+        # Ruff is pre-1.0, so keep minor updates isolated for review.
+        update-types: ["patch"]

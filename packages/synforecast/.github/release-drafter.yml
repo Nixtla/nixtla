@@ -1,3 +1,5 @@
+# Re-enable the workflow after publishing v0.1.0; without an existing release,
+# $NEXT_PATCH_VERSION resolves to v0.0.1.
 name-template: "v$NEXT_PATCH_VERSION"
 tag-template: "v$NEXT_PATCH_VERSION"
 categories:
