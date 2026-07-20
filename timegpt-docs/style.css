@@ -1070,26 +1070,13 @@ html:not(.dark) .code-block .shiki span {
 
 body .code-group {
   border-radius: 0 !important;
-  background-color: var(--code-group-bg) !important;
+  background-color: transparent !important;
   border: 1px solid var(--code-group-border) !important;
-  padding: var(--space-16) !important;
+  padding: 0px !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   position: relative;
   isolation: isolate;
-}
-
-body .code-group::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
-  background-repeat: repeat;
-  background-size: var(--grain-size);
-  filter: grayscale(1) contrast(1.5);
-  opacity: var(--grain-opacity);
 }
 
 .code-group .code-block {
@@ -1097,8 +1084,16 @@ body .code-group::after {
   margin: 0 !important;
 }
 
+.code-group [data-component-part="code-group-tab-bar"] {
+  background-color: var(--blog-code-header-bg) !important;
+  padding: var(--space-6) 0 !important;
+  border-top: 1px solid var(--blog-code-border) !important;
+  border-right: 1px solid var(--blog-code-border) !important;
+  border-left: 1px solid var(--blog-code-border) !important;
+}
+
 .code-group [data-component-part="code-group-tab-bar"] + div {
-  margin-top: var(--space-16) !important;
+  margin-top: 0px !important;
 }
 
 @layer utilities {
@@ -1803,6 +1798,32 @@ details.accordion {
   border-color: var(--border) !important;
 }
 
+/* Open/close animation. ::details-content is the generated wrapper around the
+   non-summary content; interpolate-size lets its height:auto animate. overflow
+   hidden clips during the slide and prevents the content margins collapsing out.
+   Degrades to an instant toggle where ::details-content isn't supported. */
+details.accordion {
+  interpolate-size: allow-keywords;
+}
+
+details.accordion::details-content {
+  height: 0;
+  overflow: hidden;
+  transition:
+    height var(--duration-slow) var(--ease-in-out),
+    content-visibility var(--duration-slow) var(--ease-in-out) allow-discrete;
+}
+
+details.accordion[open]::details-content {
+  height: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  details.accordion::details-content {
+    transition: none;
+  }
+}
+
 [data-component-part="tab-content"] > details.accordion + details.accordion {
   margin-top: calc(-1 * var(--space-20)) !important;
   border-top: none !important;
@@ -2104,6 +2125,19 @@ details.expandable .primitive-param-field {
 
 [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
   background-color: var(--dropdown-hover) !important;
+}
+
+/* Check indicator: only the active item shows it. Mintlify hides inactive checks
+   with text-primary/0, but that utility doesn't resolve to transparent here, so the
+   check inherits the item's gray text and all three appear checked. Force the check
+   transparent on non-active items (data-active marks the active one). Targets the
+   stable .theme-preference-menu-item class — this base-ui menu has no
+   data-orientation, so [data-orientation] selectors don't match it. */
+.theme-preference-menu-item:not([data-active="true"]) > svg[aria-hidden="true"],
+.theme-preference-menu-item:not([data-active="true"])
+  > svg[aria-hidden="true"]
+  * {
+  color: transparent !important;
 }
 
 #page-context-menu-button,
