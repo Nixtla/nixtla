@@ -1,0 +1,16 @@
+format:
+  mintlify-md:
+    code-fold: true
+
+project:
+  type: mintlify
+
+website:
+  sidebar:
+    style: floating
+  navbar:
+    left:
+    - href: examples/getting_started.ipynb
+      text: Get Started
+    - href: examples/random_walk.ipynb
+      text: Tutorials

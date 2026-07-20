@@ -1,0 +1,48 @@
+name: Bug report
+description: Report reproducible incorrect behavior in SynForecast
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Please provide reproducible steps.
+        For usage questions and support, use the [Nixtla community Slack](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1h77esh5y-iL1m8N0F7qV1HmH~0KYeAQ).
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproducible example
+      description: Provide the smallest script and seed that reproduce the problem.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment
+      description: Include SynForecast, Python, Rust extension, dataframe engine, and OS versions.
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Affected implementation
+      options:
+        - Python
+        - Rust
+        - Both or unknown
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Severity
+      description: How does this issue affect your work?
+      options:
+        - "Low: An annoyance with an available workaround"
+        - "Medium: A significant difficulty"
+        - "High: Blocks the affected workflow"
+    validations:
+      required: false

@@ -1,0 +1,150 @@
+[project]
+name = "synforecast"
+version = "0.1.0"
+description = "Validated synthetic time-series generation with Rust acceleration"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Nixtla", email = "olivier@nixtla.io"},
+]
+keywords = [
+    "time-series",
+    "synthetic-data",
+    "signal-processing",
+    "data-generation",
+]
+classifiers = [
+    "Development Status :: 2 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "narwhals>=2.0",
+    "numpy>=1.23.5",
+    "pandas>=2.0",
+    "polars[numpy]>=1.35.2",
+    "pydantic>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/synforecast"
+Documentation = "https://github.com/Nixtla/synforecast#readme"
+Repository = "https://github.com/Nixtla/synforecast"
+Issues = "https://github.com/Nixtla/synforecast/issues"
+
+[dependency-groups]
+dev = [
+    "arch>=6.0",
+    "datasetsforecast>=1.0.0",
+    "ipykernel<7.0",
+    "matplotlib",
+    "mypy>=1.0.0",
+    "pandas",
+    "pre-commit>=4.2.0",
+    "pytest>=9.0.3",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "scipy>=1.10.0",
+    "statsforecast",
+]
+docs = [
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@b28e6925beba7e05d7f40047d99244c9c8d6baed",
+    "ipykernel<7.0",
+    "ipython<=8.32.0",
+]
+
+[build-system]
+requires = ["maturin>=1.8.2"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+module-name = "synforecast._lib"
+features = ["pyo3/extension-module"]
+
+[tool.uv]
+# coreforecast (a transitive dependency via statsforecast) is built from
+# source on platforms without a matching prebuilt wheel (e.g. macOS on newer
+# Python). Its build config uses `cmake.verbose`, which scikit-build-core
+# >= 0.10 rejects, breaking the source build. Constrain the build backend so
+# such source builds keep working.
+build-constraint-dependencies = ["scikit-build-core<0.10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--showlocals",
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "-W", "default",
+    "--cov=synforecast",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "stats: statistical property tests (slower; deselect with '-m \"not stats\"')",
+]
+log_cli = false
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501", # line too long (fix later)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.coverage.run]
+source = ["synforecast"]
+omit = ["tests/*", "**/__init__.py", "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]

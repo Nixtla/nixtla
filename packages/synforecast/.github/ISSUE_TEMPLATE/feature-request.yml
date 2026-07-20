@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose an improvement to SynForecast
+title: "[Feature] "
+labels: [enhancement, feature]
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for helping improve the Nixtlaverse.
+  - type: textarea
+    attributes:
+      label: Use case
+      description: Describe the problem or research workflow this feature would support.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed behavior
+      description: Describe the public API and expected behavior, if you have one in mind.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Mathematical or scientific references
+      description: Link primary sources when proposing a generator or statistical method.

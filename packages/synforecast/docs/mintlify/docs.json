@@ -1,0 +1,109 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "SynForecast",
+  "navigation": {
+    "groups": [
+      {
+        "group": " ",
+        "pages": ["index.html"]
+      },
+      {
+        "group": "Getting Started",
+        "pages": [
+          "examples/getting_started.html"
+        ]
+      },
+      {
+        "group": "Tutorials",
+        "pages": [
+          {
+            "group": "Statistical Generators",
+            "pages": [
+              "examples/random_walk.html",
+              "examples/seasonal.html",
+              "examples/sarima.html",
+              "examples/ets.html",
+              "examples/inar.html"
+            ]
+          },
+          {
+            "group": "Stochastic Generators",
+            "pages": [
+              "examples/garch.html",
+              "examples/ornstein_uhlenbeck.html",
+              "examples/geometric_brownian_motion.html",
+              "examples/jump_diffusion.html",
+              "examples/poisson_process.html",
+              "examples/cyclic.html",
+              "examples/fractional_brownian_motion.html",
+              "examples/hawkes_process.html",
+              "examples/stochastic_volatility.html",
+              "examples/regime_switching.html",
+              "examples/chaotic_system.html",
+              "examples/bounded_process.html",
+              "examples/levy_process.html"
+            ]
+          },
+          {
+            "group": "Multivariate Generators",
+            "pages": [
+              "examples/copula.html",
+              "examples/var.html",
+              "examples/gaussian_process.html"
+            ]
+          },
+          {
+            "group": "Domain-Specific Generators",
+            "pages": [
+              "examples/intermittent_demand.html",
+              "examples/iot_sensor.html",
+              "examples/energy_load.html",
+              "examples/state_space.html",
+              "examples/daily_active_users.html",
+              "examples/vital_signs.html",
+              "examples/clickstream.html"
+            ]
+          },
+          {
+            "group": "Pretraining Generators",
+            "pages": [
+              "examples/tsi.html",
+              "examples/tcm.html"
+            ]
+          },
+          {
+            "group": "Pattern Injection & Exogenous Variables",
+            "pages": [
+              "examples/changepoints.html",
+              "examples/anomalies.html",
+              "examples/missingness.html",
+              "examples/multivariate_missingness.html",
+              "examples/exogenous.html"
+            ]
+          },
+          {
+            "group": "Dataset & Augmentation",
+            "pages": [
+              "examples/dataset.html",
+              "examples/augmentation.html",
+              "examples/augmentation_real_data.html"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "core.html",
+          "exogenous.html",
+          "dataset.html",
+          "generators_statistical.html",
+          "generators_stochastic.html",
+          "generators_multivariate.html",
+          "generators_domain.html"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lowest-direct-dependencies:
+    name: Test lowest direct dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.10"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+
+      - name: Install lowest direct dependencies
+        run: |
+          uv venv --python 3.10 .venv-lowest
+          uv pip install --python .venv-lowest/bin/python --resolution lowest-direct --editable .
+          uv pip install --python .venv-lowest/bin/python 'pytest>=9.0.3'
+
+      - name: Verify runtime dependency floor
+        run: .venv-lowest/bin/python -I -c "import importlib.util, numpy; from synforecast import _lib; assert numpy.__version__ == '1.23.5'; assert importlib.util.find_spec('scipy') is None"
+
+      - name: Run core compatibility tests
+        run: >-
+          .venv-lowest/bin/python -m pytest -o addopts=''
+          tests/test_config_validation.py
+          tests/test_docs_navigation.py
+          tests/test_notebook_examples.py
+
+  all-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Setup devenv
+        run: uv sync --all-extras
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path rust/Cargo.toml
+
+      - name: Run Python tests
+        run: uv run pytest tests/ -v --cov=synforecast
+
+  build-wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@0629f00e5704e5295af04df4238c070808aa1e96 # v1
+        with:
+          args: --release --out dist --find-interpreter
+          manylinux: auto
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@0629f00e5704e5295af04df4238c070808aa1e96 # v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - name: Install and test sdist
+        run: |
+          uv venv .venv-sdist
+          uv pip install --python .venv-sdist/bin/python dist/*.tar.gz
+          .venv-sdist/bin/python -I -c "import synforecast; from synforecast import _lib; assert synforecast.__version__"
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz

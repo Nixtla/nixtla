@@ -1,0 +1,66 @@
+---
+title: SynForecast Examples
+description: Tutorials and examples for synthetic time series generation
+---
+
+# SynForecast Examples
+
+Explore our tutorials to learn how to generate synthetic time series data with SynForecast.
+
+## Getting Started
+
+- [Quick Start Guide](getting_started.ipynb) - Generate your first synthetic time series
+
+## Generator Tutorials
+
+### Statistical Generators
+- [Random Walk](random_walk.ipynb) - Simple random walk processes
+- [Seasonal](seasonal.ipynb) - Time series with seasonal patterns
+- [SARIMA](sarima.ipynb) - Seasonal ARIMA models
+- [ETS](ets.ipynb) - Exponential smoothing state space models
+- [INAR](inar.ipynb) - Integer-valued autoregression
+
+### Stochastic Generators
+- [GARCH](garch.ipynb) - Volatility clustering models
+- [Ornstein-Uhlenbeck](ornstein_uhlenbeck.ipynb) - Mean-reverting processes
+- [Geometric Brownian Motion](geometric_brownian_motion.ipynb) - Log-normal random walks
+- [Jump Diffusion](jump_diffusion.ipynb) - Processes with jumps
+- [Poisson Process](poisson_process.ipynb) - Event arrival processes
+- [Cyclic](cyclic.ipynb) - Cyclic oscillations
+- [Fractional Brownian Motion](fractional_brownian_motion.ipynb) - Long-memory processes
+- [Hawkes Process](hawkes_process.ipynb) - Self-exciting point processes
+- [Stochastic Volatility](stochastic_volatility.ipynb) - Time-varying volatility
+- [Regime Switching](regime_switching.ipynb) - Markov regime processes
+- [Chaotic Systems](chaotic_system.ipynb) - Lorenz, logistic, and Mackey-Glass dynamics
+- [Bounded Processes](bounded_process.ipynb) - Beta-AR and logit-normal processes
+- [Levy Processes](levy_process.ipynb) - Alpha-stable processes
+
+### Multivariate Generators
+- [Copula](copula.ipynb) - Dependency-structured multivariate series
+- [VAR](var.ipynb) - Vector autoregressive models
+- [Gaussian Process](gaussian_process.ipynb) - Kernel-based correlated series
+
+### Domain-Specific Generators
+- [Intermittent Demand](intermittent_demand.ipynb) - Sparse demand patterns
+- [IoT Sensor](iot_sensor.ipynb) - Sensor data simulation
+- [Energy Load](energy_load.ipynb) - Energy consumption patterns
+- [State Space](state_space.ipynb) - General state space models
+- [Daily Active Users](daily_active_users.ipynb) - App usage metrics
+- [Vital Signs](vital_signs.ipynb) - Medical vital signs data
+- [Clickstream](clickstream.ipynb) - Web clickstream data
+
+### Pretraining Generators
+- [TSI](tsi.ipynb) - Trend, seasonality, and irregularity composition
+- [TCM](tcm.ipynb) - Random temporal structural causal models
+
+## Pattern Injection & Exogenous Variables
+- [Changepoints](changepoints.ipynb) - Adding structural breaks
+- [Anomalies](anomalies.ipynb) - Injecting anomalous patterns
+- [Missingness](missingness.ipynb) - Missing data patterns
+- [Multivariate Missingness](multivariate_missingness.ipynb) - Correlated missing data
+- [Exogenous Variables](exogenous.ipynb) - Datetime features, pattern flags, and correlated exogenous columns
+
+## Dataset Composition
+- [SynSet Dataset](dataset.ipynb) - Combining generators
+- [Data Augmentation](augmentation.ipynb) - Augmenting real data
+- [Augmentation with Real Data](augmentation_real_data.ipynb) - Real-world augmentation

@@ -1,0 +1,114 @@
+name: Publish Python Package
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-version:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Check release versions match
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import tomllib
+
+          python_version = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          cargo_version = tomllib.loads(pathlib.Path("rust/Cargo.toml").read_text())["package"]["version"]
+          if cargo_version != python_version:
+              raise SystemExit(
+                  f"Cargo package version {cargo_version!r} does not match "
+                  f"Python package version {python_version!r}"
+              )
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{python_version}"
+          if tag != expected:
+              raise SystemExit(f"Release tag {tag!r} does not match package version {expected!r}")
+
+  build-wheels:
+    name: Build cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+    needs: validate-version
+    runs-on: ${{ matrix.os-platform[0] }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [310, 311, 312, 313, 314]
+        os-platform:
+          - [ubuntu-latest, manylinux_x86_64]
+          - [ubuntu-24.04-arm, manylinux_aarch64]
+          - [windows-latest, win_amd64]
+          - [macos-15-intel, macosx_x86_64]
+          - [macos-latest, macosx_arm64]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@294735312765b09d24a2fbec22660ce817587d55 # v4.1.0
+        env:
+          CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          CIBW_TEST_COMMAND: >-
+            python -I -c "import synforecast; from synforecast import _lib; assert synforecast.__version__"
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wheel-cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          path: wheelhouse/*.whl
+          retention-days: 1
+
+  build-sdist:
+    name: Build source distribution
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build source distribution
+        uses: PyO3/maturin-action@0629f00e5704e5295af04df4238c070808aa1e96 # v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - name: Upload source distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          retention-days: 1
+
+  publish:
+    name: Publish to PyPI
+    if: github.repository == 'Nixtla/synforecast'
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/project/synforecast/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
