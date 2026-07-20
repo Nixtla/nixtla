@@ -48,8 +48,24 @@
   if (document.readyState !== "loading") run();
   else document.addEventListener("DOMContentLoaded", run);
 
+  // Only an element insertion can introduce a code-group, so skip mutations that
+  // add nothing but text nodes — keeps text-heavy reference pages from scheduling
+  // a full-document scan on every streamed character. (run() is still rAF-debounced
+  // and the label.textContent guard stops the self-triggered append from looping.)
+  function onMutations(records) {
+    for (var i = 0; i < records.length; i++) {
+      var added = records[i].addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        if (added[j].nodeType === 1) {
+          schedule();
+          return;
+        }
+      }
+    }
+  }
+
   // Re-run when tabs/panels mount late (hydration, client-side nav, accordions).
-  new MutationObserver(schedule).observe(document.body, {
+  new MutationObserver(onMutations).observe(document.body, {
     childList: true,
     subtree: true,
   });
