@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 use rand_distr::{Distribution, Exp, Normal, StandardNormal, Uniform};
 use rand_mt::Mt64;
 use std::f64::consts::PI;

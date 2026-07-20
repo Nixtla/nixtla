@@ -142,3 +142,33 @@ jobs:
         with:
           name: sdist
           path: dist/*.tar.gz
+
+  ci-complete:
+    name: CI complete
+    if: ${{ always() }}
+    needs:
+      - lowest-direct-dependencies
+      - all-tests
+      - build-wheels
+      - build-sdist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all CI jobs succeeded
+        env:
+          LOWEST_RESULT: ${{ needs['lowest-direct-dependencies'].result }}
+          TESTS_RESULT: ${{ needs['all-tests'].result }}
+          WHEELS_RESULT: ${{ needs['build-wheels'].result }}
+          SDIST_RESULT: ${{ needs['build-sdist'].result }}
+        run: |
+          printf 'lowest-direct-dependencies: %s\n' "$LOWEST_RESULT"
+          printf 'all-tests: %s\n' "$TESTS_RESULT"
+          printf 'build-wheels: %s\n' "$WHEELS_RESULT"
+          printf 'build-sdist: %s\n' "$SDIST_RESULT"
+
+          if [[ "$LOWEST_RESULT" != "success" ||
+                "$TESTS_RESULT" != "success" ||
+                "$WHEELS_RESULT" != "success" ||
+                "$SDIST_RESULT" != "success" ]]; then
+            echo "::error::One or more required CI jobs did not succeed."
+            exit 1
+          fi

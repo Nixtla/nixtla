@@ -31,6 +31,10 @@ changepoints, anomalies, and missing data.
 pip install synforecast
 ```
 
+Prebuilt wheels include the Rust extension on supported platforms. If `pip`
+must build from the source distribution, a Rust toolchain is required. The
+runtime can use its NumPy fallback when the extension is unavailable.
+
 To work on SynForecast itself, follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start

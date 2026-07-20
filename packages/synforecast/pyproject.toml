@@ -47,6 +47,7 @@ dev = [
     "arch>=6.0",
     "datasetsforecast>=1.0.0",
     "ipykernel<7.0",
+    "maturin>=1.8.2",
     "matplotlib",
     "mypy>=1.0.0",
     "pandas",
