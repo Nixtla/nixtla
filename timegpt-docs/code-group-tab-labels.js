@@ -8,7 +8,7 @@
  * no title. Re-runs on client-side nav and when accordions reveal code groups.
  */
 (function () {
-  var FALLBACK = "Example code";
+  var FALLBACK = "Example";
 
   function labelTab(tab) {
     var titleBox = tab.querySelector('[class*="peer/title"]');
@@ -18,7 +18,7 @@
     var fn =
       panel &&
       panel.querySelector(
-        '[data-component-part="code-block-header-filename"] span'
+        '[data-component-part="code-block-header-filename"] span',
       );
     var text = (fn && fn.textContent.trim()) || FALLBACK;
 
@@ -32,9 +32,7 @@
   }
 
   function run() {
-    document
-      .querySelectorAll('.code-group [role="tab"]')
-      .forEach(labelTab);
+    document.querySelectorAll('.code-group [role="tab"]').forEach(labelTab);
   }
 
   var scheduled = false;
