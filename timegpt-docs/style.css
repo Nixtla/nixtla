@@ -1455,12 +1455,6 @@ html.dark
   margin-top: var(--space-16) !important;
 }
 
-[data-component-part="card-content-container"] {
-  padding: 0 !important;
-  padding-block: 0 !important;
-  padding-inline: 0 !important;
-}
-
 .prose :where(li):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
   margin-top: var(--spacing-mdx-content-prose-li) !important;
   margin-bottom: var(--spacing-mdx-content-prose-li) !important;
@@ -1708,7 +1702,7 @@ html.dark div.card svg {
 
 /* Content container */
 [data-component-part="card-content-container"] {
-  padding: var(--space-32) var(--space-32) !important;
+  padding: var(--space-32) !important;
   display: flex !important;
   flex-direction: column !important;
   gap: var(--space-24) !important;

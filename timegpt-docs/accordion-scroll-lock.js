@@ -10,7 +10,10 @@
  */
 (function () {
   var SEL = "details.accordion > summary, details.expandable > summary";
-  var PIN_MS = 400; // covers the 0.4s open animation + smooth-scroll frames
+  // Covers the open animation + smooth-scroll frames. Coupled by value to the
+  // CSS token --duration-slow (0.4s) that drives the accordion animation — if
+  // that token changes, keep this in sync (no shared source across CSS/JS).
+  var PIN_MS = 400;
 
   document.addEventListener(
     "click",
