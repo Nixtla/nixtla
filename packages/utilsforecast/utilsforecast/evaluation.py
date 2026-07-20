@@ -1,6 +1,6 @@
 """Model performance evaluation"""
 
-__all__ = ['evaluate']
+__all__ = ["evaluate"]
 
 
 import inspect
@@ -147,8 +147,7 @@ def _weighted_mean_agg(
     df_nw = df_nw.with_columns(
         *[
             nw.when(
-                (~nw.col(model).is_null())
-                & (~nw.col(model).is_nan().fill_null(False))
+                (~nw.col(model).is_null()) & (~nw.col(model).is_nan().fill_null(False))
             )
             .then(nw.col(model) * nw.col(_WEIGHT_COL))
             .otherwise(None)
@@ -157,8 +156,7 @@ def _weighted_mean_agg(
         ],
         *[
             nw.when(
-                (~nw.col(model).is_null())
-                & (~nw.col(model).is_nan().fill_null(False))
+                (~nw.col(model).is_null()) & (~nw.col(model).is_nan().fill_null(False))
             )
             .then(nw.col(_WEIGHT_COL))
             .otherwise(None)
@@ -167,14 +165,13 @@ def _weighted_mean_agg(
         ],
         *[
             nw.when(
-                (~nw.col(model).is_null())
-                & (~nw.col(model).is_nan().fill_null(False))
+                (~nw.col(model).is_null()) & (~nw.col(model).is_nan().fill_null(False))
             )
             .then(1)
             .otherwise(0)
             .alias(valid_count_col)
             for model, valid_count_col in zip(model_cols, valid_count_cols)
-        ]
+        ],
     )
     df_nw = df_nw.group_by(*group_cols).agg(
         *[
@@ -193,18 +190,14 @@ def _weighted_mean_agg(
     for effective_weight_col, valid_count_col in zip(
         effective_weight_cols, valid_count_cols
     ):
-        if (
-            (df_nw[effective_weight_col] == 0)
-            & (df_nw[valid_count_col] > 0)
-        ).any():
+        if ((df_nw[effective_weight_col] == 0) & (df_nw[valid_count_col] > 0)).any():
             raise ValueError(
                 "The sum of weights for non-missing metric values must be "
                 "different from zero."
             )
 
     return (
-        df_nw
-        .with_columns(
+        df_nw.with_columns(
             *[
                 nw.when(nw.col(effective_weight_col) != 0)
                 .then(nw.col(effective_weight_col))
@@ -279,7 +272,9 @@ def _distributed_evaluate(
             "`agg_fn='weighted_mean'` is not supported in distributed evaluation."
         )
     if weights is not None:
-        raise NotImplementedError("`weights` is not supported in distributed evaluation.")
+        raise NotImplementedError(
+            "`weights` is not supported in distributed evaluation."
+        )
     if agg_fn is not None:
         raise ValueError("`agg_fn` is not supported in distributed")
     df_cols = fa.get_column_names(df)
@@ -288,6 +283,7 @@ def _distributed_evaluate(
         # align columns in order to vstack them
         def assign_cols(df: pd.DataFrame, cols) -> pd.DataFrame:
             return df.assign(**cols)
+
         train_cols = [*group_cols, time_col, target_col]
         extra_cols = [c for c in df_cols if c not in train_cols]
         train_df = fa.select_columns(train_df, train_cols)
@@ -317,7 +313,9 @@ def _distributed_evaluate(
     else:
         model_cols = models
     models_schema = ",".join(f"{m}:double" for m in model_cols)
-    result_schema = fa.get_schema(df).extract(*group_cols) + "metric:str" + models_schema
+    result_schema = (
+        fa.get_schema(df).extract(*group_cols) + "metric:str" + models_schema
+    )
     return fa.transform(
         df,
         using=_evaluate_wrapper,
@@ -405,7 +403,9 @@ def evaluate(
             agg_fn=agg_fn,
         )
     if models is None:
-        model_cols = _get_model_cols(df.columns, id_col, time_col, target_col, cutoff_col)
+        model_cols = _get_model_cols(
+            df.columns, id_col, time_col, target_col, cutoff_col
+        )
     else:
         model_cols = models
     forecasts_df = df

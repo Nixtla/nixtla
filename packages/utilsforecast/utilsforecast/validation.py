@@ -1,6 +1,11 @@
 """Utilities to validate input data"""
 
-__all__ = ['ensure_shallow_copy', 'ensure_time_dtype', 'validate_format', 'validate_freq']
+__all__ = [
+    "ensure_shallow_copy",
+    "ensure_time_dtype",
+    "validate_format",
+    "validate_freq",
+]
 
 
 import re

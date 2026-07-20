@@ -1,6 +1,6 @@
 """Utilities for processing data before training/analysis"""
 
-__all__ = ['id_time_grid', 'fill_gaps']
+__all__ = ["id_time_grid", "fill_gaps"]
 
 
 import warnings

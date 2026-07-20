@@ -1,6 +1,6 @@
 """Time series visualizations"""
 
-__all__ = ['plot_series']
+__all__ = ["plot_series"]
 
 
 import re

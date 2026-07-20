@@ -31,9 +31,7 @@ def _validate_features(features: np.ndarray, n_rows: int, frame_name: str) -> No
 
 def _validate_mode(mode: str) -> None:
     if mode not in ("per_horizon", "horizon_aware"):
-        raise ValueError(
-            f"mode must be 'per_horizon' or 'horizon_aware', got '{mode}'"
-        )
+        raise ValueError(f"mode must be 'per_horizon' or 'horizon_aware', got '{mode}'")
 
 
 def _validate_predictor(model: Any, model_name: str) -> None:
@@ -129,9 +127,7 @@ def compute_rectify_residuals(
     sort_cols = [id_col, time_col]
     if cutoff_col is not None:
         sort_cols = [id_col, cutoff_col, time_col]
-    result = merged.select(
-        [*meta_cols, horizon_expr, *residual_exprs]
-    ).sort(*sort_cols)
+    result = merged.select([*meta_cols, horizon_expr, *residual_exprs]).sort(*sort_cols)
     return nw.to_native(result)
 
 
@@ -143,8 +139,7 @@ def align_rectify_features(
     id_col: str = "unique_id",
     time_col: str = "ds",
     mode: Literal["per_horizon"] = "per_horizon",
-) -> PerHorizonTrainingData:
-    ...
+) -> PerHorizonTrainingData: ...
 
 
 @overload
@@ -156,8 +151,7 @@ def align_rectify_features(
     time_col: str = "ds",
     *,
     mode: Literal["horizon_aware"],
-) -> HorizonAwareTrainingData:
-    ...
+) -> HorizonAwareTrainingData: ...
 
 
 def align_rectify_features(
@@ -191,9 +185,7 @@ def align_rectify_features(
             In horizon_aware mode: (X_with_horizon_col, {model_name: residuals}).
     """
     _validate_mode(mode)
-    validate_format(
-        residuals_df, id_col=id_col, time_col=time_col, target_col=None
-    )
+    validate_format(residuals_df, id_col=id_col, time_col=time_col, target_col=None)
     residuals = nw.from_native(residuals_df)
     if "horizon" not in residuals.columns:
         raise ValueError("residuals_df is missing horizon column")
@@ -233,8 +225,7 @@ def rectify(
     id_col: str = "unique_id",
     time_col: str = "ds",
     mode: Literal["per_horizon"] = "per_horizon",
-) -> IntoDataFrameT:
-    ...
+) -> IntoDataFrameT: ...
 
 
 @overload
@@ -247,8 +238,7 @@ def rectify(
     time_col: str = "ds",
     *,
     mode: Literal["horizon_aware"],
-) -> IntoDataFrameT:
-    ...
+) -> IntoDataFrameT: ...
 
 
 def rectify(

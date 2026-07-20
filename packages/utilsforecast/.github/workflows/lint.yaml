@@ -19,16 +19,14 @@ jobs:
       - name: Set up python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # 6.2.0
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
+          uv-version: "0.11.29"
           enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Install dependencies
-        run: uv sync --group dev
+          cache-dependency-glob: ".pre-commit-config.yaml"
 
       - name: Run pre-commit
-        run: uv run pre-commit run --files utilsforecast/*
+        run: uvx pre-commit run --files utilsforecast/*

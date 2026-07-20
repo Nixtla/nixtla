@@ -1,4 +1,4 @@
-__all__ = ['GroupedArray']
+__all__ = ["GroupedArray"]
 
 
 from typing import Sequence, Tuple, Union

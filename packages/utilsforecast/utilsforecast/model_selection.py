@@ -26,9 +26,9 @@ class ParetoFrontier:
         Returns:
             np.ndarray: Shape (n,) boolean array — True where a model is dominated.
         """
-        d = data * directions                                        # (n, m)
-        better_or_equal = d[None, :, :] <= d[:, None, :]            # (n, n, m)
-        strictly_better = d[None, :, :] <  d[:, None, :]            # (n, n, m)
+        d = data * directions  # (n, m)
+        better_or_equal = d[None, :, :] <= d[:, None, :]  # (n, n, m)
+        strictly_better = d[None, :, :] < d[:, None, :]  # (n, n, m)
         dominates = better_or_equal.all(axis=2) & strictly_better.any(axis=2)  # (n, n)
         np.fill_diagonal(dominates, False)
         return dominates.any(axis=1)
@@ -61,6 +61,7 @@ class ParetoFrontier:
                 Must match the cutoff_col used in evaluate(). Defaults to 'cutoff'.
         """
         import narwhals.stable.v2 as nw
+
         df = nw.from_native(performance_df)
         columns = df.columns
 
@@ -132,6 +133,7 @@ class ParetoFrontier:
     ):
         """Plots the 2D Pareto frontier."""
         import warnings
+
         try:
             import matplotlib.pyplot as plt
         except ImportError:
@@ -148,9 +150,13 @@ class ParetoFrontier:
             row_y = nw_df.filter(nw.col("metric") == metric_y)
 
             if len(row_x) == 0 or len(row_y) == 0:
-                raise ValueError(f"Metrics {metric_x} or {metric_y} not found in the 'metric' column.")
+                raise ValueError(
+                    f"Metrics {metric_x} or {metric_y} not found in the 'metric' column."
+                )
 
-            models = [c for c in nw_df.columns if c not in ParetoFrontier._NON_MODEL_COLS]
+            models = [
+                c for c in nw_df.columns if c not in ParetoFrontier._NON_MODEL_COLS
+            ]
 
             x_vals = [row_x[m].to_numpy()[0] for m in models]
             y_vals = [row_y[m].to_numpy()[0] for m in models]
@@ -176,7 +182,9 @@ class ParetoFrontier:
                     backend=nw.get_native_namespace(nw_df.to_native()),
                 )
 
-        maximization = ([metric_x] if maximize_x else []) + ([metric_y] if maximize_y else [])
+        maximization = ([metric_x] if maximize_x else []) + (
+            [metric_y] if maximize_y else []
+        )
         pareto_df = nw.from_native(
             ParetoFrontier.find_non_dominated(
                 plot_df.to_native(),

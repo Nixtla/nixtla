@@ -1,6 +1,6 @@
 """Utilies for generating time series datasets"""
 
-__all__ = ['generate_series']
+__all__ = ["generate_series"]
 
 
 from typing import List, Literal, Optional, overload

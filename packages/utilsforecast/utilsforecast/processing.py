@@ -1,9 +1,43 @@
-__all__ = ['to_numpy', 'counts_by_id', 'maybe_compute_sort_indices', 'assign_columns', 'drop_columns', 'take_rows',
-           'filter_with_mask', 'is_nan', 'is_none', 'is_nan_or_none', 'match_if_categorical', 'vertical_concat',
-           'horizontal_concat', 'copy_if_pandas', 'join', 'drop_index_if_pandas', 'rename', 'sort', 'offset_times',
-           'offset_dates', 'time_ranges', 'repeat', 'cv_times', 'group_by', 'group_by_agg', 'is_in', 'between',
-           'fill_null', 'cast', 'value_cols_to_numpy', 'make_future_dataframe', 'anti_join', 'ensure_sorted',
-           'ProcessedDF', 'process_df', 'DataFrameProcessor', 'backtest_splits', 'add_insample_levels']
+__all__ = [
+    "to_numpy",
+    "counts_by_id",
+    "maybe_compute_sort_indices",
+    "assign_columns",
+    "drop_columns",
+    "take_rows",
+    "filter_with_mask",
+    "is_nan",
+    "is_none",
+    "is_nan_or_none",
+    "match_if_categorical",
+    "vertical_concat",
+    "horizontal_concat",
+    "copy_if_pandas",
+    "join",
+    "drop_index_if_pandas",
+    "rename",
+    "sort",
+    "offset_times",
+    "offset_dates",
+    "time_ranges",
+    "repeat",
+    "cv_times",
+    "group_by",
+    "group_by_agg",
+    "is_in",
+    "between",
+    "fill_null",
+    "cast",
+    "value_cols_to_numpy",
+    "make_future_dataframe",
+    "anti_join",
+    "ensure_sorted",
+    "ProcessedDF",
+    "process_df",
+    "DataFrameProcessor",
+    "backtest_splits",
+    "add_insample_levels",
+]
 
 
 import re
@@ -93,9 +127,11 @@ def maybe_compute_sort_indices(
     ids_are_sorted = (ids[:-1] <= ids[1:]).all()
     if ids_are_sorted:
         times_are_sorted = (
-            (times[:-1] < times[1:])  # times are ascending
-            | (ids[:-1] != ids[1:])  # except when the id changes
-        ).all()
+            (
+                (times[:-1] < times[1:])  # times are ascending
+                | (ids[:-1] != ids[1:])  # except when the id changes
+            ).all()
+        )
         if times_are_sorted:
             return None
     if isinstance(df, pd.DataFrame):
@@ -130,10 +166,7 @@ def _is_sorted(df: DataFrame, id_col: str, time_col: str) -> bool:
     if not ids_are_sorted:
         return False
     try:
-        times_are_sorted = (
-            (times[:-1] < times[1:])
-            | (ids[:-1] != ids[1:])
-        ).all()
+        times_are_sorted = ((times[:-1] < times[1:]) | (ids[:-1] != ids[1:])).all()
     except TypeError:
         return False
     return bool(times_are_sorted)
