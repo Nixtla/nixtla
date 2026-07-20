@@ -61,7 +61,7 @@ dev = [
 docs = [
     "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@b28e6925beba7e05d7f40047d99244c9c8d6baed",
     "ipykernel<7.0",
-    "ipython<=8.32.0",
+    "ipython<=8.39.0",
 ]
 
 [build-system]
