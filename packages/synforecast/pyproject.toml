@@ -29,11 +29,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "narwhals>=2.24.0",
+    "narwhals>=2.2",
     "numpy>=1.23.5",
     "pandas>=2.0",
     "polars[numpy]>=1.35.2",
-    "pydantic>=2.13.4",
+    "pydantic>=2.0",
 ]
 
 [project.urls]

@@ -6,7 +6,7 @@ from typing import Any
 import narwhals.stable.v2 as nw
 import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
-from pydantic import Field, model_validator
+from pydantic import Field, PrivateAttr, model_validator
 
 from synforecast.base import BaseGenerator, _categorize_ids
 from synforecast.exogenous import SeriesMetadata
@@ -112,16 +112,16 @@ class StateSpaceGenerator(BaseGenerator):
         default=None, description="Initial state uncertainty"
     )
 
-    # Internal numpy arrays (excluded from model serialization)
-    transition_matrix_array: Any = Field(default=None, init=False, exclude=True)
-    observation_matrix_array: Any = Field(default=None, init=False, exclude=True)
-    state_covariance_array: Any = Field(default=None, init=False, exclude=True)
-    obs_covariance_array: Any = Field(default=None, init=False, exclude=True)
-    initial_state_array: Any = Field(default=None, init=False, exclude=True)
-    initial_state_covariance_array: Any = Field(default=None, init=False, exclude=True)
+    # Internal NumPy arrays are runtime state, not user configuration.
+    _transition_matrix_array: Any = PrivateAttr(default=None)
+    _observation_matrix_array: Any = PrivateAttr(default=None)
+    _state_covariance_array: Any = PrivateAttr(default=None)
+    _obs_covariance_array: Any = PrivateAttr(default=None)
+    _initial_state_array: Any = PrivateAttr(default=None)
+    _initial_state_covariance_array: Any = PrivateAttr(default=None)
 
     # PSD factor of Q, precomputed for state-noise sampling
-    _state_cov_cholesky: Any = None
+    _state_cov_cholesky: Any = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def setup_matrices(self) -> "StateSpaceGenerator":
@@ -136,7 +136,7 @@ class StateSpaceGenerator(BaseGenerator):
                 )
         else:
             trans_mat = None
-        object.__setattr__(self, "transition_matrix_array", trans_mat)
+        self._transition_matrix_array = trans_mat
 
         if self.observation_matrix is None and self.observation_fn is None:
             obs_mat = np.zeros((self.obs_dim, self.state_dim))
@@ -149,7 +149,7 @@ class StateSpaceGenerator(BaseGenerator):
                 )
         else:
             obs_mat = None
-        object.__setattr__(self, "observation_matrix_array", obs_mat)
+        self._observation_matrix_array = obs_mat
 
         state_cov = (
             np.array(self.state_covariance, dtype=np.float64)
@@ -160,10 +160,8 @@ class StateSpaceGenerator(BaseGenerator):
             raise ValueError(
                 f"state_covariance must be shape ({self.state_dim}, {self.state_dim})"
             )
-        object.__setattr__(self, "state_covariance_array", state_cov)
-        object.__setattr__(
-            self, "_state_cov_cholesky", _psd_factor(state_cov, "state_covariance")
-        )
+        self._state_covariance_array = state_cov
+        self._state_cov_cholesky = _psd_factor(state_cov, "state_covariance")
 
         obs_cov = (
             np.array(self.obs_covariance, dtype=np.float64)
@@ -175,7 +173,7 @@ class StateSpaceGenerator(BaseGenerator):
                 f"obs_covariance must be shape ({self.obs_dim}, {self.obs_dim})"
             )
         _psd_factor(obs_cov, "obs_covariance")
-        object.__setattr__(self, "obs_covariance_array", obs_cov)
+        self._obs_covariance_array = obs_cov
 
         if self.initial_state is None:
             init_state = np.zeros(self.state_dim)
@@ -183,7 +181,7 @@ class StateSpaceGenerator(BaseGenerator):
             init_state = np.array(self.initial_state, dtype=np.float64)
             if init_state.shape != (self.state_dim,):
                 raise ValueError(f"initial_state must have shape ({self.state_dim},)")
-        object.__setattr__(self, "initial_state_array", init_state)
+        self._initial_state_array = init_state
 
         init_cov = (
             np.array(self.initial_state_covariance, dtype=np.float64)
@@ -196,7 +194,7 @@ class StateSpaceGenerator(BaseGenerator):
                 f"({self.state_dim}, {self.state_dim})"
             )
         _psd_factor(init_cov, "initial_state_covariance")
-        object.__setattr__(self, "initial_state_covariance_array", init_cov)
+        self._initial_state_covariance_array = init_cov
 
         return self
 
@@ -226,7 +224,7 @@ class StateSpaceGenerator(BaseGenerator):
             return self.transition_fn(x_prev, t, self.rng)
         raw = self._sample_innovations(self.state_dim)
         state_noise = self._state_cov_cholesky @ raw
-        return self.transition_matrix_array @ x_prev + state_noise
+        return self._transition_matrix_array @ x_prev + state_noise
 
     def _observation(self, x: np.ndarray, t: int) -> np.ndarray:
         """Generate the observation y[t] = H x[t] + v[t].
@@ -241,9 +239,9 @@ class StateSpaceGenerator(BaseGenerator):
         if self.observation_fn is not None:
             return self.observation_fn(x, t, self.rng)
         obs_noise = self.rng.multivariate_normal(
-            np.zeros(self.obs_dim), self.obs_covariance_array
+            np.zeros(self.obs_dim), self._obs_covariance_array
         )
-        return self.observation_matrix_array @ x + obs_noise
+        return self._observation_matrix_array @ x + obs_noise
 
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]] | None:
         if self.transition_fn is not None or self.observation_fn is not None:
@@ -258,13 +256,13 @@ class StateSpaceGenerator(BaseGenerator):
                 ]
             ),
             [
-                np.asarray(self.transition_matrix_array, dtype=np.float64).ravel(),
-                np.asarray(self.observation_matrix_array, dtype=np.float64).ravel(),
-                np.asarray(self.state_covariance_array, dtype=np.float64).ravel(),
-                np.asarray(self.obs_covariance_array, dtype=np.float64).ravel(),
-                np.asarray(self.initial_state_array, dtype=np.float64).ravel(),
+                np.asarray(self._transition_matrix_array, dtype=np.float64).ravel(),
+                np.asarray(self._observation_matrix_array, dtype=np.float64).ravel(),
+                np.asarray(self._state_covariance_array, dtype=np.float64).ravel(),
+                np.asarray(self._obs_covariance_array, dtype=np.float64).ravel(),
+                np.asarray(self._initial_state_array, dtype=np.float64).ravel(),
                 np.asarray(
-                    self.initial_state_covariance_array, dtype=np.float64
+                    self._initial_state_covariance_array, dtype=np.float64
                 ).ravel(),
             ],
         )
@@ -279,8 +277,8 @@ class StateSpaceGenerator(BaseGenerator):
             tuple[np.ndarray, np.ndarray]: Observations of shape
                 (length, obs_dim) and states of shape (length, state_dim).
         """
-        x = self.initial_state_array + self.rng.multivariate_normal(
-            np.zeros(self.state_dim), self.initial_state_covariance_array
+        x = self._initial_state_array + self.rng.multivariate_normal(
+            np.zeros(self.state_dim), self._initial_state_covariance_array
         )
         observations = np.zeros((length, self.obs_dim))
         states = np.zeros((length, self.state_dim))
@@ -301,13 +299,13 @@ class StateSpaceGenerator(BaseGenerator):
         """
         if _HAS_RUST and self.transition_fn is None and self.observation_fn is None:
             seed = int(self.rng.integers(0, 2**63))
-            F = np.asarray(self.transition_matrix_array, dtype=np.float64).ravel()
-            H = np.asarray(self.observation_matrix_array, dtype=np.float64).ravel()
-            Q = np.asarray(self.state_covariance_array, dtype=np.float64).ravel()
-            R = np.asarray(self.obs_covariance_array, dtype=np.float64).ravel()
-            x0 = np.asarray(self.initial_state_array, dtype=np.float64).ravel()
+            F = np.asarray(self._transition_matrix_array, dtype=np.float64).ravel()
+            H = np.asarray(self._observation_matrix_array, dtype=np.float64).ravel()
+            Q = np.asarray(self._state_covariance_array, dtype=np.float64).ravel()
+            R = np.asarray(self._obs_covariance_array, dtype=np.float64).ravel()
+            x0 = np.asarray(self._initial_state_array, dtype=np.float64).ravel()
             P0 = np.asarray(
-                self.initial_state_covariance_array, dtype=np.float64
+                self._initial_state_covariance_array, dtype=np.float64
             ).ravel()
             return _rs_mv.state_space(
                 length,

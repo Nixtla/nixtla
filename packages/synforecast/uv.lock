@@ -3397,11 +3397,11 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "narwhals", specifier = ">=2.24.0" },
+    { name = "narwhals", specifier = ">=2.2" },
     { name = "numpy", specifier = ">=1.23.5" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "polars", extras = ["numpy"], specifier = ">=1.35.2" },
-    { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "pydantic", specifier = ">=2.0" },
 ]
 
 [package.metadata.requires-dev]

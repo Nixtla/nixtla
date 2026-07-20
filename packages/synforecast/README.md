@@ -11,7 +11,7 @@ changepoints, anomalies, and missing data.
 
 ## Features
 
-- 30 generators across five categories; see [GENERATORS.md](GENERATORS.md) for the full reference:
+- 30 generators across five categories; see [GENERATORS.md](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md) for the full reference:
   - Statistical: Random Walk, Seasonal, SARIMA, ETS, INAR
   - Stochastic: GARCH, Ornstein-Uhlenbeck, Geometric Brownian Motion, Jump Diffusion, Poisson Process, Cyclic, Fractional Brownian Motion, Hawkes Process, Stochastic Volatility, Regime Switching, Chaotic System, Bounded Process, Levy Process
   - Multivariate: Copula, VAR, Gaussian Process
@@ -35,7 +35,7 @@ Prebuilt wheels include the Rust extension on supported platforms. If `pip`
 must build from the source distribution, a Rust toolchain is required. The
 runtime can use its NumPy fallback when the extension is unavailable.
 
-To work on SynForecast itself, follow [CONTRIBUTING.md](CONTRIBUTING.md).
+To work on SynForecast itself, follow [CONTRIBUTING.md](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md).
 
 ## Quick start
 
@@ -105,7 +105,7 @@ All generators share these parameters:
 
 `generate(n_series, start_id=0, n_jobs=-1)` returns the panel; output is
 seed-deterministic and does not depend on `n_jobs`. Generator-specific
-parameters are documented in [GENERATORS.md](GENERATORS.md).
+parameters are documented in [GENERATORS.md](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md).
 
 ## Examples
 
@@ -118,9 +118,9 @@ uv run python examples/garch_example.py
 
 ## Documentation
 
-- [GENERATORS.md](GENERATORS.md): reference for all 30 generators and their parameters
-- [CONTRIBUTING.md](CONTRIBUTING.md): development setup and how to add a generator
-- [CHANGELOG.md](CHANGELOG.md): release notes
+- [GENERATORS.md](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md): reference for all 30 generators and their parameters
+- [CONTRIBUTING.md](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md): development setup and how to add a generator
+- [CHANGELOG.md](https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md): release notes
 
 ## AI disclaimer
 

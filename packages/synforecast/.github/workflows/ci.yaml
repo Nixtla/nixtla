@@ -46,6 +46,7 @@ jobs:
           .venv-lowest/bin/python -m pytest -o addopts=''
           tests/test_config_validation.py
           tests/test_docs_navigation.py
+          tests/test_generate_series.py::test_returns_long_format
           tests/test_notebook_examples.py
 
   all-tests:
