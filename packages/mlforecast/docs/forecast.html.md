@@ -19,6 +19,7 @@ title: MLForecast
         - get_missing_future
         - predict
         - preprocess
+        - history_warmup
         - fit_models
         - cross_validation
         - cv

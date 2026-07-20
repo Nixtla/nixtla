@@ -260,6 +260,12 @@ class TimeSeries:
     _uniform_dates: bool = False
     _feature_null_cols: List[str]
     _xdf_null_cols: Optional[List[str]]
+    # Fit-time state (set in ``_fit``/``_apply_keep_last_n``). Declared here
+    # so mypy has a type regardless of method processing order.
+    keep_last_n: Optional[int]
+    last_dates: Any
+    static_features_: DataFrame
+    features_order_: List[str]
 
     def __init__(
         self,
@@ -395,15 +401,39 @@ class TimeSeries:
             w_state = max(tfm.update_samples for tfm in tfm_list)
             state.trim_to_last(max(self.keep_last_n, w_state))
 
+    def _apply_keep_last_n(self) -> None:
+        """Resolve ``keep_last_n`` and trim the stored history accordingly.
+
+        Infers ``keep_last_n`` from the transforms when the user didn't set it
+        and every transform supports updates, then slices the per-series arrays
+        and trims the pooled states (finite-window states only). Must run after
+        the lag transforms have computed their state, since local stateful
+        transforms (Expanding*/EWM) warm their buffers from the full history.
+        """
+        update_samples = [
+            getattr(tfm, "update_samples", -1) for tfm in self.transforms.values()
+        ]
+        if (
+            self.keep_last_n is None
+            and update_samples
+            and all(samples > 0 for samples in update_samples)
+        ):
+            # user didn't set keep_last_n and we can infer it from the transforms
+            self.keep_last_n = max(update_samples)
+        if self.keep_last_n is not None:
+            self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
+            self._trim_pooled_states()
+
     def _initialize_lag_transform_states(self) -> None:
         """Materialize lag transform state for subsequent update-based prediction.
 
         This is needed when a new ``TimeSeries`` instance is created from historical
-        data right before calling ``predict(new_df=...)``. Local (coreforecast)
-        transforms need a full ``transform`` pass so stateful transforms like
-        ``ExpandingMean`` can initialize their internal buffers before the first
-        ``update(...)`` call. Pooled transforms keep their state in ``_ts_aggs``
-        (built at construction), so they need no warm-up pass.
+        data without running the feature-materialization pass (``history_warmup``
+        or ``predict(new_df=...)``). Local (coreforecast) transforms need a full
+        ``transform`` pass so stateful transforms like ``ExpandingMean`` can
+        initialize their internal buffers before the first ``update(...)`` call.
+        Pooled transforms keep their state in ``_ts_aggs`` (built at
+        construction), so they need no warm-up pass.
         """
         core_tfms = self._get_core_lag_tfms()
         if core_tfms:
@@ -944,19 +974,7 @@ class TimeSeries:
             df = ufp.copy_if_pandas(df, deep=False)
 
         # once we've computed the features and target we can slice the series
-        update_samples = [
-            getattr(tfm, "update_samples", -1) for tfm in self.transforms.values()
-        ]
-        if (
-            self.keep_last_n is None
-            and update_samples
-            and all(samples > 0 for samples in update_samples)
-        ):
-            # user didn't set keep_last_n and we can infer it from the transforms
-            self.keep_last_n = max(update_samples)
-        if self.keep_last_n is not None:
-            self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
-            self._trim_pooled_states()
+        self._apply_keep_last_n()
         del self._restore_idxs, self._sort_idxs
 
         # lag transforms
@@ -1212,6 +1230,79 @@ class TimeSeries:
             return_X_y=return_X_y,
             as_numpy=as_numpy,
         )
+
+    def history_warmup(
+        self,
+        df: DataFrame,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        static_features: Optional[List[str]] = None,
+        keep_last_n: Optional[int] = None,
+        weight_col: Optional[str] = None,
+        max_horizon: Optional[int] = None,
+        horizons: Optional[List[int]] = None,
+        as_numpy: Optional[bool] = None,
+        trim: bool = True,
+    ) -> "TimeSeries":
+        """Build all internal state from `df` without materializing features.
+
+        Runs the same state-building steps as `fit_transform` (series storage,
+        target transforms, lag-transform buffers, pooled states, feature order)
+        but skips computing and assembling the features dataframe. After this
+        the instance supports `update` and `predict`, e.g. to warm a loaded
+        instance from raw history before updating it with new observations.
+
+        Args:
+            df: Series data in long format.
+            id_col: Column that identifies each serie.
+            time_col: Column that identifies each timestep.
+            target_col: Column that contains the target.
+            static_features: Names of the features that are static.
+            keep_last_n: Keep only these many records from each serie. When
+                None it's inferred from the transforms, like in `fit_transform`.
+            weight_col: Column that contains the sample weights.
+            max_horizon: Horizon the models were trained for (one model per
+                horizon). Leave None for recursive models; when None, any value
+                from a previous fit on this instance is preserved.
+            horizons: Specific 1-indexed horizons the models were trained for.
+                Mutually exclusive with max_horizon.
+            as_numpy: Whether prediction passes a numpy array to the model
+                instead of a dataframe. When None, any value from a previous
+                fit is preserved (False for a fresh instance).
+            trim: Apply the `keep_last_n` trim after warming the transform
+                state. `predict(new_df=...)` disables this to keep the full
+                provided history.
+        """
+        self._fit(
+            df=df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            static_features=static_features,
+            keep_last_n=keep_last_n,
+            weight_col=weight_col,
+        )
+        # must run before trimming: local stateful transforms (Expanding*/EWM)
+        # warm their buffers from the full history
+        self._initialize_lag_transform_states()
+        if trim:
+            self._apply_keep_last_n()
+        del self._restore_idxs, self._sort_idxs
+        if max_horizon is not None or horizons is not None:
+            self._horizons, self.max_horizon = _validate_horizon_params(
+                max_horizon, horizons
+            )
+        else:
+            # preserve model-shape metadata from a previous fit (e.g. an
+            # unpickled instance being re-warmed); default to recursive mode
+            self._horizons = getattr(self, "_horizons", None)
+            self.max_horizon = getattr(self, "max_horizon", None)
+        if as_numpy is not None:
+            self.as_numpy = as_numpy
+        else:
+            self.as_numpy = getattr(self, "as_numpy", False)
+        return self
 
     def _update_y(self, new: np.ndarray) -> None:
         """Appends the elements of `new` to every time serie.

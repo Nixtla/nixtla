@@ -78,6 +78,7 @@ serie
       docstring_style: google
       members:
         - fit_transform
+        - history_warmup
         - predict
         - update
       heading_level: 3
