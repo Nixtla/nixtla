@@ -10,7 +10,7 @@
  */
 (function () {
   var SEL = "details.accordion > summary, details.expandable > summary";
-  var PIN_MS = 700; // covers the 0.4s open animation + smooth-scroll frames
+  var PIN_MS = 400; // covers the 0.4s open animation + smooth-scroll frames
 
   document.addEventListener(
     "click",
@@ -29,6 +29,6 @@
       }
       requestAnimationFrame(pin);
     },
-    true
+    true,
   );
 })();
