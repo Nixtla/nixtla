@@ -200,6 +200,7 @@ def linex_single(y_true, y_pred, a=1.0, **kwargs):
         (ufl.msse, msse_single),
         (ufl.rmsse, rmsse_single),
         (ufl.nd, nd_single),
+        (ufl.wape, nd_single),
         (ufl.coverage, coverage_single),
         (ufl.linex, linex_single),
         (
@@ -268,6 +269,15 @@ def test_loss(engine, utils_fn, single_fn):
     expected = nw.from_native(type(series)(results)).sort("unique_id")
     actual = nw.from_native(actual).sort("unique_id")
     np.testing.assert_allclose(actual[models], expected[models])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_wape_equals_nd(engine):
+    """WAPE is an alias of ND; both must produce identical results."""
+    series, models = setup_series(engine)
+    wape_res = nw.from_native(ufl.wape(series, models)).sort("unique_id")
+    nd_res = nw.from_native(ufl.nd(series, models)).sort("unique_id")
+    np.testing.assert_allclose(wape_res[models], nd_res[models])
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])

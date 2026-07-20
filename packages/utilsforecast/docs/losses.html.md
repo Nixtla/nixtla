@@ -206,6 +206,24 @@ where must be $a\neq0$.
       show_root_heading: true
       show_source: true
 
+### Weighted Absolute Percentage Error
+
+```math
+\mathrm{WAPE}(\mathbf{y}_{\tau}, \mathbf{\hat{y}}_{\tau}) = \frac{\sum^{t+H}_{\tau=t+1} |y_{\tau} - \hat{y}_{\tau}|}{\sum^{t+H}_{\tau=t+1} | y_{\tau} |}
+```
+
+WAPE (also known as wMAPE or the MAD/Mean ratio) is mathematically identical
+to the Normalized Deviation (ND) above; it is exposed under this more common
+name for convenience.
+
+::: utilsforecast.losses.wape
+    handler: python
+    options:
+      docstring_style: google
+      heading_level: 4
+      show_root_heading: true
+      show_source: true
+
 ### Mean Squared Scaled Error
 
 ```math

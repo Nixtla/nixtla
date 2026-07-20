@@ -9,6 +9,7 @@ __all__ = [
     "pis",
     "spis",
     "mape",
+    "wape",
     "smape",
     "mase",
     "rmae",
@@ -540,6 +541,36 @@ def nd(
         )
         .sort(*group_cols)
         .to_native()
+    )
+
+
+@_base_docstring
+def wape(
+    df: IntoDataFrameT,
+    models: List[str],
+    id_col: str = "unique_id",
+    target_col: str = "y",
+    cutoff_col: str = "cutoff",
+) -> IntoDataFrameT:
+    """Weighted Absolute Percentage Error (WAPE)
+
+    WAPE = sum(|y - ŷ|) / sum(|y|)
+
+    Unlike MAPE, which averages per-point percentage errors, WAPE normalizes
+    the total absolute error by the total absolute value of the actuals. This
+    makes it robust to zero actuals and gives more weight to higher-volume
+    points.
+
+    WAPE is mathematically identical to the Normalized Deviation (`nd`); it is
+    also known as wMAPE or the MAD/Mean ratio. It is exposed under the WAPE
+    name -- the most common name for this metric in business forecasting -- and
+    delegates to `nd`."""
+    return nd(
+        df=df,
+        models=models,
+        id_col=id_col,
+        target_col=target_col,
+        cutoff_col=cutoff_col,
     )
 
 
