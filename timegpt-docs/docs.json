@@ -175,7 +175,7 @@
         },
         {
           "anchor": "Get in touch",
-          "href": "https://nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
+          "href": "https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
           "icon": "mail"
         },
         {
@@ -200,7 +200,7 @@
     "primary": {
       "type": "button",
       "label": "Get Started",
-      "href": "https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/docs"
+      "href": "https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/docs"
     }
   },
   "footer": {
