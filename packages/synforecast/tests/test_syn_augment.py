@@ -444,6 +444,29 @@ class TestSynAugment:
 
         assert isinstance(augmented_df, pd.DataFrame)
 
+    @pytest.mark.parametrize(
+        ("input_engine", "output_engine", "expected_type"),
+        [
+            ("pandas", "polars", pl.DataFrame),
+            ("polars", "pandas", pd.DataFrame),
+        ],
+    )
+    def test_explicit_backend_converts_input(
+        self, input_engine: str, output_engine: str, expected_type: type
+    ) -> None:
+        """An explicit engine controls output even when it differs from input."""
+        n = 50
+        data = {
+            "unique_id": ["series_0"] * n,
+            "ds": pd.date_range("2020-01-01", periods=n, freq="h"),
+            "y": np.cumsum(np.random.default_rng(7).normal(size=n)),
+        }
+        df = pl.DataFrame(data) if input_engine == "polars" else pd.DataFrame(data)
+
+        out = SynAugment(seed=42, engine=output_engine).augment(df, n_augment=1)
+
+        assert isinstance(out, expected_type)
+
     def test_missing_columns_error(self) -> None:
         """Test that missing columns raise ValueError."""
         df = pl.DataFrame(
@@ -871,6 +894,63 @@ class TestTSMixup:
         out = SynAugment(seed=3).mixup(df, n_series=15, include_original=False)
         values = pl.from_pandas(out)["y"] if engine == "pandas" else out["y"]
         assert np.all(np.isfinite(values.to_numpy()))
+
+    @pytest.mark.parametrize(
+        ("input_engine", "output_engine", "expected_type"),
+        [
+            ("pandas", "polars", pl.DataFrame),
+            ("polars", "pandas", pd.DataFrame),
+        ],
+    )
+    def test_explicit_backend_converts_input(
+        self, input_engine: str, output_engine: str, expected_type: type
+    ) -> None:
+        df = _panel(input_engine)
+        out = SynAugment(seed=3, engine=output_engine).mixup(df, n_series=3)
+        assert isinstance(out, expected_type)
+
+    def test_generated_ids_do_not_collide(self, engine: str) -> None:
+        df = _panel(engine, n_series=2, base_len=10)
+        if engine == "polars":
+            df = df.with_columns(
+                pl.when(pl.col("unique_id") == "s0")
+                .then(pl.lit("mixup_0"))
+                .otherwise(pl.col("unique_id"))
+                .alias("unique_id")
+            )
+        else:
+            df["unique_id"] = df["unique_id"].replace({"s0": "mixup_0"})
+
+        out = SynAugment(seed=4).mixup(df, n_series=2)
+        out_pl = pl.from_pandas(out) if engine == "pandas" else out
+        ids = set(out_pl["unique_id"].cast(pl.String).to_list())
+
+        assert ids == {"mixup_0", "mixup_1", "mixup_2", "s1"}
+        assert out_pl.filter(pl.col("unique_id") == "mixup_0").height == 10
+
+    def test_missing_values_are_interpolated(self, engine: str) -> None:
+        data = {
+            "unique_id": ["a"] * 5 + ["b"] * 5,
+            "ds": list(pd.date_range("2020-01-01", periods=5, freq="D")) * 2,
+            "y": [np.nan, 1.0, np.nan, 3.0, np.nan, 2.0, 4.0, 6.0, 8.0, 10.0],
+        }
+        df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+        out = SynAugment(seed=5).mixup(df, n_series=5, include_original=False)
+        values = pl.from_pandas(out)["y"] if engine == "pandas" else out["y"]
+
+        assert np.all(np.isfinite(values.to_numpy()))
+
+    def test_entirely_missing_panel_is_rejected(self, engine: str) -> None:
+        data = {
+            "unique_id": ["a"] * 3,
+            "ds": pd.date_range("2020-01-01", periods=3, freq="D"),
+            "y": [np.nan] * 3,
+        }
+        df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+        with pytest.raises(ValueError, match="no usable series"):
+            SynAugment(seed=6).mixup(df)
 
     def test_scaling_modes(self, engine: str) -> None:
         df = _panel(engine)

@@ -350,6 +350,15 @@ class SynAugment:
                 "GeometricBrownianMotionGenerator": GeometricBrownianMotionGenerator,
             }
 
+    def _to_output_backend(self, frame: nw.DataFrame, backend: Any) -> nw.DataFrame:
+        """Convert an input frame when an explicit output engine was requested."""
+        if self.engine is None:
+            return frame
+        return nw.DataFrame.from_dict(
+            frame.to_dict(as_series=False),
+            backend=backend,
+        )
+
     def analyze(self, df: IntoFrameT) -> dict[str, dict]:
         """Analyze all series in DataFrame and return properties.
 
@@ -456,6 +465,7 @@ class SynAugment:
         # Synthetic frames must match the input's dataframe library, or the
         # final concat would mix backends. An explicit engine wins.
         out_engine = self.engine if self.engine is not None else df_nw.implementation
+        output_original = self._to_output_backend(df_nw, out_engine)
 
         generator_override = generator_override or {}
 
@@ -463,7 +473,7 @@ class SynAugment:
         analysis = self.analyze(df)
 
         # Collect all series (original + augmented)
-        all_dfs = [df_nw]
+        all_dfs = [output_original]
 
         unique_ids = df_nw[self.id_col].unique().to_list()
 
@@ -502,10 +512,16 @@ class SynAugment:
 
             all_dfs.extend(augmented)
 
-        # Augmented ids are strings ("<id>_aug_<i>"), so normalize the id
-        # column to String before concatenating, then re-categorize.
+        # Normalize concat-sensitive dtypes across backends. In particular,
+        # pandas datetimes commonly convert to Polars at microsecond precision
+        # while NumPy timestamps retain nanosecond precision.
+        time_dtype = output_original.schema[self.time_col]
         all_dfs = [
-            frame.with_columns(nw.col(self.id_col).cast(nw.String()))
+            frame.with_columns(
+                nw.col(self.id_col).cast(nw.String()),
+                nw.col(self.time_col).cast(time_dtype),
+                nw.col(self.target_col).cast(nw.Float64()),
+            )
             for frame in all_dfs
         ]
         result = _categorize_ids(nw.concat(all_dfs), self.id_col)
@@ -524,6 +540,20 @@ class SynAugment:
             centered = window - float(np.mean(window))
             return centered / std if std > 1e-8 else centered
         return window
+
+    @staticmethod
+    def _interpolate_missing(values: np.ndarray) -> np.ndarray | None:
+        """Linearly interpolate NaNs, or reject a series with no finite values."""
+        if np.isinf(values).any():
+            raise ValueError("mixup source series must not contain infinite values")
+        observed = ~np.isnan(values)
+        if not observed.any():
+            return None
+        if observed.all():
+            return values
+
+        positions = np.arange(len(values))
+        return np.interp(positions, positions[observed], values[observed])
 
     def mixup(
         self,
@@ -568,6 +598,12 @@ class SynAugment:
             include_original: Prepend the original series to the output
                 (default: True).
 
+        Notes:
+            NaNs in source series are linearly interpolated before mixing,
+            including nearest-value filling at the ends. Entirely missing
+            series are excluded. When ``include_original=True``, the original
+            rows and their missing values are retained unchanged.
+
         Returns:
             DataFrame with the original series (optional) and synthetic mixup
             series. Mixup IDs follow the pattern ``"mixup_{i}"``.
@@ -595,6 +631,7 @@ class SynAugment:
         out_engine: Any = (
             self.engine if self.engine is not None else df_nw.implementation
         )
+        output_original = self._to_output_backend(df_nw, out_engine)
 
         # Sort ids so series selection is reproducible: some backends do not
         # guarantee an order from unique().
@@ -606,7 +643,10 @@ class SynAugment:
             sdf = df_nw.filter(nw.col(self.id_col) == series_id).sort(self.time_col)
             values = sdf.select(self.target_col).to_numpy().flatten().astype(float)
             timestamps = sdf.select(self.time_col).to_numpy().flatten()
-            if len(values) >= 1:
+            if (
+                len(values) >= 1
+                and (values := self._interpolate_missing(values)) is not None
+            ):
                 series[series_id] = (values, timestamps)
 
         usable_ids = list(series.keys())
@@ -621,8 +661,19 @@ class SynAugment:
         if n_series > 1_000_000:
             raise ValueError("n_series must be <= 1_000_000 to prevent exhaustion")
 
+        reserved_ids = {str(series_id) for series_id in unique_ids}
+        mixup_ids: list[str] = []
+        candidate = 0
+        while len(mixup_ids) < n_series:
+            mixup_id = f"mixup_{candidate}"
+            candidate += 1
+            if mixup_id in reserved_ids:
+                continue
+            mixup_ids.append(mixup_id)
+            reserved_ids.add(mixup_id)
+
         synthetic_dfs = []
-        for i in range(n_series):
+        for mixup_id in mixup_ids:
             k_max = min(max_mix, n_available)
             k = int(self.rng.integers(1, k_max + 1))
             chosen = self.rng.choice(n_available, size=k, replace=False)
@@ -643,7 +694,7 @@ class SynAugment:
 
             mix_df = nw.DataFrame.from_dict(
                 {
-                    self.id_col: [f"mixup_{i}"] * length,
+                    self.id_col: [mixup_id] * length,
                     self.time_col: anchor_timestamps,
                     self.target_col: mixed,
                 },
@@ -651,13 +702,15 @@ class SynAugment:
             )
             synthetic_dfs.append(mix_df)
 
-        frames = [df_nw] if include_original else []
+        frames = [output_original] if include_original else []
         frames.extend(synthetic_dfs)
         # Normalize id (mixup ids are strings) and target (mixed is float) so
         # the frames concatenate across the original and synthetic batches.
+        time_dtype = output_original.schema[self.time_col]
         frames = [
             frame.with_columns(
                 nw.col(self.id_col).cast(nw.String()),
+                nw.col(self.time_col).cast(time_dtype),
                 nw.col(self.target_col).cast(nw.Float64()),
             )
             for frame in frames

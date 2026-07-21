@@ -79,6 +79,19 @@ class TestSeasonalityDetection:
         assert result["has_seasonality"]
         assert abs(result["period"] - 24) <= 1
 
+    def test_detects_period_at_minimum_boundary(self) -> None:
+        series = np.tile([0.0, 1.0], 120)
+        result = detect_seasonality(series, min_period=2, max_period=20)
+        assert result["has_seasonality"] is True
+        assert result["period"] == 2
+
+    def test_detects_period_at_maximum_boundary(self) -> None:
+        t = np.arange(240)
+        series = np.sin(2 * np.pi * t / 20)
+        result = detect_seasonality(series, min_period=2, max_period=20)
+        assert result["has_seasonality"] is True
+        assert result["period"] == 20
+
     def test_random_walk_is_not_seasonal(self) -> None:
         rng = np.random.default_rng(6)
         # A random walk has a high but monotonically decaying ACF; the old

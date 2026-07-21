@@ -89,8 +89,13 @@ def detect_seasonality(
     if max_period < min_period:
         return {"period": None, "strength": 0.0, "has_seasonality": False}
 
-    # Compute autocorrelations for all lags
-    lags = list(range(min_period, max_period + 1))
+    # Compute one lag outside the requested interval on each side. Those
+    # neighbors let min_period and max_period participate as genuine local
+    # peaks without treating the left edge of a monotonically decaying ACF as
+    # seasonal.
+    first_lag = max(1, min_period - 1)
+    last_lag = min(len(valid) - 1, max_period + 1)
+    lags = list(range(first_lag, last_lag + 1))
     acs = np.array(
         [
             ac if not np.isnan(ac := _autocorrelation(valid, lag)) else 0.0
@@ -104,12 +109,15 @@ def detect_seasonality(
     # Seasonality shows up as a *local peak* in the ACF at the period, not as a
     # high value on a monotonically decaying ACF. A random walk, AR(1), or a
     # single level shift has a monotone ACF (its argmax sits at the smallest
-    # lag) and must not be read as seasonal. So restrict candidates to interior
-    # local maxima and pick the strongest.
+    # lag) and must not be read as seasonal. So restrict candidates to local
+    # maxima with neighbors on both sides and pick the strongest.
     peaks = [
         (lags[i], acs[i])
         for i in range(1, len(acs) - 1)
-        if acs[i] > acs[i - 1] and acs[i] >= acs[i + 1] and acs[i] > 0
+        if min_period <= lags[i] <= max_period
+        and acs[i] > acs[i - 1]
+        and acs[i] >= acs[i + 1]
+        and acs[i] > 0
     ]
     if not peaks:
         return {"period": None, "strength": 0.0, "has_seasonality": False}
@@ -117,7 +125,7 @@ def detect_seasonality(
     detected_period, max_ac = max(peaks, key=lambda p: p[1])
 
     # Consider seasonality significant if the peak autocorrelation > 0.3
-    has_seasonality = max_ac > 0.3
+    has_seasonality = bool(max_ac > 0.3)
 
     return {
         "period": int(detected_period) if has_seasonality else None,
