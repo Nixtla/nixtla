@@ -14,19 +14,21 @@ _MAX_RETRIES = 8
 class KernelSynthGenerator(BaseGenerator):
     """Generate series by sampling from randomly composed Gaussian-process kernels.
 
-    This implements the KernelSynth recipe introduced for pretraining the
-    Chronos forecasting models (Ansari et al. 2024,
+    This adapts the KernelSynth recipe introduced for pretraining the Chronos
+    forecasting models (Ansari et al. 2024,
     "Chronos: Learning the Language of Time Series",
-    https://arxiv.org/abs/2403.07815, Apache-2.0). For each series the
+    https://arxiv.org/abs/2403.07815) and its Apache-2.0-licensed reference
+    implementation (https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py).
+    For each series the
     generator draws ``1..max_kernels`` base kernels (with replacement) from a
     fixed bank, folds them together with randomly chosen binary operators
     (``+`` or ``*``), and samples one path from the resulting GP prior on the
     normalized grid ``x = linspace(0, 1, length)``. Kernel addition mixes
     behaviors (e.g. trend + seasonality); kernel multiplication modulates them
-    (e.g. locally periodic, amplitude-varying seasonality). The bank defaults,
-    the stability jitter, the divergence guards, and the optional
-    standardization are SynForecast design choices rather than a reproduction
-    of the reference code.
+    (e.g. locally periodic, amplitude-varying seasonality). SynForecast makes
+    the bank configurable, expresses seasonal periods in time steps on a
+    normalized grid, and adds bounded retries, divergence guards, and optional
+    standardization.
 
     Base kernels (r = |x_i - x_j|, all on the normalized grid):
         - rbf: ``exp(-r^2 / (2 l^2))`` — smooth, length-scale ``l``

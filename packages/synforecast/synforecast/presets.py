@@ -342,7 +342,7 @@ def pretraining_pool(
     Examples:
         >>> from synforecast import SynSet, pretraining_pool
         >>> pool = pretraining_pool(min_length=512, max_length=512, freq="h")
-        >>> df = SynSet(pool).generate(n_series_per_generator=10)
+        >>> df = SynSet(pool).generate(n_series_per_generator=1)
 
         >>> # Purely procedural corpus (meta-generators only)
         >>> meta = pretraining_pool(include_balanced=False)

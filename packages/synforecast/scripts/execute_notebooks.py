@@ -33,19 +33,17 @@ def _normalize(notebook: nbformat.NotebookNode) -> None:
         outputs = []
         for output in cell.get("outputs", []):
             text = "".join(output.get("text", []))
-            if (
-                output.get("output_type") == "stream"
-                and any(
-                    fragment in text
-                    for fragment in (
-                        "datasetsforecast.utils:Successfully decompressed",
-                        "Seed set to ",
-                        "GPU available:",
-                        "IProgress not found",
-                        "Missing packages: ['ipywidgets']",
-                        "TPU available:",
-                        "`Trainer.fit` stopped: `max_steps=",
-                    )
+            if output.get("output_type") == "stream" and any(
+                fragment in text
+                for fragment in (
+                    "datasetsforecast.utils:Successfully decompressed",
+                    "Seed set to ",
+                    "GPU available:",
+                    "IProgress not found",
+                    "Missing packages: ['ipywidgets']",
+                    "pytorch_lightning/utilities/_pytree.py",
+                    "TPU available:",
+                    "`Trainer.fit` stopped: `max_steps=",
                 )
             ):
                 continue
@@ -93,9 +91,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    os.environ.setdefault(
-        "MPLBACKEND", "module://matplotlib_inline.backend_inline"
-    )
+    os.environ.setdefault("MPLBACKEND", "module://matplotlib_inline.backend_inline")
     notebooks = _notebooks()
     if not notebooks:
         raise SystemExit(f"No notebooks found below {NOTEBOOK_ROOT}")

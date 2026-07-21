@@ -5,9 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+import nbformat
 import pytest
 
 import synforecast.generators as generators
+from scripts.execute_notebooks import _normalize
 
 NOTEBOOKS = sorted((Path(__file__).parents[1] / "nbs" / "docs").rglob("*.ipynb"))
 INTEGRATION_REQUIREMENTS = {
@@ -146,6 +148,18 @@ def test_notebook_has_saved_outputs(path: Path) -> None:
     assert outputs, f"{path.relative_to(path.parents[3])} has no saved outputs"
 
 
+@pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda path: path.stem)
+def test_notebook_cell_sources_are_line_arrays(path: Path) -> None:
+    """Keep notebook JSON compatible with the Quarto version used in CI."""
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    invalid = [
+        index
+        for index, cell in enumerate(notebook["cells"])
+        if not isinstance(cell.get("source"), list)
+    ]
+    assert not invalid, f"{path.name} has string sources in cells {invalid}"
+
+
 @pytest.mark.parametrize("filename,required", INTEGRATION_REQUIREMENTS.items())
 def test_integration_notebooks_cover_training_regimes(
     filename: str, required: list[str]
@@ -158,3 +172,22 @@ def test_integration_notebooks_cover_training_regimes(
     assert source.index("train_df =") < source.index("augmented_train_df = SynAugment")
     for token in required:
         assert token in source, f"{filename} is missing {token!r}"
+
+
+def test_notebook_normalizer_removes_local_lightning_warnings() -> None:
+    """Do not publish machine-specific paths from Lightning warning output."""
+    warning = nbformat.v4.new_output(
+        output_type="stream",
+        name="stderr",
+        text=(
+            "/home/user/.venv/site-packages/"
+            "pytorch_lightning/utilities/_pytree.py: warning\n"
+        ),
+    )
+    notebook = nbformat.v4.new_notebook(
+        cells=[nbformat.v4.new_code_cell(outputs=[warning])]
+    )
+
+    _normalize(notebook)
+
+    assert notebook.cells[0].outputs == []

@@ -19,6 +19,7 @@ api_docs:
 
 examples_docs:
 	mkdir -p nbs/_extensions
+	rm -rf nbs/_extensions/mintlify
 	cp -r docs-scripts/mintlify/ nbs/_extensions/mintlify
 	python docs-scripts/update-quarto.py
 	quarto render nbs --output-dir ../docs/mintlify/

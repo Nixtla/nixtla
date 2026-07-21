@@ -132,17 +132,27 @@ def monthly_synthetic_pool(seed: int) -> list:
     """SARIMA/ETS/seasonal monthly processes for independent pretraining."""
     common = {"min_length": 96, "max_length": 180, "freq": "ME", "engine": "polars"}
     return [
-        SARIMAGenerator(**common, seasonal_period=12, d=1, D=1, noise_std=2.0, seed=seed),
+        SARIMAGenerator(
+            **common, seasonal_period=12, d=1, D=1, noise_std=2.0, seed=seed
+        ),
         SARIMAGenerator(
             **common, seasonal_period=12, p=2, P=0, Q=1, noise_std=1.5, seed=seed + 1
         ),
         ETSGenerator(
-            **common, seasonal_period=12, level=100.0, trend=0.2, noise_std=2.0,
+            **common,
+            seasonal_period=12,
+            level=100.0,
+            trend=0.2,
+            noise_std=2.0,
             seed=seed + 2,
         ),
         SeasonalGenerator(
-            **common, seasonality_period=12, seasonality_amplitude=10.0, trend=0.15,
-            noise_level=2.0, seed=seed + 3,
+            **common,
+            seasonality_period=12,
+            seasonality_amplitude=10.0,
+            trend=0.15,
+            noise_level=2.0,
+            seed=seed + 3,
         ),
     ]
 
@@ -274,8 +284,7 @@ def summarize(df: pd.DataFrame, with_pretrain: bool) -> None:
         except ValueError:
             p = float("nan")
         print(
-            f"{n:>9} {delta.mean():>12.4f} {pct.mean():>12.1f}% "
-            f"{win:>9.0%} {p:>12.4f}"
+            f"{n:>9} {delta.mean():>12.4f} {pct.mean():>12.1f}% {win:>9.0%} {p:>12.4f}"
         )
         verdict.append((n, delta.mean(), win, p))
 
@@ -359,7 +368,7 @@ def save_figure(df: pd.DataFrame, path: Path) -> None:
     ax.set(
         xlabel="number of observed series in the panel",
         ylabel="mean seasonal MASE",
-        title="SynAugment helps most in the cold-start regime (few series)",
+        title="Observed-only vs SynAugment across panel sizes",
     )
     ax.legend()
     fig.tight_layout()

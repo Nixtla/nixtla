@@ -540,9 +540,13 @@ interpretable `balanced_pool` by default) into a breadth-maximizing corpus:
 from synforecast import SynSet, pretraining_pool
 
 df = SynSet(pretraining_pool(min_length=512, max_length=512, freq="h")).generate(
-    n_series_per_generator=100
+    n_series_per_generator=1
 )
 ```
+
+KernelSynth and Gaussian-process sampling require covariance factorizations,
+whose cost grows cubically with series length. Scale the length and number of
+series gradually when building a large corpus.
 
 ### TSIGenerator
 
@@ -583,9 +587,12 @@ pretraining data with genuine causal/lead-lag structure.
 
 Samples each series from a Gaussian-process prior whose kernel is a random
 composition of `1..max_kernels` base kernels combined with `+`/`*` operators.
-This is the KernelSynth recipe used to pretrain the Chronos models (Ansari et
-al. 2024, Apache-2.0); the bank defaults and stability guards are SynForecast's
-own. **Applications**: pretraining data with controllable temporal structure.
+This adapts the KernelSynth recipe used to pretrain the Chronos models (Ansari
+et al. 2024) and the Apache-2.0-licensed
+[reference implementation](https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py).
+SynForecast adds a configurable kernel bank, time-step seasonal periods,
+bounded retries, divergence guards, and optional standardization.
+**Applications**: pretraining data with controllable temporal structure.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -692,9 +699,9 @@ directory for executable guides to each generator.
 
 ## References and attribution
 
-SynForecast implements the models and numerical methods in this repository;
-it does not copy code from the references below. These are the primary sources
-for named models or algorithms used by the implementation:
+Unless noted otherwise, SynForecast implements the models and numerical methods
+independently. These are the primary sources for named models or algorithms;
+the KernelSynth entry explicitly identifies its reference implementation:
 
 - Hyndman, Koehler, Ord, and Snyder (2008), *Forecasting with Exponential
   Smoothing: The State Space Approach*,
@@ -731,6 +738,13 @@ for named models or algorithms used by the implementation:
   (temporal structural-causal framing). `TCMGenerator`'s graph sampler and
   rollout are original SynForecast design choices, not an implementation
   published in that review.
+- Ansari et al. (2024), “Chronos: Learning the Language of Time Series,”
+  [arXiv:2403.07815](https://arxiv.org/abs/2403.07815), and the official
+  Apache-2.0-licensed
+  [KernelSynth implementation](https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py)
+  (KernelSynth and TSMixup recipes; the linked script is the KernelSynth
+  reference implementation). SynForecast's deviations are described above
+  and in the corresponding API documentation.
 - Ansari et al. (2025), “Chronos-2: From Univariate to Universal Forecasting,”
   [arXiv:2510.15821](https://arxiv.org/abs/2510.15821) (motivation for the
   cotemporaneous and sequential couplings in `Multivariatizer`).
