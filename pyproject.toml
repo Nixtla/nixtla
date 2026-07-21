@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "nixtla"
-version = "0.7.3"
+version = "0.8.0.dev0"
 description = "Python SDK for Nixtla API (TimeGPT)"
 authors = [
     {name = "Nixtla", email = "business@nixtla.io"}
@@ -42,7 +42,7 @@ dev = [
     "hierarchicalforecast",
     "ipython<=8.32.0",
     "ipywidgets",
-    "jupyterlab",
+    "jupyterlab>=4.5.9",
     "neuralforecast",
     "numpy<2",
     "plotly",
@@ -58,7 +58,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-rerunfailures",
-    "pyarrow<21.0.0",
+    "pyarrow<24.0.0",
     "mlforecast",
     "lightgbm",
     "utilsforecast[plotting]",
@@ -71,7 +71,7 @@ distributed = [
     "fugue[dask,ray,spark]>=0.9.6",
     "dask",
     "pandas<2.2",
-    "ray<=2.54.0",
+    "ray<=2.55.0",
 ]
 plotting = [
     "utilsforecast[plotting]",
@@ -90,6 +90,16 @@ snowflake = [
 Homepage = "https://github.com/Nixtla/nixtla/"
 Documentation = "https://nixtlaverse.nixtla.io/"
 Repository = "https://github.com/Nixtla/nixtla/"
+
+[tool.uv]
+constraint-dependencies = [
+    "bleach>=6.4.0",
+    "cryptography>=48.0.1",
+    "jupyter-server>=2.20.0",
+    "msgpack>=1.2.1",
+    "pyjwt>=2.13.0",
+    "tornado>=6.5.7",
+]
 
 [tool.uv.build-backend]
 module-root = "."

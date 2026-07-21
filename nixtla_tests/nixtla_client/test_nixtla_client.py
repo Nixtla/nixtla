@@ -19,8 +19,8 @@ CAPTURED_REQUEST = None
 
 
 class CapturingClient(httpx.Client):
-    def post(self, *args, **kwargs):
-        request = self.build_request("POST", *args, **kwargs)
+    def _capture(self, method: str, *args, **kwargs):
+        request = self.build_request(method, *args, **kwargs)
         global CAPTURED_REQUEST
         CAPTURED_REQUEST = {
             "headers": dict(request.headers),
@@ -28,7 +28,14 @@ class CapturingClient(httpx.Client):
             "method": request.method,
             "url": str(request.url),
         }
+
+    def post(self, *args, **kwargs):
+        self._capture("POST", *args, **kwargs)
         return super().post(*args, **kwargs)
+
+    def get(self, *args, **kwargs):
+        self._capture("GET", *args, **kwargs)
+        return super().get(*args, **kwargs)
 
 
 @contextmanager
@@ -162,6 +169,26 @@ def test_forecast_date_features_multiple_series_and_different_ends(
         assert actual == expected
 
 
+@pytest.mark.parametrize("model", ["timegpt-1", "timegpt-1-long-horizon"])
+def test_nixtla_model_header(nixtla_test_client, air_passengers_df, model):
+    with capture_request():
+        nixtla_test_client.forecast(
+            df=air_passengers_df,
+            h=12,
+            time_col="timestamp",
+            target_col="value",
+            model=model,
+        )
+        assert CAPTURED_REQUEST["headers"]["nixtla-model"] == model
+
+
+def test_get_finetuned_models_has_no_nixtla_model_header(nixtla_test_client):
+    with capture_request():
+        nixtla_test_client.finetuned_models()
+        assert CAPTURED_REQUEST["method"] == "GET"
+        assert "nixtla-model" not in CAPTURED_REQUEST["headers"]
+
+
 def test_compression(nixtla_test_client, series_1MB_payload):
     with capture_request():
         nixtla_test_client.forecast(
@@ -231,6 +258,7 @@ def test_forecast_quantiles_output(
         "time_col": "timestamp",
         "target_col": "value",
         "quantiles": test_qls,
+        "model": "timegpt-1",
         **kwargs,
     }
     if method == "cross_validation":
@@ -245,7 +273,6 @@ def test_forecast_quantiles_output(
     # test monotonicity of quantiles
     for c1, c2 in zip(exp_q_cols[:-1], exp_q_cols[1:]):
         assert df_qls[c1].lt(df_qls[c2]).all()
-
 
 @pytest.mark.parametrize("freq", ["D", "W-THU", "Q-DEC", "15T"])
 @pytest.mark.parametrize(
@@ -280,10 +307,49 @@ def test_num_partitions_same_results_parametrized(
         "method": method,
         "num_partitions": 2,
         "df": df_freq,
+        "model": "timegpt-1",
         **method_kwargs,
     }
 
     check_num_partitions_same_results(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "method_name,method_kwargs",
+    [
+        ("forecast", {"h": 7}),
+        ("cross_validation", {"h": 7, "n_windows": 2}),
+        (
+            "detect_anomalies_online",
+            {"h": 20, "detection_size": 5, "threshold_method": "univariate"},
+        ),
+    ],
+)
+def test_num_partitions_hist_exog_no_x_df(
+    nixtla_test_client, df_freq_generator, method_name, method_kwargs
+):
+    # Regression for GH #806: when hist_exog_list is set but X_df is None,
+    # _partition_series previously raised because series["X"] was populated
+    # but series["X_future"] was None (only reached when h > 0, i.e.
+    # forecast / cross_validation). detect_anomalies lacks hist_exog_list so
+    # it is covered by test_num_partitions_same_results_parametrized instead.
+    df = df_freq_generator(n_series=4, min_length=200, max_length=220, freq="D")
+    df["hist_exog"] = 1.0
+
+    method_mapper = {
+        "forecast": nixtla_test_client.forecast,
+        "cross_validation": nixtla_test_client.cross_validation,
+        "detect_anomalies_online": nixtla_test_client.detect_anomalies_online,
+    }
+
+    check_num_partitions_same_results(
+        method=method_mapper[method_name],
+        num_partitions=2,
+        df=df,
+        hist_exog_list=["hist_exog"],
+        model="timegpt-1",
+        **method_kwargs,
+    )
 
 
 @pytest.mark.parametrize(
@@ -352,7 +418,8 @@ def test_different_models_give_different_results(
     )
     # Compare only the TimeGPT column
     with pytest.raises(
-        AssertionError, match=r'\(column name="TimeGPT"\) are different'
+        AssertionError,
+        match=r'\(column name="TimeGPT"\) are different|DataFrame shape mismatch'
     ):
         pd.testing.assert_frame_equal(out1[["TimeGPT"]], out2[["TimeGPT"]])
 
@@ -392,6 +459,7 @@ def test_shap_features(nixtla_test_client, date_features_result):
     )
 
 
+@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
 def test_exogenous_variables_cv(nixtla_test_client, exog_data, hyp):
     df_ex_, df_train, df_test, x_df_test = exog_data
@@ -409,7 +477,7 @@ def test_exogenous_variables_cv(nixtla_test_client, exog_data, hyp):
         rtol=1e-3,
     )
 
-
+@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
 def test_forecast_vs_cv_no_exog(
     nixtla_test_client, train_test_split, air_passengers_renamed_df, hyp
@@ -429,6 +497,7 @@ def test_forecast_vs_cv_no_exog(
     )
 
 
+@pytest.mark.skip(reason="server-site transition update")
 @pytest.mark.parametrize("hyp", HYPER_PARAMS_TEST)
 def test_forecast_vs_cv_insert_y(
     nixtla_test_client, train_test_split, air_passengers_renamed_df, hyp

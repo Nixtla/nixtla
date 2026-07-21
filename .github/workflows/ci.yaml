@@ -31,10 +31,10 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - name: Clone repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # 6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # 6.3.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -55,10 +55,10 @@ jobs:
         python-version: ["3.11"]
     steps:
       - name: Clone repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # 6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # 6.3.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -67,11 +67,27 @@ jobs:
 
       - name: Run nbconvert
         run: |
+          run_nbconvert_with_retry() {
+            local nb="$1"
+            local max_attempts=3
+            local delay=10
+            local attempt=1
+            until jupyter nbconvert --to notebook --execute --inplace "$nb"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Failed to execute $nb after $attempt attempts"
+                return 1
+              fi
+              echo "Attempt $attempt failed for $nb, retrying in ${delay}s..."
+              attempt=$((attempt + 1))
+              sleep "$delay"
+            done
+          }
+
           find nbs/docs/ -name "*.ipynb" -print0 | while IFS= read -r -d '' nb; do
             if [[ "$(basename "$nb")" == "19_computing_at_scale_ray_distributed.ipynb" ]]; then
               echo "Skipping $nb..."
               continue
             fi
             echo "Running $nb..."
-            jupyter nbconvert --to notebook --execute --inplace "$nb"
+            run_nbconvert_with_retry "$nb"
           done

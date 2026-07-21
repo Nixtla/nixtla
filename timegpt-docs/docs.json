@@ -2,7 +2,11 @@
   "$schema": "https://mintlify.com/docs.json",
   "banner": {
     "content": "[Announcement](https://www.nixtla.io/blog/genai-announcement): Nixtla Enterprise now offers top foundation models, MCP, and agentic capabilities: [join the waitlist](https://www.nixtla.io?waitlistSheet=true)",
-    "dismissible": true
+    "dismissible": true,
+    "color": {
+      "light": "#bfd1ff",
+      "dark": "#9187e8"
+    }
   },
   "theme": "mint",
   "name": "TimeGPT Foundational model for time series forecasting and anomaly detection",
@@ -190,7 +194,7 @@
     "links": [
       {
         "label": "Book a meeting",
-        "href": "https://meetings.hubspot.com/cristian-challu/enterprise-contact-us?uuid=dc037f5a-d93b-4%5B…%5D90b-a611dd9460af&utm_source=docs&utm_medium=docs"
+        "href": "https://www.nixtla.io/book-a-call?utm_source=docs&utm_campaign=docs_nav"
       }
     ],
     "primary": {
@@ -211,7 +215,8 @@
       "tagId": "GTM-TBJ64S3X"
     },
     "posthog": {
-      "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82"
+      "apiKey": "phc_hblNl72piphlbRCYfGM8QkgazW9NNrDrP6dMbGzMp82",
+      "apiHost": "https://d.nixtla.io"
     },
     "intercom": {
       "appId": "j7y9c2ep"

@@ -212,6 +212,11 @@ We can use the `HierarchicalReconciliation` class to reconcile the forecasts.
 In this example we use `MinTrace`. Note that we have to set `temporal=True`
 in the `reconcile` function.
 
+<Note>
+  The `S` parameter was renamed to `S_df` in `hierarchicalforecast`. Make sure
+  you are using `S_df` when calling `reconcile`.
+</Note>
+
 ```python
 from hierarchicalforecast.methods import MinTrace
 from hierarchicalforecast.core import HierarchicalReconciliation
@@ -219,7 +224,7 @@ from hierarchicalforecast.core import HierarchicalReconciliation
 reconcilers = [MinTrace(method="wls_struct")]
 hrec = HierarchicalReconciliation(reconcilers=reconcilers)
 
-Y_rec = hrec.reconcile(Y_hat_df=Y_hat, S=S_test, tags=tags_test, temporal=True)
+Y_rec = hrec.reconcile(Y_hat_df=Y_hat, S_df=S_test, tags=tags_test, temporal=True)
 ```
 
 ### Step 4. Evaluation

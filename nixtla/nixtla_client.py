@@ -1,6 +1,8 @@
 __all__ = ["ApiError", "NixtlaClient"]
 
 import datetime
+from http import HTTPStatus
+from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
@@ -97,6 +99,13 @@ logging.getLogger("httpx").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
+def _resolve_nixtla_client_version() -> Optional[str]:
+    try:
+        return version("nixtla")
+    except PackageNotFoundError:
+        return None
+
+
 def validate_extra_params(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Validate that the dictionary doesn't contain complex structures."""
     primitives = (str, int, float, bool, type(None))
@@ -124,7 +133,7 @@ _ExtraParamDataType = Annotated[
     Optional[Dict[str, Any]], AfterValidator(validate_extra_params)
 ]
 extra_param_checker = TypeAdapter(_ExtraParamDataType)
-_Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape"]
+_Loss = Literal["default", "mae", "mse", "rmse", "mape", "smape", "poisson"]
 _Model = str
 _FinetuneDepth = Literal[1, 2, 3, 4, 5]
 _Freq = Union[str, int, pd.offsets.BaseOffset]
@@ -207,7 +216,14 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
             httpx.WriteError,
             httpx.WriteTimeout,
         )
-        retriable_codes = [408, 409, 429, 502, 503, 504]
+        retriable_codes = [
+            HTTPStatus.REQUEST_TIMEOUT,
+            HTTPStatus.CONFLICT,
+            HTTPStatus.TOO_MANY_REQUESTS,
+            HTTPStatus.BAD_GATEWAY,
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            HTTPStatus.GATEWAY_TIMEOUT,
+        ]
         return isinstance(exc, retriable_exceptions) or (
             isinstance(exc, ApiError) and exc.status_code in retriable_codes
         )
@@ -321,9 +337,12 @@ def _partition_series(
         else:
             part_series["X"] = [x[part_idxs] for x in series["X"]]
             if h > 0:
-                part_series["X_future"] = [
-                    x[i * h : (i + series_per_part) * h] for x in series["X_future"]
-                ]
+                if series["X_future"] is None: 
+                    part_series["X_future"] = None
+                else:
+                    part_series["X_future"] = [
+                        x[i * h : (i + series_per_part) * h] for x in series["X_future"]
+                    ]
         if "categorical_exog" in series:
             part_series["categorical_exog"] = series["categorical_exog"]
         parts.append({"series": part_series, **payload})
@@ -631,6 +650,11 @@ def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dic
     payload["step_size"] = h
     payload["n_windows"] = n_windows
 
+    # The in-sample forecast (add_history workflow) always runs cross_validation
+    # in full_history mode: the server derives the horizon and number of windows,
+    # so the values above are sent as placeholders and ignored.
+    payload["full_history"] = True
+
     return payload
 
 def _get_in_sample_horizon_and_windows(
@@ -933,12 +957,16 @@ class NixtlaClient:
             api_key = os.environ["NIXTLA_API_KEY"]
         if base_url is None:
             base_url = os.getenv("NIXTLA_BASE_URL") or "https://api.nixtla.io"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        client_version = _resolve_nixtla_client_version()
+        if client_version is not None:
+            headers["nixtla-client-version"] = client_version
         self._client_kwargs = {
             "base_url": base_url,
-            "headers": {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            "headers": headers,
             "timeout": timeout,
         }
         self._retry_strategy = _retry_strategy(
@@ -988,6 +1016,8 @@ class NixtlaClient:
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
             )
         headers = {}
+        if "model" in payload:
+            headers["nixtla-model"] = payload["model"]
         if content_size_mb > 1:
             threads = -1 if multithreaded_compress else 0
             content = zstd.ZstdCompressor(level=1, threads=threads).compress(content)
@@ -1027,7 +1057,13 @@ class NixtlaClient:
         params: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         resp = client.get(endpoint, params=params)
-        resp_body = resp.json()
+        try:
+            resp_body = resp.json()
+        except Exception:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=f"Could not parse JSON: {resp.content}",
+            )
         if resp.status_code != 200:
             raise ApiError(status_code=resp.status_code, body=resp_body)
         return resp_body
@@ -1275,7 +1311,7 @@ class NixtlaClient:
         finetune_loss: _Loss = "default",
         output_model_id: Optional[str] = None,
         finetuned_model_id: Optional[str] = None,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
     ) -> str:
         """Fine-tune TimeGPT to your series.
 
@@ -1321,10 +1357,11 @@ class NixtlaClient:
                 model to use as base. Defaults to None.
             model (str):
                 Model to use as a string. Options are: `timegpt-1`, and
-                `timegpt-1-long-horizon`. We recommend using
+                `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`, `timegpt-2-pro`,
+                `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency
-                of your data. Defaults to 'timegpt-1'.
+                of your data. Defaults to 'timegpt-2.1'.
 
         Returns:
             str: ID of the fine-tuned model
@@ -1551,7 +1588,7 @@ class NixtlaClient:
         add_history: bool = False,
         date_features: Union[bool, list[Union[str, Callable]]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
@@ -1633,10 +1670,11 @@ class NixtlaClient:
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
             model (str): Model to use as a string. Options are: `timegpt-1`,
-                and `timegpt-1-long-horizon`. We recommend using
+                and `timegpt-1-long-horizon`,`timegpt-2`, `timegpt-2-mini`,
+                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-1'.
+                your data. Defaults to 'timegpt-2.1'.
             num_partitions (int):
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
@@ -1844,7 +1882,9 @@ class NixtlaClient:
                         clean_ex_first=clean_ex_first,
                         level=level,
                     )
-                    in_sample_payload = _forecast_payload_to_in_sample(payload, insample_h, n_windows)
+                    in_sample_payload = _forecast_payload_to_in_sample(
+                        payload, insample_h, n_windows
+                    )
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_request_with_retries(
                         client, "v2/cross_validation", in_sample_payload
@@ -1864,7 +1904,8 @@ class NixtlaClient:
                         level=level,
                     )
                     in_sample_payloads = [
-                        _forecast_payload_to_in_sample(p, insample_h, n_windows) for p in payloads
+                        _forecast_payload_to_in_sample(p, insample_h, n_windows)
+                        for p in payloads
                     ]
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
@@ -1994,7 +2035,7 @@ class NixtlaClient:
         validate_api_key: bool = False,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         multivariate: bool = False,
         categorical_exog_list: Optional[list[str]] = None,
@@ -2045,12 +2086,13 @@ class NixtlaClient:
                 encoding to these date features. If
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
-            model (str): str (default='timegpt-1')
+            model (str): str (default='timegpt-2.1')
                 Model to use as a string. Options are: `timegpt-1`, and
-                `timegpt-1-long-horizon`. We recommend using
+                `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`,
+                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to predict
                 more than one seasonal period given the frequency of your data.
-                Defaults to 'timegpt-1'.
+                Defaults to 'timegpt-2.1'.
             num_partitions (int): Number of partitions to use. If None, the
                 number of partitions will be equal to the available parallel
                 resources in distributed environments. Defaults to None.
@@ -2273,7 +2315,7 @@ class NixtlaClient:
         hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
         multivariate: bool = False,
@@ -2343,10 +2385,12 @@ class NixtlaClient:
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
             model (str, optional): Model to use as a string. Options are:
-                `timegpt-1`, and `timegpt-1-long-horizon`. We recommend using
+                `timegpt-1`, and `timegpt-1-long-horizon`, `timegpt-2`,
+                `timegpt-2-mini`, `timegpt-2-pro`, `timegpt-2.1`.
+                We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-1'.
+                your data. Defaults to 'timegpt-2.1'.
             refit (bool, optional): Fine-tune the model in each window. If
                 False, only fine-tunes on the first window. Only used if
                 finetune_steps > 0. Defaults to False.
@@ -2587,7 +2631,7 @@ class NixtlaClient:
         hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
@@ -2667,10 +2711,11 @@ class NixtlaClient:
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
             model (str): Model to use as a string. Options are: `timegpt-1`,
-                and `timegpt-1-long-horizon`. We recommend using
+                and `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`,
+                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-1'.
+                your data. Defaults to 'timegpt-2.1'.
             num_partitions (int):
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in

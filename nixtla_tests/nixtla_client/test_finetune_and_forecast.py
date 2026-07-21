@@ -11,26 +11,34 @@ class TestTimeSeriesDataSet1:
     def test_finetuning_and_forecasting(self, custom_client, ts_data_set1):
         # Finetune the model
         finetune_resp = custom_client.finetune(
-            ts_data_set1.train, output_model_id=model_ids_object.model_id1
+            ts_data_set1.train,
+            output_model_id=model_ids_object.model_id1,
+            model="timegpt-1",
         )
         assert finetune_resp == model_ids_object.model_id1
 
         model_id2 = custom_client.finetune(
-            ts_data_set1.train, finetuned_model_id=model_ids_object.model_id1
+            ts_data_set1.train,
+            finetuned_model_id=model_ids_object.model_id1,
+            model="timegpt-1",
         )
         model_ids_object.model_id2 = model_id2  # store the model_id2 for later use
 
         # Forecast with fine-tuned models
-        forecast_base = custom_client.forecast(ts_data_set1.train, h=ts_data_set1.h)
+        forecast_base = custom_client.forecast(
+            ts_data_set1.train, h=ts_data_set1.h, model="timegpt-1"
+        )
         forecast1 = custom_client.forecast(
             ts_data_set1.train,
             h=ts_data_set1.h,
             finetuned_model_id=model_ids_object.model_id1,
+            model="timegpt-1",
         )
         forecast2 = custom_client.forecast(
             ts_data_set1.train,
             h=ts_data_set1.h,
             finetuned_model_id=model_ids_object.model_id2,
+            model="timegpt-1",
         )
         all_fcsts = forecast_base.assign(
             ten_rounds=forecast1["TimeGPT"], twenty_rounds=forecast2["TimeGPT"]
@@ -63,13 +71,14 @@ class TestTimeSeriesDataSet1:
     def test_cv_with_finetuned_model(self, custom_client, ts_data_set1):
         try:
             cv_base = custom_client.cross_validation(
-                ts_data_set1.series, n_windows=2, h=ts_data_set1.h
+                ts_data_set1.series, n_windows=2, h=ts_data_set1.h, model="timegpt-1"
             )
             cv_finetune = custom_client.cross_validation(
                 ts_data_set1.series,
                 n_windows=2,
                 h=ts_data_set1.h,
                 finetuned_model_id=model_ids_object.model_id1,
+                model="timegpt-1",
             )
             merged = cv_base.merge(
                 cv_finetune,
@@ -89,10 +98,13 @@ class TestTimeSeriesDataSet1:
     def test_anomaly_detection_with_finetuned_model(
         self, custom_client, ts_anomaly_data
     ):
-        anomaly_base = custom_client.detect_anomalies(ts_anomaly_data.train_anomalies)
+        anomaly_base = custom_client.detect_anomalies(
+            ts_anomaly_data.train_anomalies, model="timegpt-1"
+        )
         anomaly_finetune = custom_client.detect_anomalies(
             ts_anomaly_data.train_anomalies,
             finetuned_model_id=model_ids_object.model_id2,
+            model="timegpt-1",
         )
         detected_anomalies_base = (
             anomaly_base.set_index("ds")
@@ -119,7 +131,7 @@ class TestTimeSeriesDataSet1:
         assert single_model.base_model_id == model_ids_object.model_id1
 
     def test_non_existing_model_returns_error(self, custom_client):
-        with pytest.raises(ApiError, match="Model not found"):
+        with pytest.raises(ApiError, match="Finetuned model not found"):
             custom_client.finetuned_model("hi")
 
     @pytest.mark.distributed_run

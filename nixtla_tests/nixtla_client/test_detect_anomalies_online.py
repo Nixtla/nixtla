@@ -31,6 +31,7 @@ def test_detect_anomalies_online_multivariate(nixtla_test_client, anomaly_online
         threshold_method="multivariate",
         freq="W-SUN",
         level=99,
+        model="timegpt-1",
     )
     assert len(multi_anomaly_df) == n_series * detection_size
     assert (

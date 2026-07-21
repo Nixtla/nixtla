@@ -6,6 +6,7 @@ from nixtla.nixtla_client import _audit_categorical_variables
 from nixtla.nixtla_client import _audit_leading_zeros
 from nixtla.nixtla_client import _audit_missing_dates
 from nixtla.nixtla_client import _audit_negative_values
+from nixtla.nixtla_client import _forecast_payload_to_in_sample
 from nixtla.nixtla_client import _maybe_add_date_features
 from nixtla.nixtla_client import AuditDataSeverity
 from nixtla.date_features import SpecialDates
@@ -146,3 +147,18 @@ def test_add_date_features_with_exogenous_variables(
         future_df[df_actual_future.columns],
         expected_df_actual_future,
     )
+
+
+# --- _forecast_payload_to_in_sample (add_history workflow) ---
+def test_forecast_payload_to_in_sample_always_sets_full_history(base_forecast_payload):
+    payload = _forecast_payload_to_in_sample(base_forecast_payload, h=4, n_windows=2)
+    # The add_history workflow always runs cross_validation in full_history mode.
+    assert payload["full_history"] is True
+    # h/step_size/n_windows are still populated as server-side-ignored placeholders.
+    assert payload["h"] == 4
+    assert payload["step_size"] == 4
+    assert payload["n_windows"] == 2
+    # No finetuning for in-sample, X_future is dropped, hist_exog excludes the future feature.
+    assert payload["finetune_steps"] == 0
+    assert "X_future" not in payload["series"]
+    assert payload["hist_exog"] == [1]
