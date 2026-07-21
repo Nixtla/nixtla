@@ -9,7 +9,7 @@ import pytest
 
 import synforecast.generators as generators
 
-NOTEBOOKS = sorted((Path(__file__).parents[1] / "nbs" / "examples").glob("*.ipynb"))
+NOTEBOOKS = sorted((Path(__file__).parents[1] / "nbs" / "docs").rglob("*.ipynb"))
 GENERATOR_CLASSES = {
     name: value
     for name, value in vars(generators).items()
@@ -112,3 +112,16 @@ def test_notebook_generator_configs_match_current_api(path: Path) -> None:
             assert not unknown, (
                 f"{location}: {node.func.id} has unknown fields {sorted(unknown)}"
             )
+
+
+@pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda path: path.stem)
+def test_notebook_has_saved_outputs(path: Path) -> None:
+    """Public notebooks retain outputs so docs builds include results and plots."""
+    notebook = json.loads(path.read_text())
+    outputs = [
+        output
+        for cell in notebook["cells"]
+        if cell.get("cell_type") == "code"
+        for output in cell.get("outputs", [])
+    ]
+    assert outputs, f"{path.relative_to(path.parents[3])} has no saved outputs"

@@ -11,7 +11,7 @@ parity. Generator outputs differ due to different RNG streams but must have
 matching shape and similar statistical properties.
 
 Usage:
-    uv run python examples/rust_parity_example.py
+    uv run python scripts/check_rust_parity.py
 """
 
 # ruff: noqa: E402  (imports intentionally follow the Rust-availability check)

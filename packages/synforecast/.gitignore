@@ -209,3 +209,9 @@ __marimo__/
 # Custom
 tmp/
 *.csv
+
+# Generated documentation build artifacts
+/docs-scripts/
+/docs/mintlify/*.mdx
+/docs/mintlify/docs/
+/nbs/_extensions/

@@ -1,0 +1,96 @@
+---
+title: "Works with the Nixtlaverse"
+description: "Train Nixtla forecasting models with materialized synthetic or augmented series."
+---
+
+SynForecast produces the standard Nixtla long format: `unique_id` identifies a
+series, `ds` identifies time, and `y` contains the target. A materialized
+SynForecast DataFrame can therefore be passed directly to NeuralForecast,
+MLForecast, or StatsForecast.
+
+## Create training data
+
+```python
+from synforecast import generate_series
+
+synthetic_df = generate_series(
+    n_series=1_000,
+    freq="D",
+    min_length=100,
+    max_length=100,
+    seed=42,
+)
+```
+
+Install only the forecasting libraries needed by your project:
+
+```bash
+pip install neuralforecast mlforecast statsforecast scikit-learn
+```
+
+## NeuralForecast
+
+```python
+from neuralforecast import NeuralForecast
+from neuralforecast.models import NHITS
+
+nf = NeuralForecast(
+    models=[NHITS(h=14, input_size=28, max_steps=100)],
+    freq="D",
+)
+nf.fit(df=synthetic_df)
+forecasts = nf.predict()
+```
+
+## MLForecast
+
+```python
+from mlforecast import MLForecast
+from sklearn.linear_model import LinearRegression
+
+mlf = MLForecast(
+    models=LinearRegression(),
+    freq="D",
+    lags=[1, 7, 14],
+)
+mlf.fit(synthetic_df)
+forecasts = mlf.predict(h=14)
+```
+
+## StatsForecast
+
+```python
+from statsforecast import StatsForecast
+from statsforecast.models import AutoETS
+
+sf = StatsForecast(
+    models=[AutoETS(season_length=7)],
+    freq="D",
+)
+sf.fit(synthetic_df)
+forecasts = sf.predict(h=14)
+```
+
+## Augment real training data
+
+Use `SynAugment` on the training split before fitting any of the forecasting
+libraries:
+
+```python
+from synforecast import SynAugment
+
+augmented_train_df = SynAugment(seed=42).augment(
+    train_df,
+    n_augment=2,
+)
+nf.fit(df=augmented_train_df)
+```
+
+Do not fit the augmentation process on validation or test observations. That
+would leak information into the generated training series. Synthetic data also
+inherits the assumptions of its generators, so compare downstream performance
+against an unaugmented baseline.
+
+These examples materialize data before model fitting. On-the-fly training-data
+generation would require a streaming data-source interface in the forecasting
+library and is not part of the current integration.

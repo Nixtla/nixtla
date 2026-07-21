@@ -5,7 +5,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from synforecast.dataset import SynAugment
+from synforecast import SynAugment
 
 
 class TestSynAugment:

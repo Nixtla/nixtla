@@ -271,7 +271,7 @@ class SynAugment:
             DataFrame's library.
 
     Example:
-        >>> from synforecast.dataset import SynAugment
+        >>> from synforecast import SynAugment
         >>> import polars as pl
         >>>
         >>> # Create sample data

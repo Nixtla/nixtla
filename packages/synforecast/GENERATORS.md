@@ -653,7 +653,8 @@ df = generator.generate(n_series=10)
 #   unique_id (integer categorical), ds (datetime64[ns]), y (float64)
 ```
 
-See the `examples/` directory for detailed usage examples of each generator.
+See the [`nbs/docs/generators`](https://github.com/Nixtla/synforecast/tree/main/nbs/docs/generators)
+directory for executable guides to each generator.
 
 ---
 
