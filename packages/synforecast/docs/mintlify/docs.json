@@ -20,6 +20,7 @@
           "docs/capabilities/multivariatize.html",
           "docs/capabilities/augmentation.html",
           "docs/capabilities/augmentation_real_data.html",
+          "docs/capabilities/when_synthetic_helps.html",
           "docs/capabilities/changepoints.html",
           "docs/capabilities/anomalies.html",
           "docs/capabilities/missingness.html",
