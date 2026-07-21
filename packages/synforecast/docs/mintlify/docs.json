@@ -89,7 +89,12 @@
       },
       {
         "group": "Nixtlaverse",
-        "pages": ["docs/integrations/nixtlaverse.html"]
+        "pages": [
+          "docs/integrations/nixtlaverse.html",
+          "docs/integrations/neuralforecast.html",
+          "docs/integrations/mlforecast.html",
+          "docs/integrations/statsforecast.html"
+        ]
       },
       {
         "group": "API Reference",

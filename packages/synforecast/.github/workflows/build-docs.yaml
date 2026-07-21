@@ -50,7 +50,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --group docs
+          uv sync --group docs --group integration-docs
 
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
@@ -58,10 +58,10 @@ jobs:
           version: '1.4.515'
 
       - name: Execute documentation notebooks
-        run: uv run make test_docs
+        run: uv run --no-sync make test_docs
 
       - name: Build docs
-        run: uv run make all_docs
+        run: uv run --no-sync make all_docs
 
       - name: Upload docs site
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

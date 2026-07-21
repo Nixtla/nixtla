@@ -67,6 +67,14 @@ docs = [
     "nbclient>=0.10.0",
     "nbformat>=5.10.0",
 ]
+integration-docs = [
+    "ipywidgets>=8.1.0",
+    "mlforecast>=1.0.0",
+    "neuralforecast>=3.0.0",
+    "scikit-learn>=1.4.0",
+    "statsforecast>=2.0.0",
+    "torch",
+]
 
 [build-system]
 requires = ["maturin>=1.14.1"]
@@ -84,6 +92,16 @@ features = ["pyo3/extension-module"]
 # >= 0.10 rejects, breaking the source build. Constrain the build backend so
 # such source builds keep working.
 build-constraint-dependencies = ["scikit-build-core<0.10"]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform != 'darwin'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

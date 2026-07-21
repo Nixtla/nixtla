@@ -35,10 +35,22 @@ def _normalize(notebook: nbformat.NotebookNode) -> None:
             text = "".join(output.get("text", []))
             if (
                 output.get("output_type") == "stream"
-                and "datasetsforecast.utils:Successfully decompressed" in text
+                and any(
+                    fragment in text
+                    for fragment in (
+                        "datasetsforecast.utils:Successfully decompressed",
+                        "Seed set to ",
+                        "GPU available:",
+                        "IProgress not found",
+                        "Missing packages: ['ipywidgets']",
+                        "TPU available:",
+                        "`Trainer.fit` stopped: `max_steps=",
+                    )
+                )
             ):
                 continue
-            output.pop("execution_count", None)
+            if output.get("output_type") == "execute_result":
+                output["execution_count"] = None
             outputs.append(output)
         cell.outputs = outputs
 

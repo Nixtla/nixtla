@@ -215,3 +215,4 @@ tmp/
 /docs/mintlify/*.mdx
 /docs/mintlify/docs/
 /nbs/_extensions/
+lightning_logs/

@@ -106,7 +106,8 @@ Also cover parameter validation (invalid inputs raise), seed determinism, and in
 Create `nbs/docs/generators/<category>/my_generator.ipynb`: a focused,
 executable guide that instantiates the generator with keyword arguments,
 explains its behavior, and visualizes representative output. Run
-`uv run --group docs make execute_docs` to refresh committed notebook outputs.
+`uv sync --group docs --group integration-docs`, then run
+`uv run --no-sync make execute_docs` to refresh committed notebook outputs.
 
 ## Testing
 

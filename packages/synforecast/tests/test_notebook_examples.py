@@ -10,6 +10,25 @@ import pytest
 import synforecast.generators as generators
 
 NOTEBOOKS = sorted((Path(__file__).parents[1] / "nbs" / "docs").rglob("*.ipynb"))
+INTEGRATION_REQUIREMENTS = {
+    "neuralforecast.ipynb": [
+        "SynAugment",
+        "generate_series",
+        "predict(df=train_df)",
+        "use_init_models=False",
+    ],
+    "mlforecast.ipynb": [
+        "SynAugment",
+        "generate_series",
+        "new_df=train_df",
+    ],
+    "statsforecast.ipynb": [
+        "SynAugment",
+        "synthetic_history_df",
+        'groupby("ds"',
+        "np.allclose",
+    ],
+}
 GENERATOR_CLASSES = {
     name: value
     for name, value in vars(generators).items()
@@ -125,3 +144,17 @@ def test_notebook_has_saved_outputs(path: Path) -> None:
         for output in cell.get("outputs", [])
     ]
     assert outputs, f"{path.relative_to(path.parents[3])} has no saved outputs"
+
+
+@pytest.mark.parametrize("filename,required", INTEGRATION_REQUIREMENTS.items())
+def test_integration_notebooks_cover_training_regimes(
+    filename: str, required: list[str]
+) -> None:
+    """Keep the public integration comparisons complete and leakage-aware."""
+    path = Path(__file__).parents[1] / "nbs" / "docs" / "integrations" / filename
+    notebook = json.loads(path.read_text())
+    source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
+
+    assert source.index("train_df =") < source.index("augmented_train_df = SynAugment")
+    for token in required:
+        assert token in source, f"{filename} is missing {token!r}"
