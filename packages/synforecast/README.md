@@ -163,7 +163,7 @@ assumptions and downstream performance for your use case.
 
 ## Features
 
-- 30 generators across statistical, stochastic, multivariate, domain-specific,
+- 31 generators across statistical, stochastic, multivariate, domain-specific,
   and pretraining categories
 - Long-format output following Nixtla conventions
 - pandas, Polars, cuDF, Modin, and PyArrow output through Narwhals

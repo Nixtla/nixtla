@@ -4,12 +4,12 @@ Reference for all synthetic time series generators in SynForecast, organized by 
 
 ## Overview
 
-SynForecast provides **30 generators** organized into five categories:
+SynForecast provides **31 generators** organized into five categories:
 - **Statistical** (5): Classical time series models
 - **Stochastic** (13): Stochastic process-based generators
 - **Multivariate** (3): Multi-dimensional time series
 - **Domain-Specific** (7): Industry/application-focused generators
-- **Pretraining** (2): Diversity-targeted generators for foundation-model corpora
+- **Pretraining** (3): Diversity-targeted generators for foundation-model corpora
 
 All generators share the same constructor and `generate()` interface. Constructors are keyword-only:
 
@@ -568,6 +568,25 @@ pretraining data with genuine causal/lead-lag structure.
 | `heteroscedastic_prob` | prob | Slow random noise-scale envelope per node |
 | `multivariate` | `False` | When True, `generate(n_series)` observes n_series nodes of one shared causal system as correlated series |
 
+### KernelSynthGenerator
+
+Samples each series from a Gaussian-process prior whose kernel is a random
+composition of `1..max_kernels` base kernels combined with `+`/`*` operators.
+This is the KernelSynth recipe used to pretrain the Chronos models (Ansari et
+al. 2024, Apache-2.0); the bank defaults and stability guards are SynForecast's
+own. **Applications**: pretraining data with controllable temporal structure.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_kernels` | `5` | Base kernels composed per series (drawn from `1..max_kernels`) |
+| `seasonal_periods` | broad pool | Periodic-kernel periods in time steps (4–730) |
+| `rbf_length_scales` | `[0.1, 1.0, 10.0]` | RBF length scales on the normalized grid |
+| `rational_quadratic_alphas` | `[0.1, 1.0, 10.0]` | Rational-quadratic shape parameters |
+| `linear_sigmas` | `[0.0, 1.0, 10.0]` | Linear (DotProduct) `sigma_0` offsets |
+| `white_noise_levels` | `[0.1, 1.0]` | White-kernel diagonal noise levels |
+| `include_constant` | `True` | Include a constant kernel in the bank |
+| `standardize` | `True` | Standardize each series to zero mean, unit variance |
+
 ### Multivariatizer
 
 Not a generator: `synforecast.Multivariatizer` wraps any univariate
@@ -589,9 +608,10 @@ mv = Multivariatizer(
 df = mv.generate(n_series=4)
 ```
 
-Both pretraining generators use the Rust batch path when the extension is
-available. Reproduce performance measurements on your hardware with the
-scripts in `benchmarks/`; benchmark results are not API guarantees.
+TSI and TCM use the Rust batch path when the extension is available;
+KernelSynth is pure NumPy (it runs on the threaded fallback path). Reproduce
+performance measurements on your hardware with the scripts in `benchmarks/`;
+benchmark results are not API guarantees.
 
 ---
 
@@ -629,6 +649,7 @@ scripts in `benchmarks/`; benchmark results are not API guarantees.
 | Clickstream | Domain | Web Analytics | Sessions, conversions |
 | TSI | Pretraining | Foundation models | Randomized trend/seasonal/irregular composition |
 | TCM | Pretraining | Foundation models | Random causal graphs, nonlinear lead-lag structure |
+| KernelSynth | Pretraining | Foundation models | GP samples from randomly composed kernels (Chronos recipe) |
 
 ---
 

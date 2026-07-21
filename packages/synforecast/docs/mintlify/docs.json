@@ -82,7 +82,8 @@
             "group": "Pretraining",
             "pages": [
               "docs/generators/pretraining/tsi.html",
-              "docs/generators/pretraining/tcm.html"
+              "docs/generators/pretraining/tcm.html",
+              "docs/generators/pretraining/kernel_synth.html"
             ]
           }
         ]
