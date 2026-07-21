@@ -893,3 +893,55 @@ class TestTSMixup:
             SynAugment(seed=0).mixup(df, scaling="bogus")
         with pytest.raises(ValueError):
             SynAugment(seed=0).mixup(df, n_series=0)
+
+
+class TestGeneratorParamConversion:
+    """_convert_params_for_generator must emit only valid generator fields."""
+
+    def test_gbm_params_match_model_fields(self) -> None:
+        """Regression: GBM conversion used to rename initial_value -> 'S0',
+        an unknown field, forcing a silent fallback to AR(1)."""
+        from synforecast._fitting import fit_gbm
+        from synforecast.generators import GeometricBrownianMotionGenerator
+
+        rng = np.random.default_rng(0)
+        series = 100 * np.exp(np.cumsum(rng.normal(0.01, 0.02, 200)))
+        fitted = fit_gbm(series)
+
+        converted = SynAugment(seed=0)._convert_params_for_generator(
+            "GeometricBrownianMotionGenerator", fitted, series
+        )
+        valid_fields = set(GeometricBrownianMotionGenerator.model_fields)
+        assert set(converted) <= valid_fields, (
+            f"unknown GBM params: {sorted(set(converted) - valid_fields)}"
+        )
+        assert "S0" not in converted
+        # The generator must accept the converted params without error.
+        GeometricBrownianMotionGenerator(
+            min_length=50, max_length=50, freq="D", **converted
+        )
+
+    def test_gbm_override_augmentation_runs(self) -> None:
+        """Augmenting with a GBM override yields finite series, no fallback."""
+        rng = np.random.default_rng(1)
+        n = 200
+        df = pl.DataFrame(
+            {
+                "unique_id": ["g"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2000, 1, 1),
+                    pl.datetime(2000, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": 100 * np.exp(np.cumsum(rng.normal(0.01, 0.02, n))),
+            }
+        )
+        out = SynAugment(seed=1).augment(
+            df,
+            n_augment=3,
+            generator_override={"g": "GeometricBrownianMotionGenerator"},
+        )
+        assert out["unique_id"].n_unique() == 4
+        aug = out.filter(pl.col("unique_id") == "g_aug_0")["y"].to_numpy()
+        assert np.all(np.isfinite(aug))

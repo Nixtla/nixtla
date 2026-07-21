@@ -946,9 +946,9 @@ class SynAugment:
                 pass
 
         elif generator_name == "GeometricBrownianMotionGenerator":
-            # GBM params are already correct
-            if "initial_value" in params:
-                params["S0"] = params.pop("initial_value")
+            # fit_gbm already returns the generator's field names
+            # (mu, sigma, initial_value); no renaming needed.
+            pass
 
         elif generator_name == "RandomWalkGenerator":
             # RandomWalk params are already correct
