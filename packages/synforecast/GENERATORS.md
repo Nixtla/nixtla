@@ -533,6 +533,17 @@ Designed for diverse pretraining corpora: each series samples a fresh random
 configuration, so a pool spans
 trend-only, pure-seasonal, causally-structured, and noise-dominated regimes.
 
+The `pretraining_pool()` preset collects these three meta-generators (plus the
+interpretable `balanced_pool` by default) into a breadth-maximizing corpus:
+
+```python
+from synforecast import SynSet, pretraining_pool
+
+df = SynSet(pretraining_pool(min_length=512, max_length=512, freq="h")).generate(
+    n_series_per_generator=100
+)
+```
+
 ### TSIGenerator
 
 Trend + seasonality + irregularity composition with randomized presence,
