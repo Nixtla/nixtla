@@ -83,9 +83,7 @@ class TestSeasonalityDetection:
         rng = np.random.default_rng(6)
         # A random walk has a high but monotonically decaying ACF; the old
         # argmax rule mislabeled it seasonal at a tiny lag.
-        assert not detect_seasonality(np.cumsum(rng.normal(0, 1, N)))[
-            "has_seasonality"
-        ]
+        assert not detect_seasonality(np.cumsum(rng.normal(0, 1, N)))["has_seasonality"]
 
     def test_level_shift_is_not_seasonal(self) -> None:
         rng = np.random.default_rng(7)

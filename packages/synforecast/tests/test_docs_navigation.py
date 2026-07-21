@@ -35,7 +35,7 @@ def _source_for(page: str) -> Path:
 
 def test_mintlify_navigation_pages_have_sources() -> None:
     """Prevent navigation links to pages the docs build cannot generate."""
-    configuration = json.loads(NAVIGATION.read_text())
+    configuration = json.loads(NAVIGATION.read_text(encoding="utf-8"))
     pages = _page_paths(configuration["navigation"])
     missing = {
         page: _source_for(page) for page in pages if not _source_for(page).is_file()

@@ -209,6 +209,7 @@ __marimo__/
 # Custom
 tmp/
 *.csv
+!nbs/data/air_passengers.csv
 
 # Generated documentation build artifacts
 /docs-scripts/

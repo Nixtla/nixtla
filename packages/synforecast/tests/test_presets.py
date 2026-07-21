@@ -146,8 +146,11 @@ class TestPretrainingPool:
         from synforecast import pretraining_pool
 
         pool = pretraining_pool(
-            include_balanced=False, n_meta_variants=2, min_length=64,
-            max_length=64, engine="polars",
+            include_balanced=False,
+            n_meta_variants=2,
+            min_length=64,
+            max_length=64,
+            engine="polars",
         )
         assert len(pool) == 6
         assert {type(g).__name__ for g in pool} == self.META
