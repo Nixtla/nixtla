@@ -4,7 +4,6 @@ import numpy as np
 import polars as pl
 import pytest
 
-import synforecast._core as core_module
 from synforecast._core import _add_missingness
 from synforecast.generators import CopulaGenerator, RandomWalkGenerator, VARGenerator
 
@@ -330,21 +329,12 @@ class TestMissingness:
             assert nan_count > 0
 
 
-class TestMissingRateEndpointsBothEngines:
-    """Endpoint semantics of _add_missingness on the Rust and Python paths.
+class TestMissingRateEndpoints:
+    """Endpoint semantics of native missingness injection."""
 
-    Rate 0 must be a no-op and rate 1 must mark every point missing with
-    exact metadata, for every pattern, on both injection engines.
-    """
-
-    @pytest.fixture(params=["rust", "python"])
-    def injection_engine(self, request, monkeypatch):
-        if request.param == "rust":
-            if not core_module._HAS_RUST:
-                pytest.skip("Rust backend not available")
-        else:
-            monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        return request.param
+    @pytest.fixture
+    def injection_engine(self):
+        """Mark tests that exercise native missingness injection."""
 
     @pytest.mark.parametrize("pattern", ["random", "block", "seasonal"])
     @pytest.mark.usefixtures("injection_engine")

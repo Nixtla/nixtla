@@ -6,15 +6,9 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 from pydantic import Field, model_validator
 
+from synforecast._lib import domain as _rs_dom
 from synforecast.base import BaseGenerator
 from synforecast.exogenous import SeriesMetadata
-
-try:
-    from synforecast._lib import domain as _rs_dom
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 # Typical readings per sensor type, used when base_value is not given
 _DEFAULT_BASE_VALUES = {
@@ -215,40 +209,30 @@ class IoTSensorGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of sensor readings (NaN during failures).
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            failure_t = {"intermittent": 2, "complete": 1, "stuck": 3}[
-                self.failure_type
-            ]
-            if self.failure_probability == 0.0:
-                failure_t = 0
-            return _rs_dom.iot_sensor(
-                length,
-                self.base_value,
-                self.trend,
-                self.seasonal_amplitude,
-                float(self.seasonal_period),
-                self.measurement_noise,
-                self.drift_rate,
-                self.drift_noise,
-                self.battery_life is not None,
-                float(self.battery_life) if self.battery_life is not None else 0.0,
-                self.battery_degradation_rate,
-                self.calibration_error,
-                failure_t,
-                self.failure_probability,
-                self.failure_duration,
-                self.stuck_value,
-                self.spatial_correlation,
-                seed,
-            )
-
-        signal = self._generate_base_signal(length)
-        signal += self.calibration_error
-        signal = self._add_sensor_drift(signal)
-        signal += self.rng.normal(0, self.measurement_noise, length)
-        signal = self._add_battery_degradation(signal)
-        return self._add_failures(signal)
+        seed = int(self.rng.integers(0, 2**63))
+        failure_t = {"intermittent": 2, "complete": 1, "stuck": 3}[self.failure_type]
+        if self.failure_probability == 0.0:
+            failure_t = 0
+        return _rs_dom.iot_sensor(
+            length,
+            self.base_value,
+            self.trend,
+            self.seasonal_amplitude,
+            float(self.seasonal_period),
+            self.measurement_noise,
+            self.drift_rate,
+            self.drift_noise,
+            self.battery_life is not None,
+            float(self.battery_life) if self.battery_life is not None else 0.0,
+            self.battery_degradation_rate,
+            self.calibration_error,
+            failure_t,
+            self.failure_probability,
+            self.failure_duration,
+            self.stuck_value,
+            self.spatial_correlation,
+            seed,
+        )
 
     def _generate_multivariate(self, length: int, n_sensors: int) -> np.ndarray:
         """Generate one sensor network with spatially correlated noise.

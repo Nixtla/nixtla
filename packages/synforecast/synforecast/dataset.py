@@ -9,16 +9,12 @@ from narwhals.stable.v2.typing import IntoFrameT
 
 from synforecast._analysis import classify_series
 from synforecast._fitting import fit_generator_params
+from synforecast._lib import batch as _rs_batch
 from synforecast.base import (
     BaseGenerator,
     _batch_results_to_metadata,
     _categorize_ids,
 )
-
-try:
-    from synforecast._lib import batch as _rs_batch
-except ImportError:
-    _rs_batch = None
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +160,8 @@ class SynSet:
         Partitions generators into batch-eligible (have _get_batch_params)
         and excluded. Batch-eligible generators are run through a single
         ``generate_multi_batch`` call so rayon can work-steal across all
-        series of all generators. Excluded generators fall back to the
-        threaded Python path (ThreadPoolExecutor).
+        series of all generators. Generators without a Rust batch implementation
+        use the threaded path (ThreadPoolExecutor).
         """
         n = n_series_per_generator
 
@@ -179,7 +175,7 @@ class SynSet:
         for gi, gen in enumerate(self.generators):
             gen_type = gen._batch_gen_type
             batch_params = gen._get_batch_params() if gen_type is not None else None
-            if batch_params is None or _rs_batch is None:
+            if batch_params is None:
                 excluded_gen_indices.append(gi)
                 continue
 

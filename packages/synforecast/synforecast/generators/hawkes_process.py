@@ -5,14 +5,8 @@ from typing import Literal
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class HawkesProcessGenerator(BaseGenerator):
@@ -202,41 +196,20 @@ class HawkesProcessGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of values (counts, intensity, or event indicator)
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            kernel_t = 0 if self.kernel == "exponential" else 1
-            output_t = {"counts": 0, "intensity": 1, "events": 2}[self.output_type]
-            return _rs_stoch.hawkes_process(
-                length,
-                self.baseline_intensity,
-                self.excitation_amplitude,
-                self.decay_rate,
-                kernel_t,
-                self.power_law_exponent,
-                output_t,
-                self.max_events,
-                seed,
-            )
-
-        event_times = self._simulate_hawkes(float(length))
-
-        if self.output_type == "events":
-            values = np.zeros(length)
-            bins = np.floor(event_times).astype(int)
-            values[bins[bins < length]] = 1.0
-            return values
-
-        elif self.output_type == "counts":
-            values = np.zeros(length)
-            bins = np.floor(event_times).astype(int)
-            np.add.at(values, bins[bins < length], 1.0)
-            return values
-
-        else:  # intensity at bin midpoints
-            values = np.zeros(length)
-            for t in range(length):
-                values[t] = self._compute_intensity(float(t) + 0.5, event_times)
-            return values
+        seed = int(self.rng.integers(0, 2**63))
+        kernel_t = 0 if self.kernel == "exponential" else 1
+        output_t = {"counts": 0, "intensity": 1, "events": 2}[self.output_type]
+        return _rs_stoch.hawkes_process(
+            length,
+            self.baseline_intensity,
+            self.excitation_amplitude,
+            self.decay_rate,
+            kernel_t,
+            self.power_law_exponent,
+            output_t,
+            self.max_events,
+            seed,
+        )
 
     def simulate_with_events(
         self, time_horizon: float

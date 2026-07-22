@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.state_space as state_space_module
 from synforecast.generators import StateSpaceGenerator
 from tests.helpers import (
     assert_acf,
@@ -202,12 +201,3 @@ class TestStateSpaceStats:
         values = series_values(gen.generate(n_series=1))["0"]
         assert_std(values, expected=np.sqrt(var_x + r), kurtosis=12.0)
         assert_acf(values, lag=1, expected=phi * var_x / (var_x + r))
-
-    def test_python_fallback_ar1(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The pure-Python simulation loop has the same AR(1) properties."""
-        monkeypatch.setattr(state_space_module, "_HAS_RUST", False)
-        phi, q = 0.8, 0.25
-        gen = make_gen(min_length=4000, max_length=4000, seed=44, **ar1_params(phi, q))
-        values = gen.generate_single_series(4000)
-        assert_acf(values, lag=1, expected=phi)
-        assert_std(values, expected=np.sqrt(q / (1 - phi**2)), kurtosis=12.0)

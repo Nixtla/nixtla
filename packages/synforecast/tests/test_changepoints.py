@@ -1,27 +1,17 @@
-"""Tests for changepoint injection: types, locations, magnitudes, flags.
-
-Direct `_core` tests cover both the Rust-delegating path (module default)
-and the pure-Python fallback (via monkeypatched ``_HAS_RUST``).
-"""
+"""Tests for changepoint injection: types, locations, magnitudes, flags."""
 
 import numpy as np
 import pytest
 
-import synforecast._core as core_module
 from synforecast._core import _add_changepoints
 from synforecast.exogenous import ExogenousConfig
 from synforecast.generators import RandomWalkGenerator, VARGenerator
 from tests.helpers import to_pandas
 
 
-@pytest.fixture(params=["rust", "python"])
-def core_path(request, monkeypatch):
-    """Run direct _core tests on both the Rust and pure-Python branches."""
-    if request.param == "python":
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-    elif not core_module._HAS_RUST:
-        pytest.skip("Rust backend not available")
-    return request.param
+@pytest.fixture
+def core_path():
+    """Mark tests that exercise native changepoint injection."""
 
 
 def _inject(values, seed, n_cp, locs, cp_type, level=(), trend=(), variance=()):
@@ -140,21 +130,6 @@ class TestEdgeCases:
         idx = np.asarray(meta["changepoint_indices"])
         assert len(idx) == 3
         assert idx[0] == 50
-
-    def test_location_one_maps_to_last_index_python(self, monkeypatch):
-        """Python path: relative location 1.0 lands on the final point."""
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        out, meta = _inject(np.zeros(10), 12, 1, [1.0], "level", level=[7.0])
-        assert meta["changepoint_indices"][0] == 9
-        assert out[9] == 7.0
-        assert np.all(out[:9] == 0.0)
-
-    def test_extra_locations_truncated_python(self, monkeypatch):
-        """Python path: metadata reports exactly num_changepoints indices."""
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        out, meta = _inject(np.zeros(100), 13, 1, [0.3, 0.6, 0.9], "level", level=[5.0])
-        np.testing.assert_array_equal(meta["changepoint_indices"], [30])
-        assert np.all(out[30:] == 5.0)
 
     def test_generator_validation(self):
         base = {"min_length": 100, "max_length": 100, "freq": "D"}

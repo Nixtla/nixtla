@@ -90,11 +90,7 @@ class TestIntermittentDemandApi:
             assert np.all(values == 0.0)
 
     @pytest.mark.parametrize("pattern", ["random", "clustered", "seasonal"])
-    def test_zero_probability_python_fallback(self, monkeypatch, pattern: str) -> None:
-        # Same contract on the pure-Python path (the original failure mode).
-        import synforecast.generators.intermittent_demand as id_mod
-
-        monkeypatch.setattr(id_mod, "_HAS_RUST", False)
+    def test_zero_probability_single_series(self, pattern: str) -> None:
         values = make_gen(
             demand_probability=0.0,
             intermittent_pattern=pattern,
@@ -194,12 +190,8 @@ class TestIntermittentDemandStats:
         assert_std(nonzero, np.sqrt(var_clipped), kurtosis=6.0)
         assert nonzero.var() > 1.5 * nonzero.mean(), "NB sizes are overdispersed"
 
-    def test_python_fallback_nb_real_valued_n(self, monkeypatch) -> None:
-        # The Python path supports real-valued n = m^2/(var-m); the mean
-        # must still match m (the Rust path rounds n and would be biased).
-        import synforecast.generators.intermittent_demand as id_mod
-
-        monkeypatch.setattr(id_mod, "_HAS_RUST", False)
+    def test_nb_real_valued_n(self) -> None:
+        # Real-valued n = m^2/(var-m) must preserve the requested mean.
         m, s = 5.0, 4.0  # n = 25/11, non-integer
         gen = make_gen(
             demand_distribution="negative_binomial",
@@ -269,12 +261,9 @@ class TestIntermittentDemandStats:
         # All clusters are full-size except possibly the last (truncated)
         assert all(r == cluster for r in runs[:-1])
 
-    def test_python_fallback_lognormal_ks(self, monkeypatch) -> None:
-        # Regression: the Python path used to truncate continuous sizes to
+    def test_lognormal_ks(self) -> None:
+        # Regression: implementations must not truncate continuous sizes to
         # int, which destroyed the lognormal shape and biased the mean down.
-        import synforecast.generators.intermittent_demand as id_mod
-
-        monkeypatch.setattr(id_mod, "_HAS_RUST", False)
         m, s = 5.0, 2.0
         gen = make_gen(
             demand_distribution="lognormal",
@@ -291,10 +280,7 @@ class TestIntermittentDemandStats:
         assert_distribution(nonzero, stats.lognorm(s=sigma, scale=np.exp(mu)))
         assert_mean(nonzero, m, s)
 
-    def test_python_fallback_zero_fraction(self, monkeypatch) -> None:
-        import synforecast.generators.intermittent_demand as id_mod
-
-        monkeypatch.setattr(id_mod, "_HAS_RUST", False)
+    def test_zero_fraction(self) -> None:
         p = 0.3
         gen = make_gen(demand_probability=p, seed=579)
         values = gen.generate_single_series(20000)

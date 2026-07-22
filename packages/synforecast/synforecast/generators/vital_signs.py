@@ -7,14 +7,8 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 from pydantic import Field, model_validator
 
+from synforecast._lib import domain as _rs_dom
 from synforecast.base import BaseGenerator, _categorize_ids
-
-try:
-    from synforecast._lib import domain as _rs_dom
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 _VITAL_SIGNS = [
     "heart_rate",
@@ -162,78 +156,6 @@ class VitalSignsGenerator(BaseGenerator):
         object.__setattr__(self, "_baselines", _ARCHETYPES[self.patient_type])
         return self
 
-    def _generate_circadian_component(self, length: int) -> np.ndarray:
-        """Circadian modulation over a 1440-minute day, peaking at midday.
-
-        A 12-hour harmonic is added for a more realistic profile.
-        """
-        t = np.arange(length)
-        circadian = np.sin(2 * np.pi * t / 1440 - np.pi / 2)
-        circadian += 0.3 * np.sin(4 * np.pi * t / 1440)
-        return circadian
-
-    def _generate_hrv_component(self, length: int) -> np.ndarray:
-        """Heart rate variability from standard HRV frequency bands.
-
-        Combines VLF (~0.02 Hz), LF (~0.1 Hz, baroreceptor activity) and HF
-        (~0.25 Hz, respiratory sinus arrhythmia) sinusoids plus noise,
-        evaluated at 60 s per step. The LF/HF bands are above the Nyquist
-        frequency of 1-minute sampling, so they alias into pseudo-random
-        variability rather than resolvable oscillations.
-        """
-        t = np.arange(length)
-        vlf = 0.3 * np.sin(2 * np.pi * 0.02 * 60 * t)
-        lf = 0.4 * np.sin(2 * np.pi * 0.1 * 60 * t + self.rng.uniform(0, 2 * np.pi))
-        hf = 0.3 * np.sin(2 * np.pi * 0.25 * 60 * t + self.rng.uniform(0, 2 * np.pi))
-        noise = self.rng.normal(0, 0.2, length)
-        return vlf + lf + hf + noise
-
-    def _generate_events(self, length: int) -> np.ndarray:
-        """Random physiological events in baseline-std units.
-
-        Activity bursts (sinusoidal envelope, +0.5 to +2), rest periods
-        (flat, -1.5 to -0.5) and sharp spikes (+1 to +3), each lasting
-        5-30 steps (spikes: 1 step).
-        """
-        events = np.zeros(length)
-        event_mask = self.rng.uniform(size=length) < self.event_probability
-
-        for i in np.where(event_mask)[0]:
-            event_type = self.rng.choice(["activity", "rest", "spike"])
-            duration = self.rng.integers(5, 30)
-            end = min(i + duration, length)
-
-            if event_type == "activity":
-                t_event = np.arange(end - i)
-                magnitude = self.rng.uniform(0.5, 2.0)
-                events[i:end] += magnitude * np.sin(np.pi * t_event / (end - i))
-            elif event_type == "rest":
-                events[i:end] += self.rng.uniform(-1.5, -0.5)
-            else:  # spike
-                events[i] += self.rng.uniform(1.0, 3.0)
-
-        return events
-
-    def _apply_correlations(
-        self, vital_values: np.ndarray, hr_deviation: np.ndarray
-    ) -> np.ndarray:
-        """Apply cross-vital correlations with the heart rate deviation.
-
-        BP and respiratory rate rise with HR; SpO2 drops slightly during
-        high activity.
-        """
-        params = self._baselines[self.vital_sign]
-
-        if self.vital_sign in ["systolic_bp", "diastolic_bp"]:
-            correlation = 0.3 if self.vital_sign == "systolic_bp" else 0.2
-            vital_values = vital_values + correlation * hr_deviation
-        elif self.vital_sign == "respiratory_rate":
-            vital_values = vital_values + 0.15 * hr_deviation
-        elif self.vital_sign == "spo2":
-            vital_values = vital_values - 0.05 * np.maximum(hr_deviation, 0)
-
-        return np.clip(vital_values, params["min"], params["max"])
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
         params = self._baselines[self.vital_sign]
         return (
@@ -265,63 +187,21 @@ class VitalSignsGenerator(BaseGenerator):
         """
         params = self._baselines[self.vital_sign]
 
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_dom.vital_signs(
-                length,
-                params["mean"],
-                params["std"],
-                params["min"],
-                params["max"],
-                self.include_circadian,
-                _CIRCADIAN_MAGNITUDES[self.vital_sign],
-                self.include_hrv,
-                self.include_events,
-                self.event_probability,
-                _VITAL_TYPE_IDS[self.vital_sign],
-                seed,
-            )
-
-        # Per-series baseline plus slow random-walk drift
-        baseline = params["mean"] + self.rng.normal(0, params["std"] * 0.3)
-        values = np.full(length, baseline)
-        drift = np.cumsum(self.rng.normal(0, params["std"] * 0.05, length))
-        values = values + (drift - drift[0])
-
-        hr_deviation = np.zeros(length)
-
-        if self.include_circadian:
-            circadian = self._generate_circadian_component(length)
-            values = values + _CIRCADIAN_MAGNITUDES[self.vital_sign] * circadian
-
-        # HRV affects HR and blood pressure
-        if self.include_hrv and self.vital_sign in [
-            "heart_rate",
-            "systolic_bp",
-            "diastolic_bp",
-        ]:
-            hrv = self._generate_hrv_component(length)
-            hrv_magnitude = params["std"] * 0.5
-            values = values + hrv_magnitude * hrv
-            if self.vital_sign == "heart_rate":
-                hr_deviation = hrv_magnitude * hrv
-
-        if self.include_events:
-            events = self._generate_events(length)
-            values = values + params["std"] * events
-            if self.vital_sign == "heart_rate":
-                hr_deviation = hr_deviation + params["std"] * events
-
-        values = values + self.rng.normal(0, params["std"] * 0.2, length)
-
-        if self.vital_sign != "heart_rate":
-            # Correlate with a fresh HR event deviation
-            hr_params = self._baselines["heart_rate"]
-            if self.include_events:
-                hr_deviation = hr_params["std"] * self._generate_events(length)
-            values = self._apply_correlations(values, hr_deviation)
-
-        return np.clip(values, params["min"], params["max"])
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_dom.vital_signs(
+            length,
+            params["mean"],
+            params["std"],
+            params["min"],
+            params["max"],
+            self.include_circadian,
+            _CIRCADIAN_MAGNITUDES[self.vital_sign],
+            self.include_hrv,
+            self.include_events,
+            self.event_probability,
+            _VITAL_TYPE_IDS[self.vital_sign],
+            seed,
+        )
 
     def generate_all_vitals(
         self, n_series: int = 1, start_id: int = 0

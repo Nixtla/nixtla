@@ -6,15 +6,9 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 from pydantic import Field, model_validator
 
+from synforecast._lib import multivariate as _rs_mv
 from synforecast.base import BaseGenerator
 from synforecast.exogenous import SeriesMetadata
-
-try:
-    from synforecast._lib import multivariate as _rs_mv
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 # Target companion spectral radius when rescaling random coefficients
 _STABILITY_TARGET = 0.95
@@ -226,26 +220,22 @@ class VARGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values (univariate).
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            coef_matrices, intercept, innovation_cov = self._resolve_parameters(1)
-            coef_flat = np.concatenate(
-                [np.asarray(m, dtype=np.float64).ravel() for m in coef_matrices]
-            )
-            return _rs_mv.var_process(
-                length,
-                1,
-                self.lag_order,
-                coef_flat,
-                np.asarray(intercept, dtype=np.float64).ravel(),
-                np.asarray(innovation_cov, dtype=np.float64).ravel(),
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-
-        series = self._generate_multivariate(length, n_variables=1)
-        return series[:, 0]
+        seed = int(self.rng.integers(0, 2**63))
+        coef_matrices, intercept, innovation_cov = self._resolve_parameters(1)
+        coef_flat = np.concatenate(
+            [np.asarray(m, dtype=np.float64).ravel() for m in coef_matrices]
+        )
+        return _rs_mv.var_process(
+            length,
+            1,
+            self.lag_order,
+            coef_flat,
+            np.asarray(intercept, dtype=np.float64).ravel(),
+            np.asarray(innovation_cov, dtype=np.float64).ravel(),
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )
 
     def _generate_multivariate(self, length: int, n_variables: int) -> np.ndarray:
         """Simulate the VAR process.

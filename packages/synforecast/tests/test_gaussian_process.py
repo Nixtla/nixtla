@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.gaussian_process as gp_mod
 from synforecast.generators import GaussianProcessGenerator
 from tests.helpers import assert_distribution, assert_long_format, series_values
 
@@ -165,11 +164,8 @@ class TestGPStats:
         assert diffs["matern_0.5"] > diffs["matern_1.5"] > diffs["rbf"]
         assert diffs["matern_0.5"] > diffs["matern_2.5"] > diffs["rbf"]
 
-    def test_python_fallback_matches_theory(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Pure-Python Cholesky path reproduces marginal scale and ACF."""
-        monkeypatch.setattr(gp_mod, "_HAS_RUST", False)
+    def test_native_matches_theory(self) -> None:
+        """The native implementation reproduces marginal scale and ACF."""
         ls = 10.0
         gen = GaussianProcessGenerator(
             min_length=384,

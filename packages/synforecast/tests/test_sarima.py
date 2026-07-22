@@ -5,7 +5,6 @@ import pytest
 from scipy import stats
 from statsmodels.tsa.arima_process import arma_acf, arma_acovf
 
-import synforecast.generators.sarima as sarima_mod
 from synforecast.generators import SARIMAGenerator
 from tests.helpers import (
     assert_acf,
@@ -26,12 +25,9 @@ def make_gen(**kwargs) -> SARIMAGenerator:
     return SARIMAGenerator(**params)
 
 
-@pytest.fixture(params=["rust", "python"])
-def backend(request: pytest.FixtureRequest, monkeypatch) -> str:
-    """Run generate_single_series through the Rust and pure-Python paths."""
-    if request.param == "python":
-        monkeypatch.setattr(sarima_mod, "_HAS_RUST", False)
-    return request.param
+@pytest.fixture
+def backend() -> None:
+    """Mark tests that exercise native SARIMA generation."""
 
 
 class TestSARIMAApi:
@@ -123,14 +119,15 @@ class TestSARIMAApi:
         assert info["drift"] == 0.3
         assert info["mean"] is None
 
-    def test_exog_effects(self, monkeypatch) -> None:
-        # Same seed with/without exog: outputs differ by exog @ coefficients.
-        # Python path for both runs (exog is Python-only) so streams match.
-        monkeypatch.setattr(sarima_mod, "_HAS_RUST", False)
+    def test_exog_effects(self) -> None:
+        # Exogenous SARIMA remains an explicit Python implementation until
+        # the native kernel supports exogenous regressors.
         kwargs = dict(**WHITE_NOISE, exog_coefficients=[2.0, -1.0], seed=5, burn_in=10)
         exog = np.column_stack([np.ones(30), np.arange(30.0)])
         with_exog = make_gen(**kwargs).generate_single_series(30, exog=exog)
-        without = make_gen(**kwargs).generate_single_series(30, exog=None)
+        without = make_gen(**kwargs).generate_single_series(
+            30, exog=np.zeros_like(exog)
+        )
         np.testing.assert_allclose(with_exog - without, exog @ [2.0, -1.0])
 
     def test_exog_shape_mismatch_raises(self) -> None:
@@ -214,11 +211,9 @@ class TestSARIMAStats:
                 f"acf({lag})={got:.4f} vs {theo_acf[lag]:.4f}"
             )
 
-    def test_integrated_drift(self, monkeypatch) -> None:
+    def test_integrated_drift(self) -> None:
         # d=1: the differenced series is ARMA with mean `drift`, so the
-        # series has slope `drift` per step. (Python path; the Rust kernel
-        # handles drift differently.)
-        monkeypatch.setattr(sarima_mod, "_HAS_RUST", False)
+        # series has slope `drift` per step.
         ar, drift = 0.5, 0.4
         gen = make_gen(p=1, q=0, P=0, Q=0, d=1, ar_params=[ar], drift=drift, seed=99)
         n = 10000
@@ -251,10 +246,9 @@ class TestSARIMAStats:
         assert_mean(first, 0.0, sigma_stat)
         assert first.std() > 0.7 * sigma_stat
 
-    def test_innovation_distribution_t(self, monkeypatch) -> None:
-        # Python path honors innovation_distribution: white-noise output is
+    def test_innovation_distribution_t(self) -> None:
+        # Native generation honors innovation_distribution: white-noise output is
         # the (variance-rescaled) t distribution.
-        monkeypatch.setattr(sarima_mod, "_HAS_RUST", False)
         df, sigma = 6.0, 2.0
         gen = make_gen(
             **WHITE_NOISE,

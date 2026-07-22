@@ -1,12 +1,9 @@
 """Tests for ETSGenerator."""
 
-import warnings
-
 import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.ets as ets_mod
 from synforecast.generators import ETSGenerator
 from tests.helpers import (
     assert_acf,
@@ -26,12 +23,9 @@ def make_gen(**kwargs) -> ETSGenerator:
     return ETSGenerator(**params)
 
 
-@pytest.fixture(params=["rust", "python"])
-def backend(request: pytest.FixtureRequest, monkeypatch) -> str:
-    """Run generate_single_series through the Rust and pure-Python paths."""
-    if request.param == "python":
-        monkeypatch.setattr(ets_mod, "_HAS_RUST", False)
-    return request.param
+@pytest.fixture
+def backend() -> None:
+    """Mark tests that exercise native ETS generation."""
 
 
 class TestETSApi:
@@ -130,91 +124,6 @@ class TestETSApi:
 
 @pytest.mark.stats
 class TestETSStats:
-    @pytest.mark.parametrize(
-        "error,trend,seasonal,damped",
-        [
-            ("add", None, None, False),
-            ("add", "add", None, False),
-            ("add", "add", "add", False),
-            ("add", "add", "mul", False),
-            ("add", "mul", "add", True),
-            ("mul", None, "add", False),
-            ("mul", "add", "add", False),
-            ("mul", "add", "mul", True),
-            ("mul", "mul", "mul", True),
-        ],
-    )
-    def test_matches_statsmodels_exactly(
-        self, monkeypatch, error, trend, seasonal, damped
-    ) -> None:
-        """Feed the same innovations into statsmodels' ETS state space model:
-        the generated path must match to floating-point precision."""
-        from statsmodels.tsa.exponential_smoothing.ets import ETSModel
-
-        monkeypatch.setattr(ets_mod, "_HAS_RUST", False)
-        T, m, sigma, seed = 100, 4, 0.02, 5
-        l0 = 100.0
-        b0 = 1.02 if trend == "mul" else 2.0
-        s0 = None
-        if seasonal == "add":
-            s0 = [3.0, -3.0, 5.0, -5.0]
-        elif seasonal == "mul":
-            s0 = [1.2, 0.8, 1.1, 0.9]
-        alpha, beta, gamma, phi = 0.2, 0.05, 0.05, 0.9
-
-        gen = make_gen(
-            min_length=T,
-            max_length=T,
-            seed=seed,
-            error_type=error,
-            trend_type=trend,
-            seasonal_type=seasonal,
-            seasonal_period=m,
-            level=l0,
-            trend=b0,
-            seasonal=s0,
-            alpha=alpha,
-            beta=beta,
-            gamma=gamma,
-            phi=phi,
-            damped=damped,
-            noise_std=sigma,
-        )
-        values = gen.generate_single_series(T)
-        # The Python path draws its innovations sequentially from the seeded
-        # rng, so the error sequence can be reconstructed exactly.
-        eps = np.random.default_rng(seed).normal(0.0, sigma, T)
-
-        kwargs = {
-            "error": error,
-            "trend": trend,
-            "damped_trend": damped,
-            "seasonal": seasonal,
-            "initialization_method": "known",
-            "initial_level": l0,
-        }
-        if seasonal is not None:
-            kwargs |= {"seasonal_periods": m, "initial_seasonal": np.array(s0)}
-        if trend is not None:
-            kwargs["initial_trend"] = b0
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mod = ETSModel(np.full(T, l0), **kwargs)
-            pmap = {
-                "smoothing_level": alpha,
-                "smoothing_trend": beta,
-                "smoothing_seasonal": gamma,
-                "damping_trend": phi,
-            }
-            res = mod.smooth(np.array([pmap[n] for n in mod.param_names]))
-            expected = np.asarray(
-                res.simulate(
-                    T, anchor="start", repetitions=1, random_errors=eps[:, None]
-                )
-            ).ravel()
-
-        np.testing.assert_allclose(values, expected, rtol=1e-9, atol=1e-9)
-
     @pytest.mark.usefixtures("backend")
     def test_ses_differences_are_ma1(self) -> None:
         # ETS(A,N,N): y_t - y_{t-1} = eps_t + (alpha - 1) eps_{t-1}, an MA(1)
@@ -333,10 +242,9 @@ class TestETSStats:
         expected = 50.0 * np.tile(s0, 10)
         np.testing.assert_allclose(values, expected, rtol=1e-6)
 
-    def test_innovation_distribution_uniform(self, monkeypatch) -> None:
+    def test_innovation_distribution_uniform(self) -> None:
         # ETS(A,N,N) with alpha=1 reduces to a random walk whose steps are
-        # the raw innovations; the Python path must honor the distribution.
-        monkeypatch.setattr(ets_mod, "_HAS_RUST", False)
+        # the raw innovations; the native path must honor the distribution.
         sigma = 1.0
         gen = make_gen(
             **NO_TREND_NO_SEASONAL,

@@ -3,21 +3,13 @@
 import numpy as np
 import pytest
 
-# Skip all tests if Rust backend is not available
-try:
-    from synforecast._lib import (
-        distributions,
-        multivariate,
-        pattern_injection,
-        statistical,
-        stochastic,
-    )
-
-    HAS_RUST = True
-except ImportError:
-    HAS_RUST = False
-
-pytestmark = pytest.mark.skipif(not HAS_RUST, reason="Rust backend not available")
+from synforecast._lib import (
+    distributions,
+    multivariate,
+    pattern_injection,
+    statistical,
+    stochastic,
+)
 
 
 class TestBindingNegativeLength:

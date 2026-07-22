@@ -3,14 +3,8 @@
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import volatility as _rs_vol
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import volatility as _rs_vol
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class RegimeSwitchingGenerator(BaseGenerator):
@@ -196,54 +190,22 @@ class RegimeSwitchingGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            # initial_regime = -1: the kernel draws s_0 from the stationary
-            # distribution with this series' RNG (same semantics as the
-            # Python fallback below and as the batch path).
-            init_regime = -1 if self.initial_regime is None else self.initial_regime
-            return _rs_vol.regime_switching(
-                length,
-                self.n_regimes,
-                self._regime_means_array,
-                self._regime_variances_array,
-                self._regime_ar_coeffs_array,
-                self._transition_matrix_array.flatten(),
-                self._get_stationary_distribution(),
-                init_regime,
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-
-        values = np.zeros(length)
-        regimes = np.zeros(length, dtype=int)
-        innovations = self._sample_innovations(length)
-
-        if self.initial_regime is not None:
-            current_regime = self.initial_regime
-        else:
-            pi = self._get_stationary_distribution()
-            current_regime = int(self.rng.choice(self.n_regimes, p=pi))
-
-        regimes[0] = current_regime
-        mu = self._regime_means_array[current_regime]
-        sigma = np.sqrt(self._regime_variances_array[current_regime])
-        values[0] = mu + sigma * innovations[0]
-
-        for t in range(1, length):
-            current_regime = self._sample_next_regime(current_regime)
-            regimes[t] = current_regime
-
-            mu = self._regime_means_array[current_regime]
-            sigma = np.sqrt(self._regime_variances_array[current_regime])
-            phi = self._regime_ar_coeffs_array[current_regime]
-
-            # y_t = mu + phi * (y_{t-1} - mu) + sigma * eps_t
-            deviation = values[t - 1] - mu
-            values[t] = mu + phi * deviation + sigma * innovations[t]
-
-        return values
+        seed = int(self.rng.integers(0, 2**63))
+        # -1 instructs the kernel to draw s_0 from the stationary distribution.
+        init_regime = -1 if self.initial_regime is None else self.initial_regime
+        return _rs_vol.regime_switching(
+            length,
+            self.n_regimes,
+            self._regime_means_array,
+            self._regime_variances_array,
+            self._regime_ar_coeffs_array,
+            self._transition_matrix_array.flatten(),
+            self._get_stationary_distribution(),
+            init_regime,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )
 
     def generate_with_regimes(
         self, n_series: int = 1, start_id: int = 0

@@ -1,19 +1,12 @@
 """Fractional Brownian Motion (fBm) time series generator."""
 
-import warnings
 from typing import Literal
 
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import multivariate as _rs_mv
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import multivariate as _rs_mv
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 # Non-FFT methods store an n x n covariance matrix; warn above this length.
 _LENGTH_WARNING_THRESHOLD = 5000
@@ -92,61 +85,6 @@ class FractionalBrownianMotionGenerator(BaseGenerator):
             )
         )
 
-    def _generate_cholesky(self, length: int) -> np.ndarray:
-        """Generate fGn via Cholesky decomposition of the Toeplitz covariance.
-
-        Exact but O(n^3) time / O(n^2) memory.
-        """
-        indices = np.arange(length)
-        i, j = np.meshgrid(indices, indices, indexing="ij")
-        cov_matrix = self._autocovariance(np.abs(i - j))
-        cov_matrix += np.eye(length) * 1e-10
-
-        try:
-            L = np.linalg.cholesky(cov_matrix)
-        except np.linalg.LinAlgError:
-            eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-            eigenvalues = np.maximum(eigenvalues, 1e-10)
-            L = eigenvectors @ np.diag(np.sqrt(eigenvalues))
-
-        z = self.rng.standard_normal(length)
-        return L @ z
-
-    def _generate_hosking(self, length: int) -> np.ndarray:
-        """Generate fGn via Hosking's method (Durbin-Levinson recursion).
-
-        Exact, O(n^2) time, samples sequentially from the conditional
-        distribution given the past.
-        """
-        gamma = self._autocovariance(np.arange(length))
-
-        fgn = np.zeros(length)
-        phi_prev = np.zeros(length)
-        phi_curr = np.zeros(length)
-        v = np.zeros(length)  # innovation variance
-
-        fgn[0] = np.sqrt(gamma[0]) * self.rng.standard_normal()
-        v[0] = gamma[0]
-
-        for n in range(1, length):
-            if n == 1:
-                phi_curr[n] = gamma[1] / gamma[0]
-            else:
-                # phi_{n,n} = (gamma(n) - sum_k phi_{n-1,k} gamma(n-k)) / v_{n-1}
-                numerator = gamma[n] - np.sum(phi_prev[1:n] * gamma[n - 1 : 0 : -1])
-                phi_curr[n] = numerator / v[n - 1]
-                for k in range(1, n):
-                    phi_curr[k] = phi_prev[k] - phi_curr[n] * phi_prev[n - k]
-
-            v[n] = v[n - 1] * (1 - phi_curr[n] ** 2)
-            mean_n = np.sum(phi_curr[1 : n + 1] * fgn[n - 1 :: -1])
-            fgn[n] = mean_n + np.sqrt(max(v[n], 1e-10)) * self.rng.standard_normal()
-
-            phi_prev, phi_curr = phi_curr, phi_prev
-            phi_curr[:] = 0.0
-
-        return fgn
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
         method_map = {"cholesky": 0, "hosking": 1, "fft": 2}
         return (
@@ -172,47 +110,19 @@ class FractionalBrownianMotionGenerator(BaseGenerator):
             np.ndarray: fBm path values (or fGn increments if
                 return_increments=True).
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            method_map = {"cholesky": 0, "hosking": 1, "fft": 2}
-            cumulative = not self.return_increments
-            # The Rust kernel only applies initial_value in cumulative mode.
-            return _rs_mv.fbm(
-                length,
-                self.hurst,
-                self.sigma,
-                self.initial_value,
-                cumulative,
-                method_map[self.method],
-                seed,
-            )
-
-        if self.method != "fft" and length > _LENGTH_WARNING_THRESHOLD:
-            mem_mb = (length * length * 8) / (1024 * 1024)
-            warnings.warn(
-                f"FractionalBrownianMotionGenerator with length={length} requires "
-                f"~{mem_mb:.0f}MB memory for the covariance matrix. "
-                f"Consider using length <= {_LENGTH_WARNING_THRESHOLD} for better performance.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        if self.method == "fft":
-            warnings.warn(
-                "FFT method requires Rust backend which is not available. "
-                "Falling back to 'hosking' method (O(n^2) time). "
-                "Install with Rust support or use method='cholesky'.",
-                UserWarning,
-                stacklevel=2,
-            )
-        if self.method == "cholesky":
-            fgn = self._generate_cholesky(length)
-        else:  # hosking, or fft fallback
-            fgn = self._generate_hosking(length)
-
-        if self.return_increments:
-            return fgn
-        return self.initial_value + np.cumsum(fgn)
+        seed = int(self.rng.integers(0, 2**63))
+        method_map = {"cholesky": 0, "hosking": 1, "fft": 2}
+        cumulative = not self.return_increments
+        # The Rust kernel only applies initial_value in cumulative mode.
+        return _rs_mv.fbm(
+            length,
+            self.hurst,
+            self.sigma,
+            self.initial_value,
+            cumulative,
+            method_map[self.method],
+            seed,
+        )
 
     def get_model_info(self) -> dict:
         """Return model parameters and qualitative behavior."""

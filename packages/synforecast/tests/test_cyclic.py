@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.cyclic as cy_mod
 from synforecast.generators import CyclicGenerator
 from tests.helpers import (
     assert_distribution,
@@ -123,10 +122,7 @@ class TestCyclicStats:
         assert_std(values, expected=2.0)
         assert_distribution(values, stats.norm(10.0, 2.0))
 
-    def test_python_fallback_dominant_frequency(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(cy_mod, "_HAS_RUST", False)
+    def test_dominant_frequency(self) -> None:
         gen = CyclicGenerator(
             min_length=600,
             max_length=600,

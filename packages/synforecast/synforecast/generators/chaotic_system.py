@@ -5,14 +5,8 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import ConfigDict, Field, model_validator
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class ChaoticSystemGenerator(BaseGenerator):
@@ -92,98 +86,6 @@ class ChaoticSystemGenerator(BaseGenerator):
         object.__setattr__(self, "_system_id", system_map[self.system])
         return self
 
-    def _generate_lorenz(self, length: int) -> np.ndarray:
-        """Generate Lorenz attractor trajectory (x-component) via RK4."""
-        burn_in = 1000
-        total = length + burn_in
-        steps_per_obs = max(1, int(1.0 / self.dt))
-        total_steps = total * steps_per_obs
-
-        perturb = self.rng.standard_normal(3) * self.initial_perturbation
-        x, y, z = 1.0 + perturb[0], 1.0 + perturb[1], 1.0 + perturb[2]
-
-        out = np.empty(total)
-        idx = 0
-        for i in range(total_steps):
-            dx1 = self.sigma * (y - x)
-            dy1 = x * (self.rho - z) - y
-            dz1 = x * y - self.beta_param * z
-
-            x2 = x + 0.5 * self.dt * dx1
-            y2 = y + 0.5 * self.dt * dy1
-            z2 = z + 0.5 * self.dt * dz1
-
-            dx2 = self.sigma * (y2 - x2)
-            dy2 = x2 * (self.rho - z2) - y2
-            dz2 = x2 * y2 - self.beta_param * z2
-
-            x3 = x + 0.5 * self.dt * dx2
-            y3 = y + 0.5 * self.dt * dy2
-            z3 = z + 0.5 * self.dt * dz2
-
-            dx3 = self.sigma * (y3 - x3)
-            dy3 = x3 * (self.rho - z3) - y3
-            dz3 = x3 * y3 - self.beta_param * z3
-
-            x4 = x + self.dt * dx3
-            y4 = y + self.dt * dy3
-            z4 = z + self.dt * dz3
-
-            dx4 = self.sigma * (y4 - x4)
-            dy4 = x4 * (self.rho - z4) - y4
-            dz4 = x4 * y4 - self.beta_param * z4
-
-            x += self.dt / 6.0 * (dx1 + 2 * dx2 + 2 * dx3 + dx4)
-            y += self.dt / 6.0 * (dy1 + 2 * dy2 + 2 * dy3 + dy4)
-            z += self.dt / 6.0 * (dz1 + 2 * dz2 + 2 * dz3 + dz4)
-
-            if (i + 1) % steps_per_obs == 0 and idx < total:
-                out[idx] = x
-                idx += 1
-
-        return out[burn_in:]
-
-    def _generate_logistic(self, length: int) -> np.ndarray:
-        """Generate logistic map trajectory."""
-        burn_in = 500
-        total = length + burn_in
-        r = self.logistic_r
-
-        x = 0.5 + self.rng.standard_normal() * self.initial_perturbation
-        x = np.clip(x, 0.01, 0.99)
-
-        out = np.empty(total)
-        for i in range(total):
-            x = r * x * (1.0 - x)
-            out[i] = x
-
-        return out[burn_in:]
-
-    def _generate_mackey_glass(self, length: int) -> np.ndarray:
-        """Generate Mackey-Glass trajectory (Euler, unit step, ring-buffer delay)."""
-        burn_in = 500
-        total = length + burn_in
-        tau = self.mg_tau
-        dt_mg = 1.0
-
-        history_len = tau + 1
-        history = np.full(
-            history_len,
-            1.2 + self.rng.standard_normal() * self.initial_perturbation,
-        )
-
-        out = np.empty(total)
-        x = history[-1]
-
-        for i in range(total):
-            x_tau = history[i % history_len]
-            dx = self.mg_beta * x_tau / (1.0 + x_tau**self.mg_n) - self.mg_gamma * x
-            x = x + dx * dt_mg
-            out[i] = x
-            history[(i + tau + 1) % history_len] = x
-
-        return out[burn_in:]
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
         return (
             np.array(
@@ -214,38 +116,23 @@ class ChaoticSystemGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values.
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.chaotic_system(
-                length,
-                self._system_id,
-                self.sigma,
-                self.rho,
-                self.beta_param,
-                self.dt,
-                self.logistic_r,
-                self.mg_beta,
-                self.mg_gamma,
-                self.mg_n,
-                self.mg_tau,
-                self.observation_noise,
-                self.initial_perturbation,
-                seed,
-            )
-
-        if self.system == "lorenz":
-            values = self._generate_lorenz(length)
-        elif self.system == "logistic":
-            values = self._generate_logistic(length)
-        elif self.system == "mackey_glass":
-            values = self._generate_mackey_glass(length)
-        else:
-            raise ValueError(f"Unknown system: {self.system}")
-
-        if self.observation_noise > 0:
-            values = values + self.rng.normal(0, self.observation_noise, length)
-
-        return values
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.chaotic_system(
+            length,
+            self._system_id,
+            self.sigma,
+            self.rho,
+            self.beta_param,
+            self.dt,
+            self.logistic_r,
+            self.mg_beta,
+            self.mg_gamma,
+            self.mg_n,
+            self.mg_tau,
+            self.observation_noise,
+            self.initial_perturbation,
+            seed,
+        )
 
     def get_model_info(self) -> dict[str, Any]:
         """Return information about the chaotic system configuration."""

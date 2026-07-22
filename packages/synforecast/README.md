@@ -31,9 +31,8 @@ Install SynForecast from PyPI:
 pip install synforecast
 ```
 
-Prebuilt wheels include the Rust extension on supported platforms. Building
-from the source distribution requires a Rust toolchain; a NumPy fallback is
-available when the extension cannot be loaded.
+Prebuilt wheels include the required Rust extension on supported platforms.
+Building from the source distribution requires a Rust toolchain.
 
 ## Quick start
 
@@ -170,7 +169,7 @@ assumptions and downstream performance for your use case.
 - Changepoint, anomaly, missingness, and exogenous-variable injection
 - Dataset composition with `SynSet` and augmentation with `SynAugment`
 - Seed-deterministic parallel generation
-- Rust acceleration through PyO3 with a NumPy fallback
+- Native generation through Rust and PyO3
 
 ## Documentation
 

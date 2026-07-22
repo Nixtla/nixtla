@@ -5,14 +5,8 @@ from typing import Any
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import statistical as _rs_stat
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import statistical as _rs_stat
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class SARIMAGenerator(BaseGenerator):
@@ -391,7 +385,7 @@ class SARIMAGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST and exog is None:
+        if exog is None:
             seed = int(self.rng.integers(0, 2**63))
             return _rs_stat.sarima(
                 length,
