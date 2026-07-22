@@ -3,14 +3,8 @@
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class PoissonProcessGenerator(BaseGenerator):
@@ -49,12 +43,7 @@ class PoissonProcessGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values (counts per time period)
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.poisson_process(
-                length, self.lambda_rate, self.cumulative, seed
-            )
-        counts = self.rng.poisson(self.lambda_rate, length)
-        if self.cumulative:
-            return np.cumsum(counts).astype(float)
-        return counts.astype(float)
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.poisson_process(
+            length, self.lambda_rate, self.cumulative, seed
+        )

@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.random_walk as rw_mod
 from synforecast.generators import RandomWalkGenerator
 from tests.helpers import (
     assert_acf,
@@ -27,12 +26,9 @@ def steps_of(values: np.ndarray, start_value: float = 0.0) -> np.ndarray:
     return np.diff(np.concatenate(([start_value], values)))
 
 
-@pytest.fixture(params=["rust", "python"])
-def backend(request: pytest.FixtureRequest, monkeypatch) -> str:
-    """Run generate_single_series through the Rust and pure-Python paths."""
-    if request.param == "python":
-        monkeypatch.setattr(rw_mod, "_HAS_RUST", False)
-    return request.param
+@pytest.fixture
+def backend() -> None:
+    """Mark tests that exercise native random-walk generation."""
 
 
 class TestRandomWalkApi:
@@ -113,10 +109,9 @@ class TestRandomWalkStats:
         assert_mean(y_end, 0.0, vol * np.sqrt(T))
         assert_std(y_end, vol * np.sqrt(T))
 
-    def test_innovation_distribution_uniform(self, monkeypatch) -> None:
-        # The Python path must honor innovation_distribution: uniform steps
+    def test_innovation_distribution_uniform(self) -> None:
+        # Uniform innovations produce steps
         # on [drift - a, drift + a] with a = volatility * sqrt(3).
-        monkeypatch.setattr(rw_mod, "_HAS_RUST", False)
         drift, vol = 0.2, 1.0
         gen = make_gen(
             drift=drift, volatility=vol, innovation_distribution="uniform", seed=11

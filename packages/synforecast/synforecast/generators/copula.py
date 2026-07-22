@@ -15,15 +15,9 @@ from synforecast._distributions import (
     t_cdf,
     uniform_ppf,
 )
+from synforecast._lib import multivariate as _rs_mv
 from synforecast.base import BaseGenerator
 from synforecast.exogenous import SeriesMetadata
-
-try:
-    from synforecast._lib import multivariate as _rs_mv
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 # Clamp copula uniforms away from {0, 1} so inverse-CDF transforms stay
 # finite (matches the Rust implementation in rust/src/generators/multivariate.rs).
@@ -224,56 +218,50 @@ class CopulaGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values.
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            copula_type = 0 if self.copula_type == "gaussian" else 1
-            marginal = self.marginal_distributions[0]
-            dist_type = marginal["type"]
-            marginal_map = {
-                "normal": 0,
-                "lognormal": 1,
-                "exponential": 2,
-                "uniform": 3,
-                "gamma": 4,
-            }
-            marginal_type = marginal_map.get(dist_type, 0)
-            if dist_type == "normal":
-                marginal_param1 = float(marginal.get("loc", 0.0))
-                marginal_param2 = float(marginal.get("scale", 1.0))
-            elif dist_type == "lognormal":
-                marginal_param1 = float(marginal.get("sigma", 1.0))
-                marginal_param2 = float(np.exp(marginal.get("mean", 0.0)))
-            elif dist_type == "exponential":
-                marginal_param1 = float(marginal.get("scale", 1.0))
-                marginal_param2 = 0.0
-            elif dist_type == "uniform":
-                marginal_param1 = float(marginal.get("low", 0.0))
-                marginal_param2 = float(
-                    marginal.get("high", 1.0) - marginal.get("low", 0.0)
-                )
-            elif dist_type == "gamma":
-                marginal_param1 = float(marginal.get("shape", 2.0))
-                marginal_param2 = float(marginal.get("scale", 1.0))
-            else:
-                marginal_param1 = 0.0
-                marginal_param2 = 1.0
-            # A single variable only needs the 1x1 correlation matrix [[1.0]]
-            corr_flat = np.array([1.0], dtype=np.float64)
-            return _rs_mv.copula(
-                length,
-                1,
-                copula_type,
-                float(self.df),
-                corr_flat,
-                marginal_type,
-                marginal_param1,
-                marginal_param2,
-                seed,
+        seed = int(self.rng.integers(0, 2**63))
+        copula_type = 0 if self.copula_type == "gaussian" else 1
+        marginal = self.marginal_distributions[0]
+        dist_type = marginal["type"]
+        marginal_map = {
+            "normal": 0,
+            "lognormal": 1,
+            "exponential": 2,
+            "uniform": 3,
+            "gamma": 4,
+        }
+        marginal_type = marginal_map.get(dist_type, 0)
+        if dist_type == "normal":
+            marginal_param1 = float(marginal.get("loc", 0.0))
+            marginal_param2 = float(marginal.get("scale", 1.0))
+        elif dist_type == "lognormal":
+            marginal_param1 = float(marginal.get("sigma", 1.0))
+            marginal_param2 = float(np.exp(marginal.get("mean", 0.0)))
+        elif dist_type == "exponential":
+            marginal_param1 = float(marginal.get("scale", 1.0))
+            marginal_param2 = 0.0
+        elif dist_type == "uniform":
+            marginal_param1 = float(marginal.get("low", 0.0))
+            marginal_param2 = float(
+                marginal.get("high", 1.0) - marginal.get("low", 0.0)
             )
-
-        uniform_samples = self._copula_to_uniform(length, n_variables=1)
-        samples = self._transform_marginals(uniform_samples, n_variables=1)
-        return samples[:, 0]
+        elif dist_type == "gamma":
+            marginal_param1 = float(marginal.get("shape", 2.0))
+            marginal_param2 = float(marginal.get("scale", 1.0))
+        else:
+            marginal_param1 = 0.0
+            marginal_param2 = 1.0
+        # A single variable only needs the 1x1 correlation matrix [[1.0]].
+        return _rs_mv.copula(
+            length,
+            1,
+            copula_type,
+            float(self.df),
+            np.array([1.0], dtype=np.float64),
+            marginal_type,
+            marginal_param1,
+            marginal_param2,
+            seed,
+        )
 
     def generate(
         self,

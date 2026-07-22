@@ -8,7 +8,7 @@
   stochastic, multivariate, domain-specific, and pretraining use cases.
 - Strict Pydantic configuration models with validation for shared and
   generator-specific parameters.
-- Rust-accelerated batch generation with deterministic NumPy fallbacks.
+- Native Rust generation with deterministic single-series and batch execution.
 - Long-format pandas and Polars output with configurable column names,
   datetime or integer time indexes, and deterministic per-series seeding.
 - Changepoint, anomaly, and missingness injection, plus exogenous-variable
@@ -23,5 +23,5 @@
 - Materialized NeuralForecast, MLForecast, and StatsForecast workflows covering
   observed-only training, augmentation, synthetic-only pretraining, and
   pretraining followed by fine-tuning.
-- Executable tutorials, API documentation, mathematical and Rust/Python
-  parity tests, and open-source community and security policies.
+- Executable tutorials, API documentation, mathematical correctness and native
+  binding tests, and open-source community and security policies.

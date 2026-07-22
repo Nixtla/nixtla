@@ -3,14 +3,8 @@
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class OrnsteinUhlenbeckGenerator(BaseGenerator):
@@ -88,28 +82,15 @@ class OrnsteinUhlenbeckGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values.
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.ornstein_uhlenbeck(
-                length,
-                self.theta,
-                self.mu,
-                self.sigma,
-                self.initial_value,
-                self.dt,
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-
-        series = np.zeros(length)
-        series[0] = self.initial_value
-
-        dW = self._sample_innovations(length - 1)
-        sqrt_dt = np.sqrt(self.dt)
-
-        for t in range(1, length):
-            drift = self.theta * (self.mu - series[t - 1]) * self.dt
-            series[t] = series[t - 1] + drift + self.sigma * sqrt_dt * dW[t - 1]
-
-        return series
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.ornstein_uhlenbeck(
+            length,
+            self.theta,
+            self.mu,
+            self.sigma,
+            self.initial_value,
+            self.dt,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )

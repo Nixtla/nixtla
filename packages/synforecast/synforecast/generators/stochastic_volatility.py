@@ -5,14 +5,8 @@ from typing import Literal
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import volatility as _rs_vol
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import volatility as _rs_vol
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class StochasticVolatilityGenerator(BaseGenerator):
@@ -238,40 +232,26 @@ class StochasticVolatilityGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of values (price, returns, or volatility)
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            model_t = 0 if self.model == "heston" else 1
-            output_t = {"price": 0, "returns": 1, "volatility": 2}[self.output_type]
-            return _rs_vol.stochastic_volatility(
-                length,
-                model_t,
-                self.initial_price,
-                self.initial_vol,
-                self.drift,
-                self.mean_vol,
-                self.vol_mean_reversion,
-                self.vol_of_vol,
-                self.correlation,
-                self.beta,
-                self.dt,
-                output_t,
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-
-        if self.model == "heston":
-            prices, variances = self._simulate_heston(length)
-        else:
-            prices, variances = self._simulate_sabr(length)
-
-        if self.output_type == "price":
-            return prices
-        elif self.output_type == "returns":
-            returns = np.diff(np.log(prices))
-            return np.concatenate([[0], returns])
-        else:
-            return np.sqrt(variances)
+        seed = int(self.rng.integers(0, 2**63))
+        model_t = 0 if self.model == "heston" else 1
+        output_t = {"price": 0, "returns": 1, "volatility": 2}[self.output_type]
+        return _rs_vol.stochastic_volatility(
+            length,
+            model_t,
+            self.initial_price,
+            self.initial_vol,
+            self.drift,
+            self.mean_vol,
+            self.vol_mean_reversion,
+            self.vol_of_vol,
+            self.correlation,
+            self.beta,
+            self.dt,
+            output_t,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )
 
     def generate_with_volatility(
         self, n_series: int = 1, start_id: int = 0
