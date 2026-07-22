@@ -257,6 +257,7 @@ p {
 }
 
 .eyebrow {
+  color: var(--primary-muted);
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
   font-size: 14px;
@@ -1152,10 +1153,12 @@ body .code-group {
   display: none !important;
 }
 
+/* Mismo bg que el .code-block de MDX (--blog-code-bg #171614), no --code-group-bg
+   (#000 puro), para que los colores hagan match entre ambos code-groups. */
 .code-group:not(:has(.code-block)) [data-component-part="code-block-root"],
 .code-group:not(:has(.code-block)) pre.shiki {
-  background-color: var(--code-group-bg) !important;
-  --shiki-dark-bg: var(--code-group-bg) !important;
+  background-color: var(--blog-code-bg) !important;
+  --shiki-dark-bg: var(--blog-code-bg) !important;
   color: var(--blog-code-text) !important;
 }
 html:not(.dark) .code-group:not(:has(.code-block)) .shiki,
@@ -1163,14 +1166,42 @@ html:not(.dark) .code-group:not(:has(.code-block)) .shiki span {
   color: var(--shiki-dark) !important;
 }
 
-.code-group:not(:has(.code-block))
-  [role="tabpanel"]
-  > [data-component-part="code-block-root"] {
+/* El playground renderiza en tema claro con un fade overlay blanco
+   (--fade-color-light: #FFFFFF) que se ve encima del fondo negro forzado.
+   Se oculta igual que en la rama .code-block (data-attribute estable). */
+.code-group:not(:has(.code-block)) [data-fade-overlay] {
+  display: none !important;
+}
+
+/* El code-group del API playground no tiene .code-block adentro NI role=tabpanel
+   en sus paneles (a diferencia del de MDX: sus paneles son
+   <div data-state=... id=radix-…-content-N> sin role). Por eso apuntamos DIRECTO
+   al code-block-root, no vía [role=tabpanel] — si no, borde/grain/position nunca
+   aplican. Recreamos marco + grain + esquinas cuadradas para igualar el look del
+   .code-block. Sin @layer y con especificidad alta para ganarle a rounded-xt!,
+   rounded-2xl y rounded-[inherit] de Tailwind. */
+.code-group:not(:has(.code-block)),
+.code-group:not(:has(.code-block)) > [data-component-part="code-group-tab-bar"],
+.code-group:not(:has(.code-block)) [data-component-part="code-block-root"] * {
+  border-radius: 0 !important;
+}
+/* El panel aplica rounded-xt! (=14px, !important) al code-block-root vía
+   [&_[data-component-part=code-block-root]]:rounded-xt!, que vive en
+   @layer utilities. Para !important, una regla EN capa le gana a una sin capa,
+   así que subir especificidad afuera no alcanza: hay que overridear DENTRO de
+   @layer utilities. Misma capa → decide especificidad, y (0,4,0) > (0,2,0). */
+@layer utilities {
+  .code-group:not(:has(.code-block))
+    [data-component-part="code-block-root"][data-component-part] {
+    border-radius: 0 !important;
+  }
+}
+.code-group:not(:has(.code-block)) [data-component-part="code-block-root"] {
+  border: 1px solid var(--blog-code-border) !important;
   position: relative;
 }
 .code-group:not(:has(.code-block))
-  [role="tabpanel"]
-  > [data-component-part="code-block-root"]::after {
+  [data-component-part="code-block-root"]::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1187,6 +1218,35 @@ html:not(.dark) .code-group:not(:has(.code-block)) .shiki span {
   [data-component-part="code-group-tab-bar"]
   span {
   color: var(--blog-code-text) !important;
+}
+
+/* Tab-bar del playground = header estilo .code-block-header: padding con L/R
+   reales (6px 10px 6px 16px, el izq alinea con el código a 16px) y min-height
+   2.25rem. La regla general usa `var(--space-6) 0` (L/R = 0), que sirve para el
+   tab-bar de MDX (los tabs traen su propio inset ml-2.5), pero deja el header del
+   playground pegado al borde. Scoped al branch API. */
+.code-group:not(:has(.code-block))
+  > [data-component-part="code-group-tab-bar"] {
+  padding: 0.375rem 0.625rem 0.375rem 1rem !important;
+  min-height: 2.25rem !important;
+  position: relative;
+}
+/* Grain propio en el header del playground (mismo ::after que el code-block-root).
+   El body tiene grain por-elemento y se nota; el header solo recibía el grano
+   global (fixed, más tenue) y se veía plano. pointer-events:none deja el dropdown
+   y el copy clickeables. */
+.code-group:not(:has(.code-block))
+  > [data-component-part="code-group-tab-bar"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
+  background-repeat: repeat;
+  background-size: var(--grain-size);
+  filter: grayscale(1) contrast(1.5);
+  opacity: var(--grain-opacity);
 }
 
 .code-group
@@ -2014,6 +2074,21 @@ details.expandable .primitive-param-field {
   color: var(--primary) !important;
 }
 
+/* Botón dismiss del banner: sin cambio de fondo (anula el hover:bg-gray-800 de
+   Tailwind); solo el ícono cambia, de --primary-muted (reposo) a --primary
+   (hover) para un cambio de intensidad visible. Ambos tokens son theme-aware. */
+#banner button[aria-label="Dismiss banner"]:hover {
+  background-color: transparent !important;
+}
+#banner button[aria-label="Dismiss banner"] svg,
+#banner button[aria-label="Dismiss banner"] svg path {
+  color: var(--primary-muted) !important;
+}
+#banner button[aria-label="Dismiss banner"]:hover svg,
+#banner button[aria-label="Dismiss banner"]:hover svg path {
+  color: var(--primary) !important;
+}
+
 /* ==============================  PAGINATION  ============================== */
 
 #pagination {
@@ -2108,8 +2183,14 @@ details.expandable .primitive-param-field {
   border-color: var(--dropdown-border) !important;
 }
 
+/* Cubre menuitem (menús normales) y menuitemradio (selector de lenguaje del
+   code-group). Sin esto, los menuitemradio conservan `dark:text-primary-light`
+   (= #FFF por docs.json light:#FFF) y quedan texto blanco sobre el fondo crema
+   que --dropdown-bg fuerza en dark mode → se ve "todo blanco". */
 [role="menu"][data-orientation="vertical"] [role="menuitem"],
-[role="menu"][data-orientation="vertical"] [role="menuitem"] * {
+[role="menu"][data-orientation="vertical"] [role="menuitem"] *,
+[role="menu"][data-orientation="vertical"] [role="menuitemradio"],
+[role="menu"][data-orientation="vertical"] [role="menuitemradio"] * {
   border-radius: 0 !important;
   color: var(--dropdown-text) !important;
   border: none !important;
@@ -2117,7 +2198,8 @@ details.expandable .primitive-param-field {
   box-shadow: none !important;
 }
 
-[role="menu"][data-orientation="vertical"] [role="menuitem"]:hover {
+[role="menu"][data-orientation="vertical"] [role="menuitem"]:hover,
+[role="menu"][data-orientation="vertical"] [role="menuitemradio"]:hover {
   background-color: var(--dropdown-hover) !important;
 }
 
@@ -2207,13 +2289,12 @@ div:has(> .chat-assistant-floating-input) {
   overflow: visible !important;
 }
 
-/* Intercom launcher: 60px, theme-aware surface (#fff / #000). Target the stable
-   .intercom-launcher class only — Intercom's hashed classes (e.g. intercom-…)
-   change per build. !important to beat Intercom's runtime-injected CSS. */
+/* Intercom launcher: solo forzamos el tamaño (60px). El fondo y el color del
+   icono quedan con el default de Intercom — sin override. Target la clase estable
+   .intercom-launcher (las hasheadas intercom-… cambian por build). */
 .intercom-launcher {
   width: 60px !important;
   height: 60px !important;
-  background: var(--chat-input-bg) !important;
 }
 
 /* Send button: --alt surface with --primary-foreground icon (beats the inline
@@ -2411,5 +2492,19 @@ body::after {
 }
 
 #api-playground-2-operation-page :where(.mt-6.space-y-4) > * + * {
-  margin-top: 0px !important;
+  margin-top: var(--space-20) !important;
+}
+
+/* Debajo de lg, la columna derecha del playground (request + response) se apila.
+   El contenedor `mt-8 lg:mt-0` tiene un solo hijo: un grid con los 2 code-group.
+   Separación por margin-top (--space-20 = 20px) en el 2º code-group; se anula el
+   `gap-6` del grid para que no se sume. Scoped al id generado del playground y al
+   breakpoint lg (1023px máx, igual que el archivo). */
+@media (max-width: 1023px) {
+  #api-playground-2-operation-page :where(.mt-8.lg\:mt-0) > * {
+    gap: 0 !important;
+  }
+  #api-playground-2-operation-page :where(.mt-8.lg\:mt-0) > * > * + * {
+    margin-top: var(--space-20) !important;
+  }
 }
