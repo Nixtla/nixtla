@@ -135,7 +135,7 @@ def maybe_compute_sort_indices(
         if times_are_sorted:
             return None
     if isinstance(df, pd.DataFrame):
-        if pd.api.types.is_object_dtype(df.dtypes[id_col]):
+        if pd.api.types.is_string_dtype(df.dtypes[id_col]):
             # MultiIndex.argsort is faster than lexsort for strings
             sort_idxs = pd.MultiIndex.from_frame(df[[id_col, time_col]]).argsort()
         else:

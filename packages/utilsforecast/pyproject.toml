@@ -25,13 +25,13 @@ keywords = ["time-series", "analysis", "forecasting"]
 dependencies = [
     "numpy",
     "packaging",
-    "pandas<3.0.0",
+    "pandas",
     "narwhals>=2.0",
 ]
 
 [project.optional-dependencies]
 plotting = [
-    "pandas[plot]<3.0.0",
+    "pandas[plot]",
     "plotly",
     "plotly-resampler; python_version < '3.14'",
 ]
@@ -47,7 +47,7 @@ dev = [
     "pre-commit",
     "pyarrow",
     "scipy",
-    "pandas[plot]<3.0.0",
+    "pandas[plot]",
     "plotly",
     "plotly-resampler; python_version < '3.14'",
     "polars[numpy]",

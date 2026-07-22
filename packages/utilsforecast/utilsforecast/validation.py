@@ -58,7 +58,7 @@ def ensure_time_dtype(df: DFType, time_col: str = "ds") -> DFType:
         f"Failed to parse '{time_col}' from string to datetime. "
         "Please make sure that it contains valid timestamps or integers."
     )
-    if isinstance(times, pd.Series) and pd.api.types.is_object_dtype(times):
+    if isinstance(times, pd.Series) and pd.api.types.is_string_dtype(times):
         try:
             times = pd.to_datetime(times)
         except ValueError:

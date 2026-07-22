@@ -1,6 +1,7 @@
 import sys
 from functools import partial
 from itertools import product
+from packaging.version import Version
 
 import dask.dataframe as dd
 import datasetsforecast.losses as ds_losses
@@ -586,8 +587,14 @@ def test_datasets_evaluate(setup_series, setup_models, setup_metrics):
             ds_res.reset_index(drop=True),
         )
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests are not supported on Windows")
-@pytest.mark.skipif(sys.version_info <= (3, 9), reason="Distributed tests are not supported on Python < 3.10")
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Distributed tests are not supported on Windows"
+)
+@pytest.mark.skipif(
+    Version(pd.__version__) >= Version("3.0"),
+    reason="does not work on pandas >= 3.0",
+)
 def test_distributed_evaluate(setup_series):
     level = [80, 95]
     spark = SparkSession.builder.getOrCreate()

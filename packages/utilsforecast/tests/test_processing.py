@@ -323,16 +323,17 @@ def test_time_ranges_with_month_begin_offset_pd():
 
 
 def test_time_ranges_with_year_begin_offset_and_timezone_pd():
+    tz = "America/New_York"
     pd.testing.assert_series_equal(
         time_ranges(
-            pd.to_datetime(["2000-01-01", "2010-01-01"]).tz_localize("US/Eastern"),
+            pd.to_datetime(["2000-01-01", "2010-01-01"]).tz_localize(tz),
             freq=2 * pd.offsets.YearBegin(),
             periods=2,
         ),
         pd.Series(
             pd.to_datetime(
                 ["2000-01-01", "2002-01-01", "2010-01-01", "2012-01-01"]
-            ).tz_localize("US/Eastern")
+            ).tz_localize(tz)
         ),
     )
 
