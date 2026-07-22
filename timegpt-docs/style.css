@@ -2491,20 +2491,24 @@ body::after {
   }
 }
 
+/* Deliberate 0px on desktop: kills the `.space-y-4` (16px) spacing between the
+   operation sections. Below lg it becomes --space-20 (see the media query). */
 #api-playground-2-operation-page :where(.mt-6.space-y-4) > * + * {
-  margin-top: var(--space-20) !important;
+  margin-top: 0px !important;
 }
 
 /* Below lg, the playground's right column (request + response) stacks.
    The `mt-8 lg:mt-0` container has a single child: a grid with the 2 code-groups.
    Separation via margin-top (--space-20 = 20px) on the 2nd code-group; the grid's
-   `gap-6` is cancelled so it doesn't add up. Scoped to the playground's generated id and
-   the lg breakpoint (1023px max, same as the file). */
+   `gap-6` is cancelled so it doesn't add up. Same treatment for the .mt-6.space-y-4
+   sections. Scoped to the playground's generated id and the lg breakpoint
+   (1023px max, same as the file). */
 @media (max-width: 1023px) {
   #api-playground-2-operation-page :where(.mt-8.lg\:mt-0) > * {
     gap: 0 !important;
   }
-  #api-playground-2-operation-page :where(.mt-8.lg\:mt-0) > * > * + * {
+  #api-playground-2-operation-page :where(.mt-8.lg\:mt-0) > * > * + *,
+  #api-playground-2-operation-page :where(.mt-6.space-y-4) > * + * {
     margin-top: var(--space-20) !important;
   }
 }
