@@ -132,7 +132,7 @@ class TestRustPythonParity:
 
         The two backends draw from independent RNGs, so a single series is not
         comparable — but if both implement the same data-generating process,
-        the *distribution* of per-series dispersion agrees. 
+        the *distribution* of per-series dispersion agrees.
         """
         n = 40
 
