@@ -125,3 +125,62 @@ class TestBalancedPool:
             df = gen.generate(n_series=1)
             assert isinstance(df, pl.DataFrame)
             assert len(df) > 0
+
+
+class TestPretrainingPool:
+    """Tests for the pretraining_pool function."""
+
+    META = {"TSIGenerator", "TCMGenerator", "KernelSynthGenerator"}
+
+    def test_includes_meta_and_balanced_by_default(self) -> None:
+        from synforecast import pretraining_pool
+
+        pool = pretraining_pool(min_length=64, max_length=64, engine="polars")
+        classes = {type(g).__name__ for g in pool}
+        # Meta-generators that balanced_pool excludes are present...
+        assert classes >= self.META
+        # ...alongside the full balanced pool.
+        assert len(pool) == 42 + 3 * 3
+
+    def test_meta_only(self) -> None:
+        from synforecast import pretraining_pool
+
+        pool = pretraining_pool(
+            include_balanced=False,
+            n_meta_variants=2,
+            min_length=64,
+            max_length=64,
+            engine="polars",
+        )
+        assert len(pool) == 6
+        assert {type(g).__name__ for g in pool} == self.META
+
+    def test_all_seeds_unique(self) -> None:
+        from synforecast import pretraining_pool
+
+        seeds = [g.seed for g in pretraining_pool(seed=42)]
+        assert len(set(seeds)) == len(seeds)
+
+    def test_none_seed(self) -> None:
+        from synforecast import pretraining_pool
+
+        assert all(g.seed is None for g in pretraining_pool(seed=None))
+
+    def test_rejects_zero_variants(self) -> None:
+        import pytest
+
+        from synforecast import pretraining_pool
+
+        with pytest.raises(ValueError):
+            pretraining_pool(n_meta_variants=0)
+
+    def test_with_synset(self) -> None:
+        from synforecast import SynSet, pretraining_pool
+
+        pool = pretraining_pool(
+            min_length=48, max_length=48, freq="D", engine="polars", seed=1
+        )
+        df = SynSet(pool).generate(n_series_per_generator=1)
+        assert isinstance(df, pl.DataFrame)
+        assert df["unique_id"].n_unique() == len(pool)
+        assert len(df) > 0

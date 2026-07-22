@@ -14,6 +14,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Keep compatible library lower bounds stable while updating uv.lock.
+    versioning-strategy: increase-if-necessary
     labels: ["dependencies", "python:uv"]
     groups:
       python-dependencies:

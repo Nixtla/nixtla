@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 SynForecast is a Python library for generating synthetic time series data with
-30 statistical, stochastic, multivariate, domain-specific, and pretraining
+31 statistical, stochastic, multivariate, domain-specific, and pretraining
 generators. It supports pattern injection (changepoints, anomalies, missing
 data), multiple dataframe backends via the narwhals abstraction, and Rust
 acceleration via PyO3/maturin.
@@ -14,7 +14,7 @@ acceleration via PyO3/maturin.
 
 ```bash
 # Install dependencies
-uv sync --all-extras
+uv sync
 
 # Run all tests with coverage
 uv run pytest tests/ -v --cov=synforecast --cov-report=term-missing
@@ -32,8 +32,8 @@ uv run pre-commit run --all-files
 # typed module, run mypy on the affected files and avoid introducing new errors.
 uv run mypy synforecast/path/to/changed_module.py
 
-# Run an example
-uv run python examples/random_walk_example.py
+# Execute the public documentation notebooks
+uv run make test_docs
 ```
 
 ## Architecture
@@ -53,12 +53,12 @@ unified datasets.
 
 ### Generators (`synforecast/generators/`)
 
-30 generators organized by type:
+31 generators organized by type:
 - **Statistical**: RandomWalk, Seasonal, SARIMA, ETS, INAR
 - **Stochastic**: GARCH, OrnsteinUhlenbeck, GeometricBrownianMotion, JumpDiffusion, PoissonProcess, Cyclic, FractionalBrownianMotion, HawkesProcess, StochasticVolatility, RegimeSwitching, ChaoticSystem, BoundedProcess, LevyProcess
 - **Multivariate**: Copula, VAR, GaussianProcess
 - **Domain-Specific**: IntermittentDemand, IoTSensor, EnergyLoad, StateSpace, DailyActiveUsers, VitalSigns, Clickstream
-- **Pretraining**: TSI, TCM
+- **Pretraining**: TSI, TCM, KernelSynth
 
 ### Performance Layer (`synforecast/_core.py` + `_lib`)
 
@@ -85,7 +85,7 @@ maturin develop --release
 4. Implement `generate_single_series(length: int) -> np.ndarray`
 5. Export in `synforecast/generators/__init__.py`
 6. Create `tests/test_my_generator.py`
-7. Create `examples/my_generator_example.py`
+7. Create an executable guide under `nbs/docs/generators/<category>/`
 
 ## Code Style
 

@@ -18,9 +18,12 @@ from synforecast.generators.gaussian_process import GaussianProcessGenerator
 from synforecast.generators.inar import INARGenerator
 from synforecast.generators.intermittent_demand import IntermittentDemandGenerator
 from synforecast.generators.iot_sensor import IoTSensorGenerator
+from synforecast.generators.kernel_synth import KernelSynthGenerator
 from synforecast.generators.levy_process import LevyProcessGenerator
 from synforecast.generators.regime_switching import RegimeSwitchingGenerator
 from synforecast.generators.sarima import SARIMAGenerator
+from synforecast.generators.tcm import TCMGenerator
+from synforecast.generators.tsi import TSIGenerator
 from synforecast.generators.vital_signs import VitalSignsGenerator
 
 
@@ -291,3 +294,85 @@ def balanced_pool(
     ]
 
     return generators
+
+
+def pretraining_pool(
+    min_length: int = 256,
+    max_length: int = 1024,
+    freq: str | int = "D",
+    seed: int | None = 42,
+    include_balanced: bool = True,
+    n_meta_variants: int = 3,
+    **base_kwargs: Any,
+) -> list[BaseGenerator]:
+    """Create a breadth-maximizing pool for foundation-model pretraining.
+
+    This is the pretraining-oriented counterpart to :func:`balanced_pool`. It
+    adds the diversity-targeted *meta-generators* that ``balanced_pool``
+    deliberately excludes — ``TSIGenerator`` (randomized trend/seasonal/
+    irregular composition), ``TCMGenerator`` (random temporal causal graphs),
+    and ``KernelSynthGenerator`` (samples from randomly composed GP kernels).
+    Each resamples a fresh configuration per series, so a handful of instances
+    spans a very wide distribution. By default it also includes the full
+    ``balanced_pool`` so the corpus carries interpretable single-mechanism
+    behaviors alongside the meta-generators.
+
+    Unlike ``balanced_pool``, the default length range is wide
+    (256-1024 steps), matching the longer contexts typical of pretraining.
+
+    Args:
+        min_length: Minimum series length for all generators.
+        max_length: Maximum series length for all generators.
+        freq: Frequency for all generators, as a pandas offset alias or integer.
+        seed: Base random seed. Each generator gets a distinct offset. Set to
+            None for random seeds.
+        include_balanced: When True (default), prepend the full
+            :func:`balanced_pool`; when False, return only the meta-generators
+            (a purely procedural pretraining corpus).
+        n_meta_variants: Number of independently-seeded instances of each
+            meta-generator (default 3). More instances give the meta-generators
+            a larger share when series are spread evenly across the pool, as in
+            :func:`generate_series`.
+        **base_kwargs: Additional keyword arguments passed to all generators
+            (e.g., engine, id_col, time_col, target_col).
+
+    Returns:
+        List of BaseGenerator instances ready for use with SynSet.
+
+    Examples:
+        >>> from synforecast import SynSet, pretraining_pool
+        >>> pool = pretraining_pool(min_length=512, max_length=512, freq="h")
+        >>> df = SynSet(pool).generate(n_series_per_generator=1)
+
+        >>> # Purely procedural corpus (meta-generators only)
+        >>> meta = pretraining_pool(include_balanced=False)
+    """
+    if n_meta_variants < 1:
+        raise ValueError("n_meta_variants must be >= 1")
+
+    base = {"min_length": min_length, "max_length": max_length, "freq": freq}
+    base.update(base_kwargs)
+
+    def _seed(i: int) -> int | None:
+        return seed + i if seed is not None else None
+
+    # Meta-generator seeds are offset well past balanced_pool's 0..41 range so
+    # the two sets never collide when combined.
+    meta_classes = (TSIGenerator, TCMGenerator, KernelSynthGenerator)
+    meta: list[BaseGenerator] = [
+        cls(**base, seed=_seed(1000 + 100 * family + variant))
+        for family, cls in enumerate(meta_classes)
+        for variant in range(n_meta_variants)
+    ]
+
+    if not include_balanced:
+        return meta
+
+    balanced = balanced_pool(
+        min_length=min_length,
+        max_length=max_length,
+        freq=freq,
+        seed=seed,
+        **base_kwargs,
+    )
+    return balanced + meta

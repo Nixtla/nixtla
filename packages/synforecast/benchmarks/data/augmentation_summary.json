@@ -1,0 +1,97 @@
+{
+  "dataset": "M4 Monthly (official 18-month holdout)",
+  "model": "HistGradientBoostingRegressor via MLForecast, per-series scaling",
+  "metric": "seasonal MASE (season length 12)",
+  "seeds": 20,
+  "with_pretrain": true,
+  "by_size": [
+    {
+      "n_series": 3,
+      "augmented_mase": 1.3408987028341115,
+      "augmented_ci": [
+        1.1781974275556029,
+        1.5095300701976142
+      ],
+      "observed_mase": 1.4439415508160152,
+      "observed_ci": [
+        1.2291376388262558,
+        1.6496957634586165
+      ],
+      "synthetic_zeroshot_mase": 1.3753804719992817,
+      "synthetic_zeroshot_ci": [
+        1.1797413442215963,
+        1.5737293167769906
+      ],
+      "mean_dmase": 0.10304284798190375,
+      "mean_dmase_pct": 2.7746298960978146,
+      "win_rate": 0.65,
+      "wilcoxon_p": 0.2305126190185547
+    },
+    {
+      "n_series": 5,
+      "augmented_mase": 1.4332196149002936,
+      "augmented_ci": [
+        1.1618321571439867,
+        1.7475002806852844
+      ],
+      "observed_mase": 1.3361350472076317,
+      "observed_ci": [
+        1.1605676828683225,
+        1.5391230146266957
+      ],
+      "synthetic_zeroshot_mase": 1.5685063626307494,
+      "synthetic_zeroshot_ci": [
+        1.1926387992190817,
+        2.0334690740814865
+      ],
+      "mean_dmase": -0.09708456769266155,
+      "mean_dmase_pct": -4.617885652777939,
+      "win_rate": 0.55,
+      "wilcoxon_p": 0.9854354858398438
+    },
+    {
+      "n_series": 10,
+      "augmented_mase": 1.4364874054174614,
+      "augmented_ci": [
+        1.2330454076018733,
+        1.663608167099446
+      ],
+      "observed_mase": 1.4673831297119848,
+      "observed_ci": [
+        1.260202857067908,
+        1.6857194672598972
+      ],
+      "synthetic_zeroshot_mase": 1.507506271401139,
+      "synthetic_zeroshot_ci": [
+        1.2953272858981362,
+        1.733874711459399
+      ],
+      "mean_dmase": 0.03089572429452304,
+      "mean_dmase_pct": 0.35906927220964757,
+      "win_rate": 0.4,
+      "wilcoxon_p": 0.7285060882568359
+    },
+    {
+      "n_series": 30,
+      "augmented_mase": 1.3175243897876077,
+      "augmented_ci": [
+        1.1957212933551284,
+        1.4394036443591565
+      ],
+      "observed_mase": 1.3007077830058165,
+      "observed_ci": [
+        1.1818457182986244,
+        1.442042333564126
+      ],
+      "synthetic_zeroshot_mase": 1.4445136821120748,
+      "synthetic_zeroshot_ci": [
+        1.320337298905289,
+        1.5754056417614608
+      ],
+      "mean_dmase": -0.016816606781791525,
+      "mean_dmase_pct": -1.9633391364906874,
+      "win_rate": 0.35,
+      "wilcoxon_p": 0.4523754119873047
+    }
+  ]
+}

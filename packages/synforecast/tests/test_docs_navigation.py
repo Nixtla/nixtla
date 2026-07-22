@@ -25,16 +25,17 @@ def _source_for(page: str) -> Path:
     """Map a generated Mintlify page to its checked-in source document."""
     if page == "index.html":
         return ROOT / "README.md"
-    if page.startswith("examples/"):
-        stem = Path(page).stem
-        suffix = ".qmd" if stem == "index" else ".ipynb"
-        return ROOT / "nbs" / "examples" / f"{stem}{suffix}"
+    if page.startswith("docs/"):
+        relative = Path(page.removesuffix(".html")).relative_to("docs")
+        notebook = ROOT / "nbs" / "docs" / relative.with_suffix(".ipynb")
+        quarto = ROOT / "nbs" / "docs" / relative.with_suffix(".qmd")
+        return notebook if notebook.is_file() else quarto
     return ROOT / "docs" / f"{page}.md"
 
 
 def test_mintlify_navigation_pages_have_sources() -> None:
     """Prevent navigation links to pages the docs build cannot generate."""
-    configuration = json.loads(NAVIGATION.read_text())
+    configuration = json.loads(NAVIGATION.read_text(encoding="utf-8"))
     pages = _page_paths(configuration["navigation"])
     missing = {
         page: _source_for(page) for page in pages if not _source_for(page).is_file()
@@ -47,7 +48,10 @@ def test_mintlify_navigation_pages_have_sources() -> None:
 def test_page_paths_collects_pages_and_groups() -> None:
     navigation = {
         "pages": ["overview"],
-        "groups": [{"pages": ["examples/getting-started"]}],
+        "groups": [{"pages": ["docs/getting-started/quickstart.html"]}],
     }
 
-    assert _page_paths(navigation) == ["overview", "examples/getting-started"]
+    assert _page_paths(navigation) == [
+        "overview",
+        "docs/getting-started/quickstart.html",
+    ]

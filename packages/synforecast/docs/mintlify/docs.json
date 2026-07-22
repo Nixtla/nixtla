@@ -10,86 +10,92 @@
       },
       {
         "group": "Getting Started",
+        "pages": ["docs/getting-started/quickstart.html"]
+      },
+      {
+        "group": "Capabilities",
         "pages": [
-          "examples/getting_started.html"
+          "docs/capabilities/balanced_pool.html",
+          "docs/capabilities/dataset.html",
+          "docs/capabilities/multivariatize.html",
+          "docs/capabilities/augmentation.html",
+          "docs/capabilities/augmentation_real_data.html",
+          "docs/capabilities/when_synthetic_helps.html",
+          "docs/capabilities/changepoints.html",
+          "docs/capabilities/anomalies.html",
+          "docs/capabilities/missingness.html",
+          "docs/capabilities/multivariate_missingness.html",
+          "docs/capabilities/exogenous.html"
         ]
       },
       {
-        "group": "Tutorials",
+        "group": "Generators",
         "pages": [
           {
-            "group": "Statistical Generators",
+            "group": "Statistical",
             "pages": [
-              "examples/random_walk.html",
-              "examples/seasonal.html",
-              "examples/sarima.html",
-              "examples/ets.html",
-              "examples/inar.html"
+              "docs/generators/statistical/random_walk.html",
+              "docs/generators/statistical/seasonal.html",
+              "docs/generators/statistical/sarima.html",
+              "docs/generators/statistical/ets.html",
+              "docs/generators/statistical/inar.html"
             ]
           },
           {
-            "group": "Stochastic Generators",
+            "group": "Stochastic",
             "pages": [
-              "examples/garch.html",
-              "examples/ornstein_uhlenbeck.html",
-              "examples/geometric_brownian_motion.html",
-              "examples/jump_diffusion.html",
-              "examples/poisson_process.html",
-              "examples/cyclic.html",
-              "examples/fractional_brownian_motion.html",
-              "examples/hawkes_process.html",
-              "examples/stochastic_volatility.html",
-              "examples/regime_switching.html",
-              "examples/chaotic_system.html",
-              "examples/bounded_process.html",
-              "examples/levy_process.html"
+              "docs/generators/stochastic/garch.html",
+              "docs/generators/stochastic/ornstein_uhlenbeck.html",
+              "docs/generators/stochastic/geometric_brownian_motion.html",
+              "docs/generators/stochastic/jump_diffusion.html",
+              "docs/generators/stochastic/poisson_process.html",
+              "docs/generators/stochastic/cyclic.html",
+              "docs/generators/stochastic/fractional_brownian_motion.html",
+              "docs/generators/stochastic/hawkes_process.html",
+              "docs/generators/stochastic/stochastic_volatility.html",
+              "docs/generators/stochastic/regime_switching.html",
+              "docs/generators/stochastic/chaotic_system.html",
+              "docs/generators/stochastic/bounded_process.html",
+              "docs/generators/stochastic/levy_process.html"
             ]
           },
           {
-            "group": "Multivariate Generators",
+            "group": "Multivariate",
             "pages": [
-              "examples/copula.html",
-              "examples/var.html",
-              "examples/gaussian_process.html"
+              "docs/generators/multivariate/copula.html",
+              "docs/generators/multivariate/var.html",
+              "docs/generators/multivariate/gaussian_process.html"
             ]
           },
           {
-            "group": "Domain-Specific Generators",
+            "group": "Domain-Specific",
             "pages": [
-              "examples/intermittent_demand.html",
-              "examples/iot_sensor.html",
-              "examples/energy_load.html",
-              "examples/state_space.html",
-              "examples/daily_active_users.html",
-              "examples/vital_signs.html",
-              "examples/clickstream.html"
+              "docs/generators/domain/intermittent_demand.html",
+              "docs/generators/domain/iot_sensor.html",
+              "docs/generators/domain/energy_load.html",
+              "docs/generators/domain/state_space.html",
+              "docs/generators/domain/daily_active_users.html",
+              "docs/generators/domain/vital_signs.html",
+              "docs/generators/domain/clickstream.html"
             ]
           },
           {
-            "group": "Pretraining Generators",
+            "group": "Pretraining",
             "pages": [
-              "examples/tsi.html",
-              "examples/tcm.html"
-            ]
-          },
-          {
-            "group": "Pattern Injection & Exogenous Variables",
-            "pages": [
-              "examples/changepoints.html",
-              "examples/anomalies.html",
-              "examples/missingness.html",
-              "examples/multivariate_missingness.html",
-              "examples/exogenous.html"
-            ]
-          },
-          {
-            "group": "Dataset & Augmentation",
-            "pages": [
-              "examples/dataset.html",
-              "examples/augmentation.html",
-              "examples/augmentation_real_data.html"
+              "docs/generators/pretraining/tsi.html",
+              "docs/generators/pretraining/tcm.html",
+              "docs/generators/pretraining/kernel_synth.html"
             ]
           }
+        ]
+      },
+      {
+        "group": "Nixtlaverse",
+        "pages": [
+          "docs/integrations/nixtlaverse.html",
+          "docs/integrations/neuralforecast.html",
+          "docs/integrations/mlforecast.html",
+          "docs/integrations/statsforecast.html"
         ]
       },
       {

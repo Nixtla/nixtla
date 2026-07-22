@@ -89,29 +89,43 @@ def detect_seasonality(
     if max_period < min_period:
         return {"period": None, "strength": 0.0, "has_seasonality": False}
 
-    # Compute autocorrelations for all lags
-    autocorrs = []
-    for lag in range(min_period, max_period + 1):
-        ac = _autocorrelation(valid, lag)
-        autocorrs.append((lag, ac if not np.isnan(ac) else 0.0))
+    # Compute one lag outside the requested interval on each side. Those
+    # neighbors let min_period and max_period participate as genuine local
+    # peaks without treating the left edge of a monotonically decaying ACF as
+    # seasonal.
+    first_lag = max(1, min_period - 1)
+    last_lag = min(len(valid) - 1, max_period + 1)
+    lags = list(range(first_lag, last_lag + 1))
+    acs = np.array(
+        [
+            ac if not np.isnan(ac := _autocorrelation(valid, lag)) else 0.0
+            for lag in lags
+        ]
+    )
 
-    if not autocorrs:
+    if len(acs) < 3 or np.all(acs <= 0):
         return {"period": None, "strength": 0.0, "has_seasonality": False}
 
-    # Find peaks in autocorrelation
-    lags, acs = zip(*autocorrs, strict=False)
-    acs = np.array(acs)
-
-    # Find the lag with maximum positive autocorrelation
-    if np.all(acs <= 0):
+    # Seasonality shows up as a *local peak* in the ACF at the period, not as a
+    # high value on a monotonically decaying ACF. A random walk, AR(1), or a
+    # single level shift has a monotone ACF (its argmax sits at the smallest
+    # lag) and must not be read as seasonal. So restrict candidates to local
+    # maxima with neighbors on both sides and pick the strongest.
+    peaks = [
+        (lags[i], acs[i])
+        for i in range(1, len(acs) - 1)
+        if min_period <= lags[i] <= max_period
+        and acs[i] > acs[i - 1]
+        and acs[i] >= acs[i + 1]
+        and acs[i] > 0
+    ]
+    if not peaks:
         return {"period": None, "strength": 0.0, "has_seasonality": False}
 
-    max_idx = np.argmax(acs)
-    max_ac = acs[max_idx]
-    detected_period = lags[max_idx]
+    detected_period, max_ac = max(peaks, key=lambda p: p[1])
 
-    # Consider seasonality significant if autocorrelation > 0.3
-    has_seasonality = max_ac > 0.3
+    # Consider seasonality significant if the peak autocorrelation > 0.3
+    has_seasonality = bool(max_ac > 0.3)
 
     return {
         "period": int(detected_period) if has_seasonality else None,
@@ -395,10 +409,25 @@ def detect_intermittency(series: np.ndarray) -> dict:
     }
 
 
-def detect_regime_changes(series: np.ndarray, max_regimes: int = 3) -> dict:
-    """Detect potential regime changes using simple change point detection.
+# A split is accepted only if two constant-level segments explain the data at
+# least this many times better (residual-variance ratio) than a single linear
+# fit over the same span. Scoring against a *linear* null means a smooth trend
+# is the thing to beat, so trends are not mistaken for regimes; a sharp level
+# shift, which a line fits terribly but two means fit almost perfectly, scores
+# far above the threshold. The old detector scored a raw mean shift against the
+# pooled std and fired at 0.5, which nearly every wandering series cleared.
+_REGIME_VARIANCE_RATIO = 3.0
 
-    Uses variance-based detection to identify segments with different behaviors.
+
+def detect_regime_changes(series: np.ndarray, max_regimes: int = 3) -> dict:
+    """Detect regime changes: level shifts between otherwise stable segments.
+
+    Uses binary segmentation, scoring each candidate split by how much better a
+    piecewise-constant (two-mean) fit explains the segment than a single linear
+    fit — the residual-variance ratio. A split is accepted only when that ratio
+    exceeds ``_REGIME_VARIANCE_RATIO``, so smooth trends and random-walk wander
+    (both well or comparably explained by the linear null) are not mistaken for
+    regimes, while sharp level shifts are.
 
     Args:
         series: 1D array of time series values
@@ -411,85 +440,68 @@ def detect_regime_changes(series: np.ndarray, max_regimes: int = 3) -> dict:
     series = np.asarray(series, dtype=np.float64)
     valid = series[~np.isnan(series)]
 
-    if len(valid) < 30:
+    if len(valid) < 40:
         return {"n_regimes": 1, "change_points": [], "has_regimes": False}
 
     n = len(valid)
-    min_segment = max(10, n // 10)
+    min_segment = max(15, n // 8)
 
-    # Simple binary segmentation approach
-    change_points = []
+    def find_change_point(start: int, end: int) -> tuple[int | None, float]:
+        """Best split of valid[start:end], scored by the residual-variance
+        ratio of a linear null over a piecewise-constant (two-mean) fit."""
+        seg = valid[start:end]
+        m = len(seg)
+        if m < 2 * min_segment:
+            return None, 0.0
 
-    def find_change_point(start: int, end: int) -> int | None:
-        """Find single change point in segment using variance ratio."""
-        if end - start < 2 * min_segment:
-            return None
+        # Linear null: residual variance of a single straight-line fit.
+        tt = np.arange(m)
+        slope, intercept = np.polyfit(tt, seg, 1)
+        var_linear = float(np.var(seg - (slope * tt + intercept))) + 1e-10
 
         best_score = 0.0
         best_idx = None
-
-        for i in range(start + min_segment, end - min_segment):
-            left = valid[start:i]
-            right = valid[i:end]
-
-            # Score based on difference in means and variances
-            mean_diff = abs(np.mean(left) - np.mean(right))
-            var_diff = abs(np.var(left) - np.var(right))
-
-            pooled_std = np.std(valid[start:end])
-            if pooled_std > 0:
-                score = mean_diff / pooled_std + var_diff / (pooled_std**2 + 1e-10)
-            else:
-                score = 0.0
-
+        for i in range(min_segment, m - min_segment):
+            left, right = seg[:i], seg[i:]
+            rss = np.sum((left - left.mean()) ** 2) + np.sum(
+                (right - right.mean()) ** 2
+            )
+            var_piecewise = rss / m + 1e-10
+            score = var_linear / var_piecewise
             if score > best_score:
                 best_score = score
-                best_idx = i
+                best_idx = start + i
+        return best_idx, best_score
 
-        # Only accept change point if score is significant
-        if best_score > 0.5:
-            return best_idx
-        return None
-
-    # Find change points iteratively
+    # Binary segmentation: accept only splits clearing the variance-ratio bar.
+    change_points: list[int] = []
     segments = [(0, n)]
     for _ in range(max_regimes - 1):
         best_cp = None
         best_segment_idx = None
-        best_score = 0.0
+        best_score = _REGIME_VARIANCE_RATIO
 
         for seg_idx, (start, end) in enumerate(segments):
-            cp = find_change_point(start, end)
-            if cp is not None:
-                # Compute score for this potential split
-                left = valid[start:cp]
-                right = valid[cp:end]
-                mean_diff = abs(np.mean(left) - np.mean(right))
-                pooled_std = np.std(valid[start:end])
-                score = mean_diff / (pooled_std + 1e-10) if pooled_std > 0 else 0
+            cp, score = find_change_point(start, end)
+            if cp is not None and score > best_score:
+                best_score = score
+                best_cp = cp
+                best_segment_idx = seg_idx
 
-                if score > best_score:
-                    best_score = score
-                    best_cp = cp
-                    best_segment_idx = seg_idx
-
-        if best_cp is not None and best_segment_idx is not None:
-            change_points.append(best_cp)
-            # Split segment
-            start, end = segments[best_segment_idx]
-            segments[best_segment_idx] = (start, best_cp)
-            segments.insert(best_segment_idx + 1, (best_cp, end))
-        else:
+        if best_cp is None or best_segment_idx is None:
             break
+        change_points.append(best_cp)
+        start, end = segments[best_segment_idx]
+        segments[best_segment_idx] = (start, best_cp)
+        segments.insert(best_segment_idx + 1, (best_cp, end))
 
     change_points = sorted(change_points)
     n_regimes = len(change_points) + 1
-    has_regimes = n_regimes > 1
 
     return {
         "n_regimes": n_regimes,
         "change_points": change_points,
-        "has_regimes": has_regimes,
+        "has_regimes": n_regimes > 1,
     }
 
 
@@ -528,31 +540,18 @@ def classify_series(series: np.ndarray) -> dict:
         "regimes": regimes,
     }
 
-    # Decision logic for generator selection
-    # Priority order based on most distinctive features
+    # Decision logic for generator selection. Ordered most-distinctive first,
+    # with regime switching demoted to a specific fallback (below) so it no
+    # longer shadows cleaner explanations like seasonality or volatility.
 
-    # 1. Intermittent data
+    # 1. Intermittent data — many zeros, unmistakable
     if intermittency["is_intermittent"]:
         return {
             "recommended_generator": "IntermittentDemandGenerator",
             "properties": properties,
         }
 
-    # 2. Regime switching
-    if regimes["has_regimes"] and regimes["n_regimes"] >= 2:
-        return {
-            "recommended_generator": "RegimeSwitchingGenerator",
-            "properties": properties,
-        }
-
-    # 3. Volatility clustering (GARCH effects)
-    if volatility["has_clustering"] and volatility["strength"] > 0.2:
-        return {
-            "recommended_generator": "GARCHGenerator",
-            "properties": properties,
-        }
-
-    # 4. Strong seasonality
+    # 2. Strong seasonality
     if seasonality["has_seasonality"] and seasonality["strength"] > 0.5:
         if stationarity["is_stationary"]:
             return {
@@ -565,30 +564,24 @@ def classify_series(series: np.ndarray) -> dict:
                 "properties": properties,
             }
 
-    # 5. Long-range dependence
-    if hurst["behavior"] == "persistent" and hurst["hurst"] > 0.7:
+    # 3. Volatility clustering (GARCH effects)
+    if volatility["has_clustering"] and volatility["strength"] > 0.2:
         return {
-            "recommended_generator": "FractionalBrownianMotionGenerator",
+            "recommended_generator": "GARCHGenerator",
             "properties": properties,
         }
 
-    # 6. Mean-reverting behavior
-    if hurst["behavior"] == "mean_reverting" and hurst["hurst"] < 0.3:
+    # 4. Regime switching — genuine level shifts between stable segments.
+    #    A specific, well-identified pattern, so it ranks above the noisier
+    #    Hurst-based branches that a level shift would otherwise trigger.
+    if regimes["has_regimes"] and regimes["n_regimes"] >= 2:
         return {
-            "recommended_generator": "OrnsteinUhlenbeckGenerator",
+            "recommended_generator": "RegimeSwitchingGenerator",
             "properties": properties,
         }
 
-    # 7. Stationary with autocorrelation structure
-    if stationarity["is_stationary"] and abs(basic_stats["autocorr_1"]) > 0.3:
-        return {
-            "recommended_generator": "SARIMAGenerator",
-            "properties": properties,
-        }
-
-    # 8. Non-stationary with trend
+    # 5. Non-stationary with trend (linear, or exponential -> GBM)
     if trend["has_trend"] and trend["r_squared"] > 0.3:
-        # Check if it looks like exponential growth
         valid = series[~np.isnan(series)]
         if len(valid) > 10 and np.all(valid > 0):
             log_series = np.log(valid + 1e-10)
@@ -598,9 +591,30 @@ def classify_series(series: np.ndarray) -> dict:
                     "recommended_generator": "GeometricBrownianMotionGenerator",
                     "properties": properties,
                 }
-
         return {
             "recommended_generator": "RandomWalkGenerator",
+            "properties": properties,
+        }
+
+    # 6. Stationary with autocorrelation structure
+    if stationarity["is_stationary"] and abs(basic_stats["autocorr_1"]) > 0.3:
+        return {
+            "recommended_generator": "SARIMAGenerator",
+            "properties": properties,
+        }
+
+    # 7. Mean-reverting behavior (Hurst-based; noisier, so below the specific
+    #    detectors above)
+    if hurst["behavior"] == "mean_reverting" and hurst["hurst"] < 0.3:
+        return {
+            "recommended_generator": "OrnsteinUhlenbeckGenerator",
+            "properties": properties,
+        }
+
+    # 8. Long-range dependence / persistent memory (Hurst-based fallback)
+    if hurst["behavior"] == "persistent" and hurst["hurst"] > 0.7:
+        return {
+            "recommended_generator": "FractionalBrownianMotionGenerator",
             "properties": properties,
         }
 

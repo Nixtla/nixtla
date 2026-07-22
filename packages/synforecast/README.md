@@ -1,126 +1,184 @@
-# SynForecast
+# Nixtla
 
-SynForecast generates synthetic time series data. It provides 30 statistical,
-stochastic, multivariate, domain-specific, and pretraining generators that
-produce panels of series in long format, with optional injection of
-changepoints, anomalies, and missing data.
+[![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1pmhan9j5-F54XR20edHk0UtYAPcW4KQ)
+
+<div align="center">
+<h1>SynForecast</h1>
+<h3>Fast synthetic time series for testing, augmentation, and pretraining</h3>
+
+[![CI](https://github.com/Nixtla/synforecast/actions/workflows/ci.yaml/badge.svg)](https://github.com/Nixtla/synforecast/actions/workflows/ci.yaml)
+[![Python](https://img.shields.io/pypi/pyversions/synforecast)](https://pypi.org/project/synforecast/)
+[![PyPI](https://img.shields.io/pypi/v/synforecast?color=blue)](https://pypi.org/project/synforecast/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/synforecast/blob/main/LICENSE)
+[![Docs](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml/badge.svg)](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml)
+
+**SynForecast** generates validated synthetic time-series panels with 31
+statistical, stochastic, multivariate, domain-specific, and pretraining
+generators. It follows the Nixtla long format and supports controlled
+changepoints, anomalies, missing data, exogenous variables, and augmentation
+of observed series.
+</div>
 
 > [!NOTE]
 > SynForecast is in alpha. APIs and seed-identical outputs may change before
 > the first stable release.
 
-## Features
-
-- 30 generators across five categories; see [GENERATORS.md](GENERATORS.md) for the full reference:
-  - Statistical: Random Walk, Seasonal, SARIMA, ETS, INAR
-  - Stochastic: GARCH, Ornstein-Uhlenbeck, Geometric Brownian Motion, Jump Diffusion, Poisson Process, Cyclic, Fractional Brownian Motion, Hawkes Process, Stochastic Volatility, Regime Switching, Chaotic System, Bounded Process, Levy Process
-  - Multivariate: Copula, VAR, Gaussian Process
-  - Domain-specific: Intermittent Demand, IoT Sensor, Energy Load, State Space, Daily Active Users, Vital Signs, Clickstream
-  - Pretraining: TSI, Temporal Causal Model (TCM)
-- Long-format output `[unique_id, ds, y]`, following the Nixtla data conventions
-- Pattern injection: changepoints, anomalies, and missing data for every generator
-- Exogenous variables: datetime features, pattern flags, and correlated columns
-- Multiple dataframe engines via narwhals: pandas (default), polars, cudf, modin, pyarrow
-- Seed-deterministic output, independent of the number of parallel workers
-- Rust-accelerated generation via PyO3, with a pure NumPy fallback
-- Dataset composition (`SynSet`) and augmentation of real data (`SynAugment`)
-
 ## Installation
 
-```sh
+Install SynForecast from PyPI:
+
+```bash
 pip install synforecast
 ```
 
-Prebuilt wheels include the Rust extension on supported platforms. If `pip`
-must build from the source distribution, a Rust toolchain is required. The
-runtime can use its NumPy fallback when the extension is unavailable.
-
-To work on SynForecast itself, follow [CONTRIBUTING.md](CONTRIBUTING.md).
+Prebuilt wheels include the Rust extension on supported platforms. Building
+from the source distribution requires a Rust toolchain; a NumPy fallback is
+available when the extension cannot be loaded.
 
 ## Quick start
 
-Generate a panel of series from a balanced pool of generators:
+Generate a long-format panel from a balanced collection of generators:
 
 ```python
 from synforecast import generate_series
 
-df = generate_series(n_series=10, freq="D", min_length=50, max_length=500, seed=0)
-```
-
-`df` is a pandas DataFrame in long format:
-
-```
-  unique_id         ds         y
-0         0 2000-01-01 -1.392372
-1         0 2000-01-02 -0.938044
-2         0 2000-01-03 -1.433790
-3         0 2000-01-04  0.757597
-4         0 2000-01-05  0.094236
-```
-
-`unique_id` is an integer categorical, `ds` is `datetime64[ns]` (or `int64` when `freq` is an integer), and `y` is `float64`.
-
-Use a specific generator with explicit parameters:
-
-```python
-from synforecast.generators import RandomWalkGenerator
-
-gen = RandomWalkGenerator(
-    min_length=100,
-    max_length=200,
+synthetic_df = generate_series(
+    n_series=100,
     freq="D",
-    drift=0.1,
-    volatility=1.5,
+    min_length=100,
+    max_length=100,
     seed=42,
 )
-df = gen.generate(n_series=3)
 ```
 
-Combine multiple generators into one dataset with `SynSet`:
+The result is a pandas DataFrame with the standard Nixtla columns
+`[unique_id, ds, y]`. Pass `engine="polars"` to return a Polars DataFrame.
+
+Use a specific generator when you need explicit control over the data-generating
+process:
 
 ```python
-from synforecast import SynSet
-from synforecast.generators import RandomWalkGenerator, SeasonalGenerator
+from synforecast.generators import SeasonalGenerator
 
-dataset = SynSet(
-    [
-        RandomWalkGenerator(min_length=100, max_length=100, freq="D", seed=1),
-        SeasonalGenerator(min_length=100, max_length=100, freq="D", seed=2),
-    ]
+generator = SeasonalGenerator(
+    min_length=365,
+    max_length=365,
+    freq="D",
+    seasonality_period=7,
+    seasonality_amplitude=10.0,
+    seed=42,
 )
-df = dataset.generate(n_series_per_generator=5)  # 10 series, ids 0-9
+synthetic_df = generator.generate(n_series=20)
 ```
 
-## Common parameters
+See the [quick start](https://nixtlaverse.nixtla.io/synforecast/docs/getting-started/quickstart.html)
+and [generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md)
+for the complete API.
 
-All generators share these parameters:
+## Augment observed series
 
-- `min_length`, `max_length`: bounds on the length of each series (required)
-- `freq`: a pandas offset alias (`'D'`, `'h'`, `'5min'`, `'MS'`, `'W-MON'`, ...) or an integer for an integer time index (required)
-- `engine`: output dataframe library, one of `'pandas'` (default), `'polars'`, `'cudf'`, `'modin'`, `'pyarrow'`
-- `alias`: name of the generator (default: class name)
-- `seed`: random seed for reproducibility (default: `None`)
-- `start_datetime`: first timestamp of every series, anything `pandas.Timestamp` parses (default: `'2000-01-01'`)
-- `id_col`, `time_col`, `target_col`: output column names (defaults: `'unique_id'`, `'ds'`, `'y'`)
+`SynAugment` analyzes each input series, fits a suitable generator, and adds
+synthetic series with matching timestamps and statistical characteristics:
 
-`generate(n_series, start_id=0, n_jobs=-1)` returns the panel; output is
-seed-deterministic and does not depend on `n_jobs`. Generator-specific
-parameters are documented in [GENERATORS.md](GENERATORS.md).
+```python
+from synforecast import SynAugment
 
-## Examples
-
-The `examples/` directory contains runnable scripts for the generators and
-composition features:
-
-```bash
-uv run python examples/garch_example.py
+augmenter = SynAugment(seed=42)
+augmented_train_df = augmenter.augment(train_df, n_augment=2)
 ```
+
+Fit augmentation parameters on the training split only; fitting on validation
+or test observations would leak information into model training. See the
+[augmentation guide](https://nixtlaverse.nixtla.io/synforecast/docs/capabilities/augmentation.html)
+for generator overrides and diagnostics.
+
+## Works with the Nixtlaverse
+
+SynForecast materializes the same `[unique_id, ds, y]` schema used throughout
+the Nixtlaverse. The generated or augmented DataFrame can be passed directly
+to forecasting libraries without a SynForecast-specific adapter.
+
+### NeuralForecast
+
+```python
+from neuralforecast import NeuralForecast
+from neuralforecast.models import NHITS
+
+nf = NeuralForecast(
+    models=[NHITS(h=14, input_size=28, max_steps=100)],
+    freq="D",
+)
+nf.fit(df=synthetic_df)
+neural_forecasts = nf.predict()
+```
+
+### MLForecast
+
+```python
+from mlforecast import MLForecast
+from sklearn.linear_model import LinearRegression
+
+mlf = MLForecast(
+    models=LinearRegression(),
+    freq="D",
+    lags=[1, 7, 14],
+)
+mlf.fit(synthetic_df)
+ml_forecasts = mlf.predict(h=14)
+```
+
+### StatsForecast
+
+```python
+from statsforecast import StatsForecast
+from statsforecast.models import AutoETS
+
+sf = StatsForecast(
+    models=[AutoETS(season_length=7)],
+    freq="D",
+)
+sf.fit(synthetic_df)
+statistical_forecasts = sf.predict(h=14)
+```
+
+Install the forecasting libraries you want to use separately. SynForecast
+does not add them to its runtime dependencies. See the
+[Nixtlaverse guide](https://nixtlaverse.nixtla.io/synforecast/docs/integrations/nixtlaverse.html)
+for materialized pretraining and augmentation workflows.
+
+## Why SynForecast?
+
+Synthetic time series are useful when real observations are scarce, sensitive,
+expensive, or do not cover the conditions a system must handle. SynForecast is
+designed for:
+
+- Testing forecasting and anomaly-detection pipelines against known behavior
+- Augmenting small training panels without altering validation data
+- Pretraining global forecasting models on diverse temporal processes
+- Stress-testing changepoints, missingness, anomalies, and regime changes
+- Reproducible simulation with explicit, validated generator configurations
+
+Synthetic data reflects the assumptions of its generators. Validate those
+assumptions and downstream performance for your use case.
+
+## Features
+
+- 31 generators across statistical, stochastic, multivariate, domain-specific,
+  and pretraining categories
+- Long-format output following Nixtla conventions
+- pandas, Polars, cuDF, Modin, and PyArrow output through Narwhals
+- Changepoint, anomaly, missingness, and exogenous-variable injection
+- Dataset composition with `SynSet` and augmentation with `SynAugment`
+- Seed-deterministic parallel generation
+- Rust acceleration through PyO3 with a NumPy fallback
 
 ## Documentation
 
-- [GENERATORS.md](GENERATORS.md): reference for all 30 generators and their parameters
-- [CONTRIBUTING.md](CONTRIBUTING.md): development setup and how to add a generator
-- [CHANGELOG.md](CHANGELOG.md): release notes
+- [Getting started](https://nixtlaverse.nixtla.io/synforecast/docs/getting-started/quickstart.html)
+- [Tutorials and capabilities](https://nixtlaverse.nixtla.io/synforecast/)
+- [Generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md)
+- [Contributing](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md)
+- [Changelog](https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md)
 
 ## AI disclaimer
 
@@ -131,4 +189,4 @@ licensing, and design.
 
 ## License
 
-Apache License 2.0
+SynForecast is licensed under the [Apache License 2.0](https://github.com/Nixtla/synforecast/blob/main/LICENSE).

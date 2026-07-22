@@ -9,7 +9,26 @@ import pytest
 
 import synforecast.generators as generators
 
-NOTEBOOKS = sorted((Path(__file__).parents[1] / "nbs" / "examples").glob("*.ipynb"))
+NOTEBOOKS = sorted((Path(__file__).parents[1] / "nbs" / "docs").rglob("*.ipynb"))
+INTEGRATION_REQUIREMENTS = {
+    "neuralforecast.ipynb": [
+        "SynAugment",
+        "generate_series",
+        "predict(df=train_df)",
+        "use_init_models=False",
+    ],
+    "mlforecast.ipynb": [
+        "SynAugment",
+        "generate_series",
+        "new_df=train_df",
+    ],
+    "statsforecast.ipynb": [
+        "SynAugment",
+        "synthetic_history_df",
+        'groupby("ds"',
+        "np.allclose",
+    ],
+}
 GENERATOR_CLASSES = {
     name: value
     for name, value in vars(generators).items()
@@ -36,7 +55,7 @@ def _dict_items(node: ast.Dict) -> dict[str, ast.expr] | None:
 @pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda path: path.stem)
 def test_notebook_generator_configs_match_current_api(path: Path) -> None:
     """Keep executable examples aligned with the Pydantic generator models."""
-    notebook = json.loads(path.read_text())
+    notebook = json.loads(path.read_text(encoding="utf-8"))
     named_configs: dict[str, dict[str, ast.expr]] = {}
 
     for cell_number, cell in enumerate(notebook["cells"], start=1):
@@ -112,3 +131,42 @@ def test_notebook_generator_configs_match_current_api(path: Path) -> None:
             assert not unknown, (
                 f"{location}: {node.func.id} has unknown fields {sorted(unknown)}"
             )
+
+
+@pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda path: path.stem)
+def test_notebook_has_saved_outputs(path: Path) -> None:
+    """Public notebooks retain outputs so docs builds include results and plots."""
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    outputs = [
+        output
+        for cell in notebook["cells"]
+        if cell.get("cell_type") == "code"
+        for output in cell.get("outputs", [])
+    ]
+    assert outputs, f"{path.relative_to(path.parents[3])} has no saved outputs"
+
+
+@pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda path: path.stem)
+def test_notebook_cell_sources_are_line_arrays(path: Path) -> None:
+    """Keep notebook JSON compatible with the Quarto version used in CI."""
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    invalid = [
+        index
+        for index, cell in enumerate(notebook["cells"])
+        if not isinstance(cell.get("source"), list)
+    ]
+    assert not invalid, f"{path.name} has string sources in cells {invalid}"
+
+
+@pytest.mark.parametrize("filename,required", INTEGRATION_REQUIREMENTS.items())
+def test_integration_notebooks_cover_training_regimes(
+    filename: str, required: list[str]
+) -> None:
+    """Keep the public integration comparisons complete and leakage-aware."""
+    path = Path(__file__).parents[1] / "nbs" / "docs" / "integrations" / filename
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
+
+    assert source.index("train_df =") < source.index("augmented_train_df = SynAugment")
+    for token in required:
+        assert token in source, f"{filename} is missing {token!r}"

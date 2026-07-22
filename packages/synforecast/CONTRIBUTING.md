@@ -103,7 +103,11 @@ Also cover parameter validation (invalid inputs raise), seed determinism, and in
 
 ### 4. Add an example
 
-Create `examples/my_generator_example.py`: a short runnable script that instantiates the generator with keyword arguments and prints a small sample of the output. Verify it runs with `uv run python examples/my_generator_example.py`.
+Create `nbs/docs/generators/<category>/my_generator.ipynb`: a focused,
+executable guide that instantiates the generator with keyword arguments,
+explains its behavior, and visualizes representative output. Run
+`uv sync --group docs --group integration-docs`, then run
+`uv run --no-sync make execute_docs` to refresh committed notebook outputs.
 
 ## Testing
 

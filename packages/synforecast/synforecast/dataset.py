@@ -1,7 +1,7 @@
 """Dataset class for generating synthetic time series from multiple generators."""
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 import narwhals.stable.v2 as nw
 import numpy as np
@@ -271,7 +271,7 @@ class SynAugment:
             DataFrame's library.
 
     Example:
-        >>> from synforecast.dataset import SynAugment
+        >>> from synforecast import SynAugment
         >>> import polars as pl
         >>>
         >>> # Create sample data
@@ -349,6 +349,15 @@ class SynAugment:
                 "IntermittentDemandGenerator": IntermittentDemandGenerator,
                 "GeometricBrownianMotionGenerator": GeometricBrownianMotionGenerator,
             }
+
+    def _to_output_backend(self, frame: nw.DataFrame, backend: Any) -> nw.DataFrame:
+        """Convert an input frame when an explicit output engine was requested."""
+        if self.engine is None:
+            return frame
+        return nw.DataFrame.from_dict(
+            frame.to_dict(as_series=False),
+            backend=backend,
+        )
 
     def analyze(self, df: IntoFrameT) -> dict[str, dict]:
         """Analyze all series in DataFrame and return properties.
@@ -456,6 +465,7 @@ class SynAugment:
         # Synthetic frames must match the input's dataframe library, or the
         # final concat would mix backends. An explicit engine wins.
         out_engine = self.engine if self.engine is not None else df_nw.implementation
+        output_original = self._to_output_backend(df_nw, out_engine)
 
         generator_override = generator_override or {}
 
@@ -463,7 +473,7 @@ class SynAugment:
         analysis = self.analyze(df)
 
         # Collect all series (original + augmented)
-        all_dfs = [df_nw]
+        all_dfs = [output_original]
 
         unique_ids = df_nw[self.id_col].unique().to_list()
 
@@ -502,13 +512,210 @@ class SynAugment:
 
             all_dfs.extend(augmented)
 
-        # Augmented ids are strings ("<id>_aug_<i>"), so normalize the id
-        # column to String before concatenating, then re-categorize.
+        # Normalize concat-sensitive dtypes across backends. In particular,
+        # pandas datetimes commonly convert to Polars at microsecond precision
+        # while NumPy timestamps retain nanosecond precision.
+        time_dtype = output_original.schema[self.time_col]
         all_dfs = [
-            frame.with_columns(nw.col(self.id_col).cast(nw.String()))
+            frame.with_columns(
+                nw.col(self.id_col).cast(nw.String()),
+                nw.col(self.time_col).cast(time_dtype),
+                nw.col(self.target_col).cast(nw.Float64()),
+            )
             for frame in all_dfs
         ]
         result = _categorize_ids(nw.concat(all_dfs), self.id_col)
+
+        return result.to_native()
+
+    def _scale_window(
+        self, window: np.ndarray, scaling: Literal["mean", "std", "none"]
+    ) -> np.ndarray:
+        """Scale a window before mixing so different-magnitude series combine."""
+        if scaling == "mean":
+            denom = float(np.mean(np.abs(window)))
+            return window / denom if denom > 1e-8 else window
+        if scaling == "std":
+            std = float(np.std(window))
+            centered = window - float(np.mean(window))
+            return centered / std if std > 1e-8 else centered
+        return window
+
+    @staticmethod
+    def _interpolate_missing(values: np.ndarray) -> np.ndarray | None:
+        """Linearly interpolate NaNs, or reject a series with no finite values."""
+        if np.isinf(values).any():
+            raise ValueError("mixup source series must not contain infinite values")
+        observed = ~np.isnan(values)
+        if not observed.any():
+            return None
+        if observed.all():
+            return values
+
+        positions = np.arange(len(values))
+        return np.interp(positions, positions[observed], values[observed])
+
+    def mixup(
+        self,
+        df: IntoFrameT,
+        n_series: int | None = None,
+        max_mix: int = 3,
+        alpha: float = 1.5,
+        scaling: Literal["mean", "std", "none"] = "mean",
+        include_original: bool = True,
+    ) -> IntoFrameT:
+        """Augment a dataset with TSMixup convex combinations of real series.
+
+        Implements TSMixup, the augmentation used to pretrain the Chronos
+        forecasting models (Ansari et al. 2024, "Chronos: Learning the Language
+        of Time Series", https://arxiv.org/abs/2403.07815, Apache-2.0). Each
+        synthetic series is built by drawing ``1..max_mix`` source series,
+        taking a random window of their shared (minimum) length, scaling each
+        window, and combining them with convex weights sampled from a
+        ``Dirichlet(alpha)`` distribution. Unlike :meth:`augment`, a mixup
+        series is not tied to a single source: it blends the dynamics of
+        several, which broadens a small panel without fitting any generator.
+
+        Because the mixed series live in scaled space (different sources have
+        different magnitudes), the output retains the chosen scaling rather
+        than any single source's level. Use ``scaling="none"`` to mix raw
+        values when all series already share a scale.
+
+        Args:
+            df: Input DataFrame with time series (must have id_col, time_col,
+                target_col).
+            n_series: Number of synthetic series to create. Defaults to the
+                number of input series.
+            max_mix: Maximum number of source series combined per synthetic
+                series; the count is drawn uniformly from ``1..max_mix`` and
+                capped at the number of available series (default: 3).
+            alpha: Concentration of the symmetric Dirichlet weight
+                distribution. Values < 1 concentrate weight on few sources;
+                larger values spread it more evenly (default: 1.5).
+            scaling: Per-window scaling before mixing: 'mean' (divide by mean
+                absolute value, Chronos default), 'std' (z-normalize), or
+                'none' (default: 'mean').
+            include_original: Prepend the original series to the output
+                (default: True).
+
+        Notes:
+            NaNs in source series are linearly interpolated before mixing,
+            including nearest-value filling at the ends. Entirely missing
+            series are excluded. When ``include_original=True``, the original
+            rows and their missing values are retained unchanged.
+
+        Returns:
+            DataFrame with the original series (optional) and synthetic mixup
+            series. Mixup IDs follow the pattern ``"mixup_{i}"``.
+
+        Raises:
+            ValueError: If the DataFrame is missing required columns, if
+                arguments are out of range, or if it holds no usable series.
+
+        Example:
+            >>> augmenter = SynAugment(seed=42)
+            >>> mixed_df = augmenter.mixup(df, n_series=50)  # doctest: +SKIP
+        """
+        if max_mix < 1:
+            raise ValueError("max_mix must be >= 1")
+        if alpha <= 0:
+            raise ValueError("alpha must be > 0")
+        if scaling not in ("mean", "std", "none"):
+            raise ValueError("scaling must be one of 'mean', 'std', 'none'")
+
+        df_nw = nw.from_native(df)
+        self._validate_columns(df_nw)
+
+        # Typed as Any to match augment(): from_dict's backend accepts both a
+        # library name and an Implementation.
+        out_engine: Any = (
+            self.engine if self.engine is not None else df_nw.implementation
+        )
+        output_original = self._to_output_backend(df_nw, out_engine)
+
+        # Sort ids so series selection is reproducible: some backends do not
+        # guarantee an order from unique().
+        unique_ids = sorted(df_nw[self.id_col].unique().to_list())
+
+        # Cache each series' values and timestamps, sorted by time.
+        series: dict[Any, tuple[np.ndarray, np.ndarray]] = {}
+        for series_id in unique_ids:
+            sdf = df_nw.filter(nw.col(self.id_col) == series_id).sort(self.time_col)
+            values = sdf.select(self.target_col).to_numpy().flatten().astype(float)
+            timestamps = sdf.select(self.time_col).to_numpy().flatten()
+            if (
+                len(values) >= 1
+                and (values := self._interpolate_missing(values)) is not None
+            ):
+                series[series_id] = (values, timestamps)
+
+        usable_ids = list(series.keys())
+        n_available = len(usable_ids)
+        if n_available == 0:
+            raise ValueError("no usable series to mix")
+
+        if n_series is None:
+            n_series = n_available
+        if n_series < 1:
+            raise ValueError("n_series must be >= 1")
+        if n_series > 1_000_000:
+            raise ValueError("n_series must be <= 1_000_000 to prevent exhaustion")
+
+        reserved_ids = {str(series_id) for series_id in unique_ids}
+        mixup_ids: list[str] = []
+        candidate = 0
+        while len(mixup_ids) < n_series:
+            mixup_id = f"mixup_{candidate}"
+            candidate += 1
+            if mixup_id in reserved_ids:
+                continue
+            mixup_ids.append(mixup_id)
+            reserved_ids.add(mixup_id)
+
+        synthetic_dfs = []
+        for mixup_id in mixup_ids:
+            k_max = min(max_mix, n_available)
+            k = int(self.rng.integers(1, k_max + 1))
+            chosen = self.rng.choice(n_available, size=k, replace=False)
+            chosen_ids = [usable_ids[c] for c in chosen]
+
+            length = int(min(len(series[c][0]) for c in chosen_ids))
+            weights = self.rng.dirichlet(np.full(k, alpha))
+
+            mixed = np.zeros(length)
+            anchor_timestamps = None
+            for w, series_id in zip(weights, chosen_ids, strict=True):
+                values, timestamps = series[series_id]
+                start = int(self.rng.integers(0, len(values) - length + 1))
+                window = values[start : start + length]
+                if anchor_timestamps is None:
+                    anchor_timestamps = timestamps[start : start + length]
+                mixed += w * self._scale_window(window, scaling)
+
+            mix_df = nw.DataFrame.from_dict(
+                {
+                    self.id_col: [mixup_id] * length,
+                    self.time_col: anchor_timestamps,
+                    self.target_col: mixed,
+                },
+                backend=out_engine,
+            )
+            synthetic_dfs.append(mix_df)
+
+        frames = [output_original] if include_original else []
+        frames.extend(synthetic_dfs)
+        # Normalize id (mixup ids are strings) and target (mixed is float) so
+        # the frames concatenate across the original and synthetic batches.
+        time_dtype = output_original.schema[self.time_col]
+        frames = [
+            frame.with_columns(
+                nw.col(self.id_col).cast(nw.String()),
+                nw.col(self.time_col).cast(time_dtype),
+                nw.col(self.target_col).cast(nw.Float64()),
+            )
+            for frame in frames
+        ]
+        result = _categorize_ids(nw.concat(frames), self.id_col)
 
         return result.to_native()
 
@@ -792,9 +999,9 @@ class SynAugment:
                 pass
 
         elif generator_name == "GeometricBrownianMotionGenerator":
-            # GBM params are already correct
-            if "initial_value" in params:
-                params["S0"] = params.pop("initial_value")
+            # fit_gbm already returns the generator's field names
+            # (mu, sigma, initial_value); no renaming needed.
+            pass
 
         elif generator_name == "RandomWalkGenerator":
             # RandomWalk params are already correct

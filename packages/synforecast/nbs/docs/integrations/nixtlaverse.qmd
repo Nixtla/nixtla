@@ -1,0 +1,59 @@
+---
+title: "Works with the Nixtlaverse"
+description: "Compare observed, augmented, and synthetic-only training workflows."
+---
+
+SynForecast produces the standard Nixtla long format: `unique_id` identifies a
+series, `ds` identifies time, and `y` contains the target. Materialized
+SynForecast data can therefore be passed directly to NeuralForecast,
+MLForecast, or StatsForecast.
+
+The executable guides compare three training regimes against the same temporal
+holdout:
+
+- **Observed only:** the baseline that synthetic workflows must beat.
+- **Observed + synthetic:** `SynAugment` is fitted to the training split and
+  adds statistically matched histories.
+- **Synthetic only:** the forecasting model is fitted without observed target
+  values. The exact transfer mechanism depends on the model family.
+
+## Integration guides
+
+- [NeuralForecast](neuralforecast.ipynb): zero-shot synthetic pretraining and
+  synthetic pretraining followed by fine-tuning.
+- [MLForecast](mlforecast.ipynb): global training with augmentation and
+  zero-shot transfer through `predict(new_df=...)`.
+- [StatsForecast](statsforecast.ipynb): local-model behavior and an honest
+  synthetic-history ensemble instead of transferable pretraining.
+
+All three use the classic Box–Jenkins airline passenger series, reserve its
+last 12 months before generation, report holdout MAE, and save their forecast
+plots. They are workflow demonstrations rather than evidence that synthetic
+data always improves accuracy.
+
+## Materialize synthetic data
+
+```python
+from synforecast import SynAugment, generate_series
+
+augmented_train_df = SynAugment(seed=42).augment(
+    train_df,
+    n_augment=2,
+)
+synthetic_pretrain_df = generate_series(
+    n_series=1_000,
+    freq="D",
+    min_length=100,
+    max_length=100,
+    seed=42,
+)
+```
+
+Fit augmentation parameters on training observations only. Using validation or
+test values would leak future information into the generated training set.
+Synthetic data also inherits its generators' assumptions, so retain an
+observed-only baseline and evaluate multiple temporal folds and random seeds.
+
+These examples materialize data before model fitting. On-the-fly training-data
+generation would require a streaming data-source interface in the forecasting
+library and is not part of the current integration.

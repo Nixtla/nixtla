@@ -5,7 +5,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from synforecast.dataset import SynAugment
+from synforecast import SynAugment
 
 
 class TestSynAugment:
@@ -444,6 +444,29 @@ class TestSynAugment:
 
         assert isinstance(augmented_df, pd.DataFrame)
 
+    @pytest.mark.parametrize(
+        ("input_engine", "output_engine", "expected_type"),
+        [
+            ("pandas", "polars", pl.DataFrame),
+            ("polars", "pandas", pd.DataFrame),
+        ],
+    )
+    def test_explicit_backend_converts_input(
+        self, input_engine: str, output_engine: str, expected_type: type
+    ) -> None:
+        """An explicit engine controls output even when it differs from input."""
+        n = 50
+        data = {
+            "unique_id": ["series_0"] * n,
+            "ds": pd.date_range("2020-01-01", periods=n, freq="h"),
+            "y": np.cumsum(np.random.default_rng(7).normal(size=n)),
+        }
+        df = pl.DataFrame(data) if input_engine == "polars" else pd.DataFrame(data)
+
+        out = SynAugment(seed=42, engine=output_engine).augment(df, n_augment=1)
+
+        assert isinstance(out, expected_type)
+
     def test_missing_columns_error(self) -> None:
         """Test that missing columns raise ValueError."""
         df = pl.DataFrame(
@@ -821,3 +844,184 @@ class TestSynAugmentValidation:
 
         with pytest.raises(ValueError, match="n_augment must be <= 1000"):
             augmenter.augment(df, n_augment=1001)
+
+
+def _panel(engine: str, n_series: int = 4, base_len: int = 60):
+    """Build a small multi-series panel for mixup tests."""
+    rng = np.random.default_rng(0)
+    ids, ds, y = [], [], []
+    for s in range(n_series):
+        length = base_len + s * 10
+        ids += [f"s{s}"] * length
+        ds += list(pd.date_range("2020-01-01", periods=length, freq="D"))
+        y += list(rng.normal(100 * (s + 1), 5, length))
+    data = {"unique_id": ids, "ds": ds, "y": y}
+    return pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+
+class TestTSMixup:
+    """Tests for SynAugment.mixup (TSMixup augmentation)."""
+
+    def test_creates_requested_number_of_series(self, engine: str) -> None:
+        df = _panel(engine)
+        out = SynAugment(seed=42).mixup(df, n_series=20)
+        out_pl = pl.from_pandas(out) if engine == "pandas" else out
+        ids = out_pl["unique_id"].unique().to_list()
+        assert sum(str(u).startswith("mixup_") for u in ids) == 20
+        # Originals preserved by default.
+        assert all(f"s{s}" in [str(u) for u in ids] for s in range(4))
+
+    def test_default_n_series_matches_input(self, engine: str) -> None:
+        df = _panel(engine)
+        out = SynAugment(seed=0).mixup(df, include_original=False)
+        out_pl = pl.from_pandas(out) if engine == "pandas" else out
+        assert out_pl["unique_id"].n_unique() == 4
+
+    def test_seed_determinism(self) -> None:
+        df = _panel("polars")
+        o1 = SynAugment(seed=1).mixup(df, n_series=10, include_original=False)
+        o2 = SynAugment(seed=1).mixup(df, n_series=10, include_original=False)
+        assert o1.equals(o2)
+
+    def test_different_seeds_differ(self) -> None:
+        df = _panel("polars")
+        o1 = SynAugment(seed=1).mixup(df, n_series=10, include_original=False)
+        o2 = SynAugment(seed=2).mixup(df, n_series=10, include_original=False)
+        assert not o1.equals(o2)
+
+    def test_output_is_finite(self, engine: str) -> None:
+        df = _panel(engine)
+        out = SynAugment(seed=3).mixup(df, n_series=15, include_original=False)
+        values = pl.from_pandas(out)["y"] if engine == "pandas" else out["y"]
+        assert np.all(np.isfinite(values.to_numpy()))
+
+    @pytest.mark.parametrize(
+        ("input_engine", "output_engine", "expected_type"),
+        [
+            ("pandas", "polars", pl.DataFrame),
+            ("polars", "pandas", pd.DataFrame),
+        ],
+    )
+    def test_explicit_backend_converts_input(
+        self, input_engine: str, output_engine: str, expected_type: type
+    ) -> None:
+        df = _panel(input_engine)
+        out = SynAugment(seed=3, engine=output_engine).mixup(df, n_series=3)
+        assert isinstance(out, expected_type)
+
+    def test_generated_ids_do_not_collide(self, engine: str) -> None:
+        df = _panel(engine, n_series=2, base_len=10)
+        if engine == "polars":
+            df = df.with_columns(
+                pl.when(pl.col("unique_id") == "s0")
+                .then(pl.lit("mixup_0"))
+                .otherwise(pl.col("unique_id"))
+                .alias("unique_id")
+            )
+        else:
+            df["unique_id"] = df["unique_id"].replace({"s0": "mixup_0"})
+
+        out = SynAugment(seed=4).mixup(df, n_series=2)
+        out_pl = pl.from_pandas(out) if engine == "pandas" else out
+        ids = set(out_pl["unique_id"].cast(pl.String).to_list())
+
+        assert ids == {"mixup_0", "mixup_1", "mixup_2", "s1"}
+        assert out_pl.filter(pl.col("unique_id") == "mixup_0").height == 10
+
+    def test_missing_values_are_interpolated(self, engine: str) -> None:
+        data = {
+            "unique_id": ["a"] * 5 + ["b"] * 5,
+            "ds": list(pd.date_range("2020-01-01", periods=5, freq="D")) * 2,
+            "y": [np.nan, 1.0, np.nan, 3.0, np.nan, 2.0, 4.0, 6.0, 8.0, 10.0],
+        }
+        df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+        out = SynAugment(seed=5).mixup(df, n_series=5, include_original=False)
+        values = pl.from_pandas(out)["y"] if engine == "pandas" else out["y"]
+
+        assert np.all(np.isfinite(values.to_numpy()))
+
+    def test_entirely_missing_panel_is_rejected(self, engine: str) -> None:
+        data = {
+            "unique_id": ["a"] * 3,
+            "ds": pd.date_range("2020-01-01", periods=3, freq="D"),
+            "y": [np.nan] * 3,
+        }
+        df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+        with pytest.raises(ValueError, match="no usable series"):
+            SynAugment(seed=6).mixup(df)
+
+    def test_scaling_modes(self, engine: str) -> None:
+        df = _panel(engine)
+        for scaling in ("mean", "std", "none"):
+            out = SynAugment(seed=0).mixup(df, n_series=5, scaling=scaling)
+            assert out is not None
+
+    def test_single_series_panel(self) -> None:
+        df = _panel("polars", n_series=1)
+        out = SynAugment(seed=0).mixup(df, n_series=3, include_original=False)
+        assert out["unique_id"].n_unique() == 3
+
+    def test_invalid_arguments(self) -> None:
+        df = _panel("polars")
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, max_mix=0)
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, alpha=0.0)
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, scaling="bogus")
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, n_series=0)
+
+
+class TestGeneratorParamConversion:
+    """_convert_params_for_generator must emit only valid generator fields."""
+
+    def test_gbm_params_match_model_fields(self) -> None:
+        """Regression: GBM conversion used to rename initial_value -> 'S0',
+        an unknown field, forcing a silent fallback to AR(1)."""
+        from synforecast._fitting import fit_gbm
+        from synforecast.generators import GeometricBrownianMotionGenerator
+
+        rng = np.random.default_rng(0)
+        series = 100 * np.exp(np.cumsum(rng.normal(0.01, 0.02, 200)))
+        fitted = fit_gbm(series)
+
+        converted = SynAugment(seed=0)._convert_params_for_generator(
+            "GeometricBrownianMotionGenerator", fitted, series
+        )
+        valid_fields = set(GeometricBrownianMotionGenerator.model_fields)
+        assert set(converted) <= valid_fields, (
+            f"unknown GBM params: {sorted(set(converted) - valid_fields)}"
+        )
+        assert "S0" not in converted
+        # The generator must accept the converted params without error.
+        GeometricBrownianMotionGenerator(
+            min_length=50, max_length=50, freq="D", **converted
+        )
+
+    def test_gbm_override_augmentation_runs(self) -> None:
+        """Augmenting with a GBM override yields finite series, no fallback."""
+        rng = np.random.default_rng(1)
+        n = 200
+        df = pl.DataFrame(
+            {
+                "unique_id": ["g"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2000, 1, 1),
+                    pl.datetime(2000, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": 100 * np.exp(np.cumsum(rng.normal(0.01, 0.02, n))),
+            }
+        )
+        out = SynAugment(seed=1).augment(
+            df,
+            n_augment=3,
+            generator_override={"g": "GeometricBrownianMotionGenerator"},
+        )
+        assert out["unique_id"].n_unique() == 4
+        aug = out.filter(pl.col("unique_id") == "g_aug_0")["y"].to_numpy()
+        assert np.all(np.isfinite(aug))

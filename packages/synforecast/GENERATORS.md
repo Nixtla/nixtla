@@ -4,12 +4,12 @@ Reference for all synthetic time series generators in SynForecast, organized by 
 
 ## Overview
 
-SynForecast provides **30 generators** organized into five categories:
+SynForecast provides **31 generators** organized into five categories:
 - **Statistical** (5): Classical time series models
 - **Stochastic** (13): Stochastic process-based generators
 - **Multivariate** (3): Multi-dimensional time series
 - **Domain-Specific** (7): Industry/application-focused generators
-- **Pretraining** (2): Diversity-targeted generators for foundation-model corpora
+- **Pretraining** (3): Diversity-targeted generators for foundation-model corpora
 
 All generators share the same constructor and `generate()` interface. Constructors are keyword-only:
 
@@ -533,6 +533,21 @@ Designed for diverse pretraining corpora: each series samples a fresh random
 configuration, so a pool spans
 trend-only, pure-seasonal, causally-structured, and noise-dominated regimes.
 
+The `pretraining_pool()` preset collects these three meta-generators (plus the
+interpretable `balanced_pool` by default) into a breadth-maximizing corpus:
+
+```python
+from synforecast import SynSet, pretraining_pool
+
+df = SynSet(pretraining_pool(min_length=512, max_length=512, freq="h")).generate(
+    n_series_per_generator=1
+)
+```
+
+KernelSynth and Gaussian-process sampling require covariance factorizations,
+whose cost grows cubically with series length. Scale the length and number of
+series gradually when building a large corpus.
+
 ### TSIGenerator
 
 Trend + seasonality + irregularity composition with randomized presence,
@@ -568,6 +583,28 @@ pretraining data with genuine causal/lead-lag structure.
 | `heteroscedastic_prob` | prob | Slow random noise-scale envelope per node |
 | `multivariate` | `False` | When True, `generate(n_series)` observes n_series nodes of one shared causal system as correlated series |
 
+### KernelSynthGenerator
+
+Samples each series from a Gaussian-process prior whose kernel is a random
+composition of `1..max_kernels` base kernels combined with `+`/`*` operators.
+This adapts the KernelSynth recipe used to pretrain the Chronos models (Ansari
+et al. 2024) and the Apache-2.0-licensed
+[reference implementation](https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py).
+SynForecast adds a configurable kernel bank, time-step seasonal periods,
+bounded retries, divergence guards, and optional standardization.
+**Applications**: pretraining data with controllable temporal structure.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_kernels` | `5` | Base kernels composed per series (drawn from `1..max_kernels`) |
+| `seasonal_periods` | broad pool | Periodic-kernel periods in time steps (4–730) |
+| `rbf_length_scales` | `[0.1, 1.0, 10.0]` | RBF length scales on the normalized grid |
+| `rational_quadratic_alphas` | `[0.1, 1.0, 10.0]` | Rational-quadratic shape parameters |
+| `linear_sigmas` | `[0.0, 1.0, 10.0]` | Linear (DotProduct) `sigma_0` offsets |
+| `white_noise_levels` | `[0.1, 1.0]` | White-kernel diagonal noise levels |
+| `include_constant` | `True` | Include a constant kernel in the bank |
+| `standardize` | `True` | Standardize each series to zero mean, unit variance |
+
 ### Multivariatizer
 
 Not a generator: `synforecast.Multivariatizer` wraps any univariate
@@ -589,9 +626,10 @@ mv = Multivariatizer(
 df = mv.generate(n_series=4)
 ```
 
-Both pretraining generators use the Rust batch path when the extension is
-available. Reproduce performance measurements on your hardware with the
-scripts in `benchmarks/`; benchmark results are not API guarantees.
+TSI and TCM use the Rust batch path when the extension is available;
+KernelSynth is pure NumPy (it runs on the threaded fallback path). Reproduce
+performance measurements on your hardware with the scripts in `benchmarks/`;
+benchmark results are not API guarantees.
 
 ---
 
@@ -629,6 +667,7 @@ scripts in `benchmarks/`; benchmark results are not API guarantees.
 | Clickstream | Domain | Web Analytics | Sessions, conversions |
 | TSI | Pretraining | Foundation models | Randomized trend/seasonal/irregular composition |
 | TCM | Pretraining | Foundation models | Random causal graphs, nonlinear lead-lag structure |
+| KernelSynth | Pretraining | Foundation models | GP samples from randomly composed kernels (Chronos recipe) |
 
 ---
 
@@ -653,15 +692,16 @@ df = generator.generate(n_series=10)
 #   unique_id (integer categorical), ds (datetime64[ns]), y (float64)
 ```
 
-See the `examples/` directory for detailed usage examples of each generator.
+See the [`nbs/docs/generators`](https://github.com/Nixtla/synforecast/tree/main/nbs/docs/generators)
+directory for executable guides to each generator.
 
 ---
 
 ## References and attribution
 
-SynForecast implements the models and numerical methods in this repository;
-it does not copy code from the references below. These are the primary sources
-for named models or algorithms used by the implementation:
+Unless noted otherwise, SynForecast implements the models and numerical methods
+independently. These are the primary sources for named models or algorithms;
+the KernelSynth entry explicitly identifies its reference implementation:
 
 - Hyndman, Koehler, Ord, and Snyder (2008), *Forecasting with Exponential
   Smoothing: The State Space Approach*,
@@ -698,6 +738,13 @@ for named models or algorithms used by the implementation:
   (temporal structural-causal framing). `TCMGenerator`'s graph sampler and
   rollout are original SynForecast design choices, not an implementation
   published in that review.
+- Ansari et al. (2024), “Chronos: Learning the Language of Time Series,”
+  [arXiv:2403.07815](https://arxiv.org/abs/2403.07815), and the official
+  Apache-2.0-licensed
+  [KernelSynth implementation](https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py)
+  (KernelSynth and TSMixup recipes; the linked script is the KernelSynth
+  reference implementation). SynForecast's deviations are described above
+  and in the corresponding API documentation.
 - Ansari et al. (2025), “Chronos-2: From Univariate to Universal Forecasting,”
   [arXiv:2510.15821](https://arxiv.org/abs/2510.15821) (motivation for the
   cotemporaneous and sequential couplings in `Multivariatizer`).

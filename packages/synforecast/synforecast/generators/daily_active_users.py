@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
-from pydantic import Field, model_validator
+from pydantic import Field, PrivateAttr, model_validator
 
 from synforecast.base import BaseGenerator
 from synforecast.exogenous import SeriesMetadata
@@ -99,8 +99,8 @@ class DailyActiveUsersGenerator(BaseGenerator):
         default="event", description="Name of the event indicator column"
     )
 
-    # Events of the most recently generated series (excluded from serialization)
-    current_events: Any = Field(default=None, init=False, exclude=True)
+    # Events of the most recently generated series.
+    _current_events: Any = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def validate_dau_params(self) -> "DailyActiveUsersGenerator":
@@ -112,7 +112,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
         if self.event_impact_max < self.event_impact_min:
             raise ValueError("event_impact_max must be >= event_impact_min")
 
-        object.__setattr__(self, "current_events", np.array([]))
+        self._current_events = np.array([])
         return self
 
     def _get_day_index(self, t: int) -> int:
@@ -126,7 +126,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
     def generate_single_series(self, length: int) -> np.ndarray:
         """Generate values for a single DAU time series.
 
-        Also populates ``self.current_events`` with event indicators.
+        Also populates ``self._current_events`` with event indicators.
 
         Args:
             length (int): The length of the series to generate.
@@ -157,7 +157,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
                 self._step_hours(),
                 seed,
             )
-            object.__setattr__(self, "current_events", events.astype(np.int32))
+            self._current_events = events.astype(np.int32)
             return dau
 
         dau = np.zeros(length)
@@ -181,7 +181,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
             dau[t] += self.rng.normal(0, self.noise_std * dau[t])
 
         dau = np.maximum(dau, 0)
-        self.current_events = events
+        self._current_events = events
         return dau
 
     def generate(
@@ -210,7 +210,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
 
             values = self.generate_single_series(length=length)
             # Capture events before pattern injection modifies anything
-            events = self.current_events.copy()
+            events = self._current_events.copy()
 
             values, cp_indices, anom_indices, miss_indices = (
                 self._apply_pattern_injection(values)

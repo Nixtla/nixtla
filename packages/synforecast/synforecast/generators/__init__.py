@@ -21,6 +21,7 @@ from synforecast.generators.inar import INARGenerator
 from synforecast.generators.intermittent_demand import IntermittentDemandGenerator
 from synforecast.generators.iot_sensor import IoTSensorGenerator
 from synforecast.generators.jump_diffusion import JumpDiffusionGenerator
+from synforecast.generators.kernel_synth import KernelSynthGenerator
 from synforecast.generators.levy_process import LevyProcessGenerator
 from synforecast.generators.ornstein_uhlenbeck import OrnsteinUhlenbeckGenerator
 from synforecast.generators.poisson_process import PoissonProcessGenerator
@@ -71,4 +72,5 @@ __all__ = [
     # Composition / causal (foundation-model pretraining)
     "TSIGenerator",
     "TCMGenerator",
+    "KernelSynthGenerator",
 ]
