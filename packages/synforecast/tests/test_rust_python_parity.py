@@ -1,5 +1,4 @@
-"""Tests for Rust/Python parity.
-"""
+"""Tests for Rust/Python parity."""
 
 import importlib
 
