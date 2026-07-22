@@ -19,7 +19,8 @@ class CyclicGenerator(BaseGenerator):
     Models business cycles and economic indicators: a linear trend plus
     ``num_cycles`` superposed sinusoids whose periods and amplitudes are
     drawn once per series (period ~ |N(period_mean, period_std)|,
-    amplitude ~ N(amplitude_mean, amplitude_std)), plus Gaussian noise.
+    amplitude ~ N(amplitude_mean, amplitude_std)), plus additive noise drawn
+    from the configured ``innovation_distribution``.
     Each sinusoid's instantaneous frequency is slowly modulated (+-20%
     around 2*pi/period, integrated as a cumulative phase), so cycle
     lengths vary within a series, unlike regular seasonal patterns.
@@ -68,6 +69,8 @@ class CyclicGenerator(BaseGenerator):
                     self.cycle_amplitude_std,
                     float(self.num_cycles),
                     self.noise_std,
+                    float(self._rs_innov_dist),
+                    self._rs_innov_param,
                 ]
             ),
             [],
@@ -95,6 +98,8 @@ class CyclicGenerator(BaseGenerator):
                 self.num_cycles,
                 self.noise_std,
                 seed,
+                self._rs_innov_dist,
+                self._rs_innov_param,
             )
         t = np.arange(length)
         series = self.base_level + self.trend * t
@@ -124,5 +129,5 @@ class CyclicGenerator(BaseGenerator):
             cycle_component += amplitude * np.sin(cumulative_phase)
 
         series += cycle_component
-        series += self.rng.normal(0, self.noise_std, length)
+        series += self._sample_innovations(length, scale=self.noise_std)
         return series
