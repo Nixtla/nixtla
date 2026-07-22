@@ -525,12 +525,15 @@ pub fn iot_sensor(
     period: f64,
     measurement_noise: f64,
     drift_rate: f64,
+    drift_noise: f64,
     battery_degradation: bool,
     battery_life: f64,
+    battery_degradation_rate: f64,
     calibration_offset: f64,
     failure_mode: i32,
     failure_probability: f64,
     failure_duration: i32,
+    stuck_value: Option<f64>,
     _spatial_correlation: f64,
     seed: u64,
 ) {
@@ -541,7 +544,7 @@ pub fn iot_sensor(
     let mut complete_failure_active = false;
     let mut intermittent_remaining = 0_i32;
     let mut stuck_remaining = 0_i32;
-    let mut stuck_value = 0.0_f64;
+    let mut stuck_reading = 0.0_f64;
 
     for (t, out_v) in out.iter_mut().enumerate() {
         let tf = t as f64;
@@ -555,22 +558,24 @@ pub fn iot_sensor(
         // 2. Add calibration offset
         signal += calibration_offset;
 
-        // 3. Add sensor drift: cumulative random walk
-        drift_accum += drift_rate + rng.normal(0.0, drift_rate * 0.1);
+        // 3. Add sensor drift: cumulative random walk with per-step mean
+        //    drift_rate and std drift_noise (first increment is zero).
+        if t > 0 {
+            drift_accum += rng.normal(drift_rate, drift_noise);
+        }
         signal += drift_accum;
 
-        // 4. Add measurement noise
-        let mut noise_level = measurement_noise;
+        // 4. Add base measurement noise (all steps)
+        signal += rng.normal(0.0, measurement_noise);
 
-        // 5. Battery degradation: after battery_life steps, increase noise
-        //    and decrease signal
-        if battery_degradation && tf > battery_life {
-            let degradation_factor = (tf - battery_life) / battery_life;
-            noise_level *= 1.0 + degradation_factor;
-            signal *= 1.0 - 0.1 * degradation_factor.min(1.0);
+        // 5. Battery degradation: after battery_life steps, add extra noise
+        //    scaled by battery_degradation_rate and attenuate the signal.
+        if battery_degradation && tf >= battery_life {
+            let steps_since = tf - battery_life;
+            let degradation_factor = 1.0 + steps_since * battery_degradation_rate;
+            signal += rng.normal(0.0, measurement_noise * degradation_factor);
+            signal *= (1.0 - steps_since * battery_degradation_rate * 0.1).max(0.0);
         }
-
-        signal += rng.normal(0.0, noise_level);
 
         // 6. Failure modes
         match failure_mode {
@@ -594,12 +599,15 @@ pub fn iot_sensor(
                 }
             }
             3 => {
-                // Stuck: probabilistic stuck-value bursts of failure_duration
+                // Stuck: probabilistic stuck-value bursts of failure_duration.
+                // Freeze at the configured stuck_value if given, else at the
+                // reading when the episode starts.
                 if stuck_remaining > 0 {
-                    signal = stuck_value;
+                    signal = stuck_reading;
                     stuck_remaining -= 1;
                 } else if rng.uniform01() < failure_probability {
-                    stuck_value = signal;
+                    stuck_reading = stuck_value.unwrap_or(signal);
+                    signal = stuck_reading;
                     stuck_remaining = failure_duration - 1;
                 }
             }
@@ -1030,7 +1038,8 @@ mod tests {
     fn test_iot_sensor_no_failure() {
         let mut out = vec![0.0; N];
         iot_sensor(
-            &mut out, 25.0, 0.001, 5.0, 100.0, 0.5, 0.0001, false, 500.0, 0.0, 0, 0.0, 10, 0.0, 42,
+            &mut out, 25.0, 0.001, 5.0, 100.0, 0.5, 0.0001, 0.01, false, 500.0, 0.001, 0.0, 0, 0.0,
+            10, None, 0.0, 42,
         );
         assert_finite(&out, "iot_no_failure");
     }
@@ -1039,7 +1048,8 @@ mod tests {
     fn test_iot_sensor_complete_failure_has_nan() {
         let mut out = vec![0.0; 500];
         iot_sensor(
-            &mut out, 25.0, 0.0, 0.0, 100.0, 0.5, 0.0, false, 500.0, 0.0, 1, 0.1, 10, 0.0, 42,
+            &mut out, 25.0, 0.0, 0.0, 100.0, 0.5, 0.0, 0.01, false, 500.0, 0.001, 0.0, 1, 0.1, 10,
+            None, 0.0, 42,
         );
         // Complete failure (mode=1, prob=0.1) should eventually produce NaN
         let nan_count = out.iter().filter(|v| v.is_nan()).count();
@@ -1050,7 +1060,8 @@ mod tests {
     fn test_iot_sensor_with_degradation() {
         let mut out = vec![0.0; N];
         iot_sensor(
-            &mut out, 25.0, 0.001, 5.0, 100.0, 0.5, 0.0001, true, 100.0, 1.0, 0, 0.0, 10, 0.0, 42,
+            &mut out, 25.0, 0.001, 5.0, 100.0, 0.5, 0.0001, 0.01, true, 100.0, 0.001, 1.0, 0, 0.0,
+            10, None, 0.0, 42,
         );
         assert_finite(&out, "iot_degradation");
     }
@@ -1060,7 +1071,8 @@ mod tests {
         assert_deterministic(
             |o| {
                 iot_sensor(
-                    o, 25.0, 0.001, 5.0, 100.0, 0.5, 0.0001, false, 500.0, 0.0, 0, 0.0, 10, 0.0, 42,
+                    o, 25.0, 0.001, 5.0, 100.0, 0.5, 0.0001, 0.01, false, 500.0, 0.001, 0.0, 0,
+                    0.0, 10, None, 0.0, 42,
                 )
             },
             "iot_sensor",

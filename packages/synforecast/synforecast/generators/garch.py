@@ -69,7 +69,9 @@ class GARCHGenerator(BaseGenerator):
 
         if self.beta is None:
             remaining = 0.95 - np.sum(alpha_array)
-            beta_array = self.rng.uniform(0.1, remaining / self.p, self.p)
+            high = remaining / self.p
+            low = min(0.1, high / 2)
+            beta_array = self.rng.uniform(low, high, self.p)
         else:
             if len(self.beta) != self.p:
                 raise ValueError(f"beta must have p={self.p} elements")

@@ -127,6 +127,8 @@ pub fn cyclic(
     num_cycles: i32,
     noise_std: f64,
     seed: u64,
+    innov_dist: i32,
+    innov_param: f64,
 ) {
     let mut rng = SfRng::new(seed);
 
@@ -162,9 +164,9 @@ pub fn cyclic(
         }
     }
 
-    // Add noise
+    // Add noise from the configured innovation distribution
     for v in out.iter_mut() {
-        *v += rng.normal(0.0, noise_std);
+        *v += rng.sample_innovation(noise_std, innov_dist, innov_param);
     }
 }
 
@@ -822,14 +824,14 @@ mod tests {
     #[test]
     fn test_cyclic_finite() {
         let mut out = vec![0.0; N];
-        cyclic(&mut out, 0.0, 0.0, 50.0, 5.0, 10.0, 2.0, 3, 0.5, 42);
+        cyclic(&mut out, 0.0, 0.0, 50.0, 5.0, 10.0, 2.0, 3, 0.5, 42, 0, 0.0);
         assert_finite(&out, "cyclic");
     }
 
     #[test]
     fn test_cyclic_deterministic() {
         assert_deterministic(
-            |o| cyclic(o, 0.0, 0.0, 50.0, 5.0, 10.0, 2.0, 3, 0.5, 42),
+            |o| cyclic(o, 0.0, 0.0, 50.0, 5.0, 10.0, 2.0, 3, 0.5, 42, 0, 0.0),
             "cyclic",
         );
     }

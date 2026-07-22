@@ -7,7 +7,7 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 from pydantic import Field, model_validator
 
-from synforecast.base import BaseGenerator
+from synforecast.base import BaseGenerator, _categorize_ids
 
 try:
     from synforecast._lib import statistical as _rs_stat
@@ -543,11 +543,9 @@ class ETSGenerator(BaseGenerator):
         # Create observations DataFrame
         flat_values = np.concatenate(all_values)
         flat_timestamps = np.concatenate(all_timestamps)
-        flat_ids = np.concatenate(
-            [
-                np.full(length, f"series_{series_id}")
-                for length, series_id in zip(all_lengths, all_ids, strict=False)
-            ]
+        flat_ids = np.repeat(
+            np.array(all_ids, dtype=np.int64),
+            all_lengths,
         )
 
         obs_result = {
@@ -555,7 +553,8 @@ class ETSGenerator(BaseGenerator):
             self.time_col: flat_timestamps,
             self.target_col: flat_values,
         }
-        obs_df = nw.DataFrame.from_dict(obs_result, backend=self.engine).to_native()
+        obs_nw = nw.DataFrame.from_dict(obs_result, backend=self.engine)
+        obs_df = _categorize_ids(obs_nw, self.id_col).to_native()
 
         # Create states DataFrame
         states_flat_ids = []
@@ -571,7 +570,7 @@ class ETSGenerator(BaseGenerator):
             ts = state_data["timestamps"]
             length = len(ts)
 
-            states_flat_ids.extend([f"series_{series_id}"] * length)
+            states_flat_ids.extend([series_id] * length)
             states_flat_timestamps.extend(ts)
             states_flat_levels.extend(state_data["levels"])
             states_flat_trends.extend(state_data["trends"])
@@ -583,7 +582,7 @@ class ETSGenerator(BaseGenerator):
                     )
 
         states_result = {
-            self.id_col: np.array(states_flat_ids),
+            self.id_col: np.array(states_flat_ids, dtype=np.int64),
             self.time_col: np.concatenate([d["timestamps"] for d in all_states_data]),
             "level": np.array(states_flat_levels),
             "trend": np.array(states_flat_trends),
@@ -596,9 +595,8 @@ class ETSGenerator(BaseGenerator):
                     states_flat_seasonals[f"seasonal_{j}"]
                 )
 
-        states_df = nw.DataFrame.from_dict(
-            states_result, backend=self.engine
-        ).to_native()
+        states_nw = nw.DataFrame.from_dict(states_result, backend=self.engine)
+        states_df = _categorize_ids(states_nw, self.id_col).to_native()
 
         return obs_df, states_df
 

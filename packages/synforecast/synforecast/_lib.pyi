@@ -163,6 +163,8 @@ class stochastic:
         num_cycles: int,
         noise_std: float,
         seed: int,
+        innov_dist: int,
+        innov_param: float,
     ) -> npt.NDArray[np.float64]: ...
     @staticmethod
     def garch(
@@ -404,12 +406,15 @@ class domain:
         period: float,
         measurement_noise: float,
         drift_rate: float,
+        drift_noise: float,
         battery_degradation: bool,
         battery_life: float,
+        battery_degradation_rate: float,
         calibration_offset: float,
         failure_mode: int,
         failure_probability: float,
         failure_duration: int,
+        stuck_value: float | None,
         spatial_correlation: float,
         seed: int,
     ) -> npt.NDArray[np.float64]: ...

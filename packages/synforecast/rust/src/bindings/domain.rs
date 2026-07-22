@@ -207,7 +207,7 @@ pub fn vital_signs(
 }
 
 #[pyfunction]
-#[pyo3(signature = (length, base_value, trend, amplitude, period, measurement_noise, drift_rate, battery_degradation, battery_life, calibration_offset, failure_mode, failure_probability, failure_duration, spatial_correlation, seed))]
+#[pyo3(signature = (length, base_value, trend, amplitude, period, measurement_noise, drift_rate, drift_noise, battery_degradation, battery_life, battery_degradation_rate, calibration_offset, failure_mode, failure_probability, failure_duration, stuck_value, spatial_correlation, seed))]
 #[allow(clippy::too_many_arguments)]
 pub fn iot_sensor(
     py: Python<'_>,
@@ -218,12 +218,15 @@ pub fn iot_sensor(
     period: f64,
     measurement_noise: f64,
     drift_rate: f64,
+    drift_noise: f64,
     battery_degradation: bool,
     battery_life: f64,
+    battery_degradation_rate: f64,
     calibration_offset: f64,
     failure_mode: i32,
     failure_probability: f64,
     failure_duration: i32,
+    stuck_value: Option<f64>,
     spatial_correlation: f64,
     seed: u64,
 ) -> PyResult<Py<PyArray1<f64>>> {
@@ -243,12 +246,15 @@ pub fn iot_sensor(
             period,
             measurement_noise,
             drift_rate,
+            drift_noise,
             battery_degradation,
             battery_life,
+            battery_degradation_rate,
             calibration_offset,
             failure_mode,
             failure_probability,
             failure_duration,
+            stuck_value,
             spatial_correlation,
             seed,
         )
