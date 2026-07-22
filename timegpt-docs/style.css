@@ -1153,8 +1153,8 @@ body .code-group {
   display: none !important;
 }
 
-/* Mismo bg que el .code-block de MDX (--blog-code-bg #171614), no --code-group-bg
-   (#000 puro), para que los colores hagan match entre ambos code-groups. */
+/* Same bg as the MDX .code-block (--blog-code-bg #171614), not --code-group-bg
+   (pure #000), so the colors match across both code-groups. */
 .code-group:not(:has(.code-block)) [data-component-part="code-block-root"],
 .code-group:not(:has(.code-block)) pre.shiki {
   background-color: var(--blog-code-bg) !important;
@@ -1166,30 +1166,30 @@ html:not(.dark) .code-group:not(:has(.code-block)) .shiki span {
   color: var(--shiki-dark) !important;
 }
 
-/* El playground renderiza en tema claro con un fade overlay blanco
-   (--fade-color-light: #FFFFFF) que se ve encima del fondo negro forzado.
-   Se oculta igual que en la rama .code-block (data-attribute estable). */
+/* The playground renders in light theme with a white fade overlay
+   (--fade-color-light: #FFFFFF) that shows over the forced black background.
+   Hidden the same way as in the .code-block branch (stable data-attribute). */
 .code-group:not(:has(.code-block)) [data-fade-overlay] {
   display: none !important;
 }
 
-/* El code-group del API playground no tiene .code-block adentro NI role=tabpanel
-   en sus paneles (a diferencia del de MDX: sus paneles son
-   <div data-state=... id=radix-…-content-N> sin role). Por eso apuntamos DIRECTO
-   al code-block-root, no vía [role=tabpanel] — si no, borde/grain/position nunca
-   aplican. Recreamos marco + grain + esquinas cuadradas para igualar el look del
-   .code-block. Sin @layer y con especificidad alta para ganarle a rounded-xt!,
-   rounded-2xl y rounded-[inherit] de Tailwind. */
+/* The API playground code-group has no .code-block inside NOR role=tabpanel
+   on its panels (unlike the MDX one: its panels are
+   <div data-state=... id=radix-…-content-N> without a role). That's why we target
+   the code-block-root DIRECTLY, not via [role=tabpanel] — otherwise border/grain/position
+   never apply. We recreate the frame + grain + square corners to match the look of
+   the .code-block. No @layer and high specificity to beat Tailwind's rounded-xt!,
+   rounded-2xl and rounded-[inherit]. */
 .code-group:not(:has(.code-block)),
 .code-group:not(:has(.code-block)) > [data-component-part="code-group-tab-bar"],
 .code-group:not(:has(.code-block)) [data-component-part="code-block-root"] * {
   border-radius: 0 !important;
 }
-/* El panel aplica rounded-xt! (=14px, !important) al code-block-root vía
-   [&_[data-component-part=code-block-root]]:rounded-xt!, que vive en
-   @layer utilities. Para !important, una regla EN capa le gana a una sin capa,
-   así que subir especificidad afuera no alcanza: hay que overridear DENTRO de
-   @layer utilities. Misma capa → decide especificidad, y (0,4,0) > (0,2,0). */
+/* The panel applies rounded-xt! (=14px, !important) to the code-block-root via
+   [&_[data-component-part=code-block-root]]:rounded-xt!, which lives in
+   @layer utilities. For !important, a rule INSIDE a layer beats one outside a layer,
+   so raising specificity outside isn't enough: we must override INSIDE
+   @layer utilities. Same layer → specificity decides, and (0,4,0) > (0,2,0). */
 @layer utilities {
   .code-group:not(:has(.code-block))
     [data-component-part="code-block-root"][data-component-part] {
@@ -1220,21 +1220,21 @@ html:not(.dark) .code-group:not(:has(.code-block)) .shiki span {
   color: var(--blog-code-text) !important;
 }
 
-/* Tab-bar del playground = header estilo .code-block-header: padding con L/R
-   reales (6px 10px 6px 16px, el izq alinea con el código a 16px) y min-height
-   2.25rem. La regla general usa `var(--space-6) 0` (L/R = 0), que sirve para el
-   tab-bar de MDX (los tabs traen su propio inset ml-2.5), pero deja el header del
-   playground pegado al borde. Scoped al branch API. */
+/* Playground tab-bar = .code-block-header style header: padding with real L/R
+   (6px 10px 6px 16px, the left aligns with the code at 16px) and min-height
+   2.25rem. The general rule uses `var(--space-6) 0` (L/R = 0), which works for the
+   MDX tab-bar (its tabs bring their own ml-2.5 inset), but leaves the playground
+   header stuck to the edge. Scoped to the API branch. */
 .code-group:not(:has(.code-block))
   > [data-component-part="code-group-tab-bar"] {
   padding: 0.375rem 0.625rem 0.375rem 1rem !important;
   min-height: 2.25rem !important;
   position: relative;
 }
-/* Grain propio en el header del playground (mismo ::after que el code-block-root).
-   El body tiene grain por-elemento y se nota; el header solo recibía el grano
-   global (fixed, más tenue) y se veía plano. pointer-events:none deja el dropdown
-   y el copy clickeables. */
+/* Own grain on the playground header (same ::after as the code-block-root).
+   The body has per-element grain and it shows; the header only got the global
+   grain (fixed, fainter) and looked flat. pointer-events:none keeps the dropdown
+   and the copy button clickable. */
 .code-group:not(:has(.code-block))
   > [data-component-part="code-group-tab-bar"]::after {
   content: "";
@@ -2074,9 +2074,9 @@ details.expandable .primitive-param-field {
   color: var(--primary) !important;
 }
 
-/* Botón dismiss del banner: sin cambio de fondo (anula el hover:bg-gray-800 de
-   Tailwind); solo el ícono cambia, de --primary-muted (reposo) a --primary
-   (hover) para un cambio de intensidad visible. Ambos tokens son theme-aware. */
+/* Banner dismiss button: no background change (overrides Tailwind's
+   hover:bg-gray-800); only the icon changes, from --primary-muted (rest) to --primary
+   (hover) for a visible intensity change. Both tokens are theme-aware. */
 #banner button[aria-label="Dismiss banner"]:hover {
   background-color: transparent !important;
 }
@@ -2183,10 +2183,10 @@ details.expandable .primitive-param-field {
   border-color: var(--dropdown-border) !important;
 }
 
-/* Cubre menuitem (menús normales) y menuitemradio (selector de lenguaje del
-   code-group). Sin esto, los menuitemradio conservan `dark:text-primary-light`
-   (= #FFF por docs.json light:#FFF) y quedan texto blanco sobre el fondo crema
-   que --dropdown-bg fuerza en dark mode → se ve "todo blanco". */
+/* Covers menuitem (normal menus) and menuitemradio (code-group language
+   selector). Without this, menuitemradio keeps `dark:text-primary-light`
+   (= #FFF via docs.json light:#FFF) and ends up white text over the cream background
+   that --dropdown-bg forces in dark mode → looks "all white". */
 [role="menu"][data-orientation="vertical"] [role="menuitem"],
 [role="menu"][data-orientation="vertical"] [role="menuitem"] *,
 [role="menu"][data-orientation="vertical"] [role="menuitemradio"],
@@ -2289,9 +2289,9 @@ div:has(> .chat-assistant-floating-input) {
   overflow: visible !important;
 }
 
-/* Intercom launcher: solo forzamos el tamaño (60px). El fondo y el color del
-   icono quedan con el default de Intercom — sin override. Target la clase estable
-   .intercom-launcher (las hasheadas intercom-… cambian por build). */
+/* Intercom launcher: we only force the size (60px). The icon's background and color
+   keep Intercom's default — no override. Target the stable class
+   .intercom-launcher (the hashed intercom-… ones change per build). */
 .intercom-launcher {
   width: 60px !important;
   height: 60px !important;
@@ -2495,11 +2495,11 @@ body::after {
   margin-top: var(--space-20) !important;
 }
 
-/* Debajo de lg, la columna derecha del playground (request + response) se apila.
-   El contenedor `mt-8 lg:mt-0` tiene un solo hijo: un grid con los 2 code-group.
-   Separación por margin-top (--space-20 = 20px) en el 2º code-group; se anula el
-   `gap-6` del grid para que no se sume. Scoped al id generado del playground y al
-   breakpoint lg (1023px máx, igual que el archivo). */
+/* Below lg, the playground's right column (request + response) stacks.
+   The `mt-8 lg:mt-0` container has a single child: a grid with the 2 code-groups.
+   Separation via margin-top (--space-20 = 20px) on the 2nd code-group; the grid's
+   `gap-6` is cancelled so it doesn't add up. Scoped to the playground's generated id and
+   the lg breakpoint (1023px max, same as the file). */
 @media (max-width: 1023px) {
   #api-playground-2-operation-page :where(.mt-8.lg\:mt-0) > * {
     gap: 0 !important;
