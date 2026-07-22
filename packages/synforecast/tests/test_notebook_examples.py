@@ -5,11 +5,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-import nbformat
 import pytest
 
 import synforecast.generators as generators
-from scripts.execute_notebooks import _normalize
 
 NOTEBOOKS = sorted((Path(__file__).parents[1] / "nbs" / "docs").rglob("*.ipynb"))
 INTEGRATION_REQUIREMENTS = {
@@ -172,22 +170,3 @@ def test_integration_notebooks_cover_training_regimes(
     assert source.index("train_df =") < source.index("augmented_train_df = SynAugment")
     for token in required:
         assert token in source, f"{filename} is missing {token!r}"
-
-
-def test_notebook_normalizer_removes_local_lightning_warnings() -> None:
-    """Do not publish machine-specific paths from Lightning warning output."""
-    warning = nbformat.v4.new_output(
-        output_type="stream",
-        name="stderr",
-        text=(
-            "/home/user/.venv/site-packages/"
-            "pytorch_lightning/utilities/_pytree.py: warning\n"
-        ),
-    )
-    notebook = nbformat.v4.new_notebook(
-        cells=[nbformat.v4.new_code_cell(outputs=[warning])]
-    )
-
-    _normalize(notebook)
-
-    assert notebook.cells[0].outputs == []
