@@ -353,6 +353,33 @@ where $\bar{y}=\frac{1}{H}\sum^{t+H}_{\tau=t+1} y_{\tau}$.
       show_root_heading: true
       show_source: true
 
+### Winkler Score
+
+```math
+\mathrm{Winkler}_{\alpha}(\mathbf{y}_{\tau}, \boldsymbol{\ell}_{\alpha,\tau}, \mathbf{u}_{\alpha,\tau}) = \frac{1}{H} \sum^{t+H}_{\tau=t+1} W_{\alpha,\tau}
+```
+
+where
+
+```math
+W_{\alpha,\tau} =
+\begin{cases}
+(u_{\alpha,\tau} - \ell_{\alpha,\tau}) + \frac{2}{\alpha} (\ell_{\alpha,\tau} - y_{\tau}) & \text{if } y_{\tau} < \ell_{\alpha,\tau} \\
+(u_{\alpha,\tau} - \ell_{\alpha,\tau}) & \text{if } \ell_{\alpha,\tau} \le y_{\tau} \le u_{\alpha,\tau} \\
+(u_{\alpha,\tau} - \ell_{\alpha,\tau}) + \frac{2}{\alpha} (y_{\tau} - u_{\alpha,\tau}) & \text{if } y_{\tau} > u_{\alpha,\tau}
+\end{cases}
+```
+
+where $[\ell_{\alpha,\tau}, u_{\alpha,\tau}]$ is the $100(1-\alpha)\%$ prediction interval and $\alpha = 1 - \text{level}/100$.
+
+::: utilsforecast.losses.winkler_score
+    handler: python
+    options:
+      docstring_style: google
+      heading_level: 4
+      show_root_heading: true
+      show_source: true
+
 ### Calibration
 
 ::: utilsforecast.losses.calibration

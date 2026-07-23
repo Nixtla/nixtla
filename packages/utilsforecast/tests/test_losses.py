@@ -159,6 +159,17 @@ def coverage_single(y_true, y_pred_lo, y_pred_hi, **kwargs):
     return np.mean((y_true >= y_pred_lo) & (y_true <= y_pred_hi))
 
 
+def winkler_score_single(y_true, y_pred_lo, y_pred_hi, level=80, **kwargs):
+    alpha = (100 - level) / 100
+    width = y_pred_hi - y_pred_lo
+    penalty = np.where(
+        y_true < y_pred_lo,
+        (2 / alpha) * (y_pred_lo - y_true),
+        np.where(y_true > y_pred_hi, (2 / alpha) * (y_true - y_pred_hi), 0.0),
+    )
+    return np.mean(width + penalty)
+
+
 def tweedie_deviance_single(y_true, y_pred, power, **kwargs):
     if power == 0:
         return np.mean((y_true - y_pred) ** 2)
@@ -202,6 +213,7 @@ def linex_single(y_true, y_pred, a=1.0, **kwargs):
         (ufl.nd, nd_single),
         (ufl.wape, nd_single),
         (ufl.coverage, coverage_single),
+        (ufl.winkler_score, winkler_score_single),
         (ufl.linex, linex_single),
         (
             partial(ufl.linex, a=2.0),
