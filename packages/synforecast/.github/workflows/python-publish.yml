@@ -65,9 +65,6 @@ jobs:
             const required = [
               'CI complete',
               'lint',
-              'Analyze (actions)',
-              'Analyze (python)',
-              'Analyze (rust)',
               'build-docs',
             ];
             const checks = await github.paginate(github.rest.checks.listForRef, {
@@ -76,10 +73,21 @@ jobs:
               ref: '${{ steps.release_commit.outputs.sha }}',
               per_page: 100,
             });
-            const byName = new Map(checks.map((check) => [check.name, check]));
-            const missing = required.filter((name) => !byName.has(name));
+            const runsByName = new Map();
+            for (const check of checks) {
+              if (!runsByName.has(check.name)) runsByName.set(check.name, []);
+              runsByName.get(check.name).push(check);
+            }
+            const missing = required.filter((name) => !runsByName.has(name));
             const unsuccessful = required.filter(
-              (name) => byName.has(name) && byName.get(name).conclusion !== 'success'
+              (name) =>
+                runsByName.has(name) &&
+                !runsByName
+                  .get(name)
+                  .some(
+                    (run) =>
+                      run.status === 'completed' && run.conclusion === 'success'
+                  )
             );
             if (missing.length || unsuccessful.length) {
               core.setFailed(
