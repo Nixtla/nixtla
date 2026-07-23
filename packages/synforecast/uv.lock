@@ -4252,6 +4252,7 @@ dev = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.16.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "statsforecast" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 docs = [
     { name = "datasetsforecast" },
@@ -4297,6 +4298,7 @@ dev = [
     { name = "ruff", specifier = ">=0.15.22" },
     { name = "scipy", specifier = ">=1.10.0" },
     { name = "statsforecast" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
 ]
 docs = [
     { name = "datasetsforecast", specifier = ">=1.0.1" },

@@ -59,6 +59,7 @@ dev = [
     "ruff>=0.15.22",
     "scipy>=1.10.0",
     "statsforecast",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 docs = [
     "datasetsforecast>=1.0.1",
