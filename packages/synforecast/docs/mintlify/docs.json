@@ -102,13 +102,15 @@
       {
         "group": "API Reference",
         "pages": [
+          "composition.html",
           "core.html",
           "exogenous.html",
           "dataset.html",
           "generators_statistical.html",
           "generators_stochastic.html",
           "generators_multivariate.html",
-          "generators_domain.html"
+          "generators_domain.html",
+          "generators_pretraining.html"
         ]
       }
     ]

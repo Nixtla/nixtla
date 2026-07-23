@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use SynForecast in research, please cite the software."
+title: "SynForecast"
+type: software
+authors:
+  - name: "Nixtla"
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/Nixtla/synforecast"
+url: "https://nixtlaverse.nixtla.io/synforecast/"
+abstract: >-
+  Fast synthetic time-series generation for testing, augmentation, and
+  foundation-model pretraining.
+keywords:
+  - time series
+  - synthetic data
+  - forecasting
+  - simulation
