@@ -5,14 +5,8 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import statistical as _rs_stat
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import statistical as _rs_stat
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class INARGenerator(BaseGenerator):
@@ -86,22 +80,6 @@ class INARGenerator(BaseGenerator):
         object.__setattr__(self, "_alpha_array", alpha_array)
         return self
 
-    def _binomial_thinning(self, alpha: float, count: int) -> int:
-        """Apply binomial thinning: alpha o count = sum of count Bernoulli(alpha)."""
-        if count <= 0 or alpha <= 0:
-            return 0
-        return int(self.rng.binomial(count, alpha))
-
-    def _sample_innovation(self) -> int:
-        """Sample a single innovation from the specified distribution."""
-        if self.innovation_type == "poisson":
-            return int(self.rng.poisson(self.innovation_mean))
-        else:  # negative_binomial
-            # NB(r, p) with p = r/(r + mean) has mean r*(1-p)/p = mean
-            r = self.innovation_dispersion
-            p = r / (r + self.innovation_mean)
-            return int(self.rng.negative_binomial(r, p))
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
         innov_type_id = 0 if self.innovation_type == "poisson" else 1
         return (
@@ -125,34 +103,17 @@ class INARGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of non-negative integer time series values
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            innov_type_id = 0 if self.innovation_type == "poisson" else 1
-            return _rs_stat.inar(
-                length,
-                self.p,
-                self._alpha_array,
-                innov_type_id,
-                self.innovation_mean,
-                self.innovation_dispersion,
-                seed,
-            )
-
-        burn_in = 100
-        total = length + burn_in
-
-        stationary_mean = self.innovation_mean / (1.0 - np.sum(self._alpha_array))
-        values = np.full(total, int(stationary_mean), dtype=np.int64)
-
-        for t in range(self.p, total):
-            thinned = 0
-            for i in range(self.p):
-                thinned += self._binomial_thinning(
-                    self._alpha_array[i], int(values[t - i - 1])
-                )
-            values[t] = thinned + self._sample_innovation()
-
-        return values[burn_in:].astype(np.float64)
+        seed = int(self.rng.integers(0, 2**63))
+        innov_type_id = 0 if self.innovation_type == "poisson" else 1
+        return _rs_stat.inar(
+            length,
+            self.p,
+            self._alpha_array,
+            innov_type_id,
+            self.innovation_mean,
+            self.innovation_dispersion,
+            seed,
+        )
 
     def get_model_info(self) -> dict[str, Any]:
         """Return information about the INAR configuration."""

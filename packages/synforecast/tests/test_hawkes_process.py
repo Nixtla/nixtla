@@ -125,10 +125,7 @@ class TestHawkesStats:
         values = gen.generate_single_series(4000)
         assert abs(values.mean() - 1.0) < 0.2
 
-    def test_python_fallback_rate_and_clustering(self, monkeypatch) -> None:
-        import synforecast.generators.hawkes_process as hp_mod
-
-        monkeypatch.setattr(hp_mod, "_HAS_RUST", False)
+    def test_rate_and_clustering(self) -> None:
         gen = make_gen(
             baseline_intensity=0.5,
             excitation_amplitude=0.5,
@@ -143,10 +140,7 @@ class TestHawkesStats:
         assert abs(values.mean() - 1.0) < 0.3
         assert values.var() > 1.2 * values.mean(), "counts should be overdispersed"
 
-    def test_python_fallback_power_law_runs(self, monkeypatch) -> None:
-        import synforecast.generators.hawkes_process as hp_mod
-
-        monkeypatch.setattr(hp_mod, "_HAS_RUST", False)
+    def test_power_law_runs(self) -> None:
         gen = make_gen(
             kernel="power_law",
             baseline_intensity=0.5,

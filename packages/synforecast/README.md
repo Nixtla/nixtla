@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/synforecast/blob/main/LICENSE)
 [![Docs](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml/badge.svg)](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml)
 
-**SynForecast** generates validated synthetic time-series panels with 31
+**SynForecast** generates synthetic time-series panels with 31
 statistical, stochastic, multivariate, domain-specific, and pretraining
 generators. It follows the Nixtla long format and supports controlled
 changepoints, anomalies, missing data, exogenous variables, and augmentation
@@ -31,9 +31,8 @@ Install SynForecast from PyPI:
 pip install synforecast
 ```
 
-Prebuilt wheels include the Rust extension on supported platforms. Building
-from the source distribution requires a Rust toolchain; a NumPy fallback is
-available when the extension cannot be loaded.
+Prebuilt wheels include the required Rust extension on supported platforms.
+Building from the source distribution requires a Rust toolchain.
 
 ## Quick start
 
@@ -170,7 +169,7 @@ assumptions and downstream performance for your use case.
 - Changepoint, anomaly, missingness, and exogenous-variable injection
 - Dataset composition with `SynSet` and augmentation with `SynAugment`
 - Seed-deterministic parallel generation
-- Rust acceleration through PyO3 with a NumPy fallback
+- Native generation through Rust and PyO3
 
 ## Documentation
 

@@ -5,14 +5,8 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 def _logit(x: np.ndarray) -> np.ndarray:
@@ -101,29 +95,6 @@ class BoundedProcessGenerator(BaseGenerator):
         object.__setattr__(self, "_model_id", model_map[self.model])
         return self
 
-    def _generate_beta_ar(self, length: int) -> np.ndarray:
-        """Generate Beta-AR(1) bounded process."""
-        values = np.empty(length)
-        x = self.initial_value
-
-        for t in range(length):
-            mu = np.clip(self.omega + self.phi * x, 1e-6, 1.0 - 1e-6)
-            x = self.rng.beta(mu * self.kappa, (1.0 - mu) * self.kappa)
-            values[t] = x
-
-        return values
-
-    def _generate_logit_normal(self, length: int) -> np.ndarray:
-        """Generate a logit-scale AR(1) bounded process."""
-        values = np.empty(length)
-        z = _logit(np.array([self.initial_value]))[0]
-
-        for t in range(length):
-            z = self.phi * z + self.sigma * self.rng.standard_normal()
-            values[t] = _sigmoid(np.array([z]))[0]
-
-        return values
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]] | None:
         return (
             np.array(
@@ -150,32 +121,20 @@ class BoundedProcessGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values in [lower, upper]
         """
-        if _HAS_RUST:
-            # The Rust kernel applies the [lower, upper] affine map itself.
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.bounded_process(
-                length,
-                self._model_id,
-                self.phi,
-                self.omega,
-                self.kappa,
-                self.sigma,
-                self.initial_value,
-                self.lower,
-                self.upper,
-                seed,
-            )
-
-        if self.model == "beta_ar":
-            raw = self._generate_beta_ar(length)
-        else:
-            raw = self._generate_logit_normal(length)
-
-        # Affine map from the unit interval to [lower, upper]
-        if self.lower != 0.0 or self.upper != 1.0:
-            raw = self.lower + raw * (self.upper - self.lower)
-
-        return raw
+        # The Rust kernel applies the [lower, upper] affine map itself.
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.bounded_process(
+            length,
+            self._model_id,
+            self.phi,
+            self.omega,
+            self.kappa,
+            self.sigma,
+            self.initial_value,
+            self.lower,
+            self.upper,
+            seed,
+        )
 
     def get_model_info(self) -> dict[str, Any]:
         """Return information about the bounded process configuration."""

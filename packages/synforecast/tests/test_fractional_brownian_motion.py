@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 
-import synforecast.generators.fractional_brownian_motion as fbm_mod
 from synforecast.generators import FractionalBrownianMotionGenerator
 from tests.helpers import (
     assert_acf,
@@ -182,11 +181,8 @@ class TestFBMStats:
             assert abs(estimated_h - hurst) < 0.1
 
     @pytest.mark.parametrize("method,hurst", [("cholesky", 0.7), ("hosking", 0.3)])
-    def test_python_fallback_matches_theory(
-        self, method: str, hurst: float, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Pure-Python cholesky/hosking paths reproduce the fGn covariance."""
-        monkeypatch.setattr(fbm_mod, "_HAS_RUST", False)
+    def test_methods_match_theory(self, method: str, hurst: float) -> None:
+        """Native cholesky and Hosking paths reproduce the fGn covariance."""
         gen = FractionalBrownianMotionGenerator(
             min_length=256,
             max_length=256,
@@ -200,10 +196,3 @@ class TestFBMStats:
         acf1 = float(np.mean([sample_acf(v, 1) for v in vals]))
         assert abs(acf1 - theoretical_acf1(hurst)) < 0.06
         assert_std(np.concatenate(vals), expected=1.0)
-
-    def test_fft_python_fallback_warns(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(fbm_mod, "_HAS_RUST", False)
-        gen = FractionalBrownianMotionGenerator(**BASE, method="fft")
-        with pytest.warns(UserWarning, match="FFT method requires Rust"):
-            values = gen.generate_single_series(50)
-        assert np.all(np.isfinite(values))

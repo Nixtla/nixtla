@@ -7,14 +7,8 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 from pydantic import Field, model_validator
 
-from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import statistical as _rs_stat
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
+from synforecast._lib import statistical as _rs_stat
+from synforecast.base import BaseGenerator, _categorize_ids
 
 
 class ETSGenerator(BaseGenerator):
@@ -244,93 +238,40 @@ class ETSGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            error_t = 0 if self.error_type == "add" else 1
-            trend_t = (
-                0 if self.trend_type is None else (1 if self.trend_type == "add" else 2)
-            )
-            seasonal_t = (
-                0
-                if self.seasonal_type is None
-                else (1 if self.seasonal_type == "add" else 2)
-            )
-            s_init = (
-                self._seasonal_array
-                if self.seasonal_type is not None
-                else np.zeros(self.seasonal_period)
-            )
-            return _rs_stat.ets(
-                length,
-                error_t,
-                trend_t,
-                seasonal_t,
-                self.seasonal_period,
-                self.level,
-                self.trend,
-                s_init,
-                self.alpha,
-                self.beta,
-                self.gamma,
-                self.phi,
-                self.damped,
-                self.noise_std,
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-
-        l_t = self.level
-        b_t = self.trend if self.trend_type is not None else 0.0
-        s = self._seasonal_array.copy() if self.seasonal_type is not None else None
-
-        m = self.seasonal_period
-        series = np.zeros(length)
-
-        for t in range(length):
-            if s is not None:
-                s_idx = t % m
-                s_t = s[s_idx]
-            else:
-                s_t = 0.0
-
-            y_hat = self._forecast(l_t, b_t, s_t)
-
-            eps = self._sample_innovations(1, scale=self.noise_std)[0]
-            if self.error_type == "add":
-                y_t = np.clip(y_hat + eps, -self._MAX_LEVEL, self._MAX_LEVEL)
-            else:
-                y_t = np.clip(y_hat * (1 + eps), self._MIN_LEVEL, self._MAX_LEVEL)
-
-            series[t] = y_t
-
-            l_new, b_new, s_new = self._update_state(l_t, b_t, s_t, eps)
-
-            # Bounds for numerical stability
-            if self.error_type == "mul":
-                l_t = np.clip(l_new, self._MIN_LEVEL, self._MAX_LEVEL)
-            else:
-                l_t = np.clip(l_new, -self._MAX_LEVEL, self._MAX_LEVEL)
-
-            if self.trend_type == "add":
-                b_t = np.clip(b_new, -self._MAX_TREND_ADD, self._MAX_TREND_ADD)
-            elif self.trend_type == "mul":
-                b_t = np.clip(b_new, self._MIN_TREND_MUL, self._MAX_TREND_MUL)
-            else:
-                b_t = b_new
-
-            if s is not None:
-                if self.seasonal_type == "mul":
-                    s_new = np.clip(
-                        s_new, self._MIN_SEASONAL_MUL, self._MAX_SEASONAL_MUL
-                    )
-                s[s_idx] = s_new
-
-        # Apply inverse Box-Cox transformation if specified
-        if self.box_cox_lambda is not None:
-            series = self._inverse_box_cox(series)
-
-        return series
+        seed = int(self.rng.integers(0, 2**63))
+        error_t = 0 if self.error_type == "add" else 1
+        trend_t = (
+            0 if self.trend_type is None else (1 if self.trend_type == "add" else 2)
+        )
+        seasonal_t = (
+            0
+            if self.seasonal_type is None
+            else (1 if self.seasonal_type == "add" else 2)
+        )
+        s_init = (
+            self._seasonal_array
+            if self.seasonal_type is not None
+            else np.zeros(self.seasonal_period)
+        )
+        return _rs_stat.ets(
+            length,
+            error_t,
+            trend_t,
+            seasonal_t,
+            self.seasonal_period,
+            self.level,
+            self.trend,
+            s_init,
+            self.alpha,
+            self.beta,
+            self.gamma,
+            self.phi,
+            self.damped,
+            self.noise_std,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )
 
     def _forecast(self, l_t: float, b_t: float, s_t: float) -> float:
         """One-step-ahead point forecast μ_t.
@@ -543,11 +484,9 @@ class ETSGenerator(BaseGenerator):
         # Create observations DataFrame
         flat_values = np.concatenate(all_values)
         flat_timestamps = np.concatenate(all_timestamps)
-        flat_ids = np.concatenate(
-            [
-                np.full(length, f"series_{series_id}")
-                for length, series_id in zip(all_lengths, all_ids, strict=False)
-            ]
+        flat_ids = np.repeat(
+            np.array(all_ids, dtype=np.int64),
+            all_lengths,
         )
 
         obs_result = {
@@ -555,7 +494,8 @@ class ETSGenerator(BaseGenerator):
             self.time_col: flat_timestamps,
             self.target_col: flat_values,
         }
-        obs_df = nw.DataFrame.from_dict(obs_result, backend=self.engine).to_native()
+        obs_nw = nw.DataFrame.from_dict(obs_result, backend=self.engine)
+        obs_df = _categorize_ids(obs_nw, self.id_col).to_native()
 
         # Create states DataFrame
         states_flat_ids = []
@@ -571,7 +511,7 @@ class ETSGenerator(BaseGenerator):
             ts = state_data["timestamps"]
             length = len(ts)
 
-            states_flat_ids.extend([f"series_{series_id}"] * length)
+            states_flat_ids.extend([series_id] * length)
             states_flat_timestamps.extend(ts)
             states_flat_levels.extend(state_data["levels"])
             states_flat_trends.extend(state_data["trends"])
@@ -583,7 +523,7 @@ class ETSGenerator(BaseGenerator):
                     )
 
         states_result = {
-            self.id_col: np.array(states_flat_ids),
+            self.id_col: np.array(states_flat_ids, dtype=np.int64),
             self.time_col: np.concatenate([d["timestamps"] for d in all_states_data]),
             "level": np.array(states_flat_levels),
             "trend": np.array(states_flat_trends),
@@ -596,9 +536,8 @@ class ETSGenerator(BaseGenerator):
                     states_flat_seasonals[f"seasonal_{j}"]
                 )
 
-        states_df = nw.DataFrame.from_dict(
-            states_result, backend=self.engine
-        ).to_native()
+        states_nw = nw.DataFrame.from_dict(states_result, backend=self.engine)
+        states_df = _categorize_ids(states_nw, self.id_col).to_native()
 
         return obs_df, states_df
 

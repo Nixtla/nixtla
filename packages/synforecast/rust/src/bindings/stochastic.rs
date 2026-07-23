@@ -137,7 +137,7 @@ pub fn poisson_process(
 }
 
 #[pyfunction]
-#[pyo3(signature = (length, base_level, trend, cycle_period_mean, cycle_period_std, cycle_amplitude_mean, cycle_amplitude_std, num_cycles, noise_std, seed))]
+#[pyo3(signature = (length, base_level, trend, cycle_period_mean, cycle_period_std, cycle_amplitude_mean, cycle_amplitude_std, num_cycles, noise_std, seed, innov_dist, innov_param))]
 pub fn cyclic(
     py: Python<'_>,
     length: i32,
@@ -150,6 +150,8 @@ pub fn cyclic(
     num_cycles: i32,
     noise_std: f64,
     seed: u64,
+    innov_dist: i32,
+    innov_param: f64,
 ) -> PyResult<Py<PyArray1<f64>>> {
     if length <= 0 {
         return Err(PyValueError::new_err("length must be > 0"));
@@ -170,6 +172,8 @@ pub fn cyclic(
             num_cycles,
             noise_std,
             seed,
+            innov_dist,
+            innov_param,
         )
     });
     Ok(out.into())

@@ -1,14 +1,9 @@
-"""Tests for distribution functions against scipy references.
-
-Every function is checked on both the Rust-backed path (module default)
-and the pure-Python fallback (monkeypatched ``_HAS_RUST = False``).
-"""
+"""Tests for native distribution functions against SciPy references."""
 
 import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast._distributions as dist_module
 from synforecast._distributions import (
     expon_ppf,
     gamma_ppf,
@@ -23,14 +18,9 @@ X_GRID = np.linspace(-4.0, 4.0, 81)
 U_GRID = np.linspace(0.001, 0.999, 99)
 
 
-@pytest.fixture(params=["rust", "python"])
-def dist_path(request, monkeypatch):
-    """Run each test on both the Rust and pure-Python branches."""
-    if request.param == "python":
-        monkeypatch.setattr(dist_module, "_HAS_RUST", False)
-    elif not dist_module._HAS_RUST:
-        pytest.skip("Rust backend not available")
-    return request.param
+@pytest.fixture
+def dist_path():
+    """Mark tests that exercise the native distribution implementation."""
 
 
 class TestNormCdf:

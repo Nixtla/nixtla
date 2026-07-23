@@ -5,14 +5,8 @@ from typing import Literal
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import domain as _rs_dom
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import domain as _rs_dom
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class IntermittentDemandGenerator(BaseGenerator):
@@ -90,86 +84,6 @@ class IntermittentDemandGenerator(BaseGenerator):
         default=1, ge=1, description="Minimum non-zero demand value"
     )
 
-    def _generate_demand_occurrence(self, length: int) -> np.ndarray:
-        """Generate a binary array indicating the periods where demand occurs."""
-        if self.intermittent_pattern == "random":
-            return self.rng.binomial(1, self.demand_probability, length)
-
-        elif self.intermittent_pattern == "clustered":
-            occurrence = np.zeros(length, dtype=int)
-            i = 0
-            while i < length:
-                # Geometric gap (>= 1) before each cluster of ones
-                gap = self.rng.geometric(self.demand_probability)
-                i += gap
-                if i < length:
-                    cluster_length = min(self.cluster_size, length - i)
-                    occurrence[i : i + cluster_length] = 1
-                    i += cluster_length
-            return occurrence
-
-        elif self.intermittent_pattern == "seasonal":
-            occurrence = np.zeros(length, dtype=int)
-            for t in range(length):
-                season_position = (t % self.seasonal_period) / self.seasonal_period
-                # cos(2*pi*pos) = +1 at the cycle start and -1 mid-cycle, so
-                # the probability peaks at seasonal_peak_prob at t mod P == 0
-                # and bottoms out at demand_probability at t mod P == P/2.
-                seasonal_factor = np.cos(2 * np.pi * season_position)
-                prob = (
-                    self.demand_probability
-                    + (self.seasonal_peak_prob - self.demand_probability)
-                    * (seasonal_factor + 1)
-                    / 2
-                )
-                occurrence[t] = self.rng.binomial(1, prob)
-            return occurrence
-
-        return np.zeros(length, dtype=int)
-
-    def _generate_demand_sizes(self, num_demands: int) -> np.ndarray:
-        """Generate demand sizes for the non-zero demand periods."""
-        if num_demands == 0:
-            return np.array([])
-
-        if self.demand_distribution == "poisson":
-            demands = self.rng.poisson(self.demand_mean, num_demands)
-
-        elif self.demand_distribution == "negative_binomial":
-            # Moment matching: p = mean/var, n = mean*p/(1-p)
-            variance = self.demand_std**2
-            if variance <= self.demand_mean:
-                # NB requires var > mean; fall back to Poisson
-                demands = self.rng.poisson(self.demand_mean, num_demands)
-            else:
-                p = self.demand_mean / variance
-                n = self.demand_mean * p / (1 - p)
-                demands = self.rng.negative_binomial(n, p, num_demands)
-
-        elif self.demand_distribution == "lognormal":
-            # Moment matching: mu = ln(mean^2/sqrt(var + mean^2)),
-            # sigma^2 = ln(1 + var/mean^2)
-            mean_sq = self.demand_mean**2
-            variance = self.demand_std**2
-            mu = np.log(mean_sq / np.sqrt(variance + mean_sq))
-            sigma = np.sqrt(np.log(1 + variance / mean_sq))
-            demands = self.rng.lognormal(mu, sigma, num_demands)
-
-        elif self.demand_distribution == "gamma":
-            if self.demand_std > 0:
-                # Moment matching: shape = (mean/std)^2, scale = var/mean
-                shape = (self.demand_mean / self.demand_std) ** 2
-                scale = (self.demand_std**2) / self.demand_mean
-                demands = self.rng.gamma(shape, scale, num_demands)
-            else:
-                # Degenerate to constant
-                demands = np.full(num_demands, self.demand_mean)
-
-        else:
-            demands = np.full(num_demands, self.demand_mean)
-
-        return np.maximum(demands, self.min_demand).astype(float)
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]] | None:
         if self.demand_probability == 0.0 and self.intermittent_pattern == "clustered":
             # The Rust geometric sampler overflows at p=0; disable the batch
@@ -213,32 +127,23 @@ class IntermittentDemandGenerator(BaseGenerator):
             # numpy raises on geometric(0) and the Rust sampler overflows.
             return np.zeros(length, dtype=float)
 
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            dist_t = {"poisson": 0, "negative_binomial": 1, "lognormal": 2, "gamma": 3}[
-                self.demand_distribution
-            ]
-            pattern_t = {"random": 0, "clustered": 1, "seasonal": 2}[
-                self.intermittent_pattern
-            ]
-            return _rs_dom.intermittent_demand(
-                length,
-                self.demand_probability,
-                dist_t,
-                self.demand_mean,
-                self.demand_std,
-                pattern_t,
-                self.cluster_size,
-                self.seasonal_period,
-                self.seasonal_peak_prob,
-                float(self.min_demand),
-                seed,
-            )
-
-        occurrence = self._generate_demand_occurrence(length)
-        num_demands = int(np.sum(occurrence))
-
-        series = np.zeros(length, dtype=float)
-        if num_demands > 0:
-            series[occurrence == 1] = self._generate_demand_sizes(num_demands)
-        return series
+        seed = int(self.rng.integers(0, 2**63))
+        dist_t = {"poisson": 0, "negative_binomial": 1, "lognormal": 2, "gamma": 3}[
+            self.demand_distribution
+        ]
+        pattern_t = {"random": 0, "clustered": 1, "seasonal": 2}[
+            self.intermittent_pattern
+        ]
+        return _rs_dom.intermittent_demand(
+            length,
+            self.demand_probability,
+            dist_t,
+            self.demand_mean,
+            self.demand_std,
+            pattern_t,
+            self.cluster_size,
+            self.seasonal_period,
+            self.seasonal_peak_prob,
+            float(self.min_demand),
+            seed,
+        )

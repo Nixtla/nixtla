@@ -5,14 +5,8 @@ from typing import Literal
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import domain as _rs_dom
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import domain as _rs_dom
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 _LOAD_TYPE_IDS = {"residential": 0, "commercial": 1, "industrial": 2}
 
@@ -134,25 +128,9 @@ class EnergyLoadGenerator(BaseGenerator):
         """Hour of day (0-23) at step ``t``, relative to the series start."""
         return int(t * self._step_hours(default=1.0)) % 24
 
-    def _get_day_of_week(self, t: int) -> int:
-        """Day of week (0-6) at step ``t``, relative to the series start."""
-        return (int(t * self._step_hours(default=1.0)) // 24) % 7
-
     def _get_day_of_year(self, t: int) -> int:
         """Day of year (0-364) at step ``t``, relative to the series start."""
         return (int(t * self._step_hours(default=1.0)) // 24) % 365
-
-    def _generate_temperature(self, length: int) -> np.ndarray:
-        """Temperature with daily and yearly cycles plus Gaussian noise."""
-        temperature = np.zeros(length)
-        for t in range(length):
-            hour = self._get_hour_of_day(t)
-            daily_temp = -5 * np.cos(2 * np.pi * hour / 24)
-            day_of_year = self._get_day_of_year(t)
-            yearly_temp = -10 * np.cos(2 * np.pi * day_of_year / 365)
-            noise = self.rng.normal(0, 2)
-            temperature[t] = self.base_temperature + daily_temp + yearly_temp + noise
-        return temperature
 
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
         holidays_f64 = np.array(self.holiday_days, dtype=np.float64)
@@ -192,83 +170,29 @@ class EnergyLoadGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of energy load values.
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            holidays = np.array(self.holiday_days, dtype=np.int32)
-            return _rs_dom.energy_load(
-                length,
-                self.base_load,
-                _LOAD_TYPE_IDS[self.load_type],
-                self.daily_pattern,
-                self.daily_amplitude,
-                self.weekly_pattern,
-                self.weekly_amplitude,
-                self.yearly_pattern,
-                self.yearly_amplitude,
-                self.temperature_sensitive,
-                self.temperature_sensitivity,
-                self.base_temperature,
-                self.morning_peak_hour,
-                self.evening_peak_hour,
-                self.peak_amplitude,
-                self.holiday_effect,
-                holidays,
-                self.extreme_weather_prob,
-                self.extreme_weather_impact,
-                self.noise_std,
-                self._step_hours(default=1.0),
-                seed,
-            )
-
-        load = np.full(length, self.base_load)
-
-        if self.temperature_sensitive:
-            temperature = self._generate_temperature(length)
-
-        for t in range(length):
-            hour = self._get_hour_of_day(t)
-            day_of_week = self._get_day_of_week(t)
-            day_of_year = self._get_day_of_year(t)
-
-            if self.daily_pattern:
-                if self.load_type == "residential":
-                    morning_peak = self.peak_amplitude * np.exp(
-                        -((hour - self.morning_peak_hour) ** 2) / 8
-                    )
-                    evening_peak = self.peak_amplitude * np.exp(
-                        -((hour - self.evening_peak_hour) ** 2) / 8
-                    )
-                    daily_load = morning_peak + evening_peak
-                elif self.load_type == "commercial":
-                    daily_load = self.daily_amplitude * np.exp(-((hour - 14) ** 2) / 50)
-                else:  # industrial: slight dip at night
-                    daily_load = -self.daily_amplitude * np.exp(-((hour - 3) ** 2) / 20)
-                load[t] += daily_load
-
-            if self.weekly_pattern:
-                if self.load_type in ["residential", "commercial"]:
-                    if day_of_week >= 5:  # weekend
-                        load[t] -= self.weekly_amplitude
-                else:  # industrial
-                    load[t] += self.weekly_amplitude * np.sin(
-                        2 * np.pi * day_of_week / 7
-                    )
-
-            if self.yearly_pattern:
-                load[t] += self.yearly_amplitude * (
-                    1 + np.cos(2 * np.pi * day_of_year / 365)
-                )
-
-            if self.temperature_sensitive:
-                # Heating (cold) and cooling (hot) both increase load
-                temp_deviation = temperature[t] - self.base_temperature
-                load[t] += self.temperature_sensitivity * abs(temp_deviation)
-
-            if day_of_year in self.holiday_days:
-                load[t] *= 1 - self.holiday_effect
-
-            if self.rng.random() < self.extreme_weather_prob:
-                load[t] *= self.extreme_weather_impact
-
-        load += self.rng.normal(0, self.noise_std, length)
-        return np.maximum(load, 0)
+        seed = int(self.rng.integers(0, 2**63))
+        holidays = np.array(self.holiday_days, dtype=np.int32)
+        return _rs_dom.energy_load(
+            length,
+            self.base_load,
+            _LOAD_TYPE_IDS[self.load_type],
+            self.daily_pattern,
+            self.daily_amplitude,
+            self.weekly_pattern,
+            self.weekly_amplitude,
+            self.yearly_pattern,
+            self.yearly_amplitude,
+            self.temperature_sensitive,
+            self.temperature_sensitivity,
+            self.base_temperature,
+            self.morning_peak_hour,
+            self.evening_peak_hour,
+            self.peak_amplitude,
+            self.holiday_effect,
+            holidays,
+            self.extreme_weather_prob,
+            self.extreme_weather_impact,
+            self.noise_std,
+            self._step_hours(default=1.0),
+            seed,
+        )

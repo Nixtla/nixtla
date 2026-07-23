@@ -276,8 +276,9 @@ fn dispatch_generator(
         }
         GEN_CYCLIC => {
             // sp: [base_level, trend, period_mean, period_std,
-            //      amp_mean, amp_std, num_cycles, noise_std]
-            check_params!(sp, 8, ap, 0, "cyclic");
+            //      amp_mean, amp_std, num_cycles, noise_std,
+            //      innov_dist, innov_param]
+            check_params!(sp, 10, ap, 0, "cyclic");
             stochastic::cyclic(
                 out,
                 sp[0],
@@ -289,6 +290,8 @@ fn dispatch_generator(
                 sp[6] as i32,
                 sp[7],
                 seed,
+                sp[8] as i32,
+                sp[9],
             );
         }
         GEN_GARCH => {
@@ -1040,7 +1043,7 @@ mod tests {
             (GEN_POISSON_PROCESS, vec![2.0, 0.0], "poisson_process"),
             (
                 GEN_CYCLIC,
-                vec![50.0, 0.0, 20.0, 2.0, 10.0, 1.0, 3.0, 1.0],
+                vec![50.0, 0.0, 20.0, 2.0, 10.0, 1.0, 3.0, 1.0, 0.0, 0.0],
                 "cyclic",
             ),
             (

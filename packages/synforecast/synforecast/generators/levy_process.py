@@ -5,14 +5,8 @@ from typing import Any
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class LevyProcessGenerator(BaseGenerator):
@@ -64,44 +58,6 @@ class LevyProcessGenerator(BaseGenerator):
         default=0.0, description="Starting value for cumulative mode"
     )
 
-    def _sample_stable(self, n: int) -> np.ndarray:
-        """Sample n standard alpha-stable variates (S1 parameterization).
-
-        Chambers, Mallows, Stuck (1976). "A Method for Simulating Stable
-        Random Variables". JASA, 71(354), 340-344; formulas as in
-        Weron (1996).
-        """
-        alpha = self.alpha
-        beta = self.beta_skew
-
-        if abs(alpha - 2.0) < 1e-10:
-            # Gaussian case: S(2, 0; 1) = N(0, 2)
-            return self.rng.normal(0.0, np.sqrt(2.0), n)
-
-        V = self.rng.uniform(-np.pi / 2, np.pi / 2, n)
-        W = self.rng.exponential(1.0, n)
-
-        if abs(alpha - 1.0) < 1e-10:
-            b_term = (np.pi / 2 + beta * V) * np.tan(V)
-            x = (1.0 / (np.pi / 2)) * (
-                b_term
-                - beta * np.log((np.pi / 2) * W * np.cos(V) / (np.pi / 2 + beta * V))
-            )
-        else:
-            b_alpha = np.arctan(beta * np.tan(np.pi * alpha / 2.0)) / alpha
-            s_alpha = (1.0 + beta**2 * np.tan(np.pi * alpha / 2.0) ** 2) ** (
-                1.0 / (2.0 * alpha)
-            )
-
-            B = alpha * (V + b_alpha)
-            numerator = np.sin(B)
-            denom = np.cos(V) ** (1.0 / alpha)
-            factor = (np.cos(V - B) / W) ** ((1.0 - alpha) / alpha)
-
-            x = s_alpha * numerator / denom * factor
-
-        return x
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
         return (
             np.array(
@@ -126,23 +82,17 @@ class LevyProcessGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values.
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.levy_process(
-                length,
-                self.alpha,
-                self.beta_skew,
-                self.scale,
-                self.location,
-                self.cumulative,
-                self.initial_value,
-                seed,
-            )
-
-        increments = self.scale * self._sample_stable(length) + self.location
-        if self.cumulative:
-            return self.initial_value + np.cumsum(increments)
-        return increments
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.levy_process(
+            length,
+            self.alpha,
+            self.beta_skew,
+            self.scale,
+            self.location,
+            self.cumulative,
+            self.initial_value,
+            seed,
+        )
 
     def get_model_info(self) -> dict[str, Any]:
         """Return information about the Levy process configuration."""

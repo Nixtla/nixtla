@@ -19,12 +19,7 @@ from pydantic import (
 )
 
 from ._core import _add_anomalies, _add_changepoints, _add_missingness
-
-try:
-    from ._lib import batch as _rs_batch
-except ImportError:
-    _rs_batch = None
-
+from ._lib import batch as _rs_batch
 from .exogenous import (
     ExogenousConfig,
     SeriesMetadata,
@@ -865,13 +860,11 @@ class BaseGenerator(BaseModel, ABC):
     ) -> list[SeriesMetadata]:
         """Generate series in parallel via Rust rayon batch path.
 
-        Falls back to threaded Python path when the batch path is
-        unavailable (e.g. generator not in type map or _get_batch_params
-        returns None).
+        Generators without a Rust batch implementation use the threaded path.
         """
         gen_type = self._batch_gen_type
         batch_params = self._get_batch_params() if gen_type is not None else None
-        if batch_params is None or _rs_batch is None:
+        if batch_params is None:
             return self._generate_parallel_threaded(n_series, start_id, n_jobs)
 
         scalar_params, array_params = batch_params
@@ -909,7 +902,7 @@ class BaseGenerator(BaseModel, ABC):
         start_id: int,
         n_jobs: int,
     ) -> list[SeriesMetadata]:
-        """Generate series in parallel using ThreadPoolExecutor (fallback).
+        """Generate series in parallel using ThreadPoolExecutor.
 
         Pre-samples all random state from self.rng sequentially for
         reproducibility, then dispatches generation to threads.

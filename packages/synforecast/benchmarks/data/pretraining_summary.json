@@ -1,0 +1,124 @@
+{
+  "dataset": "M3 Monthly (last 18 months held out)",
+  "model": "NHITS via NeuralForecast, per-series standardization",
+  "metric": "seasonal MASE (season length 12)",
+  "seeds": 10,
+  "n_series": 300,
+  "pretrain_steps": 1000,
+  "finetune_steps": 300,
+  "finetune_lr": 0.0001,
+  "by_hist_len": [
+    {
+      "hist_len": 48,
+      "n_pairs": 3000,
+      "from_scratch_mase": 1.6322056642994958,
+      "from_scratch_ci": [
+        1.594457562010046,
+        1.6729716051210604
+      ],
+      "from_scratch_smape": 0.10732556787544119,
+      "zero_shot_mase": 1.3088050939071658,
+      "zero_shot_ci": [
+        1.2739852136518093,
+        1.3444466706574905
+      ],
+      "zero_shot_smape": 0.08447317897506704,
+      "pretrain_ft_mase": 1.624400783530915,
+      "pretrain_ft_ci": [
+        1.5851065816338281,
+        1.6655255589718923
+      ],
+      "pretrain_ft_smape": 0.10615123903631556,
+      "zero_shot_win_rate": 0.6913333333333334,
+      "zero_shot_mean_improve_pct": 13.652284164972125,
+      "zero_shot_wilcoxon_p": 1.9943084168129286e-163,
+      "pretrain_ft_win_rate": 0.5303333333333333,
+      "pretrain_ft_mean_improve_pct": 0.42293384023725883,
+      "pretrain_ft_wilcoxon_p": 0.0017443107368668763
+    },
+    {
+      "hist_len": 72,
+      "n_pairs": 3000,
+      "from_scratch_mase": 1.4406769992294728,
+      "from_scratch_ci": [
+        1.4057655950096681,
+        1.47559628399753
+      ],
+      "from_scratch_smape": 0.0971602522755516,
+      "zero_shot_mase": 1.2993768089044349,
+      "zero_shot_ci": [
+        1.266243120042489,
+        1.3317293135795814
+      ],
+      "zero_shot_smape": 0.08937711749230168,
+      "pretrain_ft_mase": 1.4361605641211628,
+      "pretrain_ft_ci": [
+        1.4011388634648207,
+        1.4718163396607422
+      ],
+      "pretrain_ft_smape": 0.09630583173392934,
+      "zero_shot_win_rate": 0.582,
+      "zero_shot_mean_improve_pct": 4.983389972746389,
+      "zero_shot_wilcoxon_p": 3.8973146524288827e-44,
+      "pretrain_ft_win_rate": 0.512,
+      "pretrain_ft_mean_improve_pct": 0.1286532482654501,
+      "pretrain_ft_wilcoxon_p": 0.29002558502588793
+    },
+    {
+      "hist_len": 108,
+      "n_pairs": 3000,
+      "from_scratch_mase": 1.3077204486516387,
+      "from_scratch_ci": [
+        1.2739080126704505,
+        1.3419507358903389
+      ],
+      "from_scratch_smape": 0.0911383899189029,
+      "zero_shot_mase": 1.41738387757519,
+      "zero_shot_ci": [
+        1.3793958926001382,
+        1.456090665881712
+      ],
+      "zero_shot_smape": 0.09666963716107786,
+      "pretrain_ft_mase": 1.3236573826726004,
+      "pretrain_ft_ci": [
+        1.2889613484997609,
+        1.3588464653221508
+      ],
+      "pretrain_ft_smape": 0.09120198639180235,
+      "zero_shot_win_rate": 0.39166666666666666,
+      "zero_shot_mean_improve_pct": -10.585170224528962,
+      "zero_shot_wilcoxon_p": 2.790936828530629e-54,
+      "pretrain_ft_win_rate": 0.494,
+      "pretrain_ft_mean_improve_pct": -1.7145367145319605,
+      "pretrain_ft_wilcoxon_p": 0.006018653644840927
+    },
+    {
+      "hist_len": 9999,
+      "n_pairs": 3000,
+      "from_scratch_mase": 1.2384481584390006,
+      "from_scratch_ci": [
+        1.2068623546219472,
+        1.2703060248337106
+      ],
+      "from_scratch_smape": 0.08936677435739997,
+      "zero_shot_mase": 1.4088097907531003,
+      "zero_shot_ci": [
+        1.3692627528699794,
+        1.4484445706730529
+      ],
+      "zero_shot_smape": 0.09766787371029151,
+      "pretrain_ft_mase": 1.2617789520279337,
+      "pretrain_ft_ci": [
+        1.2284878785366309,
+        1.2955901024320229
+      ],
+      "pretrain_ft_smape": 0.08959568867332629,
+      "zero_shot_win_rate": 0.34,
+      "zero_shot_mean_improve_pct": -14.569362562797478,
+      "zero_shot_wilcoxon_p": 3.25936289968918e-107,
+      "pretrain_ft_win_rate": 0.462,
+      "pretrain_ft_mean_improve_pct": -2.167235713387683,
+      "pretrain_ft_wilcoxon_p": 7.397426798349521e-09
+    }
+  ]
+}

@@ -8,15 +8,9 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 from pydantic import Field, PrivateAttr, model_validator
 
+from synforecast._lib import multivariate as _rs_mv
 from synforecast.base import BaseGenerator, _categorize_ids
 from synforecast.exogenous import SeriesMetadata
-
-try:
-    from synforecast._lib import multivariate as _rs_mv
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 def _psd_factor(matrix: np.ndarray, name: str) -> np.ndarray:
@@ -297,7 +291,7 @@ class StateSpaceGenerator(BaseGenerator):
         Returns:
             np.ndarray: Observed values (first observation dimension).
         """
-        if _HAS_RUST and self.transition_fn is None and self.observation_fn is None:
+        if self.transition_fn is None and self.observation_fn is None:
             seed = int(self.rng.integers(0, 2**63))
             F = np.asarray(self._transition_matrix_array, dtype=np.float64).ravel()
             H = np.asarray(self._observation_matrix_array, dtype=np.float64).ravel()

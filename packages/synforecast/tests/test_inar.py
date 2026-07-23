@@ -111,10 +111,7 @@ class TestINARStats:
         assert_std(values, np.sqrt(var), kurtosis=8.0)
         assert values.var() > 1.5 * values.mean(), "NB-INAR should be overdispersed"
 
-    def test_python_fallback_matches_theory(self, monkeypatch) -> None:
-        import synforecast.generators.inar as inar_mod
-
-        monkeypatch.setattr(inar_mod, "_HAS_RUST", False)
+    def test_matches_theory(self) -> None:
         a, mu = 0.5, 4.0
         gen = make_gen(p=1, alpha=[a], innovation_mean=mu, seed=321)
         values = gen.generate_single_series(8000)
