@@ -14,3 +14,9 @@ description: Copula and VAR generators for correlated time series
       members:
         - generate_single_series
         - generate
+
+::: synforecast.generators.gaussian_process.GaussianProcessGenerator
+    options:
+      members:
+        - generate_single_series
+        - get_model_info

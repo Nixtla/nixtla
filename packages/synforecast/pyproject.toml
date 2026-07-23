@@ -1,7 +1,7 @@
 [project]
 name = "synforecast"
 version = "0.1.0"
-description = "Validated synthetic time-series generation with Rust acceleration"
+description = "Fast synthetic time series for testing, augmentation, and pretraining"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -41,6 +41,8 @@ Homepage = "https://github.com/Nixtla/synforecast"
 Documentation = "https://nixtlaverse.nixtla.io/synforecast/"
 Repository = "https://github.com/Nixtla/synforecast"
 Issues = "https://github.com/Nixtla/synforecast/issues"
+Changelog = "https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md"
+Security = "https://github.com/Nixtla/synforecast/security/policy"
 
 [dependency-groups]
 dev = [
@@ -57,6 +59,7 @@ dev = [
     "ruff>=0.15.22",
     "scipy>=1.10.0",
     "statsforecast",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 docs = [
     "datasetsforecast>=1.0.1",

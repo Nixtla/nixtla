@@ -160,6 +160,18 @@ designed for:
 Synthetic data reflects the assumptions of its generators. Validate those
 assumptions and downstream performance for your use case.
 
+## Evidence and benchmarks
+
+SynForecast's native Rust batch path is designed for high-throughput data
+generation. Reproducible scripts and committed raw results are available in
+[`benchmarks/`](https://github.com/Nixtla/synforecast/tree/main/benchmarks);
+performance depends on generator, series shape, thread count, and hardware.
+
+Synthetic data does not improve every model or dataset. The
+[when synthetic data helps](https://nixtlaverse.nixtla.io/synforecast/docs/capabilities/when_synthetic_helps.html)
+guide reports positive, neutral, and negative results so that augmentation and
+pretraining choices can be evaluated against observed-only baselines.
+
 ## Features
 
 - 31 generators across statistical, stochastic, multivariate, domain-specific,
@@ -171,6 +183,10 @@ assumptions and downstream performance for your use case.
 - Seed-deterministic parallel generation
 - Native generation through Rust and PyO3
 
+The pandas and Polars engines are covered by the full test suite. cuDF, Modin,
+and PyArrow support uses Narwhals and is smoke-tested when those optional
+libraries are installed; install the selected dataframe library separately.
+
 ## Documentation
 
 - [Getting started](https://nixtlaverse.nixtla.io/synforecast/docs/getting-started/quickstart.html)
@@ -178,6 +194,9 @@ assumptions and downstream performance for your use case.
 - [Generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md)
 - [Contributing](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md)
 - [Changelog](https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md)
+- [Support](https://github.com/Nixtla/synforecast/blob/main/SUPPORT.md)
+- [Security policy](https://github.com/Nixtla/synforecast/security/policy)
+- [Citation](https://github.com/Nixtla/synforecast/blob/main/CITATION.cff)
 
 ## AI disclaimer
 

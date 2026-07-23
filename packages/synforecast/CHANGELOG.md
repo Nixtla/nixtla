@@ -25,3 +25,21 @@
   pretraining followed by fine-tuning.
 - Executable tutorials, API documentation, mathematical correctness and native
   binding tests, and open-source community and security policies.
+- Complete generated API references for every public generator, composition
+  helper, and top-level convenience API.
+- Citation metadata, support guidance, code ownership, and third-party data
+  provenance.
+
+### Changed
+
+- Publishing a GitHub Release now validates, builds, smoke-tests, and publishes
+  the package to PyPI automatically. The release also deploys the production
+  documentation.
+- Package and README descriptions use the same testing, augmentation, and
+  pretraining positioning and link reproducible benchmark evidence.
+
+### Security
+
+- Updated Pillow to 12.3.0 to incorporate its July 2026 security fixes.
+- Documented the runtime versus development dependency boundary and the policy
+  against loading untrusted model checkpoints.

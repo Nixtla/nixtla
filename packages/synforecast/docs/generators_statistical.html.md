@@ -25,3 +25,9 @@ description: RandomWalk, Seasonal, SARIMA, and ETS generators
         - generate_single_series
         - generate_with_states
         - get_model_info
+
+::: synforecast.generators.inar.INARGenerator
+    options:
+      members:
+        - generate_single_series
+        - get_model_info

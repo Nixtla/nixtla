@@ -62,3 +62,21 @@ description: GARCH, Ornstein-Uhlenbeck, GBM, Jump Diffusion, Poisson, Cyclic, fB
         - generate_single_series
         - generate_with_regimes
         - get_model_info
+
+::: synforecast.generators.chaotic_system.ChaoticSystemGenerator
+    options:
+      members:
+        - generate_single_series
+        - get_model_info
+
+::: synforecast.generators.bounded_process.BoundedProcessGenerator
+    options:
+      members:
+        - generate_single_series
+        - get_model_info
+
+::: synforecast.generators.levy_process.LevyProcessGenerator
+    options:
+      members:
+        - generate_single_series
+        - get_model_info
