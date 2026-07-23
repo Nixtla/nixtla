@@ -1,19 +1,26 @@
 name: Publish Python Package
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
+  checks: read
   contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
   validate-version:
-    name: Validate release tag
+    name: Validate release
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -39,6 +46,47 @@ jobs:
           expected = f"v{python_version}"
           if tag != expected:
               raise SystemExit(f"Release tag {tag!r} does not match package version {expected!r}")
+
+      - name: Verify release commit is on main
+        id: release_commit
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          release_commit="$(git rev-list -n 1 "$GITHUB_REF")"
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "::error::Release tags must point to a commit on the protected main branch."
+            exit 1
+          fi
+          echo "sha=$release_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release checks succeeded
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const required = [
+              'CI complete',
+              'lint',
+              'Analyze (actions)',
+              'Analyze (python)',
+              'Analyze (rust)',
+              'build-docs',
+            ];
+            const checks = await github.paginate(github.rest.checks.listForRef, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: '${{ steps.release_commit.outputs.sha }}',
+              per_page: 100,
+            });
+            const byName = new Map(checks.map((check) => [check.name, check]));
+            const missing = required.filter((name) => !byName.has(name));
+            const unsuccessful = required.filter(
+              (name) => byName.has(name) && byName.get(name).conclusion !== 'success'
+            );
+            if (missing.length || unsuccessful.length) {
+              core.setFailed(
+                `Release checks not ready. Missing: ${missing.join(', ') || 'none'}. ` +
+                `Unsuccessful: ${unsuccessful.join(', ') || 'none'}.`
+              );
+            }
 
   build-wheels:
     name: Build cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}

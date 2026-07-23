@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thank you for reporting a problem. Please provide reproducible steps.
-        For usage questions and support, use the [Nixtla community Slack](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1h77esh5y-iL1m8N0F7qV1HmH~0KYeAQ).
+        For usage questions and support, use the [Nixtla community Slack](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1pmhan9j5-F54XR20edHk0UtYAPcW4KQ).
   - type: textarea
     attributes:
       label: What happened?

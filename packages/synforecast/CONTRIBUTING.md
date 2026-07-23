@@ -145,22 +145,33 @@ Report bugs and request features via [GitHub Issues](https://github.com/Nixtla/s
 
 ## Releasing
 
-Releases are published from tags by
+Publishing a GitHub Release triggers
 [`.github/workflows/python-publish.yml`](.github/workflows/python-publish.yml).
-The workflow requires a tag that exactly matches the package version, such as
-`v0.1.0` for `version = "0.1.0"`, then builds and smoke-tests CPython 3.10–3.14
-wheels for Linux x86-64 and ARM64, Windows x86-64, and macOS Intel and Apple
-Silicon. It also builds the source distribution and publishes all artifacts to
-PyPI through Trusted Publishing.
+The tag must exactly match the package version, such as `v0.1.0` for
+`version = "0.1.0"`. The workflow verifies that the tagged commit is on the
+protected `main` branch and that its CI, lint, CodeQL, and documentation checks
+succeeded. It then builds and smoke-tests CPython 3.10–3.14 wheels for Linux
+x86-64 and ARM64, Windows x86-64, and macOS Intel and Apple Silicon, plus the
+source distribution. Successful artifacts are published automatically to PyPI
+through Trusted Publishing. Publishing the release also triggers the production
+documentation deployment.
 
-Before tagging a release:
+To make a release:
 
-1. Update the version in `pyproject.toml` and `rust/Cargo.toml`, then refresh
-   `uv.lock` and `rust/Cargo.lock`.
-2. Replace `(unreleased)` in `CHANGELOG.md` with the release date.
-3. Confirm that CI, lint, documentation, wheel, and source-distribution jobs
-   pass on the release commit.
-4. Create and push the matching signed tag.
+1. Create a release-preparation branch from the latest `main`. Update the
+   version in `pyproject.toml` and `rust/Cargo.toml`, refresh `uv.lock` and
+   `rust/Cargo.lock`, and replace `(unreleased)` in `CHANGELOG.md` with the
+   release date.
+2. Open a pull request titled `Prepare vX.Y.Z release` and merge it after its
+   required checks pass.
+3. On GitHub, choose **Releases → Draft a new release**. Create the matching
+   `vX.Y.Z` tag targeting `main`, generate or edit the release notes, and
+   publish the release.
+
+Repository administrators should protect the `v*` tag pattern so only release
+maintainers can create or update version tags. The `release` environment should
+accept only `v*` tags but should not require a separate reviewer: publishing
+the GitHub Release is the release approval.
 
 The PyPI Trusted Publisher must be configured for owner `Nixtla`, repository
 `synforecast`, workflow `python-publish.yml`, and environment `release`.

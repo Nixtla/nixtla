@@ -1,0 +1,7 @@
+# Default ownership for source, documentation, packaging, and automation.
+* @elephaint
+
+# Changes to the release boundary receive an explicit maintainer review.
+/.github/workflows/ @elephaint
+/pyproject.toml @elephaint
+/rust/ @elephaint
