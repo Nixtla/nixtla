@@ -1,12 +1,11 @@
-import platform
-import sys
-
 import pytest
 
 from nixtla_tests.helpers.checks import (
     check_anomalies_dataframe,
     check_anomalies_dataframe_diff_cols,
     check_anomalies_online_dataframe,
+    check_cross_validation_async_dataframe,
+    check_forecast_async_dataframe,
     check_forecast_dataframe,
     check_forecast_dataframe_diff_cols,
     check_forecast_x_dataframe,
@@ -29,6 +28,13 @@ def test_forecast(nixtla_test_client, ray_df, ray_diff_cols_df, distributed_n_se
         nixtla_test_client, ray_df, n_series_to_check=distributed_n_series
     )
     check_forecast_dataframe_diff_cols(nixtla_test_client, ray_diff_cols_df)
+
+
+def test_forecast_async(nixtla_test_client, ray_df, distributed_n_series):
+    check_forecast_async_dataframe(
+        nixtla_test_client, ray_df, n_series_to_check=distributed_n_series
+    )
+    check_cross_validation_async_dataframe(nixtla_test_client, ray_df)
 
 
 def test_anomalies(nixtla_test_client, ray_df, ray_diff_cols_df):
