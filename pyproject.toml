@@ -112,6 +112,7 @@ select = [
 [tool.pytest.ini_options]
 markers = [
     "distributed_run: mark test as requiring distributed run, such as those depending on Ray, Spark frameworks",
+    "integration: mark test as requiring a live Nixtla API",
     "spark_run: mark test execution related to Spark framework",
     "ray_run: mark test execution related to Ray framework",
     "snowflake: mark test as requiring Snowflake connection and API key",
