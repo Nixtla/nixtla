@@ -258,13 +258,17 @@ def test_cross_validation_async_rejects_num_partitions():
         )
 
 
-def test_forecast_async_rejects_distributed_df():
+def test_forecast_async_with_unrecognized_df_type_still_raises():
+    # Distributed (dask/spark/ray) DataFrames ARE supported for forecast_async
+    # (see test_distributed_async_wrappers.py for the plumbing tests) — but an
+    # arbitrary object Fugue can't infer an execution engine for should still
+    # raise a clear ValueError rather than doing something undefined.
     client = _client()
-    with pytest.raises(ValueError, match="distributed DataFrames"):
+    with pytest.raises(ValueError, match="Could not infer execution engine"):
         client.forecast_async(df=[1, 2, 3], h=5)
 
 
-def test_cross_validation_async_rejects_distributed_df():
+def test_cross_validation_async_with_unrecognized_df_type_still_raises():
     client = _client()
-    with pytest.raises(ValueError, match="distributed"):
+    with pytest.raises(ValueError, match="Could not infer execution engine"):
         client.cross_validation_async(df=[1, 2, 3], h=5)

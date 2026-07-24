@@ -1675,6 +1675,14 @@ class NixtlaClient:
         feature_contributions: bool,
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
+        # Internal-only params used by forecast_async(); not part of the public API.
+        # NOTE: when _is_async_job=True, each Fugue partition submits and polls its
+        # own async job independently on whichever worker executes it — see
+        # forecast_async()'s docstring for the poll_timeout/worker-timeout caveat.
+        *,
+        _is_async_job: bool = False,
+        _poll_interval: float = 15,
+        _poll_timeout: float = 3600,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1737,6 +1745,9 @@ class NixtlaClient:
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
+                _is_async_job=_is_async_job,
+                _poll_interval=_poll_interval,
+                _poll_timeout=_poll_timeout,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -1878,11 +1889,6 @@ class NixtlaClient:
         extra_param_checker.validate_python(model_parameters)
 
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            if _is_async_job:
-                raise ValueError(
-                    "forecast_async does not support distributed DataFrames "
-                    "(dask/spark/ray); call forecast() instead."
-                )
             return self._distributed_forecast(
                 df=df,
                 h=h,
@@ -1909,12 +1915,19 @@ class NixtlaClient:
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
+                _is_async_job=_is_async_job,
+                _poll_interval=_poll_interval,
+                _poll_timeout=_poll_timeout,
             )
         if _is_async_job and num_partitions is not None:
             raise ValueError(
-                "num_partitions is not supported together with async jobs; "
-                "call forecast_async() without num_partitions, or use the "
-                "synchronous forecast(..., num_partitions=...) instead."
+                "num_partitions is not supported together with async jobs for "
+                "local pandas/polars DataFrames (it fans out N synchronous HTTP "
+                "calls via threads, which conflicts with the async job model); "
+                "call forecast_async() without num_partitions, use the "
+                "synchronous forecast(..., num_partitions=...) instead, or pass "
+                "a distributed (dask/spark/ray) DataFrame to forecast_async(..., "
+                "num_partitions=...) — num_partitions is supported there."
             )
         self.__dict__.pop("weights_x", None)
         self.__dict__.pop("feature_contributions", None)
@@ -2198,6 +2211,7 @@ class NixtlaClient:
         date_features: Union[bool, list[Union[str, Callable]]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-2.1",
+        num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
@@ -2214,8 +2228,25 @@ class NixtlaClient:
         that could otherwise exceed a plain synchronous HTTP request's
         timeout.
 
-        Note: does not support `num_partitions` or distributed (dask/spark/
-        ray) DataFrames — use `forecast()` for those cases.
+        Distributed (dask/spark/ray) DataFrames are supported: the job is
+        fanned out across Fugue partitions (same partitioning as `forecast()`),
+        and each partition submits and polls its own async job independently
+        on whichever worker executes it. `num_partitions` controls the number
+        of Fugue partitions in that case, with the same semantics as in
+        `forecast()`.
+
+        Caveat for distributed DataFrames: if `poll_timeout` exceeds the
+        underlying compute engine's own task/worker timeout (e.g. a Spark task
+        timeout, a Dask worker heartbeat timeout, or a Ray task timeout), the
+        worker task can be killed by the compute framework before the async
+        job completes, independent of `poll_timeout`. Set `poll_timeout`
+        conservatively relative to your cluster's task-timeout configuration,
+        or increase the cluster's task-timeout settings accordingly.
+
+        For a local pandas/polars `df`, `num_partitions` is NOT supported
+        together with the async job path and will raise `ValueError`; use the
+        synchronous `forecast(..., num_partitions=...)` instead, or omit
+        `num_partitions` here.
 
         Args:
             df (pandas or polars DataFrame): The DataFrame on which the
@@ -2296,6 +2327,12 @@ class NixtlaClient:
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
                 your data. Defaults to 'timegpt-2.1'.
+            num_partitions (int):
+                Number of Fugue partitions to use for distributed (dask/spark/
+                ray) DataFrames. If None, the number of partitions will be
+                equal to the available parallel resources in distributed
+                environments. Not supported for local pandas/polars DataFrames
+                (raises `ValueError`). Defaults to None.
             feature_contributions (bool): Compute SHAP values.
                 Gives access to computed SHAP values to explain the impact
                 of features on the final predictions. Defaults to False.
@@ -2337,6 +2374,7 @@ class NixtlaClient:
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             model=model,
+            num_partitions=num_partitions,
             feature_contributions=feature_contributions,
             model_parameters=model_parameters,
             multivariate=multivariate,
@@ -2939,6 +2977,15 @@ class NixtlaClient:
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
         categorical_exog_list: Optional[list[str]] = None,
+        # Internal-only params used by cross_validation_async(); not part of the
+        # public API. NOTE: when _is_async_job=True, each Fugue partition submits
+        # and polls its own async job independently on whichever worker executes
+        # it — see cross_validation_async()'s docstring for the poll_timeout/
+        # worker-timeout caveat.
+        *,
+        _is_async_job: bool = False,
+        _poll_interval: float = 15,
+        _poll_timeout: float = 3600,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -2982,6 +3029,9 @@ class NixtlaClient:
                 model_parameters=model_parameters,
                 multivariate=multivariate,
                 categorical_exog_list=categorical_exog_list,
+                _is_async_job=_is_async_job,
+                _poll_interval=_poll_interval,
+                _poll_timeout=_poll_timeout,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -3119,11 +3169,6 @@ class NixtlaClient:
         """
         extra_param_checker.validate_python(model_parameters)
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            if _is_async_job:
-                raise ValueError(
-                    "cross_validation_async does not support distributed "
-                    "DataFrames (dask/spark/ray); call cross_validation() instead."
-                )
             return self._distributed_cross_validation(
                 df=df,
                 h=h,
@@ -3150,12 +3195,20 @@ class NixtlaClient:
                 model_parameters=model_parameters,
                 multivariate=multivariate,
                 categorical_exog_list=categorical_exog_list,
+                _is_async_job=_is_async_job,
+                _poll_interval=_poll_interval,
+                _poll_timeout=_poll_timeout,
             )
         if _is_async_job and num_partitions is not None:
             raise ValueError(
-                "num_partitions is not supported together with async jobs; "
-                "call cross_validation_async() without num_partitions, or use "
-                "the synchronous cross_validation(..., num_partitions=...) instead."
+                "num_partitions is not supported together with async jobs for "
+                "local pandas/polars DataFrames (it fans out N synchronous HTTP "
+                "calls via threads, which conflicts with the async job model); "
+                "call cross_validation_async() without num_partitions, use the "
+                "synchronous cross_validation(..., num_partitions=...) instead, "
+                "or pass a distributed (dask/spark/ray) DataFrame to "
+                "cross_validation_async(..., num_partitions=...) — num_partitions "
+                "is supported there."
             )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -3329,6 +3382,7 @@ class NixtlaClient:
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-2.1",
+        num_partitions: Optional[_PositiveInt] = None,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
         categorical_exog_list: Optional[list[str]] = None,
@@ -3344,8 +3398,25 @@ class NixtlaClient:
         jobs that could otherwise exceed a plain synchronous HTTP request's
         timeout.
 
-        Note: does not support `num_partitions` or distributed (dask/spark/
-        ray) DataFrames — use `cross_validation()` for those cases.
+        Distributed (dask/spark/ray) DataFrames are supported: the job is
+        fanned out across Fugue partitions (same partitioning as
+        `cross_validation()`), and each partition submits and polls its own
+        async job independently on whichever worker executes it.
+        `num_partitions` controls the number of Fugue partitions in that case,
+        with the same semantics as in `cross_validation()`.
+
+        Caveat for distributed DataFrames: if `poll_timeout` exceeds the
+        underlying compute engine's own task/worker timeout (e.g. a Spark task
+        timeout, a Dask worker heartbeat timeout, or a Ray task timeout), the
+        worker task can be killed by the compute framework before the async
+        job completes, independent of `poll_timeout`. Set `poll_timeout`
+        conservatively relative to your cluster's task-timeout configuration,
+        or increase the cluster's task-timeout settings accordingly.
+
+        For a local pandas/polars `df`, `num_partitions` is NOT supported
+        together with the async job path and will raise `ValueError`; use the
+        synchronous `cross_validation(..., num_partitions=...)` instead, or
+        omit `num_partitions` here.
 
         Args:
             df (pandas or polars DataFrame): The DataFrame on which the
@@ -3422,6 +3493,12 @@ class NixtlaClient:
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
                 your data. Defaults to 'timegpt-2.1'.
+            num_partitions (int):
+                Number of Fugue partitions to use for distributed (dask/spark/
+                ray) DataFrames. If None, the number of partitions will be
+                equal to the available parallel resources in distributed
+                environments. Not supported for local pandas/polars DataFrames
+                (raises `ValueError`). Defaults to None.
             model_parameters (dict): The dictionary settings that determine
                 the behavior of the model. Default is None.
             multivariate (bool): If True, enables multivariate predictions.
@@ -3462,6 +3539,7 @@ class NixtlaClient:
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
             model=model,
+            num_partitions=num_partitions,
             model_parameters=model_parameters,
             multivariate=multivariate,
             categorical_exog_list=categorical_exog_list,
@@ -3835,6 +3913,9 @@ def _forecast_wrapper(
     feature_contributions: bool,
     model_parameters:_ExtraParamDataType,
     multivariate: bool,
+    _is_async_job: bool = False,
+    _poll_interval: float = 15,
+    _poll_timeout: float = 3600,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
@@ -3868,6 +3949,9 @@ def _forecast_wrapper(
         feature_contributions=feature_contributions,
         model_parameters=model_parameters,
         multivariate=multivariate,
+        _is_async_job=_is_async_job,
+        _poll_interval=_poll_interval,
+        _poll_timeout=_poll_timeout,
     )
 
 
@@ -3984,6 +4068,9 @@ def _cross_validation_wrapper(
     model_parameters: _ExtraParamDataType,
     multivariate: bool,
     categorical_exog_list: Optional[list[str]] = None,
+    _is_async_job: bool = False,
+    _poll_interval: float = 15,
+    _poll_timeout: float = 3600,
 ) -> pd.DataFrame:
     return client.cross_validation(
         df=df,
@@ -4011,6 +4098,9 @@ def _cross_validation_wrapper(
         model_parameters=model_parameters,
         multivariate=multivariate,
         categorical_exog_list=categorical_exog_list,
+        _is_async_job=_is_async_job,
+        _poll_interval=_poll_interval,
+        _poll_timeout=_poll_timeout,
     )
 
 

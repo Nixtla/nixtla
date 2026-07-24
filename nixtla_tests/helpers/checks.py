@@ -268,6 +268,78 @@ def check_forecast_dataframe(
     check_forecast_same_results_num_partitions(nixtla_client, df)
 
 
+def check_forecast_async(
+    nixtla_client: NixtlaClient,
+    df: fugue.AnyDataFrame,
+    horizon: int = 12,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+    n_series_to_check: int = 4,
+    **fcst_kwargs,
+):
+    fcst_df = nixtla_client.forecast_async(
+        df=df,
+        h=horizon,
+        id_col=id_col,
+        time_col=time_col,
+        **fcst_kwargs,
+    )
+    fcst_df = fa.as_pandas(fcst_df)
+    assert n_series_to_check * horizon == len(fcst_df)
+    cols = fcst_df.columns.to_list()
+    exp_cols = [id_col, time_col, "TimeGPT"]
+    if "level" in fcst_kwargs:
+        level = sorted(fcst_kwargs["level"])
+        exp_cols.extend([f"TimeGPT-lo-{lv}" for lv in reversed(level)])
+        exp_cols.extend([f"TimeGPT-hi-{lv}" for lv in level])
+    assert cols == exp_cols
+
+
+def check_forecast_async_dataframe(
+    nixtla_client: NixtlaClient,
+    df: fugue.AnyDataFrame,
+    n_series_to_check: int = 4,
+):
+    # num_partitions here controls Fugue's distributed partitioning (not the
+    # local HTTP thread fan-out, which async jobs don't support).
+    check_forecast_async(nixtla_client, df, num_partitions=1)
+    check_forecast_async(
+        nixtla_client,
+        df,
+        level=[90, 80],
+        num_partitions=1,
+        n_series_to_check=n_series_to_check,
+    )
+
+
+def check_cross_validation_async(
+    nixtla_client: NixtlaClient,
+    df: fugue.AnyDataFrame,
+    horizon: int = 12,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+    **cv_kwargs,
+):
+    fcst_df = nixtla_client.cross_validation_async(
+        df=df,
+        h=horizon,
+        id_col=id_col,
+        time_col=time_col,
+        **cv_kwargs,
+    )
+    fcst_df = fa.as_pandas(fcst_df)
+    assert len(fcst_df) > 0
+    assert {id_col, time_col, "cutoff", "TimeGPT"}.issubset(fcst_df.columns)
+
+
+def check_cross_validation_async_dataframe(
+    nixtla_client: NixtlaClient,
+    df: fugue.AnyDataFrame,
+):
+    check_cross_validation_async(nixtla_client, df, num_partitions=1)
+    check_cross_validation_async(nixtla_client, df, num_partitions=1, n_windows=2)
+
+
 def check_forecast_dataframe_diff_cols(
     nixtla_client: NixtlaClient,
     df: fugue.AnyDataFrame,
