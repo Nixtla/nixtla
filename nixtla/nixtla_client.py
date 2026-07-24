@@ -139,6 +139,15 @@ _FinetuneDepth = Literal[1, 2, 3, 4, 5]
 _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 _ThresholdMethod = Literal["univariate", "multivariate"]
+_ExplainMethod = Literal["granger", "transfer_entropy"]
+
+_MAX_SIMULATE_PATHS = 10_000
+_MAX_SIMULATE_OUTPUT_VALUES = 5_000_000
+_MAX_SIMULATE_QUANTILES = 200
+_MIN_SIMULATE_SEED = -(2**63)
+_MAX_SIMULATE_SEED = 2**64 - 1
+_MAX_EXPLAIN_FEATURES = 75
+_MAX_EXPLAIN_FEATURE_OBSERVATIONS = 1_000_000
 
 
 class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
@@ -337,7 +346,7 @@ def _partition_series(
         else:
             part_series["X"] = [x[part_idxs] for x in series["X"]]
             if h > 0:
-                if series["X_future"] is None: 
+                if series["X_future"] is None:
                     part_series["X_future"] = None
                 else:
                     part_series["X_future"] = [
@@ -524,7 +533,9 @@ def _extract_categorical_exog(
 
     # Extract historical values for all cat cols from df.
     # futr_cat_cols appear in both df (history) and X_df (future); hist_cat_cols only in df.
-    df_cat_vals: dict[str, np.ndarray] = {c: df[c].to_numpy() for c in categorical_exog_list}
+    df_cat_vals: dict[str, np.ndarray] = {
+        c: df[c].to_numpy() for c in categorical_exog_list
+    }
 
     X_df_cat_future: list[list] = []
     if futr_cat_cols and X_df is not None:
@@ -657,6 +668,7 @@ def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dic
 
     return payload
 
+
 def _get_in_sample_horizon_and_windows(
     sizes: np.ndarray,
     model_horizon: int,
@@ -664,18 +676,20 @@ def _get_in_sample_horizon_and_windows(
     clean_ex_first: bool,
     level: Optional[list[Union[int, float]]],
 ) -> tuple[int, int]:
-
     # in-sample horizon and number of windows
     min_size = min(sizes)
     h = min(model_horizon, min_size - 1)
     if clean_ex_first:
         n_windows = max((min_size - model_input_size) // model_horizon, 1)
     else:
-        n_windows = max((min_size - (model_input_size + model_horizon + 2 * h)) // model_horizon, 1)
+        n_windows = max(
+            (min_size - (model_input_size + model_horizon + 2 * h)) // model_horizon, 1
+        )
     # In case of multiple windows, we reduce one to avoid errors when running with level argument
     if level is not None and n_windows > 1:
         n_windows -= 1
     return h, n_windows
+
 
 def _maybe_add_intervals(
     df: DFType,
@@ -1686,7 +1700,7 @@ class NixtlaClient:
                 the behavior of the model. Default is None
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models. 
+                supported for a select set of TimeGPT models.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -1781,7 +1795,11 @@ class NixtlaClient:
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
             for c, vals in df_cat_vals.items():
-                sorted_df_cat[c] = vals[processed.sort_idxs] if processed.sort_idxs is not None else vals
+                sorted_df_cat[c] = (
+                    vals[processed.sort_idxs]
+                    if processed.sort_idxs is not None
+                    else vals
+                )
 
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
@@ -1795,7 +1813,12 @@ class NixtlaClient:
                 "this may lead to less accurate forecasts. "
                 "Please consider using a smaller horizon."
             )
-        restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list and not add_history
+        restrict_input = (
+            finetune_steps == 0
+            and not x_cols
+            and not categorical_exog_list
+            and not add_history
+        )
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -1825,16 +1848,22 @@ class NixtlaClient:
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")
             if futr_cat_cols:
-                logger.info(f"Using future categorical exogenous features: {futr_cat_cols}")
+                logger.info(
+                    f"Using future categorical exogenous features: {futr_cat_cols}"
+                )
             if hist_exog_list:
                 logger.info(f"Using historical exogenous features: {hist_exog_list}")
             if hist_cat_cols:
-                logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
+                logger.info(
+                    f"Using historical categorical exogenous features: {hist_cat_cols}"
+                )
         else:
             X = None
 
         if X_future is not None or X_df_cat_future:
-            X_future = (list(X_future) if X_future is not None else []) + X_df_cat_future
+            X_future = (
+                list(X_future) if X_future is not None else []
+            ) + X_df_cat_future
 
         categorical_exog_payload: Optional[list[int]] = None
         if categorical_exog_list:
@@ -1940,7 +1969,9 @@ class NixtlaClient:
         out = _maybe_convert_level_to_quantiles(out, quantiles)
         # Build the full feature list in X order: [futr_num, futr_cat_hist, hist_num, hist_cat].
         # Used for both feature_contributions and weights_x so SHAP/weight labels align with X rows.
-        weights_x_cols = x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
+        weights_x_cols = (
+            x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
+        )
         self._maybe_assign_feature_contributions(
             expected_contributions=feature_contributions,
             resp=resp,
@@ -1963,8 +1994,467 @@ class NixtlaClient:
                         self.feature_contributions
                     )
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=weights_x_cols)
+        self._maybe_assign_weights(
+            weights=resp["weights_x"], df=df, x_cols=weights_x_cols
+        )
         return out
+
+    def simulate(
+        self,
+        df: DataFrame,
+        h: _PositiveInt,
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        X_df: Optional[DataFrame] = None,
+        n_paths: _PositiveInt = 100,
+        quantiles: Optional[list[float]] = None,
+        seed: Optional[int] = None,
+        finetuned_model_id: Optional[str] = None,
+        clean_ex_first: bool = True,
+        hist_exog_list: Optional[list[str]] = None,
+        categorical_exog_list: Optional[list[str]] = None,
+        validate_api_key: bool = False,
+        date_features: Union[bool, list[Union[str, Callable]]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
+        model: _Model = "timegpt-2.1",
+        multivariate: bool = False,
+    ) -> DataFrame:
+        """Generate temporally correlated forecast sample paths.
+
+        Args:
+            df (pandas or polars DataFrame): Historical time series data.
+                It must contain the time and target columns and may contain an
+                ID column and exogenous feature columns.
+            h (int): Number of future timesteps in every sample path.
+            freq (str, int or pandas offset, optional): Frequency of the
+                timestamps. If `None`, it is inferred from `df`.
+            id_col (str): Column that identifies each series. Defaults to
+                `"unique_id"`.
+            time_col (str): Column that identifies each timestep. Defaults to
+                `"ds"`.
+            target_col (str): Column that contains the target. Defaults to
+                `"y"`.
+            X_df (pandas or polars DataFrame, optional): Future exogenous
+                values with ID and time columns.
+            n_paths (int): Number of paths generated for each series. Must be
+                between 1 and 10,000. Defaults to 100.
+            quantiles (list[float], optional): Strictly increasing marginal
+                quantiles inside `(0, 1)`. Between 2 and 200 values may be
+                provided.
+            seed (int, optional): Random seed. Reusing a seed with the same
+                inputs produces the same paths.
+            finetuned_model_id (str, optional): ID of a previously fine-tuned
+                model.
+            clean_ex_first (bool): Clean exogenous signals before inference.
+                Defaults to True.
+            hist_exog_list (list[str], optional): Historical-only exogenous
+                feature names.
+            categorical_exog_list (list[str], optional): Categorical
+                exogenous feature names.
+            validate_api_key (bool): Validate the API key before the request.
+                Defaults to False.
+            date_features (bool or list, optional): Date-derived exogenous
+                features to add.
+            date_features_to_one_hot (bool or list[str]): Date features to
+                one-hot encode.
+            model (str): Model used to generate the marginal forecasts.
+                Defaults to `"timegpt-2.1"`.
+            multivariate (bool): Request coherent paths across series. The
+                returned `coupled` column reports whether cross-series
+                coupling was applied. Defaults to False.
+
+        Returns:
+            pandas or polars DataFrame: Long-format sample paths with ID, time,
+                `sample_id`, `TimeGPT`, and `coupled` columns. It contains
+                `n_series * n_paths * h` rows.
+        """
+        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("`simulate` only supports pandas and polars dataframes.")
+        if X_df is not None and not isinstance(X_df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("`X_df` must be a pandas or polars dataframe.")
+        if not isinstance(h, (int, np.integer)) or isinstance(h, bool):
+            raise ValueError("`h` must be a positive integer.")
+        h = int(h)
+        if h < 1:
+            raise ValueError("`h` must be a positive integer.")
+        if not isinstance(n_paths, (int, np.integer)) or isinstance(n_paths, bool):
+            raise ValueError("`n_paths` must be an integer.")
+        if not 1 <= int(n_paths) <= _MAX_SIMULATE_PATHS:
+            raise ValueError(
+                f"`n_paths` must be between 1 and {_MAX_SIMULATE_PATHS:,}."
+            )
+        n_paths = int(n_paths)
+        if quantiles is not None:
+            try:
+                quantile_array = np.asarray(quantiles, dtype=np.float64)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("`quantiles` must be a list of numbers.") from exc
+            if quantile_array.ndim != 1 or not (
+                2 <= quantile_array.size <= _MAX_SIMULATE_QUANTILES
+            ):
+                raise ValueError(
+                    "`quantiles` must contain between 2 and "
+                    f"{_MAX_SIMULATE_QUANTILES} values."
+                )
+            if (
+                not np.isfinite(quantile_array).all()
+                or quantile_array[0] <= 0
+                or quantile_array[-1] >= 1
+            ):
+                raise ValueError(
+                    "`quantiles` must contain finite values strictly inside (0, 1)."
+                )
+            if not (np.diff(quantile_array) > 0).all():
+                raise ValueError("`quantiles` must be strictly increasing.")
+            quantiles = quantile_array.tolist()
+        if seed is not None:
+            if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):
+                raise ValueError("`seed` must be an integer.")
+            seed = int(seed)
+            if not _MIN_SIMULATE_SEED <= seed <= _MAX_SIMULATE_SEED:
+                raise ValueError(
+                    f"`seed` must be between {_MIN_SIMULATE_SEED} and "
+                    f"{_MAX_SIMULATE_SEED}."
+                )
+
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
+        df, X_df, drop_id, freq = self._run_validations(
+            df=df,
+            X_df=X_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=validate_api_key,
+            model=model,
+            freq=freq,
+        )
+        (
+            df,
+            X_df,
+            df_cat_vals,
+            futr_cat_cols,
+            hist_cat_cols,
+            X_df_cat_future,
+        ) = _extract_categorical_exog(
+            df=df,
+            categorical_exog_list=categorical_exog_list,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            X_df=X_df,
+        )
+        numeric_hist_exog = (
+            [col for col in hist_exog_list if col not in hist_cat_cols]
+            if hist_exog_list
+            else hist_exog_list
+        )
+        df, X_df = _validate_exog(
+            df=df,
+            X_df=X_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            hist_exog=numeric_hist_exog,
+        )
+
+        logger.info("Preprocessing dataframes...")
+        processed, X_future, x_cols, futr_cols = _preprocess(
+            df=df,
+            X_df=X_df,
+            h=h,
+            freq=freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        sorted_df_cat = {
+            col: (
+                values[processed.sort_idxs]
+                if processed.sort_idxs is not None
+                else values
+            )
+            for col, values in df_cat_vals.items()
+        }
+        standard_freq = _standardize_freq(freq, processed)
+        n_future_numeric = len(futr_cols) if futr_cols is not None else 0
+        n_future_categorical = len(futr_cat_cols)
+        n_historical_numeric = len(x_cols) - n_future_numeric
+        n_historical_categorical = len(hist_cat_cols)
+        categorical_history = [
+            sorted_df_cat[col].tolist() for col in futr_cat_cols + hist_cat_cols
+        ]
+
+        if processed.data.shape[1] > 1 or categorical_history:
+            numeric_history = (
+                list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
+            )
+            X = (
+                numeric_history[:n_future_numeric]
+                + categorical_history[:n_future_categorical]
+                + numeric_history[n_future_numeric:]
+                + categorical_history[n_future_categorical:]
+            )
+        else:
+            X = None
+        if X_future is not None or X_df_cat_future:
+            X_future = (
+                list(X_future) if X_future is not None else []
+            ) + X_df_cat_future
+
+        categorical_exog_payload: Optional[list[int]] = None
+        if categorical_exog_list:
+            future_categorical_indices = list(
+                range(
+                    n_future_numeric,
+                    n_future_numeric + n_future_categorical,
+                )
+            )
+            historical_categorical_start = (
+                n_future_numeric + n_future_categorical + n_historical_numeric
+            )
+            historical_categorical_indices = list(
+                range(
+                    historical_categorical_start,
+                    historical_categorical_start + n_historical_categorical,
+                )
+            )
+            categorical_exog_payload = (
+                future_categorical_indices + historical_categorical_indices
+            )
+
+        sizes = np.diff(processed.indptr)
+        output_values = n_paths * len(sizes) * h
+        if output_values > _MAX_SIMULATE_OUTPUT_VALUES:
+            raise ValueError(
+                f"`n_paths * n_series * h` is {output_values:,}, which exceeds "
+                f"the maximum of {_MAX_SIMULATE_OUTPUT_VALUES:,}."
+            )
+        series_payload: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": sizes,
+            "X": X,
+            "X_future": X_future,
+        }
+        if categorical_exog_payload is not None:
+            series_payload["categorical_exog"] = categorical_exog_payload
+        payload = {
+            "series": series_payload,
+            "model": model,
+            "h": h,
+            "freq": standard_freq,
+            "n_paths": n_paths,
+            "quantiles": quantiles,
+            "seed": seed,
+            "finetuned_model_id": finetuned_model_id,
+            "clean_ex_first": clean_ex_first,
+            "multivariate": multivariate,
+        }
+
+        logger.info("Calling Simulate Endpoint...")
+        with self._make_client(**self._client_kwargs) as client:
+            resp = self._make_request_with_retries(client, "v2/simulate", payload)
+
+        response_n_paths = resp.get("n_paths")
+        response_h = resp.get("h")
+        response_sizes = np.asarray(resp.get("sizes"))
+        samples = np.asarray(resp.get("samples"))
+        expected_sizes = np.full(len(sizes), h)
+        if response_n_paths != n_paths or response_h != h:
+            raise RuntimeError(
+                "Simulation response metadata does not match the request."
+            )
+        if response_sizes.shape != expected_sizes.shape or not np.array_equal(
+            response_sizes, expected_sizes
+        ):
+            raise RuntimeError("Simulation response contains unexpected series sizes.")
+        if samples.ndim != 1 or samples.size != output_values:
+            raise RuntimeError(
+                f"Simulation response contains {samples.size:,} values; "
+                f"expected {output_values:,}."
+            )
+
+        future_df = ufp.make_future_dataframe(
+            uids=processed.uids,
+            last_times=type(processed.uids)(processed.last_times),
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        future_rows = len(future_df)
+        out = ufp.take_rows(future_df, np.tile(np.arange(future_rows), n_paths))
+        out = ufp.drop_index_if_pandas(out)
+        out = ufp.assign_columns(
+            out,
+            "sample_id",
+            np.repeat(np.arange(n_paths, dtype=np.int64), future_rows),
+        )
+        out = ufp.assign_columns(out, "TimeGPT", samples)
+        out = ufp.assign_columns(
+            out, "coupled", np.full(output_values, bool(resp.get("coupled", False)))
+        )
+        return _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
+
+    def explain(
+        self,
+        df: DataFrame,
+        method: _ExplainMethod = "granger",
+        features: Optional[list[str]] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        categorical_exog_list: Optional[list[str]] = None,
+        validate_api_key: bool = False,
+    ) -> DataFrame:
+        """Compute model-independent historical feature importance weights.
+
+        The returned weights describe lagged predictive relationships in the
+        supplied data. They do not establish that changing a feature will cause
+        the target to change.
+
+        Args:
+            df (pandas or polars DataFrame): Historical time series containing
+                the target and candidate feature columns.
+            method (str): `"granger"` for linear lagged relationships or
+                `"transfer_entropy"` for potentially nonlinear relationships.
+                Defaults to `"granger"`.
+            features (list[str], optional): Features to analyze. By default,
+                every column other than the ID, time, and target columns is
+                used.
+            id_col (str): Column that identifies each series. Defaults to
+                `"unique_id"`.
+            time_col (str): Column that identifies each timestep. Defaults to
+                `"ds"`.
+            target_col (str): Column that contains the target. Defaults to
+                `"y"`.
+            categorical_exog_list (list[str], optional): Feature names that
+                should be treated as categorical.
+            validate_api_key (bool): Validate the API key before the request.
+                Defaults to False.
+
+        Returns:
+            pandas or polars DataFrame: One row per feature with `feature`,
+                `weight`, and `method` columns.
+        """
+        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("`explain` only supports pandas and polars dataframes.")
+        if method not in ("granger", "transfer_entropy"):
+            raise ValueError("`method` must be either 'granger' or 'transfer_entropy'.")
+        if validate_api_key and not self.validate_api_key(log=False):
+            raise Exception("API Key not valid, please email support@nixtla.io")
+
+        drop_id = id_col not in df.columns
+        if drop_id:
+            df = ufp.copy_if_pandas(df, deep=False)
+            df = ufp.assign_columns(df, id_col, 0)
+        if (
+            isinstance(df, pd.DataFrame)
+            and time_col not in df
+            and pd.api.types.is_datetime64_any_dtype(df.index)
+        ):
+            df = df.copy(deep=False)
+            df.index.name = time_col
+            df = df.reset_index()
+        df = ensure_time_dtype(df, time_col=time_col)
+        validate_format(
+            df=df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+
+        base_columns = {id_col, time_col, target_col}
+        if features is None:
+            features = [col for col in df.columns if col not in base_columns]
+        else:
+            features = list(features)
+        if not features:
+            raise ValueError("`explain` requires at least one feature.")
+        if len(features) != len(set(features)):
+            raise ValueError("`features` must not contain duplicates.")
+        invalid_features = set(features) - set(df.columns)
+        if invalid_features:
+            raise ValueError(
+                f"The following features were not found in `df`: {invalid_features}."
+            )
+        reserved_features = set(features) & base_columns
+        if reserved_features:
+            raise ValueError(
+                "ID, time, and target columns cannot be explanation features: "
+                f"{reserved_features}."
+            )
+        if len(features) > _MAX_EXPLAIN_FEATURES:
+            raise ValueError(
+                f"`explain` supports at most {_MAX_EXPLAIN_FEATURES} features."
+            )
+
+        categorical_exog_list = list(categorical_exog_list or [])
+        invalid_categorical = set(categorical_exog_list) - set(features)
+        if invalid_categorical:
+            raise ValueError(
+                "Every categorical feature must also be present in `features`: "
+                f"{invalid_categorical}."
+            )
+
+        selected = df[[id_col, time_col, target_col, *features]]
+        processed = ufp.process_df(
+            df=selected[[id_col, time_col, target_col]],
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        feature_observations = len(processed.data) * len(features)
+        if feature_observations > _MAX_EXPLAIN_FEATURE_OBSERVATIONS:
+            raise ValueError(
+                f"`n_observations * n_features` is "
+                f"{feature_observations:,}, which exceeds the maximum of "
+                f"{_MAX_EXPLAIN_FEATURE_OBSERVATIONS:,}."
+            )
+        feature_rows = []
+        for feature in features:
+            values = selected[feature].to_numpy()
+            if processed.sort_idxs is not None:
+                values = values[processed.sort_idxs]
+            feature_rows.append(values.tolist())
+        categorical_positions = [
+            position
+            for position, feature in enumerate(features)
+            if feature in categorical_exog_list
+        ]
+        series_payload: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": np.diff(processed.indptr),
+            "X": feature_rows,
+        }
+        if categorical_positions:
+            series_payload["categorical_exog"] = categorical_positions
+        payload = {"series": series_payload, "method": method}
+
+        logger.info("Calling Explain Endpoint...")
+        with self._make_client(**self._client_kwargs) as client:
+            resp = self._make_request_with_retries(client, "v2/explain", payload)
+
+        weights = np.asarray(resp.get("weights"), dtype=np.float64)
+        if weights.ndim != 1 or weights.size != len(features):
+            raise RuntimeError(
+                f"Explain response contains {weights.size} weights; "
+                f"expected {len(features)}."
+            )
+        response_method = resp.get("method")
+        if response_method != method:
+            raise RuntimeError("Explain response metadata does not match the request.")
+        return type(df)(
+            {
+                "feature": features,
+                "weight": weights,
+                "method": [response_method] * len(features),
+            }
+        )
 
     def _distributed_detect_anomalies(
         self,
@@ -2225,7 +2715,9 @@ class NixtlaClient:
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         weights_x_cols = x_cols + cat_cols
-        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=weights_x_cols)
+        self._maybe_assign_weights(
+            weights=resp["weights_x"], df=df, x_cols=weights_x_cols
+        )
         return out
 
     def _distributed_detect_anomalies_online(
@@ -2400,10 +2892,10 @@ class NixtlaClient:
                 distributed environments. Defaults to None.
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models. This variable 
+                supported for a select set of TimeGPT models. This variable
                 is different from the `threshold_method` parameter. The latter
                 controls the method used for anomaly detection (univariate vs
-                multivariate) whereas `multivariate` determines how the model 
+                multivariate) whereas `multivariate` determines how the model
                 creates the predictions.
 
         Returns:
@@ -2721,7 +3213,7 @@ class NixtlaClient:
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
             model_parameters (dict): The dictionary settings that determine
-                the behavior of the model. Default is None.            
+                the behavior of the model. Default is None.
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
                 supported for a select set of TimeGPT models.
@@ -2801,7 +3293,11 @@ class NixtlaClient:
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
             for c, vals in df_cat_vals.items():
-                sorted_df_cat[c] = vals[processed.sort_idxs] if processed.sort_idxs is not None else vals
+                sorted_df_cat[c] = (
+                    vals[processed.sort_idxs]
+                    if processed.sort_idxs is not None
+                    else vals
+                )
 
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
@@ -2810,7 +3306,9 @@ class NixtlaClient:
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
-        restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list
+        restrict_input = (
+            finetune_steps == 0 and not x_cols and not categorical_exog_list
+        )
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -2841,7 +3339,9 @@ class NixtlaClient:
             cat_col_indices = list(range(n_num_cols, n_num_cols + len(hist_cat_cols)))
             categorical_exog_payload = cat_col_indices
             if hist_cat_cols:
-                logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
+                logger.info(
+                    f"Using historical categorical exogenous features: {hist_cat_cols}"
+                )
         else:
             X = list(X_np) if X_np is not None else None
 
@@ -3265,7 +3765,7 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
-    model_parameters:_ExtraParamDataType,
+    model_parameters: _ExtraParamDataType,
     multivariate: bool,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
@@ -3362,7 +3862,7 @@ def _detect_anomalies_online_wrapper(
     model: _Model,
     refit: bool,
     num_partitions: Optional[_PositiveInt],
-    multivariate: bool
+    multivariate: bool,
 ) -> pd.DataFrame:
     return client.detect_anomalies_online(
         df=df,
