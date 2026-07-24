@@ -1142,23 +1142,45 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         payloads: list[dict[str, Any]],
+        _is_async_job: bool = False,
+        _poll_interval: float = 15,
+        _poll_timeout: float = 3600,
     ) -> dict[str, Any]:
         from tqdm.auto import tqdm
 
         num_partitions = len(payloads)
         results: list[dict[str, Any]] = [{} for _ in range(num_partitions)]
         max_workers = min(10, num_partitions)
+        # NOTE: if one partition's job fails/times out, this still waits for
+        # every other in-flight partition to reach a terminal state before the
+        # exception surfaces (ThreadPoolExecutor.__exit__ -> shutdown(wait=True));
+        # there's no cross-partition cancellation. See forecast_async()'s
+        # docstring for the user-facing explanation.
         with ThreadPoolExecutor(max_workers) as executor:
-            future2pos = {
-                executor.submit(
-                    self._make_request_with_retries,
-                    client=client,
-                    endpoint=endpoint,
-                    payload=payload,
-                    multithreaded_compress=False,
-                ): i
-                for i, payload in enumerate(payloads)
-            }
+            if _is_async_job:
+                future2pos = {
+                    executor.submit(
+                        self._run_async_job,
+                        client=client,
+                        endpoint=endpoint,
+                        payload=payload,
+                        poll_interval=_poll_interval,
+                        poll_timeout=_poll_timeout,
+                        multithreaded_compress=False,
+                    ): i
+                    for i, payload in enumerate(payloads)
+                }
+            else:
+                future2pos = {
+                    executor.submit(
+                        self._make_request_with_retries,
+                        client=client,
+                        endpoint=endpoint,
+                        payload=payload,
+                        multithreaded_compress=False,
+                    ): i
+                    for i, payload in enumerate(payloads)
+                }
             for future in tqdm(as_completed(future2pos), total=len(future2pos)):
                 pos = future2pos[future]
                 results[pos] = future.result()
@@ -1919,16 +1941,6 @@ class NixtlaClient:
                 _poll_interval=_poll_interval,
                 _poll_timeout=_poll_timeout,
             )
-        if _is_async_job and num_partitions is not None:
-            raise ValueError(
-                "num_partitions is not supported together with async jobs for "
-                "local pandas/polars DataFrames (it fans out N synchronous HTTP "
-                "calls via threads, which conflicts with the async job model); "
-                "call forecast_async() without num_partitions, use the "
-                "synchronous forecast(..., num_partitions=...) instead, or pass "
-                "a distributed (dask/spark/ray) DataFrame to forecast_async(..., "
-                "num_partitions=...) — num_partitions is supported there."
-            )
         self.__dict__.pop("weights_x", None)
         self.__dict__.pop("feature_contributions", None)
         model = self._maybe_override_model(model)
@@ -2116,7 +2128,14 @@ class NixtlaClient:
                     )
             else:
                 payloads = _partition_series(payload, num_partitions, h)
-                resp = self._make_partitioned_requests(client, "v2/forecast", payloads)
+                resp = self._make_partitioned_requests(
+                    client,
+                    "v2/forecast",
+                    payloads,
+                    _is_async_job=_is_async_job,
+                    _poll_interval=_poll_interval,
+                    _poll_timeout=_poll_timeout,
+                )
                 if add_history:
                     insample_h, n_windows = _get_in_sample_horizon_and_windows(
                         sizes=sizes,
@@ -2131,7 +2150,12 @@ class NixtlaClient:
                     ]
                     logger.info("Calling Historical Forecast Endpoint...")
                     in_sample_resp = self._make_partitioned_requests(
-                        client, "v2/cross_validation", in_sample_payloads
+                        client,
+                        "v2/cross_validation",
+                        in_sample_payloads,
+                        _is_async_job=_is_async_job,
+                        _poll_interval=_poll_interval,
+                        _poll_timeout=_poll_timeout,
                     )
                     insample_feat_contributions = in_sample_resp.get(
                         "feature_contributions", None
@@ -2243,10 +2267,23 @@ class NixtlaClient:
         conservatively relative to your cluster's task-timeout configuration,
         or increase the cluster's task-timeout settings accordingly.
 
-        For a local pandas/polars `df`, `num_partitions` is NOT supported
-        together with the async job path and will raise `ValueError`; use the
-        synchronous `forecast(..., num_partitions=...)` instead, or omit
-        `num_partitions` here.
+        For a local pandas/polars `df`, `num_partitions` fans the call out
+        across up to 10 concurrent threads against one shared HTTP client —
+        each thread submits and polls its own async job independently, with
+        the *full* `poll_interval`/`poll_timeout` budget (not split across
+        partitions). With more than 10 partitions, additional partitions queue
+        and only start once an earlier one finishes, so worst-case wall-clock
+        can scale as roughly `ceil(num_partitions / 10) * poll_timeout` rather
+        than `poll_timeout` alone. If any partition's job fails or times out,
+        the call still waits for every other in-flight partition to reach a
+        terminal state (it does not cancel siblings) before raising
+        `AsyncJobError`/`AsyncJobTimeoutError` — this can mean waiting up to
+        the full `poll_timeout` even after an early failure elsewhere.
+
+        `add_history=True` with `num_partitions` runs a second, sequential
+        partitioned async job (the historical-forecast call) after the first
+        completes — same additive relationship as the synchronous path, just
+        at `poll_timeout` scale, so the worst-case wait roughly doubles.
 
         Args:
             df (pandas or polars DataFrame): The DataFrame on which the
@@ -2331,8 +2368,9 @@ class NixtlaClient:
                 Number of Fugue partitions to use for distributed (dask/spark/
                 ray) DataFrames. If None, the number of partitions will be
                 equal to the available parallel resources in distributed
-                environments. Not supported for local pandas/polars DataFrames
-                (raises `ValueError`). Defaults to None.
+                environments. For local pandas/polars DataFrames, this instead
+                controls the number of concurrent threads used to fan the call
+                out (see the note above). Defaults to None.
             feature_contributions (bool): Compute SHAP values.
                 Gives access to computed SHAP values to explain the impact
                 of features on the final predictions. Defaults to False.
@@ -3199,17 +3237,6 @@ class NixtlaClient:
                 _poll_interval=_poll_interval,
                 _poll_timeout=_poll_timeout,
             )
-        if _is_async_job and num_partitions is not None:
-            raise ValueError(
-                "num_partitions is not supported together with async jobs for "
-                "local pandas/polars DataFrames (it fans out N synchronous HTTP "
-                "calls via threads, which conflicts with the async job model); "
-                "call cross_validation_async() without num_partitions, use the "
-                "synchronous cross_validation(..., num_partitions=...) instead, "
-                "or pass a distributed (dask/spark/ray) DataFrame to "
-                "cross_validation_async(..., num_partitions=...) — num_partitions "
-                "is supported there."
-            )
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
         df, _, drop_id, freq = self._run_validations(
@@ -3338,7 +3365,12 @@ class NixtlaClient:
             else:
                 payloads = _partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
-                    client, "v2/cross_validation", payloads
+                    client,
+                    "v2/cross_validation",
+                    payloads,
+                    _is_async_job=_is_async_job,
+                    _poll_interval=_poll_interval,
+                    _poll_timeout=_poll_timeout,
                 )
 
         # assemble result
@@ -3413,10 +3445,18 @@ class NixtlaClient:
         conservatively relative to your cluster's task-timeout configuration,
         or increase the cluster's task-timeout settings accordingly.
 
-        For a local pandas/polars `df`, `num_partitions` is NOT supported
-        together with the async job path and will raise `ValueError`; use the
-        synchronous `cross_validation(..., num_partitions=...)` instead, or
-        omit `num_partitions` here.
+        For a local pandas/polars `df`, `num_partitions` fans the call out
+        across up to 10 concurrent threads against one shared HTTP client —
+        each thread submits and polls its own async job independently, with
+        the *full* `poll_interval`/`poll_timeout` budget (not split across
+        partitions). With more than 10 partitions, additional partitions queue
+        and only start once an earlier one finishes, so worst-case wall-clock
+        can scale as roughly `ceil(num_partitions / 10) * poll_timeout` rather
+        than `poll_timeout` alone. If any partition's job fails or times out,
+        the call still waits for every other in-flight partition to reach a
+        terminal state (it does not cancel siblings) before raising
+        `AsyncJobError`/`AsyncJobTimeoutError` — this can mean waiting up to
+        the full `poll_timeout` even after an early failure elsewhere.
 
         Args:
             df (pandas or polars DataFrame): The DataFrame on which the
@@ -3497,8 +3537,9 @@ class NixtlaClient:
                 Number of Fugue partitions to use for distributed (dask/spark/
                 ray) DataFrames. If None, the number of partitions will be
                 equal to the available parallel resources in distributed
-                environments. Not supported for local pandas/polars DataFrames
-                (raises `ValueError`). Defaults to None.
+                environments. For local pandas/polars DataFrames, this instead
+                controls the number of concurrent threads used to fan the call
+                out (see the note above). Defaults to None.
             model_parameters (dict): The dictionary settings that determine
                 the behavior of the model. Default is None.
             multivariate (bool): If True, enables multivariate predictions.

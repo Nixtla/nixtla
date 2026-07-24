@@ -26,6 +26,22 @@ def _small_df(n=20):
     )
 
 
+def _multi_series_df(n_series=2, n=20):
+    return pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "unique_id": f"id_{i}",
+                    "ds": pd.date_range("2020-01-01", periods=n, freq="D"),
+                    "y": range(n),
+                }
+            )
+            for i in range(n_series)
+        ],
+        ignore_index=True,
+    )
+
+
 def _mock_response(status_code, body):
     resp = MagicMock()
     resp.status_code = status_code
@@ -242,20 +258,128 @@ def test_cross_validation_async_success(monkeypatch):
     assert out["TimeGPT"].tolist() == list(range(h))
 
 
-def test_forecast_async_rejects_num_partitions():
+# ---------------------------------------------------------------------------
+# num_partitions + async job fan-out (local pandas/polars DataFrames)
+# ---------------------------------------------------------------------------
+
+
+def test_make_partitioned_requests_dispatches_async_jobs():
     client = _client()
-    with pytest.raises(ValueError, match="num_partitions"):
-        client.forecast(
-            df=_small_df(), h=5, num_partitions=2, _is_async_job=True
+    calls = []
+
+    def fake_run_async_job(
+        client, endpoint, payload, poll_interval, poll_timeout, multithreaded_compress=True
+    ):
+        calls.append((endpoint, poll_interval, poll_timeout, multithreaded_compress))
+        return {"mean": [payload["idx"]], "intervals": None, "weights_x": None}
+
+    client._run_async_job = fake_run_async_job
+
+    payloads = [{"idx": i} for i in range(3)]
+    resp = client._make_partitioned_requests(
+        MagicMock(),
+        "v2/forecast",
+        payloads,
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+    )
+
+    assert len(calls) == 3
+    assert all(c == ("v2/forecast", 1, 2, False) for c in calls)
+    assert sorted(resp["mean"].tolist()) == [0, 1, 2]
+    assert resp["intervals"] is None
+    assert resp["weights_x"] is None
+
+
+def test_make_partitioned_requests_propagates_async_job_error():
+    client = _client()
+
+    def fake_run_async_job(
+        client, endpoint, payload, poll_interval, poll_timeout, multithreaded_compress=True
+    ):
+        if payload["idx"] == 1:
+            raise AsyncJobError(job_id="fc-bad", error="boom")
+        return {"mean": [0], "intervals": None, "weights_x": None}
+
+    client._run_async_job = fake_run_async_job
+
+    payloads = [{"idx": i} for i in range(3)]
+    with pytest.raises(AsyncJobError):
+        client._make_partitioned_requests(
+            MagicMock(),
+            "v2/forecast",
+            payloads,
+            _is_async_job=True,
+            _poll_interval=0,
+            _poll_timeout=1,
         )
 
 
-def test_cross_validation_async_rejects_num_partitions():
+def test_forecast_num_partitions_with_async_job(monkeypatch):
+    h = 5
+    calls = []
+
+    def fake_get_model_params(self, model, freq):
+        return 100, 12
+
+    def fake_run_async_job(
+        self, client, endpoint, payload, poll_interval, poll_timeout, multithreaded_compress=True
+    ):
+        calls.append(endpoint)
+        return {"mean": list(range(h)), "intervals": None, "weights_x": None}
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
     client = _client()
-    with pytest.raises(ValueError, match="num_partitions"):
-        client.cross_validation(
-            df=_small_df(), h=5, num_partitions=2, _is_async_job=True
-        )
+
+    out = client.forecast(
+        df=_multi_series_df(n_series=2),
+        h=h,
+        num_partitions=2,
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+    )
+
+    assert calls == ["v2/forecast", "v2/forecast"]
+    assert len(out) == h * 2
+
+
+def test_cross_validation_num_partitions_with_async_job(monkeypatch):
+    h = 5
+    calls = []
+
+    def fake_get_model_params(self, model, freq):
+        return 10_000, 12
+
+    def fake_run_async_job(
+        self, client, endpoint, payload, poll_interval, poll_timeout, multithreaded_compress=True
+    ):
+        calls.append(endpoint)
+        n = len(payload["series"]["y"])
+        return {
+            "idxs": list(range(n - h, n)),
+            "sizes": [h],
+            "mean": list(range(h)),
+            "intervals": None,
+        }
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
+    client = _client()
+
+    out = client.cross_validation(
+        df=_multi_series_df(n_series=2),
+        h=h,
+        num_partitions=2,
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+    )
+
+    assert calls == ["v2/cross_validation", "v2/cross_validation"]
+    assert len(out) == h * 2
 
 
 def test_forecast_async_with_unrecognized_df_type_still_raises():
