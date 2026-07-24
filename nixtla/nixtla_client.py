@@ -203,38 +203,39 @@ _date_features_by_freq = {
 }
 
 
-def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
-    def should_retry(exc: Exception) -> bool:
-        retriable_exceptions = (
-            ConnectionResetError,
-            httpcore.ConnectError,
-            httpcore.RemoteProtocolError,
-            httpx.ConnectTimeout,
-            httpx.ReadError,
-            httpx.RemoteProtocolError,
-            httpx.ReadTimeout,
-            httpx.PoolTimeout,
-            httpx.WriteError,
-            httpx.WriteTimeout,
-        )
-        retriable_codes = [
-            HTTPStatus.REQUEST_TIMEOUT,
-            HTTPStatus.CONFLICT,
-            HTTPStatus.TOO_MANY_REQUESTS,
-            HTTPStatus.BAD_GATEWAY,
-            HTTPStatus.SERVICE_UNAVAILABLE,
-            HTTPStatus.GATEWAY_TIMEOUT,
-        ]
-        return isinstance(exc, retriable_exceptions) or (
-            isinstance(exc, ApiError) and exc.status_code in retriable_codes
-        )
+def _is_retriable_error(exc: Exception) -> bool:
+    retriable_exceptions = (
+        ConnectionResetError,
+        httpcore.ConnectError,
+        httpcore.RemoteProtocolError,
+        httpx.ConnectTimeout,
+        httpx.ReadError,
+        httpx.RemoteProtocolError,
+        httpx.ReadTimeout,
+        httpx.PoolTimeout,
+        httpx.WriteError,
+        httpx.WriteTimeout,
+    )
+    retriable_codes = [
+        HTTPStatus.REQUEST_TIMEOUT,
+        HTTPStatus.CONFLICT,
+        HTTPStatus.TOO_MANY_REQUESTS,
+        HTTPStatus.BAD_GATEWAY,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        HTTPStatus.GATEWAY_TIMEOUT,
+    ]
+    return isinstance(exc, retriable_exceptions) or (
+        isinstance(exc, ApiError) and exc.status_code in retriable_codes
+    )
 
+
+def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     def after_retry(retry_state: RetryCallState) -> None:
         error = retry_state.outcome.exception()
         logger.error(f"Attempt {retry_state.attempt_number} failed with error: {error}")
 
     return retry(
-        retry=retry_if_exception(should_retry),
+        retry=retry_if_exception(_is_retriable_error),
         wait=wait_fixed(retry_interval),
         after=after_retry,
         stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
@@ -1115,12 +1116,15 @@ class NixtlaClient:
         while True:
             try:
                 job_data = self._get_request(client, f"{jobs_endpoint}/{job_id}")
-            except ApiError as e:
-                if time.monotonic() >= deadline:
+            except Exception as e:
+                if not _is_retriable_error(e):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     raise AsyncJobTimeoutError(
                         job_id=job_id, poll_timeout=poll_timeout
                     ) from e
-                time.sleep(poll_interval)
+                time.sleep(min(poll_interval, remaining))
                 continue
 
             status = job_data.get("status")
@@ -1133,9 +1137,10 @@ class NixtlaClient:
                     job_id=job_id,
                     error=f"unexpected job status {status!r}: {job_data}",
                 )
-            if time.monotonic() >= deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
-            time.sleep(poll_interval)
+            time.sleep(min(poll_interval, remaining))
 
     def _make_partitioned_requests(
         self,

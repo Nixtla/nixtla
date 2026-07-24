@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 
+import httpx
 import orjson
 import pandas as pd
 import pytest
@@ -134,6 +135,58 @@ def test_run_async_job_timeout():
         )
 
     assert excinfo.value.job_id == "fc-abc123"
+
+
+def test_run_async_job_fails_fast_on_non_retriable_poll_error():
+    """A permanent error (e.g. bad job_id, auth failure) while polling should
+    surface immediately, not be retried until poll_timeout elapses."""
+    client = _client()
+    fake_make_request, _, _ = _polling_stubs([{"status": "running"}])
+    calls = {"n": 0}
+
+    def fake_get_request(client, endpoint, params=None):
+        calls["n"] += 1
+        raise ApiError(status_code=404, body={"detail": "job not found"})
+
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    with pytest.raises(ApiError) as excinfo:
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=10, poll_timeout=3600
+        )
+
+    assert excinfo.value.status_code == 404
+    assert calls["n"] == 1
+
+
+def test_run_async_job_retries_transient_poll_error():
+    """A transient network error while polling (not wrapped as ApiError by
+    _get_request) should be retried like any other not-yet-terminal poll,
+    not crash the whole call."""
+    client = _client()
+    fake_make_request, _, _ = _polling_stubs([{"status": "running"}])
+    responses = iter(
+        [
+            httpx.ReadTimeout("timed out"),
+            {"job_id": "fc-abc123", "status": "succeeded", "result": {"mean": [1, 2, 3]}},
+        ]
+    )
+
+    def fake_get_request(client, endpoint, params=None):
+        resp = next(responses)
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
+
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    result = client._run_async_job(
+        MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+    )
+
+    assert result == {"mean": [1, 2, 3]}
 
 
 def test_run_async_job_submit_retries_on_transient_error():
