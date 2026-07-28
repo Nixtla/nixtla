@@ -44,6 +44,15 @@ jobs:
       - name: Run pre-commit
         run: uv run pre-commit run --all-files
 
+      # Typing is adopted incrementally: this list only grows. A module added
+      # here must stay mypy-clean (see [tool.mypy] in pyproject.toml).
+      - name: Run mypy on typed modules
+        run: >-
+          uv run mypy
+          synforecast/_fitting.py
+          synforecast/utils.py
+          synforecast/presets.py
+
       - name: Check Rust formatting
         run: cargo fmt --manifest-path rust/Cargo.toml --check
 

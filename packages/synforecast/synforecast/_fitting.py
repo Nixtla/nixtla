@@ -1,5 +1,7 @@
 """Parameter fitting functions for time series generators."""
 
+from collections.abc import Callable
+
 import numpy as np
 
 from synforecast._analysis import (
@@ -270,7 +272,7 @@ def fit_garch(series: np.ndarray) -> dict:
             "omega": 0.1,
             "alpha": [0.1],  # GARCHGenerator expects lists
             "beta": [0.8],
-            "mean": 0.0,
+            "mu": 0.0,
         }
 
     # Compute returns
@@ -300,7 +302,7 @@ def fit_garch(series: np.ndarray) -> dict:
     beta = alpha_plus_beta - alpha
 
     # Omega from unconditional variance: sigma2 = omega / (1 - alpha - beta)
-    omega = sigma2 * (1 - alpha - beta)
+    omega = float(sigma2) * (1 - alpha - beta)
     omega = max(1e-6, omega)
 
     # GARCHGenerator expects alpha and beta as lists (for GARCH(p,q))
@@ -308,7 +310,7 @@ def fit_garch(series: np.ndarray) -> dict:
         "omega": float(omega),
         "alpha": [float(max(0.01, alpha))],
         "beta": [float(max(0.01, min(0.98, beta)))],
-        "mean": float(mean),
+        "mu": float(mean),
     }
 
 
@@ -590,7 +592,7 @@ def fit_generator_params(
     Returns:
         dict with fitted parameters for the specified generator
     """
-    fitting_functions = {
+    fitting_functions: dict[str, Callable[[np.ndarray], dict]] = {
         "RandomWalkGenerator": fit_random_walk,
         "SeasonalGenerator": lambda s: fit_seasonal(
             s,

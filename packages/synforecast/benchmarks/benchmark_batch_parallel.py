@@ -12,6 +12,7 @@ Usage:
     uv run python benchmarks/benchmark_batch_parallel.py
 """
 
+import argparse
 import sys
 import time
 import warnings
@@ -30,7 +31,6 @@ except ImportError:
     sys.exit(1)
 
 import synforecast.base as base_mod
-import synforecast.dataset as dataset_mod
 from synforecast import SynSet, balanced_pool
 from synforecast.generators import (
     ETSGenerator,
@@ -41,15 +41,17 @@ from synforecast.generators import (
     SeasonalGenerator,
 )
 
-# Keep reference to the real batch module
-_REAL_BATCH = base_mod._rs_batch
+# Both BaseGenerator.generate and SynSet dispatch on _batch_gen_type, which
+# looks the generator class up in base._GEN_TYPE_MAP. Emptying that map (in
+# place, so every reference sees it) forces the ThreadPoolExecutor path.
+_REAL_GEN_TYPE_MAP = dict(base_mod._GEN_TYPE_MAP)
 
 
 def set_batch_mode(enabled: bool) -> None:
     """Toggle between rayon batch (True) and Python threaded (False) paths."""
-    val = _REAL_BATCH if enabled else None
-    base_mod._rs_batch = val
-    dataset_mod._rs_batch = val
+    base_mod._GEN_TYPE_MAP.clear()
+    if enabled:
+        base_mod._GEN_TYPE_MAP.update(_REAL_GEN_TYPE_MAP)
 
 
 # ---------------------------------------------------------------------------
@@ -158,18 +160,14 @@ def benchmark_single_generator():
     # Print tables per length
     for length in SERIES_LENGTHS:
         print(f"  Series length = {length}")
-        print(
-            f"  {'N':>8} {'Threaded (s)':>14} {'Batch (s)':>14} {'Speedup':>10}"
-        )
+        print(f"  {'N':>8} {'Threaded (s)':>14} {'Batch (s)':>14} {'Speedup':>10}")
         print("  " + "-" * 50)
         for n in SERIES_COUNTS:
             t_t = results_threaded[length][n]
             t_b = results_batch[length][n]
             sp = results_speedup[length][n]
             marker = " **" if sp > 1.5 else ""
-            print(
-                f"  {n:>8} {t_t:>14.5f} {t_b:>14.5f} {sp:>9.2f}x{marker}"
-            )
+            print(f"  {n:>8} {t_t:>14.5f} {t_b:>14.5f} {sp:>9.2f}x{marker}")
         print()
 
     # Compact speedup table
@@ -196,15 +194,15 @@ def benchmark_single_generator():
 # ---------------------------------------------------------------------------
 
 
-def benchmark_synset():
+def benchmark_synset(quick: bool = False):
     print("=" * 78)
     print("  SYNSET (MULTI-GENERATOR): Rayon Multi-Batch vs Python Threaded")
     print("  (6 generators, n_series_per_generator scaling)")
     print("=" * 78)
     print()
 
-    synset_n_counts = [4, 8, 16, 32, 64, 128, 256]
-    synset_lengths = [256, 1024, 4096]
+    synset_n_counts = [4, 8] if quick else [4, 8, 16, 32, 64, 128, 256]
+    synset_lengths = [256] if quick else [256, 1024, 4096]
 
     results_threaded = {}
     results_batch = {}
@@ -221,33 +219,60 @@ def benchmark_synset():
                 return SynSet(
                     generators=[
                         RandomWalkGenerator(
-                            min_length=length, max_length=length,
-                            seed=42, freq="1h",
+                            min_length=length,
+                            max_length=length,
+                            seed=42,
+                            freq="1h",
                         ),
                         SeasonalGenerator(
-                            min_length=length, max_length=length,
-                            seed=43, freq="1h", period=24,
+                            min_length=length,
+                            max_length=length,
+                            seed=43,
+                            freq="1h",
+                            seasonality_period=24,
                         ),
                         SARIMAGenerator(
-                            min_length=length, max_length=length,
-                            seed=44, freq="1h",
-                            order=[1, 0, 1], seasonal_order=[1, 0, 1, 12],
+                            min_length=length,
+                            max_length=length,
+                            seed=44,
+                            freq="1h",
+                            p=1,
+                            d=0,
+                            q=1,
+                            P=1,
+                            D=0,
+                            Q=1,
+                            seasonal_period=12,
                         ),
                         ETSGenerator(
-                            min_length=length, max_length=length,
-                            seed=45, freq="1h",
-                            error_type="add", trend_type="add",
-                            seasonal_type="add", seasonal_period=12,
+                            min_length=length,
+                            max_length=length,
+                            seed=45,
+                            freq="1h",
+                            error_type="add",
+                            trend_type="add",
+                            seasonal_type="add",
+                            seasonal_period=12,
                         ),
                         GARCHGenerator(
-                            min_length=length, max_length=length,
-                            seed=46, freq="1h",
-                            p=1, q=1, omega=0.1, alpha=[0.15], beta=[0.75],
+                            min_length=length,
+                            max_length=length,
+                            seed=46,
+                            freq="1h",
+                            p=1,
+                            q=1,
+                            omega=0.1,
+                            alpha=[0.15],
+                            beta=[0.75],
                         ),
                         OrnsteinUhlenbeckGenerator(
-                            min_length=length, max_length=length,
-                            seed=47, freq="1h",
-                            theta=0.7, mu=5.0, sigma=0.3,
+                            min_length=length,
+                            max_length=length,
+                            seed=47,
+                            freq="1h",
+                            theta=0.7,
+                            mu=5.0,
+                            sigma=0.3,
                         ),
                     ]
                 )
@@ -279,10 +304,7 @@ def benchmark_synset():
             t_b = results_batch[length][n]
             sp = results_speedup[length][n]
             marker = " **" if sp > 1.5 else ""
-            print(
-                f"  {n:>8} {n * 6:>14} {t_t:>14.5f}"
-                f" {t_b:>14.5f} {sp:>9.2f}x{marker}"
-            )
+            print(f"  {n:>8} {n * 6:>14} {t_t:>14.5f} {t_b:>14.5f} {sp:>9.2f}x{marker}")
         print()
 
     # Compact speedup table
@@ -309,20 +331,23 @@ def benchmark_synset():
 # ---------------------------------------------------------------------------
 
 
-def benchmark_balanced_pool():
+def benchmark_balanced_pool(quick: bool = False):
     print("=" * 78)
     print("  BALANCED POOL: Rayon Multi-Batch vs Python Threaded")
     print("  (full preset, n_series_per_generator scaling)")
     print("=" * 78)
     print()
 
-    pool_n_counts = [4, 8, 16, 32, 64]
-    pool_lengths = [256, 1024, 4096]
+    pool_n_counts = [4] if quick else [4, 8, 16, 32, 64]
+    pool_lengths = [256] if quick else [256, 1024, 4096]
 
     for length in pool_lengths:
         # Create SynSet from balanced_pool preset
         gens = balanced_pool(
-            min_length=length, max_length=length, freq="1d", seed=42,
+            min_length=length,
+            max_length=length,
+            freq="1d",
+            seed=42,
         )
         n_gens = len(gens)
 
@@ -338,14 +363,16 @@ def benchmark_balanced_pool():
             set_batch_mode(False)
             ss = SynSet(generators=gens)
             t_threaded = time_fn(
-                lambda: ss.generate(n_series_per_generator=n), repeats=1,
+                lambda: ss.generate(n_series_per_generator=n),
+                repeats=1,
             )
 
             # Batch path
             set_batch_mode(True)
             ss = SynSet(generators=gens)
             t_batch = time_fn(
-                lambda: ss.generate(n_series_per_generator=n), repeats=1,
+                lambda: ss.generate(n_series_per_generator=n),
+                repeats=1,
             )
 
             speedup = t_threaded / t_batch if t_batch > 0 else float("inf")
@@ -364,6 +391,18 @@ def benchmark_balanced_pool():
 
 
 def main():
+    global SERIES_COUNTS, SERIES_LENGTHS
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Tiny grid for smoke runs; results are not comparable",
+    )
+    args = parser.parse_args()
+    if args.quick:
+        SERIES_COUNTS = [4, 8]
+        SERIES_LENGTHS = [128, 256]
+
     print()
     print("  Rayon Batch Parallelization Benchmark")
     print("  Comparing: Python ThreadPoolExecutor vs Rust rayon batch")
@@ -371,8 +410,8 @@ def main():
     print()
 
     benchmark_single_generator()
-    benchmark_synset()
-    benchmark_balanced_pool()
+    benchmark_synset(quick=args.quick)
+    benchmark_balanced_pool(quick=args.quick)
 
     # Restore batch mode
     set_batch_mode(True)

@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import logging
 import tempfile
 import warnings
 from functools import partial
@@ -42,6 +41,7 @@ warnings.filterwarnings("ignore")
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from _env import environment_metadata  # noqa: E402
 from mlforecast import MLForecast  # noqa: E402
 from mlforecast.target_transforms import LocalStandardScaler  # noqa: E402
 from scipy.stats import wilcoxon  # noqa: E402
@@ -338,6 +338,7 @@ def build_summary(df: pd.DataFrame, with_pretrain: bool) -> dict:
         "metric": "seasonal MASE (season length 12)",
         "seeds": int(df["seed"].nunique()),
         "with_pretrain": with_pretrain,
+        "environment": environment_metadata(),
         "by_size": by_size,
     }
 
@@ -389,9 +390,6 @@ def main() -> None:
     parser.add_argument("--save-summary", type=Path, default=None)
     parser.add_argument("--save-figure", type=Path, default=None)
     args = parser.parse_args()
-
-    # Silence SynAugment's per-series generator-fallback logging (informational).
-    logging.getLogger("synforecast").setLevel(logging.ERROR)
 
     if args.quick:
         args.seeds, args.sizes = 4, "3,30"

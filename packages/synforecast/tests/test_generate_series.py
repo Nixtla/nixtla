@@ -116,3 +116,51 @@ def test_integer_freq_index():
     """An integer frequency produces an integer time index."""
     df = generate_series(n_series=3, freq=1, engine="polars", seed=0)
     assert df["ds"].dtype in (pl.Int64, pl.Int32)
+
+
+def test_no_generator_column_by_default():
+    """The provenance column is opt-in; default output keeps the standard
+    Nixtla schema."""
+    df = generate_series(n_series=3, engine="polars", seed=0)
+    assert df.columns == ["unique_id", "ds", "y"]
+
+
+def test_small_panel_spans_distinct_generators():
+    """A panel smaller than the pool still spans distinct behaviors: the
+    interleaved pool gives every requested series a different generator."""
+    df = generate_series(n_series=6, engine="polars", seed=0, with_generator_col=True)
+    assert df.columns == ["unique_id", "ds", "y", "generator"]
+    assert df["generator"].n_unique() == 6
+
+
+def test_generator_column_maps_each_series_to_one_generator():
+    """Every series id carries exactly one generator alias, and more ids than
+    pool entries reuse generators rather than dropping them."""
+    df = generate_series(n_series=50, engine="polars", seed=1, with_generator_col=True)
+    per_series = df.group_by("unique_id").agg(
+        pl.col("generator").n_unique().alias("n_gen")
+    )
+    assert per_series["n_gen"].max() == 1
+    # 50 series over the 42-entry pool: every entry contributes, so all 15
+    # generator class aliases appear.
+    assert df["generator"].n_unique() == 15
+
+
+@pytest.mark.parametrize("column_name", ["id_col", "time_col", "target_col"])
+def test_generator_column_rejects_reserved_name_collision(column_name):
+    """Provenance must not silently overwrite a generator's output columns."""
+    generator = RandomWalkGenerator(
+        min_length=10,
+        max_length=10,
+        freq="D",
+        engine="polars",
+        seed=0,
+        **{column_name: "generator"},
+    )
+
+    with pytest.raises(ValueError, match="reserves the output column 'generator'"):
+        generate_series(
+            n_series=1,
+            generators=[generator],
+            with_generator_col=True,
+        )

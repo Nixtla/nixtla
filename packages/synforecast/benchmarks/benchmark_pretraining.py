@@ -56,8 +56,10 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 warnings.filterwarnings("ignore")
 logging.disable(logging.CRITICAL)
 
-import numpy as np  # noqa: E402
+import numpy as np
 import pandas as pd  # noqa: E402
+import torch  # noqa: E402
+from _env import environment_metadata  # noqa: E402
 from datasetsforecast.m3 import M3  # noqa: E402
 from neuralforecast import NeuralForecast  # noqa: E402
 from neuralforecast.models import NHITS  # noqa: E402
@@ -83,7 +85,7 @@ FULL_HIST = 9999
 
 
 def _quiet_nhits(max_steps: int, seed: int, learning_rate: float = BASE_LR) -> NHITS:
-    """A small NHITS with logging/progress silenced, running on the GPU."""
+    """A small NHITS with logging/progress silenced (GPU when available)."""
     return NHITS(
         h=HORIZON,
         input_size=INPUT_SIZE,
@@ -94,7 +96,7 @@ def _quiet_nhits(max_steps: int, seed: int, learning_rate: float = BASE_LR) -> N
         random_seed=seed,
         enable_progress_bar=False,
         logger=False,
-        accelerator="gpu",
+        accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1,
     )
 
@@ -232,35 +234,67 @@ def run_seed(
     return rows
 
 
-def _bootstrap_ci(values: np.ndarray, n_boot: int = 2000, seed: int = 0) -> list[float]:
+def _hierarchical_ci(
+    groups: list[np.ndarray], n_boot: int = 2000, seed: int = 0
+) -> list[float]:
+    """Two-stage bootstrap CI for the mean of per-seed means.
+
+    Per-series scores within one seed share a pretrained model and a panel
+    draw, so they are not independent observations. Resample seeds with
+    replacement, then series within each sampled seed, and weight seeds
+    equally.
+    """
     rng = np.random.default_rng(seed)
-    if len(values) == 0:
+    groups = [g for g in groups if len(g) > 0]
+    if not groups:
         return [float("nan"), float("nan")]
-    means = values[rng.integers(0, len(values), size=(n_boot, len(values)))].mean(
-        axis=1
-    )
+    n_seeds = len(groups)
+    means = np.empty(n_boot)
+    for b in range(n_boot):
+        chosen = rng.integers(0, n_seeds, size=n_seeds)
+        means[b] = np.mean(
+            [
+                groups[i][rng.integers(0, len(groups[i]), size=len(groups[i]))].mean()
+                for i in chosen
+            ]
+        )
     return [float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))]
 
 
 def build_summary(records: list[dict], meta: dict) -> dict:
-    """Aggregate per-series records into a per-history-length summary."""
+    """Aggregate per-series records into a per-history-length summary.
+
+    All statistics treat the seed as the unit of replication: per-series
+    scores are first averaged within each seed, and CIs, win rates, and
+    Wilcoxon tests operate on those seed-level aggregates.
+    """
     df = pd.DataFrame.from_records(records)
     by_hist = []
     for hist, g in df.groupby("hist_len"):
         wide = g.pivot_table(
             index=["seed", "unique_id"], columns="condition", values="mase"
         ).dropna()
-        entry: dict = {"hist_len": int(hist), "n_pairs": int(len(wide))}
+        # Per-seed mean MASE per condition: the paired, seed-level view.
+        seed_means = wide.groupby(level="seed").mean()
+        entry: dict = {
+            "hist_len": int(hist),
+            "n_pairs": int(len(wide)),
+            "n_seeds": int(len(seed_means)),
+        }
         for cond in ("from_scratch", "zero_shot", "pretrain_ft"):
-            vals = df[(df.hist_len == hist) & (df.condition == cond)]["mase"].to_numpy()
-            entry[f"{cond}_mase"] = float(np.mean(vals))
-            entry[f"{cond}_ci"] = _bootstrap_ci(vals)
-            entry[f"{cond}_smape"] = float(
-                df[(df.hist_len == hist) & (df.condition == cond)]["smape"].mean()
+            sub = g[g.condition == cond]
+            per_seed_mase = [grp["mase"].to_numpy() for _, grp in sub.groupby("seed")]
+            entry[f"{cond}_mase"] = float(
+                np.mean([grp.mean() for grp in per_seed_mase])
             )
-        # Paired improvement of each pretrained condition over from_scratch.
+            entry[f"{cond}_ci"] = _hierarchical_ci(per_seed_mase)
+            entry[f"{cond}_smape"] = float(sub.groupby("seed")["smape"].mean().mean())
+        # Paired improvement of each pretrained condition over from_scratch,
+        # on seed-level aggregates (per-(seed, series) rows are not
+        # independent draws).
         for cond in ("zero_shot", "pretrain_ft"):
-            base, other = wide["from_scratch"].to_numpy(), wide[cond].to_numpy()
+            base = seed_means["from_scratch"].to_numpy()
+            other = seed_means[cond].to_numpy()
             delta = base - other  # positive => pretrained is better (lower MASE)
             entry[f"{cond}_win_rate"] = float(np.mean(delta > 0))
             entry[f"{cond}_mean_improve_pct"] = float(
@@ -336,6 +370,7 @@ def main() -> None:
             "pretrain_steps": args.pretrain_steps,
             "finetune_steps": args.finetune_steps,
             "finetune_lr": BASE_LR * args.finetune_lr_scale,
+            "environment": environment_metadata(),
         },
     )
 

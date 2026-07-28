@@ -508,8 +508,17 @@ class SARIMAGenerator(BaseGenerator):
         Returns:
             dict: Model information including orders, parameters, and polynomial structure
         """
+        # A model without seasonal terms is plain ARIMA; the seasonal orders
+        # and period would be misleading in the label.
+        if self.P == 0 and self.D == 0 and self.Q == 0:
+            model = f"ARIMA({self.p},{self.d},{self.q})"
+        else:
+            model = (
+                f"SARIMA({self.p},{self.d},{self.q})"
+                f"({self.P},{self.D},{self.Q})[{self.seasonal_period}]"
+            )
         return {
-            "model": f"SARIMA({self.p},{self.d},{self.q})({self.P},{self.D},{self.Q})[{self.seasonal_period}]",
+            "model": model,
             "ar_params": (
                 self._ar_params_array.tolist()
                 if self._ar_params_array is not None and len(self._ar_params_array) > 0

@@ -185,3 +185,49 @@ class TestCopulaStats:
         values = series_values(gen.generate(n_series=5))
         for i, dist in enumerate(scipy_dists):
             assert_distribution(values[str(i)], dist)
+
+    def test_t_copula_tail_dependence(self) -> None:
+        """The t copula has the tail dependence the Gaussian copula lacks.
+
+        For a bivariate t copula with correlation rho and dof nu, both tail
+        dependence coefficients equal
+        ``lambda = 2 * T_{nu+1}(-sqrt((nu+1)(1-rho)/(1+rho)))`` (McNeil, Frey
+        & Embrechts 2015, Prop. 7.37); for the Gaussian copula the limit is 0.
+        The empirical conditional joint-tail exceedance at quantile q
+        approaches lambda as q -> 0.
+        """
+        rho, nu, n = 0.7, 3.0, 20_000
+        lam_theory = 2 * stats.t.cdf(
+            -np.sqrt((nu + 1) * (1 - rho) / (1 + rho)), df=nu + 1
+        )
+
+        def lam_hat(x: np.ndarray, y: np.ndarray, q: float) -> float:
+            """Both-tails conditional joint exceedance at quantile q."""
+            lo = np.mean((x <= np.quantile(x, q)) & (y <= np.quantile(y, q)))
+            hi = np.mean((x >= np.quantile(x, 1 - q)) & (y >= np.quantile(y, 1 - q)))
+            return float((lo + hi) / (2 * q))
+
+        estimates = {}
+        for copula_type, extra in [("t", {"df": nu}), ("gaussian", {})]:
+            gen = make_gen(
+                min_length=n,
+                max_length=n,
+                seed=1,
+                copula_type=copula_type,
+                correlation_matrix=[[1.0, rho], [rho, 1.0]],
+                marginal_distributions=[{"type": "normal"}, {"type": "normal"}],
+                **extra,
+            )
+            values = series_values(gen.generate(n_series=2))
+            x, y = values["0"], values["1"]
+            estimates[copula_type] = (lam_hat(x, y, 0.05), lam_hat(x, y, 0.01))
+
+        t_05, t_01 = estimates["t"]
+        g_05, g_01 = estimates["gaussian"]
+        # Same correlation, but the t copula's joint tails are heavier.
+        assert t_05 - g_05 > 0.05, (t_05, g_05)
+        # Near the tail the t estimate sits at its theoretical coefficient...
+        assert abs(t_01 - lam_theory) < 0.10, (t_01, lam_theory)
+        # ...while the Gaussian estimate decays toward its limit of zero.
+        assert g_01 < g_05, (g_01, g_05)
+        assert g_01 < lam_theory - 0.10, (g_01, lam_theory)
