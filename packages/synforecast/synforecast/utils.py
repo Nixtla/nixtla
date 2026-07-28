@@ -55,6 +55,9 @@ def generate_series(
         DataFrame in long format with columns [`unique_id`, `ds`, `y`],
         plus `generator` when `with_generator_col` is True.
     """
+    if n_series < 1:
+        raise ValueError(f"n_series must be a positive integer, got {n_series}.")
+
     if generators is None:
         generators = balanced_pool(
             min_length=min_length,
@@ -63,6 +66,8 @@ def generate_series(
             seed=seed,
             engine=engine,
         )
+    elif not generators:
+        raise ValueError("generators must be a non-empty list of generators.")
 
     # Spread the requested series across the pool
     n_gens = len(generators)

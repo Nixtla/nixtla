@@ -846,6 +846,8 @@ class BaseGenerator(BaseModel, ABC):
             (default ['unique_id', 'ds', 'y']), plus any exogenous or flag
             columns.
         """
+        if n_series < 1:
+            raise ValueError(f"n_series must be a positive integer, got {n_series}.")
         if n_jobs == -1:
             n_jobs = _default_n_workers
         all_metadata = self._generate_parallel(n_series, start_id, n_jobs)
