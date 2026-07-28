@@ -114,10 +114,17 @@ class TestSARIMAApi:
     def test_get_model_info(self) -> None:
         gen = make_gen(p=1, ar_params=[0.5], q=0, P=0, Q=0, d=1, drift=0.3)
         info = gen.get_model_info()
-        assert info["model"] == "SARIMA(1,1,0)(0,0,0)[12]"
+        # No seasonal terms: labeled as plain ARIMA without the misleading
+        # (0,0,0)[seasonal_period] suffix.
+        assert info["model"] == "ARIMA(1,1,0)"
         assert info["ar_params"] == [0.5]
         assert info["drift"] == 0.3
         assert info["mean"] is None
+
+    def test_get_model_info_seasonal_label(self) -> None:
+        gen = make_gen(p=0, q=1, ma_params=[0.4], P=0, D=1, Q=1, d=1)
+        info = gen.get_model_info()
+        assert info["model"] == "SARIMA(0,1,1)(0,1,1)[12]"
 
     def test_exog_effects(self) -> None:
         # Exogenous SARIMA remains an explicit Python implementation until

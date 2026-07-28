@@ -128,11 +128,23 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "stats: statistical property tests (slower; deselect with '-m \"not stats\"')",
+    "allow_ar1_fallback: test intentionally exercises SynAugment's AR(1) substitution",
 ]
 log_cli = false
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.mypy]
+# Typing is being introduced incrementally (see CONTRIBUTING.md). The modules
+# listed in the lint workflow's mypy step are kept green; follow_imports is
+# silent so their imports don't drag the whole package into the gate yet.
+python_version = "3.10"
+follow_imports = "silent"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
 
 [tool.ruff]
 line-length = 88
@@ -158,6 +170,11 @@ ignore = [
     "E501", # line too long (fix later)
     "B008",  # do not perform function calls in argument defaults
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Benchmark scripts import after warnings/env setup (E402) and time
+# immediately-invoked lambdas that close over loop variables (B023).
+"benchmarks/*" = ["E402", "B023"]
 
 [tool.coverage.run]
 source = ["synforecast"]

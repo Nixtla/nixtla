@@ -1,5 +1,7 @@
 """Tests for SynAugment class."""
 
+import logging
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -975,31 +977,62 @@ class TestTSMixup:
             SynAugment(seed=0).mixup(df, n_series=0)
 
 
-class TestGeneratorParamConversion:
-    """_convert_params_for_generator must emit only valid generator fields."""
+# Every generator SynAugment can select, paired with its fitter through
+# fit_generator_params. Kept in sync with SynAugment._GENERATOR_MAP by
+# test_contract_covers_all_supported_generators.
+AUGMENT_GENERATOR_NAMES = [
+    "FractionalBrownianMotionGenerator",
+    "GARCHGenerator",
+    "GeometricBrownianMotionGenerator",
+    "IntermittentDemandGenerator",
+    "OrnsteinUhlenbeckGenerator",
+    "RandomWalkGenerator",
+    "RegimeSwitchingGenerator",
+    "SARIMAGenerator",
+    "SeasonalGenerator",
+]
 
-    def test_gbm_params_match_model_fields(self) -> None:
-        """Regression: GBM conversion used to rename initial_value -> 'S0',
-        an unknown field, forcing a silent fallback to AR(1)."""
-        from synforecast._fitting import fit_gbm
-        from synforecast.generators import GeometricBrownianMotionGenerator
+
+class TestGeneratorParamConversion:
+    """Every fitter's output must be valid parameters for its generator.
+
+    Regressions caught by this contract: GBM conversion once renamed
+    initial_value -> 'S0' (an unknown field) and fit_garch once returned
+    'mean' where GARCHGenerator's field is 'mu'; both made every affected
+    series silently fall back to AR(1).
+    """
+
+    def test_contract_covers_all_supported_generators(self) -> None:
+        augmenter = SynAugment(seed=0)
+        assert sorted(augmenter._GENERATOR_MAP) == AUGMENT_GENERATOR_NAMES
+
+    @pytest.mark.parametrize("length", [10, 300])
+    @pytest.mark.parametrize("generator_name", AUGMENT_GENERATOR_NAMES)
+    def test_fitted_params_match_model_fields(
+        self, generator_name: str, length: int
+    ) -> None:
+        """Fit, convert, and instantiate; length=10 hits the short-series
+        default branches of the fitters."""
+        from synforecast._fitting import fit_generator_params
 
         rng = np.random.default_rng(0)
-        series = 100 * np.exp(np.cumsum(rng.normal(0.01, 0.02, 200)))
-        fitted = fit_gbm(series)
+        series = np.cumsum(rng.normal(0.05, 1.0, length)) + 50.0
+        fitted = fit_generator_params(series, generator_name)
 
-        converted = SynAugment(seed=0)._convert_params_for_generator(
-            "GeometricBrownianMotionGenerator", fitted, series
+        augmenter = SynAugment(seed=0)
+        converted = augmenter._convert_params_for_generator(
+            generator_name, fitted, series
         )
-        valid_fields = set(GeometricBrownianMotionGenerator.model_fields)
+        generator_class = augmenter._GENERATOR_MAP[generator_name]
+        valid_fields = set(generator_class.model_fields)
         assert set(converted) <= valid_fields, (
-            f"unknown GBM params: {sorted(set(converted) - valid_fields)}"
+            f"unknown {generator_name} params: {sorted(set(converted) - valid_fields)}"
         )
-        assert "S0" not in converted
-        # The generator must accept the converted params without error.
-        GeometricBrownianMotionGenerator(
-            min_length=50, max_length=50, freq="D", **converted
+        generator = generator_class(
+            min_length=length, max_length=length, freq="D", seed=0, **converted
         )
+        values = generator.generate_single_series(length)
+        assert np.all(np.isfinite(values))
 
     def test_gbm_override_augmentation_runs(self) -> None:
         """Augmenting with a GBM override yields finite series, no fallback."""
@@ -1025,3 +1058,130 @@ class TestGeneratorParamConversion:
         assert out["unique_id"].n_unique() == 4
         aug = out.filter(pl.col("unique_id") == "g_aug_0")["y"].to_numpy()
         assert np.all(np.isfinite(aug))
+
+    def test_garch_override_augmentation_runs(self) -> None:
+        """Regression: fit_garch returned 'mean' instead of 'mu', so GARCH
+        augmentation always fell back to AR(1). With on_error='raise' (the
+        default) this now surfaces as an error instead of passing silently."""
+        rng = np.random.default_rng(2)
+        n = 300
+        df = pl.DataFrame(
+            {
+                "unique_id": ["v"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2000, 1, 1),
+                    pl.datetime(2000, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.cumsum(rng.standard_t(df=5, size=n)),
+            }
+        )
+        out = SynAugment(seed=2).augment(
+            df, n_augment=2, generator_override={"v": "GARCHGenerator"}
+        )
+        assert out["unique_id"].n_unique() == 3
+        aug = out.filter(pl.col("unique_id") == "v_aug_0")["y"].to_numpy()
+        assert np.all(np.isfinite(aug))
+
+
+class TestOnErrorPolicy:
+    """Failure handling: raise by default, opt-in AR(1) with one summary."""
+
+    @staticmethod
+    def _panel(n_series: int = 2, n: int = 120) -> pl.DataFrame:
+        rng = np.random.default_rng(7)
+        frames = []
+        for i in range(n_series):
+            frames.append(
+                pl.DataFrame(
+                    {
+                        "unique_id": [f"series_{i}"] * n,
+                        "ds": pl.datetime_range(
+                            pl.datetime(2020, 1, 1),
+                            pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                            interval="1h",
+                            eager=True,
+                        ),
+                        "y": np.cumsum(rng.normal(0, 1, n)) + 10.0 * i,
+                    }
+                )
+            )
+        return pl.concat(frames)
+
+    def test_invalid_on_error_rejected(self) -> None:
+        with pytest.raises(ValueError, match="on_error"):
+            SynAugment(on_error="ignore")
+
+    def test_raise_is_default(self) -> None:
+        assert SynAugment().on_error == "raise"
+
+    def test_generator_failure_raises_by_default(self) -> None:
+        augmenter = SynAugment(seed=0)
+        # Force every conversion to emit a parameter no generator accepts.
+        augmenter._convert_params_for_generator = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: {"bogus_param": 1.0}
+        )
+        with pytest.raises(RuntimeError, match="Pass on_error='ar1'"):
+            augmenter.augment(self._panel(), n_augment=1)
+
+    @pytest.mark.allow_ar1_fallback
+    def test_ar1_mode_substitutes_with_single_summary_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        augmenter = SynAugment(seed=0, on_error="ar1")
+        augmenter._convert_params_for_generator = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: {"bogus_param": 1.0}
+        )
+        with caplog.at_level(logging.WARNING, logger="synforecast.dataset"):
+            out = augmenter.augment(self._panel(n_series=2), n_augment=2)
+
+        warnings_ = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings_) == 1
+        assert "substituted AR(1) for 4 of 4" in warnings_[0].message
+        # All series present and finite despite the substitutions.
+        assert out["unique_id"].n_unique() == 6
+        aug_values = out.filter(
+            pl.col("unique_id").cast(pl.String).str.contains("_aug_")
+        )["y"].to_numpy()
+        assert np.all(np.isfinite(aug_values))
+
+    def test_no_warning_when_nothing_falls_back(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger="synforecast.dataset"):
+            SynAugment(seed=0, on_error="ar1").augment(self._panel(), n_augment=1)
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    @pytest.mark.allow_ar1_fallback
+    def test_single_series_api_reports_ar1_fallback(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        augmenter = SynAugment(seed=0, on_error="ar1")
+        augmenter._convert_params_for_generator = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: {"bogus_param": 1.0}
+        )
+        panel = self._panel(n_series=1)
+
+        with caplog.at_level(logging.WARNING, logger="synforecast.dataset"):
+            result = augmenter.augment_single_series(
+                series_id="series_0",
+                values=panel["y"].to_numpy(),
+                timestamps=panel["ds"].to_numpy(),
+                n_augment=2,
+                generator_name="RandomWalkGenerator",
+            )
+
+        warnings_ = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings_) == 1
+        assert "substituted AR(1) for 2 of 2" in warnings_[0].message
+        assert len(result) == 2
+        assert all(np.all(np.isfinite(values)) for _, values, _ in result)
+
+    def test_unknown_override_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Unknown generator 'NopeGenerator'"):
+            SynAugment(seed=0).augment(
+                self._panel(n_series=1),
+                n_augment=1,
+                generator_override={"series_0": "NopeGenerator"},
+            )

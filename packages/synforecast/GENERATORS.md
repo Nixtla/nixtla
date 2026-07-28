@@ -27,6 +27,38 @@ The output is a pandas DataFrame by default; set `engine` to change the output l
 
 ---
 
+## Verification Status
+
+Every generator ships with structural tests (long format, seed determinism,
+parameter validation) and statistical property tests (`pytest -m stats`, using
+sampling-error-derived bounds from `tests/helpers.py`). The classification
+below states how far that verification reaches:
+
+- **Theory-tested** — implements a canonical published model; property tests verify
+  its statistics against theory (moments, autocorrelation, tail behavior,
+  distribution shape) and, where available, reference implementations
+  (e.g. SARIMA autocorrelation against statsmodels).
+- **Simulator** — domain-motivated composite process with no single canonical
+  model to compare against; property tests pin its designed behaviors (rates,
+  bounds, seasonality, failure modes) rather than closed-form theory.
+- **Procedural** — randomized meta-generator for pretraining breadth; each
+  draw samples a fresh configuration, so tests verify structural and
+  diversity properties rather than one model's moments.
+
+| Status | Generators |
+|--------|------------|
+| Theory-tested (23) | RandomWalk, Seasonal, SARIMA, ETS, INAR, GARCH, OrnsteinUhlenbeck, GeometricBrownianMotion, JumpDiffusion, PoissonProcess, Cyclic, FractionalBrownianMotion, HawkesProcess, StochasticVolatility, RegimeSwitching, ChaoticSystem, BoundedProcess, LevyProcess, Copula, VAR, GaussianProcess, StateSpace, IntermittentDemand |
+| Simulator (5) | IoTSensor, EnergyLoad, DailyActiveUsers, VitalSigns, Clickstream |
+| Procedural (3) | TSI, TCM, KernelSynth (KernelSynth follows the published Chronos recipe) |
+
+A note on `SynAugment`: augmented series match the source series' mean,
+standard deviation, and lag-1 autocorrelation **by construction** — a
+rescaling step pins them — so those matches are a property of the method,
+never evidence of fit quality. Distribution shape, higher-order dependence,
+and dynamics beyond lag 1 are not guaranteed.
+
+---
+
 ## Common Parameters
 
 Defined on `BaseGenerator` (`synforecast/base.py`) and accepted by every generator.

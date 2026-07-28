@@ -1,7 +1,7 @@
 """Benchmark backend performance with optional save/compare support.
 
 Measures wall-clock time per generator and balanced_pool throughput grid.
-Can save results to JSON for cross-branch comparison (e.g. Rust vs Python).
+Can save results to JSON for cross-branch or cross-machine comparison.
 
 Usage:
     # Run and display results
@@ -35,36 +35,8 @@ except ImportError:
     print("ERROR: Compiled extension not available. Build first.")
     sys.exit(1)
 
-import synforecast._core as _core_mod  # noqa: E402
-import synforecast._distributions as _dist_mod  # noqa: E402
-import synforecast.generators.bounded_process as bp_mod  # noqa: E402
-import synforecast.generators.chaotic_system as cs_mod  # noqa: E402
-import synforecast.generators.clickstream as clickstream_mod  # noqa: E402
-import synforecast.generators.copula as copula_mod  # noqa: E402
-import synforecast.generators.cyclic as cyclic_mod  # noqa: E402
-import synforecast.generators.daily_active_users as dau_mod  # noqa: E402
-import synforecast.generators.energy_load as energy_mod  # noqa: E402
-import synforecast.generators.ets as ets_mod  # noqa: E402
-import synforecast.generators.fractional_brownian_motion as fbm_mod  # noqa: E402
-import synforecast.generators.garch as garch_mod  # noqa: E402
-import synforecast.generators.gaussian_process as gp_mod  # noqa: E402
-import synforecast.generators.geometric_brownian_motion as gbm_mod  # noqa: E402
-import synforecast.generators.hawkes_process as hawkes_mod  # noqa: E402
-import synforecast.generators.inar as inar_mod  # noqa: E402
-import synforecast.generators.intermittent_demand as idem_mod  # noqa: E402
-import synforecast.generators.iot_sensor as iot_mod  # noqa: E402
-import synforecast.generators.jump_diffusion as jd_mod  # noqa: E402
-import synforecast.generators.levy_process as lp_mod  # noqa: E402
-import synforecast.generators.ornstein_uhlenbeck as ou_mod  # noqa: E402
-import synforecast.generators.poisson_process as pp_mod  # noqa: E402
-import synforecast.generators.random_walk as rw_mod  # noqa: E402
-import synforecast.generators.regime_switching as rs_mod  # noqa: E402
-import synforecast.generators.sarima as sarima_mod  # noqa: E402
-import synforecast.generators.seasonal as seasonal_mod  # noqa: E402
-import synforecast.generators.state_space as ss_mod  # noqa: E402
-import synforecast.generators.stochastic_volatility as sv_mod  # noqa: E402
-import synforecast.generators.var as var_mod  # noqa: E402
-import synforecast.generators.vital_signs as vs_mod  # noqa: E402
+from _env import environment_metadata  # noqa: E402
+
 from synforecast import balanced_pool  # noqa: E402
 from synforecast.generators import (  # noqa: E402
     BoundedProcessGenerator,
@@ -97,22 +69,6 @@ from synforecast.generators import (  # noqa: E402
     VitalSignsGenerator,
 )
 
-_ALL_MODULES = [
-    _core_mod, _dist_mod, rw_mod, seasonal_mod, sarima_mod, ets_mod, inar_mod,
-    garch_mod, ou_mod, gbm_mod, jd_mod, pp_mod, cyclic_mod, fbm_mod,
-    hawkes_mod, sv_mod, rs_mod, cs_mod, bp_mod, lp_mod, copula_mod, var_mod,
-    gp_mod, ss_mod, iot_mod, idem_mod, energy_mod, dau_mod, vs_mod,
-    clickstream_mod,
-]
-
-
-def force_backend(enabled: bool) -> None:
-    for mod in _ALL_MODULES:
-        mod._HAS_RUST = enabled
-
-
-force_backend(True)
-
 # ---------------------------------------------------------------------------
 # Generator configurations
 # ---------------------------------------------------------------------------
@@ -124,16 +80,25 @@ GENERATORS: dict[str, tuple[type, dict]] = {
     ),
     "Seasonal": (
         SeasonalGenerator,
-        {"period": 24, "amplitude": 5.0, "trend": 0.01, "noise_level": 0.5},
+        {
+            "seasonality_period": 24,
+            "seasonality_amplitude": 5.0,
+            "trend": 0.01,
+            "noise_level": 0.5,
+        },
     ),
     "SARIMA": (
         SARIMAGenerator,
-        {"order": [1, 0, 1], "seasonal_order": [1, 0, 1, 12]},
+        {"p": 1, "d": 0, "q": 1, "P": 1, "D": 0, "Q": 1, "seasonal_period": 12},
     ),
     "ETS": (
         ETSGenerator,
-        {"error_type": "add", "trend_type": "add", "seasonal_type": "add",
-         "seasonal_period": 12},
+        {
+            "error_type": "add",
+            "trend_type": "add",
+            "seasonal_type": "add",
+            "seasonal_period": 12,
+        },
     ),
     "INAR": (
         INARGenerator,
@@ -169,11 +134,11 @@ GENERATORS: dict[str, tuple[type, dict]] = {
     ),
     "HawkesProcess": (
         HawkesProcessGenerator,
-        {"baseline_intensity": 0.5, "alpha": 0.8, "beta": 1.0},
+        {"baseline_intensity": 0.5, "excitation_amplitude": 0.8, "decay_rate": 1.0},
     ),
     "StochasticVolatility": (
         StochasticVolatilityGenerator,
-        {"model_type": "heston", "output_type": "price"},
+        {"model": "heston", "output_type": "price"},
     ),
     "RegimeSwitching": (
         RegimeSwitchingGenerator,
@@ -197,7 +162,7 @@ GENERATORS: dict[str, tuple[type, dict]] = {
     ),
     "VAR": (
         VARGenerator,
-        {"n_variables": 2, "lag_order": 1},
+        {"lag_order": 1},
     ),
     "StateSpace": (
         StateSpaceGenerator,
@@ -225,7 +190,7 @@ GENERATORS: dict[str, tuple[type, dict]] = {
     ),
     "VitalSigns": (
         VitalSignsGenerator,
-        {"vital_sign_type": "heart_rate"},
+        {"vital_sign": "heart_rate"},
     ),
     "Clickstream": (
         ClickstreamGenerator,
@@ -302,7 +267,10 @@ def benchmark_generators():
     print("  " + "-" * 55)
 
     for name, (cls, params) in GENERATORS.items():
-        t_ms = _time_fn(lambda: _generate_series(cls, params, length, seed), repeats) * 1000
+        t_ms = (
+            _time_fn(lambda: _generate_series(cls, params, length, seed), repeats)
+            * 1000
+        )
         throughput = length / (t_ms / 1000)
         results[name] = t_ms
         print(f"  {name:<25} {t_ms:>10.3f} {throughput:>12,.0f} pts/s")
@@ -331,7 +299,10 @@ def benchmark_grid():
     pools: dict[int, list] = {}
     for length in SERIES_LENGTHS:
         pools[length] = balanced_pool(
-            min_length=length, max_length=length, freq="1d", seed=42,
+            min_length=length,
+            max_length=length,
+            freq="1d",
+            seed=42,
         )
 
     n_gens = len(pools[SERIES_LENGTHS[0]])
@@ -347,9 +318,9 @@ def benchmark_grid():
         for length in SERIES_LENGTHS:
             cell += 1
             print(
-                f"\r  Benchmarking [{cell}/{total_cells}] "
-                f"N={n:>5}, L={length:>5} ...",
-                end="", flush=True,
+                f"\r  Benchmarking [{cell}/{total_cells}] N={n:>5}, L={length:>5} ...",
+                end="",
+                flush=True,
             )
             t = benchmark_one(pools[length], n, length, REPEATS)
             results[str(n)][str(length)] = t
@@ -396,9 +367,7 @@ def print_comparison(gen_results, ref_gen, grid_results, ref_grid, ref_label):
         if t_ref is not None and t_ref > 0:
             speedup = t_ref / t_cur
             speedups.append(speedup)
-            print(
-                f"  {name:<25} {t_cur:>9.3f}ms {t_ref:>9.3f}ms {speedup:>7.2f}x"
-            )
+            print(f"  {name:<25} {t_cur:>9.3f}ms {t_ref:>9.3f}ms {speedup:>7.2f}x")
         else:
             print(f"  {name:<25} {t_cur:>9.3f}ms {'N/A':>10} {'N/A':>8}")
 
@@ -445,20 +414,37 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark backend performance")
     parser.add_argument("--save", type=str, help="Save results to JSON file")
     parser.add_argument(
-        "--compare", type=str,
+        "--compare",
+        type=str,
         help="Compare against saved reference JSON file",
     )
     parser.add_argument(
-        "--compare-label", type=str, default="reference",
+        "--compare-label",
+        type=str,
+        default="reference",
         help="Label for the reference in comparison output",
     )
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Tiny grid for smoke runs; results are not comparable",
+    )
     args = parser.parse_args()
+
+    if args.quick:
+        global SERIES_COUNTS, SERIES_LENGTHS
+        SERIES_COUNTS = [16, 32]
+        SERIES_LENGTHS = [128, 256]
 
     gen_results = benchmark_generators()
     grid_results = benchmark_grid()
 
     if args.save:
-        data = {"generators": gen_results, "grid": grid_results}
+        data = {
+            "environment": environment_metadata(),
+            "generators": gen_results,
+            "grid": grid_results,
+        }
         with open(args.save, "w") as f:
             json.dump(data, f, indent=2)
         print(f"  Results saved to {args.save}")
@@ -469,7 +455,9 @@ def main() -> None:
             ref = json.load(f)
         ref_gen = ref.get("generators", {})
         ref_grid = ref.get("grid", {})
-        print_comparison(gen_results, ref_gen, grid_results, ref_grid, args.compare_label)
+        print_comparison(
+            gen_results, ref_gen, grid_results, ref_grid, args.compare_label
+        )
 
 
 if __name__ == "__main__":
