@@ -26,7 +26,8 @@
           "docs/capabilities/anomalies.html",
           "docs/capabilities/missingness.html",
           "docs/capabilities/multivariate_missingness.html",
-          "docs/capabilities/exogenous.html"
+          "docs/capabilities/exogenous.html",
+          "docs/capabilities/custom_generator.html"
         ]
       },
       {

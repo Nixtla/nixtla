@@ -58,6 +58,14 @@ def test_notebook_generator_configs_match_current_api(path: Path) -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     named_configs: dict[str, dict[str, ast.expr]] = {}
 
+    local_generator_classes = {
+        node.name
+        for cell in notebook["cells"]
+        if cell.get("cell_type") == "code"
+        for node in ast.walk(ast.parse("".join(cell.get("source", []))))
+        if isinstance(node, ast.ClassDef)
+    }
+
     for cell_number, cell in enumerate(notebook["cells"], start=1):
         if cell.get("cell_type") != "code":
             continue
@@ -94,6 +102,9 @@ def test_notebook_generator_configs_match_current_api(path: Path) -> None:
                 and isinstance(node.func, ast.Name)
                 and node.func.id.endswith("Generator")
             ):
+                continue
+
+            if node.func.id in local_generator_classes:
                 continue
 
             location = f"{path.name}, cell {cell_number}"

@@ -22,9 +22,8 @@ logger = logging.getLogger(__name__)
 class SynSet:
     """Generate synthetic time series datasets from multiple generators.
 
-    This class allows you to combine multiple generators to create diverse
-    synthetic time series datasets. Each generator can produce its own
-    type of time series pattern.
+    Combine multiple generators into one long-format panel; each generator
+    contributes its own type of time series pattern.
 
     Args:
         generators (list[BaseGenerator]): List of instantiated generator objects to use for creating time series.
