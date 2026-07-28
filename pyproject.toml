@@ -42,7 +42,7 @@ dev = [
     "hierarchicalforecast",
     "ipython<=8.32.0",
     "ipywidgets",
-    "jupyterlab>=4.5.9",
+    "jupyterlab>=4.6.2",
     "neuralforecast",
     "numpy<2",
     "plotly",
