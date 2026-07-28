@@ -25,7 +25,7 @@ pub fn intermittent_demand(
     let length = out.len();
     let mut rng = SfRng::new(seed);
 
-    // Step 1: Generate occurrence pattern
+    // Generate occurrence pattern
     let mut occurrence = vec![false; length];
 
     if intermittent_pattern == 0 {
@@ -60,7 +60,7 @@ pub fn intermittent_demand(
         }
     }
 
-    // Step 2 & 3: Generate demand sizes and combine
+    // Generate demand sizes and combine
     let variance = demand_std * demand_std;
 
     for t in 0..length {
@@ -104,7 +104,7 @@ pub fn intermittent_demand(
             demand_size = rng.poisson(demand_mean) as f64;
         }
 
-        // Step 4: Clip minimum
+        // Clip minimum
         demand_size = demand_size.max(min_demand);
         out[t] = demand_size;
     }
@@ -354,10 +354,10 @@ pub fn vital_signs(
     let length = out.len();
     let mut rng = SfRng::new(seed);
 
-    // Step 1: Generate baseline with individual variation
+    // Generate baseline with individual variation
     let baseline = baseline_mean + rng.normal(0.0, baseline_std * 0.3);
 
-    // Step 2: Initialize with baseline and add random walk drift
+    // Initialize with baseline and add random walk drift
     let mut drift = vec![0.0_f64; length];
     let mut drift_cumsum = 0.0;
     for d in drift.iter_mut() {
@@ -374,7 +374,7 @@ pub fn vital_signs(
         *out_v = baseline + d;
     }
 
-    // Step 3: Circadian rhythm
+    // Circadian rhythm
     // Assumes each time step is 1 minute (1440 minutes per day)
     if include_circadian {
         for (t, out_v) in out.iter_mut().enumerate() {
@@ -385,7 +385,7 @@ pub fn vital_signs(
         }
     }
 
-    // Step 4: Heart rate variability (for HR, SBP, DBP: types 0, 1, 2)
+    // Heart rate variability (for HR, SBP, DBP: types 0, 1, 2)
     if include_hrv && vital_sign_type <= 2 {
         // VLF, LF, HF frequency components (assuming 1-min sampling)
         let vlf_freq = 2.0 * PI * 0.02 * 60.0; // ~0.02 Hz
@@ -407,7 +407,7 @@ pub fn vital_signs(
         }
     }
 
-    // Step 5: Random events (activity, rest, spikes)
+    // Random events (activity, rest, spikes)
     if include_events {
         let mut events = vec![0.0_f64; length];
         for t in 0..length {
@@ -442,7 +442,7 @@ pub fn vital_signs(
         }
     }
 
-    // Step 6: Correlations with heart rate for non-HR vitals
+    // Correlations with heart rate for non-HR vitals
     if vital_sign_type >= 1 {
         // Generate HR deviation from events (matching Python _generate_events)
         let hr_std = 8.0; // heart_rate baseline std for "healthy" archetype
@@ -499,12 +499,12 @@ pub fn vital_signs(
         // Temperature (type 5): no direct HR correlation applied
     }
 
-    // Step 7: Measurement noise
+    // Measurement noise
     for out_v in out.iter_mut() {
         *out_v += rng.normal(0.0, baseline_std * 0.2);
     }
 
-    // Step 8: Clip to [min_val, max_val]
+    // Clip to [min_val, max_val]
     for out_v in out.iter_mut() {
         *out_v = out_v.clamp(min_val, max_val);
     }
