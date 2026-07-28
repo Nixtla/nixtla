@@ -158,7 +158,9 @@ designed for:
 - Reproducible simulation with explicit, validated generator configurations
 
 Synthetic data reflects the assumptions of its generators. Validate those
-assumptions and downstream performance for your use case.
+assumptions and downstream performance for your use case. SynForecast is not an
+anonymization or differential-privacy tool: `SynAugment` is fitted to observed
+data and its output can resemble that data.
 
 ## Evidence and benchmarks
 

@@ -8,4 +8,3 @@ description: Base class for all time series generators
       members:
         - generate
         - generate_single_series
-        - nn

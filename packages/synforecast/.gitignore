@@ -217,3 +217,8 @@ tmp/
 /docs/mintlify/docs/
 /nbs/_extensions/
 lightning_logs/
+
+# Local AI-assistant tooling and instructions (not part of the distribution)
+.claude/
+.codex/
+.agents/

@@ -1,6 +1,6 @@
 ---
 title: Statistical Generators
-description: RandomWalk, Seasonal, SARIMA, and ETS generators
+description: RandomWalk, Seasonal, SARIMA, ETS, and INAR generators
 ---
 
 ::: synforecast.generators.random_walk.RandomWalkGenerator

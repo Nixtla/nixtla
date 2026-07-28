@@ -1,6 +1,6 @@
 ---
 title: Multivariate Generators
-description: Copula and VAR generators for correlated time series
+description: Copula, VAR, and Gaussian Process generators for correlated time series
 ---
 
 ::: synforecast.generators.copula.CopulaGenerator

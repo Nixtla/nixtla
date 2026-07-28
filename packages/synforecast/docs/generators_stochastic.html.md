@@ -1,6 +1,6 @@
 ---
 title: Stochastic Generators
-description: GARCH, Ornstein-Uhlenbeck, GBM, Jump Diffusion, Poisson, Cyclic, fBm, Hawkes, Stochastic Volatility, and Regime Switching generators
+description: GARCH, Ornstein-Uhlenbeck, GBM, Jump Diffusion, Poisson, Cyclic, fBm, Hawkes, Stochastic Volatility, Regime Switching, Chaotic System, Bounded Process, and Lévy Process generators
 ---
 
 ::: synforecast.generators.garch.GARCHGenerator

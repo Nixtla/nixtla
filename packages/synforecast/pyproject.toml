@@ -87,6 +87,11 @@ build-backend = "maturin"
 manifest-path = "rust/Cargo.toml"
 module-name = "synforecast._lib"
 features = ["pyo3/extension-module"]
+# Ship the PEP 561 marker and bundled third-party license notices in the wheel.
+include = [
+    { path = "synforecast/py.typed", format = "wheel" },
+    { path = "synforecast/THIRD_PARTY_RUST.md", format = "wheel" },
+]
 
 [tool.uv]
 constraint-dependencies = ["pytorch-lightning>=2.6.1"]
