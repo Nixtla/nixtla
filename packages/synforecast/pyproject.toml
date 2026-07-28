@@ -89,11 +89,7 @@ module-name = "synforecast._lib"
 features = ["pyo3/extension-module"]
 
 [tool.uv]
-# coreforecast (a transitive dependency via statsforecast) is built from
-# source on platforms without a matching prebuilt wheel (e.g. macOS on newer
-# Python). Its build config uses `cmake.verbose`, which scikit-build-core
-# >= 0.10 rejects, breaking the source build. Constrain the build backend so
-# such source builds keep working.
+constraint-dependencies = ["pytorch-lightning>=2.6.1"]
 build-constraint-dependencies = ["scikit-build-core<0.10"]
 
 [tool.uv.sources]

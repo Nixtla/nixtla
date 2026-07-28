@@ -13,6 +13,7 @@ resolution-markers = [
 ]
 
 [manifest]
+constraints = [{ name = "pytorch-lightning", specifier = ">=2.6.1" }]
 build-constraints = [{ name = "scikit-build-core", specifier = "<0.10" }]
 
 [[package]]
@@ -2287,7 +2288,7 @@ wheels = [
 
 [[package]]
 name = "neuralforecast"
-version = "3.2.0"
+version = "3.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "coreforecast" },
@@ -2305,9 +2306,9 @@ dependencies = [
     { name = "tornado" },
     { name = "utilsforecast" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9e/5d/0d3dda1ab3430103a9473716714a631fb1fd592a6731beda827817dfdc46/neuralforecast-3.2.0.tar.gz", hash = "sha256:eea25c7f4a885b56d2f2a96b1aebaa425da730f25b5176783018c5f62fc11b13", size = 254247, upload-time = "2026-07-10T13:04:27.27Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/d5/7a1c6e49639413f8f40caa771c5725c64b13ac555e9fe16182dd3c385947/neuralforecast-3.1.7.tar.gz", hash = "sha256:f4c4971868ae37b384648d30f9f42143c4a733d0d44e28306202ebd9a74af3e6", size = 236538, upload-time = "2026-04-10T17:23:31.594Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/eb/75d325183f271e1f2a6997e2e28b560a1dd6eac20c980117453d53c2cb43/neuralforecast-3.2.0-py3-none-any.whl", hash = "sha256:e46d72ff3534de9333d6ce222e16663f36e467c35d86382a30a5014d3b05eb84", size = 302001, upload-time = "2026-07-10T13:04:25.14Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/84/7bfce1a4036934ce96cf77913ab2600b7a2e46a2ae085586ec543075d7f8/neuralforecast-3.1.7-py3-none-any.whl", hash = "sha256:600008e43bbdad23e326778432a2e85e2e03108f8aeafbdfcdda22b0939c5b1d", size = 286982, upload-time = "2026-04-10T17:23:30.096Z" },
 ]
 
 [[package]]
@@ -3243,7 +3244,7 @@ wheels = [
 
 [[package]]
 name = "pytorch-lightning"
-version = "2.5.6"
+version = "2.6.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fsspec", extra = ["http"] },
@@ -3256,9 +3257,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0a/1f/94a441d30779e1ffa5f7dc2ac5fa374c142d8b96c347a49a30226264124e/pytorch_lightning-2.5.6.tar.gz", hash = "sha256:c428faaceef74be50b870814d0d7e9f9c6ee748b8769a2afd3366bc69daf3a0f", size = 642830, upload-time = "2025-11-05T20:53:04.871Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/2c/8e73a3929b4c4bd600cafd38a97aaf7242a8cf518fb9f33d27c274ec898f/pytorch_lightning-2.6.5.tar.gz", hash = "sha256:1c32cefa76a1a9c4c5250338272d961d1e48b180e68396849efe128538ddb28e", size = 661673, upload-time = "2026-05-27T14:33:41.961Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/e4/32ed2f33c1b634f7c2895369222f4f8cb345044f4642bbff718e7dd1e0b7/pytorch_lightning-2.5.6-py3-none-any.whl", hash = "sha256:037bad1e2fd94d5eb6c5144f045fd4c1070c3d38fc9c14d9f3774a3a9be54dff", size = 831555, upload-time = "2025-11-05T20:53:03.316Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/4d/5740c27110b83634d8491c3b5facf0111b3e554c3164f4fb953be9bddaf6/pytorch_lightning-2.6.5-py3-none-any.whl", hash = "sha256:62d9c8549b2278fedc3364f0a5607a56c6063d18635008f8cf3fae8d802b0d76", size = 852407, upload-time = "2026-05-27T14:33:39.856Z" },
 ]
 
 [[package]]
