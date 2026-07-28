@@ -27,8 +27,7 @@
   binding tests, and open-source community and security policies.
 - Complete generated API references for every public generator, composition
   helper, and top-level convenience API.
-- Citation metadata, support guidance, code ownership, and third-party data
-  provenance.
+- Citation metadata, support guidance, and third-party data provenance.
 
 ### Changed
 
