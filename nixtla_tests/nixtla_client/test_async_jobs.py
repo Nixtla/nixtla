@@ -9,6 +9,7 @@ from nixtla.nixtla_client import (
     ApiError,
     AsyncJobError,
     AsyncJobTimeoutError,
+    Job,
     NixtlaClient,
 )
 
@@ -231,66 +232,136 @@ def test_make_request_still_rejects_other_status_codes():
 
 
 # ---------------------------------------------------------------------------
-# finetune_async / forecast_async / cross_validation_async wiring
+# submit_finetune_job / submit_forecast_job / submit_cross_validation_job
 # ---------------------------------------------------------------------------
 
 
-def test_finetune_async_success(monkeypatch):
+def test_submit_finetune_job_returns_job(monkeypatch):
     calls = []
 
-    def fake_run_async_job(
-        self, client, endpoint, payload, poll_interval, poll_timeout, multithreaded_compress=True
-    ):
-        calls.append((endpoint, poll_interval, poll_timeout))
-        return {"finetuned_model_id": "abc123"}
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        calls.append(endpoint)
+        return "ft-job-1"
 
-    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
     client = _client()
 
-    result = client.finetune_async(
-        df=_small_df(), freq="D", poll_interval=1, poll_timeout=2
-    )
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+
+    assert isinstance(job, Job)
+    assert job.job_id == "ft-job-1"
+    assert job.status == "pending"
+    assert calls == ["v2/finetune"]
+
+
+def test_finetune_job_wait_returns_model_id(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        assert (endpoint, job_id, poll_interval, poll_timeout) == (
+            "v2/finetune",
+            "ft-job-1",
+            1,
+            2,
+        )
+        return {"finetuned_model_id": "abc123"}
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
+    client = _client()
+
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+    result = job.wait(poll_interval=1, poll_timeout=2)
 
     assert result == "abc123"
-    assert calls == [("v2/finetune", 1, 2)]
+    assert job.status == "succeeded"
+    assert job.result == "abc123"
 
 
-def test_forecast_async_success(monkeypatch):
+def test_submit_forecast_job_returns_job(monkeypatch):
     h = 5
     calls = []
 
     def fake_get_model_params(self, model, freq):
         return 100, 12
 
-    def fake_run_async_job(
-        self, client, endpoint, payload, poll_interval, poll_timeout, multithreaded_compress=True
-    ):
-        calls.append((endpoint, poll_interval, poll_timeout))
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        calls.append(endpoint)
+        return "fc-job-1"
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    client = _client()
+
+    job = client.submit_forecast_job(df=_small_df(), h=h)
+
+    assert isinstance(job, Job)
+    assert job.job_id == "fc-job-1"
+    assert calls == ["v2/forecast"]
+
+
+def test_forecast_job_wait_returns_dataframe(monkeypatch):
+    h = 5
+
+    def fake_get_model_params(self, model, freq):
+        return 100, 12
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "fc-job-1"
+
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        assert endpoint == "v2/forecast"
         return {"mean": list(range(h)), "intervals": None, "weights_x": None}
 
     monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
     client = _client()
 
-    out = client.forecast_async(df=_small_df(), h=h, poll_interval=1, poll_timeout=2)
+    job = client.submit_forecast_job(df=_small_df(), h=h)
+    out = job.wait(poll_interval=1, poll_timeout=2)
 
-    assert calls == [("v2/forecast", 1, 2)]
     assert len(out) == h
     assert out["TimeGPT"].tolist() == list(range(h))
+    assert job.status == "succeeded"
+    assert job.result is out
 
 
-def test_cross_validation_async_success(monkeypatch):
+def test_submit_cross_validation_job_returns_job(monkeypatch):
     h = 5
     calls = []
 
     def fake_get_model_params(self, model, freq):
         return 10_000, 12
 
-    def fake_run_async_job(
-        self, client, endpoint, payload, poll_interval, poll_timeout, multithreaded_compress=True
-    ):
-        calls.append((endpoint, poll_interval, poll_timeout))
-        n = len(payload["series"]["y"])
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        calls.append(endpoint)
+        return "cv-job-1"
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    client = _client()
+
+    job = client.submit_cross_validation_job(df=_small_df(), h=h)
+
+    assert isinstance(job, Job)
+    assert job.job_id == "cv-job-1"
+    assert calls == ["v2/cross_validation"]
+
+
+def test_cross_validation_job_wait_returns_dataframe(monkeypatch):
+    h = 5
+    n = 20
+
+    def fake_get_model_params(self, model, freq):
+        return 10_000, 12
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "cv-job-1"
+
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        assert endpoint == "v2/cross_validation"
         return {
             "idxs": list(range(n - h, n)),
             "sizes": [h],
@@ -299,16 +370,66 @@ def test_cross_validation_async_success(monkeypatch):
         }
 
     monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
     client = _client()
 
-    out = client.cross_validation_async(
-        df=_small_df(), h=h, poll_interval=1, poll_timeout=2
-    )
+    job = client.submit_cross_validation_job(df=_small_df(n=n), h=h)
+    out = job.wait(poll_interval=1, poll_timeout=2)
 
-    assert calls == [("v2/cross_validation", 1, 2)]
     assert len(out) == h
     assert out["TimeGPT"].tolist() == list(range(h))
+
+
+def test_job_cancel_calls_cancel_job(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    calls = []
+
+    def fake_cancel_job(self, client, endpoint, job_id):
+        calls.append((endpoint, job_id))
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
+
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+    job.cancel()
+
+    assert calls == [("v2/finetune", "ft-job-1")]
+    assert job.status == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# _cancel_job
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_job_accepts_terminal_success_codes():
+    client = _client()
+    mock_http_client = MagicMock()
+    for status_code in (200, 202, 204):
+        resp = MagicMock()
+        resp.status_code = status_code
+        mock_http_client.post.return_value = resp
+        client._cancel_job(mock_http_client, "v2/forecast", "fc-abc123")
+    mock_http_client.post.assert_called_with("v2/forecast/jobs/fc-abc123/cancel")
+
+
+def test_cancel_job_raises_on_other_status_codes():
+    client = _client()
+    mock_http_client = MagicMock()
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.json.return_value = {"detail": "job not found"}
+    mock_http_client.post.return_value = resp
+
+    with pytest.raises(ApiError) as excinfo:
+        client._cancel_job(mock_http_client, "v2/forecast", "fc-abc123")
+
+    assert excinfo.value.status_code == 404
+    assert excinfo.value.body == {"detail": "job not found"}
 
 
 # ---------------------------------------------------------------------------
@@ -435,17 +556,16 @@ def test_cross_validation_num_partitions_with_async_job(monkeypatch):
     assert len(out) == h * 2
 
 
-def test_forecast_async_with_unrecognized_df_type_still_raises():
-    # Distributed (dask/spark/ray) DataFrames ARE supported for forecast_async
-    # (see test_distributed_async_wrappers.py for the plumbing tests) — but an
-    # arbitrary object Fugue can't infer an execution engine for should still
-    # raise a clear ValueError rather than doing something undefined.
+def test_submit_forecast_job_with_unrecognized_df_type_still_raises():
+    # submit_forecast_job doesn't support distributed (dask/spark/ray)
+    # dataframes in this version — an arbitrary non-pandas/polars object
+    # should raise a clear ValueError rather than doing something undefined.
     client = _client()
-    with pytest.raises(ValueError, match="Could not infer execution engine"):
-        client.forecast_async(df=[1, 2, 3], h=5)
+    with pytest.raises(ValueError, match="submit_forecast_job only supports"):
+        client.submit_forecast_job(df=[1, 2, 3], h=5)
 
 
-def test_cross_validation_async_with_unrecognized_df_type_still_raises():
+def test_submit_cross_validation_job_with_unrecognized_df_type_still_raises():
     client = _client()
-    with pytest.raises(ValueError, match="Could not infer execution engine"):
-        client.cross_validation_async(df=[1, 2, 3], h=5)
+    with pytest.raises(ValueError, match="submit_cross_validation_job only supports"):
+        client.submit_cross_validation_job(df=[1, 2, 3], h=5)
