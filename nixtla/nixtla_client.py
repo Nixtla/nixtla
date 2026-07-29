@@ -1,4 +1,12 @@
-__all__ = ["ApiError", "AsyncJobError", "AsyncJobTimeoutError", "Job", "NixtlaClient"]
+__all__ = [
+    "ApiError",
+    "AsyncJobCancelledError",
+    "AsyncJobError",
+    "AsyncJobTimeoutError",
+    "Job",
+    "JobStatus",
+    "NixtlaClient",
+]
 
 import datetime
 from http import HTTPStatus
@@ -46,6 +54,14 @@ from utilsforecast.feature_engineering import _add_time_features, time_features
 from utilsforecast.preprocessing import fill_gaps, id_time_grid
 from utilsforecast.processing import ensure_sorted
 from utilsforecast.validation import ensure_time_dtype, validate_format
+
+from .async_job import (
+    AsyncJobCancelledError,
+    AsyncJobError,
+    AsyncJobTimeoutError,
+    Job,
+    JobStatus,
+)
 
 if TYPE_CHECKING:
     try:
@@ -919,83 +935,6 @@ class ApiError(Exception):
         return f"status_code: {self.status_code}, body: {self.body}"
 
 
-class AsyncJobError(Exception):
-    """Raised when a server-side async job (forecast/finetune/cross_validation) fails."""
-
-    def __init__(self, *, job_id: str, error: Any):
-        self.job_id = job_id
-        self.error = error
-
-    def __str__(self) -> str:
-        return f"job_id: {self.job_id}, error: {self.error}"
-
-
-class AsyncJobTimeoutError(Exception):
-    """Raised when polling a server-side async job exceeds `poll_timeout`."""
-
-    def __init__(self, *, job_id: str, poll_timeout: float):
-        self.job_id = job_id
-        self.poll_timeout = poll_timeout
-
-    def __str__(self) -> str:
-        return (
-            f"job_id: {self.job_id} did not finish within "
-            f"poll_timeout={self.poll_timeout}s"
-        )
-
-
-class Job:
-    """Handle to a server-side async job submitted via `submit_forecast_job`,
-    `submit_finetune_job`, or `submit_cross_validation_job`.
-
-    Call `wait()` to block until the job finishes and get its result, or
-    `cancel()` to request that the server stop it.
-    """
-
-    def __init__(
-        self,
-        *,
-        client: "NixtlaClient",
-        job_id: str,
-        endpoint: str,
-        parse_result: Callable[..., Any],
-    ):
-        self.job_id = job_id
-        self.status = "pending"
-        self.result: Any = None
-        self._client = client
-        self._endpoint = endpoint
-        self._parse_result = parse_result
-
-    def wait(self, poll_interval: float = 15, poll_timeout: float = 3600) -> Any:
-        """Poll the job until it reaches a terminal state and return its result.
-
-        Args:
-            poll_interval (float): Seconds to wait between job-status polls.
-                Defaults to 15.
-            poll_timeout (float): Maximum seconds to wait for the job to
-                reach a terminal state before raising `AsyncJobTimeoutError`.
-                Defaults to 3600.
-
-        Returns:
-            The job's parsed result (a DataFrame for forecast/cross_validation
-            jobs, a fine-tuned model id string for finetune jobs).
-        """
-        with self._client._make_client(**self._client._client_kwargs) as http_client:
-            raw = self._client._poll_job(
-                http_client, self._endpoint, self.job_id, poll_interval, poll_timeout
-            )
-        self.status = "succeeded"
-        self.result = self._parse_result(raw)
-        return self.result
-
-    def cancel(self) -> None:
-        """Request cancellation of the job."""
-        with self._client._make_client(**self._client._client_kwargs) as http_client:
-            self._client._cancel_job(http_client, self.job_id)
-        self.status = "cancelled"
-
-
 class NixtlaClient:
     def __init__(
         self,
@@ -1155,6 +1094,11 @@ class NixtlaClient:
             raise ApiError(status_code=resp.status_code, body=resp_body)
         return resp_body
 
+    def _get_job_data(
+        self, client: httpx.Client, endpoint: str, job_id: str
+    ) -> dict[str, Any]:
+        return self._get_request(client, f"{endpoint}/jobs/{job_id}")
+
     def _submit_job(
         self,
         client: httpx.Client,
@@ -1175,11 +1119,10 @@ class NixtlaClient:
         poll_interval: float,
         poll_timeout: float,
     ) -> dict[str, Any]:
-        jobs_endpoint = f"{endpoint}/jobs"
         deadline = time.monotonic() + poll_timeout
         while True:
             try:
-                job_data = self._get_request(client, f"{jobs_endpoint}/{job_id}")
+                job_data = self._get_job_data(client, endpoint, job_id)
             except Exception as e:
                 if not _is_retriable_error(e):
                     raise
@@ -1191,16 +1134,20 @@ class NixtlaClient:
                 time.sleep(min(poll_interval, remaining))
                 continue
 
-            status = job_data.get("status")
-            if status == "succeeded":
-                return job_data["result"]
-            if status == "failed":
-                raise AsyncJobError(job_id=job_id, error=job_data.get("error"))
-            if status not in ("pending", "running"):
+            try:
+                status = JobStatus(job_data.get("status"))
+            except ValueError:
                 raise AsyncJobError(
                     job_id=job_id,
-                    error=f"unexpected job status {status!r}: {job_data}",
+                    error=f"unexpected job status {job_data.get('status')!r}: {job_data}",
                 )
+            if status == JobStatus.SUCCEEDED:
+                return job_data
+            if status == JobStatus.FAILED:
+                raise AsyncJobError(job_id=job_id, error=job_data.get("error"))
+            if status == JobStatus.CANCELLED:
+                raise AsyncJobCancelledError(job_id=job_id)
+            # only PENDING/RUNNING remain here -- keep polling
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
@@ -1216,7 +1163,8 @@ class NixtlaClient:
         multithreaded_compress: bool = True,
     ) -> dict[str, Any]:
         job_id = self._submit_job(client, endpoint, payload, multithreaded_compress)
-        return self._poll_job(client, endpoint, job_id, poll_interval, poll_timeout)
+        job_data = self._poll_job(client, endpoint, job_id, poll_interval, poll_timeout)
+        return job_data["result"]
 
     def _cancel_job(self, client: httpx.Client, job_id: str) -> None:
         resp = client.post(f"v2/async/jobs/{job_id}/cancel")

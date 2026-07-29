@@ -7,6 +7,7 @@ import pytest
 
 from nixtla.nixtla_client import (
     ApiError,
+    AsyncJobCancelledError,
     AsyncJobError,
     AsyncJobTimeoutError,
     Job,
@@ -110,6 +111,22 @@ def test_run_async_job_failed():
 
     assert excinfo.value.job_id == "fc-abc123"
     assert excinfo.value.error == {"detail": "boom"}
+
+
+def test_run_async_job_cancelled():
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs(
+        [{"status": "running"}, {"status": "cancelled"}]
+    )
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    with pytest.raises(AsyncJobCancelledError) as excinfo:
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        )
+
+    assert excinfo.value.job_id == "fc-abc123"
 
 
 def test_run_async_job_unexpected_status():
@@ -269,6 +286,14 @@ def _stub_model_params(monkeypatch, model_params):
         )
 
 
+def _stub_job_status(monkeypatch, status):
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_get_job_data",
+        lambda self, client, endpoint, job_id: {"status": status},
+    )
+
+
 @pytest.mark.parametrize("method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES)
 def test_submit_job_returns_job(monkeypatch, method_name, endpoint, make_call_kwargs, model_params):
     calls = []
@@ -278,6 +303,7 @@ def test_submit_job_returns_job(monkeypatch, method_name, endpoint, make_call_kw
         return "job-1"
 
     _stub_model_params(monkeypatch, model_params)
+    _stub_job_status(monkeypatch, "pending")
     monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
     client = _client()
 
@@ -290,20 +316,26 @@ def test_submit_job_returns_job(monkeypatch, method_name, endpoint, make_call_kw
 
 
 def _finetune_poll_response():
-    return {"finetuned_model_id": "abc123"}
+    return {"status": "succeeded", "result": {"finetuned_model_id": "abc123"}}
 
 
 def _forecast_poll_response():
-    return {"mean": list(range(5)), "intervals": None, "weights_x": None}
+    return {
+        "status": "succeeded",
+        "result": {"mean": list(range(5)), "intervals": None, "weights_x": None},
+    }
 
 
 def _cross_validation_poll_response():
     n, h = 20, 5
     return {
-        "idxs": list(range(n - h, n)),
-        "sizes": [h],
-        "mean": list(range(h)),
-        "intervals": None,
+        "status": "succeeded",
+        "result": {
+            "idxs": list(range(n - h, n)),
+            "sizes": [h],
+            "mean": list(range(h)),
+            "intervals": None,
+        },
     }
 
 
@@ -387,6 +419,55 @@ def test_job_cancel_calls_cancel_job(monkeypatch):
 
     assert calls == ["ft-job-1"]
     assert job.status == "cancelled"
+
+
+def test_job_status_queries_server_and_caches_once_terminal(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    calls = []
+    statuses = iter(["running", "succeeded"])
+
+    def fake_get_job_data(self, client, endpoint, job_id):
+        calls.append(job_id)
+        return {"status": next(statuses)}
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_get_job_data", fake_get_job_data)
+    client = _client()
+
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+
+    assert job.status == "running"
+    assert job.status == "succeeded"
+    assert len(calls) == 2  # "running" isn't terminal, so it wasn't cached
+
+    assert job.status == "succeeded"
+    assert len(calls) == 2  # terminal status is now cached, no further calls
+
+
+def test_job_wait_raises_after_cancelled_status(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    def fake_cancel_job(self, client, job_id):
+        pass
+
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        raise AsyncJobCancelledError(job_id=job_id)
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
+    client = _client()
+
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+    job.cancel()
+
+    with pytest.raises(AsyncJobCancelledError) as excinfo:
+        job.wait(poll_interval=1, poll_timeout=2)
+
+    assert excinfo.value.job_id == "ft-job-1"
 
 
 # ---------------------------------------------------------------------------
