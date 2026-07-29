@@ -1,5 +1,5 @@
 use crate::generators::domain as gen;
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
+use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -24,12 +24,10 @@ pub fn intermittent_demand(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::intermittent_demand(
-            s,
+            &mut s,
             demand_probability,
             demand_distribution,
             demand_mean,
@@ -42,7 +40,7 @@ pub fn intermittent_demand(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -70,12 +68,10 @@ pub fn daily_active_users(
         return Err(PyValueError::new_err("step_hours must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_s = unsafe { out.as_slice_mut()? };
+    let mut out_s = vec![0.0; n];
     let result = py.detach(|| {
         gen::daily_active_users(
-            out_s,
+            &mut out_s,
             base_users,
             growth_rate,
             weekend_factor,
@@ -89,6 +85,7 @@ pub fn daily_active_users(
             seed,
         )
     });
+    let out = PyArray1::from_vec(py, out_s);
     let events = PyArray1::from_vec(py, result.events);
     let tuple = pyo3::types::PyTuple::new(py, [out.as_any(), events.as_any()])?;
     Ok(tuple.into())
@@ -128,14 +125,12 @@ pub fn energy_load(
     if step_hours <= 0.0 {
         return Err(PyValueError::new_err("step_hours must be > 0"));
     }
-    let hd = holiday_days.as_slice()?;
+    let hd = holiday_days.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::energy_load(
-            s,
+            &mut s,
             base_load,
             load_type,
             daily_pattern,
@@ -151,7 +146,7 @@ pub fn energy_load(
             evening_peak_hour,
             peak_amplitude,
             holiday_effect,
-            hd,
+            &hd,
             extreme_weather_prob,
             extreme_weather_impact,
             noise_std,
@@ -159,7 +154,7 @@ pub fn energy_load(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -184,12 +179,10 @@ pub fn vital_signs(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::vital_signs(
-            s,
+            &mut s,
             baseline_mean,
             baseline_std,
             min_val,
@@ -203,7 +196,7 @@ pub fn vital_signs(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -234,12 +227,10 @@ pub fn iot_sensor(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::iot_sensor(
-            s,
+            &mut s,
             base_value,
             trend,
             amplitude,
@@ -259,7 +250,7 @@ pub fn iot_sensor(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -286,12 +277,10 @@ pub fn clickstream(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::clickstream(
-            s,
+            &mut s,
             base_sessions,
             conversion_mult,
             bounce_mult,
@@ -307,7 +296,7 @@ pub fn clickstream(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {

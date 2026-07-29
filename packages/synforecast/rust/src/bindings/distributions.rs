@@ -1,50 +1,44 @@
 use crate::distributions as dist;
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
+use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 
 #[pyfunction]
 pub fn norm_cdf(py: Python<'_>, x: PyReadonlyArray1<'_, f64>) -> PyResult<Py<PyArray1<f64>>> {
     let input = x.as_slice()?;
     let n = input.len();
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_slice = unsafe { out.as_slice_mut()? };
+    let mut out_slice = vec![0.0; n];
     py.detach(|| {
         for i in 0..n {
             out_slice[i] = dist::norm_cdf(input[i]);
         }
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, out_slice).into())
 }
 
 #[pyfunction]
 pub fn norm_ppf(py: Python<'_>, p: PyReadonlyArray1<'_, f64>) -> PyResult<Py<PyArray1<f64>>> {
     let input = p.as_slice()?;
     let n = input.len();
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_slice = unsafe { out.as_slice_mut()? };
+    let mut out_slice = vec![0.0; n];
     py.detach(|| {
         for i in 0..n {
             out_slice[i] = dist::norm_ppf(input[i]);
         }
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, out_slice).into())
 }
 
 #[pyfunction]
 pub fn t_cdf(py: Python<'_>, x: PyReadonlyArray1<'_, f64>, df: f64) -> PyResult<Py<PyArray1<f64>>> {
     let input = x.as_slice()?;
     let n = input.len();
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_slice = unsafe { out.as_slice_mut()? };
+    let mut out_slice = vec![0.0; n];
     py.detach(|| {
         for i in 0..n {
             out_slice[i] = dist::t_cdf(input[i], df);
         }
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, out_slice).into())
 }
 
 #[pyfunction]
@@ -56,15 +50,13 @@ pub fn gamma_ppf(
 ) -> PyResult<Py<PyArray1<f64>>> {
     let input = u.as_slice()?;
     let n = input.len();
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_slice = unsafe { out.as_slice_mut()? };
+    let mut out_slice = vec![0.0; n];
     py.detach(|| {
         for i in 0..n {
             out_slice[i] = dist::gamma_ppf(input[i], a, scale);
         }
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, out_slice).into())
 }
 
 #[pyfunction]
@@ -75,15 +67,13 @@ pub fn expon_ppf(
 ) -> PyResult<Py<PyArray1<f64>>> {
     let input = u.as_slice()?;
     let n = input.len();
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_slice = unsafe { out.as_slice_mut()? };
+    let mut out_slice = vec![0.0; n];
     py.detach(|| {
         for i in 0..n {
             out_slice[i] = dist::expon_ppf(input[i], scale);
         }
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, out_slice).into())
 }
 
 #[pyfunction]
@@ -95,15 +85,13 @@ pub fn lognorm_ppf(
 ) -> PyResult<Py<PyArray1<f64>>> {
     let input = u.as_slice()?;
     let n = input.len();
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_slice = unsafe { out.as_slice_mut()? };
+    let mut out_slice = vec![0.0; n];
     py.detach(|| {
         for i in 0..n {
             out_slice[i] = dist::lognorm_ppf(input[i], s, scale);
         }
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, out_slice).into())
 }
 
 #[pyfunction]
@@ -115,15 +103,13 @@ pub fn uniform_ppf(
 ) -> PyResult<Py<PyArray1<f64>>> {
     let input = u.as_slice()?;
     let n = input.len();
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let out_slice = unsafe { out.as_slice_mut()? };
+    let mut out_slice = vec![0.0; n];
     py.detach(|| {
         for i in 0..n {
             out_slice[i] = dist::uniform_ppf(input[i], loc, scale);
         }
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, out_slice).into())
 }
 
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -1,5 +1,5 @@
 use crate::generators::stochastic as gen;
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
+use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -21,12 +21,10 @@ pub fn ornstein_uhlenbeck(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::ornstein_uhlenbeck(
-            s,
+            &mut s,
             theta,
             mu,
             sigma,
@@ -37,7 +35,7 @@ pub fn ornstein_uhlenbeck(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -57,12 +55,10 @@ pub fn geometric_brownian_motion(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::geometric_brownian_motion(
-            s,
+            &mut s,
             mu,
             sigma,
             initial_value,
@@ -72,7 +68,7 @@ pub fn geometric_brownian_motion(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -95,12 +91,10 @@ pub fn jump_diffusion(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::jump_diffusion(
-            s,
+            &mut s,
             mu,
             sigma,
             lambda_jump,
@@ -113,7 +107,7 @@ pub fn jump_diffusion(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -129,11 +123,9 @@ pub fn poisson_process(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
-    py.detach(|| gen::poisson_process(s, lambda_rate, cumulative, seed));
-    Ok(out.into())
+    let mut s = vec![0.0; n];
+    py.detach(|| gen::poisson_process(&mut s, lambda_rate, cumulative, seed));
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -157,12 +149,10 @@ pub fn cyclic(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::cyclic(
-            s,
+            &mut s,
             base_level,
             trend,
             cycle_period_mean,
@@ -176,7 +166,7 @@ pub fn cyclic(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -198,20 +188,18 @@ pub fn garch(
     if length <= 0 {
         return Err(PyValueError::new_err("length must be > 0"));
     }
-    let a = alpha_arr.as_slice()?;
-    let b = beta_arr.as_slice()?;
+    let a = alpha_arr.as_slice()?.to_vec();
+    let b = beta_arr.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::garch(
-            s,
+            &mut s,
             p,
             q,
             omega,
-            a,
-            b,
+            &a,
+            &b,
             mu,
             initial_variance,
             seed,
@@ -219,7 +207,7 @@ pub fn garch(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -240,12 +228,10 @@ pub fn hawkes_process(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::hawkes_process(
-            s,
+            &mut s,
             baseline_intensity,
             excitation_amplitude,
             decay_rate,
@@ -256,7 +242,7 @@ pub fn hawkes_process(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -283,12 +269,10 @@ pub fn chaotic_system(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::chaotic_system(
-            s,
+            &mut s,
             system_id,
             sigma,
             rho,
@@ -304,7 +288,7 @@ pub fn chaotic_system(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -330,12 +314,10 @@ pub fn bounded_process(
         return Err(PyValueError::new_err("lower must be < upper"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::bounded_process(
-            s,
+            &mut s,
             model_id,
             phi,
             omega,
@@ -347,7 +329,7 @@ pub fn bounded_process(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -367,12 +349,10 @@ pub fn levy_process(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::levy_process(
-            s,
+            &mut s,
             alpha,
             beta_skew,
             scale,
@@ -382,7 +362,7 @@ pub fn levy_process(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {

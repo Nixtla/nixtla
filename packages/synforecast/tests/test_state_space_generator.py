@@ -106,6 +106,24 @@ class TestStateSpaceAPI:
         values = gen.generate_single_series(20)
         np.testing.assert_allclose(values, 5.0)
 
+    def test_generate_with_states_multivariate_obs_with_missingness(
+        self, engine: str
+    ) -> None:
+        gen = make_gen(
+            engine,
+            obs_dim=2,
+            state_dim=2,
+            min_length=30,
+            max_length=30,
+            missing_data=True,
+            missing_rate=0.2,
+        )
+        obs_df, states_df = gen.generate_with_states(n_series=2)
+        assert_long_format(
+            obs_df, n_series=2, min_length=30, max_length=30, allow_nan=True
+        )
+        assert all(np.isnan(v).any() for v in series_values(obs_df).values())
+
     def test_generate_with_states(self, engine: str) -> None:
         gen = make_gen(engine, state_dim=2, min_length=30, max_length=30)
         obs_df, states_df = gen.generate_with_states(n_series=2, start_id=3)

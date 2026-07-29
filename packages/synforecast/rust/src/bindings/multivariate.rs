@@ -1,5 +1,5 @@
 use crate::generators::multivariate as gen;
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
+use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -23,26 +23,24 @@ pub fn copula(
     if n_variables <= 0 {
         return Err(PyValueError::new_err("n_variables must be > 0"));
     }
-    let cm = correlation_matrix.as_slice()?;
+    let cm = correlation_matrix.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     let nv = n_variables as usize;
     py.detach(|| {
         gen::copula(
-            s,
+            &mut s,
             nv,
             copula_type,
             df,
-            cm,
+            &cm,
             marginal_distribution,
             marginal_param1,
             marginal_param2,
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -68,17 +66,27 @@ pub fn var_process(
     if order <= 0 {
         return Err(PyValueError::new_err("order must be > 0"));
     }
-    let cm = coef_matrices.as_slice()?;
-    let ic = intercept.as_slice()?;
-    let iv = innovation_cov.as_slice()?;
+    let cm = coef_matrices.as_slice()?.to_vec();
+    let ic = intercept.as_slice()?.to_vec();
+    let iv = innovation_cov.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     let nv = n_variables as usize;
     let ord = order as usize;
-    py.detach(|| gen::var_process(s, nv, ord, cm, ic, iv, seed, innov_dist, innov_param));
-    Ok(out.into())
+    py.detach(|| {
+        gen::var_process(
+            &mut s,
+            nv,
+            ord,
+            &cm,
+            &ic,
+            &iv,
+            seed,
+            innov_dist,
+            innov_param,
+        )
+    });
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -108,35 +116,33 @@ pub fn state_space(
     if obs_dim <= 0 {
         return Err(PyValueError::new_err("obs_dim must be > 0"));
     }
-    let f = f_mat.as_slice()?;
-    let h = h_mat.as_slice()?;
-    let q = q_mat.as_slice()?;
-    let r = r_mat.as_slice()?;
-    let is = initial_state.as_slice()?;
-    let isc = initial_state_cov.as_slice()?;
+    let f = f_mat.as_slice()?.to_vec();
+    let h = h_mat.as_slice()?.to_vec();
+    let q = q_mat.as_slice()?.to_vec();
+    let r = r_mat.as_slice()?.to_vec();
+    let is = initial_state.as_slice()?.to_vec();
+    let isc = initial_state_cov.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     let sd = state_dim as usize;
     let od = obs_dim as usize;
     py.detach(|| {
         gen::state_space(
-            s,
+            &mut s,
             sd,
             od,
-            f,
-            h,
-            q,
-            r,
-            is,
-            isc,
+            &f,
+            &h,
+            &q,
+            &r,
+            &is,
+            &isc,
             seed,
             innov_dist,
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -155,11 +161,19 @@ pub fn fbm(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
-    py.detach(|| gen::fbm(s, hurst, sigma, initial_value, cumulative, method, seed));
-    Ok(out.into())
+    let mut s = vec![0.0; n];
+    py.detach(|| {
+        gen::fbm(
+            &mut s,
+            hurst,
+            sigma,
+            initial_value,
+            cumulative,
+            method,
+            seed,
+        )
+    });
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -179,12 +193,10 @@ pub fn gaussian_process(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::gaussian_process(
-            s,
+            &mut s,
             kernel_id,
             length_scale,
             amplitude,
@@ -194,7 +206,7 @@ pub fn gaussian_process(
             seed,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {

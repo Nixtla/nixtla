@@ -1,7 +1,9 @@
+#![deny(unsafe_code)]
 #![deny(clippy::correctness)]
 #![warn(clippy::suspicious)]
 #![warn(clippy::perf)]
 #![warn(clippy::style)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::too_many_arguments)]
 
 use pyo3::prelude::*;

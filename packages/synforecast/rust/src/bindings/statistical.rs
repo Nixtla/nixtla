@@ -1,5 +1,5 @@
 use crate::generators::statistical as gen;
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
+use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -19,12 +19,10 @@ pub fn random_walk(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::random_walk(
-            s,
+            &mut s,
             drift,
             volatility,
             start_value,
@@ -33,7 +31,7 @@ pub fn random_walk(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -57,12 +55,10 @@ pub fn seasonal(
         return Err(PyValueError::new_err("seasonality_period must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::seasonal(
-            s,
+            &mut s,
             seasonality_period,
             seasonality_amplitude,
             trend,
@@ -73,7 +69,7 @@ pub fn seasonal(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -97,17 +93,15 @@ pub fn sarima(
     if length <= 0 {
         return Err(PyValueError::new_err("length must be > 0"));
     }
-    let ar = full_ar_poly.as_slice()?;
-    let ma = full_ma_poly.as_slice()?;
+    let ar = full_ar_poly.as_slice()?.to_vec();
+    let ma = full_ma_poly.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::sarima(
-            s,
-            ar,
-            ma,
+            &mut s,
+            &ar,
+            &ma,
             d,
             seasonal_d,
             seasonal_period,
@@ -120,7 +114,7 @@ pub fn sarima(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -152,21 +146,19 @@ pub fn ets(
     if seasonal_period <= 0 {
         return Err(PyValueError::new_err("seasonal_period must be > 0"));
     }
-    let s_init = seasonal_init.as_slice()?;
+    let s_init = seasonal_init.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::ets(
-            s,
+            &mut s,
             error_type,
             trend_type,
             seasonal_type,
             seasonal_period,
             level,
             trend_init,
-            s_init,
+            &s_init,
             alpha,
             beta_param,
             gamma,
@@ -178,7 +170,7 @@ pub fn ets(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 #[pyfunction]
@@ -199,13 +191,21 @@ pub fn inar(
     if p <= 0 {
         return Err(PyValueError::new_err("p must be > 0"));
     }
-    let a = alpha_arr.as_slice()?;
+    let a = alpha_arr.as_slice()?.to_vec();
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
-    py.detach(|| gen::inar(s, p, a, innov_type, innov_mean, innov_dispersion, seed));
-    Ok(out.into())
+    let mut s = vec![0.0; n];
+    py.detach(|| {
+        gen::inar(
+            &mut s,
+            p,
+            &a,
+            innov_type,
+            innov_mean,
+            innov_dispersion,
+            seed,
+        )
+    });
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {

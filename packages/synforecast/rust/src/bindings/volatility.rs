@@ -1,5 +1,5 @@
 use crate::generators::volatility as gen;
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
+use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -28,12 +28,10 @@ pub fn stochastic_volatility(
         return Err(PyValueError::new_err("length must be > 0"));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::stochastic_volatility(
-            s,
+            &mut s,
             model_type,
             initial_price,
             initial_vol,
@@ -50,7 +48,7 @@ pub fn stochastic_volatility(
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 /// `initial_regime < 0` draws the starting regime from `stationary_probs`
@@ -78,36 +76,34 @@ pub fn regime_switching(
     if n_regimes <= 0 {
         return Err(PyValueError::new_err("n_regimes must be > 0"));
     }
-    let rm = regime_means.as_slice()?;
-    let rv = regime_variances.as_slice()?;
-    let ra = regime_ar_coeffs.as_slice()?;
-    let tm = transition_matrix.as_slice()?;
-    let sp = stationary_probs.as_slice()?;
+    let rm = regime_means.as_slice()?.to_vec();
+    let rv = regime_variances.as_slice()?.to_vec();
+    let ra = regime_ar_coeffs.as_slice()?.to_vec();
+    let tm = transition_matrix.as_slice()?.to_vec();
+    let sp = stationary_probs.as_slice()?.to_vec();
     if initial_regime < 0 && sp.len() < n_regimes as usize {
         return Err(PyValueError::new_err(
             "stationary_probs must have n_regimes entries when initial_regime < 0",
         ));
     }
     let n = length as usize;
-    let out = PyArray1::<f64>::zeros(py, n, false);
-    // SAFETY: Array was just allocated with no other references to its data.
-    let s = unsafe { out.as_slice_mut()? };
+    let mut s = vec![0.0; n];
     py.detach(|| {
         gen::regime_switching(
-            s,
+            &mut s,
             n_regimes,
-            rm,
-            rv,
-            ra,
-            tm,
-            sp,
+            &rm,
+            &rv,
+            &ra,
+            &tm,
+            &sp,
             initial_regime,
             seed,
             innov_dist,
             innov_param,
         )
     });
-    Ok(out.into())
+    Ok(PyArray1::from_vec(py, s).into())
 }
 
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {

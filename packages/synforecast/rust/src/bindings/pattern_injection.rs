@@ -4,6 +4,23 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+fn copy_out(values: &Bound<'_, PyArray1<f64>>) -> PyResult<Vec<f64>> {
+    let borrow = values.try_readwrite()?;
+    Ok(borrow.as_slice()?.to_vec())
+}
+
+fn copy_back(values: &Bound<'_, PyArray1<f64>>, buf: &[f64]) -> PyResult<()> {
+    let mut borrow = values.try_readwrite()?;
+    let dest = borrow.as_slice_mut()?;
+    if dest.len() != buf.len() {
+        return Err(PyValueError::new_err(
+            "values array changed length during the call",
+        ));
+    }
+    dest.copy_from_slice(buf);
+    Ok(())
+}
+
 #[pyfunction]
 #[pyo3(signature = (values, seed, num_changepoints, locations, changepoint_type, level_changes, trend_changes, variance_changes))]
 pub fn add_changepoints<'py>(
@@ -17,25 +34,25 @@ pub fn add_changepoints<'py>(
     trend_changes: PyReadonlyArray1<'py, f64>,
     variance_changes: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Py<PyAny>> {
-    // SAFETY: Caller ensures exclusive access to this array during the call.
-    let vals = unsafe { values.as_slice_mut()? };
-    let locs = locations.as_slice()?;
-    let lc = level_changes.as_slice()?;
-    let tc = trend_changes.as_slice()?;
-    let vc = variance_changes.as_slice()?;
+    let mut vals = copy_out(&values)?;
+    let locs = locations.as_slice()?.to_vec();
+    let lc = level_changes.as_slice()?.to_vec();
+    let tc = trend_changes.as_slice()?.to_vec();
+    let vc = variance_changes.as_slice()?.to_vec();
 
     let result = py.detach(|| {
         pi::add_changepoints(
-            vals,
+            &mut vals,
             seed,
             num_changepoints,
-            locs,
+            &locs,
             changepoint_type,
-            lc,
-            tc,
-            vc,
+            &lc,
+            &tc,
+            &vc,
         )
     });
+    copy_back(&values, &vals)?;
 
     let indices = PyArray1::from_vec(py, result.changepoint_indices);
     let metadata = PyDict::new(py);
@@ -65,12 +82,11 @@ pub fn add_missingness<'py>(
             "missing_seasonal_period must be > 0 for seasonal pattern",
         ));
     }
-    // SAFETY: Caller ensures exclusive access to this array during the call.
-    let vals = unsafe { values.as_slice_mut()? };
+    let mut vals = copy_out(&values)?;
 
     let result = py.detach(|| {
         pi::add_missingness(
-            vals,
+            &mut vals,
             seed,
             pattern,
             missing_rate,
@@ -78,6 +94,7 @@ pub fn add_missingness<'py>(
             missing_seasonal_period,
         )
     });
+    copy_back(&values, &vals)?;
 
     let indices = PyArray1::from_vec(py, result.missing_indices);
     let metadata = PyDict::new(py);
@@ -99,12 +116,11 @@ pub fn add_anomalies<'py>(
     level_shift_magnitude: f64,
     level_shift_duration: i32,
 ) -> PyResult<Py<PyAny>> {
-    // SAFETY: Caller ensures exclusive access to this array during the call.
-    let vals = unsafe { values.as_slice_mut()? };
+    let mut vals = copy_out(&values)?;
 
     let result = py.detach(|| {
         pi::add_anomalies(
-            vals,
+            &mut vals,
             seed,
             &anomaly_types,
             anomaly_fraction,
@@ -114,6 +130,7 @@ pub fn add_anomalies<'py>(
             level_shift_duration,
         )
     });
+    copy_back(&values, &vals)?;
 
     let indices = PyArray1::from_vec(py, result.anomaly_indices);
     let metadata = PyDict::new(py);

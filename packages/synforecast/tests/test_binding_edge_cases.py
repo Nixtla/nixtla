@@ -126,6 +126,88 @@ class TestPatternInjectionBindings:
         assert out[0] == 10.0
 
 
+class TestPatternInjectionAliasing:
+    """The bindings mutate a caller-provided array, so they must refuse any
+    input they cannot claim exclusive access to rather than alias it."""
+
+    def test_changepoints_rejects_aliased_argument(self):
+        # Passing the same array as both the mutated output and a read-only
+        # parameter would create an aliasing &mut/& pair in Rust.
+        values = np.arange(10.0)
+        with pytest.raises(TypeError, match="already borrowed"):
+            pattern_injection.add_changepoints(
+                values, 42, 1, values, "level", values, values, values
+            )
+
+    def test_changepoints_leaves_aliased_input_untouched(self):
+        values = np.arange(10.0)
+        with pytest.raises(TypeError):
+            pattern_injection.add_changepoints(
+                values, 42, 1, values, "level", values, values, values
+            )
+        np.testing.assert_array_equal(values, np.arange(10.0))
+
+    @pytest.mark.parametrize("fn", ["add_anomalies", "add_missingness"])
+    def test_rejects_readonly_array(self, fn):
+        values = np.zeros(50)
+        values.flags.writeable = False
+        with pytest.raises(TypeError, match="not writeable"):
+            if fn == "add_anomalies":
+                pattern_injection.add_anomalies(
+                    values, 42, ["spike"], 0.5, 10.0, -10.0, 5.0, 10
+                )
+            else:
+                pattern_injection.add_missingness(values, 42, "random", 0.5, 3, 7)
+        np.testing.assert_array_equal(values, np.zeros(50))
+
+    @pytest.mark.parametrize(
+        "fn", ["add_anomalies", "add_missingness", "add_changepoints"]
+    )
+    def test_rejects_noncontiguous_array(self, fn):
+        base = np.zeros((50, 2))
+        values = base[:, 0]
+        assert not values.flags.c_contiguous
+        with pytest.raises(TypeError, match="not contiguous"):
+            if fn == "add_anomalies":
+                pattern_injection.add_anomalies(
+                    values, 42, ["spike"], 0.5, 10.0, -10.0, 5.0, 10
+                )
+            elif fn == "add_missingness":
+                pattern_injection.add_missingness(values, 42, "random", 0.5, 3, 7)
+            else:
+                pattern_injection.add_changepoints(
+                    values,
+                    42,
+                    1,
+                    np.array([0.5]),
+                    "level",
+                    np.array([10.0]),
+                    np.array([]),
+                    np.array([]),
+                )
+
+    def test_missingness_mutates_in_place(self):
+        values = np.zeros(200)
+        out, _ = pattern_injection.add_missingness(values, 42, "random", 0.2, 3, 7)
+        assert out is values
+        assert np.isnan(values).any()
+
+    def test_changepoints_mutates_in_place(self):
+        values = np.zeros(100)
+        out, _ = pattern_injection.add_changepoints(
+            values,
+            42,
+            1,
+            np.array([0.5]),
+            "level",
+            np.array([10.0]),
+            np.array([]),
+            np.array([]),
+        )
+        assert out is values
+        assert np.all(values[50:] == 10.0)
+
+
 class TestDistributionEdgeCases:
     """Distribution functions should handle edge cases."""
 
