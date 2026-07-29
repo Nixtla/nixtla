@@ -83,10 +83,7 @@ class TestPoissonProcessStats:
         assert_mean(increments, lam, np.sqrt(lam))
         assert_std(increments, np.sqrt(lam), kurtosis=3.0 + 1.0 / lam)
 
-    def test_python_fallback_matches_theory(self, monkeypatch) -> None:
-        import synforecast.generators.poisson_process as pp_mod
-
-        monkeypatch.setattr(pp_mod, "_HAS_RUST", False)
+    def test_matches_theory(self) -> None:
         lam = 4.0
         values = make_gen(lambda_rate=lam, seed=654).generate_single_series(50000)
 

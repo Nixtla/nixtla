@@ -32,8 +32,10 @@ class TestBalancedPool:
         generators = balanced_pool(seed=100)
         seeds = [gen.seed for gen in generators]
         assert seeds[0] == 100
-        assert seeds[1] == 101
-        assert len(set(seeds)) == len(seeds)  # all unique
+        # Every generator gets a distinct offset from the base seed; the
+        # list order interleaves niches, so offsets are unique but not
+        # consecutive along the list.
+        assert set(seeds) == set(range(100, 142))
 
     def test_none_seed(self) -> None:
         """Test that seed=None produces None seeds for all generators."""
@@ -107,6 +109,45 @@ class TestBalancedPool:
             "LevyProcessGenerator",
         }
         assert class_names == expected
+
+    def test_prefix_spans_all_niches(self) -> None:
+        """The pool is interleaved round-robin across niches: the first 15
+        entries cover all 15 generator classes, so any prefix is as
+        behaviorally diverse as possible."""
+        generators = balanced_pool()
+        first_15_classes = [type(gen).__name__ for gen in generators[:15]]
+        assert len(set(first_15_classes)) == 15
+        # And every prefix of length k <= 15 has k distinct classes.
+        for k in range(1, 16):
+            assert len({type(g).__name__ for g in generators[:k]}) == k
+
+    def test_interleaving_preserves_pool_contents(self) -> None:
+        """Interleaving reorders the pool but keeps the same 42 configured
+        variants (same class/seed-offset pairs)."""
+        generators = balanced_pool(seed=0)
+        assert len(generators) == 42
+        seeds_by_class: dict[str, set[int]] = {}
+        for gen in generators:
+            seeds_by_class.setdefault(type(gen).__name__, set()).add(gen.seed)
+        # Variant counts per niche are unchanged.
+        expected_counts = {
+            "SARIMAGenerator": 5,
+            "ETSGenerator": 4,
+            "FractionalBrownianMotionGenerator": 3,
+            "RegimeSwitchingGenerator": 2,
+            "GARCHGenerator": 2,
+            "CyclicGenerator": 2,
+            "IntermittentDemandGenerator": 3,
+            "EnergyLoadGenerator": 2,
+            "IoTSensorGenerator": 3,
+            "VitalSignsGenerator": 3,
+            "GaussianProcessGenerator": 4,
+            "ChaoticSystemGenerator": 3,
+            "INARGenerator": 2,
+            "BoundedProcessGenerator": 2,
+            "LevyProcessGenerator": 2,
+        }
+        assert {c: len(s) for c, s in seeds_by_class.items()} == expected_counts
 
     def test_balanced_pool_with_patterns(self) -> None:
         """Test balanced_pool with anomalies, changepoints, and missing data."""

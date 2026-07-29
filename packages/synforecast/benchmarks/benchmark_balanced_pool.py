@@ -16,6 +16,7 @@ Usage:
     uv run python benchmarks/benchmark_balanced_pool.py
 """
 
+import argparse
 import os
 import sys
 import time
@@ -34,55 +35,6 @@ except ImportError:
     print("  uv pip install -e .")
     sys.exit(1)
 
-import synforecast._core as _core_mod
-import synforecast._distributions as _dist_mod
-import synforecast.generators.bounded_process as bp_mod
-import synforecast.generators.chaotic_system as cs_mod
-import synforecast.generators.cyclic as cyclic_mod
-import synforecast.generators.energy_load as energy_mod
-import synforecast.generators.ets as ets_mod
-import synforecast.generators.fractional_brownian_motion as fbm_mod
-import synforecast.generators.garch as garch_mod
-import synforecast.generators.gaussian_process as gp_mod
-import synforecast.generators.inar as inar_mod
-import synforecast.generators.intermittent_demand as idem_mod
-import synforecast.generators.iot_sensor as iot_mod
-import synforecast.generators.levy_process as lp_mod
-import synforecast.generators.regime_switching as rs_mod
-import synforecast.generators.sarima as sarima_mod
-import synforecast.generators.vital_signs as vs_mod
-
-_RUST_MODULES = [
-    _core_mod,
-    _dist_mod,
-    sarima_mod,
-    ets_mod,
-    inar_mod,
-    garch_mod,
-    cyclic_mod,
-    fbm_mod,
-    rs_mod,
-    cs_mod,
-    bp_mod,
-    lp_mod,
-    gp_mod,
-    iot_mod,
-    idem_mod,
-    energy_mod,
-    vs_mod,
-]
-
-for mod in _RUST_MODULES:
-    if not getattr(mod, "_HAS_RUST", False):
-        print(f"WARNING: {mod.__name__} does not have Rust enabled")
-
-
-def force_rust(enabled: bool) -> None:
-    for mod in _RUST_MODULES:
-        mod._HAS_RUST = enabled
-
-
-force_rust(True)
 
 from synforecast import balanced_pool  # noqa: E402
 
@@ -162,6 +114,18 @@ def benchmark_one_parallel(
 
 
 def main() -> None:
+    global SERIES_COUNTS, SERIES_LENGTHS
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Tiny grid for smoke runs; results are not comparable",
+    )
+    args = parser.parse_args()
+    if args.quick:
+        SERIES_COUNTS = [16, 32]
+        SERIES_LENGTHS = [128, 256]
+
     n_threads = os.cpu_count() or 1
 
     print("=" * 78)
@@ -198,8 +162,7 @@ def main() -> None:
         for length in SERIES_LENGTHS:
             cell += 1
             print(
-                f"\r  Sequential [{cell}/{total_cells}] "
-                f"N={n:>5}, L={length:>5} ...",
+                f"\r  Sequential [{cell}/{total_cells}] N={n:>5}, L={length:>5} ...",
                 end="",
                 flush=True,
             )
@@ -219,8 +182,7 @@ def main() -> None:
         for length in SERIES_LENGTHS:
             cell += 1
             print(
-                f"\r  Parallel   [{cell}/{total_cells}] "
-                f"N={n:>5}, L={length:>5} ...",
+                f"\r  Parallel   [{cell}/{total_cells}] N={n:>5}, L={length:>5} ...",
                 end="",
                 flush=True,
             )

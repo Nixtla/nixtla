@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.chaotic_system as cs_mod
 from synforecast.generators import ChaoticSystemGenerator
 from tests.helpers import (
     assert_distribution,
@@ -165,10 +164,7 @@ class TestChaoticStats:
         assert_mean(diff, expected=0.0, std=0.5)
         assert_std(diff, expected=0.5)
 
-    def test_python_fallback_logistic_matches_theory(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(cs_mod, "_HAS_RUST", False)
+    def test_logistic_matches_theory(self) -> None:
         gen = ChaoticSystemGenerator(
             min_length=2000,
             max_length=2000,
@@ -180,10 +176,7 @@ class TestChaoticStats:
         values = gen.generate_single_series(2000)
         assert_distribution(values, stats.beta(0.5, 0.5))
 
-    def test_python_fallback_lorenz_bounded(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(cs_mod, "_HAS_RUST", False)
+    def test_lorenz_bounded(self) -> None:
         gen = ChaoticSystemGenerator(
             min_length=100, max_length=100, freq="D", system="lorenz", seed=10
         )

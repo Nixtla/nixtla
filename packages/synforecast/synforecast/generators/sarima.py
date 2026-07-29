@@ -5,14 +5,8 @@ from typing import Any
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import statistical as _rs_stat
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import statistical as _rs_stat
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class SARIMAGenerator(BaseGenerator):
@@ -391,7 +385,7 @@ class SARIMAGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST and exog is None:
+        if exog is None:
             seed = int(self.rng.integers(0, 2**63))
             return _rs_stat.sarima(
                 length,
@@ -514,8 +508,17 @@ class SARIMAGenerator(BaseGenerator):
         Returns:
             dict: Model information including orders, parameters, and polynomial structure
         """
+        # A model without seasonal terms is plain ARIMA; the seasonal orders
+        # and period would be misleading in the label.
+        if self.P == 0 and self.D == 0 and self.Q == 0:
+            model = f"ARIMA({self.p},{self.d},{self.q})"
+        else:
+            model = (
+                f"SARIMA({self.p},{self.d},{self.q})"
+                f"({self.P},{self.D},{self.Q})[{self.seasonal_period}]"
+            )
         return {
-            "model": f"SARIMA({self.p},{self.d},{self.q})({self.P},{self.D},{self.Q})[{self.seasonal_period}]",
+            "model": model,
             "ar_params": (
                 self._ar_params_array.tolist()
                 if self._ar_params_array is not None and len(self._ar_params_array) > 0

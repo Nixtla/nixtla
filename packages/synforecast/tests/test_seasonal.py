@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.seasonal as seasonal_mod
 from synforecast.generators import SeasonalGenerator
 from tests.helpers import (
     assert_distribution,
@@ -31,12 +30,9 @@ def deterministic_part(gen: SeasonalGenerator, length: int) -> np.ndarray:
     )
 
 
-@pytest.fixture(params=["rust", "python"])
-def backend(request: pytest.FixtureRequest, monkeypatch) -> str:
-    """Run generate_single_series through the Rust and pure-Python paths."""
-    if request.param == "python":
-        monkeypatch.setattr(seasonal_mod, "_HAS_RUST", False)
-    return request.param
+@pytest.fixture
+def backend() -> None:
+    """Mark tests that exercise native seasonal generation."""
 
 
 class TestSeasonalApi:
@@ -138,9 +134,8 @@ class TestSeasonalStats:
         assert abs(sin_coef - amp) < 5 * se
         assert abs(cos_coef) < 5 * se
 
-    def test_innovation_distribution_laplace(self, monkeypatch) -> None:
-        # Python path honors innovation_distribution for the noise term.
-        monkeypatch.setattr(seasonal_mod, "_HAS_RUST", False)
+    def test_innovation_distribution_laplace(self) -> None:
+        # Native generation honors innovation_distribution for the noise term.
         noise = 2.0
         gen = make_gen(
             seasonality_amplitude=0.0,

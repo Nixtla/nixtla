@@ -3,14 +3,8 @@
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class CyclicGenerator(BaseGenerator):
@@ -19,7 +13,8 @@ class CyclicGenerator(BaseGenerator):
     Models business cycles and economic indicators: a linear trend plus
     ``num_cycles`` superposed sinusoids whose periods and amplitudes are
     drawn once per series (period ~ |N(period_mean, period_std)|,
-    amplitude ~ N(amplitude_mean, amplitude_std)), plus Gaussian noise.
+    amplitude ~ N(amplitude_mean, amplitude_std)), plus additive noise drawn
+    from the configured ``innovation_distribution``.
     Each sinusoid's instantaneous frequency is slowly modulated (+-20%
     around 2*pi/period, integrated as a cumulative phase), so cycle
     lengths vary within a series, unlike regular seasonal patterns.
@@ -68,6 +63,8 @@ class CyclicGenerator(BaseGenerator):
                     self.cycle_amplitude_std,
                     float(self.num_cycles),
                     self.noise_std,
+                    float(self._rs_innov_dist),
+                    self._rs_innov_param,
                 ]
             ),
             [],
@@ -82,47 +79,18 @@ class CyclicGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.cyclic(
-                length,
-                self.base_level,
-                self.trend,
-                self.cycle_period_mean,
-                self.cycle_period_std,
-                self.cycle_amplitude_mean,
-                self.cycle_amplitude_std,
-                self.num_cycles,
-                self.noise_std,
-                seed,
-            )
-        t = np.arange(length)
-        series = self.base_level + self.trend * t
-
-        cycle_component = np.zeros(length)
-        cycle_periods = np.abs(
-            self.rng.normal(
-                self.cycle_period_mean, self.cycle_period_std, self.num_cycles
-            )
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.cyclic(
+            length,
+            self.base_level,
+            self.trend,
+            self.cycle_period_mean,
+            self.cycle_period_std,
+            self.cycle_amplitude_mean,
+            self.cycle_amplitude_std,
+            self.num_cycles,
+            self.noise_std,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
         )
-        cycle_amplitudes = self.rng.normal(
-            self.cycle_amplitude_mean, self.cycle_amplitude_std, self.num_cycles
-        )
-        cycle_phases = self.rng.uniform(0, 2 * np.pi, self.num_cycles)
-
-        for i in range(self.num_cycles):
-            period = cycle_periods[i]
-            amplitude = cycle_amplitudes[i]
-            phase = cycle_phases[i]
-
-            # Slowly modulate the period (+-20%) and integrate the resulting
-            # instantaneous frequency so cycle lengths vary smoothly
-            period_variation = 1.0 + 0.2 * np.sin(2 * np.pi * t / (period * 2))
-            frequencies = 2 * np.pi / (period * period_variation)
-            cumulative_phase = np.cumsum(frequencies) + phase
-
-            cycle_component += amplitude * np.sin(cumulative_phase)
-
-        series += cycle_component
-        series += self.rng.normal(0, self.noise_std, length)
-        return series

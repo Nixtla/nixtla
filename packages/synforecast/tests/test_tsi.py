@@ -4,15 +4,11 @@ import numpy as np
 import pytest
 from scipy import signal
 
-from synforecast.base import _GEN_TYPE_MAP, _rs_batch
+from synforecast.base import _GEN_TYPE_MAP
 from synforecast.generators.tsi import TSIGenerator
 from tests.helpers import assert_acf, assert_long_format, series_values
 
 BASE = {"min_length": 30, "max_length": 60, "freq": "D", "seed": 42}
-
-rust_batch = pytest.mark.skipif(
-    _rs_batch is None, reason="Rust batch extension (_lib) not available"
-)
 
 
 def pool_metrics(values: np.ndarray) -> tuple[float, float, float]:
@@ -199,7 +195,6 @@ class TestTSIPoolDiversity:
         assert np.mean(roughness < 0.7) >= 0.05  # smooth, trend/season-dominated
 
 
-@rust_batch
 class TestTSIRustBatch:
     """Rust batch path (used by generate() when _lib is installed).
 
@@ -257,7 +252,6 @@ class TestTSIRustBatch:
 
 
 @pytest.mark.stats
-@rust_batch
 class TestTSIRustBatchStats:
     """Statistical parity of the Rust batch path with the Python reference."""
 

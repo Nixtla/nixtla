@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy import stats
 
-import synforecast.generators.garch as garch_module
 from synforecast.generators import GARCHGenerator
 from tests.helpers import (
     assert_acf,
@@ -151,14 +150,13 @@ class TestStatistics:
         r = next(iter(series_values(df).values()))
         assert_distribution(r, stats.norm(0.0, 1.0))
 
-    def test_nonzero_mean_python_path(self, monkeypatch) -> None:
+    def test_nonzero_mean(self) -> None:
         """ARCH term uses innovations (r - mu), not raw returns.
 
         With mu=5, using raw returns in the ARCH term would inflate the
         variance of demeaned returns to (omega + alpha*mu^2)/(1-alpha-beta)
         = 13.5 instead of the correct omega/(1-alpha-beta) = 1.0.
         """
-        monkeypatch.setattr(garch_module, "_HAS_RUST", False)
         gen = _make(
             min_length=6000,
             max_length=6000,

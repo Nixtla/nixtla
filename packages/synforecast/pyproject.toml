@@ -1,7 +1,7 @@
 [project]
 name = "synforecast"
 version = "0.1.0"
-description = "Validated synthetic time-series generation with Rust acceleration"
+description = "Fast synthetic time series for testing, augmentation, and pretraining"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -41,6 +41,8 @@ Homepage = "https://github.com/Nixtla/synforecast"
 Documentation = "https://nixtlaverse.nixtla.io/synforecast/"
 Repository = "https://github.com/Nixtla/synforecast"
 Issues = "https://github.com/Nixtla/synforecast/issues"
+Changelog = "https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md"
+Security = "https://github.com/Nixtla/synforecast/security/policy"
 
 [dependency-groups]
 dev = [
@@ -57,6 +59,7 @@ dev = [
     "ruff>=0.15.22",
     "scipy>=1.10.0",
     "statsforecast",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 docs = [
     "datasetsforecast>=1.0.1",
@@ -84,13 +87,14 @@ build-backend = "maturin"
 manifest-path = "rust/Cargo.toml"
 module-name = "synforecast._lib"
 features = ["pyo3/extension-module"]
+# Ship the PEP 561 marker and bundled third-party license notices in the wheel.
+include = [
+    { path = "synforecast/py.typed", format = "wheel" },
+    { path = "synforecast/THIRD_PARTY_RUST.md", format = "wheel" },
+]
 
 [tool.uv]
-# coreforecast (a transitive dependency via statsforecast) is built from
-# source on platforms without a matching prebuilt wheel (e.g. macOS on newer
-# Python). Its build config uses `cmake.verbose`, which scikit-build-core
-# >= 0.10 rejects, breaking the source build. Constrain the build backend so
-# such source builds keep working.
+constraint-dependencies = ["pytorch-lightning>=2.6.1"]
 build-constraint-dependencies = ["scikit-build-core<0.10"]
 
 [tool.uv.sources]
@@ -125,11 +129,23 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "stats: statistical property tests (slower; deselect with '-m \"not stats\"')",
+    "allow_ar1_fallback: test intentionally exercises SynAugment's AR(1) substitution",
 ]
 log_cli = false
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.mypy]
+# Typing is being introduced incrementally (see CONTRIBUTING.md). The modules
+# listed in the lint workflow's mypy step are kept green; follow_imports is
+# silent so their imports don't drag the whole package into the gate yet.
+python_version = "3.10"
+follow_imports = "silent"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
 
 [tool.ruff]
 line-length = 88
@@ -155,6 +171,11 @@ ignore = [
     "E501", # line too long (fix later)
     "B008",  # do not perform function calls in argument defaults
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Benchmark scripts import after warnings/env setup (E402) and time
+# immediately-invoked lambdas that close over loop variables (B023).
+"benchmarks/*" = ["E402", "B023"]
 
 [tool.coverage.run]
 source = ["synforecast"]

@@ -7,12 +7,22 @@ init_codespace:
 	git pull || true
 	uv sync --quiet --dev --frozen
 
+# Regenerate the bundled third-party Rust license notices. Requires cargo-about
+# (`cargo install cargo-about --features cli`). Run after changing rust/Cargo.toml.
+rust_licenses:
+	cd rust && cargo about generate about.hbs -o ../synforecast/THIRD_PARTY_RUST.md
+
 # Documentation build targets
 .PHONY: load_docs_scripts api_docs examples_docs format_docs execute_docs test_docs all_docs
+
+# Pin the docs tooling to an immutable commit so builds are reproducible and not
+# exposed to unreviewed changes on the mutable `scripts` branch. Bump when updating.
+DOCS_SCRIPTS_SHA := 487857a7c2de443365fe38841a4b29d7995bc168
 
 load_docs_scripts:
 	rm -rf docs-scripts
 	git clone -b scripts https://github.com/Nixtla/docs.git docs-scripts --single-branch
+	git -C docs-scripts checkout --quiet $(DOCS_SCRIPTS_SHA)
 
 api_docs:
 	python docs/to_mdx.py

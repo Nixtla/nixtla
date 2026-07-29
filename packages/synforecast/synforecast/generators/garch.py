@@ -5,14 +5,8 @@ from typing import Any
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class GARCHGenerator(BaseGenerator):
@@ -69,7 +63,9 @@ class GARCHGenerator(BaseGenerator):
 
         if self.beta is None:
             remaining = 0.95 - np.sum(alpha_array)
-            beta_array = self.rng.uniform(0.1, remaining / self.p, self.p)
+            high = remaining / self.p
+            low = min(0.1, high / 2)
+            beta_array = self.rng.uniform(low, high, self.p)
         else:
             if len(self.beta) != self.p:
                 raise ValueError(f"beta must have p={self.p} elements")
@@ -111,41 +107,17 @@ class GARCHGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.garch(
-                length,
-                self.p,
-                self.q,
-                self.omega,
-                self._alpha_array,
-                self._beta_array,
-                self.mu,
-                self.initial_variance,
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-
-        burn_in = 100
-        total_length = length + burn_in
-
-        returns = np.zeros(total_length)
-        # eps_t = sigma_t * z_t: the ARCH term must use lagged squared
-        # innovations, not lagged squared returns (they differ when mu != 0).
-        eps = np.zeros(total_length)
-        variances = np.ones(total_length) * self.initial_variance
-        errors = self._sample_innovations(total_length)
-
-        for t in range(max(self.p, self.q), total_length):
-            variance = self.omega
-            for i in range(self.q):
-                variance += self._alpha_array[i] * eps[t - i - 1] ** 2
-            for j in range(self.p):
-                variance += self._beta_array[j] * variances[t - j - 1]
-
-            variances[t] = variance
-            eps[t] = np.sqrt(variance) * errors[t]
-            returns[t] = self.mu + eps[t]
-
-        return returns[burn_in:]
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.garch(
+            length,
+            self.p,
+            self.q,
+            self.omega,
+            self._alpha_array,
+            self._beta_array,
+            self.mu,
+            self.initial_variance,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )

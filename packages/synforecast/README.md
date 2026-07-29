@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/synforecast/blob/main/LICENSE)
 [![Docs](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml/badge.svg)](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml)
 
-**SynForecast** generates validated synthetic time-series panels with 31
+**SynForecast** generates synthetic time-series panels with 31
 statistical, stochastic, multivariate, domain-specific, and pretraining
 generators. It follows the Nixtla long format and supports controlled
 changepoints, anomalies, missing data, exogenous variables, and augmentation
@@ -31,9 +31,8 @@ Install SynForecast from PyPI:
 pip install synforecast
 ```
 
-Prebuilt wheels include the Rust extension on supported platforms. Building
-from the source distribution requires a Rust toolchain; a NumPy fallback is
-available when the extension cannot be loaded.
+Prebuilt wheels include the required Rust extension on supported platforms.
+Building from the source distribution requires a Rust toolchain.
 
 ## Quick start
 
@@ -159,7 +158,21 @@ designed for:
 - Reproducible simulation with explicit, validated generator configurations
 
 Synthetic data reflects the assumptions of its generators. Validate those
-assumptions and downstream performance for your use case.
+assumptions and downstream performance for your use case. SynForecast is not an
+anonymization or differential-privacy tool: `SynAugment` is fitted to observed
+data and its output can resemble that data.
+
+## Evidence and benchmarks
+
+SynForecast's native Rust batch path is designed for high-throughput data
+generation. Reproducible scripts and committed result summaries are available in
+[`benchmarks/`](https://github.com/Nixtla/synforecast/tree/main/benchmarks);
+performance depends on generator, series shape, thread count, and hardware.
+
+Synthetic data does not improve every model or dataset. The
+[when synthetic data helps](https://nixtlaverse.nixtla.io/synforecast/docs/capabilities/when_synthetic_helps.html)
+guide reports positive, neutral, and negative results so that augmentation and
+pretraining choices can be evaluated against observed-only baselines.
 
 ## Features
 
@@ -170,7 +183,11 @@ assumptions and downstream performance for your use case.
 - Changepoint, anomaly, missingness, and exogenous-variable injection
 - Dataset composition with `SynSet` and augmentation with `SynAugment`
 - Seed-deterministic parallel generation
-- Rust acceleration through PyO3 with a NumPy fallback
+- Native generation through Rust and PyO3
+
+The pandas and Polars engines are covered by the full test suite. cuDF, Modin,
+and PyArrow support uses Narwhals and is smoke-tested when those optional
+libraries are installed; install the selected dataframe library separately.
 
 ## Documentation
 
@@ -179,6 +196,9 @@ assumptions and downstream performance for your use case.
 - [Generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md)
 - [Contributing](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md)
 - [Changelog](https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md)
+- [Support](https://github.com/Nixtla/synforecast/blob/main/SUPPORT.md)
+- [Security policy](https://github.com/Nixtla/synforecast/security/policy)
+- [Citation](https://github.com/Nixtla/synforecast/blob/main/CITATION.cff)
 
 ## AI disclaimer
 

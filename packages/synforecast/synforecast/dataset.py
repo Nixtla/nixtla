@@ -9,16 +9,12 @@ from narwhals.stable.v2.typing import IntoFrameT
 
 from synforecast._analysis import classify_series
 from synforecast._fitting import fit_generator_params
+from synforecast._lib import batch as _rs_batch
 from synforecast.base import (
     BaseGenerator,
     _batch_results_to_metadata,
     _categorize_ids,
 )
-
-try:
-    from synforecast._lib import batch as _rs_batch
-except ImportError:
-    _rs_batch = None
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +22,8 @@ logger = logging.getLogger(__name__)
 class SynSet:
     """Generate synthetic time series datasets from multiple generators.
 
-    This class allows you to combine multiple generators to create diverse
-    synthetic time series datasets. Each generator can produce its own
-    type of time series pattern.
+    Combine multiple generators into one long-format panel; each generator
+    contributes its own type of time series pattern.
 
     Args:
         generators (list[BaseGenerator]): List of instantiated generator objects to use for creating time series.
@@ -164,8 +159,8 @@ class SynSet:
         Partitions generators into batch-eligible (have _get_batch_params)
         and excluded. Batch-eligible generators are run through a single
         ``generate_multi_batch`` call so rayon can work-steal across all
-        series of all generators. Excluded generators fall back to the
-        threaded Python path (ThreadPoolExecutor).
+        series of all generators. Generators without a Rust batch implementation
+        use the threaded path (ThreadPoolExecutor).
         """
         n = n_series_per_generator
 
@@ -179,7 +174,7 @@ class SynSet:
         for gi, gen in enumerate(self.generators):
             gen_type = gen._batch_gen_type
             batch_params = gen._get_batch_params() if gen_type is not None else None
-            if batch_params is None or _rs_batch is None:
+            if batch_params is None:
                 excluded_gen_indices.append(gi)
                 continue
 
@@ -302,6 +297,7 @@ class SynAugment:
         target_col: str = "y",
         seed: int | None = None,
         engine: str | None = None,
+        on_error: Literal["raise", "ar1"] = "raise",
     ) -> None:
         """Initialize the SynAugment instance.
 
@@ -312,12 +308,20 @@ class SynAugment:
             seed: Random seed for reproducibility
             engine: Output dataframe library (e.g. 'pandas', 'polars').
                 None (default) matches the input DataFrame's library.
+            on_error: What to do when a fitted generator fails for a series.
+                'raise' (default) propagates the error; 'ar1' substitutes an
+                AR(1) series matching the source's mean, std, and lag-1
+                autocorrelation, and reports all substitutions in a single
+                warning at the end of `augment`.
         """
+        if on_error not in ("raise", "ar1"):
+            raise ValueError("on_error must be 'raise' or 'ar1'")
         self.id_col = id_col
         self.time_col = time_col
         self.target_col = target_col
         self.seed = seed
         self.engine = engine
+        self.on_error = on_error
         self.rng = np.random.default_rng(seed)
 
         # Lazy import of generators to avoid circular imports
@@ -442,7 +446,10 @@ class SynAugment:
             Synthetic series IDs follow pattern: "{original_id}_aug_{i}"
 
         Raises:
-            ValueError: If DataFrame is missing required columns or n_augment < 1
+            ValueError: If DataFrame is missing required columns, n_augment < 1,
+                or generator_override names an unsupported generator
+            RuntimeError: If a fitted generator fails for a series and the
+                instance was created with on_error='raise' (the default)
 
         Example:
             >>> augmenter = SynAugment(seed=42)
@@ -474,6 +481,10 @@ class SynAugment:
 
         # Collect all series (original + augmented)
         all_dfs = [output_original]
+
+        # (series_id, generator_name, error) for every AR(1) substitution
+        # made under on_error='ar1', reported once after the loop.
+        fallbacks: list[tuple[str, str, str]] = []
 
         unique_ids = df_nw[self.id_col].unique().to_list()
 
@@ -508,9 +519,12 @@ class SynAugment:
                 fitted_params=fitted_params,
                 _preserve_timestamps=preserve_timestamps,
                 engine=out_engine,
+                fallbacks=fallbacks,
             )
 
             all_dfs.extend(augmented)
+
+        self._warn_fallbacks(fallbacks, len(unique_ids) * n_augment)
 
         # Normalize concat-sensitive dtypes across backends. In particular,
         # pandas datetimes commonly convert to Polars at microsecond precision
@@ -527,6 +541,23 @@ class SynAugment:
         result = _categorize_ids(nw.concat(all_dfs), self.id_col)
 
         return result.to_native()
+
+    @staticmethod
+    def _warn_fallbacks(fallbacks: list[tuple[str, str, str]], total: int) -> None:
+        """Log one summary for AR(1) substitutions made during an API call."""
+        if not fallbacks:
+            return
+
+        by_generator: dict[str, int] = {}
+        for _, gen_name, _ in fallbacks:
+            by_generator[gen_name] = by_generator.get(gen_name, 0) + 1
+        counts = ", ".join(f"{g}: {c}" for g, c in sorted(by_generator.items()))
+        first_id, first_gen, first_err = fallbacks[0]
+        logger.warning(
+            f"SynAugment substituted AR(1) for {len(fallbacks)} of "
+            f"{total} synthetic series ({counts}). "
+            f"First failure: {first_gen} on series {first_id!r}: {first_err}"
+        )
 
     def _scale_window(
         self, window: np.ndarray, scaling: Literal["mean", "std", "none"]
@@ -729,6 +760,7 @@ class SynAugment:
         fitted_params: dict,
         _preserve_timestamps: bool,
         engine: Any = "pandas",
+        fallbacks: list[tuple[str, str, str]] | None = None,
     ) -> list[nw.DataFrame]:
         """Generate augmented series for a single original series.
 
@@ -744,9 +776,16 @@ class SynAugment:
             generator_name: Name of generator to use
             fitted_params: Fitted parameters for the generator
             _preserve_timestamps: Reserved for future use (timestamp offset support)
+            engine: Output dataframe backend for the synthetic frames
+            fallbacks: Collector for AR(1) substitutions made under
+                on_error='ar1'; the caller reports them once at the end
 
         Returns:
             List of narwhals DataFrames, one per augmented series
+
+        Raises:
+            ValueError: If generator_name is not a supported generator
+            RuntimeError: If the generator fails and on_error='raise'
         """
         length = len(series_values)
         augmented_dfs = []
@@ -764,11 +803,10 @@ class SynAugment:
         # Get the generator class
         generator_class = self._GENERATOR_MAP.get(generator_name)
         if generator_class is None:
-            # Fallback to RandomWalk
-            from synforecast.generators import RandomWalkGenerator
-
-            generator_class = RandomWalkGenerator
-            fitted_params = {"drift": 0.0, "volatility": np.std(series_values)}
+            raise ValueError(
+                f"Unknown generator {generator_name!r} for series {series_id!r}. "
+                f"Supported generators: {sorted(self._GENERATOR_MAP)}"
+            )
 
         for i in range(n_augment):
             # Create unique seed for each augmented series
@@ -797,11 +835,14 @@ class SynAugment:
                 generator = generator_class(**gen_params)
                 synthetic_values = generator.generate_single_series(length)
             except Exception as e:
-                # Fallback to simple generation if generator fails
-                logger.warning(
-                    f"Generator {generator_name} failed for {series_id}: {e}. "
-                    "Falling back to AR(1) generation."
-                )
+                if self.on_error == "raise":
+                    raise RuntimeError(
+                        f"Generator {generator_name} failed for series "
+                        f"{series_id!r}: {e}. Pass on_error='ar1' to substitute "
+                        "an AR(1) series instead."
+                    ) from e
+                if fallbacks is not None:
+                    fallbacks.append((str(series_id), generator_name, str(e)))
                 synthetic_values = self._generate_ar1_series(
                     length,
                     target_ac1,
@@ -951,61 +992,28 @@ class SynAugment:
         Returns:
             dict with parameters in generator-expected format
         """
-        # Most generators accept parameters directly, but some need renaming
+        # Most generators accept the fitted parameters directly. Only the cases
+        # below need a rename or a derived field; everything else falls through.
         params = fitted_params.copy()
 
         if generator_name == "SeasonalGenerator":
-            # SeasonalGenerator uses 'seasonality_period' not 'period'
+            # SeasonalGenerator uses 'seasonality_period' rather than 'period'.
             if "period" in params:
                 params["seasonality_period"] = params.pop("period")
-            # Ensure required params exist
             if "seasonality_period" not in params:
                 params["seasonality_period"] = 24
             if "seasonality_amplitude" not in params:
                 params["seasonality_amplitude"] = params.get("amplitude", 1.0)
 
-        elif generator_name == "SARIMAGenerator":
-            # SARIMAGenerator has specific parameter names
-            # These are already handled by fit_sarima
-            pass
-
-        elif generator_name == "GARCHGenerator":
-            # GARCHGenerator params are already correct from fit_garch
-            pass
-
-        elif generator_name == "OrnsteinUhlenbeckGenerator":
-            # OrnsteinUhlenbeckGenerator params are already correct
-            pass
-
-        elif generator_name == "FractionalBrownianMotionGenerator":
-            # Already correct from fit_fbm
-            pass
-
         elif generator_name == "RegimeSwitchingGenerator":
-            # Need to set transition_matrix from persistence
+            # Derive the transition matrix from the fitted persistence, placing
+            # the persistence on the diagonal and spreading the remainder.
             if "persistence" in params and "n_regimes" in params:
                 n = params["n_regimes"]
                 p = params["persistence"]
-                # Create transition matrix with persistence on diagonal
                 transition_matrix = np.full((n, n), (1 - p) / (n - 1))
                 np.fill_diagonal(transition_matrix, p)
                 params["transition_matrix"] = transition_matrix.tolist()
-
-        elif generator_name == "IntermittentDemandGenerator":
-            # Map our params to generator params
-            if "demand_probability" in params:
-                # The generator might use different param names
-                # Check the actual generator interface
-                pass
-
-        elif generator_name == "GeometricBrownianMotionGenerator":
-            # fit_gbm already returns the generator's field names
-            # (mu, sigma, initial_value); no renaming needed.
-            pass
-
-        elif generator_name == "RandomWalkGenerator":
-            # RandomWalk params are already correct
-            pass
 
         return params
 
@@ -1061,6 +1069,7 @@ class SynAugment:
         fitted_params = fit_generator_params(values, generator_name, properties)
 
         # Generate augmented series
+        fallbacks: list[tuple[str, str, str]] = []
         augmented_dfs = self._generate_augmented_series(
             series_id=series_id,
             series_values=values,
@@ -1069,7 +1078,9 @@ class SynAugment:
             generator_name=generator_name,
             fitted_params=fitted_params,
             _preserve_timestamps=True,
+            fallbacks=fallbacks,
         )
+        self._warn_fallbacks(fallbacks, n_augment)
 
         # Convert to tuples
         results = []

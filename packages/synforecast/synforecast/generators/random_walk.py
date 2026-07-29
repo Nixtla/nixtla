@@ -3,14 +3,8 @@
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import statistical as _rs_stat
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import statistical as _rs_stat
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class RandomWalkGenerator(BaseGenerator):
@@ -65,16 +59,13 @@ class RandomWalkGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stat.random_walk(
-                length,
-                self.drift,
-                self.volatility,
-                self.start_value,
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-        steps = self.drift + self._sample_innovations(length, scale=self.volatility)
-        return np.cumsum(steps) + self.start_value
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stat.random_walk(
+            length,
+            self.drift,
+            self.volatility,
+            self.start_value,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )

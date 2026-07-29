@@ -3,14 +3,8 @@
 import numpy as np
 from pydantic import Field
 
+from synforecast._lib import stochastic as _rs_stoch
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import stochastic as _rs_stoch
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class JumpDiffusionGenerator(BaseGenerator):
@@ -87,40 +81,17 @@ class JumpDiffusionGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values.
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_stoch.jump_diffusion(
-                length,
-                self.mu,
-                self.sigma,
-                self.lambda_jump,
-                self.jump_mean,
-                self.jump_std,
-                self.initial_value,
-                self.dt,
-                seed,
-                self._rs_innov_dist,
-                self._rs_innov_param,
-            )
-
-        series = np.zeros(length)
-        series[0] = self.initial_value
-
-        drift = (self.mu - 0.5 * self.sigma**2) * self.dt
-        dW = self._sample_innovations(length - 1)
-
-        for t in range(1, length):
-            diffusion = self.sigma * np.sqrt(self.dt) * dW[t - 1]
-
-            num_jumps = self.rng.poisson(self.lambda_jump * self.dt)
-            jump_component = 0.0
-            if num_jumps > 0:
-                jump_sizes = (
-                    self._sample_innovations(num_jumps, scale=self.jump_std)
-                    + self.jump_mean
-                )
-                jump_component = np.sum(jump_sizes)
-
-            series[t] = series[t - 1] * np.exp(drift + diffusion + jump_component)
-
-        return series
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_stoch.jump_diffusion(
+            length,
+            self.mu,
+            self.sigma,
+            self.lambda_jump,
+            self.jump_mean,
+            self.jump_std,
+            self.initial_value,
+            self.dt,
+            seed,
+            self._rs_innov_dist,
+            self._rs_innov_param,
+        )

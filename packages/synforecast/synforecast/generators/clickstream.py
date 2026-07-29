@@ -5,14 +5,8 @@ from typing import Literal
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import domain as _rs_dom
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import domain as _rs_dom
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 # Typical web traffic profile by hour of day (0-23): low at night, ramps up
 # in the morning, evening peak around 8 PM. Normalized to mean 1.
@@ -297,36 +291,24 @@ class ClickstreamGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of metric values.
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            sp = self._source_params
-            return _rs_dom.clickstream(
-                length,
-                self.base_sessions,
-                sp["conversion_mult"],
-                sp["bounce_mult"],
-                sp["depth_mult"],
-                sp["seasonality_amp"],
-                self.conversion_rate,
-                self.bounce_rate,
-                self.avg_session_depth,
-                self.include_seasonality,
-                self.include_bots,
-                self.bot_fraction,
-                _OUTPUT_TYPE_IDS[self.output_type],
-                seed,
-            )
-
-        sessions, pageviews, conversions, bounces = self._simulate_sessions(length)
-
-        if self.output_type == "sessions":
-            return sessions
-        elif self.output_type == "pageviews":
-            return pageviews
-        elif self.output_type == "conversions":
-            return conversions
-        else:  # bounce_rate
-            return np.where(sessions > 0, bounces / sessions, 0.0)
+        seed = int(self.rng.integers(0, 2**63))
+        sp = self._source_params
+        return _rs_dom.clickstream(
+            length,
+            self.base_sessions,
+            sp["conversion_mult"],
+            sp["bounce_mult"],
+            sp["depth_mult"],
+            sp["seasonality_amp"],
+            self.conversion_rate,
+            self.bounce_rate,
+            self.avg_session_depth,
+            self.include_seasonality,
+            self.include_bots,
+            self.bot_fraction,
+            _OUTPUT_TYPE_IDS[self.output_type],
+            seed,
+        )
 
     def generate_full_metrics(
         self, n_series: int = 1, start_id: int = 0

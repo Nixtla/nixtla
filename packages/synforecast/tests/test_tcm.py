@@ -426,11 +426,7 @@ class TestPoolDiversity:
 # statistical, not bitwise. Appended with the GEN_TCM = 29 port.
 # --------------------------------------------------------------------------
 
-from synforecast.base import _GEN_TYPE_MAP, _rs_batch  # noqa: E402
-
-rust_batch = pytest.mark.skipif(
-    _rs_batch is None, reason="Rust batch extension (_lib) not available"
-)
+from synforecast.base import _GEN_TYPE_MAP  # noqa: E402
 
 
 def _pool_metrics(values: np.ndarray) -> tuple[float, float, float]:
@@ -448,7 +444,6 @@ def _pool_metrics(values: np.ndarray) -> tuple[float, float, float]:
     return roughness, sample_acf(z, 12), entropy
 
 
-@rust_batch
 class TestTCMRustBatch:
     def test_batch_path_is_wired(self) -> None:
         gen = _make()
@@ -510,7 +505,6 @@ class TestTCMRustBatch:
 
 
 @pytest.mark.stats
-@rust_batch
 class TestTCMRustBatchStats:
     """Statistical parity of the Rust batch path with the Python reference."""
 

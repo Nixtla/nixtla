@@ -30,7 +30,7 @@ jobs:
           python-version: "3.10"
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
       - name: Install lowest direct dependencies
         run: |
@@ -69,7 +69,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: |
@@ -84,6 +84,75 @@ jobs:
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --cov=synforecast
+
+  benchmark-smoke:
+    name: Benchmark smoke run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Setup devenv
+        run: uv sync
+
+      # The model-free benchmark CLIs must keep running from a clean checkout.
+      # The augmentation and pretraining benchmarks need the integration-docs
+      # dependency group, dataset downloads, and model training; run those
+      # locally with --quick instead.
+      - name: Smoke-run benchmark CLIs
+        run: |
+          uv run python benchmarks/benchmark_performance.py --quick
+          uv run python benchmarks/benchmark_balanced_pool.py --quick
+          uv run python benchmarks/benchmark_batch_parallel.py --quick
+
+  optional-engines:
+    name: Optional dataframe engines
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Setup devenv
+        run: uv sync
+
+      # cuDF needs CUDA hardware and stays a documented local-only check.
+      - name: Install optional engines
+        run: uv pip install pyarrow "modin[dask]"
+
+      - name: Run optional-engine tests
+        run: uv run --no-sync pytest tests/test_optional_engines.py --no-cov -v
 
   build-wheels:
     name: Build wheels on ${{ matrix.os }}
@@ -124,7 +193,7 @@ jobs:
           python-version: "3.11"
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
       - name: Build sdist
         uses: PyO3/maturin-action@0629f00e5704e5295af04df4238c070808aa1e96 # v1

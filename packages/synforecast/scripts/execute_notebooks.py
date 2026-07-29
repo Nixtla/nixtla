@@ -4,10 +4,21 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+import tempfile
 from pathlib import Path
 
-import nbformat
-from nbclient import NotebookClient
+# Kernel resolution must not depend on user-level kernelspecs: a stale
+# ~/.local/share/jupyter/kernels/python3 whose argv is a bare "python"
+# resolves through PATH and can silently launch a different project's
+# interpreter (or one without ipykernel). Hiding the user/system data dirs
+# makes jupyter_client fall back to the native kernel of the interpreter
+# running this script, addressed by absolute path.
+os.environ["JUPYTER_DATA_DIR"] = tempfile.mkdtemp(prefix="synforecast-jupyter-")
+os.environ["JUPYTER_PATH"] = ""
+
+import nbformat  # noqa: E402
+from nbclient import NotebookClient  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_ROOT = ROOT / "nbs" / "docs"
@@ -62,9 +73,13 @@ def execute(path: Path, *, write: bool) -> None:
         shutdown_kernel="immediate",
         resources={"metadata": {"path": str(ROOT)}},
     )
+    client.km = client.create_kernel_manager()
+    # Kernelspecs shipped with ipykernel address the interpreter as a bare
+    # "python", which resolves through PATH — an activated venv from another
+    # project would silently supply the kernel. Pin it to this interpreter.
+    client.km.kernel_spec.argv[0] = sys.executable
     if os.name != "nt":
         # Avoid TCP port reuse while many short-lived kernels run in sequence.
-        client.km = client.create_kernel_manager()
         client.km.transport = "ipc"
     client.execute()
     _normalize(notebook)

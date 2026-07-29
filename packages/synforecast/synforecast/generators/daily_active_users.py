@@ -6,15 +6,9 @@ import numpy as np
 from narwhals.stable.v2.typing import IntoDataFrameT
 from pydantic import Field, PrivateAttr, model_validator
 
+from synforecast._lib import domain as _rs_dom
 from synforecast.base import BaseGenerator
 from synforecast.exogenous import SeriesMetadata
-
-try:
-    from synforecast._lib import domain as _rs_dom
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class DailyActiveUsersGenerator(BaseGenerator):
@@ -119,10 +113,6 @@ class DailyActiveUsersGenerator(BaseGenerator):
         """Day index at step ``t``, relative to the series start."""
         return int(t * self._step_hours()) // 24
 
-    def _get_day_of_week(self, t: int) -> int:
-        """Day of week (0-6) at step ``t``, relative to the series start."""
-        return self._get_day_index(t) % 7
-
     def generate_single_series(self, length: int) -> np.ndarray:
         """Generate values for a single DAU time series.
 
@@ -141,47 +131,22 @@ class DailyActiveUsersGenerator(BaseGenerator):
         else:
             series_growth_rate = self.growth_rate
 
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            dau, events = _rs_dom.daily_active_users(
-                length,
-                self.base_users,
-                series_growth_rate,
-                self.weekend_factor,
-                self.weekly_pattern,
-                self.event_probability,
-                self.event_impact_min,
-                self.event_impact_max,
-                self.event_decay_rate,
-                self.noise_std,
-                self._step_hours(),
-                seed,
-            )
-            self._current_events = events.astype(np.int32)
-            return dau
-
-        dau = np.zeros(length)
-        events = np.zeros(length, dtype=np.int32)
-        event_boost = 0.0
-
-        for t in range(length):
-            base = self.base_users * (1 + series_growth_rate) ** self._get_day_index(t)
-
-            if self.weekly_pattern and self._get_day_of_week(t) >= 5:
-                base *= self.weekend_factor
-
-            if self.rng.random() < self.event_probability:
-                events[t] = 1
-                impact = self.rng.uniform(self.event_impact_min, self.event_impact_max)
-                event_boost += (impact - 1) * base
-
-            dau[t] = base + event_boost
-            event_boost *= 1 - self.event_decay_rate
-
-            dau[t] += self.rng.normal(0, self.noise_std * dau[t])
-
-        dau = np.maximum(dau, 0)
-        self._current_events = events
+        seed = int(self.rng.integers(0, 2**63))
+        dau, events = _rs_dom.daily_active_users(
+            length,
+            self.base_users,
+            series_growth_rate,
+            self.weekend_factor,
+            self.weekly_pattern,
+            self.event_probability,
+            self.event_impact_min,
+            self.event_impact_max,
+            self.event_decay_rate,
+            self.noise_std,
+            self._step_hours(),
+            seed,
+        )
+        self._current_events = events.astype(np.int32)
         return dau
 
     def generate(

@@ -1,27 +1,17 @@
-"""Tests for anomaly injection: counts, magnitudes, flags, and edge cases.
-
-Direct `_core` tests cover both the Rust-delegating path (module default)
-and the pure-Python fallback (via monkeypatched ``_HAS_RUST``).
-"""
+"""Tests for anomaly injection: counts, magnitudes, flags, and edge cases."""
 
 import numpy as np
 import pytest
 
-import synforecast._core as core_module
 from synforecast._core import _add_anomalies
 from synforecast.exogenous import ExogenousConfig
 from synforecast.generators import RandomWalkGenerator, VARGenerator
 from tests.helpers import to_pandas
 
 
-@pytest.fixture(params=["rust", "python"])
-def core_path(request, monkeypatch):
-    """Run direct _core tests on both the Rust and pure-Python branches."""
-    if request.param == "python":
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-    elif not core_module._HAS_RUST:
-        pytest.skip("Rust backend not available")
-    return request.param
+@pytest.fixture
+def core_path():
+    """Mark tests that exercise native anomaly injection."""
 
 
 def _inject(values, seed, types, fraction, spike=10.0, dip=-10.0, shift=5.0, dur=10):
@@ -31,24 +21,6 @@ def _inject(values, seed, types, fraction, spike=10.0, dip=-10.0, shift=5.0, dur
 
 
 class TestSpikeAndDip:
-    def test_spike_count_and_magnitude_python(self, monkeypatch):
-        """Python path: exactly floor(n*fraction) points get +spike_magnitude."""
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        out, meta = _inject(np.zeros(1000), 0, ["spike"], 0.05, spike=7.5)
-        expected = int(1000 * 0.05)
-        spiked = np.flatnonzero(out != 0.0)
-        assert len(spiked) == expected
-        assert np.allclose(out[spiked], 7.5)
-        assert set(meta["anomaly_indices"].tolist()) == set(spiked.tolist())
-
-    def test_dip_count_and_magnitude_python(self, monkeypatch):
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        out, meta = _inject(np.zeros(1000), 1, ["dip"], 0.05, dip=-4.25)
-        expected = int(1000 * 0.05)
-        dipped = np.flatnonzero(out != 0.0)
-        assert len(dipped) == expected
-        assert np.allclose(out[dipped], -4.25)
-
     @pytest.mark.usefixtures("core_path")
     def test_spike_magnitude_both_paths(self):
         """Both paths: every modified point is an integer multiple of the
@@ -72,32 +44,8 @@ class TestSpikeAndDip:
         reported = set(np.asarray(meta["anomaly_indices"]).tolist())
         assert modified <= reported
 
-    def test_mixed_types_magnitudes(self, monkeypatch):
-        """Python path: with spike+dip, each anomaly equals one magnitude."""
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        out, _ = _inject(np.zeros(1000), 4, ["spike", "dip"], 0.1, spike=8.0, dip=-3.0)
-        modified = out[out != 0.0]
-        assert len(modified) == 100
-        assert np.all(np.isin(modified, [8.0, -3.0]))
-        # Types are picked uniformly; with n=100 both should appear
-        assert (modified == 8.0).any() and (modified == -3.0).any()
-
 
 class TestLevelShift:
-    def test_shift_duration_python(self, monkeypatch):
-        """Python path: a level shift raises exactly `duration` points."""
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        length, dur = 400, 12
-        # fraction chosen so exactly one anomaly is injected
-        out, meta = _inject(
-            np.zeros(length), 5, ["level_shift"], 1.5 / length, shift=6.0, dur=dur
-        )
-        loc = int(meta["anomaly_indices"][0])
-        end = min(loc + dur, length)
-        expected = np.zeros(length)
-        expected[loc:end] = 6.0
-        np.testing.assert_array_equal(out, expected)
-
     @pytest.mark.usefixtures("core_path")
     def test_shift_truncated_at_series_end(self):
         """A level shift near the end must not run past the series."""
@@ -124,13 +72,6 @@ class TestEdgeCases:
         out, meta = _inject(np.ones(100), 7, ["spike"], 0.0)
         assert np.all(out == 1.0)
         assert len(meta["anomaly_indices"]) == 0
-
-    def test_fraction_one_python(self, monkeypatch):
-        """Python path: fraction 1.0 makes every point an anomaly."""
-        monkeypatch.setattr(core_module, "_HAS_RUST", False)
-        out, meta = _inject(np.zeros(50), 8, ["spike"], 1.0, spike=1.0)
-        assert np.all(out == 1.0)
-        assert len(set(meta["anomaly_indices"].tolist())) == 50
 
     def test_generator_validation(self):
         base = {"min_length": 100, "max_length": 100, "freq": "D"}

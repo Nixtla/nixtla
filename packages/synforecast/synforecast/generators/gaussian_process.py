@@ -5,14 +5,8 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import multivariate as _rs_mv
 from synforecast.base import BaseGenerator
-
-try:
-    from synforecast._lib import multivariate as _rs_mv
-
-    _HAS_RUST = True
-except ImportError:
-    _HAS_RUST = False
 
 
 class GaussianProcessGenerator(BaseGenerator):
@@ -69,25 +63,6 @@ class GaussianProcessGenerator(BaseGenerator):
         object.__setattr__(self, "_kernel_id", kernel_map[self.kernel])
         return self
 
-    def _kernel_fn(self, r: np.ndarray) -> np.ndarray:
-        """Evaluate kernel function for distance array r."""
-        ls = self.length_scale
-        a2 = self.amplitude**2
-
-        if self.kernel == "rbf":
-            return a2 * np.exp(-0.5 * (r / ls) ** 2)
-        elif self.kernel == "matern_0.5":
-            return a2 * np.exp(-r / ls)
-        elif self.kernel == "matern_1.5":
-            s = np.sqrt(3.0) * r / ls
-            return a2 * (1.0 + s) * np.exp(-s)
-        elif self.kernel == "matern_2.5":
-            s = np.sqrt(5.0) * r / ls
-            return a2 * (1.0 + s + s**2 / 3.0) * np.exp(-s)
-        elif self.kernel == "periodic":
-            return a2 * np.exp(-2.0 * (np.sin(np.pi * r / self.period) / ls) ** 2)
-        raise ValueError(f"Unknown kernel: {self.kernel}")
-
     def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
         return (
             np.array(
@@ -112,34 +87,17 @@ class GaussianProcessGenerator(BaseGenerator):
         Returns:
             np.ndarray: Array of time series values
         """
-        if _HAS_RUST:
-            seed = int(self.rng.integers(0, 2**63))
-            return _rs_mv.gaussian_process(
-                length,
-                self._kernel_id,
-                self.length_scale,
-                self.amplitude,
-                self.period,
-                self.mean,
-                self.noise_variance,
-                seed,
-            )
-
-        t = np.arange(length, dtype=np.float64)
-        dists = np.abs(t[:, None] - t[None, :])
-        K = self._kernel_fn(dists)
-        K += self.noise_variance * np.eye(length)
-
-        try:
-            L = np.linalg.cholesky(K)
-        except np.linalg.LinAlgError:
-            # Fallback: eigendecomposition with clamped eigenvalues
-            eigvals, eigvecs = np.linalg.eigh(K)
-            eigvals = np.maximum(eigvals, 0.0)
-            L = eigvecs * np.sqrt(eigvals)[None, :]
-
-        z = self.rng.standard_normal(length)
-        return self.mean + L @ z
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_mv.gaussian_process(
+            length,
+            self._kernel_id,
+            self.length_scale,
+            self.amplitude,
+            self.period,
+            self.mean,
+            self.noise_variance,
+            seed,
+        )
 
     def get_model_info(self) -> dict[str, Any]:
         """Return information about the GP configuration."""
