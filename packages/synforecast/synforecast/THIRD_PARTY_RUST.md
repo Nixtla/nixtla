@@ -1095,7 +1095,7 @@ Applies to:
 - once_cell 1.21.3
 - rawpointer 0.2.1
 - rayon-core 1.13.0
-- rayon 1.11.0
+- rayon 1.12.0
 
 ```
                               Apache License

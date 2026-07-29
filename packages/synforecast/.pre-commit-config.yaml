@@ -7,3 +7,11 @@ repos:
         args: [--fix]
       - id: ruff-format
         files: ^(synforecast|tests|examples|docs|benchmarks)/
+  - repo: local
+    hooks:
+      - id: rust-licenses
+        name: regenerate Rust third-party license notices
+        entry: make rust_licenses
+        language: system
+        files: ^(rust/(Cargo\.(toml|lock)|about\.(hbs|toml))|synforecast/THIRD_PARTY_RUST\.md)$
+        pass_filenames: false

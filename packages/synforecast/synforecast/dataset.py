@@ -255,7 +255,7 @@ class SynAugment:
     4. Generate n_augment synthetic series that preserve these properties
     5. Return combined DataFrame with original and synthetic series
 
-    Synthetic series IDs follow the pattern: "{original_id}_aug_{i}"
+    Synthetic series IDs follow the pattern `"{original_id}_aug_{i}"`
 
     Args:
         id_col: Name of the ID column (default: 'unique_id')
@@ -373,15 +373,10 @@ class SynAugment:
             df: DataFrame with time series data (must have id_col, time_col, target_col)
 
         Returns:
-            dict mapping unique_id to analysis results:
-            {
-                'series_0': {
-                    'recommended_generator': 'SeasonalGenerator',
-                    'properties': {...},  # All detected properties
-                    'fitted_params': {...}  # Estimated generator parameters
-                },
-                ...
-            }
+            Mapping of each `unique_id` to its analysis results. Every entry
+            holds `recommended_generator` (the chosen generator name),
+            `properties` (all detected statistical properties), and
+            `fitted_params` (the estimated generator parameters).
 
         Raises:
             ValueError: If DataFrame is missing required columns
@@ -443,7 +438,7 @@ class SynAugment:
 
         Returns:
             Combined DataFrame with original and synthetic series.
-            Synthetic series IDs follow pattern: "{original_id}_aug_{i}"
+            Synthetic series IDs follow the pattern `"{original_id}_aug_{i}"`
 
         Raises:
             ValueError: If DataFrame is missing required columns, n_augment < 1,

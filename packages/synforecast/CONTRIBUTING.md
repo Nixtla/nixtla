@@ -2,14 +2,16 @@
 
 ## Development setup
 
-Requirements: Python 3.10+, [uv](https://github.com/astral-sh/uv), Git, and a
-[Rust toolchain](https://rustup.rs/).
+Requirements: Python 3.10+, [uv](https://github.com/astral-sh/uv), Git, a
+[Rust toolchain](https://rustup.rs/), and
+[cargo-about](https://github.com/EmbarkStudios/cargo-about).
 
 ```bash
 git clone https://github.com/Nixtla/synforecast.git
 cd synforecast
+cargo install cargo-about --version 0.9.1 --locked --features cli
 uv sync --all-groups
-uv run pre-commit install  # optional: run ruff on every commit
+uv run pre-commit install  # optional: run repository checks on every commit
 ```
 
 `uv sync` builds and installs the Rust extension. After changing Rust code,
@@ -125,8 +127,10 @@ uv run pytest tests/ --cov=synforecast --cov-report=term-missing
 ## Code style
 
 Ruff handles linting and formatting (88-character lines). Pre-commit runs both
-Ruff hooks. Static typing is being tightened incrementally; mypy is not yet a
-release gate for the whole package.
+Ruff hooks and regenerates the bundled Rust license notices when Rust dependency
+or license configuration files change. If the generated notice changes, stage
+it and run pre-commit again. Static typing is being tightened incrementally;
+mypy is not yet a release gate for the whole package.
 
 ```bash
 uv run pre-commit run --all-files
@@ -160,18 +164,9 @@ To make a release:
 
 1. Create a release-preparation branch from the latest `main`. Update the
    version in `pyproject.toml` and `rust/Cargo.toml`, refresh `uv.lock` and
-   `rust/Cargo.lock`, and replace `(unreleased)` in `CHANGELOG.md` with the
-   release date.
+   `rust/Cargo.lock`.
 2. Open a pull request titled `Prepare vX.Y.Z release` and merge it after its
    required checks pass.
 3. On GitHub, choose **Releases → Draft a new release**. Create the matching
    `vX.Y.Z` tag targeting `main`, generate or edit the release notes, and
    publish the release.
-
-Repository administrators should protect the `v*` tag pattern so only release
-maintainers can create or update version tags. The `release` environment should
-accept only `v*` tags but should not require a separate reviewer: publishing
-the GitHub Release is the release approval.
-
-The PyPI Trusted Publisher must be configured for owner `Nixtla`, repository
-`synforecast`, workflow `python-publish.yml`, and environment `release`.

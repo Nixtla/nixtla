@@ -2,31 +2,67 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "SynForecast",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Nixtla/synforecast"
+    }
+  },
   "navigation": {
     "groups": [
       {
         "group": " ",
-        "pages": ["index.html"]
+        "pages": [
+          "index.html"
+        ]
       },
       {
         "group": "Getting Started",
-        "pages": ["docs/getting-started/quickstart.html"]
+        "pages": [
+          "docs/getting-started/installation.html",
+          "docs/getting-started/quickstart.html"
+        ]
       },
       {
         "group": "Capabilities",
         "pages": [
-          "docs/capabilities/balanced_pool.html",
-          "docs/capabilities/dataset.html",
-          "docs/capabilities/multivariatize.html",
-          "docs/capabilities/augmentation.html",
-          "docs/capabilities/augmentation_real_data.html",
-          "docs/capabilities/when_synthetic_helps.html",
-          "docs/capabilities/robustness_testing.html",
-          "docs/capabilities/changepoints.html",
-          "docs/capabilities/anomalies.html",
-          "docs/capabilities/missingness.html",
-          "docs/capabilities/multivariate_missingness.html",
-          "docs/capabilities/exogenous.html",
+          {
+            "group": "Building panels",
+            "pages": [
+              "docs/capabilities/balanced_pool.html",
+              "docs/capabilities/dataset.html",
+              "docs/capabilities/multivariatize.html"
+            ]
+          },
+          {
+            "group": "Patterns and covariates",
+            "pages": [
+              "docs/capabilities/changepoints.html",
+              "docs/capabilities/anomalies.html",
+              "docs/capabilities/missingness.html",
+              "docs/capabilities/multivariate_missingness.html",
+              "docs/capabilities/exogenous.html"
+            ]
+          },
+          {
+            "group": "Augmentation",
+            "pages": [
+              "docs/capabilities/augmentation.html",
+              "docs/capabilities/augmentation_real_data.html"
+            ]
+          },
+          {
+            "group": "Evaluation",
+            "pages": [
+              "docs/capabilities/when_synthetic_helps.html",
+              "docs/capabilities/robustness_testing.html"
+            ]
+          },
           "docs/capabilities/custom_generator.html"
         ]
       },

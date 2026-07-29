@@ -1,0 +1,91 @@
+---
+title: "Installation"
+description: "Install SynForecast, verify the build, and add optional dataframe engines."
+---
+
+## From PyPI
+
+```bash
+pip install synforecast
+```
+
+Or with uv:
+
+```bash
+uv add synforecast
+```
+
+Prebuilt wheels bundle the compiled Rust extension, so no toolchain is needed
+on the supported platforms:
+
+| Platform | Architectures |
+|----------|---------------|
+| Linux (manylinux) | x86-64, aarch64 |
+| macOS | Intel x86-64, Apple Silicon arm64 |
+| Windows | x86-64 |
+
+Wheels are published for CPython 3.10 through 3.14.
+
+## Verify the install
+
+```bash
+python -c "import synforecast; from synforecast import _lib; print(synforecast.__version__)"
+```
+
+The `_lib` import is the meaningful part: it confirms the native extension
+loaded, since generation runs in Rust with no Python fallback.
+
+## Runtime dependencies
+
+`pip install synforecast` pulls in `narwhals`, `numpy`, `pandas`, `polars`, and
+`pydantic`. There are no optional extras — both pandas and polars are required,
+because output is materialized through narwhals rather than one fixed backend.
+
+## Optional dataframe engines
+
+`engine="pandas"` (the default) and `engine="polars"` work out of the box. Three
+further engines are accepted but not installed by default:
+
+```bash
+pip install pyarrow          # engine="pyarrow"
+pip install "modin[dask]"    # engine="modin"
+```
+
+`engine="cudf"` requires a RAPIDS cuDF build and a CUDA GPU; install it from the
+RAPIDS channel for your CUDA version.
+
+## Building from source
+
+Installing from the source distribution compiles the Rust extension, which
+needs a stable Rust toolchain (install via [rustup](https://rustup.rs)):
+
+```bash
+pip install synforecast --no-binary synforecast
+```
+
+## From a git checkout
+
+For development, clone the repository and use the `devenv` target, which runs
+`uv sync --dev` and installs the pre-commit hooks:
+
+```bash
+git clone https://github.com/Nixtla/synforecast.git
+cd synforecast
+make devenv
+```
+
+See [CONTRIBUTING](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md)
+for the test and lint workflow.
+
+::: {.callout-warning}
+## Alpha versioning
+
+SynForecast is in alpha. APIs and seed-identical outputs may change between
+releases, so pin a version if you depend on exact generated values.
+:::
+
+## Next
+
+- [Quick start](quickstart) — generate a panel and control the generators.
+- [Balanced pool](../capabilities/balanced_pool) — what `generate_series` draws
+  from by default.
