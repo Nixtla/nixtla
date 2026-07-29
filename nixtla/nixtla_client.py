@@ -553,6 +553,14 @@ def _validate_input_size(
         )
 
 
+def _ensure_local_dataframe(df: Any, *, method_name: str, sync_method_name: str) -> None:
+    if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+        raise ValueError(
+            f"{method_name} only supports pandas or polars dataframes; "
+            f"use {sync_method_name} for distributed (dask/spark/ray) dataframes."
+        )
+
+
 def _prepare_level_and_quantiles(
     level: Optional[list[Union[int, float]]],
     quantiles: Optional[list[float]],
@@ -1223,6 +1231,19 @@ class NixtlaClient:
                 body = f"Could not parse JSON: {resp.content}"
             raise ApiError(status_code=resp.status_code, body=body)
 
+    def _submit_and_wrap_job(
+        self,
+        endpoint: str,
+        payload: dict[str, Any],
+        job_timeout_seconds: Optional[int],
+        parse_result: Callable[..., Any],
+    ) -> Job:
+        if job_timeout_seconds is not None:
+            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
+        with self._make_client(**self._client_kwargs) as client:
+            job_id = self._submit_job(client, endpoint, payload)
+        return Job(client=self, job_id=job_id, endpoint=endpoint, parse_result=parse_result)
+
     def _make_partitioned_requests(
         self,
         client: httpx.Client,
@@ -1712,15 +1733,8 @@ class NixtlaClient:
             finetuned_model_id=finetuned_model_id,
             model=model,
         )
-        if job_timeout_seconds is not None:
-            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
-        with self._make_client(**self._client_kwargs) as client:
-            job_id = self._submit_job(client, "v2/finetune", payload)
-        return Job(
-            client=self,
-            job_id=job_id,
-            endpoint="v2/finetune",
-            parse_result=lambda resp: resp["finetuned_model_id"],
+        return self._submit_and_wrap_job(
+            "v2/finetune", payload, job_timeout_seconds, lambda resp: resp["finetuned_model_id"]
         )
 
     @overload
@@ -2526,11 +2540,9 @@ class NixtlaClient:
                 or polars DataFrame with TimeGPT forecasts.
         """
         extra_param_checker.validate_python(model_parameters)
-        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            raise ValueError(
-                "submit_forecast_job only supports pandas or polars dataframes; "
-                "use forecast() for distributed (dask/spark/ray) dataframes."
-            )
+        _ensure_local_dataframe(
+            df, method_name="submit_forecast_job", sync_method_name="forecast()"
+        )
         payload, _, _, _, parse_result = self._prepare_forecast(
             df=df,
             h=h,
@@ -2557,16 +2569,7 @@ class NixtlaClient:
             model_parameters=model_parameters,
             multivariate=multivariate,
         )
-        if job_timeout_seconds is not None:
-            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
-        with self._make_client(**self._client_kwargs) as client:
-            job_id = self._submit_job(client, "v2/forecast", payload)
-        return Job(
-            client=self,
-            job_id=job_id,
-            endpoint="v2/forecast",
-            parse_result=parse_result,
-        )
+        return self._submit_and_wrap_job("v2/forecast", payload, job_timeout_seconds, parse_result)
 
     def _distributed_detect_anomalies(
         self,
@@ -3733,12 +3736,11 @@ class NixtlaClient:
                 or polars DataFrame with cross validation forecasts.
         """
         extra_param_checker.validate_python(model_parameters)
-        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            raise ValueError(
-                "submit_cross_validation_job only supports pandas or polars "
-                "dataframes; use cross_validation() for distributed "
-                "(dask/spark/ray) dataframes."
-            )
+        _ensure_local_dataframe(
+            df,
+            method_name="submit_cross_validation_job",
+            sync_method_name="cross_validation()",
+        )
         payload, parse_result = self._prepare_cross_validation(
             df=df,
             h=h,
@@ -3765,15 +3767,8 @@ class NixtlaClient:
             multivariate=multivariate,
             categorical_exog_list=categorical_exog_list,
         )
-        if job_timeout_seconds is not None:
-            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
-        with self._make_client(**self._client_kwargs) as client:
-            job_id = self._submit_job(client, "v2/cross_validation", payload)
-        return Job(
-            client=self,
-            job_id=job_id,
-            endpoint="v2/cross_validation",
-            parse_result=parse_result,
+        return self._submit_and_wrap_job(
+            "v2/cross_validation", payload, job_timeout_seconds, parse_result
         )
 
     def plot(

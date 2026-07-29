@@ -235,150 +235,138 @@ def test_make_request_still_rejects_other_status_codes():
 # submit_finetune_job / submit_forecast_job / submit_cross_validation_job
 # ---------------------------------------------------------------------------
 
+# (method_name, endpoint, call_kwargs factory, _get_model_params return value or
+# None if the method doesn't call it)
+SUBMIT_JOB_CASES = [
+    pytest.param(
+        "submit_finetune_job",
+        "v2/finetune",
+        lambda: {"df": _small_df(), "freq": "D"},
+        None,
+        id="finetune",
+    ),
+    pytest.param(
+        "submit_forecast_job",
+        "v2/forecast",
+        lambda: {"df": _small_df(), "h": 5},
+        (100, 12),
+        id="forecast",
+    ),
+    pytest.param(
+        "submit_cross_validation_job",
+        "v2/cross_validation",
+        lambda: {"df": _small_df(), "h": 5},
+        (10_000, 12),
+        id="cross_validation",
+    ),
+]
 
-def test_submit_finetune_job_returns_job(monkeypatch):
+
+def _stub_model_params(monkeypatch, model_params):
+    if model_params is not None:
+        monkeypatch.setattr(
+            NixtlaClient, "_get_model_params", lambda self, model, freq: model_params
+        )
+
+
+@pytest.mark.parametrize("method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES)
+def test_submit_job_returns_job(monkeypatch, method_name, endpoint, make_call_kwargs, model_params):
     calls = []
 
     def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
         calls.append(endpoint)
-        return "ft-job-1"
+        return "job-1"
 
+    _stub_model_params(monkeypatch, model_params)
     monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
     client = _client()
 
-    job = client.submit_finetune_job(df=_small_df(), freq="D")
+    job = getattr(client, method_name)(**make_call_kwargs())
 
     assert isinstance(job, Job)
-    assert job.job_id == "ft-job-1"
+    assert job.job_id == "job-1"
     assert job.status == "pending"
-    assert calls == ["v2/finetune"]
+    assert calls == [endpoint]
 
 
-def test_finetune_job_wait_returns_model_id(monkeypatch):
+def _finetune_poll_response():
+    return {"finetuned_model_id": "abc123"}
+
+
+def _forecast_poll_response():
+    return {"mean": list(range(5)), "intervals": None, "weights_x": None}
+
+
+def _cross_validation_poll_response():
+    n, h = 20, 5
+    return {
+        "idxs": list(range(n - h, n)),
+        "sizes": [h],
+        "mean": list(range(h)),
+        "intervals": None,
+    }
+
+
+def _check_finetune_result(result):
+    assert result == "abc123"
+
+
+def _check_point_forecast_df(result):
+    assert len(result) == 5
+    assert result["TimeGPT"].tolist() == list(range(5))
+
+
+WAIT_JOB_CASES = [
+    pytest.param(
+        "submit_finetune_job",
+        lambda: {"df": _small_df(), "freq": "D"},
+        None,
+        _finetune_poll_response,
+        _check_finetune_result,
+        id="finetune",
+    ),
+    pytest.param(
+        "submit_forecast_job",
+        lambda: {"df": _small_df(), "h": 5},
+        (100, 12),
+        _forecast_poll_response,
+        _check_point_forecast_df,
+        id="forecast",
+    ),
+    pytest.param(
+        "submit_cross_validation_job",
+        lambda: {"df": _small_df(n=20), "h": 5},
+        (10_000, 12),
+        _cross_validation_poll_response,
+        _check_point_forecast_df,
+        id="cross_validation",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "method_name, make_call_kwargs, model_params, poll_response_fn, check_result", WAIT_JOB_CASES
+)
+def test_submit_job_wait_returns_result(
+    monkeypatch, method_name, make_call_kwargs, model_params, poll_response_fn, check_result
+):
     def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        return "ft-job-1"
+        return "job-1"
 
     def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
-        assert (endpoint, job_id, poll_interval, poll_timeout) == (
-            "v2/finetune",
-            "ft-job-1",
-            1,
-            2,
-        )
-        return {"finetuned_model_id": "abc123"}
+        return poll_response_fn()
 
+    _stub_model_params(monkeypatch, model_params)
     monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
     monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
     client = _client()
 
-    job = client.submit_finetune_job(df=_small_df(), freq="D")
+    job = getattr(client, method_name)(**make_call_kwargs())
     result = job.wait(poll_interval=1, poll_timeout=2)
 
-    assert result == "abc123"
+    check_result(result)
     assert job.status == "succeeded"
-    assert job.result == "abc123"
-
-
-def test_submit_forecast_job_returns_job(monkeypatch):
-    h = 5
-    calls = []
-
-    def fake_get_model_params(self, model, freq):
-        return 100, 12
-
-    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        calls.append(endpoint)
-        return "fc-job-1"
-
-    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
-    client = _client()
-
-    job = client.submit_forecast_job(df=_small_df(), h=h)
-
-    assert isinstance(job, Job)
-    assert job.job_id == "fc-job-1"
-    assert calls == ["v2/forecast"]
-
-
-def test_forecast_job_wait_returns_dataframe(monkeypatch):
-    h = 5
-
-    def fake_get_model_params(self, model, freq):
-        return 100, 12
-
-    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        return "fc-job-1"
-
-    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
-        assert endpoint == "v2/forecast"
-        return {"mean": list(range(h)), "intervals": None, "weights_x": None}
-
-    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
-    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
-    client = _client()
-
-    job = client.submit_forecast_job(df=_small_df(), h=h)
-    out = job.wait(poll_interval=1, poll_timeout=2)
-
-    assert len(out) == h
-    assert out["TimeGPT"].tolist() == list(range(h))
-    assert job.status == "succeeded"
-    assert job.result is out
-
-
-def test_submit_cross_validation_job_returns_job(monkeypatch):
-    h = 5
-    calls = []
-
-    def fake_get_model_params(self, model, freq):
-        return 10_000, 12
-
-    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        calls.append(endpoint)
-        return "cv-job-1"
-
-    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
-    client = _client()
-
-    job = client.submit_cross_validation_job(df=_small_df(), h=h)
-
-    assert isinstance(job, Job)
-    assert job.job_id == "cv-job-1"
-    assert calls == ["v2/cross_validation"]
-
-
-def test_cross_validation_job_wait_returns_dataframe(monkeypatch):
-    h = 5
-    n = 20
-
-    def fake_get_model_params(self, model, freq):
-        return 10_000, 12
-
-    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        return "cv-job-1"
-
-    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
-        assert endpoint == "v2/cross_validation"
-        return {
-            "idxs": list(range(n - h, n)),
-            "sizes": [h],
-            "mean": list(range(h)),
-            "intervals": None,
-        }
-
-    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
-    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
-    client = _client()
-
-    job = client.submit_cross_validation_job(df=_small_df(n=n), h=h)
-    out = job.wait(poll_interval=1, poll_timeout=2)
-
-    assert len(out) == h
-    assert out["TimeGPT"].tolist() == list(range(h))
+    assert job.result is result
 
 
 def test_job_cancel_calls_cancel_job(monkeypatch):
@@ -437,62 +425,22 @@ def test_cancel_job_raises_on_other_status_codes():
 # ---------------------------------------------------------------------------
 
 
-def test_submit_finetune_job_threads_job_timeout_seconds(monkeypatch):
+@pytest.mark.parametrize("method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES)
+def test_submit_job_threads_job_timeout_seconds(
+    monkeypatch, method_name, endpoint, make_call_kwargs, model_params
+):
     payloads = []
 
     def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
         payloads.append(payload)
-        return "ft-job-1"
+        return "job-1"
 
+    _stub_model_params(monkeypatch, model_params)
     monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
     client = _client()
 
-    client.submit_finetune_job(df=_small_df(), freq="D", job_timeout_seconds=120)
-    client.submit_finetune_job(df=_small_df(), freq="D")
-
-    assert payloads[0]["job_options"] == {"timeout_seconds": 120}
-    assert "job_options" not in payloads[1]
-
-
-def test_submit_forecast_job_threads_job_timeout_seconds(monkeypatch):
-    h = 5
-    payloads = []
-
-    def fake_get_model_params(self, model, freq):
-        return 100, 12
-
-    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        payloads.append(payload)
-        return "fc-job-1"
-
-    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
-    client = _client()
-
-    client.submit_forecast_job(df=_small_df(), h=h, job_timeout_seconds=120)
-    client.submit_forecast_job(df=_small_df(), h=h)
-
-    assert payloads[0]["job_options"] == {"timeout_seconds": 120}
-    assert "job_options" not in payloads[1]
-
-
-def test_submit_cross_validation_job_threads_job_timeout_seconds(monkeypatch):
-    h = 5
-    payloads = []
-
-    def fake_get_model_params(self, model, freq):
-        return 10_000, 12
-
-    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        payloads.append(payload)
-        return "cv-job-1"
-
-    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
-    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
-    client = _client()
-
-    client.submit_cross_validation_job(df=_small_df(), h=h, job_timeout_seconds=120)
-    client.submit_cross_validation_job(df=_small_df(), h=h)
+    getattr(client, method_name)(**make_call_kwargs(), job_timeout_seconds=120)
+    getattr(client, method_name)(**make_call_kwargs())
 
     assert payloads[0]["job_options"] == {"timeout_seconds": 120}
     assert "job_options" not in payloads[1]
@@ -622,16 +570,11 @@ def test_cross_validation_num_partitions_with_async_job(monkeypatch):
     assert len(out) == h * 2
 
 
-def test_submit_forecast_job_with_unrecognized_df_type_still_raises():
-    # submit_forecast_job doesn't support distributed (dask/spark/ray)
-    # dataframes in this version — an arbitrary non-pandas/polars object
-    # should raise a clear ValueError rather than doing something undefined.
+@pytest.mark.parametrize("method_name", ["submit_forecast_job", "submit_cross_validation_job"])
+def test_submit_job_with_unrecognized_df_type_still_raises(method_name):
+    # submit_forecast_job/submit_cross_validation_job don't support distributed
+    # (dask/spark/ray) dataframes in this version — an arbitrary non-pandas/polars
+    # object should raise a clear ValueError rather than doing something undefined.
     client = _client()
-    with pytest.raises(ValueError, match="submit_forecast_job only supports"):
-        client.submit_forecast_job(df=[1, 2, 3], h=5)
-
-
-def test_submit_cross_validation_job_with_unrecognized_df_type_still_raises():
-    client = _client()
-    with pytest.raises(ValueError, match="submit_cross_validation_job only supports"):
-        client.submit_cross_validation_job(df=[1, 2, 3], h=5)
+    with pytest.raises(ValueError, match=f"{method_name} only supports"):
+        getattr(client, method_name)(df=[1, 2, 3], h=5)
