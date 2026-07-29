@@ -387,8 +387,8 @@ def test_job_cancel_calls_cancel_job(monkeypatch):
 
     calls = []
 
-    def fake_cancel_job(self, client, endpoint, job_id):
-        calls.append((endpoint, job_id))
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
 
     monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
     monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
@@ -397,7 +397,7 @@ def test_job_cancel_calls_cancel_job(monkeypatch):
     job = client.submit_finetune_job(df=_small_df(), freq="D")
     job.cancel()
 
-    assert calls == [("v2/finetune", "ft-job-1")]
+    assert calls == ["ft-job-1"]
     assert job.status == "cancelled"
 
 
@@ -413,8 +413,8 @@ def test_cancel_job_accepts_terminal_success_codes():
         resp = MagicMock()
         resp.status_code = status_code
         mock_http_client.post.return_value = resp
-        client._cancel_job(mock_http_client, "v2/forecast", "fc-abc123")
-    mock_http_client.post.assert_called_with("v2/forecast/jobs/fc-abc123/cancel")
+        client._cancel_job(mock_http_client, "fc-abc123")
+    mock_http_client.post.assert_called_with("v2/async/jobs/fc-abc123/cancel")
 
 
 def test_cancel_job_raises_on_other_status_codes():
@@ -426,10 +426,76 @@ def test_cancel_job_raises_on_other_status_codes():
     mock_http_client.post.return_value = resp
 
     with pytest.raises(ApiError) as excinfo:
-        client._cancel_job(mock_http_client, "v2/forecast", "fc-abc123")
+        client._cancel_job(mock_http_client, "fc-abc123")
 
     assert excinfo.value.status_code == 404
     assert excinfo.value.body == {"detail": "job not found"}
+
+
+# ---------------------------------------------------------------------------
+# job_timeout_seconds -> job_options threading on submit_*_job
+# ---------------------------------------------------------------------------
+
+
+def test_submit_finetune_job_threads_job_timeout_seconds(monkeypatch):
+    payloads = []
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        payloads.append(payload)
+        return "ft-job-1"
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    client = _client()
+
+    client.submit_finetune_job(df=_small_df(), freq="D", job_timeout_seconds=120)
+    client.submit_finetune_job(df=_small_df(), freq="D")
+
+    assert payloads[0]["job_options"] == {"timeout_seconds": 120}
+    assert "job_options" not in payloads[1]
+
+
+def test_submit_forecast_job_threads_job_timeout_seconds(monkeypatch):
+    h = 5
+    payloads = []
+
+    def fake_get_model_params(self, model, freq):
+        return 100, 12
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        payloads.append(payload)
+        return "fc-job-1"
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    client = _client()
+
+    client.submit_forecast_job(df=_small_df(), h=h, job_timeout_seconds=120)
+    client.submit_forecast_job(df=_small_df(), h=h)
+
+    assert payloads[0]["job_options"] == {"timeout_seconds": 120}
+    assert "job_options" not in payloads[1]
+
+
+def test_submit_cross_validation_job_threads_job_timeout_seconds(monkeypatch):
+    h = 5
+    payloads = []
+
+    def fake_get_model_params(self, model, freq):
+        return 10_000, 12
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        payloads.append(payload)
+        return "cv-job-1"
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    client = _client()
+
+    client.submit_cross_validation_job(df=_small_df(), h=h, job_timeout_seconds=120)
+    client.submit_cross_validation_job(df=_small_df(), h=h)
+
+    assert payloads[0]["job_options"] == {"timeout_seconds": 120}
+    assert "job_options" not in payloads[1]
 
 
 # ---------------------------------------------------------------------------

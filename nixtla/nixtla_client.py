@@ -984,7 +984,7 @@ class Job:
     def cancel(self) -> None:
         """Request cancellation of the job."""
         with self._client._make_client(**self._client._client_kwargs) as http_client:
-            self._client._cancel_job(http_client, self._endpoint, self.job_id)
+            self._client._cancel_job(http_client, self.job_id)
         self.status = "cancelled"
 
 
@@ -1210,8 +1210,8 @@ class NixtlaClient:
         job_id = self._submit_job(client, endpoint, payload, multithreaded_compress)
         return self._poll_job(client, endpoint, job_id, poll_interval, poll_timeout)
 
-    def _cancel_job(self, client: httpx.Client, endpoint: str, job_id: str) -> None:
-        resp = client.post(f"{endpoint}/jobs/{job_id}/cancel")
+    def _cancel_job(self, client: httpx.Client, job_id: str) -> None:
+        resp = client.post(f"v2/async/jobs/{job_id}/cancel")
         if resp.status_code not in (
             HTTPStatus.OK,
             HTTPStatus.ACCEPTED,
@@ -1631,6 +1631,7 @@ class NixtlaClient:
         output_model_id: Optional[str] = None,
         finetuned_model_id: Optional[str] = None,
         model: _Model = "timegpt-2.1",
+        job_timeout_seconds: Optional[int] = None,
     ) -> Job:
         """Submit a fine-tuning job to run asynchronously.
 
@@ -1686,6 +1687,13 @@ class NixtlaClient:
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency
                 of your data. Defaults to 'timegpt-2.1'.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
 
         Returns:
             Job: Handle to the submitted job. `job.wait()` returns the
@@ -1704,6 +1712,8 @@ class NixtlaClient:
             finetuned_model_id=finetuned_model_id,
             model=model,
         )
+        if job_timeout_seconds is not None:
+            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, "v2/finetune", payload)
         return Job(
@@ -2406,6 +2416,7 @@ class NixtlaClient:
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
+        job_timeout_seconds: Optional[int] = None,
     ) -> Job:
         """Submit a forecast job to run asynchronously.
 
@@ -2502,6 +2513,13 @@ class NixtlaClient:
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
                 supported for a select set of TimeGPT models.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
 
         Returns:
             Job: Handle to the submitted job. `job.wait()` returns a pandas
@@ -2539,6 +2557,8 @@ class NixtlaClient:
             model_parameters=model_parameters,
             multivariate=multivariate,
         )
+        if job_timeout_seconds is not None:
+            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, "v2/forecast", payload)
         return Job(
@@ -3605,6 +3625,7 @@ class NixtlaClient:
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
         categorical_exog_list: Optional[list[str]] = None,
+        job_timeout_seconds: Optional[int] = None,
     ) -> Job:
         """Submit a cross-validation job to run asynchronously.
 
@@ -3699,6 +3720,13 @@ class NixtlaClient:
             categorical_exog_list (list[str], optional): Column names of
                 categorical exogenous features in (can be strings or
                 numbers). Defaults to None.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
 
         Returns:
             Job: Handle to the submitted job. `job.wait()` returns a pandas
@@ -3737,6 +3765,8 @@ class NixtlaClient:
             multivariate=multivariate,
             categorical_exog_list=categorical_exog_list,
         )
+        if job_timeout_seconds is not None:
+            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, "v2/cross_validation", payload)
         return Job(
