@@ -1,10 +1,13 @@
 # Nixtla
 
+[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Fast%20synthetic%20time%20series%20for%20testing%2C%20augmentation%2C%20and%20pretraining%20by%20Nixtla%20&url=https://github.com/Nixtla/synforecast&via=nixtlainc&hashtags=SyntheticData,TimeSeries,Forecasting)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1pmhan9j5-F54XR20edHk0UtYAPcW4KQ)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://linkedin.com/company/nixtlainc)
 
 <div align="center">
-<h1>SynForecast</h1>
-<h3>Fast synthetic time series for testing, augmentation, and pretraining</h3>
+<img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_mid.png"/>
+<h1 align="center">Synthetic 🧬 Forecast</h1>
+<h3 align="center">Fast synthetic time series for testing, augmentation, and pretraining</h3>
 
 [![CI](https://github.com/Nixtla/synforecast/actions/workflows/ci.yaml/badge.svg)](https://github.com/Nixtla/synforecast/actions/workflows/ci.yaml)
 [![Python](https://img.shields.io/pypi/pyversions/synforecast)](https://pypi.org/project/synforecast/)

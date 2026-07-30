@@ -155,15 +155,15 @@ def process_api_docs():
 
 
 _ALERT = re.compile(r"^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$")
-_TAGLINE = re.compile(r"<h3>(.*?)</h3>")
+_TAGLINE = re.compile(r"<h3[^>]*>(.*?)</h3>")
 
 
 def readme_to_index(content: str) -> str:
     """Turn the README into the docs landing page.
 
-    The README's header is GitHub chrome: the org heading, the Slack invite,
-    the centered ``<div>`` wrapper with its duplicate ``<h1>``/``<h3>``, and the
-    shield badges. Mintlify already renders a title and subtitle from the
+    The README's header is GitHub chrome: the org heading, the social badges,
+    the Nixtla logo, and the centered ``<div>`` wrapper with its duplicate
+    ``<h1>``/``<h3>``. Mintlify already renders a title and subtitle from the
     frontmatter, and the PyPI shields show "package or version not found" until
     a release exists, so all of it is dropped and the tagline is promoted to the
     frontmatter description instead.
@@ -180,7 +180,7 @@ def readme_to_index(content: str) -> str:
     body = []
     for line in content.split("\n"):
         stripped = line.strip()
-        if stripped.startswith(("[![", "<div", "</div>", "<h1>", "<h3>")):
+        if stripped.startswith(("[![", "<div", "</div", "<h1", "<h3", "<img")):
             continue
         if stripped == "# Nixtla":
             continue

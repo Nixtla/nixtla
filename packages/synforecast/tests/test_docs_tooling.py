@@ -167,3 +167,44 @@ class TestFenceIndentedBlocks:
         text = "model:\n\n    x = {y}\n\nafter\n"
         once = fence_indented_blocks(text)
         assert fence_indented_blocks(once) == once
+
+
+class TestReadmeHeaderChrome:
+    """The GitHub header carries badges and a logo the docs page must not repeat."""
+
+    def test_social_badges_and_logo_are_dropped(self) -> None:
+        readme = (
+            "# Nixtla\n\n"
+            "[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg)]"
+            "(https://twitter.com/intent/tweet?text=x&via=nixtlainc)\n"
+            "[![Slack](https://img.shields.io/badge/Slack-x)](https://example.com)\n"
+            "[![LinkedIn](https://img.shields.io/badge/LinkedIn-x)]"
+            "(https://linkedin.com/company/nixtlainc)\n\n"
+            '<div align="center">\n'
+            '<img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/'
+            'nbs/imgs_indx/logo_mid.png"/>\n'
+            "<h1>SynForecast</h1>\n"
+            "<h3>Fast synthetic time series</h3>\n\n"
+            "**SynForecast** generates panels.\n"
+            "</div>\n\n"
+            "## Installation\n"
+        )
+        out = readme_to_index(readme)
+        for dropped in ("twitter.com/intent", "linkedin.com", "<img", "logo_mid.png"):
+            assert dropped not in out, dropped
+        assert "description: Fast synthetic time series" in out
+        assert "**SynForecast** generates panels." in out
+
+    def test_attributes_cannot_smuggle_an_element_through(self) -> None:
+        readme = (
+            '<div align="center">\n'
+            '<img align="center" width="200" src="logo.png"/>\n'
+            '<h1 align="center">SynForecast</h1>\n'
+            '<h3 align="center">A tagline</h3>\n\n'
+            "Body text.\n"
+            "</div>\n"
+        )
+        out = readme_to_index(readme)
+        assert "description: A tagline" in out
+        for dropped in ("<img", "<h1", "<h3", "<div"):
+            assert dropped not in out, dropped
