@@ -41,7 +41,7 @@ class PoissonProcessGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values (counts per time period)
+            Array of time series values (counts per time period)
         """
         seed = int(self.rng.integers(0, 2**63))
         return _rs_stoch.poisson_process(

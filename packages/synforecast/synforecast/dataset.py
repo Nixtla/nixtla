@@ -130,8 +130,7 @@ class SynSet:
                 Results are seed-deterministic and do not depend on n_jobs.
 
         Returns:
-            DataFrame containing all generated time series from all generators,
-            in long format with columns [id_col, time_col, target_col].
+            DataFrame containing all generated time series from all generators, in long format with columns [id_col, time_col, target_col].
 
         Notes:
             Series IDs are unique across all generators. With 2 generators and
@@ -373,10 +372,7 @@ class SynAugment:
             df: DataFrame with time series data (must have id_col, time_col, target_col)
 
         Returns:
-            Mapping of each `unique_id` to its analysis results. Every entry
-            holds `recommended_generator` (the chosen generator name),
-            `properties` (all detected statistical properties), and
-            `fitted_params` (the estimated generator parameters).
+            Mapping of each `unique_id` to its analysis results. Every entry holds `recommended_generator` (the chosen generator name), `properties` (all detected statistical properties), and `fitted_params` (the estimated generator parameters).
 
         Raises:
             ValueError: If DataFrame is missing required columns
@@ -437,8 +433,7 @@ class SynAugment:
                 as the original series
 
         Returns:
-            Combined DataFrame with original and synthetic series.
-            Synthetic series IDs follow the pattern `"{original_id}_aug_{i}"`
+            Combined DataFrame with original and synthetic series. Synthetic series IDs follow the pattern `"{original_id}_aug_{i}"`
 
         Raises:
             ValueError: If DataFrame is missing required columns, n_augment < 1,
@@ -631,8 +626,7 @@ class SynAugment:
             rows and their missing values are retained unchanged.
 
         Returns:
-            DataFrame with the original series (optional) and synthetic mixup
-            series. Mixup IDs follow the pattern ``"mixup_{i}"``.
+            DataFrame with the original series (optional) and synthetic mixup series. Mixup IDs follow the pattern ``"mixup_{i}"``.
 
         Raises:
             ValueError: If the DataFrame is missing required columns, if

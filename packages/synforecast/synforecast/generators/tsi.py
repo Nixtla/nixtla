@@ -443,7 +443,7 @@ class TSIGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values
+            Array of time series values
         """
         for _ in range(_MAX_RETRIES):
             values = self._compose(length)

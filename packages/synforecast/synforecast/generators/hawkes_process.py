@@ -149,7 +149,7 @@ class HawkesProcessGenerator(BaseGenerator):
             time_horizon: Total time to simulate
 
         Returns:
-            np.ndarray: Array of event times
+            Array of event times
         """
         event_times: list[float] = []
         t = 0.0
@@ -194,7 +194,7 @@ class HawkesProcessGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of values (counts, intensity, or event indicator)
+            Array of values (counts, intensity, or event indicator)
         """
         seed = int(self.rng.integers(0, 2**63))
         kernel_t = 0 if self.kernel == "exponential" else 1
@@ -220,7 +220,7 @@ class HawkesProcessGenerator(BaseGenerator):
             time_horizon: Total time to simulate
 
         Returns:
-            tuple: (event_times, intensity_at_events)
+            (event_times, intensity_at_events)
         """
         event_times = self._simulate_hawkes(time_horizon)
         intensity_at_events = np.array(
@@ -235,7 +235,7 @@ class HawkesProcessGenerator(BaseGenerator):
         """Get information about the Hawkes process model.
 
         Returns:
-            dict: Model parameters and characteristics
+            Model parameters and characteristics
         """
         if self.kernel == "exponential":
             branching_ratio = self.excitation_amplitude / self.decay_rate
@@ -272,7 +272,7 @@ class HawkesProcessGenerator(BaseGenerator):
             _method: Estimation method (currently only 'mle' supported)
 
         Returns:
-            dict: Estimated parameters
+            Estimated parameters
         """
         if len(event_times) < 2:
             return {

@@ -119,7 +119,7 @@ class IntermittentDemandGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of values (mostly zeros with intermittent demand)
+            Array of values (mostly zeros with intermittent demand)
         """
         if self.demand_probability == 0.0 and self.intermittent_pattern == "clustered":
             # Geometric(p=0) gaps are infinite: no cluster ever starts, so the

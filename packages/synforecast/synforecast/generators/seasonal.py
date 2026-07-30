@@ -68,7 +68,7 @@ class SeasonalGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values
+            Array of time series values
         """
         seed = int(self.rng.integers(0, 2**63))
         return _rs_stat.seasonal(

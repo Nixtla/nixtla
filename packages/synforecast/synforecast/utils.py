@@ -52,8 +52,7 @@ def generate_series(
             Defaults to False.
 
     Returns:
-        DataFrame in long format with columns [`unique_id`, `ds`, `y`],
-        plus `generator` when `with_generator_col` is True.
+        DataFrame in long format with columns [`unique_id`, `ds`, `y`], plus `generator` when `with_generator_col` is True.
     """
     if n_series < 1:
         raise ValueError(f"n_series must be a positive integer, got {n_series}.")

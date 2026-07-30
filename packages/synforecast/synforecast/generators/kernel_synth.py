@@ -212,7 +212,7 @@ class KernelSynthGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values
+            Array of time series values
         """
         x = np.linspace(0.0, 1.0, length) if length > 1 else np.zeros(1)
         diff = x[:, None] - x[None, :]

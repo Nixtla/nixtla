@@ -119,7 +119,7 @@ class BoundedProcessGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values in [lower, upper]
+            Array of time series values in [lower, upper]
         """
         # The Rust kernel applies the [lower, upper] affine map itself.
         seed = int(self.rng.integers(0, 2**63))

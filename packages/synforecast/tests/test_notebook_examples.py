@@ -25,8 +25,9 @@ INTEGRATION_REQUIREMENTS = {
     "statsforecast.ipynb": [
         "SynAugment",
         "synthetic_history_df",
-        'groupby("ds"',
         "np.allclose",
+        "ETSGenerator",
+        "SeasonalNaive",
     ],
 }
 GENERATOR_CLASSES = {

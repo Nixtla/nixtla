@@ -217,7 +217,7 @@ class SARIMAGenerator(BaseGenerator):
             order (int): Order of the AR process.
 
         Returns:
-            np.ndarray: Array of stable AR parameters.
+            Array of stable AR parameters.
         """
         has_seasonal = self.P > 0 or self.Q > 0
         bound = 0.4 if has_seasonal else 0.6
@@ -241,7 +241,7 @@ class SARIMAGenerator(BaseGenerator):
         The AR polynomial is (1 - φ₁B - φ₂B² - ...) × (1 - Φ₁B^s - Φ₂B^{2s} - ...)
 
         Returns:
-            np.ndarray: Coefficients of the full AR polynomial (excluding lag 0)
+            Coefficients of the full AR polynomial (excluding lag 0)
                        where index i corresponds to lag (i+1)
         """
         s = self.seasonal_period
@@ -272,7 +272,7 @@ class SARIMAGenerator(BaseGenerator):
         The MA polynomial is (1 + θ₁B + θ₂B² + ...) × (1 + Θ₁B^s + Θ₂B^{2s} + ...)
 
         Returns:
-            np.ndarray: Coefficients of the full MA polynomial (excluding lag 0)
+            Coefficients of the full MA polynomial (excluding lag 0)
                        where index i corresponds to lag (i+1)
         """
         s = self.seasonal_period
@@ -326,7 +326,7 @@ class SARIMAGenerator(BaseGenerator):
         """Compute appropriate burn-in period based on AR persistence.
 
         Returns:
-            int: Recommended burn-in period
+            Recommended burn-in period
         """
         if self.burn_in is not None:
             return self.burn_in
@@ -383,7 +383,7 @@ class SARIMAGenerator(BaseGenerator):
             exog (np.ndarray | None): Exogenous regressors of shape (length, n_exog)
 
         Returns:
-            np.ndarray: Array of time series values
+            Array of time series values
         """
         if exog is None:
             seed = int(self.rng.integers(0, 2**63))
@@ -506,7 +506,7 @@ class SARIMAGenerator(BaseGenerator):
         """Get information about the SARIMA model configuration.
 
         Returns:
-            dict: Model information including orders, parameters, and polynomial structure
+            Model information including orders, parameters, and polynomial structure
         """
         # A model without seasonal terms is plain ARIMA; the seasonal orders
         # and period would be misleading in the label.

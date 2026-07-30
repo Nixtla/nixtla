@@ -101,7 +101,7 @@ class INARGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of non-negative integer time series values
+            Array of non-negative integer time series values
         """
         seed = int(self.rng.integers(0, 2**63))
         innov_type_id = 0 if self.innovation_type == "poisson" else 1

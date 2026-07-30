@@ -157,7 +157,7 @@ class ETSGenerator(BaseGenerator):
         Additive: zero-sum. Multiplicative: unit mean.
 
         Returns:
-            np.ndarray: Initial seasonal components.
+            Initial seasonal components.
         """
         m = self.seasonal_period
 
@@ -174,7 +174,7 @@ class ETSGenerator(BaseGenerator):
         """Get standard ETS model notation.
 
         Returns:
-            str: Model notation like 'ETS(A,A,A)' or 'ETS(M,Ad,M)'
+            Model notation like 'ETS(A,A,A)' or 'ETS(M,Ad,M)'
         """
         error_char = "A" if self.error_type == "add" else "M"
 
@@ -236,7 +236,7 @@ class ETSGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values
+            Array of time series values
         """
         seed = int(self.rng.integers(0, 2**63))
         error_t = 0 if self.error_type == "add" else 1
@@ -282,7 +282,7 @@ class ETSGenerator(BaseGenerator):
             s_t: Current seasonal state.
 
         Returns:
-            float: Point forecast.
+            Point forecast.
         """
         phi = self.phi if self.damped else 1.0
 
@@ -324,7 +324,7 @@ class ETSGenerator(BaseGenerator):
             eps: Innovation ε_t.
 
         Returns:
-            tuple: (new_level, new_trend, new_seasonal)
+            (new_level, new_trend, new_seasonal)
         """
         phi = self.phi if self.damped else 1.0
 
@@ -365,7 +365,7 @@ class ETSGenerator(BaseGenerator):
             y: Transformed values
 
         Returns:
-            np.ndarray: Original scale values
+            Original scale values
         """
         lam = self.box_cox_lambda
         if lam == 0:
@@ -545,7 +545,7 @@ class ETSGenerator(BaseGenerator):
         """Get information about the ETS model configuration.
 
         Returns:
-            dict: Model information including type, parameters, and state
+            Model information including type, parameters, and state
         """
         return {
             "model": self._get_model_notation(),

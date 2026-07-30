@@ -66,9 +66,10 @@ docs = [
     "ipykernel<7.0",
     "ipython<=8.39.0",
     "matplotlib",
-    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@b28e6925beba7e05d7f40047d99244c9c8d6baed",
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@a6f375a052783c18f4ca2599c74814c05ee6d568",
     "nbclient>=0.10.0",
     "nbformat>=5.10.0",
+    "utilsforecast>=0.2.0",
 ]
 integration-docs = [
     "ipywidgets>=8.1.0",

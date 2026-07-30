@@ -3,62 +3,127 @@
 import re
 from pathlib import Path
 
-try:
-    from mkdocstrings_parser import MkDocstringsParser
-except ImportError as error:
-    raise ImportError(
-        "mkdocstrings-parser is required for building docs. "
-        "Install the project's documentation dependency group before building."
-    ) from error
-
 DOCS_DIR = Path(__file__).parent
 MINTLIFY_DIR = DOCS_DIR / "mintlify"
 
 
-_CODE_SPAN = re.compile(r"<code>(.*?)</code>", re.DOTALL)
+_LIST_ITEM = re.compile(r"^\s*([-*+]|\d+\.)\s")
+
+
+def fence_indented_blocks(text: str) -> str:
+    """Turn four-space indented blocks into fenced code blocks.
+
+    Docstrings write equations as indented blocks, which CommonMark reads as
+    code. MDX has no indented code blocks, so the same text is parsed as a
+    paragraph and a brace in it becomes a live expression -- a jump-diffusion
+    line such as ``S_{t-} * dJ_t`` then fails acorn.
+
+    Fencing the block instead keeps it verbatim and renders it as code, which is
+    what the docstring meant. A block indented under a list item is left alone:
+    there the indentation is list continuation, not code.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    index = 0
+    in_fence = False
+    last_content = ""
+
+    while index < len(lines):
+        line = lines[index]
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            out.append(line)
+            last_content = line.strip()
+            index += 1
+            continue
+
+        indented = (line.startswith("    ") or line.startswith("\t")) and line.strip()
+        starts_block = (
+            not in_fence
+            and indented
+            and (not out or not out[-1].strip())
+            and not _LIST_ITEM.match(last_content)
+        )
+        if not starts_block:
+            if line.strip():
+                last_content = line.strip()
+            out.append(line)
+            index += 1
+            continue
+
+        block: list[str] = []
+        while index < len(lines):
+            candidate = lines[index]
+            if candidate.strip() and not (
+                candidate.startswith("    ") or candidate.startswith("\t")
+            ):
+                break
+            block.append(candidate)
+            index += 1
+        while block and not block[-1].strip():
+            block.pop()
+            index -= 1
+
+        margin = min(
+            len(entry) - len(entry.lstrip()) for entry in block if entry.strip()
+        )
+        out.append("```")
+        out.extend(entry[margin:] if entry.strip() else entry for entry in block)
+        out.append("```")
+        last_content = "```"
+
+    return "\n".join(out)
 
 
 def escape_mdx_hazards(text: str) -> str:
     """Escape characters the generated MDX leaves in parser-hostile positions.
 
-    Two patterns come out of mkdocstrings-parser and fail Mintlify's MDX parse:
+    Docstrings are plain text, but the generated pages are MDX, where ``{`` and
+    ``<`` are syntax. Two patterns reach the output and fail Mintlify's parse:
 
-    1. A union annotation such as ``str | int`` is emitted as
-       ``<code>[str](#str) | [int](#int)</code>`` inside a markdown table row.
-       The bare ``|`` closes the table cell, so ``<code>`` is left unclosed
-       ("Expected a closing tag for `<code>`").
-    2. A brace in running prose is a live MDX expression, which acorn then
-       tries to parse as JavaScript ("Could not parse expression with acorn").
-       This reaches the output wherever a docstring puts a brace outside
-       backticks -- notably ``>>>`` example blocks, which markdown reads as a
-       triple-nested blockquote rather than code.
+    1. A brace in running prose is a live MDX expression, which acorn then tries
+       to parse as JavaScript ("Could not parse expression with acorn").
+    2. A ``<`` in running prose opens a JSX tag, so a comparison such as
+       ``demand_std**2 <= demand_mean`` fails on the following character
+       ("Unexpected character `=` before name"). Only a ``<`` that cannot begin
+       a tag is escaped, which leaves the ``<code>``/``<details>`` markup the
+       parser emits untouched.
 
     Both are escaped to HTML entities, which render as the original character.
-    Braces inside fenced blocks and inline code spans are left alone: MDX does
-    not evaluate expressions there, and escaping them would show the entity.
-    """
-    text = _CODE_SPAN.sub(
-        lambda match: "<code>" + match.group(1).replace("|", "&#124;") + "</code>",
-        text,
-    )
 
-    out, in_fence = [], False
+    Nothing is escaped inside fenced code, inline spans, or ``$...$`` /
+    ``$$...$$`` LaTeX: none of those is interpreted as MDX, and the entity
+    itself would be displayed. Indented blocks are *not* exempt -- MDX, unlike
+    CommonMark, has no indented code blocks, so `fence_indented_blocks` should
+    run first to turn them into real fences.
+
+    Pipes need no handling: mkdocstrings-parser escapes them as ``\\|`` before a
+    table cell can be split.
+    """
+    # Inline code spans and LaTeX are both verbatim; capture so re.split keeps them.
+    verbatim = re.compile(r"(`+[^`]*`+|\$\$[^$]*\$\$|\$[^$\n]+\$)")
+
+    def escape_prose(segment: str) -> str:
+        segment = segment.replace("{", "&#123;").replace("}", "&#125;")
+        # A tag needs a name, a closing slash, or a declaration/comment bang.
+        return re.sub(r"<(?![A-Za-z/!])", "&lt;", segment)
+
+    out = []
+    in_fence = False
+
     for line in text.split("\n"):
-        if line.lstrip().startswith("```"):
+        if line.strip().startswith("```"):
             in_fence = not in_fence
             out.append(line)
             continue
         if in_fence:
             out.append(line)
             continue
-        # Escape only the segments outside inline code spans.
-        parts = re.split(r"(`+[^`]*`+)", line)
+
         out.append(
             "".join(
-                part
-                if part.startswith("`")
-                else part.replace("{", "&#123;").replace("}", "&#125;")
-                for part in parts
+                part if part.startswith(("`", "$")) else escape_prose(part)
+                for part in verbatim.split(line)
             )
         )
     return "\n".join(out)
@@ -66,13 +131,26 @@ def escape_mdx_hazards(text: str) -> str:
 
 def process_api_docs():
     """Process all .html.md files with ::: directives into .mdx files."""
+    # Imported here so the escaping helpers stay importable (and testable)
+    # without the documentation dependency group installed.
+    try:
+        from mkdocstrings_parser import MkDocstringsParser
+    except ImportError as error:
+        raise ImportError(
+            "mkdocstrings-parser is required for building docs. "
+            "Install the project's documentation dependency group before building."
+        ) from error
+
     parser = MkDocstringsParser()
 
     for md_file in sorted(DOCS_DIR.glob("*.html.md")):
         print(f"Processing {md_file.name}...")
         output_file = MINTLIFY_DIR / md_file.name.replace(".html.md", ".html.mdx")
         parser.process_file(str(md_file), str(output_file))
-        output_file.write_text(escape_mdx_hazards(output_file.read_text()))
+        # Fence first: escaping must see indented equation blocks as real code.
+        output_file.write_text(
+            escape_mdx_hazards(fence_indented_blocks(output_file.read_text()))
+        )
         print(f"  -> {output_file.name}")
 
 

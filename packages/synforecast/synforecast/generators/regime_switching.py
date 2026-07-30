@@ -130,7 +130,7 @@ class RegimeSwitchingGenerator(BaseGenerator):
         """Compute the stationary distribution of the Markov chain.
 
         Returns:
-            np.ndarray: Stationary probability distribution over regimes
+            Stationary probability distribution over regimes
         """
         P = self._transition_matrix_array
         n = self.n_regimes
@@ -154,7 +154,7 @@ class RegimeSwitchingGenerator(BaseGenerator):
             current_regime (int): Current regime index
 
         Returns:
-            int: Next regime index
+            Next regime index
         """
         probs = self._transition_matrix_array[current_regime]
         return int(self.rng.choice(self.n_regimes, p=probs))
@@ -188,7 +188,7 @@ class RegimeSwitchingGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values
+            Array of time series values
         """
         seed = int(self.rng.integers(0, 2**63))
         # -1 instructs the kernel to draw s_0 from the stationary distribution.
@@ -217,7 +217,7 @@ class RegimeSwitchingGenerator(BaseGenerator):
             start_id (int): Starting ID for series naming (default: 0)
 
         Returns:
-            tuple: (values, regimes, series_ids) arrays
+            (values, regimes, series_ids) arrays
         """
         all_values = []
         all_regimes = []
@@ -266,7 +266,7 @@ class RegimeSwitchingGenerator(BaseGenerator):
         """Get information about the regime-switching model.
 
         Returns:
-            dict: Model parameters and characteristics
+            Model parameters and characteristics
         """
         return {
             "n_regimes": self.n_regimes,

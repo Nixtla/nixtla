@@ -106,7 +106,7 @@ class CopulaGenerator(BaseGenerator):
             n_variables (int): Size of the correlation matrix.
 
         Returns:
-            np.ndarray: Correlation matrix of shape (n_variables, n_variables).
+            Correlation matrix of shape (n_variables, n_variables).
         """
         A = self.rng.uniform(-1, 1, (n_variables, n_variables))
         # A @ A.T is PSD; normalizing by the diagonal yields unit diagonal
@@ -130,7 +130,7 @@ class CopulaGenerator(BaseGenerator):
             n_variables (int): Number of variables (series) to generate.
 
         Returns:
-            np.ndarray: Array of shape (length, n_variables) with uniform
+            Array of shape (length, n_variables) with uniform
                 marginals, clamped to (0, 1) exclusive.
         """
         if self._correlation_matrix_array is None:
@@ -169,7 +169,7 @@ class CopulaGenerator(BaseGenerator):
             n_variables (int): Number of variables to transform.
 
         Returns:
-            np.ndarray: Array of shape (length, n_variables) with the
+            Array of shape (length, n_variables) with the
                 requested marginals.
         """
         transformed = np.zeros_like(uniform_samples)
@@ -216,7 +216,7 @@ class CopulaGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: Array of time series values.
+            Array of time series values.
         """
         seed = int(self.rng.integers(0, 2**63))
         copula_type = 0 if self.copula_type == "gaussian" else 1
@@ -281,8 +281,7 @@ class CopulaGenerator(BaseGenerator):
             n_jobs (int): Unused (accepted for API compatibility).
 
         Returns:
-            DataFrame in long format with columns [id_col, time_col,
-            target_col]; each unique_id is one correlated variable.
+            DataFrame in long format with columns [id_col, time_col, target_col]; each unique_id is one correlated variable.
         """
         length = self.rng.integers(self.min_length, self.max_length + 1)
 

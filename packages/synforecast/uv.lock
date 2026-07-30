@@ -1229,44 +1229,18 @@ wheels = [
 ]
 
 [[package]]
-name = "griffe"
-version = "2.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "griffecli" },
-    { name = "griffelib" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/04/56/28a0accac339c164b52a92c6cfc45a903acc0c174caa5c1713803467b533/griffe-2.0.0.tar.gz", hash = "sha256:c68979cd8395422083a51ea7cf02f9c119d889646d99b7b656ee43725de1b80f", size = 293906, upload-time = "2026-03-23T21:06:53.402Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/94/ee21d41e7eb4f823b94603b9d40f86d3c7fde80eacc2c3c71845476dddaa/griffe-2.0.0-py3-none-any.whl", hash = "sha256:5418081135a391c3e6e757a7f3f156f1a1a746cc7b4023868ff7d5e2f9a980aa", size = 5214, upload-time = "2026-02-09T19:09:44.105Z" },
-]
-
-[[package]]
 name = "griffe2md"
-version = "1.2.6"
+version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "griffe" },
+    { name = "griffelib" },
     { name = "jinja2" },
     { name = "mdformat" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/e0/01540673c434406960fe8d4adabaf8ec085dcab1f333a0d56f590da4f7e9/griffe2md-1.2.6.tar.gz", hash = "sha256:2f6699a39985fc564a14fffcf03dedaa056165d2e29b8ce7ce6637d1f467c9d3", size = 42158, upload-time = "2025-11-10T14:47:57.407Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/a8/18adadd26454832fb0beaea07e5f05b92f8830a112ec860d3c403914d651/griffe2md-1.5.0.tar.gz", hash = "sha256:58e184dffcd506ca97f54516dc07dd41f98ddc76eb17ba30518cf3dda18f6a51", size = 47309, upload-time = "2026-03-12T16:22:01.392Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/d1/a2d64733b333e71125535fbabdb8170e55272b7b54b1ee5c2a2f713cd0e6/griffe2md-1.2.6-py3-none-any.whl", hash = "sha256:f35fe37237caaee25f158b39a329de58337eceda9d2ab720c252718355655040", size = 30025, upload-time = "2025-11-10T14:47:56.233Z" },
-]
-
-[[package]]
-name = "griffecli"
-version = "2.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama" },
-    { name = "griffelib" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/f8/2e129fd4a86e52e58eefe664de05e7d502decf766e7316cc9e70fdec3e18/griffecli-2.0.0.tar.gz", hash = "sha256:312fa5ebb4ce6afc786356e2d0ce85b06c1c20d45abc42d74f0cda65e159f6ef", size = 56213, upload-time = "2026-03-23T21:06:54.8Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/ed/d93f7a447bbf7a935d8868e9617cbe1cadf9ee9ee6bd275d3040fbf93d60/griffecli-2.0.0-py3-none-any.whl", hash = "sha256:9f7cd9ee9b21d55e91689358978d2385ae65c22f307a63fb3269acf3f21e643d", size = 9345, upload-time = "2026-02-09T19:09:42.554Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/50/75d7902f3a82e77710123418e905302309e116c4d12050f04cf6f4ed9d4e/griffe2md-1.5.0-py3-none-any.whl", hash = "sha256:1becaff032cb02ffedd46057a83c218400bb586579c37010ec8504377108591d", size = 32367, upload-time = "2026-03-12T16:22:00.237Z" },
 ]
 
 [[package]]
@@ -1905,7 +1879,7 @@ wheels = [
 [[package]]
 name = "mkdocstrings-parser"
 version = "0.0.1"
-source = { git = "https://github.com/Nixtla/mkdocstrings-parser?rev=b28e6925beba7e05d7f40047d99244c9c8d6baed#b28e6925beba7e05d7f40047d99244c9c8d6baed" }
+source = { git = "https://github.com/Nixtla/mkdocstrings-parser?rev=a6f375a052783c18f4ca2599c74814c05ee6d568#a6f375a052783c18f4ca2599c74814c05ee6d568" }
 dependencies = [
     { name = "griffe2md" },
     { name = "pip-licenses" },
@@ -4263,6 +4237,7 @@ docs = [
     { name = "mkdocstrings-parser" },
     { name = "nbclient" },
     { name = "nbformat" },
+    { name = "utilsforecast" },
 ]
 integration-docs = [
     { name = "ipywidgets" },
@@ -4306,9 +4281,10 @@ docs = [
     { name = "ipykernel", specifier = "<7.0" },
     { name = "ipython", specifier = "<=8.39.0" },
     { name = "matplotlib" },
-    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser?rev=b28e6925beba7e05d7f40047d99244c9c8d6baed" },
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser?rev=a6f375a052783c18f4ca2599c74814c05ee6d568" },
     { name = "nbclient", specifier = ">=0.10.0" },
     { name = "nbformat", specifier = ">=5.10.0" },
+    { name = "utilsforecast", specifier = ">=0.2.0" },
 ]
 integration-docs = [
     { name = "ipywidgets", specifier = ">=8.1.0" },

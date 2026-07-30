@@ -125,7 +125,7 @@ class VARGenerator(BaseGenerator):
             coef_matrices (list[np.ndarray]): Coefficient matrices, one per lag.
 
         Returns:
-            float: Maximum eigenvalue modulus; the VAR is stable iff < 1.
+            Maximum eigenvalue modulus; the VAR is stable iff < 1.
         """
         p = len(coef_matrices)
         k = coef_matrices[0].shape[0]
@@ -143,7 +143,7 @@ class VARGenerator(BaseGenerator):
             n_variables (int): Number of variables in the VAR system.
 
         Returns:
-            list[np.ndarray]: Coefficient matrices, one per lag, with
+            Coefficient matrices, one per lag, with
                 companion spectral radius <= 0.95.
         """
         coef_matrices = [
@@ -170,7 +170,7 @@ class VARGenerator(BaseGenerator):
             n_variables (int): Number of variables in the VAR system.
 
         Returns:
-            tuple: (coefficient matrices, intercept vector, innovation
+            (coefficient matrices, intercept vector, innovation
                 covariance matrix), all sized for n_variables.
         """
         if self._coef_matrices_arrays is None:
@@ -218,7 +218,7 @@ class VARGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: Array of time series values (univariate).
+            Array of time series values (univariate).
         """
         seed = int(self.rng.integers(0, 2**63))
         coef_matrices, intercept, innovation_cov = self._resolve_parameters(1)
@@ -245,7 +245,7 @@ class VARGenerator(BaseGenerator):
             n_variables (int): Number of variables in the VAR system.
 
         Returns:
-            np.ndarray: Array of shape (length, n_variables).
+            Array of shape (length, n_variables).
         """
         coef_matrices, intercept, innovation_covariance = self._resolve_parameters(
             n_variables
@@ -288,8 +288,7 @@ class VARGenerator(BaseGenerator):
             n_jobs (int): Unused (accepted for API compatibility).
 
         Returns:
-            DataFrame in long format with columns [id_col, time_col,
-            target_col]; each unique_id is one correlated variable.
+            DataFrame in long format with columns [id_col, time_col, target_col]; each unique_id is one correlated variable.
         """
         length = self.rng.integers(self.min_length, self.max_length + 1)
         samples = self._generate_multivariate(length, n_series)

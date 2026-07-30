@@ -122,7 +122,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: Array of DAU values.
+            Array of DAU values.
         """
         if self.growth_rate_std > 0:
             series_growth_rate = float(
@@ -163,9 +163,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
             n_jobs (int): Ignored; generation is sequential.
 
         Returns:
-            DataFrame in long format with columns [id_col, time_col,
-            target_col, event_col], where event_col is 1 at steps where an
-            event occurred.
+            DataFrame in long format with columns [id_col, time_col, target_col, event_col], where event_col is 1 at steps where an event occurred.
         """
         all_metadata: list[SeriesMetadata] = []
 

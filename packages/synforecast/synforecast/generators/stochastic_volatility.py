@@ -116,7 +116,7 @@ class StochasticVolatilityGenerator(BaseGenerator):
             n: Number of increments
 
         Returns:
-            tuple: (dW1, dW2) increments with Corr(dW1, dW2) = correlation
+            (dW1, dW2) increments with Corr(dW1, dW2) = correlation
         """
         z1 = self._sample_innovations(n)
         z2 = self._sample_innovations(n)
@@ -139,7 +139,7 @@ class StochasticVolatilityGenerator(BaseGenerator):
             length: Number of time steps
 
         Returns:
-            tuple: (prices, variances) arrays
+            (prices, variances) arrays
         """
         prices = np.zeros(length)
         variances = np.zeros(length)
@@ -176,7 +176,7 @@ class StochasticVolatilityGenerator(BaseGenerator):
             length: Number of time steps
 
         Returns:
-            tuple: (forwards, variances) arrays
+            (forwards, variances) arrays
         """
         forwards = np.zeros(length)
         vols = np.zeros(length)
@@ -230,7 +230,7 @@ class StochasticVolatilityGenerator(BaseGenerator):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of values (price, returns, or volatility)
+            Array of values (price, returns, or volatility)
         """
         seed = int(self.rng.integers(0, 2**63))
         model_t = 0 if self.model == "heston" else 1
@@ -263,7 +263,7 @@ class StochasticVolatilityGenerator(BaseGenerator):
             start_id (int): Starting ID for series naming (default: 0)
 
         Returns:
-            tuple: (prices, volatilities, series_ids) arrays
+            (prices, volatilities, series_ids) arrays
         """
         all_prices = []
         all_vols = []
@@ -291,7 +291,7 @@ class StochasticVolatilityGenerator(BaseGenerator):
         """Get information about the stochastic volatility model.
 
         Returns:
-            dict: Model parameters and characteristics
+            Model parameters and characteristics
         """
         info = {
             "model": self.model,

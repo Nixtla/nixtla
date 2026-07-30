@@ -183,7 +183,7 @@ class VitalSignsGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: Array of vital sign values.
+            Array of vital sign values.
         """
         params = self._baselines[self.vital_sign]
 
@@ -213,8 +213,7 @@ class VitalSignsGenerator(BaseGenerator):
             start_id (int): Starting ID for the series numbering.
 
         Returns:
-            DataFrame with columns [id_col, time_col] plus one column per
-            vital sign, aligned on the same timestamps per patient.
+            DataFrame with columns [id_col, time_col] plus one column per vital sign, aligned on the same timestamps per patient.
         """
         ids: list[np.ndarray] = []
         timestamps: list[np.ndarray] = []
@@ -246,7 +245,7 @@ class VitalSignsGenerator(BaseGenerator):
         """Get information about the vital signs model.
 
         Returns:
-            dict: Model parameters and patient characteristics.
+            Model parameters and patient characteristics.
         """
         return {
             "patient_type": self.patient_type,

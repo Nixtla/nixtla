@@ -77,8 +77,7 @@ def detect_seasonality(
         min_period: Minimum period to check
 
     Returns:
-        dict with 'period' (detected period or None), 'strength' (0-1),
-        and 'has_seasonality' (bool)
+        dict with 'period' (detected period or None), 'strength' (0-1), and 'has_seasonality' (bool)
     """
     series = np.asarray(series, dtype=np.float64)
     valid = series[~np.isnan(series)]
@@ -141,8 +140,7 @@ def detect_trend(series: np.ndarray) -> dict:
         series: 1D array of time series values
 
     Returns:
-        dict with 'slope', 'intercept', 'has_trend' (bool),
-        and 'r_squared' (goodness of fit)
+        dict with 'slope', 'intercept', 'has_trend' (bool), and 'r_squared' (goodness of fit)
     """
     series = np.asarray(series, dtype=np.float64)
     valid_mask = ~np.isnan(series)
@@ -376,8 +374,7 @@ def detect_intermittency(series: np.ndarray) -> dict:
         series: 1D array of time series values
 
     Returns:
-        dict with 'is_intermittent' (bool), 'zero_fraction' (float),
-        and 'adi' (average demand interval)
+        dict with 'is_intermittent' (bool), 'zero_fraction' (float), and 'adi' (average demand interval)
     """
     series = np.asarray(series, dtype=np.float64)
     valid = series[~np.isnan(series)]
@@ -434,8 +431,7 @@ def detect_regime_changes(series: np.ndarray, max_regimes: int = 3) -> dict:
         max_regimes: Maximum number of regimes to detect
 
     Returns:
-        dict with 'n_regimes' (int), 'change_points' (list of indices),
-        and 'has_regimes' (bool)
+        dict with 'n_regimes' (int), 'change_points' (list of indices), and 'has_regimes' (bool)
     """
     series = np.asarray(series, dtype=np.float64)
     valid = series[~np.isnan(series)]

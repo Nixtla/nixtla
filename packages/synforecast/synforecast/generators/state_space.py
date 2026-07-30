@@ -196,7 +196,7 @@ class StateSpaceGenerator(BaseGenerator):
         """Generate a random stable state transition matrix.
 
         Returns:
-            np.ndarray: Transition matrix with spectral radius < 1.
+            Transition matrix with spectral radius < 1.
         """
         F = self.rng.uniform(-0.3, 0.3, (self.state_dim, self.state_dim))
         max_eigenvalue: float = np.max(np.abs(np.linalg.eigvals(F)))
@@ -212,7 +212,7 @@ class StateSpaceGenerator(BaseGenerator):
             t (int): Time index.
 
         Returns:
-            np.ndarray: Next state.
+            Next state.
         """
         if self.transition_fn is not None:
             return self.transition_fn(x_prev, t, self.rng)
@@ -228,7 +228,7 @@ class StateSpaceGenerator(BaseGenerator):
             t (int): Time index.
 
         Returns:
-            np.ndarray: Observation.
+            Observation.
         """
         if self.observation_fn is not None:
             return self.observation_fn(x, t, self.rng)
@@ -289,7 +289,7 @@ class StateSpaceGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: Observed values (first observation dimension).
+            Observed values (first observation dimension).
         """
         if self.transition_fn is None and self.observation_fn is None:
             seed = int(self.rng.integers(0, 2**63))
@@ -331,7 +331,7 @@ class StateSpaceGenerator(BaseGenerator):
             n_series (int): Number of series to generate (default: 1).
             start_id (int): Starting ID for series numbering (default: 0).
         Returns:
-            tuple: (observations DataFrame in long format, states DataFrame
+            (observations DataFrame in long format, states DataFrame
                 with one ``state_j`` column per state dimension).
         """
         length = int(self.rng.integers(self.min_length, self.max_length + 1))

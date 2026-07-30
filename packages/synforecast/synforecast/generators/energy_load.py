@@ -168,7 +168,7 @@ class EnergyLoadGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: Array of energy load values.
+            Array of energy load values.
         """
         seed = int(self.rng.integers(0, 2**63))
         holidays = np.array(self.holiday_days, dtype=np.int32)

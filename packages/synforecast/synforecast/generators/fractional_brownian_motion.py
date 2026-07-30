@@ -107,7 +107,7 @@ class FractionalBrownianMotionGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: fBm path values (or fGn increments if
+            fBm path values (or fGn increments if
                 return_increments=True).
         """
         seed = int(self.rng.integers(0, 2**63))
@@ -151,7 +151,7 @@ class FractionalBrownianMotionGenerator(BaseGenerator):
             method: 'rs' (rescaled range) or 'var' (variance of aggregates).
 
         Returns:
-            float: Estimated Hurst exponent, clipped to [0.01, 0.99].
+            Estimated Hurst exponent, clipped to [0.01, 0.99].
         """
         if method == "rs":
             return self._estimate_hurst_rs(series)

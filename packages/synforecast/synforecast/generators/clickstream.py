@@ -214,7 +214,7 @@ class ClickstreamGenerator(BaseGenerator):
         """Simulate complete session data.
 
         Returns:
-            tuple: (sessions, pageviews, conversions, bounces) arrays.
+            (sessions, pageviews, conversions, bounces) arrays.
         """
         seasonality = self._generate_seasonality(length)
         trend = self._generate_trend(length)
@@ -289,7 +289,7 @@ class ClickstreamGenerator(BaseGenerator):
             length (int): The length of the series to generate.
 
         Returns:
-            np.ndarray: Array of metric values.
+            Array of metric values.
         """
         seed = int(self.rng.integers(0, 2**63))
         sp = self._source_params
@@ -320,8 +320,7 @@ class ClickstreamGenerator(BaseGenerator):
             start_id (int): Starting ID for series naming.
 
         Returns:
-            dict: All metrics as flat arrays, keyed by metric name plus
-            'series_id'.
+            All metrics as flat arrays, keyed by metric name plus 'series_id'.
         """
         all_data: dict[str, list] = {
             "series_id": [],
@@ -370,7 +369,7 @@ class ClickstreamGenerator(BaseGenerator):
                 e-commerce funnel).
 
         Returns:
-            dict: Stage name -> session count at that stage.
+            Stage name -> session count at that stage.
         """
         if stages is None:
             stages = [
@@ -400,7 +399,7 @@ class ClickstreamGenerator(BaseGenerator):
         """Get information about the clickstream model.
 
         Returns:
-            dict: Model parameters and traffic characteristics.
+            Model parameters and traffic characteristics.
         """
         return {
             "base_sessions": self.base_sessions,

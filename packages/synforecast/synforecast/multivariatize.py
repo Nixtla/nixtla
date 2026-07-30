@@ -234,8 +234,7 @@ class Multivariatizer(BaseModel):
             start_id (int): Starting ID for series numbering (default: 0).
 
         Returns:
-            DataFrame in long format with the wrapped generator's
-            [id_col, time_col, target_col] columns and dataframe engine.
+            DataFrame in long format with the wrapped generator's [id_col, time_col, target_col] columns and dataframe engine.
         """
         if n_series < 1:
             raise ValueError("n_series must be >= 1")

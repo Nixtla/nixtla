@@ -461,7 +461,7 @@ class BaseGenerator(BaseModel, ABC):
             scale: Desired standard deviation of the innovations.
 
         Returns:
-            np.ndarray: Innovation samples with the requested shape.
+            Innovation samples with the requested shape.
         """
         dist = self.innovation_distribution
         params = self.innovation_params or {}
@@ -682,8 +682,7 @@ class BaseGenerator(BaseModel, ABC):
             values: Array of time series values
 
         Returns:
-            Tuple of (values, changepoint_indices, anomaly_indices, missing_indices).
-            Index arrays are None when the corresponding flag is not requested.
+            Tuple of (values, changepoint_indices, anomaly_indices, missing_indices). Index arrays are None when the corresponding flag is not requested.
         """
         values, cp_indices = self._add_changepoints(values)
         values, anom_indices = self._add_anomalies(values)
@@ -842,9 +841,7 @@ class BaseGenerator(BaseModel, ABC):
                 Results are seed-deterministic and do not depend on n_jobs.
 
         Returns:
-            DataFrame in long format with columns [id_col, time_col, target_col]
-            (default ['unique_id', 'ds', 'y']), plus any exogenous or flag
-            columns.
+            DataFrame in long format with columns [id_col, time_col, target_col] (default ['unique_id', 'ds', 'y']), plus any exogenous or flag columns.
         """
         if n_series < 1:
             raise ValueError(f"n_series must be a positive integer, got {n_series}.")
@@ -942,6 +939,6 @@ class BaseGenerator(BaseModel, ABC):
             length (int): The length of the series to generate
 
         Returns:
-            np.ndarray: Array of time series values
+            Array of time series values
         """
         pass
