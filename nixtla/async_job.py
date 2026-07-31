@@ -1,8 +1,11 @@
+import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
     from .nixtla_client import NixtlaClient
+
+logger = logging.getLogger(__name__)
 
 
 class JobStatus(str, Enum):
@@ -59,6 +62,10 @@ class Job:
     `status` queries the server for the job's current status; call `wait()`
     to block until it reaches a terminal state and get its result, or
     `cancel()` to request that the server stop it.
+
+    Can also be used as a context manager: if an exception propagates out of
+    the `with` block before the job reaches a terminal state, cancellation is
+    requested automatically as best-effort cleanup.
     """
 
     def __init__(
@@ -132,3 +139,20 @@ class Job:
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             self._client._cancel_job(http_client, self.job_id)
         self._status = JobStatus.CANCELLED
+
+    def __enter__(self) -> "Job":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is None:
+            return
+        if self._status is not None and self._status.is_terminal:
+            return
+        try:
+            self.cancel()
+        except Exception:
+            logger.warning(
+                "Failed to cancel job %s during exception cleanup",
+                self.job_id,
+                exc_info=True,
+            )

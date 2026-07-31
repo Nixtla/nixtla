@@ -471,6 +471,98 @@ def test_job_wait_raises_after_cancelled_status(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Job as a context manager
+# ---------------------------------------------------------------------------
+
+
+def test_job_context_manager_cancels_on_exception(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    calls = []
+
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
+
+    with pytest.raises(ValueError):
+        with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+            raise ValueError("boom")
+
+    assert calls == ["ft-job-1"]
+    assert job.status == "cancelled"
+
+
+def test_job_context_manager_no_cancel_on_normal_exit(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    calls = []
+
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
+
+    with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+        pass
+
+    assert calls == []
+    assert job._status is None
+
+
+def test_job_context_manager_no_cancel_if_already_terminal(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        return _finetune_poll_response()
+
+    calls = []
+
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
+
+    with pytest.raises(ValueError):
+        with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+            job.wait(poll_interval=1, poll_timeout=2)
+            raise ValueError("boom")
+
+    assert calls == []
+    assert job.status == "succeeded"
+
+
+def test_job_context_manager_logs_and_swallows_cancel_failure(monkeypatch, caplog):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    def fake_cancel_job(self, client, job_id):
+        raise ApiError(status_code=500, body={"detail": "boom"})
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(ValueError, match="original error"):
+            with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+                raise ValueError("original error")
+
+    assert "Failed to cancel job ft-job-1" in caplog.text
+    assert job._status is None
+
+
+# ---------------------------------------------------------------------------
 # _cancel_job
 # ---------------------------------------------------------------------------
 
