@@ -70,8 +70,8 @@ dev = [
 distributed = [
     "fugue[dask,ray,spark]>=0.9.6",
     "dask",
-    "pandas<2.2",
-    "ray<=2.55.0",
+    "pandas<2.3",
+    "ray<=2.56.1",
 ]
 plotting = [
     "utilsforecast[plotting]",
@@ -98,6 +98,7 @@ constraint-dependencies = [
     "jupyter-server>=2.20.0",
     "msgpack>=1.2.1",
     "pyjwt>=2.13.0",
+    "setuptools>=83.0.0",
     "tornado>=6.5.7",
 ]
 
