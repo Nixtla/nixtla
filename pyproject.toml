@@ -70,8 +70,8 @@ dev = [
 distributed = [
     "fugue[dask,ray,spark]>=0.9.6",
     "dask",
-    "pandas<2.2",
-    "ray<=2.55.0",
+    "pandas<2.3",
+    "ray<=2.56.1",
 ]
 plotting = [
     "utilsforecast[plotting]",
