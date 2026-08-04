@@ -60,14 +60,24 @@
         "pages": [
           "/forecasting/timegpt_quickstart",
           "/forecasting/timegpt_2_family",
+          "/forecasting/improve_accuracy",
           {
             "group": "Exogenous variables",
             "pages": [
               "/forecasting/exogenous-variables/numeric_features",
               "/forecasting/exogenous-variables/categorical_features",
               "/forecasting/exogenous-variables/holiday_and_special_dates",
-              "/forecasting/exogenous-variables/date_features",
-              "/forecasting/exogenous-variables/interpretability_with_shap"
+              "/forecasting/exogenous-variables/date_features"
+            ]
+          },
+          {
+            "group": "Explanation",
+            "pages": [
+              "/forecasting/explanation/introduction",
+              "/forecasting/exogenous-variables/interpretability_with_shap",
+              "/forecasting/explanation/intervention",
+              "/forecasting/exogenous-variables/causal-explanations",
+              "/forecasting/explanation/advanced-explanations"
             ]
           },
           {
@@ -84,7 +94,8 @@
             "pages": [
               "/forecasting/probabilistic/introduction",
               "/forecasting/probabilistic/prediction_intervals",
-              "/forecasting/probabilistic/quantiles"
+              "/forecasting/probabilistic/quantiles",
+              "/forecasting/probabilistic/simulation"
             ]
           },
           {
@@ -108,7 +119,6 @@
               "/forecasting/special-topics/temporal_hierarchical"
             ]
           },
-          "/forecasting/improve_accuracy",
           {
             "group": "Forecasting at scale",
             "pages": [
@@ -143,6 +153,7 @@
           "/use_cases/forecasting_energy_demand",
           "/use_cases/forecasting_intermittent_demand",
           "/use_cases/what_if_forecasting_price_effects_in_retail",
+          "/use_cases/coupled_simulation_retail",
           "/use_cases/logging_and_serving_with_mlflow"
         ]
       },

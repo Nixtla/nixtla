@@ -1,0 +1,594 @@
+---
+title: "Simulation"
+description: "Generate temporally correlated future paths with TimeGPT and use them for risk, probability, and scenario analysis."
+icon: "chart-spline"
+---
+
+Forecast simulation produces many possible future trajectories instead of one
+prediction per timestamp. Each trajectory is a coherent path through the forecast
+horizon, making the output useful when a decision depends on an entire future
+sequence.
+
+Use `NixtlaClient.simulate()` to generate these paths.
+
+For example, you can use simulated paths to estimate:
+
+- The probability that demand exceeds capacity at least once next week
+- The distribution of total sales over the next month
+- Inventory or staffing requirements under different futures
+- Best-case, typical, and worst-case cumulative outcomes
+
+<Info>
+Use simulation when you want to explore many ways the future could unfold. For
+example, you can estimate the chance of any price spike or the possible total
+cost across several days. If you only need one forecast, use a [regular
+forecast](/forecasting/timegpt_quickstart). If you only need a likely range for
+each future time, use [quantiles](/forecasting/probabilistic/quantiles).
+</Info>
+
+## Real-data walkthrough: German electricity prices
+
+This example uses the German electricity-price data from [Improve Forecast
+Accuracy with TimeGPT](/forecasting/improve_accuracy). The target is the hourly
+electricity price in EUR/MWh. The future inputs are published load and
+generation forecasts.
+
+### Load the data
+
+```python
+import numpy as np
+import pandas as pd
+
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    # Defaults to os.environ["NIXTLA_API_KEY"]
+    api_key="my_api_key_provided_by_nixtla"
+)
+
+data_url = (
+    "https://raw.githubusercontent.com/Nixtla/"
+    "transfer-learning-time-series/main/datasets/"
+    "electricity-short-with-ex-vars.csv"
+)
+energy = pd.read_csv(data_url, parse_dates=["ds"])
+germany = energy.query('unique_id == "DE"').copy()
+
+df_train = germany.query('ds < "2017-12-29"').copy()
+df_test = germany.query('ds >= "2017-12-29"').copy()
+X_df = df_test.drop(columns="y")
+
+price_history = df_train[["unique_id", "ds", "y"]]
+```
+
+The final 48 hours are held out. In a live forecast, their prices would still
+be unknown; here they let us compare the simulated futures with what was later
+observed.
+
+### Simulate the published-input scenario
+
+Generate 500 possible 48-hour price paths:
+
+```python
+paths = nixtla_client.simulate(
+    df=df_train,
+    X_df=X_df,
+    h=48,
+    freq="h",
+    n_paths=500,
+    seed=42,
+    model="timegpt-2.1",
+)
+
+paths.head()
+```
+
+| unique_id | ds | sample_id | TimeGPT | coupled |
+|---|---|---:|---:|---|
+| DE | 2017-12-29 00:00 | 0 | 12.30 | false |
+| DE | 2017-12-29 01:00 | 0 | 9.71 | false |
+| DE | 2017-12-29 02:00 | 0 | 7.99 | false |
+| DE | 2017-12-29 03:00 | 0 | 7.38 | false |
+| DE | 2017-12-29 04:00 | 0 | 10.01 | false |
+
+The result contains `1 * 500 * 48 = 24,000` rows. Rows sharing a `sample_id`
+form one complete electricity-price trajectory.
+
+## Understand the output
+
+| Column | Meaning |
+|---|---|
+| `unique_id` | Series identifier. It is omitted when the input has no ID column. |
+| `ds` | Future timestamp. |
+| `sample_id` | Zero-based path identifier. Rows with the same ID belong to one future trajectory. |
+| `TimeGPT` | Simulated target value. |
+| `coupled` | Whether cross-series coupling was applied to this request. |
+
+The output is long-form and ordered by `sample_id`, then series, then forecast
+timestamp. Select one complete trajectory with:
+
+```python
+path_7 = paths.query("sample_id == 7")
+```
+
+Or reshape the values into one column per path:
+
+```python
+wide_paths = paths.pivot(
+    index=["unique_id", "ds"],
+    columns="sample_id",
+    values="TimeGPT",
+)
+```
+
+## Compare a changed-input scenario
+
+An energy buyer wants to understand what happens if system conditions tighten
+on the second day. Create a scenario with:
+
+- Load forecast 15% higher
+- Generation forecast 15% lower
+
+The first day remains unchanged, making the shift easy to see.
+
+```python
+stress_X_df = X_df.copy()
+stress_hours = (
+    stress_X_df["ds"].dt.date
+    == stress_X_df["ds"].dt.date.max()
+)
+
+stress_X_df.loc[stress_hours, "Exogenous1"] *= 1.15
+stress_X_df.loc[stress_hours, "Exogenous2"] *= 0.85
+
+stress_paths = nixtla_client.simulate(
+    df=df_train,
+    X_df=stress_X_df,
+    h=48,
+    freq="h",
+    n_paths=500,
+    seed=42,
+    model="timegpt-2.1",
+)
+```
+
+<Frame caption="Lines show the median path and shaded areas show the 10th–90th percentile range. The dotted line is the price observed after the forecast origin.">
+  ![German electricity-price history and two simulated scenarios showing a clear upward shift after load rises and generation falls](/images/forecasting/simulation-energy-scenarios.png)
+</Frame>
+
+The scenarios overlap during the unchanged first day. During the changed second
+day, the median stress path is **EUR 8.82 to EUR 16.02/MWh higher** than the
+published-input path. This is the behavior the simulation example should make
+visible: new input assumptions produce a clearly different set of future
+paths.
+
+## Convert the paths into an energy-cost risk
+
+Suppose the buyer needs 1 MWh in every forecast hour. Summing each complete path
+gives one possible 48-hour procurement cost:
+
+```python
+baseline_cost = (
+    paths.groupby("sample_id", observed=True)["TimeGPT"]
+    .sum()
+    .rename("published_inputs")
+)
+stress_cost = (
+    stress_paths.groupby("sample_id", observed=True)["TimeGPT"]
+    .sum()
+    .rename("changed_inputs")
+)
+
+cost_summary = pd.DataFrame(
+    {
+        "Published inputs": [
+            baseline_cost.median(),
+            baseline_cost.quantile(0.9),
+            (baseline_cost > 300).mean(),
+        ],
+        "Changed inputs": [
+            stress_cost.median(),
+            stress_cost.quantile(0.9),
+            (stress_cost > 300).mean(),
+        ],
+    },
+    index=["Median cost", "90th percentile cost", "Probability above EUR 300"],
+)
+```
+
+| 48-hour outcome | Published inputs | Changed inputs |
+|---|---:|---:|
+| Median cost | EUR 214.28 | EUR 509.86 |
+| 90th percentile cost | EUR 840.23 | EUR 1,138.59 |
+| Probability above EUR 300 | 43.0% | 67.0% |
+
+<Frame caption="Each observation is the total cost from one complete 48-hour path.">
+  ![Overlapping histograms showing the higher 48-hour energy-cost distribution under changed inputs](/images/forecasting/simulation-energy-cost-risk.png)
+</Frame>
+
+The changed system conditions do more than shift one hourly forecast: they move
+the distribution of the complete purchasing outcome. A buyer can use this view
+to compare a fixed-price offer, choose a hedge size, or set a budget buffer.
+
+## Choose the number of paths
+
+`n_paths` controls the number of trajectories generated per series.
+
+- Use tens of paths for exploration and plotting.
+- Use hundreds or thousands when estimating probabilities or tail outcomes.
+- Increase the count until the decision statistic you care about becomes stable.
+- Remember that response size and local dataframe memory grow linearly with
+  `n_paths`.
+
+The accepted range is 1 to 10,000 paths. A request can return at most 5,000,000
+values:
+
+```text
+n_paths * number of series * h <= 5,000,000
+```
+
+For example, 500 series, a horizon of 20, and 500 paths would produce exactly
+5,000,000 values.
+
+## Reproduce a simulation
+
+Provide `seed` when you need a repeatable result:
+
+```python
+first = nixtla_client.simulate(
+    df=df_train,
+    X_df=X_df,
+    h=48,
+    freq="h",
+    n_paths=500,
+    seed=42,
+    model="timegpt-2.1",
+)
+
+second = nixtla_client.simulate(
+    df=df_train,
+    X_df=X_df,
+    h=48,
+    freq="h",
+    n_paths=500,
+    seed=42,
+    model="timegpt-2.1",
+)
+
+pd.testing.assert_frame_equal(first, second)
+```
+
+Repeated calls without `seed` can return different paths. Use a fixed seed in
+tests, audited analyses, and reproducible reports.
+
+## Calculate probabilities from paths
+
+### Probability of exceeding a price threshold
+
+Calculate the share of published-input paths that exceed EUR 40/MWh at least
+once:
+
+```python
+price_threshold = 40
+
+exceeds_threshold = (
+    paths.assign(exceeds=paths["TimeGPT"] > price_threshold)
+    .groupby(["unique_id", "sample_id"], observed=True)["exceeds"]
+    .any()
+)
+
+probability = exceeds_threshold.groupby("unique_id", observed=True).mean()
+probability
+```
+
+```text
+unique_id
+DE    0.402
+```
+
+In this run, 40.2% of the complete paths cross EUR 40/MWh at least once.
+
+### Distribution of cumulative cost
+
+```python
+total_cost = (
+    paths.groupby(["unique_id", "sample_id"], observed=True)["TimeGPT"]
+    .sum()
+    .rename("total_cost")
+)
+
+summary = total_cost.groupby("unique_id", observed=True).quantile(
+    [0.1, 0.5, 0.9]
+)
+summary
+```
+
+This answers a different question from timestamp-level quantiles: it describes
+the distribution of the total across the complete horizon.
+
+### Derive timestamp-level quantiles
+
+```python
+path_quantiles = (
+    paths.groupby(["unique_id", "ds"], observed=True)["TimeGPT"]
+    .quantile([0.1, 0.5, 0.9])
+    .unstack()
+    .rename(columns={0.1: "q10", 0.5: "q50", 0.9: "q90"})
+    .reset_index()
+)
+```
+
+Use enough paths for stable tail estimates. Direct
+[quantile forecasts](/forecasting/probabilistic/quantiles) are usually more
+efficient when quantiles are the only required output.
+
+## Multiple time series
+
+Pass stacked series using the normal `unique_id`, time, and target columns:
+
+```python
+multi_df = energy.query(
+    'unique_id in ["DE", "BE"] and ds < "2017-12-29"'
+)[
+    ["unique_id", "ds", "y"]
+]
+
+market_paths = nixtla_client.simulate(
+    df=multi_df,
+    h=48,
+    freq="h",
+    n_paths=200,
+    seed=42,
+)
+```
+
+By default, paths are generated independently for each series. Set
+`multivariate=True` when each `sample_id` should represent one coherent scenario
+across all series. This changes two things: the marginal forecasts become joint
+for models that support it, so each series' distribution can reflect the others,
+and the sample paths are coupled so that path `k` describes all series at once.
+
+```python
+joint_paths = nixtla_client.simulate(
+    df=multi_df,
+    h=48,
+    freq="h",
+    n_paths=200,
+    seed=42,
+    multivariate=True,
+)
+
+joint_paths["coupled"].unique()
+```
+
+```text
+array([True])
+```
+
+The series must share a forecast origin. Different history lengths are allowed
+because their common recent history is used. If the data does not contain a
+shared, complete historical window, the request falls back to per-series paths
+and returns `coupled=False`.
+
+<Note>
+`coupled=False` is expected when `multivariate=False` or when the request
+contains only one series. It does not indicate an error.
+</Note>
+
+For a complete business example, see
+[Plan Retail Promotions with Coupled Simulation](/use_cases/coupled_simulation_retail).
+
+## Exogenous variables
+
+Simulation accepts the same historical and future exogenous-data layout as
+forecasting.
+
+### Future-known numerical features
+
+Features known across the forecast horizon belong in `X_df`:
+
+```python
+energy_paths = nixtla_client.simulate(
+    df=df_train,
+    X_df=X_df,
+    h=48,
+    freq="h",
+    n_paths=100,
+    seed=42,
+    model="timegpt-2.1",
+)
+```
+
+Here, `Exogenous1` contains load forecasts and `Exogenous2` contains generation
+forecasts. Each future feature must also appear in historical `df_train`, and
+`X_df` must contain exactly 48 rows for Germany.
+
+### Historical-only features
+
+Declare features unavailable in the future with `hist_exog_list`:
+
+```python
+df_hist_exog = df_train[
+    ["unique_id", "ds", "y", "Exogenous1"]
+]
+
+paths = nixtla_client.simulate(
+    df=df_hist_exog,
+    h=48,
+    freq="h",
+    n_paths=100,
+    hist_exog_list=["Exogenous1"],
+    seed=42,
+)
+```
+
+### Categorical features
+
+List categorical columns explicitly:
+
+```python
+df_categorical = price_history.assign(
+    day_type=np.where(
+        price_history["ds"].dt.dayofweek < 5,
+        "weekday",
+        "weekend",
+    ),
+)
+
+future_dates = pd.date_range(
+    price_history["ds"].max() + pd.Timedelta(hours=1),
+    periods=48,
+    freq="h",
+)
+X_df_categorical = pd.DataFrame(
+    {
+        "unique_id": "DE",
+        "ds": future_dates,
+        "day_type": np.where(
+            future_dates.dayofweek < 5,
+            "weekday",
+            "weekend",
+        ),
+    }
+)
+
+paths = nixtla_client.simulate(
+    df=df_categorical,
+    X_df=X_df_categorical,
+    h=48,
+    freq="h",
+    n_paths=100,
+    categorical_exog_list=["day_type"],
+    seed=42,
+)
+```
+
+See [numerical features](/forecasting/exogenous-variables/numeric_features) and
+[categorical features](/forecasting/exogenous-variables/categorical_features)
+for the complete data requirements.
+
+## Date features
+
+Date-derived features use the same interface as forecasting:
+
+```python
+paths = nixtla_client.simulate(
+    df=price_history,
+    h=48,
+    freq="h",
+    n_paths=100,
+    date_features=["hour", "dayofweek"],
+    date_features_to_one_hot=["hour", "dayofweek"],
+    seed=42,
+)
+```
+
+Learn more in the [date features guide](/forecasting/exogenous-variables/date_features).
+
+## Reuse a fine-tuned model
+
+Pass the ID returned by `finetune()`:
+
+```python
+model_id = nixtla_client.finetune(
+    df=price_history,
+    freq="h",
+    finetune_steps=10,
+)
+
+paths = nixtla_client.simulate(
+    df=price_history,
+    h=48,
+    freq="h",
+    n_paths=100,
+    finetuned_model_id=model_id,
+    seed=42,
+)
+```
+
+The requested base model must match the base model used for fine-tuning. See
+[reusing fine-tuned models](/forecasting/fine-tuning/save_reuse_delete_finetuned_models)
+for model lifecycle guidance.
+
+## Use Polars
+
+`simulate()` preserves the input dataframe library:
+
+```python
+import polars as pl
+
+pl_df = pl.from_pandas(price_history)
+
+pl_paths = nixtla_client.simulate(
+    df=pl_df,
+    h=48,
+    freq="1h",
+    n_paths=100,
+    seed=42,
+)
+
+type(pl_paths)
+```
+
+```text
+polars.dataframe.frame.DataFrame
+```
+
+Distributed dataframes are not currently supported.
+
+## Quantile grid
+
+You can provide a strictly increasing grid of between 2 and 200 values inside
+the open interval `(0, 1)`:
+
+```python
+paths = nixtla_client.simulate(
+    df=price_history,
+    h=48,
+    freq="h",
+    n_paths=100,
+    quantiles=[0.05, 0.25, 0.5, 0.75, 0.95],
+    seed=42,
+)
+```
+
+A denser grid can represent the marginal forecast distribution in greater
+detail, but it also increases computation and memory use.
+
+## Troubleshooting
+
+### The series is too short
+
+Simulation requires enough valid history to estimate forecast uncertainty and
+to construct complete trajectories. The required length depends on the model,
+horizon, and exogenous configuration. Add more history or reduce `h`.
+
+### Future exogenous data has the wrong shape
+
+For every future-known feature, provide exactly `h` values per series in `X_df`.
+The ID and timestamps must match the requested future grid.
+
+### The response is too large
+
+Reduce `n_paths`, `h`, or the number of series. Remember that a long dataframe
+has one row for every series, path, and future timestamp.
+
+### `coupled` is false
+
+Check that:
+
+- `multivariate=True`
+- More than one series is present
+- All series share the same forecast origin
+- Their common recent history contains a complete window
+
+### A repeated call changed
+
+Provide the same integer `seed` and keep all data and arguments identical.
+
+<Warning>
+Simulated paths represent plausible model-based futures. They are not guaranteed
+outcomes, and their quality depends on the data, model, horizon, and assumptions.
+Validate decision rules with historical backtesting before using them in
+production.
+</Warning>

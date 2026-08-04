@@ -176,6 +176,24 @@ first_finetune_eval.merge(
 
 We can see the error was reduced a bit more.
 
+A saved model can also be used to generate future paths by passing its ID to
+`NixtlaClient.simulate()`:
+
+```python
+paths = nixtla_client.simulate(
+    df=train,
+    h=h,
+    freq=fcst_kwargs["freq"],
+    model=fcst_kwargs["model"],
+    finetuned_model_id=second_model_id,
+    n_paths=100,
+    seed=42,
+)
+```
+
+See [Forecast Simulation](/forecasting/probabilistic/simulation) for output
+format, coupling, and scenario-analysis examples.
+
 
 ### Step 6: List fine-tuned models
 

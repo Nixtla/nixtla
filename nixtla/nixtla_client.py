@@ -140,6 +140,9 @@ _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 _ThresholdMethod = Literal["univariate", "multivariate"]
 _ExplainMethod = Literal["granger", "transfer_entropy"]
+_FeatureContributionsType = Literal[
+    "shapley", "intervention", "granger", "transfer_entropy"
+]
 
 _MAX_SIMULATE_PATHS = 10_000
 _MAX_SIMULATE_OUTPUT_VALUES = 5_000_000
@@ -1510,6 +1513,7 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         feature_contributions: bool,
+        feature_contributions_type: _FeatureContributionsType,
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
     ) -> DistributedDFType:
@@ -1572,6 +1576,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=None,
                 feature_contributions=feature_contributions,
+                feature_contributions_type=feature_contributions_type,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
             ),
@@ -1605,6 +1610,7 @@ class NixtlaClient:
         model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
+        feature_contributions_type: _FeatureContributionsType = "shapley",
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
     ) -> AnyDFType:
@@ -1693,9 +1699,11 @@ class NixtlaClient:
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
-            feature_contributions (bool): Compute SHAP values.
-                Gives access to computed SHAP values to explain the impact
-                of features on the final predictions. Defaults to False.
+            feature_contributions (bool): Compute feature contributions and
+                store them in `self.feature_contributions`. Defaults to False.
+            feature_contributions_type (str): Explanation used for feature
+                contributions. One of `"shapley"`, `"intervention"`,
+                `"granger"`, or `"transfer_entropy"`. Defaults to `"shapley"`.
             model_parameters (dict): The dictionary settings that determine
                 the behavior of the model. Default is None
             multivariate (bool): If True, enables multivariate predictions.
@@ -1708,6 +1716,16 @@ class NixtlaClient:
                 probabilistic predictions (if level is not None).
         """
         extra_param_checker.validate_python(model_parameters)
+        if feature_contributions_type not in (
+            "shapley",
+            "intervention",
+            "granger",
+            "transfer_entropy",
+        ):
+            raise ValueError(
+                "`feature_contributions_type` must be one of 'shapley', "
+                "'intervention', 'granger', or 'transfer_entropy'."
+            )
 
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_forecast(
@@ -1734,6 +1752,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=num_partitions,
                 feature_contributions=feature_contributions,
+                feature_contributions_type=feature_contributions_type,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
             )
@@ -1896,6 +1915,8 @@ class NixtlaClient:
             "feature_contributions": feature_contributions and X is not None,
             "multivariate": multivariate,
         }
+        if feature_contributions:
+            payload["feature_contributions_type"] = feature_contributions_type
         if model_parameters is not None:
             payload.update({"model_parameters": model_parameters})
 
@@ -3765,6 +3786,7 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
+    feature_contributions_type: _FeatureContributionsType,
     model_parameters: _ExtraParamDataType,
     multivariate: bool,
 ) -> pd.DataFrame:
@@ -3798,6 +3820,7 @@ def _forecast_wrapper(
         model=model,
         num_partitions=num_partitions,
         feature_contributions=feature_contributions,
+        feature_contributions_type=feature_contributions_type,
         model_parameters=model_parameters,
         multivariate=multivariate,
     )

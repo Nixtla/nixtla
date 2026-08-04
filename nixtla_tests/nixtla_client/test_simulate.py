@@ -287,7 +287,7 @@ def test_simulate_live_endpoint_is_reproducible(nixtla_test_client):
         "freq": "D",
         "n_paths": 3,
         "seed": 42,
-        "model": "timegpt-1",
+        "model": "timegpt-2.1",
     }
 
     first = nixtla_test_client.simulate(**kwargs)
