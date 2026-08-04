@@ -137,7 +137,8 @@
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "x-fern-sdk-method-name": "v2/simulate"
       }
     },
     "/v2/explain": {

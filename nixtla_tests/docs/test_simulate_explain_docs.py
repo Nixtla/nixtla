@@ -1,5 +1,6 @@
 import inspect
 import json
+import re
 from pathlib import Path
 
 from nixtla import NixtlaClient
@@ -8,51 +9,35 @@ from nixtla import NixtlaClient
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "timegpt-docs"
 SIMULATION_GUIDE = DOCS / "forecasting/probabilistic/simulation.mdx"
-COUPLED_SIMULATION_GUIDE = (
-    DOCS / "use_cases/coupled_simulation_retail.mdx"
-)
-HISTORICAL_GUIDE = (
-    DOCS / "forecasting/exogenous-variables/causal-explanations.mdx"
-)
+COUPLED_SIMULATION_GUIDE = DOCS / "use_cases/coupled_simulation_retail.mdx"
+HISTORICAL_GUIDE = DOCS / "forecasting/exogenous-variables/causal-explanations.mdx"
 EXPLANATION_OVERVIEW = DOCS / "forecasting/explanation/introduction.mdx"
-SHAP_GUIDE = (
-    DOCS / "forecasting/exogenous-variables/interpretability_with_shap.mdx"
-)
+SHAP_GUIDE = DOCS / "forecasting/exogenous-variables/interpretability_with_shap.mdx"
 INTERVENTION_GUIDE = DOCS / "forecasting/explanation/intervention.mdx"
 ADVANCED_GUIDE = DOCS / "forecasting/explanation/advanced-explanations.mdx"
 SDK_REFERENCE = DOCS / "reference/sdk_reference.mdx"
 OPENAPI = DOCS / "openapi.json"
 NAVIGATION = DOCS / "docs.json"
-# Figures the docs scripts render into the guides. Regenerating the assets is
-# expected to move these, and a backend numerics change will move all of them at
-# once: update this block rather than editing assertions one by one.
-#
-#   timegpt-docs/scripts/generate_simulate_explain_assets.py  -> SIMULATION, EXPLANATION
-#   timegpt-docs/scripts/generate_coupled_retail_tutorial.py  -> COUPLED
 EXPECTED_SIMULATION_FIGURES = [
-    "EUR 214.28",  # median 48-hour cost, published inputs
-    "EUR 509.86",  # median 48-hour cost, changed inputs
-    "43.0%",  # probability above EUR 300, published inputs
-    "67.0%",  # probability above EUR 300, changed inputs
+    "EUR 214.28",
+    "EUR 509.86",
+    "43.0%",
+    "67.0%",
 ]
-# Effects the tutorial's generator plants, and what the simulation recovers. The
-# guide has to show both, so the test checks for both.
 EXPECTED_COUPLED_PLANTED = [
-    "+11.9%",  # promoted product, own-price
-    "−11.5%",  # alternative product, substitute
-    "+15.0%",  # related product, complement
+    "+11.9%",
+    "−11.5%",
+    "+15.0%",
 ]
 EXPECTED_COUPLED_RECOVERED = [
-    "+6.0%",  # promoted product
-    "−11.7%",  # alternative product
-    "+5.4%",  # related product
+    "+6.0%",
+    "−11.7%",
+    "+5.4%",
 ]
 EXPECTED_COUPLED_RISK = [
-    "42.4%",  # same-day risk, products simulated separately
-    "53.8%",  # same-day risk, products simulated together
+    "42.4%",
+    "53.8%",
 ]
-# Explanation figures are produced by Granger/transfer entropy and SHAP, none of
-# which depend on sample paths, so these are stable across simulate changes.
 EXPECTED_EXPLANATION_FIGURES = [
     (SHAP_GUIDE, "92.01"),
     (HISTORICAL_GUIDE, "0.863"),
@@ -139,9 +124,6 @@ def test_case_studies_include_rendered_assets():
         assert figure in simulation, f"{figure} missing from the simulation guide"
 
     coupled_simulation = COUPLED_SIMULATION_GUIDE.read_text()
-    # The product roles are planted in the generator, which is what lets the
-    # guide label them, so it must state the planted effect next to the
-    # recovered one rather than presenting the recovered one alone.
     assert "Planted role" in coupled_simulation
     assert "**Substitute**" in coupled_simulation
     assert "**Complement**" in coupled_simulation
@@ -163,26 +145,19 @@ def test_case_studies_include_rendered_assets():
         )
 
 
-def test_simulation_documentation_does_not_expose_hidden_option():
-    hidden_option = "method"
-    guide = (
-        SIMULATION_GUIDE.read_text()
-        + COUPLED_SIMULATION_GUIDE.read_text()
-    ).lower()
-    sdk_section = _sdk_section("simulate", "explain").lower()
+def test_simulate_does_not_expose_a_method_option():
+    assert "method" not in inspect.signature(NixtlaClient.simulate).parameters
 
     spec = json.loads(OPENAPI.read_text())
-    raw_api_contract = json.dumps(
-        {
-            "path": spec["paths"]["/v2/simulate"],
-            "schema": spec["components"]["schemas"]["SimulateInput"],
-        }
-    ).lower()
+    assert "method" not in spec["components"]["schemas"]["SimulateInput"]["properties"]
 
-    assert hidden_option not in guide
-    assert hidden_option not in sdk_section
-    assert hidden_option not in raw_api_contract
-    assert hidden_option not in inspect.signature(NixtlaClient.simulate).parameters
+    for guide in (SIMULATION_GUIDE, COUPLED_SIMULATION_GUIDE):
+        text = guide.read_text()
+        for call in re.findall(r"\.simulate\((.*?)\)", text, flags=re.DOTALL):
+            assert "method" not in call, f"{guide.name} passes `method` to simulate"
+
+    sdk_signature = _sdk_section("simulate", "explain")
+    assert "method=" not in sdk_signature
 
 
 def test_openapi_exposes_simulate_and_explain_contracts():

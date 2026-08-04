@@ -159,6 +159,13 @@ worth investigating.
     relationship analyses encode categories consistently before measuring
     lagged relationships. Treat the result as a ranking rather than a numeric
     distance between category labels.
+
+    For any `feature_contributions_type` other than `"shapley"`, categorical
+    features cannot be combined with `hist_exog_list` in the same request. The
+    historical/future column mapping cannot be represented faithfully once the
+    categorical columns are split out, so the request is rejected rather than
+    returning a silently wrong explanation. Either keep the exogenous features
+    all-numeric, drop `hist_exog_list`, or use `"shapley"`.
   </Accordion>
   <Accordion title="Request limits">
     A request supports up to 75 explained features and 1,000,000 historical

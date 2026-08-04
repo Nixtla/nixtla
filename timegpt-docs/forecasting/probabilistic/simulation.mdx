@@ -230,6 +230,16 @@ n_paths * number of series * h <= 5,000,000
 For example, 500 series, a horizon of 20, and 500 paths would produce exactly
 5,000,000 values.
 
+A second limit applies when you also pass a [quantile grid](#quantile-grid),
+because the service builds those marginals alongside the paths:
+
+```text
+number of series * h * (n_paths + len(quantiles)) <= 10,000,000
+```
+
+Both limits are checked before the request is sent, so an oversized call fails
+immediately rather than after a long wait.
+
 ## Reproduce a simulation
 
 Provide `seed` when you need a repeatable result:
@@ -354,7 +364,7 @@ joint_paths = nixtla_client.simulate(
     h=48,
     freq="h",
     n_paths=200,
-    seed=42,
+    seed=7,
     multivariate=True,
 )
 
@@ -364,6 +374,16 @@ joint_paths["coupled"].unique()
 ```text
 array([True])
 ```
+
+<Warning>
+Note that this call uses a different `seed` than the uncoupled one above. Both
+shuffles draw from the same generator state, so with a fixed seed the first
+series by ID is reordered identically whether `multivariate` is True or False —
+and its paths come out the same whenever its marginal forecast is unchanged
+too. Comparing coupled against uncoupled output on one seed can therefore make
+coupling look like it did nothing. Vary the seed, and compare across-series
+statistics rather than individual paths.
+</Warning>
 
 The series must share a forecast origin. Different history lengths are allowed
 because their common recent history is used. If the data does not contain a
@@ -554,6 +574,19 @@ paths = nixtla_client.simulate(
 
 A denser grid can represent the marginal forecast distribution in greater
 detail, but it also increases computation and memory use.
+
+<Note>
+`quantiles` does not add columns to the returned dataframe. It refines the
+marginal distribution the paths are drawn from, so the output stays
+`sample_id`, `TimeGPT`, and `coupled`. Compute any quantiles you need from the
+paths themselves, or use
+[quantile forecasts](/forecasting/probabilistic/quantiles) when quantile
+columns are what you are after.
+</Note>
+
+A wide grid also counts towards the second
+[size limit](#choose-the-number-of-paths): `number of series * h * (n_paths +
+len(quantiles))` may not exceed 10,000,000.
 
 ## Troubleshooting
 

@@ -40,7 +40,6 @@ GRID = "#DADCE0"
 N = 1095
 H = 28
 DISCOUNT = 0.85
-# The 28-day effect each planted coefficient implies for a 15% price cut.
 PLANTED_PCT = {PROMOTED: 11.9, ALTERNATIVE: -11.5, RELATED: 15.0}
 
 
@@ -55,9 +54,6 @@ def build_example() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     rng = np.random.default_rng(11)
     t = np.arange(N + H)
 
-    # Prices carry a lot of day-to-day movement, which is what identifies the
-    # price effects. Footfall below drifts slowly instead, so the two cannot be
-    # confused for each other.
     promoted_price = (
         6.00
         + 0.60 * np.sin(2 * np.pi * t / 97)
@@ -77,9 +73,6 @@ def build_example() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         + rng.normal(0, 0.24, N + H)
     )
 
-    # Store footfall drifts through busy and quiet stretches, lifting every
-    # product on the same day. It is never passed to the model, so it survives
-    # as demand that moves together across the products.
     shock = rng.normal(0, 1, N + H)
     footfall = np.zeros(N + H)
     for i in range(1, N + H):
@@ -262,16 +255,10 @@ def _plot_simulated_paths(
     coupled: pd.DataFrame,
 ) -> None:
     history = df[["unique_id", "ds", "y"]]
-    # The shaded bands carry the uncertainty and come from ALL the paths; the
-    # few boldly drawn ones only illustrate what a single product-group scenario
-    # looks like, which a mass of faint lines cannot show.
     path_ids = list(range(5))
     path_colors = plt.get_cmap("tab10").colors[: len(path_ids)]
     BAND = "#9AA0A6"
 
-    # Share the y-axis across each row so the two columns are directly
-    # comparable: the multivariate run changes the marginals as well as
-    # coupling the paths, and rescaling would hide that.
     fig, axes = plt.subplots(
         3,
         2,
@@ -300,7 +287,6 @@ def _plot_simulated_paths(
                 linewidth=1.5,
             )
 
-            # Spread over every path, not just the highlighted ones.
             band = (
                 paths.query("unique_id == @label")
                 .assign(TimeGPT=lambda frame: frame["TimeGPT"].clip(lower=0))
@@ -383,10 +369,6 @@ def main() -> None:
     }
     current = client.simulate(X_df=current_X_df, multivariate=True, **common)
     coupled = client.simulate(X_df=promotion_X_df, multivariate=True, **common)
-    # A different seed for the uncoupled run. With the same seed, both shuffles
-    # draw their template windows from the same generator state, so the first
-    # series by name would get an identical set of paths in both runs and the
-    # comparison chart would show one row twice.
     independent = client.simulate(
         X_df=promotion_X_df,
         multivariate=False,

@@ -20,6 +20,7 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    get_args,
     overload,
 )
 
@@ -140,20 +141,21 @@ _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 _ThresholdMethod = Literal["univariate", "multivariate"]
 _ExplainMethod = Literal["granger", "transfer_entropy"]
+_EXPLAIN_METHODS = get_args(_ExplainMethod)
 _FeatureContributionsType = Literal[
     "shapley", "intervention", "granger", "transfer_entropy"
 ]
+_FEATURE_CONTRIBUTIONS_TYPES = get_args(_FeatureContributionsType)
 
 _MAX_SIMULATE_PATHS = 10_000
 _MAX_SIMULATE_OUTPUT_VALUES = 5_000_000
-# The service also bounds the marginal grid it builds alongside the paths:
-# n_series * h * (n_paths + n_quantiles). Mirrors SIMULATE_MAX_CELLS in tsfm.
 _MAX_SIMULATE_CELLS = 10_000_000
 _MAX_SIMULATE_QUANTILES = 200
 _MIN_SIMULATE_SEED = -(2**63)
 _MAX_SIMULATE_SEED = 2**64 - 1
 _MAX_EXPLAIN_FEATURES = 75
 _MAX_EXPLAIN_FEATURE_OBSERVATIONS = 1_000_000
+_UNPARTITIONABLE_ENDPOINTS = frozenset({"v2/simulate", "v2/explain"})
 
 
 class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
@@ -284,6 +286,53 @@ def _maybe_infer_freq(
         )
     logger.info(f"Inferred freq: {inferred_freq}")
     return inferred_freq
+
+
+def _is_numeric_column(df: DataFrame, col: str) -> bool:
+    if isinstance(df, pd.DataFrame):
+        return pd.api.types.is_numeric_dtype(df[col])
+    return df[col].dtype.is_numeric()
+
+
+def _validate_freq_regularity(
+    df: DFType,
+    freq: _Freq,
+    id_col: str,
+    time_col: str,
+) -> None:
+    if isinstance(freq, (str, int)):
+        expected_ids_times = id_time_grid(
+            df,
+            freq=freq,
+            start="per_serie",
+            end="per_serie",
+            id_col=id_col,
+            time_col=time_col,
+        )
+        freq_ok = len(df) == len(expected_ids_times)
+    elif isinstance(freq, pd.offsets.BaseOffset):
+        assert isinstance(df, pd.DataFrame)
+        times_by_id = df.groupby(id_col, observed=True)[time_col].agg(
+            ["min", "max", "size"]
+        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
+            expected_ends = times_by_id["min"] + freq * (times_by_id["size"] - 1)
+        freq_ok = (expected_ends == times_by_id["max"]).all()
+    else:
+        raise ValueError(
+            "`freq` should be a string, integer or pandas offset, "
+            f"got {type(freq).__name__}."
+        )
+    if not freq_ok:
+        raise ValueError(
+            "Series contain missing or duplicate timestamps, or the timestamps "
+            "do not match the provided frequency.\n"
+            "Please make sure that all series have a single observation from the first "
+            "to the last timestamp and that the provided frequency matches the timestamps'.\n"
+            "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
+            "for an end to end example."
+        )
 
 
 def _standardize_freq(freq: _Freq, processed: ufp.ProcessedDF) -> str:
@@ -547,7 +596,7 @@ def _extract_categorical_exog(
     if futr_cat_cols and X_df is not None:
         X_df_sorted = ensure_sorted(X_df, id_col=id_col, time_col=time_col)
         for c in futr_cat_cols:
-            X_df_cat_future.append(X_df_sorted[c].tolist())
+            X_df_cat_future.append(X_df_sorted[c].to_numpy().tolist())
         X_df = X_df[[c for c in X_df.columns if c not in futr_cat_cols]]
 
     df = df[[c for c in df.columns if c not in set(categorical_exog_list)]]
@@ -645,6 +694,115 @@ def _preprocess(
         futr_cols = None
     x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
     return processed, X_future, x_cols, futr_cols
+
+
+def _validate_future_exog_keys(
+    X_df: Optional[DFType],
+    processed: ufp.ProcessedDF,
+    freq: _Freq,
+    h: int,
+    id_col: str,
+    time_col: str,
+) -> None:
+    if X_df is None:
+        return
+    X_df = ensure_time_dtype(X_df, time_col=time_col)
+    expected = ufp.make_future_dataframe(
+        uids=processed.uids,
+        last_times=type(processed.uids)(processed.last_times),
+        freq=freq,
+        h=h,
+        id_col=id_col,
+        time_col=time_col,
+    )
+    actual_keys = pd.MultiIndex.from_arrays(
+        [X_df[id_col].to_numpy(), X_df[time_col].to_numpy()]
+    )
+    expected_keys = pd.MultiIndex.from_arrays(
+        [expected[id_col].to_numpy(), expected[time_col].to_numpy()]
+    )
+    keys_match = (
+        len(actual_keys) == len(expected_keys)
+        and actual_keys.is_unique
+        and actual_keys.difference(expected_keys).empty
+        and expected_keys.difference(actual_keys).empty
+    )
+    if not keys_match:
+        raise ValueError(
+            "`X_df` must contain exactly one row for every future "
+            f"({id_col}, {time_col}) pair in the {h}-step forecast horizon."
+        )
+
+
+def _sort_categorical_values(
+    df_cat_vals: dict[str, np.ndarray],
+    sort_idxs: Optional[np.ndarray],
+) -> dict[str, np.ndarray]:
+    if sort_idxs is None:
+        return dict(df_cat_vals)
+    return {col: vals[sort_idxs] for col, vals in df_cat_vals.items()}
+
+
+def _log_exog_features(
+    futr_cols: Optional[list[str]],
+    futr_cat_cols: list[str],
+    hist_exog_list: Optional[list[str]],
+    hist_cat_cols: list[str],
+) -> None:
+    if futr_cols is not None:
+        logger.info(f"Using future exogenous features: {futr_cols}")
+    if futr_cat_cols:
+        logger.info(f"Using future categorical exogenous features: {futr_cat_cols}")
+    if hist_exog_list:
+        logger.info(f"Using historical exogenous features: {hist_exog_list}")
+    if hist_cat_cols:
+        logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
+
+
+def _build_exog_payload(
+    processed: ufp.ProcessedDF,
+    sorted_df_cat: dict[str, np.ndarray],
+    x_cols: list[str],
+    futr_cols: Optional[list[str]],
+    futr_cat_cols: list[str],
+    hist_cat_cols: list[str],
+    X_future: Optional[list],
+    X_df_cat_future: list[list],
+    has_categorical: bool,
+) -> tuple[Optional[list], Optional[list], Optional[list[int]], list[str]]:
+    n_futr_num = len(futr_cols) if futr_cols is not None else 0
+    n_futr_cat = len(futr_cat_cols)
+    n_hist_num = len(x_cols) - n_futr_num
+    n_hist_cat = len(hist_cat_cols)
+
+    cat_hist_rows: list[list] = [
+        sorted_df_cat[c].tolist() for c in futr_cat_cols + hist_cat_cols
+    ]
+    if processed.data.shape[1] > 1 or cat_hist_rows:
+        num_rows = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
+        X: Optional[list] = (
+            num_rows[:n_futr_num]
+            + cat_hist_rows[:n_futr_cat]
+            + num_rows[n_futr_num:]
+            + cat_hist_rows[n_futr_cat:]
+        )
+    else:
+        X = None
+
+    if X_future is not None or X_df_cat_future:
+        X_future = (list(X_future) if X_future is not None else []) + X_df_cat_future
+
+    categorical_exog_payload: Optional[list[int]] = None
+    if has_categorical:
+        futr_cat_indices = list(range(n_futr_num, n_futr_num + n_futr_cat))
+        hist_cat_start = n_futr_num + n_futr_cat + n_hist_num
+        hist_cat_indices = list(range(hist_cat_start, hist_cat_start + n_hist_cat))
+        categorical_exog_payload = futr_cat_indices + hist_cat_indices
+
+    feature_names = (
+        x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
+    )
+    return X, X_future, categorical_exog_payload, feature_names
 
 
 def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dict:
@@ -1032,6 +1190,13 @@ class NixtlaClient:
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
         content_size_mb = len(content) / 2**20
         if content_size_mb > 200:
+            if endpoint in _UNPARTITIONABLE_ENDPOINTS:
+                raise ValueError(
+                    f"The payload is too large ({content_size_mb:.0f}MB, "
+                    "limit 200MB). Reduce the number of series, the length of "
+                    "the history, or the number of features, and call again "
+                    "per batch."
+                )
             raise ValueError(
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
             )
@@ -1215,8 +1380,19 @@ class NixtlaClient:
         if feature_contributions is None:
             return
         shap_cols = x_cols + ["base_value"]
+        if len(feature_contributions) != len(shap_cols):
+            raise RuntimeError(
+                f"feature_contributions has {len(feature_contributions)} rows; "
+                f"expected {len(shap_cols)} ({', '.join(shap_cols)})."
+            )
         shap_df = type(out_df)(dict(zip(shap_cols, feature_contributions)))
         if insample_feat_contributions is not None:
+            if len(insample_feat_contributions) != len(shap_cols):
+                raise RuntimeError(
+                    f"In-sample feature_contributions has "
+                    f"{len(insample_feat_contributions)} rows; "
+                    f"expected {len(shap_cols)}."
+                )
             insample_shap_df = type(out_df)(
                 dict(zip(shap_cols, insample_feat_contributions))
             )
@@ -1252,40 +1428,13 @@ class NixtlaClient:
             df = df.reset_index()
         df = ensure_time_dtype(df, time_col=time_col)
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
-        if isinstance(freq, (str, int)):
-            expected_ids_times = id_time_grid(
-                df,
-                freq=freq,
-                start="per_serie",
-                end="per_serie",
-                id_col=id_col,
-                time_col=time_col,
-            )
-            freq_ok = len(df) == len(expected_ids_times)
-        elif isinstance(freq, pd.offsets.BaseOffset):
-            times_by_id = df.groupby(id_col, observed=True)[time_col].agg(
-                ["min", "max", "size"]
-            )
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
-                expected_ends = times_by_id["min"] + freq * (times_by_id["size"] - 1)
-            freq_ok = (expected_ends == times_by_id["max"]).all()
-        else:
-            raise ValueError(
-                "`freq` should be a string, integer or pandas offset, "
-                f"got {type(freq).__name__}."
-            )
-        if not freq_ok:
-            raise ValueError(
-                "Series contain missing or duplicate timestamps, or the timestamps "
-                "do not match the provided frequency.\n"
-                "Please make sure that all series have a single observation from the first "
-                "to the last timestamp and that the provided frequency matches the timestamps'.\n"
-                "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
-                "for an end to end example."
-            )
-        return df, X_df, drop_id, freq
+        inferred_freq = _maybe_infer_freq(
+            df, freq=freq, id_col=id_col, time_col=time_col
+        )
+        _validate_freq_regularity(
+            df=df, freq=inferred_freq, id_col=id_col, time_col=time_col
+        )
+        return df, X_df, drop_id, inferred_freq
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Check API key status.
@@ -1613,9 +1762,9 @@ class NixtlaClient:
         model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
-        feature_contributions_type: _FeatureContributionsType = "shapley",
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
+        feature_contributions_type: _FeatureContributionsType = "shapley",
     ) -> AnyDFType:
         """Forecast your time series using TimeGPT.
 
@@ -1704,14 +1853,14 @@ class NixtlaClient:
                 distributed environments. Defaults to None.
             feature_contributions (bool): Compute feature contributions and
                 store them in `self.feature_contributions`. Defaults to False.
-            feature_contributions_type (str): Explanation used for feature
-                contributions. One of `"shapley"`, `"intervention"`,
-                `"granger"`, or `"transfer_entropy"`. Defaults to `"shapley"`.
             model_parameters (dict): The dictionary settings that determine
                 the behavior of the model. Default is None
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
                 supported for a select set of TimeGPT models.
+            feature_contributions_type (str): Explanation used for feature
+                contributions. One of `"shapley"`, `"intervention"`,
+                `"granger"`, or `"transfer_entropy"`. Defaults to `"shapley"`.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -1719,15 +1868,10 @@ class NixtlaClient:
                 probabilistic predictions (if level is not None).
         """
         extra_param_checker.validate_python(model_parameters)
-        if feature_contributions_type not in (
-            "shapley",
-            "intervention",
-            "granger",
-            "transfer_entropy",
-        ):
+        if feature_contributions_type not in _FEATURE_CONTRIBUTIONS_TYPES:
             raise ValueError(
-                "`feature_contributions_type` must be one of 'shapley', "
-                "'intervention', 'granger', or 'transfer_entropy'."
+                "`feature_contributions_type` must be one of "
+                f"{', '.join(repr(t) for t in _FEATURE_CONTRIBUTIONS_TYPES)}."
             )
 
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
@@ -1816,12 +1960,7 @@ class NixtlaClient:
 
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
-            for c, vals in df_cat_vals.items():
-                sorted_df_cat[c] = (
-                    vals[processed.sort_idxs]
-                    if processed.sort_idxs is not None
-                    else vals
-                )
+            sorted_df_cat = _sort_categorical_values(df_cat_vals, processed.sort_idxs)
 
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
@@ -1851,48 +1990,24 @@ class NixtlaClient:
             )
             processed = _tail(processed, new_input_size)
 
-        n_futr_num = len(futr_cols) if futr_cols is not None else 0
-        n_futr_cat = len(futr_cat_cols)
-        n_hist_num = len(x_cols) - n_futr_num
-        n_hist_cat = len(hist_cat_cols)
-
-        cat_all_hist_rows: list[list] = [
-            sorted_df_cat[c].tolist() for c in futr_cat_cols + hist_cat_cols
-        ]
-
-        if processed.data.shape[1] > 1 or cat_all_hist_rows:
-            X_num = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
-            futr_num_rows = X_num[:n_futr_num]
-            hist_num_rows = X_num[n_futr_num:]
-            futr_cat_hist_rows = cat_all_hist_rows[:n_futr_cat]
-            hist_cat_hist_rows = cat_all_hist_rows[n_futr_cat:]
-            X = futr_num_rows + futr_cat_hist_rows + hist_num_rows + hist_cat_hist_rows
-            if futr_cols is not None:
-                logger.info(f"Using future exogenous features: {futr_cols}")
-            if futr_cat_cols:
-                logger.info(
-                    f"Using future categorical exogenous features: {futr_cat_cols}"
-                )
-            if hist_exog_list:
-                logger.info(f"Using historical exogenous features: {hist_exog_list}")
-            if hist_cat_cols:
-                logger.info(
-                    f"Using historical categorical exogenous features: {hist_cat_cols}"
-                )
-        else:
-            X = None
-
-        if X_future is not None or X_df_cat_future:
-            X_future = (
-                list(X_future) if X_future is not None else []
-            ) + X_df_cat_future
-
-        categorical_exog_payload: Optional[list[int]] = None
-        if categorical_exog_list:
-            futr_cat_indices = list(range(n_futr_num, n_futr_num + n_futr_cat))
-            hist_cat_start = n_futr_num + n_futr_cat + n_hist_num
-            hist_cat_indices = list(range(hist_cat_start, hist_cat_start + n_hist_cat))
-            categorical_exog_payload = futr_cat_indices + hist_cat_indices
+        X, X_future, categorical_exog_payload, weights_x_cols = _build_exog_payload(
+            processed=processed,
+            sorted_df_cat=sorted_df_cat,
+            x_cols=x_cols,
+            futr_cols=futr_cols,
+            futr_cat_cols=futr_cat_cols,
+            hist_cat_cols=hist_cat_cols,
+            X_future=X_future,
+            X_df_cat_future=X_df_cat_future,
+            has_categorical=bool(categorical_exog_list),
+        )
+        if X is not None:
+            _log_exog_features(
+                futr_cols=futr_cols,
+                futr_cat_cols=futr_cat_cols,
+                hist_exog_list=hist_exog_list,
+                hist_cat_cols=hist_cat_cols,
+            )
 
         logger.info("Calling Forecast Endpoint...")
         sizes = np.diff(processed.indptr)
@@ -1991,11 +2106,6 @@ class NixtlaClient:
             in_sample_df = ufp.drop_columns(in_sample_df, target_col)
             out = ufp.vertical_concat([in_sample_df, out])
         out = _maybe_convert_level_to_quantiles(out, quantiles)
-        # Build the full feature list in X order: [futr_num, futr_cat_hist, hist_num, hist_cat].
-        # Used for both feature_contributions and weights_x so SHAP/weight labels align with X rows.
-        weights_x_cols = (
-            x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
-        )
         self._maybe_assign_feature_contributions(
             expected_contributions=feature_contributions,
             resp=resp,
@@ -2063,10 +2173,13 @@ class NixtlaClient:
             X_df (pandas or polars DataFrame, optional): Future exogenous
                 values with ID and time columns.
             n_paths (int): Number of paths generated for each series. Must be
-                between 1 and 10,000. Defaults to 100.
+                between 1 and 10,000, and `n_paths * n_series * h` may not
+                exceed 5,000,000. Defaults to 100.
             quantiles (list[float], optional): Strictly increasing marginal
                 quantiles inside `(0, 1)`. Between 2 and 200 values may be
-                provided. A wide grid also counts towards a size limit:
+                provided. They refine the marginal distribution the paths are
+                drawn from and add no columns to the result. A wide grid also
+                counts towards a second size limit:
                 `n_series * h * (n_paths + len(quantiles))` may not exceed
                 10,000,000.
             seed (int, optional): Random seed. Reusing a seed with the same
@@ -2204,59 +2317,40 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        sorted_df_cat = {
-            col: (
-                values[processed.sort_idxs]
-                if processed.sort_idxs is not None
-                else values
-            )
-            for col, values in df_cat_vals.items()
-        }
+        _validate_future_exog_keys(
+            X_df=X_df,
+            processed=processed,
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        sorted_df_cat = _sort_categorical_values(df_cat_vals, processed.sort_idxs)
         standard_freq = _standardize_freq(freq, processed)
-        n_future_numeric = len(futr_cols) if futr_cols is not None else 0
-        n_future_categorical = len(futr_cat_cols)
-        n_historical_numeric = len(x_cols) - n_future_numeric
-        n_historical_categorical = len(hist_cat_cols)
-        categorical_history = [
-            sorted_df_cat[col].tolist() for col in futr_cat_cols + hist_cat_cols
-        ]
-
-        if processed.data.shape[1] > 1 or categorical_history:
-            numeric_history = (
-                list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
+        _, model_horizon = self._get_model_params(model, standard_freq)
+        if h > model_horizon:
+            logger.warning(
+                'The specified horizon "h" exceeds the model horizon, '
+                "this may lead to less accurate sample paths. "
+                "Please consider using a smaller horizon."
             )
-            X = (
-                numeric_history[:n_future_numeric]
-                + categorical_history[:n_future_categorical]
-                + numeric_history[n_future_numeric:]
-                + categorical_history[n_future_categorical:]
-            )
-        else:
-            X = None
-        if X_future is not None or X_df_cat_future:
-            X_future = (
-                list(X_future) if X_future is not None else []
-            ) + X_df_cat_future
-
-        categorical_exog_payload: Optional[list[int]] = None
-        if categorical_exog_list:
-            future_categorical_indices = list(
-                range(
-                    n_future_numeric,
-                    n_future_numeric + n_future_categorical,
-                )
-            )
-            historical_categorical_start = (
-                n_future_numeric + n_future_categorical + n_historical_numeric
-            )
-            historical_categorical_indices = list(
-                range(
-                    historical_categorical_start,
-                    historical_categorical_start + n_historical_categorical,
-                )
-            )
-            categorical_exog_payload = (
-                future_categorical_indices + historical_categorical_indices
+        X, X_future, categorical_exog_payload, _ = _build_exog_payload(
+            processed=processed,
+            sorted_df_cat=sorted_df_cat,
+            x_cols=x_cols,
+            futr_cols=futr_cols,
+            futr_cat_cols=futr_cat_cols,
+            hist_cat_cols=hist_cat_cols,
+            X_future=X_future,
+            X_df_cat_future=X_df_cat_future,
+            has_categorical=bool(categorical_exog_list),
+        )
+        if X is not None:
+            _log_exog_features(
+                futr_cols=futr_cols,
+                futr_cat_cols=futr_cat_cols,
+                hist_exog_list=hist_exog_list,
+                hist_cat_cols=hist_cat_cols,
             )
 
         sizes = np.diff(processed.indptr)
@@ -2267,8 +2361,6 @@ class NixtlaClient:
                 f"the maximum of {_MAX_SIMULATE_OUTPUT_VALUES:,}."
             )
         if quantiles is not None:
-            # Checkable here only when the caller supplies the grid; otherwise
-            # its width depends on the model's native quantiles.
             simulation_cells = len(sizes) * h * (n_paths + len(quantiles))
             if simulation_cells > _MAX_SIMULATE_CELLS:
                 raise ValueError(
@@ -2304,8 +2396,13 @@ class NixtlaClient:
 
         response_n_paths = resp.get("n_paths")
         response_h = resp.get("h")
-        response_sizes = np.asarray(resp.get("sizes"))
-        samples = np.asarray(resp.get("samples"))
+        try:
+            response_sizes = np.asarray(resp.get("sizes"), dtype=np.int64)
+            samples = np.asarray(resp.pop("samples", None), dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "Simulation response contains non-numeric sizes or samples."
+            ) from exc
         expected_sizes = np.full(len(sizes), h)
         if response_n_paths != n_paths or response_h != h:
             raise RuntimeError(
@@ -2320,6 +2417,12 @@ class NixtlaClient:
                 f"Simulation response contains {samples.size:,} values; "
                 f"expected {output_values:,}."
             )
+        coupled = resp.get("coupled", False)
+        if not isinstance(coupled, bool):
+            raise RuntimeError(
+                f"Simulation response reported a non-boolean `coupled` value: "
+                f"{coupled!r}."
+            )
 
         future_df = ufp.make_future_dataframe(
             uids=processed.uids,
@@ -2330,17 +2433,20 @@ class NixtlaClient:
             time_col=time_col,
         )
         future_rows = len(future_df)
-        out = ufp.take_rows(future_df, np.tile(np.arange(future_rows), n_paths))
-        out = ufp.drop_index_if_pandas(out)
+        out = ufp.take_rows(
+            future_df, np.tile(np.arange(future_rows, dtype=np.int32), n_paths)
+        )
+        if isinstance(out, pd.DataFrame):
+            out = out.set_axis(pd.RangeIndex(len(out)), axis=0, copy=False)
+        else:
+            out = ufp.drop_index_if_pandas(out)
         out = ufp.assign_columns(
             out,
             "sample_id",
             np.repeat(np.arange(n_paths, dtype=np.int64), future_rows),
         )
         out = ufp.assign_columns(out, "TimeGPT", samples)
-        out = ufp.assign_columns(
-            out, "coupled", np.full(output_values, bool(resp.get("coupled", False)))
-        )
+        out = ufp.assign_columns(out, "coupled", np.full(output_values, coupled))
         return _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
 
     def explain(
@@ -2348,6 +2454,7 @@ class NixtlaClient:
         df: DataFrame,
         method: _ExplainMethod = "granger",
         features: Optional[list[str]] = None,
+        freq: Optional[_Freq] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
@@ -2369,6 +2476,11 @@ class NixtlaClient:
             features (list[str], optional): Features to analyze. By default,
                 every column other than the ID, time, and target columns is
                 used.
+            freq (str, int or pandas offset, optional): Frequency of the
+                timestamps, used to verify that every series is complete and
+                regularly spaced. Both methods are lag-based, so gaps or
+                duplicate timestamps distort the weights. If `None`, it is
+                inferred from `df` (pandas only); pass it explicitly for polars.
             id_col (str): Column that identifies each series. Defaults to
                 `"unique_id"`.
             time_col (str): Column that identifies each timestep. Defaults to
@@ -2386,8 +2498,11 @@ class NixtlaClient:
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             raise ValueError("`explain` only supports pandas and polars dataframes.")
-        if method not in ("granger", "transfer_entropy"):
-            raise ValueError("`method` must be either 'granger' or 'transfer_entropy'.")
+        if method not in _EXPLAIN_METHODS:
+            raise ValueError(
+                "`method` must be one of "
+                f"{', '.join(repr(m) for m in _EXPLAIN_METHODS)}."
+            )
         if validate_api_key and not self.validate_api_key(log=False):
             raise Exception("API Key not valid, please email support@nixtla.io")
 
@@ -2410,6 +2525,10 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        freq = _maybe_infer_freq(  # type: ignore[arg-type]
+            df, freq=freq, id_col=id_col, time_col=time_col
+        )
+        _validate_freq_regularity(df=df, freq=freq, id_col=id_col, time_col=time_col)
 
         base_columns = {id_col, time_col, target_col}
         if features is None:
@@ -2443,6 +2562,18 @@ class NixtlaClient:
                 "Every categorical feature must also be present in `features`: "
                 f"{invalid_categorical}."
             )
+        undeclared_non_numeric = sorted(
+            col
+            for col in features
+            if col not in categorical_exog_list
+            and not _is_numeric_column(df=df, col=col)
+        )
+        if undeclared_non_numeric:
+            raise ValueError(
+                "The following features are not numeric: "
+                f"{undeclared_non_numeric}. Add them to `categorical_exog_list` "
+                "to treat them as categorical, or exclude them via `features`."
+            )
 
         selected = df[[id_col, time_col, target_col, *features]]
         processed = ufp.process_df(
@@ -2458,12 +2589,14 @@ class NixtlaClient:
                 f"{feature_observations:,}, which exceeds the maximum of "
                 f"{_MAX_EXPLAIN_FEATURE_OBSERVATIONS:,}."
             )
-        feature_rows = []
+        feature_rows: list[Any] = []
         for feature in features:
             values = selected[feature].to_numpy()
             if processed.sort_idxs is not None:
                 values = values[processed.sort_idxs]
-            feature_rows.append(values.tolist())
+            feature_rows.append(
+                values if np.issubdtype(values.dtype, np.number) else values.tolist()
+            )
         categorical_positions = [
             position
             for position, feature in enumerate(features)
@@ -2482,7 +2615,12 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             resp = self._make_request_with_retries(client, "v2/explain", payload)
 
-        weights = np.asarray(resp.get("weights"), dtype=np.float64)
+        try:
+            weights = np.asarray(resp.get("weights"), dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "Explain response contains non-numeric weights."
+            ) from exc
         if weights.ndim != 1 or weights.size != len(features):
             raise RuntimeError(
                 f"Explain response contains {weights.size} weights; "

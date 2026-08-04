@@ -145,7 +145,6 @@ def build_energy_case(client: NixtlaClient) -> dict[str, object]:
     cost_threshold = 300
     baseline_probability = float(baseline_cost.gt(cost_threshold).mean())
     stress_probability = float(stress_cost.gt(cost_threshold).mean())
-    # The price-threshold example in the simulation guide.
     price_threshold = 40
     baseline_paths_above_price = float(
         baseline_paths.assign(exceeds=baseline_paths["TimeGPT"] > price_threshold)

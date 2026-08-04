@@ -39,13 +39,20 @@ def _explain_response(endpoint, payload):
 def _explain_df():
     return pd.DataFrame(
         {
-            "unique_id": ["b", "a", "b", "a"],
+            "unique_id": ["b", "a", "b", "a", "b", "a"],
             "ds": pd.to_datetime(
-                ["2024-01-02", "2024-01-02", "2024-01-01", "2024-01-01"]
+                [
+                    "2024-01-02",
+                    "2024-01-02",
+                    "2024-01-01",
+                    "2024-01-01",
+                    "2024-01-03",
+                    "2024-01-03",
+                ]
             ),
-            "y": [20.0, 2.0, 10.0, 1.0],
-            "driver": [200.0, 20.0, 100.0, 10.0],
-            "noise": [4.0, 2.0, 3.0, 1.0],
+            "y": [20.0, 2.0, 10.0, 1.0, 30.0, 3.0],
+            "driver": [200.0, 20.0, 100.0, 10.0, 300.0, 30.0],
+            "noise": [5.0, 2.0, 4.0, 1.0, 6.0, 3.0],
         }
     )
 
@@ -73,12 +80,13 @@ def test_explain_preserves_feature_order_and_sorts_observations():
     assert endpoint == "v2/explain"
     assert "model" not in payload
     assert payload["method"] == "transfer_entropy"
-    assert payload["series"]["sizes"].tolist() == [2, 2]
-    assert payload["series"]["y"].tolist() == [1.0, 2.0, 10.0, 20.0]
-    assert payload["series"]["X"] == [
-        [1.0, 2.0, 3.0, 4.0],
-        [10.0, 20.0, 100.0, 200.0],
+    assert payload["series"]["sizes"].tolist() == [3, 3]
+    assert payload["series"]["y"].tolist() == [1.0, 2.0, 3.0, 10.0, 20.0, 30.0]
+    assert [row.tolist() for row in payload["series"]["X"]] == [
+        [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
     ]
+    assert all(isinstance(row, np.ndarray) for row in payload["series"]["X"])
 
 
 def test_explain_uses_all_non_key_columns_by_default():
@@ -92,7 +100,9 @@ def test_explain_uses_all_non_key_columns_by_default():
 
 def test_explain_string_categorical_payload_uses_original_position():
     client, request = _client_with_response(_explain_response)
-    df = _explain_df().assign(segment=["enterprise", "small", "small", "enterprise"])
+    df = _explain_df().assign(
+        segment=["enterprise", "small", "enterprise", "small", "enterprise", "small"]
+    )
 
     result = client.explain(
         df,
@@ -102,7 +112,14 @@ def test_explain_string_categorical_payload_uses_original_position():
 
     series = request.call_args.args[2]["series"]
     assert series["categorical_exog"] == [1]
-    assert series["X"][1] == ["enterprise", "small", "small", "enterprise"]
+    assert series["X"][1] == [
+        "small",
+        "small",
+        "small",
+        "enterprise",
+        "enterprise",
+        "enterprise",
+    ]
     assert result["feature"].tolist() == ["driver", "segment", "noise"]
 
 
@@ -110,15 +127,13 @@ def test_explain_polars_output_and_implicit_single_series_id():
     client, _ = _client_with_response(_explain_response)
     df = pl.DataFrame(
         {
-            "ds": pl.date_range(
-                pl.date(2024, 1, 1), pl.date(2024, 1, 4), eager=True
-            ),
+            "ds": pl.date_range(pl.date(2024, 1, 1), pl.date(2024, 1, 4), eager=True),
             "y": [1.0, 2.0, 3.0, 4.0],
             "driver": [4.0, 3.0, 2.0, 1.0],
         }
     )
 
-    result = client.explain(df)
+    result = client.explain(df, freq="1d")
 
     assert isinstance(result, pl.DataFrame)
     assert result.columns == ["feature", "weight", "method"]
@@ -153,6 +168,69 @@ def test_explain_rejects_invalid_options_before_request(kwargs, match):
         client.explain(_explain_df(), **kwargs)
 
     request.assert_not_called()
+
+
+def test_explain_rejects_gapped_timestamps_before_request():
+    client, request = _client_with_response(_explain_response)
+    gapped = _explain_df()
+    gapped = gapped[gapped["ds"] != "2024-01-02"]
+
+    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+        client.explain(gapped, features=["driver"], freq="D")
+
+    request.assert_not_called()
+
+
+def test_explain_rejects_duplicate_timestamps_before_request():
+    client, request = _client_with_response(_explain_response)
+    df = _explain_df()
+    duplicated = pd.concat([df, df.iloc[[0]]], ignore_index=True)
+
+    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+        client.explain(duplicated, features=["driver"], freq="D")
+
+    request.assert_not_called()
+
+
+def test_explain_names_undeclared_non_numeric_features():
+    client, request = _client_with_response(_explain_response)
+    df = _explain_df().assign(label=["x", "y", "x", "y", "x", "y"])
+
+    with pytest.raises(ValueError, match=r"not numeric: \['label'\]"):
+        client.explain(df, features=["driver", "label"])
+
+    request.assert_not_called()
+
+
+def test_explain_accepts_non_numeric_feature_declared_as_categorical():
+    client, request = _client_with_response(_explain_response)
+    df = _explain_df().assign(label=["x", "y", "x", "y", "x", "y"])
+
+    result = client.explain(
+        df, features=["driver", "label"], categorical_exog_list=["label"]
+    )
+
+    assert result["feature"].tolist() == ["driver", "label"]
+    request.assert_called_once()
+
+
+def test_explain_default_features_reject_non_numeric_columns():
+    client, request = _client_with_response(_explain_response)
+    df = _explain_df().assign(label=["x", "y", "x", "y", "x", "y"])
+
+    with pytest.raises(ValueError, match=r"not numeric: \['label'\]"):
+        client.explain(df)
+
+    request.assert_not_called()
+
+
+def test_explain_rejects_non_numeric_weights():
+    client, _ = _client_with_response(
+        {"weights": ["a"], "feature_names": None, "method": "granger"}
+    )
+
+    with pytest.raises(RuntimeError, match="non-numeric weights"):
+        client.explain(_explain_df(), features=["driver"])
 
 
 def test_explain_enforces_feature_count_before_request(monkeypatch):
@@ -218,9 +296,7 @@ def test_explain_rejects_distributed_or_unknown_dataframe_types():
     reason="Set NIXTLA_RUN_SIMULATE_EXPLAIN_TESTS=1 after deploying the endpoints.",
 )
 @pytest.mark.parametrize("method", ["granger", "transfer_entropy"])
-def test_explain_live_endpoint_returns_normalized_weights(
-    nixtla_test_client, method
-):
+def test_explain_live_endpoint_returns_normalized_weights(nixtla_test_client, method):
     n = 160
     rng = np.random.default_rng(42)
     driver = rng.normal(size=n)

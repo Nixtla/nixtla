@@ -11,6 +11,16 @@ Use `NixtlaClient.explain()` when someone asks:
 The result ranks your features using their past relationship with the target.
 You do not need to make a forecast or provide future feature values.
 
+<Warning>
+These weights are **not** causal. They measure whether a feature's past values
+help predict the target, which is a statement about correlation over time, not
+about cause and effect. A high weight does not mean that changing the feature
+will change the target: both may be driven by something absent from your data,
+or the direction of influence may run the other way. To ask what a forecast is
+sensitive to, use [intervention
+analysis](/forecasting/explanation/intervention) instead.
+</Warning>
+
 ## Retail-demand example
 
 The store in our example has one year of daily demand, price, promotion, and
@@ -101,6 +111,10 @@ This result can help you:
 - Check whether important business signals are present in the data.
 - Compare feature rankings across stores, products, or time periods.
 
+It cannot tell you what to change. "Promotion ranks first, so running more
+promotions will raise demand" does not follow from this ranking; it is a causal
+claim the analysis does not support.
+
 Weights are relative scores. A weight of `0.863` means promotion is the
 strongest signal among these three features; it is not a percentage of the
 forecast.
@@ -121,14 +135,28 @@ For multiple time series, stack the series in the same dataframe and identify
 them with `unique_id`. TimeGPT respects the boundary between each series and
 returns one combined ranking.
 
-For categorical features, list their names:
+Non-numeric features must be declared as categorical. Any feature that is not
+numeric and not listed in `categorical_exog_list` is rejected, naming the
+column:
 
 ```python
+df_with_campaign = df.assign(
+    campaign=np.where(df["promotion"] == 1, "email", "none")
+)
+
 signals = nixtla_client.explain(
-    df=df,
-    features=["price", "campaign", "temperature"],
+    df=df_with_campaign,
+    features=["price", "promotion", "temperature", "campaign"],
     categorical_exog_list=["campaign"],
 )
+```
+
+Both methods are lag-based, so every series must be complete and regularly
+spaced. `explain()` infers the frequency from `df`; pass `freq` explicitly for
+polars input, or to be strict about which spacing you expect:
+
+```python
+signals = nixtla_client.explain(df=df, freq="D")
 ```
 
 <Info>

@@ -67,8 +67,8 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 >     validate_api_key=False, add_history=False, date_features=False,
 >     date_features_to_one_hot=False, model="timegpt-2.1",
 >     num_partitions=None, feature_contributions=False,
->     feature_contributions_type="shapley", model_parameters=None,
->     multivariate=False
+>     model_parameters=None, multivariate=False,
+>     feature_contributions_type="shapley"
 > )
 > ```
 
@@ -99,9 +99,9 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 | model | str | timegpt-2.1 | Model to use. Available models depend on your account. |
 | num_partitions | Optional | None | Number of partitions to use.<br/>If None, the number of partitions will be equal<br/>to the available parallel resources in distributed environments. |
 | feature_contributions | bool | False | Compute feature contributions and store them in `NixtlaClient.feature_contributions`. |
-| feature_contributions_type | Literal | shapley | Explanation used for feature contributions. Options are `shapley`, `intervention`, `granger`, and `transfer_entropy`. |
 | model_parameters | Optional | None | Optional model-specific settings. |
 | multivariate | bool | False | Enable multivariate predictions for models that support them. |
+| feature_contributions_type | Literal | shapley | Explanation used for feature contributions. Options are `shapley`, `intervention`, `granger`, and `transfer_entropy`. |
 | **Returns** | **AnyDFType** |  | **DataFrame with TimeGPT forecasts for point predictions and probabilistic<br/>predictions (if level is not None).** |
 
 ------------------------------------------------------------------------
@@ -162,9 +162,9 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 > ```text
 > NixtlaClient.explain (
->     df, method="granger", features=None, id_col="unique_id",
->     time_col="ds", target_col="y", categorical_exog_list=None,
->     validate_api_key=False
+>     df, method="granger", features=None, freq=None,
+>     id_col="unique_id", time_col="ds", target_col="y",
+>     categorical_exog_list=None, validate_api_key=False
 > )
 > ```
 
@@ -174,7 +174,8 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 |---|---|---|---|
 | df | pandas or polars DataFrame |  | Historical time-series data containing the target and candidate feature columns. |
 | method | str | granger | Analysis to run. Use `"granger"` for linear lagged relationships or `"transfer_entropy"` for potentially nonlinear relationships. |
-| features | list[str] | None | Features to analyze. By default, every column other than the ID, time, and target columns is used. |
+| features | list[str] | None | Features to analyze. By default, every column other than the ID, time, and target columns is used. Non-numeric features must be listed in `categorical_exog_list`. |
+| freq | str, int or pandas offset | None | Frequency of the timestamps, used to verify that every series is complete and regularly spaced. Both methods are lag-based, so gaps or duplicate timestamps distort the weights. Inferred from `df` when None; required for polars. |
 | id_col | str | unique_id | Column that identifies each series. |
 | time_col | str | ds | Column that identifies each timestep. |
 | target_col | str | y | Column that contains the target. |
