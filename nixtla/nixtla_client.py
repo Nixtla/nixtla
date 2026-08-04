@@ -146,6 +146,9 @@ _FeatureContributionsType = Literal[
 
 _MAX_SIMULATE_PATHS = 10_000
 _MAX_SIMULATE_OUTPUT_VALUES = 5_000_000
+# The service also bounds the marginal grid it builds alongside the paths:
+# n_series * h * (n_paths + n_quantiles). Mirrors SIMULATE_MAX_CELLS in tsfm.
+_MAX_SIMULATE_CELLS = 10_000_000
 _MAX_SIMULATE_QUANTILES = 200
 _MIN_SIMULATE_SEED = -(2**63)
 _MAX_SIMULATE_SEED = 2**64 - 1
@@ -2063,9 +2066,17 @@ class NixtlaClient:
                 between 1 and 10,000. Defaults to 100.
             quantiles (list[float], optional): Strictly increasing marginal
                 quantiles inside `(0, 1)`. Between 2 and 200 values may be
-                provided.
+                provided. A wide grid also counts towards a size limit:
+                `n_series * h * (n_paths + len(quantiles))` may not exceed
+                10,000,000.
             seed (int, optional): Random seed. Reusing a seed with the same
-                inputs produces the same paths.
+                inputs produces the same paths. The seed drives both the
+                coupled and the per-series shuffle, so repeating a request
+                with the same seed and a different `multivariate` setting
+                reorders the first series by ID identically in both, and
+                returns the very same paths for it when its marginal forecast
+                is unchanged too. Vary the seed when comparing coupled against
+                uncoupled paths.
             finetuned_model_id (str, optional): ID of a previously fine-tuned
                 model.
             clean_ex_first (bool): Clean exogenous signals before inference.
@@ -2255,6 +2266,17 @@ class NixtlaClient:
                 f"`n_paths * n_series * h` is {output_values:,}, which exceeds "
                 f"the maximum of {_MAX_SIMULATE_OUTPUT_VALUES:,}."
             )
+        if quantiles is not None:
+            # Checkable here only when the caller supplies the grid; otherwise
+            # its width depends on the model's native quantiles.
+            simulation_cells = len(sizes) * h * (n_paths + len(quantiles))
+            if simulation_cells > _MAX_SIMULATE_CELLS:
+                raise ValueError(
+                    "`n_series * h * (n_paths + len(quantiles))` is "
+                    f"{simulation_cells:,}, which exceeds the maximum of "
+                    f"{_MAX_SIMULATE_CELLS:,}. Reduce `n_paths`, `h`, the "
+                    "number of series, or the number of quantiles."
+                )
         series_payload: dict[str, Any] = {
             "y": processed.data[:, 0],
             "sizes": sizes,

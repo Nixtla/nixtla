@@ -349,9 +349,11 @@ highest for the alternative one — so no single path there describes the group.
 That is what makes questions about shared inventory and staffing possible.
 
 <Note>
-The two runs use different seeds. With the same seed both shuffles draw their
-template windows from the same generator state, so the first series by name would
-receive an identical set of paths in both runs.
+The two runs use different seeds on purpose. With one seed, the coupled and the
+per-series shuffle pick their template windows from the same random state, so the
+first product by name is reordered identically in both runs — for this data it
+comes back with exactly the same 500 paths, which would make one row of the chart
+above appear twice.
 </Note>
 
 Now ask an operational question:

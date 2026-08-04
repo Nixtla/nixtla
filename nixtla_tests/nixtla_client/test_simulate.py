@@ -216,6 +216,36 @@ def test_simulate_enforces_output_limit_before_request(monkeypatch):
     request.assert_not_called()
 
 
+def test_simulate_enforces_quantile_cell_limit_before_request(monkeypatch):
+    # The path count alone stays within its own limit; only the quantile grid
+    # pushes the request over the service's cell limit. One series, h=2 and
+    # n_paths=2 with three quantiles is 1 * 2 * (2 + 3) = 10 cells.
+    monkeypatch.setattr(client_module, "_MAX_SIMULATE_CELLS", 9)
+    client, request = _client_with_response(_simulate_response)
+
+    with pytest.raises(ValueError, match=r"len\(quantiles\)"):
+        client.simulate(
+            _series_df(),
+            h=2,
+            freq="D",
+            n_paths=2,
+            quantiles=[0.1, 0.5, 0.9],
+        )
+
+    request.assert_not_called()
+
+
+def test_simulate_quantile_cell_limit_ignored_without_quantiles(monkeypatch):
+    # Without an explicit grid the width depends on the model's native
+    # quantiles, so the client cannot compute the cell count and must not guess.
+    monkeypatch.setattr(client_module, "_MAX_SIMULATE_CELLS", 1)
+    client, request = _client_with_response(_simulate_response)
+
+    client.simulate(_series_df(), h=2, freq="D", n_paths=2)
+
+    request.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "response,match",
     [

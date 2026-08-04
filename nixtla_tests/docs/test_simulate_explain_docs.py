@@ -23,6 +23,40 @@ ADVANCED_GUIDE = DOCS / "forecasting/explanation/advanced-explanations.mdx"
 SDK_REFERENCE = DOCS / "reference/sdk_reference.mdx"
 OPENAPI = DOCS / "openapi.json"
 NAVIGATION = DOCS / "docs.json"
+# Figures the docs scripts render into the guides. Regenerating the assets is
+# expected to move these, and a backend numerics change will move all of them at
+# once: update this block rather than editing assertions one by one.
+#
+#   timegpt-docs/scripts/generate_simulate_explain_assets.py  -> SIMULATION, EXPLANATION
+#   timegpt-docs/scripts/generate_coupled_retail_tutorial.py  -> COUPLED
+EXPECTED_SIMULATION_FIGURES = [
+    "EUR 214.28",  # median 48-hour cost, published inputs
+    "EUR 509.86",  # median 48-hour cost, changed inputs
+    "43.0%",  # probability above EUR 300, published inputs
+    "67.0%",  # probability above EUR 300, changed inputs
+]
+# Effects the tutorial's generator plants, and what the simulation recovers. The
+# guide has to show both, so the test checks for both.
+EXPECTED_COUPLED_PLANTED = [
+    "+11.9%",  # promoted product, own-price
+    "−11.5%",  # alternative product, substitute
+    "+15.0%",  # related product, complement
+]
+EXPECTED_COUPLED_RECOVERED = [
+    "+6.0%",  # promoted product
+    "−11.7%",  # alternative product
+    "+5.4%",  # related product
+]
+EXPECTED_COUPLED_RISK = [
+    "42.4%",  # same-day risk, products simulated separately
+    "53.8%",  # same-day risk, products simulated together
+]
+# Explanation figures are produced by Granger/transfer entropy and SHAP, none of
+# which depend on sample paths, so these are stable across simulate changes.
+EXPECTED_EXPLANATION_FIGURES = [
+    (SHAP_GUIDE, "92.01"),
+    (HISTORICAL_GUIDE, "0.863"),
+]
 CASE_STUDY_ASSETS = [
     DOCS / "images/forecasting/simulation-energy-scenarios.png",
     DOCS / "images/forecasting/simulation-energy-cost-risk.png",
@@ -101,26 +135,23 @@ def test_case_studies_include_rendered_assets():
 
     assert "Real-data walkthrough: German electricity prices" in simulation
     assert "electricity-short-with-ex-vars.csv" in simulation
-    assert "EUR 214.28" in simulation
-    assert "EUR 509.86" in simulation
-    assert "43.0%" in simulation
-    assert "67.0%" in simulation
+    for figure in EXPECTED_SIMULATION_FIGURES:
+        assert figure in simulation, f"{figure} missing from the simulation guide"
+
     coupled_simulation = COUPLED_SIMULATION_GUIDE.read_text()
-    # The product roles are planted in the generator, so the guide must state
-    # both the planted effect and the recovered one.
+    # The product roles are planted in the generator, which is what lets the
+    # guide label them, so it must state the planted effect next to the
+    # recovered one rather than presenting the recovered one alone.
     assert "Planted role" in coupled_simulation
     assert "**Substitute**" in coupled_simulation
     assert "**Complement**" in coupled_simulation
-    assert "+11.9%" in coupled_simulation
-    assert "−11.5%" in coupled_simulation
-    assert "+15.0%" in coupled_simulation
-    assert "−11.7%" in coupled_simulation
-    assert "+5.4%" in coupled_simulation
-    assert "+6.0%" in coupled_simulation
-    assert "42.4%" in coupled_simulation
-    assert "53.8%" in coupled_simulation
-    assert "92.01" in SHAP_GUIDE.read_text()
-    assert "0.863" in HISTORICAL_GUIDE.read_text()
+    for figure in EXPECTED_COUPLED_PLANTED + EXPECTED_COUPLED_RECOVERED:
+        assert figure in coupled_simulation, f"{figure} missing from the tutorial"
+    for figure in EXPECTED_COUPLED_RISK:
+        assert figure in coupled_simulation, f"{figure} missing from the tutorial"
+
+    for page, figure in EXPECTED_EXPLANATION_FIGURES:
+        assert figure in page.read_text(), f"{figure} missing from {page.name}"
     assert "Results were generated with TimeGPT 2.1" in explanation
 
     for asset in CASE_STUDY_ASSETS:
