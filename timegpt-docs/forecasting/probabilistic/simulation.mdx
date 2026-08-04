@@ -329,7 +329,7 @@ Pass stacked series using the normal `unique_id`, time, and target columns:
 
 ```python
 multi_df = energy.query(
-    'unique_id in ["DE", "BE"] and ds < "2017-12-29"'
+    'unique_id in ["BE", "FR"] and ds < "2016-12-29"'
 )[
     ["unique_id", "ds", "y"]
 ]

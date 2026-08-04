@@ -14,6 +14,14 @@ Special dates, such as holidays, promotions, or significant events, often cause 
 
 ### Step 1: Import Packages
 
+This guide plots feature contributions with the
+[SHAP library](https://shap.readthedocs.io/en/latest/), which is not a
+dependency of `nixtla`. Install it alongside `matplotlib` first:
+
+```bash
+pip install shap matplotlib
+```
+
 Import the required libraries and initialize the Nixtla client.
 
 
@@ -198,9 +206,18 @@ nixtla_client.plot(
 
 ![Forecast plot including holiday effects](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/02_holidays_files/figure-markdown_strict/cell-16-output-1.png)
 
-We can then plot the weights of each holiday to see which are more important in forecasting the interest in chocolate. We will use the [SHAP library](https://shap.readthedocs.io/en/latest/) to plot the weights.
+Passing `feature_contributions=True` stores a per-timestamp breakdown on the
+client as `nixtla_client.feature_contributions`. Its columns are the ID and time
+columns, `TimeGPT`, one column per feature, and `base_value` — the starting
+point that the feature contributions add to in order to reach the forecast.
 
-> The plotting code below is self-contained. For how to interpret feature contributions, see our [tutorial on model interpretability](/forecasting/exogenous-variables/interpretability_with_shap).
+By default the contributions are Shapley values. Other explanations are
+available through `feature_contributions_type`; see
+[Advanced explanations](/forecasting/explanation/advanced-explanations).
+
+We can then plot the weights of each holiday to see which are more important in forecasting the interest in chocolate. We will use the [SHAP library](https://shap.readthedocs.io/en/latest/) (installed in [Step 1](#step-1-import-packages)) to plot the weights.
+
+> The plotting code below only needs `nixtla_client.feature_contributions` from the forecast above. For how to interpret feature contributions, see our [tutorial on model interpretability](/forecasting/exogenous-variables/interpretability_with_shap).
 
 
 ```python

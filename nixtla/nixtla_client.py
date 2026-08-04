@@ -146,6 +146,9 @@ _FeatureContributionsType = Literal[
     "shapley", "intervention", "granger", "transfer_entropy"
 ]
 _FEATURE_CONTRIBUTIONS_TYPES = get_args(_FeatureContributionsType)
+_MAX_N_PATHS = 10_000
+_MIN_QUANTILES = 2
+_MAX_QUANTILES = 200
 
 
 class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
@@ -644,6 +647,34 @@ def _maybe_convert_level_to_quantiles(
     return df[out_cols]
 
 
+def _align_future_exog_order(
+    X_future: np.ndarray,
+    X_indptr: np.ndarray,
+    X_uids: Any,
+    uids: Any,
+    id_col: str,
+) -> np.ndarray:
+    x_uids_list = X_uids.to_numpy().tolist()
+    uids_list = uids.to_numpy().tolist()
+    if x_uids_list == uids_list:
+        return X_future
+    if set(x_uids_list) != set(uids_list):
+        missing = sorted(set(uids_list) - set(x_uids_list), key=str)
+        unexpected = sorted(set(x_uids_list) - set(uids_list), key=str)
+        raise ValueError(
+            f"`X_df` must contain the same values of `{id_col}` as `df`. "
+            f"Missing: {missing}. Unexpected: {unexpected}."
+        )
+    positions = {uid: pos for pos, uid in enumerate(x_uids_list)}
+    row_idxs = np.concatenate(
+        [
+            np.arange(X_indptr[pos], X_indptr[pos + 1], dtype=np.int64)
+            for pos in (positions[uid] for uid in uids_list)
+        ]
+    )
+    return X_future[:, row_idxs]
+
+
 def _preprocess(
     df: DFType,
     X_df: Optional[DFType],
@@ -677,7 +708,13 @@ def _preprocess(
             time_col=time_col,
             target_col=None,
         )
-        X_future = processed_X.data.T
+        X_future = _align_future_exog_order(
+            X_future=processed_X.data.T,
+            X_indptr=processed_X.indptr,
+            X_uids=processed_X.uids,
+            uids=processed.uids,
+            id_col=id_col,
+        )
         futr_cols = [c for c in X_df.columns if c not in (id_col, time_col)]
     else:
         X_future = None
@@ -2266,6 +2303,8 @@ class NixtlaClient:
         if not isinstance(n_paths, (int, np.integer)) or isinstance(n_paths, bool):
             raise ValueError("`n_paths` must be an integer.")
         n_paths = int(n_paths)
+        if not 1 <= n_paths <= _MAX_N_PATHS:
+            raise ValueError(f"`n_paths` must be between 1 and {_MAX_N_PATHS:,}.")
         if num_partitions is not None:
             if not isinstance(num_partitions, (int, np.integer)) or isinstance(
                 num_partitions, bool
@@ -2288,6 +2327,21 @@ class NixtlaClient:
                 raise ValueError("`quantiles` must be a list of numbers.") from exc
             if quantile_array.ndim != 1:
                 raise ValueError("`quantiles` must be a one-dimensional list.")
+            if not _MIN_QUANTILES <= quantile_array.size <= _MAX_QUANTILES:
+                raise ValueError(
+                    f"`quantiles` must contain between {_MIN_QUANTILES} and "
+                    f"{_MAX_QUANTILES} values, got {quantile_array.size}."
+                )
+            if (
+                not np.all(np.isfinite(quantile_array))
+                or quantile_array[0] <= 0.0
+                or quantile_array[-1] >= 1.0
+            ):
+                raise ValueError(
+                    "`quantiles` must be finite and strictly inside (0, 1)."
+                )
+            if not np.all(np.diff(quantile_array) > 0):
+                raise ValueError("`quantiles` must be strictly increasing.")
             quantiles = quantile_array.tolist()
         if seed is not None:
             if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):

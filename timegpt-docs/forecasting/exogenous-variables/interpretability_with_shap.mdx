@@ -106,9 +106,12 @@ promotion_day = X_df.loc[X_df["promotion"].eq(1), "ds"].min()
 contributions.query("ds == @promotion_day")
 ```
 
-| ds | TimeGPT | base_value | price | promotion | temperature |
-|---|---:|---:|---:|---:|---:|
-| 2025-01-06 | 92.01 | 91.85 | +0.21 | +0.55 | -0.59 |
+| unique_id | ds | TimeGPT | price | promotion | temperature | base_value |
+|---|---|---:|---:|---:|---:|---:|
+| store-a | 2025-01-06 | 92.01 | +0.21 | +0.55 | -0.59 | 91.85 |
+
+The frame always has the ID and time columns, `TimeGPT`, one column per
+feature in the order they were sent, and `base_value` last.
 
 ## Read the result
 

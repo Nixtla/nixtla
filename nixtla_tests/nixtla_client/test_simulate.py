@@ -296,8 +296,14 @@ def test_simulate_does_not_warn_within_model_horizon(caplog):
     assert not any("exceeds the model horizon" in r.message for r in caplog.records)
 
 
-@pytest.mark.parametrize("invalid_part", ["ids", "times"])
-def test_simulate_rejects_misaligned_future_keys(invalid_part):
+@pytest.mark.parametrize(
+    "invalid_part,match",
+    [
+        ("ids", "same values of `unique_id`"),
+        ("times", "exactly one row for every future"),
+    ],
+)
+def test_simulate_rejects_misaligned_future_keys(invalid_part, match):
     client, request = _client_with_response(_simulate_response)
     df = _series_df(n_series=2, n=3).assign(x=np.arange(6, dtype=float))
     X_df = pd.DataFrame(
@@ -312,13 +318,16 @@ def test_simulate_rejects_misaligned_future_keys(invalid_part):
     else:
         X_df["ds"] = list(pd.date_range("2024-01-03", periods=2, freq="D")) * 2
 
-    with pytest.raises(ValueError, match="exactly one row for every future"):
+    with pytest.raises(ValueError, match=match):
         client.simulate(df=df, X_df=X_df, h=2, freq="D", n_paths=1)
 
     request.assert_not_called()
 
 
-def test_simulate_accepts_unsorted_future_keys_with_different_category_order():
+def test_simulate_aligns_future_exog_when_category_orders_differ():
+    # `df` and `X_df` declare opposite category orders, so each is sorted into a
+    # different series order. `X_future` is positional, so without realignment
+    # id-0 would receive id-1's future values.
     client, request = _client_with_response(_simulate_response)
     df = _series_df(n_series=2, n=3).assign(x=np.arange(6, dtype=float))
     df["unique_id"] = pd.Categorical(df["unique_id"], categories=["id-0", "id-1"])
@@ -337,7 +346,11 @@ def test_simulate_accepts_unsorted_future_keys_with_different_category_order():
 
     client.simulate(df=df, X_df=X_df, h=2, freq="D", n_paths=1)
 
-    request.assert_called_once()
+    payload = request.call_args.args[2]
+    # history is ordered id-0 then id-1, so the future rows must be too
+    assert [list(row) for row in payload["series"]["X_future"]] == [
+        [10.0, 11.0, 20.0, 21.0]
+    ]
 
 
 def test_simulate_leaves_missing_seed_unset_for_server():
@@ -356,8 +369,19 @@ def test_simulate_leaves_missing_seed_unset_for_server():
         ({"h": 0}, "positive integer"),
         ({"h": 1.5}, "positive integer"),
         ({"n_paths": 1.5}, "integer"),
+        ({"n_paths": 0}, "between 1 and 10,000"),
+        ({"n_paths": -1}, "between 1 and 10,000"),
+        ({"n_paths": 10_001}, "between 1 and 10,000"),
         ({"quantiles": [[0.1, 0.5]]}, "one-dimensional"),
         ({"quantiles": ["a", "b"]}, "list of numbers"),
+        ({"quantiles": []}, "between 2 and 200 values"),
+        ({"quantiles": [0.5]}, "between 2 and 200 values"),
+        ({"quantiles": np.linspace(0.001, 0.999, 201).tolist()}, "between 2 and 200"),
+        ({"quantiles": [0.0, 0.5]}, r"strictly inside \(0, 1\)"),
+        ({"quantiles": [0.5, 1.0]}, r"strictly inside \(0, 1\)"),
+        ({"quantiles": [0.1, np.nan]}, r"strictly inside \(0, 1\)"),
+        ({"quantiles": [0.9, 0.1]}, "strictly increasing"),
+        ({"quantiles": [0.5, 0.5]}, "strictly increasing"),
         ({"seed": 1.5}, "integer"),
         ({"num_partitions": 0}, "positive integer"),
         ({"num_partitions": 1.5}, "positive integer"),

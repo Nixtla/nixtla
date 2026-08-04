@@ -1414,6 +1414,18 @@
             "title": "Feature Contributions",
             "description": "Compute the exogenous features contributions to the forecast.",
             "default": false
+          },
+          "feature_contributions_type": {
+            "type": "string",
+            "enum": [
+              "shapley",
+              "intervention",
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Feature Contributions Type",
+            "description": "Explanation used for forecast feature contributions. Shapley values provide an additive prediction explanation. Intervention values compare the forecast with one feature replaced by its historical baseline. Granger and transfer entropy allocate each series' forecast deviation using historical predictive-relationship weights.",
+            "default": "shapley"
           }
         },
         "type": "object",
