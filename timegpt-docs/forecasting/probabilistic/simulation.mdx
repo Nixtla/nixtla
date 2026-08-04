@@ -220,25 +220,16 @@ to compare a fixed-price offer, choose a hedge size, or set a budget buffer.
 - Remember that response size and local dataframe memory grow linearly with
   `n_paths`.
 
-The accepted range is 1 to 10,000 paths. A request can return at most 5,000,000
-values:
+The accepted range is 1 to 10,000 paths. The overall size of a request is also
+bounded, counting the marginal grid the service builds alongside the paths:
 
 ```text
-n_paths * number of series * h <= 5,000,000
+number of series * h * (n_paths + number of quantiles) <= 10,000,000
 ```
 
-For example, 500 series, a horizon of 20, and 500 paths would produce exactly
-5,000,000 values.
-
-A second limit applies when you also pass a [quantile grid](#quantile-grid),
-because the service builds those marginals alongside the paths:
-
-```text
-number of series * h * (n_paths + len(quantiles)) <= 10,000,000
-```
-
-Both limits are checked before the request is sent, so an oversized call fails
-immediately rather than after a long wait.
+When you do not pass a [quantile grid](#quantile-grid), the quantile count is
+the model's native one. For example, 500 series, a horizon of 20, and 500 paths
+is well inside the limit; raising the horizon to 200 would exceed it.
 
 ## Reproduce a simulation
 
@@ -584,9 +575,9 @@ paths themselves, or use
 columns are what you are after.
 </Note>
 
-A wide grid also counts towards the second
-[size limit](#choose-the-number-of-paths): `number of series * h * (n_paths +
-len(quantiles))` may not exceed 10,000,000.
+A wide grid counts towards the
+[request size limit](#choose-the-number-of-paths): `number of series * h *
+(n_paths + len(quantiles))` may not exceed 10,000,000.
 
 ## Troubleshooting
 
@@ -605,6 +596,34 @@ The ID and timestamps must match the requested future grid.
 
 Reduce `n_paths`, `h`, or the number of series. Remember that a long dataframe
 has one row for every series, path, and future timestamp.
+
+### The request is too large
+
+If the payload exceeds the request size limit, pass `num_partitions` to split
+the series across several concurrent requests:
+
+```python
+paths = nixtla_client.simulate(
+    df=many_series,
+    h=24,
+    freq="h",
+    n_paths=200,
+    num_partitions=4,
+)
+```
+
+The results are stitched back together, so the returned dataframe is the same
+shape as an unpartitioned call.
+
+<Note>
+`num_partitions` cannot be combined with `multivariate=True`, because coupling
+is computed across the series within a single request. Partitioning would
+return uncoupled paths, so the call is rejected instead.
+
+Each partition also draws its own shuffle templates, so a partitioned call
+returns different paths than an unpartitioned one for the same `seed`. Every
+path is still a valid draw; only the specific values differ.
+</Note>
 
 ### `coupled` is false
 

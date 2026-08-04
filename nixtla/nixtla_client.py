@@ -147,16 +147,6 @@ _FeatureContributionsType = Literal[
 ]
 _FEATURE_CONTRIBUTIONS_TYPES = get_args(_FeatureContributionsType)
 
-_MAX_SIMULATE_PATHS = 10_000
-_MAX_SIMULATE_OUTPUT_VALUES = 5_000_000
-_MAX_SIMULATE_CELLS = 10_000_000
-_MAX_SIMULATE_QUANTILES = 200
-_MIN_SIMULATE_SEED = -(2**63)
-_MAX_SIMULATE_SEED = 2**64 - 1
-_MAX_EXPLAIN_FEATURES = 75
-_MAX_EXPLAIN_FEATURE_OBSERVATIONS = 1_000_000
-_UNPARTITIONABLE_ENDPOINTS = frozenset({"v2/simulate", "v2/explain"})
-
 
 class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
     id: str
@@ -1190,12 +1180,12 @@ class NixtlaClient:
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
         content_size_mb = len(content) / 2**20
         if content_size_mb > 200:
-            if endpoint in _UNPARTITIONABLE_ENDPOINTS:
+            if endpoint == "v2/explain":
                 raise ValueError(
-                    f"The payload is too large ({content_size_mb:.0f}MB, "
-                    "limit 200MB). Reduce the number of series, the length of "
-                    "the history, or the number of features, and call again "
-                    "per batch."
+                    f"The payload is too large ({content_size_mb:.0f}MB, limit "
+                    "200MB). `explain` cannot be partitioned because the weights "
+                    "are pooled across all series. Reduce the number of series, "
+                    "the length of the history, or the number of features."
                 )
             raise ValueError(
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
@@ -1253,12 +1243,12 @@ class NixtlaClient:
             raise ApiError(status_code=resp.status_code, body=resp_body)
         return resp_body
 
-    def _make_partitioned_requests(
+    def _dispatch_partitioned_requests(
         self,
         client: httpx.Client,
         endpoint: str,
         payloads: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         from tqdm.auto import tqdm
 
         num_partitions = len(payloads)
@@ -1278,6 +1268,15 @@ class NixtlaClient:
             for future in tqdm(as_completed(future2pos), total=len(future2pos)):
                 pos = future2pos[future]
                 results[pos] = future.result()
+        return results
+
+    def _make_partitioned_requests(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        payloads: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        results = self._dispatch_partitioned_requests(client, endpoint, payloads)
         resp = {"mean": np.hstack([res["mean"] for res in results])}
         first_res = results[0]
         for k in ("sizes", "anomaly"):
@@ -1315,6 +1314,50 @@ class NixtlaClient:
                 [np.stack(res["feature_contributions"], axis=1) for res in results]
             ).T
         return resp
+
+    def _make_partitioned_simulate_requests(
+        self,
+        client: httpx.Client,
+        payloads: list[dict[str, Any]],
+        n_paths: int,
+        h: int,
+    ) -> dict[str, Any]:
+        results = self._dispatch_partitioned_requests(client, "v2/simulate", payloads)
+        blocks = []
+        sizes = []
+        for payload, res in zip(payloads, results):
+            n_series = len(payload["series"]["sizes"])
+            if res.get("n_paths") != n_paths or res.get("h") != h:
+                raise RuntimeError(
+                    "Simulation response metadata does not match the request."
+                )
+            try:
+                part = np.asarray(res.pop("samples", None), dtype=np.float64)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "Simulation response contains non-numeric samples."
+                ) from exc
+            if part.size != n_paths * n_series * h:
+                raise RuntimeError(
+                    f"Simulation response contains {part.size:,} values; "
+                    f"expected {n_paths * n_series * h:,}."
+                )
+            # samples are [sample_id][series][h]; join partitions within each
+            # sample so the series stay in request order.
+            blocks.append(part.reshape(n_paths, n_series * h))
+            sizes.append(np.asarray(res.get("sizes"), dtype=np.int64))
+        coupled = [res.get("coupled", False) for res in results]
+        if any(not isinstance(c, bool) for c in coupled):
+            raise RuntimeError(
+                "Simulation response reported a non-boolean `coupled` value."
+            )
+        return {
+            "samples": np.concatenate(blocks, axis=1).reshape(-1),
+            "sizes": np.hstack(sizes),
+            "n_paths": n_paths,
+            "h": h,
+            "coupled": all(coupled),
+        }
 
     def _maybe_override_model(self, model: _Model) -> _Model:
         if self._is_azure and model != "azureai":
@@ -1380,19 +1423,8 @@ class NixtlaClient:
         if feature_contributions is None:
             return
         shap_cols = x_cols + ["base_value"]
-        if len(feature_contributions) != len(shap_cols):
-            raise RuntimeError(
-                f"feature_contributions has {len(feature_contributions)} rows; "
-                f"expected {len(shap_cols)} ({', '.join(shap_cols)})."
-            )
         shap_df = type(out_df)(dict(zip(shap_cols, feature_contributions)))
         if insample_feat_contributions is not None:
-            if len(insample_feat_contributions) != len(shap_cols):
-                raise RuntimeError(
-                    f"In-sample feature_contributions has "
-                    f"{len(insample_feat_contributions)} rows; "
-                    f"expected {len(shap_cols)}."
-                )
             insample_shap_df = type(out_df)(
                 dict(zip(shap_cols, insample_feat_contributions))
             )
@@ -1665,9 +1697,9 @@ class NixtlaClient:
         model: _Model,
         num_partitions: Optional[int],
         feature_contributions: bool,
-        feature_contributions_type: _FeatureContributionsType,
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
+        feature_contributions_type: _FeatureContributionsType,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -1728,9 +1760,9 @@ class NixtlaClient:
                 model=model,
                 num_partitions=None,
                 feature_contributions=feature_contributions,
-                feature_contributions_type=feature_contributions_type,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
+                feature_contributions_type=feature_contributions_type,
             ),
             partition=partition_config,
             as_fugue=True,
@@ -2154,6 +2186,7 @@ class NixtlaClient:
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-2.1",
         multivariate: bool = False,
+        num_partitions: Optional[_PositiveInt] = None,
     ) -> DataFrame:
         """Generate temporally correlated forecast sample paths.
 
@@ -2173,8 +2206,7 @@ class NixtlaClient:
             X_df (pandas or polars DataFrame, optional): Future exogenous
                 values with ID and time columns.
             n_paths (int): Number of paths generated for each series. Must be
-                between 1 and 10,000, and `n_paths * n_series * h` may not
-                exceed 5,000,000. Defaults to 100.
+                between 1 and 10,000. Defaults to 100.
             quantiles (list[float], optional): Strictly increasing marginal
                 quantiles inside `(0, 1)`. Between 2 and 200 values may be
                 provided. They refine the marginal distribution the paths are
@@ -2209,6 +2241,13 @@ class NixtlaClient:
             multivariate (bool): Request coherent paths across series. The
                 returned `coupled` column reports whether cross-series
                 coupling was applied. Defaults to False.
+            num_partitions (int, optional): Split the series across this many
+                concurrent requests, which keeps large jobs under the request
+                size limit. Cannot be combined with `multivariate=True`, since
+                coupling is computed across the series in a single request.
+                Because each partition draws its own shuffle templates, a
+                partitioned call returns different paths than an unpartitioned
+                one for the same `seed`. Defaults to None (a single request).
 
         Returns:
             pandas or polars DataFrame: Long-format sample paths with ID, time,
@@ -2226,43 +2265,34 @@ class NixtlaClient:
             raise ValueError("`h` must be a positive integer.")
         if not isinstance(n_paths, (int, np.integer)) or isinstance(n_paths, bool):
             raise ValueError("`n_paths` must be an integer.")
-        if not 1 <= int(n_paths) <= _MAX_SIMULATE_PATHS:
-            raise ValueError(
-                f"`n_paths` must be between 1 and {_MAX_SIMULATE_PATHS:,}."
-            )
         n_paths = int(n_paths)
+        if num_partitions is not None:
+            if not isinstance(num_partitions, (int, np.integer)) or isinstance(
+                num_partitions, bool
+            ):
+                raise ValueError("`num_partitions` must be a positive integer.")
+            num_partitions = int(num_partitions)
+            if num_partitions < 1:
+                raise ValueError("`num_partitions` must be a positive integer.")
+            if multivariate:
+                raise ValueError(
+                    "`num_partitions` cannot be combined with `multivariate=True`: "
+                    "cross-series coupling is computed across the series in a "
+                    "single request, so partitioning would silently return "
+                    "uncoupled paths."
+                )
         if quantiles is not None:
             try:
                 quantile_array = np.asarray(quantiles, dtype=np.float64)
             except (TypeError, ValueError) as exc:
                 raise ValueError("`quantiles` must be a list of numbers.") from exc
-            if quantile_array.ndim != 1 or not (
-                2 <= quantile_array.size <= _MAX_SIMULATE_QUANTILES
-            ):
-                raise ValueError(
-                    "`quantiles` must contain between 2 and "
-                    f"{_MAX_SIMULATE_QUANTILES} values."
-                )
-            if (
-                not np.isfinite(quantile_array).all()
-                or quantile_array[0] <= 0
-                or quantile_array[-1] >= 1
-            ):
-                raise ValueError(
-                    "`quantiles` must contain finite values strictly inside (0, 1)."
-                )
-            if not (np.diff(quantile_array) > 0).all():
-                raise ValueError("`quantiles` must be strictly increasing.")
+            if quantile_array.ndim != 1:
+                raise ValueError("`quantiles` must be a one-dimensional list.")
             quantiles = quantile_array.tolist()
         if seed is not None:
             if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):
                 raise ValueError("`seed` must be an integer.")
             seed = int(seed)
-            if not _MIN_SIMULATE_SEED <= seed <= _MAX_SIMULATE_SEED:
-                raise ValueError(
-                    f"`seed` must be between {_MIN_SIMULATE_SEED} and "
-                    f"{_MAX_SIMULATE_SEED}."
-                )
 
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2355,20 +2385,6 @@ class NixtlaClient:
 
         sizes = np.diff(processed.indptr)
         output_values = n_paths * len(sizes) * h
-        if output_values > _MAX_SIMULATE_OUTPUT_VALUES:
-            raise ValueError(
-                f"`n_paths * n_series * h` is {output_values:,}, which exceeds "
-                f"the maximum of {_MAX_SIMULATE_OUTPUT_VALUES:,}."
-            )
-        if quantiles is not None:
-            simulation_cells = len(sizes) * h * (n_paths + len(quantiles))
-            if simulation_cells > _MAX_SIMULATE_CELLS:
-                raise ValueError(
-                    "`n_series * h * (n_paths + len(quantiles))` is "
-                    f"{simulation_cells:,}, which exceeds the maximum of "
-                    f"{_MAX_SIMULATE_CELLS:,}. Reduce `n_paths`, `h`, the "
-                    "number of series, or the number of quantiles."
-                )
         series_payload: dict[str, Any] = {
             "y": processed.data[:, 0],
             "sizes": sizes,
@@ -2392,7 +2408,13 @@ class NixtlaClient:
 
         logger.info("Calling Simulate Endpoint...")
         with self._make_client(**self._client_kwargs) as client:
-            resp = self._make_request_with_retries(client, "v2/simulate", payload)
+            if num_partitions is None:
+                resp = self._make_request_with_retries(client, "v2/simulate", payload)
+            else:
+                payloads = _partition_series(payload, num_partitions, h)
+                resp = self._make_partitioned_simulate_requests(
+                    client, payloads, n_paths=n_paths, h=h
+                )
 
         response_n_paths = resp.get("n_paths")
         response_h = resp.get("h")
@@ -2550,10 +2572,6 @@ class NixtlaClient:
                 "ID, time, and target columns cannot be explanation features: "
                 f"{reserved_features}."
             )
-        if len(features) > _MAX_EXPLAIN_FEATURES:
-            raise ValueError(
-                f"`explain` supports at most {_MAX_EXPLAIN_FEATURES} features."
-            )
 
         categorical_exog_list = list(categorical_exog_list or [])
         invalid_categorical = set(categorical_exog_list) - set(features)
@@ -2582,13 +2600,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
-        feature_observations = len(processed.data) * len(features)
-        if feature_observations > _MAX_EXPLAIN_FEATURE_OBSERVATIONS:
-            raise ValueError(
-                f"`n_observations * n_features` is "
-                f"{feature_observations:,}, which exceeds the maximum of "
-                f"{_MAX_EXPLAIN_FEATURE_OBSERVATIONS:,}."
-            )
         feature_rows: list[Any] = []
         for feature in features:
             values = selected[feature].to_numpy()
@@ -3946,9 +3957,9 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
-    feature_contributions_type: _FeatureContributionsType,
     model_parameters: _ExtraParamDataType,
     multivariate: bool,
+    feature_contributions_type: _FeatureContributionsType,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]

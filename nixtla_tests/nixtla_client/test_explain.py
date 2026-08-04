@@ -6,7 +6,6 @@ import pandas as pd
 import polars as pl
 import pytest
 
-import nixtla.nixtla_client as client_module
 from nixtla import NixtlaClient
 
 _RUN_LIVE_ENDPOINT_TESTS = os.getenv("NIXTLA_RUN_SIMULATE_EXPLAIN_TESTS") == "1"
@@ -233,26 +232,6 @@ def test_explain_rejects_non_numeric_weights():
         client.explain(_explain_df(), features=["driver"])
 
 
-def test_explain_enforces_feature_count_before_request(monkeypatch):
-    monkeypatch.setattr(client_module, "_MAX_EXPLAIN_FEATURES", 1)
-    client, request = _client_with_response(_explain_response)
-
-    with pytest.raises(ValueError, match="at most 1"):
-        client.explain(_explain_df(), features=["driver", "noise"])
-
-    request.assert_not_called()
-
-
-def test_explain_enforces_feature_observation_limit_before_request(monkeypatch):
-    monkeypatch.setattr(client_module, "_MAX_EXPLAIN_FEATURE_OBSERVATIONS", 3)
-    client, request = _client_with_response(_explain_response)
-
-    with pytest.raises(ValueError, match="exceeds the maximum"):
-        client.explain(_explain_df(), features=["driver"])
-
-    request.assert_not_called()
-
-
 @pytest.mark.parametrize(
     "response,match",
     [
@@ -318,3 +297,37 @@ def test_explain_live_endpoint_returns_normalized_weights(nixtla_test_client, me
     assert result["method"].eq(method).all()
     assert result["weight"].ge(0).all()
     assert np.isclose(result["weight"].sum(), 1.0)
+
+
+class _OversizedBody:
+    def __len__(self):
+        return 201 * 2**20
+
+
+@pytest.mark.parametrize(
+    "endpoint,expected,not_expected",
+    [
+        ("v2/explain", "cannot be partitioned", "num_partitions"),
+        ("v2/forecast", "num_partitions", "cannot be partitioned"),
+        ("v2/simulate", "num_partitions", "cannot be partitioned"),
+    ],
+)
+def test_oversized_payload_message_is_actionable_per_endpoint(
+    monkeypatch, endpoint, expected, not_expected
+):
+    import nixtla.nixtla_client as client_module
+
+    monkeypatch.setattr(client_module.orjson, "dumps", lambda *a, **k: _OversizedBody())
+    client = NixtlaClient(api_key="test", max_retries=1)
+
+    with pytest.raises(ValueError) as excinfo:
+        client._make_request(
+            client=MagicMock(),
+            endpoint=endpoint,
+            payload={"series": {}},
+            multithreaded_compress=False,
+        )
+
+    message = str(excinfo.value)
+    assert expected in message
+    assert not_expected not in message

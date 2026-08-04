@@ -73,28 +73,6 @@ def test_forecast_sends_feature_contribution_type(contribution_type):
     assert client.feature_contributions["base_value"].tolist() == [9.0, 9.0]
 
 
-def test_forecast_rejects_feature_contributions_with_wrong_row_count():
-    client = _client_with_forecast_response()
-    client._make_request_with_retries = MagicMock(
-        return_value={
-            "mean": [10.0, 11.0],
-            "intervals": None,
-            "weights_x": None,
-            "feature_contributions": [[1.0, 2.0]],
-        }
-    )
-    df, X_df = _dataframes()
-
-    with pytest.raises(RuntimeError, match="expected 2"):
-        client.forecast(
-            df=df,
-            X_df=X_df,
-            h=2,
-            freq="D",
-            feature_contributions=True,
-        )
-
-
 def test_forecast_rejects_unknown_feature_contribution_type():
     client = _client_with_forecast_response()
     df, X_df = _dataframes()

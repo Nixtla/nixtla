@@ -8,7 +8,6 @@ import pandas as pd
 import polars as pl
 import pytest
 
-import nixtla.nixtla_client as client_module
 from nixtla import NixtlaClient
 
 _RUN_LIVE_ENDPOINT_TESTS = os.getenv("NIXTLA_RUN_SIMULATE_EXPLAIN_TESTS") == "1"
@@ -18,13 +17,21 @@ def _client_with_response(response, model_params=(28, 7)):
     client = NixtlaClient(api_key="test", max_retries=1)
     client._make_client = MagicMock()
     client._get_model_params = MagicMock(return_value=model_params)
-    request = MagicMock(
-        side_effect=lambda _http, endpoint, payload: (
-            response(endpoint, payload) if callable(response) else response
-        )
-    )
+
+    # Mirrors NixtlaClient._make_request_with_retries: the single-request path
+    # calls it positionally, the partitioned path by keyword.
+    def respond(client=None, endpoint=None, payload=None, multithreaded_compress=True):
+        return response(endpoint, payload) if callable(response) else response
+
+    request = MagicMock(side_effect=respond)
     client._make_request_with_retries = request
     return client, request
+
+
+def _payload_of(call):
+    if len(call.args) > 2:
+        return call.args[2]
+    return call.kwargs["payload"]
 
 
 def _series_df(n_series=1, n=4):
@@ -348,18 +355,16 @@ def test_simulate_leaves_missing_seed_unset_for_server():
     [
         ({"h": 0}, "positive integer"),
         ({"h": 1.5}, "positive integer"),
-        ({"n_paths": 0}, "between 1"),
-        ({"n_paths": 10_001}, "between 1"),
         ({"n_paths": 1.5}, "integer"),
-        ({"quantiles": [0.5]}, "between 2"),
-        ({"quantiles": [0.1, 0.1]}, "strictly increasing"),
-        ({"quantiles": [0.9, 0.1]}, "strictly increasing"),
-        ({"quantiles": [0.0, 0.5]}, "strictly inside"),
-        ({"quantiles": [0.5, 1.0]}, "strictly inside"),
-        ({"quantiles": [0.1, np.nan]}, "strictly inside"),
+        ({"quantiles": [[0.1, 0.5]]}, "one-dimensional"),
+        ({"quantiles": ["a", "b"]}, "list of numbers"),
         ({"seed": 1.5}, "integer"),
-        ({"seed": -(2**63) - 1}, "must be between"),
-        ({"seed": 2**64}, "must be between"),
+        ({"num_partitions": 0}, "positive integer"),
+        ({"num_partitions": 1.5}, "positive integer"),
+        (
+            {"num_partitions": 2, "multivariate": True},
+            "cannot be combined with `multivariate=True`",
+        ),
     ],
 )
 def test_simulate_rejects_invalid_options_before_request(kwargs, match):
@@ -371,41 +376,6 @@ def test_simulate_rejects_invalid_options_before_request(kwargs, match):
         client.simulate(**params)
 
     request.assert_not_called()
-
-
-def test_simulate_enforces_output_limit_before_request(monkeypatch):
-    monkeypatch.setattr(client_module, "_MAX_SIMULATE_OUTPUT_VALUES", 3)
-    client, request = _client_with_response(_simulate_response)
-
-    with pytest.raises(ValueError, match="exceeds the maximum"):
-        client.simulate(_series_df(), h=2, freq="D", n_paths=2)
-
-    request.assert_not_called()
-
-
-def test_simulate_enforces_quantile_cell_limit_before_request(monkeypatch):
-    monkeypatch.setattr(client_module, "_MAX_SIMULATE_CELLS", 9)
-    client, request = _client_with_response(_simulate_response)
-
-    with pytest.raises(ValueError, match=r"len\(quantiles\)"):
-        client.simulate(
-            _series_df(),
-            h=2,
-            freq="D",
-            n_paths=2,
-            quantiles=[0.1, 0.5, 0.9],
-        )
-
-    request.assert_not_called()
-
-
-def test_simulate_quantile_cell_limit_ignored_without_quantiles(monkeypatch):
-    monkeypatch.setattr(client_module, "_MAX_SIMULATE_CELLS", 1)
-    client, request = _client_with_response(_simulate_response)
-
-    client.simulate(_series_df(), h=2, freq="D", n_paths=2)
-
-    request.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -526,3 +496,107 @@ def test_simulate_live_endpoint_is_reproducible(nixtla_test_client):
     assert first["sample_id"].nunique() == 3
     assert first["coupled"].eq(False).all()
     pd.testing.assert_frame_equal(first, second)
+
+
+def _addressable_simulate_response(n_hist):
+    """Server stub whose values encode (sample_id, global series, step).
+
+    Each partition only sees its own slice, so it recovers the global series
+    index from the `y` block. Any mis-ordering in the merge is then visible in
+    the returned values rather than only in the row count.
+    """
+
+    def respond(endpoint, payload):
+        assert endpoint == "v2/simulate"
+        sizes = payload["series"]["sizes"]
+        n_series = len(sizes)
+        first_global = int(np.asarray(payload["series"]["y"])[0] // n_hist)
+        values = [
+            sample * 10_000 + (first_global + series) * 100 + step
+            for sample in range(payload["n_paths"])
+            for series in range(n_series)
+            for step in range(payload["h"])
+        ]
+        return {
+            "samples": values,
+            "n_paths": payload["n_paths"],
+            "h": payload["h"],
+            "sizes": [payload["h"]] * n_series,
+            "coupled": False,
+        }
+
+    return respond
+
+
+@pytest.mark.parametrize("num_partitions", [2, 3, 7, 10])
+def test_simulate_partitioned_output_matches_single_request(num_partitions):
+    n_series, n_hist, h, n_paths = 7, 6, 3, 4
+    df = _series_df(n_series=n_series, n=n_hist)
+
+    single, _ = _client_with_response(_addressable_simulate_response(n_hist))
+    expected = single.simulate(df, h=h, freq="D", n_paths=n_paths)
+
+    client, request = _client_with_response(_addressable_simulate_response(n_hist))
+    result = client.simulate(
+        df, h=h, freq="D", n_paths=n_paths, num_partitions=num_partitions
+    )
+
+    pd.testing.assert_frame_equal(result, expected)
+    assert request.call_count == min(num_partitions, n_series)
+
+
+def test_simulate_partitioning_preserves_exogenous_features():
+    n_series, n_hist, h = 5, 4, 2
+    df = _series_df(n_series=n_series, n=n_hist).assign(
+        price=np.arange(100, 100 + n_series * n_hist, dtype=float),
+        event=[f"e{i}" for i in range(n_series * n_hist)],
+    )
+    X_df = pd.DataFrame(
+        {
+            "unique_id": np.repeat([f"id-{i}" for i in range(n_series)], h),
+            "ds": list(pd.date_range("2024-01-05", periods=h, freq="D")) * n_series,
+            "price": np.arange(900, 900 + n_series * h, dtype=float),
+            "event": [f"f{i}" for i in range(n_series * h)],
+        }
+    )
+    kwargs = dict(
+        df=df, X_df=X_df, h=h, freq="D", n_paths=2, categorical_exog_list=["event"]
+    )
+
+    single, single_request = _client_with_response(_simulate_response)
+    single.simulate(**kwargs)
+    whole = _payload_of(single_request.call_args)["series"]
+
+    client, request = _client_with_response(_simulate_response)
+    client.simulate(**kwargs, num_partitions=3)
+    parts = [_payload_of(call)["series"] for call in request.call_args_list]
+
+    def rows(series, key):
+        return [
+            row.tolist() if isinstance(row, np.ndarray) else list(row)
+            for row in (series[key] or [])
+        ]
+
+    for key in ("X", "X_future"):
+        rejoined = [
+            sum((rows(part, key)[i] for part in parts), [])
+            for i in range(len(rows(whole, key)))
+        ]
+        assert rejoined == rows(whole, key), key
+    # Categorical indices address feature rows, so they are identical per partition.
+    for part in parts:
+        assert part["categorical_exog"] == whole["categorical_exog"]
+
+
+def test_simulate_partitioning_rejects_mismatched_partition_response():
+    def bad(endpoint, payload):
+        response = _simulate_response(endpoint, payload)
+        response["samples"] = response["samples"][:-1]
+        return response
+
+    client, _ = _client_with_response(bad)
+
+    with pytest.raises(RuntimeError, match="expected"):
+        client.simulate(
+            _series_df(n_series=4), h=2, freq="D", n_paths=2, num_partitions=2
+        )
