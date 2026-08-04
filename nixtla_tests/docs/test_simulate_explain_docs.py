@@ -57,15 +57,19 @@ CASE_STUDY_ASSETS = [
 ]
 
 
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
 def _sdk_section(name: str, next_name: str) -> str:
-    reference = SDK_REFERENCE.read_text()
+    reference = _read(SDK_REFERENCE)
     return reference.split(f"## NixtlaClient.{name}", 1)[1].split(
         f"## NixtlaClient.{next_name}", 1
     )[0]
 
 
 def test_guides_are_in_navigation():
-    navigation = NAVIGATION.read_text()
+    navigation = _read(NAVIGATION)
 
     assert "/forecasting/probabilistic/simulation" in navigation
     assert "/use_cases/what_if_forecasting_price_effects_in_retail" in navigation
@@ -82,16 +86,14 @@ def test_guides_are_in_navigation():
 
 
 def test_guides_link_to_the_sdk_capabilities():
-    assert "NixtlaClient.simulate()" in SIMULATION_GUIDE.read_text()
-    assert "NixtlaClient.explain()" in HISTORICAL_GUIDE.read_text()
-    assert 'feature_contributions_type="intervention"' in (
-        INTERVENTION_GUIDE.read_text()
-    )
-    assert 'feature_contributions_type="granger"' in ADVANCED_GUIDE.read_text()
+    assert "NixtlaClient.simulate()" in _read(SIMULATION_GUIDE)
+    assert "NixtlaClient.explain()" in _read(HISTORICAL_GUIDE)
+    assert 'feature_contributions_type="intervention"' in (_read(INTERVENTION_GUIDE))
+    assert 'feature_contributions_type="granger"' in _read(ADVANCED_GUIDE)
 
 
 def test_explanation_overview_starts_with_plain_language_questions():
-    overview = EXPLANATION_OVERVIEW.read_text()
+    overview = _read(EXPLANATION_OVERVIEW)
 
     for question in [
         "Why is this forecast high or low?",
@@ -106,9 +108,9 @@ def test_explanation_overview_starts_with_plain_language_questions():
 
 
 def test_case_studies_include_rendered_assets():
-    simulation = SIMULATION_GUIDE.read_text()
+    simulation = _read(SIMULATION_GUIDE)
     explanation = "\n".join(
-        page.read_text()
+        _read(page)
         for page in [
             EXPLANATION_OVERVIEW,
             SHAP_GUIDE,
@@ -123,7 +125,7 @@ def test_case_studies_include_rendered_assets():
     for figure in EXPECTED_SIMULATION_FIGURES:
         assert figure in simulation, f"{figure} missing from the simulation guide"
 
-    coupled_simulation = COUPLED_SIMULATION_GUIDE.read_text()
+    coupled_simulation = _read(COUPLED_SIMULATION_GUIDE)
     assert "Planted role" in coupled_simulation
     assert "**Substitute**" in coupled_simulation
     assert "**Complement**" in coupled_simulation
@@ -133,7 +135,7 @@ def test_case_studies_include_rendered_assets():
         assert figure in coupled_simulation, f"{figure} missing from the tutorial"
 
     for page, figure in EXPECTED_EXPLANATION_FIGURES:
-        assert figure in page.read_text(), f"{figure} missing from {page.name}"
+        assert figure in _read(page), f"{figure} missing from {page.name}"
     assert "Results were generated with TimeGPT 2.1" in explanation
 
     for asset in CASE_STUDY_ASSETS:
@@ -148,11 +150,11 @@ def test_case_studies_include_rendered_assets():
 def test_simulate_does_not_expose_a_method_option():
     assert "method" not in inspect.signature(NixtlaClient.simulate).parameters
 
-    spec = json.loads(OPENAPI.read_text())
+    spec = json.loads(_read(OPENAPI))
     assert "method" not in spec["components"]["schemas"]["SimulateInput"]["properties"]
 
     for guide in (SIMULATION_GUIDE, COUPLED_SIMULATION_GUIDE):
-        text = guide.read_text()
+        text = _read(guide)
         for call in re.findall(r"\.simulate\((.*?)\)", text, flags=re.DOTALL):
             assert "method" not in call, f"{guide.name} passes `method` to simulate"
 
@@ -161,7 +163,7 @@ def test_simulate_does_not_expose_a_method_option():
 
 
 def test_openapi_exposes_simulate_and_explain_contracts():
-    spec = json.loads(OPENAPI.read_text())
+    spec = json.loads(_read(OPENAPI))
     schemas = spec["components"]["schemas"]
 
     assert spec["paths"]["/v2/simulate"]["post"]["requestBody"]["content"][
@@ -192,7 +194,7 @@ def test_openapi_exposes_simulate_and_explain_contracts():
 
 
 def test_sdk_reference_contains_both_public_signatures():
-    reference = SDK_REFERENCE.read_text()
+    reference = _read(SDK_REFERENCE)
 
     assert "## NixtlaClient.simulate" in reference
     assert "## NixtlaClient.explain" in reference
