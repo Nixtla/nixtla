@@ -198,6 +198,7 @@ libraries are installed; install the selected dataframe library separately.
 - [Tutorials and capabilities](https://nixtlaverse.nixtla.io/synforecast/)
 - [Generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md)
 - [Contributing](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md)
+- [Roadmap](https://github.com/Nixtla/synforecast/blob/main/ROADMAP.md)
 - [Changelog](https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md)
 - [Support](https://github.com/Nixtla/synforecast/blob/main/SUPPORT.md)
 - [Security policy](https://github.com/Nixtla/synforecast/security/policy)

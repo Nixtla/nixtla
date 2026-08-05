@@ -146,6 +146,8 @@ cargo clippy --manifest-path rust/Cargo.toml --all-targets --all-features -- -D 
 4. Open a pull request with a clear description and a reference to any related issue.
 
 Report bugs and request features via [GitHub Issues](https://github.com/Nixtla/synforecast/issues).
+Planned work is listed in [ROADMAP.md](ROADMAP.md); update it when an item ships
+or when a pull request changes what is planned.
 
 ## Releasing
 
