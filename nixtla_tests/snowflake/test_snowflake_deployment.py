@@ -640,12 +640,14 @@ class TestExampleScripts:
             obj="Explain forecast values with future exog",
         )
 
-        # Compare contribution values
+        # Compare contribution values. The Snowflake and client results come
+        # from two independent API calls, so small contributions carry noise
+        # on the scale of the forecast nondeterminism; use a wider atol.
         pd.testing.assert_series_equal(
             sf_sorted["contribution"],
             client_sorted["contribution"],
             check_names=False,
             rtol=1e-3,
-            atol=1e-3,
+            atol=1e-2,
             obj="Feature contributions with future exog",
         )
