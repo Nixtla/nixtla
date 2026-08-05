@@ -130,7 +130,7 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 |---|---|---|---|
 | df | pandas or polars DataFrame |  | Historical time-series data containing the time and target columns. It may also contain an ID column and exogenous features. |
 | h | int |  | Number of future timesteps in every path. Must be greater than zero. |
-| freq | str, int, or pandas offset | None | Frequency of the timestamps. If `None`, it is inferred from `df`. |
+| freq | str, int, or pandas offset | None | Frequency of the timestamps. If `None`, it is inferred from `df` (pandas only); pass it explicitly for polars. |
 | id_col | str | unique_id | Column that identifies each series. |
 | time_col | str | ds | Column that identifies each timestep. |
 | target_col | str | y | Column that contains the target. |
@@ -148,7 +148,7 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 | model | str | timegpt-2.1 | Model used to generate the forecasts. |
 | multivariate | bool | False | Request coherent paths across series. The returned `coupled` column reports whether cross-series coupling was applied. |
 | num_partitions | int | None | Split the series across this many concurrent requests to keep large jobs under the request size limit. Cannot be combined with `multivariate=True`. A partitioned call returns different paths than an unpartitioned one for the same `seed`. |
-| **Returns** | **pandas or polars DataFrame** |  | **Long-form paths containing the ID and time columns, `sample_id`, `TimeGPT`, and `coupled`. The dataframe contains `n_series * n_paths * h` rows.** |
+| **Returns** | **pandas or polars DataFrame** |  | **Long-form paths containing the ID and time columns, `sample_id`, `TimeGPT`, and `coupled`. The dataframe contains `n_series * n_paths * h` rows. The ID column is omitted if `df` did not contain one.** |
 
 See [Forecast Simulation](/forecasting/probabilistic/simulation) for complete
 examples, output interpretation, limits, and scenario analysis.

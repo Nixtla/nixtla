@@ -278,6 +278,91 @@ def test_simulate_mirrors_server_coupled_false_for_multivariate_request():
     assert result["coupled"].tolist() == [False] * 4
 
 
+@pytest.mark.parametrize("coupled", [None, "missing"])
+def test_simulate_treats_absent_coupled_flag_as_not_coupled(coupled):
+    def respond(_endpoint, payload):
+        response = {
+            "samples": [1.0] * (payload["n_paths"] * payload["h"]),
+            "n_paths": payload["n_paths"],
+            "h": payload["h"],
+            "sizes": [payload["h"]],
+        }
+        if coupled is None:
+            response["coupled"] = None
+        return response
+
+    client, _ = _client_with_response(respond)
+
+    result = client.simulate(_series_df(), h=2, freq="D", n_paths=1)
+
+    assert result["coupled"].tolist() == [False] * 2
+
+
+def test_simulate_partitioned_rejects_non_numeric_sizes():
+    client, _ = _client_with_response(
+        lambda _endpoint, payload: {
+            "samples": [1.0]
+            * (payload["n_paths"] * len(payload["series"]["sizes"]) * 2),
+            "n_paths": payload["n_paths"],
+            "h": 2,
+            "sizes": ["a"] * len(payload["series"]["sizes"]),
+            "coupled": False,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="non-numeric sizes"):
+        client.simulate(
+            _series_df(n_series=2, n=4), h=2, freq="D", n_paths=1, num_partitions=2
+        )
+
+
+def test_simulate_restricts_history_when_there_is_no_exogenous_data():
+    input_size = 28
+    client, request = _client_with_response(
+        _simulate_response, model_params=(input_size, 7)
+    )
+
+    client.simulate(_series_df(n_series=2, n=200), h=5, freq="D", n_paths=1)
+
+    series = _payload_of(request.call_args)["series"]
+    assert series["sizes"].tolist() == [input_size, input_size]
+    assert len(series["y"]) == 2 * input_size
+
+
+def test_simulate_keeps_at_least_h_observations_when_multivariate():
+    input_size, h = 28, 100
+    client, request = _client_with_response(
+        _simulate_response, model_params=(input_size, 7)
+    )
+
+    client.simulate(
+        _series_df(n_series=2, n=200), h=h, freq="D", n_paths=1, multivariate=True
+    )
+
+    series = _payload_of(request.call_args)["series"]
+    assert series["sizes"].tolist() == [h, h]
+
+
+def test_simulate_does_not_restrict_history_when_exogenous_data_is_present():
+    n = 60
+    df = _series_df(n_series=2, n=n)
+    df["ex"] = 1.0
+    X_df = pd.DataFrame(
+        {
+            "unique_id": np.repeat(["id-0", "id-1"], 2),
+            "ds": list(pd.date_range("2024-01-01", periods=n + 2, freq="D")[-2:]) * 2,
+            "ex": 1.0,
+        }
+    )
+    client, request = _client_with_response(_simulate_response, model_params=(28, 7))
+
+    client.simulate(df, h=2, freq="D", n_paths=1, X_df=X_df)
+
+    series = _payload_of(request.call_args)["series"]
+    assert series["sizes"].tolist() == [n, n]
+    assert np.asarray(series["X"]).shape[1] == 2 * n
+
+
 def test_simulate_warns_when_horizon_exceeds_model_horizon(caplog):
     client, _ = _client_with_response(_simulate_response, model_params=(28, 2))
 

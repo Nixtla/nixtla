@@ -2,6 +2,7 @@ import os
 from unittest.mock import MagicMock
 
 import numpy as np
+import orjson
 import pandas as pd
 import polars as pl
 import pytest
@@ -231,6 +232,37 @@ def test_explain_accepts_non_numeric_feature_declared_as_categorical():
 
     assert result["feature"].tolist() == ["driver", "label"]
     request.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "constructor,freq", [(pd.DataFrame, "D"), (pl.from_pandas, "1d")]
+)
+def test_explain_treats_boolean_features_the_same_on_both_backends(constructor, freq):
+    client, request = _client_with_response(_explain_response)
+    df = constructor(_explain_df().assign(flag=[True, False, True, False, True, False]))
+
+    with pytest.raises(ValueError, match=r"not numeric: \['flag'\]"):
+        client.explain(df, features=["driver", "flag"], freq=freq)
+    request.assert_not_called()
+
+    result = client.explain(
+        df, features=["driver", "flag"], categorical_exog_list=["flag"], freq=freq
+    )
+    assert result["feature"].to_list() == ["driver", "flag"]
+
+
+@pytest.mark.parametrize("dtype", ["Int64", "Float64"])
+def test_explain_serializes_pandas_nullable_feature_dtypes(dtype):
+    client, request = _client_with_response(_explain_response)
+    df = _explain_df()
+    df["nullable"] = pd.array([1, 2, 3, 4, 5, 6], dtype=dtype)
+
+    client.explain(df, features=["driver", "nullable"])
+
+    values = request.call_args.args[2]["series"]["X"][1]
+    assert isinstance(values, np.ndarray)
+    assert values.dtype != object
+    orjson.dumps(values, option=orjson.OPT_SERIALIZE_NUMPY)
 
 
 def test_explain_default_features_reject_non_numeric_columns():

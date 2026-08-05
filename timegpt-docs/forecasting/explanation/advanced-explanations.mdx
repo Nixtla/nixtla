@@ -161,11 +161,13 @@ worth investigating.
     distance between category labels.
 
     For any `feature_contributions_type` other than `"shapley"`, categorical
-    features cannot be combined with `hist_exog_list` in the same request. The
+    features cannot be combined with `hist_exog_list` when the request also
+    covers historical timestamps, that is `forecast(..., add_history=True)`. The
     historical/future column mapping cannot be represented faithfully once the
     categorical columns are split out, so the request is rejected rather than
     returning a silently wrong explanation. Either keep the exogenous features
-    all-numeric, drop `hist_exog_list`, or use `"shapley"`.
+    all-numeric, drop `hist_exog_list`, or use `"shapley"`. A plain
+    `forecast()` call is unaffected and supports this combination.
   </Accordion>
   <Accordion title="Request limits">
     A request supports up to 75 explained features and 1,000,000 historical

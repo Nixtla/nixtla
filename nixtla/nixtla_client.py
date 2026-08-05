@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
+import warnings
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
@@ -284,8 +285,36 @@ def _maybe_infer_freq(
 
 def _is_numeric_column(df: DataFrame, col: str) -> bool:
     if isinstance(df, pd.DataFrame):
-        return pd.api.types.is_numeric_dtype(df[col])
+        dtype = df[col].dtype
+        return pd.api.types.is_numeric_dtype(dtype) and not pd.api.types.is_bool_dtype(
+            dtype
+        )
     return df[col].dtype.is_numeric()
+
+
+def _numeric_column_array(df: DataFrame, col: str) -> np.ndarray:
+    if not isinstance(df, pd.DataFrame):
+        return df[col].to_numpy()
+    target_dtype = df.dtypes[col].type
+    if np.issubdtype(target_dtype, np.floating):
+        return df[col].to_numpy(dtype=target_dtype, na_value=np.nan)
+    return df[col].to_numpy(dtype=target_dtype)
+
+
+def _coerce_coupled_flag(value: Any) -> bool:
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise RuntimeError(
+            f"Simulation response reported a non-boolean `coupled` value: {value!r}."
+        )
+    return value
+
+
+def _has_duplicate_keys(df: DataFrame, id_col: str, time_col: str) -> bool:
+    if isinstance(df, pd.DataFrame):
+        return bool(df.duplicated(subset=[id_col, time_col]).any())
+    return df.n_unique(subset=[id_col, time_col]) != len(df)
 
 
 def _validate_freq_regularity(
@@ -303,35 +332,27 @@ def _validate_freq_regularity(
             id_col=id_col,
             time_col=time_col,
         )
-        freq_ok = _dataframe_keys_match(
-            actual=df,
-            expected=expected_ids_times,
-            id_col=id_col,
-            time_col=time_col,
-        )
+        freq_ok = len(df) == len(expected_ids_times)
     elif isinstance(freq, pd.offsets.BaseOffset):
-        assert isinstance(df, pd.DataFrame)
-        freq_ok = True
-        for _, times in df.groupby(id_col, observed=True, sort=False)[time_col]:
-            actual_times = pd.Index(times)
-            expected_times = pd.date_range(
-                start=actual_times.min(),
-                end=actual_times.max(),
-                freq=freq,
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError(
+                "pandas offsets are only supported for pandas dataframes, "
+                "please provide `freq` as a string for polars dataframes."
             )
-            if (
-                not actual_times.is_unique
-                or len(actual_times) != len(expected_times)
-                or not actual_times.difference(expected_times).empty
-                or not expected_times.difference(actual_times).empty
-            ):
-                freq_ok = False
-                break
+        times_by_id = df.groupby(id_col, observed=True)[time_col].agg(
+            ["min", "max", "size"]
+        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
+            expected_ends = times_by_id["min"] + freq * (times_by_id["size"] - 1)
+        freq_ok = bool((expected_ends == times_by_id["max"]).all())
     else:
         raise ValueError(
             "`freq` should be a string, integer or pandas offset, "
             f"got {type(freq).__name__}."
         )
+    if freq_ok and _has_duplicate_keys(df, id_col, time_col):
+        freq_ok = False
     if not freq_ok:
         raise ValueError(
             "Series contain missing or duplicate timestamps, or the timestamps "
@@ -349,18 +370,17 @@ def _dataframe_keys_match(
     id_col: str,
     time_col: str,
 ) -> bool:
-    actual_keys = pd.MultiIndex.from_arrays(
-        [actual[id_col].to_numpy(), actual[time_col].to_numpy()]
-    )
-    expected_keys = pd.MultiIndex.from_arrays(
-        [expected[id_col].to_numpy(), expected[time_col].to_numpy()]
-    )
-    return (
-        len(actual_keys) == len(expected_keys)
-        and actual_keys.is_unique
-        and expected_keys.is_unique
-        and actual_keys.difference(expected_keys).empty
-        and expected_keys.difference(actual_keys).empty
+    if len(actual) != len(expected):
+        return False
+    actual_ids = actual[id_col].to_numpy()
+    actual_times = actual[time_col].to_numpy()
+    expected_ids = expected[id_col].to_numpy()
+    expected_times = expected[time_col].to_numpy()
+    actual_order = np.lexsort((actual_times, actual_ids))
+    expected_order = np.lexsort((expected_times, expected_ids))
+    return bool(
+        np.array_equal(actual_ids[actual_order], expected_ids[expected_order])
+        and np.array_equal(actual_times[actual_order], expected_times[expected_order])
     )
 
 
@@ -1444,12 +1464,13 @@ class NixtlaClient:
             # samples are [sample_id][series][h]; join partitions within each
             # sample so the series stay in request order.
             blocks.append(part.reshape(n_paths, n_series * h))
-            sizes.append(np.asarray(res.get("sizes"), dtype=np.int64))
-        coupled = [res.get("coupled", False) for res in results]
-        if any(not isinstance(c, bool) for c in coupled):
-            raise RuntimeError(
-                "Simulation response reported a non-boolean `coupled` value."
-            )
+            try:
+                sizes.append(np.asarray(res.get("sizes"), dtype=np.int64))
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "Simulation response contains non-numeric sizes."
+                ) from exc
+        coupled = [_coerce_coupled_flag(res.get("coupled")) for res in results]
         return {
             "samples": np.concatenate(blocks, axis=1).reshape(-1),
             "sizes": np.hstack(sizes),
@@ -1537,7 +1558,6 @@ class NixtlaClient:
         id_col: str,
         time_col: str,
         target_col: str,
-        model: _Model,
         validate_api_key: bool,
         freq: Optional[_FreqType],
     ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
@@ -1555,8 +1575,7 @@ class NixtlaClient:
             and time_col not in df
             and pd.api.types.is_datetime64_any_dtype(df.index)
         ):
-            df.index.name = time_col
-            df = df.reset_index()
+            df = df.rename_axis(time_col).reset_index()
         df = ensure_time_dtype(df, time_col=time_col)
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
         inferred_freq = _maybe_infer_freq(
@@ -1678,7 +1697,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=False,
-            model=model,
             freq=freq,
         )
 
@@ -2045,7 +2063,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
-            model=model,
             freq=freq,
         )
         df, X_df, df_cat_vals, futr_cat_cols, hist_cat_cols, X_df_cat_future = (
@@ -2309,7 +2326,8 @@ class NixtlaClient:
                 ID column and exogenous feature columns.
             h (int): Number of future timesteps in every sample path.
             freq (str, int or pandas offset, optional): Frequency of the
-                timestamps. If `None`, it is inferred from `df`.
+                timestamps. If `None`, it is inferred from `df` (pandas only);
+                pass it explicitly for polars.
             id_col (str): Column that identifies each series. Defaults to
                 `"unique_id"`.
             time_col (str): Column that identifies each timestep. Defaults to
@@ -2365,7 +2383,8 @@ class NixtlaClient:
         Returns:
             pandas or polars DataFrame: Long-format sample paths with ID, time,
                 `sample_id`, `TimeGPT`, and `coupled` columns. It contains
-                `n_series * n_paths * h` rows.
+                `n_series * n_paths * h` rows. The ID column is omitted if `df`
+                did not contain one.
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             raise ValueError("`simulate` only supports pandas and polars dataframes.")
@@ -2437,7 +2456,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
-            model=model,
             freq=freq,
         )
         (
@@ -2497,13 +2515,24 @@ class NixtlaClient:
         )
         sorted_df_cat = _sort_categorical_values(df_cat_vals, processed.sort_idxs)
         standard_freq = _standardize_freq(freq, processed)
-        _, model_horizon = self._get_model_params(model, standard_freq)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
         if h > model_horizon:
             logger.warning(
                 'The specified horizon "h" exceeds the model horizon, '
                 "this may lead to less accurate sample paths. "
                 "Please consider using a smaller horizon."
             )
+        if not x_cols and not categorical_exog_list:
+            logger.info("Restricting input...")
+            new_input_size = _restrict_input_samples(
+                level=None,
+                input_size=model_input_size,
+                model_horizon=model_horizon,
+                h=h,
+            )
+            if multivariate:
+                new_input_size = max(new_input_size, h)
+            processed = _tail(processed, new_input_size)
         X, X_future, categorical_exog_payload, _ = _build_exog_payload(
             processed=processed,
             sorted_df_cat=sorted_df_cat,
@@ -2579,12 +2608,7 @@ class NixtlaClient:
                 f"Simulation response contains {samples.size:,} values; "
                 f"expected {output_values:,}."
             )
-        coupled = resp.get("coupled", False)
-        if not isinstance(coupled, bool):
-            raise RuntimeError(
-                f"Simulation response reported a non-boolean `coupled` value: "
-                f"{coupled!r}."
-            )
+        coupled = _coerce_coupled_flag(resp.get("coupled"))
 
         future_df = ufp.make_future_dataframe(
             uids=processed.uids,
@@ -2665,32 +2689,15 @@ class NixtlaClient:
                 "`method` must be one of "
                 f"{', '.join(repr(m) for m in _EXPLAIN_METHODS)}."
             )
-        if validate_api_key and not self.validate_api_key(log=False):
-            raise Exception("API Key not valid, please email support@nixtla.io")
-
-        drop_id = id_col not in df.columns
-        if drop_id:
-            df = ufp.copy_if_pandas(df, deep=False)
-            df = ufp.assign_columns(df, id_col, 0)
-        if (
-            isinstance(df, pd.DataFrame)
-            and time_col not in df
-            and pd.api.types.is_datetime64_any_dtype(df.index)
-        ):
-            df = df.copy(deep=False)
-            df.index.name = time_col
-            df = df.reset_index()
-        df = ensure_time_dtype(df, time_col=time_col)
-        validate_format(
+        df, _, _, freq = self._run_validations(
             df=df,
+            X_df=None,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
+            validate_api_key=validate_api_key,
+            freq=freq,
         )
-        freq = _maybe_infer_freq(  # type: ignore[arg-type]
-            df, freq=freq, id_col=id_col, time_col=time_col
-        )
-        _validate_freq_regularity(df=df, freq=freq, id_col=id_col, time_col=time_col)
 
         base_columns = {id_col, time_col, target_col}
         if features is None:
@@ -2733,21 +2740,23 @@ class NixtlaClient:
                 "to treat them as categorical, or exclude them via `features`."
             )
 
-        selected = df[[id_col, time_col, target_col, *features]]
         processed = ufp.process_df(
-            df=selected[[id_col, time_col, target_col]],
+            df=df[[id_col, time_col, target_col]],
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
         )
         feature_rows: list[Any] = []
         for feature in features:
-            values = selected[feature].to_numpy()
+            is_categorical = feature in categorical_exog_list
+            values = (
+                df[feature].to_numpy()
+                if is_categorical
+                else _numeric_column_array(df, feature)
+            )
             if processed.sort_idxs is not None:
                 values = values[processed.sort_idxs]
-            feature_rows.append(
-                values if np.issubdtype(values.dtype, np.number) else values.tolist()
-            )
+            feature_rows.append(values.tolist() if is_categorical else values)
         categorical_positions = [
             position
             for position, feature in enumerate(features)
@@ -2957,7 +2966,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
-            model=model,
             freq=freq,
         )
 
@@ -3278,7 +3286,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=False,
-            model=model,
             freq=freq,
         )
         logger.info("Preprocessing dataframes...")
@@ -3595,7 +3602,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
-            model=model,
             freq=freq,
         )
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
