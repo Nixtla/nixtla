@@ -191,6 +191,26 @@ def test_explain_rejects_duplicate_timestamps_before_request():
     request.assert_not_called()
 
 
+@pytest.mark.parametrize("freq", ["D", pd.offsets.Day()])
+def test_explain_rejects_balanced_gap_and_duplicate_before_request(freq):
+    client, request = _client_with_response(_explain_response)
+    invalid = pd.DataFrame(
+        {
+            "unique_id": "series-0",
+            "ds": pd.to_datetime(
+                ["2024-01-01", "2024-01-02", "2024-01-02", "2024-01-04"]
+            ),
+            "y": [1.0, 2.0, 3.0, 4.0],
+            "driver": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+        client.explain(invalid, features=["driver"], freq=freq)
+
+    request.assert_not_called()
+
+
 def test_explain_names_undeclared_non_numeric_features():
     client, request = _client_with_response(_explain_response)
     df = _explain_df().assign(label=["x", "y", "x", "y", "x", "y"])

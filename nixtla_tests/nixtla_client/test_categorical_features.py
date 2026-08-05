@@ -217,7 +217,7 @@ def test_extract_categorical_exog_reads_future_values_for_both_backends(frame):
 
     assert futr_cat_cols == ["event"]
     assert hist_cat_cols == []
-    assert X_df_cat_future == [["sale", "none"]]
+    assert X_df_cat_future["event"].to_list() == ["sale", "none"]
     assert df_cat_vals["event"].tolist() == ["none", "sale", "none"]
     assert "event" not in out_df.columns
     assert "event" not in out_X_df.columns

@@ -6,7 +6,6 @@ from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
-import warnings
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
@@ -149,6 +148,8 @@ _FEATURE_CONTRIBUTIONS_TYPES = get_args(_FeatureContributionsType)
 _MAX_N_PATHS = 10_000
 _MIN_QUANTILES = 2
 _MAX_QUANTILES = 200
+_MIN_SEED = -(2**63)
+_MAX_SEED = 2**64 - 1
 
 
 class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
@@ -302,16 +303,30 @@ def _validate_freq_regularity(
             id_col=id_col,
             time_col=time_col,
         )
-        freq_ok = len(df) == len(expected_ids_times)
+        freq_ok = _dataframe_keys_match(
+            actual=df,
+            expected=expected_ids_times,
+            id_col=id_col,
+            time_col=time_col,
+        )
     elif isinstance(freq, pd.offsets.BaseOffset):
         assert isinstance(df, pd.DataFrame)
-        times_by_id = df.groupby(id_col, observed=True)[time_col].agg(
-            ["min", "max", "size"]
-        )
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
-            expected_ends = times_by_id["min"] + freq * (times_by_id["size"] - 1)
-        freq_ok = (expected_ends == times_by_id["max"]).all()
+        freq_ok = True
+        for _, times in df.groupby(id_col, observed=True, sort=False)[time_col]:
+            actual_times = pd.Index(times)
+            expected_times = pd.date_range(
+                start=actual_times.min(),
+                end=actual_times.max(),
+                freq=freq,
+            )
+            if (
+                not actual_times.is_unique
+                or len(actual_times) != len(expected_times)
+                or not actual_times.difference(expected_times).empty
+                or not expected_times.difference(actual_times).empty
+            ):
+                freq_ok = False
+                break
     else:
         raise ValueError(
             "`freq` should be a string, integer or pandas offset, "
@@ -326,6 +341,27 @@ def _validate_freq_regularity(
             "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
             "for an end to end example."
         )
+
+
+def _dataframe_keys_match(
+    actual: DFType,
+    expected: DFType,
+    id_col: str,
+    time_col: str,
+) -> bool:
+    actual_keys = pd.MultiIndex.from_arrays(
+        [actual[id_col].to_numpy(), actual[time_col].to_numpy()]
+    )
+    expected_keys = pd.MultiIndex.from_arrays(
+        [expected[id_col].to_numpy(), expected[time_col].to_numpy()]
+    )
+    return (
+        len(actual_keys) == len(expected_keys)
+        and actual_keys.is_unique
+        and expected_keys.is_unique
+        and actual_keys.difference(expected_keys).empty
+        and expected_keys.difference(actual_keys).empty
+    )
 
 
 def _standardize_freq(freq: _Freq, processed: ufp.ProcessedDF) -> str:
@@ -538,7 +574,7 @@ def _extract_categorical_exog(
     dict[str, np.ndarray],
     list[str],
     list[str],
-    list[list],
+    Optional[DFType],
 ]:
     """Validate, extract, and strip categorical exogenous columns from df/X_df.
 
@@ -548,10 +584,10 @@ def _extract_categorical_exog(
         df_cat_vals: mapping col → raw values array for every col in categorical_exog_list.
         futr_cat_cols: cat cols found in X_df (treated as future categoricals).
         hist_cat_cols: cat cols not in X_df.
-        X_df_cat_future: sorted future values per futr_cat_col (empty when X_df is None).
+        X_df_cat_future: future categorical values with their ID and time keys.
     """
     if not categorical_exog_list:
-        return df, X_df, {}, [], [], []
+        return df, X_df, {}, [], [], None
 
     x_df_exog_cols = (
         {c for c in X_df.columns if c not in {id_col, time_col}}
@@ -585,11 +621,9 @@ def _extract_categorical_exog(
         c: df[c].to_numpy() for c in categorical_exog_list
     }
 
-    X_df_cat_future: list[list] = []
+    X_df_cat_future: Optional[DFType] = None
     if futr_cat_cols and X_df is not None:
-        X_df_sorted = ensure_sorted(X_df, id_col=id_col, time_col=time_col)
-        for c in futr_cat_cols:
-            X_df_cat_future.append(X_df_sorted[c].to_numpy().tolist())
+        X_df_cat_future = X_df[[id_col, time_col, *futr_cat_cols]]
         X_df = X_df[[c for c in X_df.columns if c not in futr_cat_cols]]
 
     df = df[[c for c in df.columns if c not in set(categorical_exog_list)]]
@@ -654,7 +688,10 @@ def _align_future_exog_order(
     uids: Any,
     id_col: str,
 ) -> np.ndarray:
-    x_uids_list = X_uids.to_numpy().tolist()
+    if hasattr(X_uids, "to_numpy"):
+        x_uids_list = X_uids.to_numpy().tolist()
+    else:
+        x_uids_list = np.asarray(X_uids).tolist()
     uids_list = uids.to_numpy().tolist()
     if x_uids_list == uids_list:
         return X_future
@@ -673,6 +710,38 @@ def _align_future_exog_order(
         ]
     )
     return X_future[:, row_idxs]
+
+
+def _align_future_categorical_exog(
+    X_df_cat_future: Optional[DFType],
+    uids: Any,
+    id_col: str,
+    time_col: str,
+) -> list[list]:
+    if X_df_cat_future is None:
+        return []
+    X_df_cat_future = ensure_time_dtype(X_df_cat_future, time_col=time_col)
+    X_df_cat_future = ensure_sorted(
+        X_df_cat_future,
+        id_col=id_col,
+        time_col=time_col,
+    )
+    ids = X_df_cat_future[id_col].to_numpy()
+    starts = np.append(0, np.flatnonzero(ids[1:] != ids[:-1]) + 1)
+    indptr = np.append(starts, len(ids))
+    x_uids = ids[starts]
+    cat_cols = [c for c in X_df_cat_future.columns if c not in (id_col, time_col)]
+    values = np.empty((len(cat_cols), len(X_df_cat_future)), dtype=object)
+    for position, col in enumerate(cat_cols):
+        values[position] = X_df_cat_future[col].to_numpy()
+    aligned = _align_future_exog_order(
+        X_future=values,
+        X_indptr=indptr,
+        X_uids=x_uids,
+        uids=uids,
+        id_col=id_col,
+    )
+    return [row.tolist() for row in aligned]
 
 
 def _preprocess(
@@ -742,19 +811,12 @@ def _validate_future_exog_keys(
         id_col=id_col,
         time_col=time_col,
     )
-    actual_keys = pd.MultiIndex.from_arrays(
-        [X_df[id_col].to_numpy(), X_df[time_col].to_numpy()]
-    )
-    expected_keys = pd.MultiIndex.from_arrays(
-        [expected[id_col].to_numpy(), expected[time_col].to_numpy()]
-    )
-    keys_match = (
-        len(actual_keys) == len(expected_keys)
-        and actual_keys.is_unique
-        and actual_keys.difference(expected_keys).empty
-        and expected_keys.difference(actual_keys).empty
-    )
-    if not keys_match:
+    if not _dataframe_keys_match(
+        actual=X_df,
+        expected=expected,
+        id_col=id_col,
+        time_col=time_col,
+    ):
         raise ValueError(
             "`X_df` must contain exactly one row for every future "
             f"({id_col}, {time_col}) pair in the {h}-step forecast horizon."
@@ -2026,6 +2088,20 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        _validate_future_exog_keys(
+            X_df=X_df,
+            processed=processed,
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        X_df_cat_future_values = _align_future_categorical_exog(
+            X_df_cat_future=X_df_cat_future,
+            uids=processed.uids,
+            id_col=id_col,
+            time_col=time_col,
+        )
 
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
@@ -2067,7 +2143,7 @@ class NixtlaClient:
             futr_cat_cols=futr_cat_cols,
             hist_cat_cols=hist_cat_cols,
             X_future=X_future,
-            X_df_cat_future=X_df_cat_future,
+            X_df_cat_future=X_df_cat_future_values,
             has_categorical=bool(categorical_exog_list),
         )
         if X is not None:
@@ -2252,13 +2328,13 @@ class NixtlaClient:
                 `n_series * h * (n_paths + len(quantiles))` may not exceed
                 10,000,000.
             seed (int, optional): Random seed. Reusing a seed with the same
-                inputs produces the same paths. The seed drives both the
-                coupled and the per-series shuffle, so repeating a request
-                with the same seed and a different `multivariate` setting
-                reorders the first series by ID identically in both, and
-                returns the very same paths for it when its marginal forecast
-                is unchanged too. Vary the seed when comparing coupled against
-                uncoupled paths.
+                inputs produces the same paths. Must be between `-2**63` and
+                `2**64 - 1`. The seed drives both the coupled and the per-series
+                shuffle, so repeating a request with the same seed and a
+                different `multivariate` setting reorders the first series by
+                ID identically in both, and returns the very same paths for it
+                when its marginal forecast is unchanged too. Vary the seed
+                when comparing coupled against uncoupled paths.
             finetuned_model_id (str, optional): ID of a previously fine-tuned
                 model.
             clean_ex_first (bool): Clean exogenous signals before inference.
@@ -2347,6 +2423,10 @@ class NixtlaClient:
             if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):
                 raise ValueError("`seed` must be an integer.")
             seed = int(seed)
+            if not _MIN_SEED <= seed <= _MAX_SEED:
+                raise ValueError(
+                    f"`seed` must be between {_MIN_SEED} and {_MAX_SEED}."
+                )
 
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2409,6 +2489,12 @@ class NixtlaClient:
             id_col=id_col,
             time_col=time_col,
         )
+        X_df_cat_future_values = _align_future_categorical_exog(
+            X_df_cat_future=X_df_cat_future,
+            uids=processed.uids,
+            id_col=id_col,
+            time_col=time_col,
+        )
         sorted_df_cat = _sort_categorical_values(df_cat_vals, processed.sort_idxs)
         standard_freq = _standardize_freq(freq, processed)
         _, model_horizon = self._get_model_params(model, standard_freq)
@@ -2426,7 +2512,7 @@ class NixtlaClient:
             futr_cat_cols=futr_cat_cols,
             hist_cat_cols=hist_cat_cols,
             X_future=X_future,
-            X_df_cat_future=X_df_cat_future,
+            X_df_cat_future=X_df_cat_future_values,
             has_categorical=bool(categorical_exog_list),
         )
         if X is not None:

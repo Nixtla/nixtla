@@ -137,7 +137,7 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 | X_df | pandas or polars DataFrame | None | Future exogenous values with the ID and time columns. |
 | n_paths | int | 100 | Number of paths returned for each series. Must be between 1 and 10,000. |
 | quantiles | list[float] | None | Strictly increasing quantile grid inside `(0, 1)`. The list must contain between 2 and 200 values. |
-| seed | int | None | Random seed. Reusing a seed with identical inputs returns identical paths. |
+| seed | int | None | Random seed between `-2**63` and `2**64 - 1`. Reusing a seed with identical inputs returns identical paths. |
 | finetuned_model_id | str | None | ID of a previously fine-tuned model. |
 | clean_ex_first | bool | True | Clean exogenous signals before inference. |
 | hist_exog_list | list[str] | None | Names of historical-only exogenous features. |

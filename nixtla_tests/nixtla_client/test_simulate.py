@@ -383,6 +383,8 @@ def test_simulate_leaves_missing_seed_unset_for_server():
         ({"quantiles": [0.9, 0.1]}, "strictly increasing"),
         ({"quantiles": [0.5, 0.5]}, "strictly increasing"),
         ({"seed": 1.5}, "integer"),
+        ({"seed": -(2**63) - 1}, "must be between"),
+        ({"seed": 2**64}, "must be between"),
         ({"num_partitions": 0}, "positive integer"),
         ({"num_partitions": 1.5}, "positive integer"),
         (
@@ -400,6 +402,15 @@ def test_simulate_rejects_invalid_options_before_request(kwargs, match):
         client.simulate(**params)
 
     request.assert_not_called()
+
+
+@pytest.mark.parametrize("seed", [-(2**63), 2**64 - 1])
+def test_simulate_accepts_seed_boundaries(seed):
+    client, request = _client_with_response(_simulate_response)
+
+    client.simulate(_series_df(), h=2, freq="D", n_paths=1, seed=seed)
+
+    assert request.call_args.args[2]["seed"] == seed
 
 
 @pytest.mark.parametrize(

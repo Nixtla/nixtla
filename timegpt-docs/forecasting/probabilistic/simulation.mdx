@@ -235,6 +235,8 @@ is well inside the limit; raising the horizon to 200 would exceed it.
 
 Provide `seed` when you need a repeatable result:
 
+The seed must be an integer between `-2**63` and `2**64 - 1`.
+
 ```python
 first = nixtla_client.simulate(
     df=df_train,
