@@ -35,6 +35,66 @@ def _style_axis(ax):
     ax.tick_params(colors="#4A4A4A")
 
 
+def build_quickstart_case(client: NixtlaClient) -> dict[str, object]:
+    """Numbers quoted in the simulation quickstart (simulation.mdx)."""
+    rng = np.random.default_rng(1)
+    dates = pd.date_range("2025-01-01", periods=90, freq="D")
+    df = pd.DataFrame(
+        {
+            "ds": dates,
+            "y": 100
+            + 10 * np.sin(2 * np.pi * np.arange(90) / 7)
+            + rng.normal(0, 5, 90),
+        }
+    )
+
+    paths = client.simulate(df=df, h=14, freq="D", n_paths=100, seed=1)
+
+    history = df.tail(28)
+    wide = paths.pivot(index="ds", columns="sample_id", values="TimeGPT")
+
+    fig, ax = plt.subplots(figsize=(10.5, 5.0))
+    ax.plot(
+        history["ds"],
+        history["y"],
+        color=DARK,
+        linewidth=1.8,
+        label="Observed history",
+    )
+    ax.plot(wide.index, wide.to_numpy(), color=PURPLE, alpha=0.08, linewidth=1.0)
+    ax.plot(
+        wide.index,
+        wide.median(axis=1),
+        color=PURPLE,
+        linewidth=2.2,
+        label="Median of 100 paths",
+    )
+    ax.plot([], [], color=PURPLE, alpha=0.5, linewidth=1.0, label="Simulated paths")
+    ax.axvline(wide.index.min(), color="#8A8A8A", linewidth=1, linestyle="--")
+    ax.set(
+        title="100 simulated 14-day futures for one product",
+        xlabel="Date",
+        ylabel="Demand (units)",
+    )
+    _style_axis(ax)
+    ax.legend(frameon=False, loc="upper left")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    fig.savefig(OUTPUT_DIR / "simulation-quickstart-paths.png", dpi=180)
+    plt.close(fig)
+
+    worst_day = paths.groupby("sample_id")["TimeGPT"].min()
+    totals = paths.groupby("sample_id")["TimeGPT"].sum()
+    return {
+        "head": paths.head().round(2).to_dict(orient="records"),
+        "rows": len(paths),
+        "p_any_day_below_80": float((worst_day < 80).mean()),
+        "total_quantiles": {
+            q: float(totals.quantile(q).round(1)) for q in (0.1, 0.5, 0.9)
+        },
+    }
+
+
 def build_energy_case(client: NixtlaClient) -> dict[str, object]:
     data_url = (
         "https://raw.githubusercontent.com/Nixtla/"
@@ -585,8 +645,10 @@ def build_explanation_case(client: NixtlaClient) -> dict[str, object]:
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     client = make_docs_client(timeout=300, max_retries=1)
+    quickstart_summary = build_quickstart_case(client)
     energy_summary = build_energy_case(client)
     explanation_summary = build_explanation_case(client)
+    print("Quickstart summary:", quickstart_summary)
     print("Energy summary:", energy_summary)
     print("Explanation summary:", explanation_summary)
     print("Wrote chart assets to:", OUTPUT_DIR)

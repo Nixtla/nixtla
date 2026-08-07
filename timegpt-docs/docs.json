@@ -95,7 +95,8 @@
               "/forecasting/probabilistic/introduction",
               "/forecasting/probabilistic/prediction_intervals",
               "/forecasting/probabilistic/quantiles",
-              "/forecasting/probabilistic/simulation"
+              "/forecasting/probabilistic/simulation",
+              "/forecasting/probabilistic/simulation_scenarios"
             ]
           },
           {

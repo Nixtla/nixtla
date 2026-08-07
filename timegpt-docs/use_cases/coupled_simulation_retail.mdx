@@ -4,11 +4,19 @@ description: "Measure promotion lift, cannibalization, cross-selling, and shared
 icon: "cart-shopping"
 ---
 
-A promotion rarely affects just one product. Lowering one price can:
+## Introduction
+
+A store plans a 15% price cut on one product for the next four weeks, and the
+category manager needs order quantities for three related products: the promoted
+product itself, an alternative product customers might have bought instead, and
+a related product often bought alongside it. A promotion rarely affects just one
+product. Lowering one price can:
 
 - Increase sales of the promoted product
-- Reduce sales of an alternative product through **cannibalization**
-- Increase sales of a related product through **cross-selling**
+- Reduce sales of an alternative product through **cannibalization** — shoppers
+  switch to the cheaper option instead of buying both
+- Increase sales of a related product through **cross-selling** — shoppers who
+  come for the promotion pick up companion items too
 
 This is a follow-on to
 [What-If Forecasting: Price Effects in Retail](/use_cases/what_if_forecasting_price_effects_in_retail).
@@ -16,11 +24,7 @@ Start there if you first want to see how changing one product's future price
 changes its forecast. Continue here when your decision covers several related
 products.
 
-Those changes also need to be planned together. A retailer may need to know
-whether several products will run high on the same day, not only how many units
-each product may sell over the month.
-
-This tutorial uses coupled simulation to answer both questions:
+This tutorial uses coupled simulation to answer two questions:
 
 1. How could a promotion change demand across a product group?
 2. How often could several products need replenishment at the same time?
@@ -31,30 +35,21 @@ whole product group. The promoted, alternative, and related products all belong
 to the same scenario.
 </Info>
 
-## The example product group
+### What You'll Learn
 
-The data is generated, not observed. That is deliberate: calling one product a
-substitute and another a complement is only honest if those relationships are
-actually there. Here they are written into the generator, so the labels are true
-by construction and the simulation's answers can be checked against them.
+- How to simulate a group of related products together with `multivariate=True`
+- How to measure promotion lift, cannibalization, and cross-selling from
+  simulated paths
+- Why simulating products separately understates shared-demand risk
+- How to turn a set of simulated futures into ordering decisions
 
-| Tutorial label | Planted role | Response to a 15% cut in the promoted price |
-|---|---|---:|
-| Promoted product | Own-price elasticity | +11.9% |
-| Alternative product | **Substitute** — loses demand when the promoted product gets cheaper | −11.5% |
-| Related product | **Complement** — gains demand alongside the promoted product | +15.0% |
+## How to Plan a Promotion with Coupled Simulation
 
-Two more properties matter:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/use-cases/6_coupled_simulation_retail.ipynb)
 
-- Each product has its **own price schedule**, and the three do not move
-  together. A promotion on one product is therefore a change the model can
-  attribute to that product.
-- An **unobserved store-footfall factor** lifts all three products on the same
-  day. It is never passed to the model, so it survives as demand that moves
-  together across the products — which is exactly what coupling has to
-  reproduce.
+### Step 1: Import Packages
 
-<Accordion title="Create the example data">
+Import the required packages and initialize a Nixtla client:
 
 ```python
 import numpy as np
@@ -66,7 +61,20 @@ nixtla_client = NixtlaClient(
     # Defaults to os.environ["NIXTLA_API_KEY"]
     api_key="my_api_key_provided_by_nixtla"
 )
+```
 
+### Step 2: Load the Product-Group Data
+
+The example uses three years of daily sales for the three products. Every row
+carries all three prices, so when the promoted product's price changes, the
+demand simulation for every product can respond. The data is generated rather
+than observed — that way the product relationships are known exactly, and the
+simulation's answers can be checked against them (see the
+[technical notes](#technical-notes) for how, and why, the data was built).
+
+<Accordion title="Create the example data">
+
+```python
 rng = np.random.default_rng(11)
 n = 1095          # three years of daily history
 h = 28            # the promotion window
@@ -179,20 +187,18 @@ df.head()
 | Promoted product | 2023-01-05 | 35.0 | 6.29 | 10.22 | 4.72 |
 
 The history covers 3,285 rows across the three products, from January 1, 2023
-through December 30, 2025. Every row carries all three prices. This is
-important: when the promoted product's price changes, the demand simulation for
-every product can respond.
+through December 30, 2025.
 
 <Frame caption="Light lines show daily sales; bold lines show seven-day averages over the final year of history.">
   ![Daily sales history for the promoted, alternative, and related products](/images/forecasting/simulation-retail-history.png)
 </Frame>
 
-Because footfall is shared, the products' demands genuinely move together. Their
-rank correlations over the history are 0.49 between the promoted and alternative
-products, 0.88 between the promoted and related products, and 0.47 between the
-alternative and related products.
+The three products share the same store, so they have busy days and quiet days
+together — a rainy Saturday is slow for all of them. That shared movement is
+real demand structure, and it is exactly what coupled simulation is built to
+reproduce.
 
-## Plan the promotion
+### Step 3: Define the Promotion
 
 The next 28 days carry regular prices. Create a second plan with the promoted
 product's price reduced by 15%, leaving the other prices unchanged:
@@ -202,9 +208,10 @@ promotion_X_df = current_X_df.copy()
 promotion_X_df["promoted_price"] *= 0.85
 ```
 
-## Simulate current prices
+### Step 4: Simulate the Product Group Under Both Plans
 
-Generate 500 possible futures for all three products:
+Generate 500 possible futures for all three products, first at current prices,
+then with the promotion:
 
 ```python
 current_paths = nixtla_client.simulate(
@@ -217,20 +224,7 @@ current_paths = nixtla_client.simulate(
     model="timegpt-2.1",
     multivariate=True,
 )
-```
 
-<Note>
-`multivariate=True` changes two things at once. TimeGPT 2.1 forecasts the
-products jointly, so each product's forecast distribution can reflect the
-others, and the sample paths are coupled, so one `sample_id` is one future for
-the whole group. Both differences matter below.
-</Note>
-
-## Simulate the promotion
-
-Run the same request with the discounted price:
-
-```python
 promotion_paths = nixtla_client.simulate(
     df=df,
     X_df=promotion_X_df,
@@ -252,7 +246,14 @@ array([True])
 The result confirms that the product paths were coupled. For example,
 `sample_id=12` contains one 28-day future for each of the three products.
 
-## Measure cannibalization and cross-selling
+<Note>
+`multivariate=True` changes two things at once. TimeGPT 2.1 forecasts the
+products jointly, so each product's forecast distribution can reflect the
+others, and the sample paths are coupled, so one `sample_id` is one future for
+the whole group. Both differences matter below.
+</Note>
+
+### Step 5: Measure Lift, Cannibalization, and Cross-Selling
 
 Product demand cannot be negative, so clip values at zero before calculating
 unit totals:
@@ -293,28 +294,20 @@ impact
 | Promoted product | 1,102.3 | 1,167.8 | +65.5 | +6.0% |
 | Related product | 788.1 | 830.6 | +42.5 | +5.4% |
 
-Every direction matches the planted structure. The promoted product gains
-approximately 66 units. The related product gains approximately 42 units, which
-is the cross-selling signal. The alternative product loses approximately 179
-units, which is the cannibalization signal.
-
-<Note>
-Compare these with the planted effects above. The cannibalization comes back
-almost exactly (−11.7% against a planted −11.5%), while the two gains come back
-at roughly half their planted size (+6.0% against +11.9%, and +5.4% against
-+15.0%). Forecasting a price level the model has not seen is conservative by
-nature, so treat these as directionally right and, for the gains, understated —
-not as exact elasticities.
-</Note>
+The promoted product gains approximately 66 units. The related product gains
+approximately 42 units — the cross-selling signal. The alternative product
+loses approximately 179 units — the cannibalization signal. All three
+directions match the relationships built into the data (the
+[technical notes](#technical-notes) compare the sizes too).
 
 This changes the business interpretation. Looking only at the promoted product
 suggests a successful promotion. Looking at the complete product group shows that
 the alternative product loses more units than the other two gain combined.
 
-## Why simulate the products together?
+### Step 6: Estimate Shared-Demand Risk
 
-To see what this changes, generate the promotion paths once more with the
-products simulated separately:
+To see what simulating the products *together* changes, generate the promotion
+paths once more with the products simulated separately:
 
 ```python
 separate_paths = nixtla_client.simulate(
@@ -341,19 +334,17 @@ array([False])
 
 Follow one color down the right-hand column. The orange and red paths run low in
 all three products, and the purple path runs high in all three: each color is one
-future for the complete product group, and the shared footfall factor reappears
-as products that are busy together. Down the left-hand column the same colors do
-not line up — blue is among the lowest paths for the promoted product and the
-highest for the alternative one — so no single path there describes the group.
-
-That is what makes questions about shared inventory and staffing possible.
+future for the complete product group, and the store's busy and quiet days
+reappear as products that are busy together. Down the left-hand column the same
+colors do not line up — blue is among the lowest paths for the promoted product
+and the highest for the alternative one — so no single path there describes the
+group.
 
 <Note>
-The two runs use different seeds on purpose. With one seed, the coupled and the
-per-series shuffle pick their template windows from the same random state, so the
-first product by name is reordered identically in both runs — for this data it
-comes back with exactly the same 500 paths, which would make one row of the chart
-above appear twice.
+The two runs use different seeds on purpose. Reusing one seed can return
+identical paths for the first product in both runs, which would make one row of
+the chart above appear twice. The [technical notes](#technical-notes) explain
+why.
 </Note>
 
 Now ask an operational question:
@@ -417,7 +408,7 @@ Planning each product on its own understates how often they will need attention
 at the same time. That 11.4-percentage-point gap can affect replenishment
 staffing, shelf capacity, and safety-stock decisions.
 
-## Turn the result into a retail decision
+## Turn the Result into a Retail Decision
 
 This example suggests three actions:
 
@@ -438,7 +429,7 @@ of shoppers substituting. Use experiments or basket data when you need to
 establish why customers changed their purchases.
 </Note>
 
-## When coupled simulation is useful
+## When Coupled Simulation Is Useful
 
 Use coupled simulation when a decision combines several related series, such as:
 
@@ -450,3 +441,47 @@ Use coupled simulation when a decision combines several related series, such as:
 If each product is planned and fulfilled independently, ordinary simulation may
 be sufficient. See [Simulation](/forecasting/probabilistic/simulation) for the
 complete API guide.
+
+## Technical Notes
+
+### The planted relationships
+
+Calling one product a substitute and another a complement is only honest if
+those relationships are actually in the data. Here they are written into the
+generator, so the labels are true by construction and the simulation's answers
+can be checked against them.
+
+| Tutorial label | Planted role | Response to a 15% cut in the promoted price |
+|---|---|---:|
+| Promoted product | Own-price elasticity | +11.9% |
+| Alternative product | **Substitute** — loses demand when the promoted product gets cheaper | −11.5% |
+| Related product | **Complement** — gains demand alongside the promoted product | +15.0% |
+
+Two more properties matter:
+
+- Each product has its **own price schedule**, and the three do not move
+  together. A promotion on one product is therefore a change the model can
+  attribute to that product.
+- An **unobserved store-footfall factor** lifts all three products on the same
+  day. It is never passed to the model, so it survives as demand that moves
+  together across the products — which is exactly what coupling has to
+  reproduce. The products' demand rank correlations over the history are 0.49
+  between the promoted and alternative products, 0.88 between the promoted and
+  related products, and 0.47 between the alternative and related products.
+
+### Recovered versus planted effects
+
+Compare the simulated changes from Step 5 with the planted effects. The
+cannibalization comes back almost exactly (−11.7% against a planted −11.5%),
+while the two gains come back at roughly half their planted size (+6.0% against
++11.9%, and +5.4% against +15.0%). Forecasting a price level the model has not
+seen is conservative by nature, so treat these as directionally right and, for
+the gains, understated — not as exact elasticities.
+
+### Why the seed differs between the coupled and separate runs
+
+Both the coupled and the per-series shuffle draw their template windows from the
+same random state, so with a fixed seed the first product by name is reordered
+identically whether `multivariate` is True or False — for this data it comes
+back with exactly the same 500 paths. Varying the seed removes this overlap
+when the two runs are compared visually.

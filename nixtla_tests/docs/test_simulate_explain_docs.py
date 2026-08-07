@@ -8,6 +8,7 @@ from nixtla import NixtlaClient
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "timegpt-docs"
 SIMULATION_GUIDE = DOCS / "forecasting/probabilistic/simulation.mdx"
+SCENARIOS_GUIDE = DOCS / "forecasting/probabilistic/simulation_scenarios.mdx"
 COUPLED_SIMULATION_GUIDE = DOCS / "use_cases/coupled_simulation_retail.mdx"
 HISTORICAL_GUIDE = DOCS / "forecasting/exogenous-variables/causal-explanations.mdx"
 EXPLANATION_OVERVIEW = DOCS / "forecasting/explanation/introduction.mdx"
@@ -16,6 +17,12 @@ INTERVENTION_GUIDE = DOCS / "forecasting/explanation/intervention.mdx"
 ADVANCED_GUIDE = DOCS / "forecasting/explanation/advanced-explanations.mdx"
 SDK_REFERENCE = DOCS / "reference/sdk_reference.mdx"
 NAVIGATION = DOCS / "docs.json"
+EXPECTED_QUICKSTART_FIGURES = [
+    "85.85",
+    "0.11",
+    "1386.0",
+    "1410.2",
+]
 EXPECTED_SIMULATION_FIGURES = [
     "EUR 214.28",
     "EUR 509.86",
@@ -41,6 +48,7 @@ EXPECTED_EXPLANATION_FIGURES = [
     (HISTORICAL_GUIDE, "0.863"),
 ]
 CASE_STUDY_ASSETS = [
+    DOCS / "images/forecasting/simulation-quickstart-paths.png",
     DOCS / "images/forecasting/simulation-energy-scenarios.png",
     DOCS / "images/forecasting/simulation-energy-cost-risk.png",
     DOCS / "images/forecasting/simulation-retail-history.png",
@@ -70,6 +78,7 @@ def test_guides_are_in_navigation():
     navigation = _read(NAVIGATION)
 
     assert "/forecasting/probabilistic/simulation" in navigation
+    assert "/forecasting/probabilistic/simulation_scenarios" in navigation
     assert "/use_cases/what_if_forecasting_price_effects_in_retail" in navigation
     assert "/use_cases/coupled_simulation_retail" in navigation
     assert navigation.index(
@@ -106,7 +115,9 @@ def test_explanation_overview_starts_with_plain_language_questions():
 
 
 def test_case_studies_include_rendered_assets():
-    simulation = _read(SIMULATION_GUIDE)
+    quickstart = _read(SIMULATION_GUIDE)
+    scenarios = _read(SCENARIOS_GUIDE)
+    simulation = quickstart + "\n" + scenarios
     explanation = "\n".join(
         _read(page)
         for page in [
@@ -118,10 +129,13 @@ def test_case_studies_include_rendered_assets():
         ]
     )
 
-    assert "Real-data walkthrough: German electricity prices" in simulation
-    assert "electricity-short-with-ex-vars.csv" in simulation
+    for figure in EXPECTED_QUICKSTART_FIGURES:
+        assert figure in quickstart, f"{figure} missing from the quickstart guide"
+
+    assert "Real-data walkthrough: German electricity prices" in scenarios
+    assert "electricity-short-with-ex-vars.csv" in scenarios
     for figure in EXPECTED_SIMULATION_FIGURES:
-        assert figure in simulation, f"{figure} missing from the simulation guide"
+        assert figure in scenarios, f"{figure} missing from the scenarios guide"
 
     coupled_simulation = _read(COUPLED_SIMULATION_GUIDE)
     assert "Planted role" in coupled_simulation
@@ -148,7 +162,7 @@ def test_case_studies_include_rendered_assets():
 def test_simulate_does_not_expose_a_method_option():
     assert "method" not in inspect.signature(NixtlaClient.simulate).parameters
 
-    for guide in (SIMULATION_GUIDE, COUPLED_SIMULATION_GUIDE):
+    for guide in (SIMULATION_GUIDE, SCENARIOS_GUIDE, COUPLED_SIMULATION_GUIDE):
         text = _read(guide)
         for call in re.findall(r"\.simulate\((.*?)\)", text, flags=re.DOTALL):
             assert "method" not in call, f"{guide.name} passes `method` to simulate"
