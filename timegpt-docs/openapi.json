@@ -3,7 +3,7 @@
   "info": {
     "title": "Nixtla Forecast API",
     "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-    "version": "0.2.8"
+    "version": "0.3.1"
   },
   "paths": {
     "/v2/forecast": {
@@ -76,7 +76,7 @@
     "/v2/anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Anomaly Detector",
-        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token at https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_anomaly_detection_v2_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -169,7 +169,7 @@
     "/v2/online_anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Online Multi Series Anomaly Detector",
-        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports the associated z-score for each point. Get your token for private beta at https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports the associated z-score for each point. Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_online_anomaly_detection_v2_online_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -672,7 +672,7 @@
     "/v2/finetune": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Finetuning",
-        "description": "Fine-tune the large time model to your data and save it for later use. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the ID of the finetuned model, which you can provide in other endpoints to use that model to make the forecasts. Get your token for private beta at https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "Fine-tune the large time model to your data and save it for later use. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the ID of the finetuned model, which you can provide in other endpoints to use that model to make the forecasts. Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_finetune_v2_finetune_post",
         "requestBody": {
           "content": {
@@ -981,12 +981,6 @@
             "title": "Level",
             "description": "Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.",
             "default": 99
-          },
-          "feature_contributions": {
-            "type": "boolean",
-            "title": "Feature Contributions",
-            "description": "Compute the exogenous features contributions to the forecast.",
-            "default": false
           }
         },
         "type": "object",
@@ -1057,23 +1051,6 @@
               }
             ],
             "title": "Weights X"
-          },
-          "feature_contributions": {
-            "anyOf": [
-              {
-                "items": {
-                  "items": {
-                    "type": "number"
-                  },
-                  "type": "array"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Feature Contributions"
           },
           "anomaly": {
             "items": {
@@ -1269,6 +1246,18 @@
             "title": "Feature Contributions",
             "description": "Compute the exogenous features contributions to the forecast.",
             "default": false
+          },
+          "feature_contributions_type": {
+            "type": "string",
+            "enum": [
+              "shapley",
+              "intervention",
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Feature Contributions Type",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
+            "default": "shapley"
           }
         },
         "type": "object",
@@ -1704,6 +1693,18 @@
             "description": "Compute the exogenous features contributions to the forecast.",
             "default": false
           },
+          "feature_contributions_type": {
+            "type": "string",
+            "enum": [
+              "shapley",
+              "intervention",
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Feature Contributions Type",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
+            "default": "shapley"
+          },
           "multivariate": {
             "type": "boolean",
             "title": "Multivariate",
@@ -1989,12 +1990,6 @@
             ],
             "title": "Model Parameters",
             "description": "Optional dictionary of parameters to customize the behavior of the large time model. "
-          },
-          "feature_contributions": {
-            "type": "boolean",
-            "title": "Feature Contributions",
-            "description": "Compute the exogenous features contributions to the forecast.",
-            "default": false
           }
         },
         "type": "object",
