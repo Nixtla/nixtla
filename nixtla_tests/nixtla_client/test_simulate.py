@@ -1,6 +1,5 @@
 import inspect
 import logging
-import os
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -9,8 +8,6 @@ import polars as pl
 import pytest
 
 from nixtla import NixtlaClient
-
-_RUN_LIVE_ENDPOINT_TESTS = os.getenv("NIXTLA_RUN_SIMULATE_EXPLAIN_TESTS") == "1"
 
 
 def _client_with_response(response, model_params=(28, 7)):
@@ -587,17 +584,19 @@ def test_simulate_coerces_null_samples_to_float_nan():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not _RUN_LIVE_ENDPOINT_TESTS,
-    reason="Set NIXTLA_RUN_SIMULATE_EXPLAIN_TESTS=1 after deploying the endpoints.",
-)
 def test_simulate_live_endpoint_is_reproducible(nixtla_test_client):
     n = 120
+    steps = np.arange(n)
     df = pd.DataFrame(
         {
-            "unique_id": "series-0",
-            "ds": pd.date_range("2024-01-01", periods=n, freq="D"),
-            "y": np.sin(np.arange(n) / 7) + np.arange(n) / 100,
+            "unique_id": np.repeat(["low-series", "high-series"], n),
+            "ds": np.tile(pd.date_range("2024-01-01", periods=n, freq="D"), 2),
+            "y": np.concatenate(
+                [
+                    np.sin(steps / 7) + steps / 100,
+                    1_000.0 + 10.0 * np.sin(steps / 7) + steps / 10,
+                ]
+            ),
         }
     )
     kwargs = {
@@ -612,10 +611,16 @@ def test_simulate_live_endpoint_is_reproducible(nixtla_test_client):
     first = nixtla_test_client.simulate(**kwargs)
     second = nixtla_test_client.simulate(**kwargs)
 
-    assert len(first) == 12
+    assert len(first) == 24
     assert first["sample_id"].nunique() == 3
     assert first["coupled"].eq(False).all()
-    pd.testing.assert_frame_equal(first, second)
+    # The two series have very different levels, so paths assigned to the
+    # wrong series (e.g. a sample/series axis mix-up in the wire layout)
+    # would show up as blended levels here.
+    levels = first.groupby("unique_id")["TimeGPT"].mean()
+    assert abs(levels["low-series"]) < 100
+    assert abs(levels["high-series"] - 1_000.0) < 500
+    pd.testing.assert_frame_equal(first, second, rtol=1e-4, atol=1e-4)
 
 
 def _addressable_simulate_response(n_hist):

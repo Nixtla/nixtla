@@ -3,7 +3,7 @@
   "info": {
     "title": "Nixtla Forecast API",
     "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-    "version": "0.2.8"
+    "version": "0.3.1"
   },
   "paths": {
     "/v2/forecast": {
@@ -73,155 +73,10 @@
         "x-fern-sdk-method-name": "v2/forecast"
       }
     },
-    "/v2/simulate": {
-      "post": {
-        "summary": "Generate Forecast Sample Paths",
-        "description": "Generate temporally correlated future paths for one or more time series. A fixed seed makes repeated requests with identical inputs reproducible. The response contains flattened path values in sample-major, series-major, and horizon-major order.",
-        "operationId": "v2_simulate_v2_simulate_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SimulateInput",
-                "examples": [
-                  {
-                    "series": {
-                      "sizes": [
-                        8
-                      ],
-                      "y": [
-                        1,
-                        2,
-                        3,
-                        4,
-                        5,
-                        6,
-                        7,
-                        8
-                      ]
-                    },
-                    "freq": "D",
-                    "h": 2,
-                    "n_paths": 3,
-                    "seed": 42
-                  }
-                ]
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimulateOutput"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "x-fern-sdk-method-name": "v2/simulate"
-      }
-    },
-    "/v2/explain": {
-      "post": {
-        "summary": "Compute Historical Feature Importance Weights",
-        "description": "Measure lagged predictive relationships between historical exogenous features and a time-series target. The response contains one normalized weight per feature. These weights do not establish causality.",
-        "operationId": "v2_explain_v2_explain_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExplainInput",
-                "examples": [
-                  {
-                    "series": {
-                      "sizes": [
-                        8
-                      ],
-                      "y": [
-                        1,
-                        2,
-                        3,
-                        4,
-                        5,
-                        6,
-                        7,
-                        8
-                      ],
-                      "X": [
-                        [
-                          0,
-                          1,
-                          2,
-                          3,
-                          4,
-                          5,
-                          6,
-                          7
-                        ]
-                      ]
-                    },
-                    "method": "granger"
-                  }
-                ]
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExplainOutput"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "x-fern-sdk-method-name": "v2/explain"
-      }
-    },
     "/v2/anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Anomaly Detector",
-        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token at https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "Based on the provided data, this endpoint detects the anomalies in the historical perdiod of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_anomaly_detection_v2_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -314,7 +169,7 @@
     "/v2/online_anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Online Multi Series Anomaly Detector",
-        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports the associated z-score for each point. Get your token for private beta at https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports the associated z-score for each point. Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_online_anomaly_detection_v2_online_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -817,7 +672,7 @@
     "/v2/finetune": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Finetuning",
-        "description": "Fine-tune the large time model to your data and save it for later use. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the ID of the finetuned model, which you can provide in other endpoints to use that model to make the forecasts. Get your token for private beta at https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "Fine-tune the large time model to your data and save it for later use. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains the ID of the finetuned model, which you can provide in other endpoints to use that model to make the forecasts. Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_finetune_v2_finetune_post",
         "requestBody": {
           "content": {
@@ -1126,12 +981,6 @@
             "title": "Level",
             "description": "Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.",
             "default": 99
-          },
-          "feature_contributions": {
-            "type": "boolean",
-            "title": "Feature Contributions",
-            "description": "Compute the exogenous features contributions to the forecast.",
-            "default": false
           }
         },
         "type": "object",
@@ -1202,23 +1051,6 @@
               }
             ],
             "title": "Weights X"
-          },
-          "feature_contributions": {
-            "anyOf": [
-              {
-                "items": {
-                  "items": {
-                    "type": "number"
-                  },
-                  "type": "array"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Feature Contributions"
           },
           "anomaly": {
             "items": {
@@ -1424,7 +1256,7 @@
               "transfer_entropy"
             ],
             "title": "Feature Contributions Type",
-            "description": "Explanation used for forecast feature contributions. Shapley values provide an additive prediction explanation. Intervention values compare the forecast with one feature replaced by its historical baseline. Granger and transfer entropy allocate each series' forecast deviation using historical predictive-relationship weights.",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
             "default": "shapley"
           }
         },
@@ -1519,66 +1351,6 @@
           "idxs"
         ],
         "title": "CrossValidationOutput"
-      },
-      "ExplainInput": {
-        "properties": {
-          "series": {
-            "$ref": "#/components/schemas/SeriesWithExogenous"
-          },
-          "method": {
-            "type": "string",
-            "enum": [
-              "granger",
-              "transfer_entropy"
-            ],
-            "title": "Method",
-            "description": "Analysis used to measure lagged predictive relationships.",
-            "default": "granger"
-          }
-        },
-        "type": "object",
-        "required": [
-          "series"
-        ],
-        "title": "ExplainInput"
-      },
-      "ExplainOutput": {
-        "properties": {
-          "weights": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Weights",
-            "description": "Normalized nonnegative feature weights in the same order as the input features."
-          },
-          "feature_names": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Feature Names",
-            "description": "Feature names when they are available to the service."
-          },
-          "method": {
-            "type": "string",
-            "title": "Method",
-            "description": "Analysis used for the request."
-          }
-        },
-        "type": "object",
-        "required": [
-          "weights",
-          "method"
-        ],
-        "title": "ExplainOutput"
       },
       "FinetuneInput": {
         "properties": {
@@ -1930,7 +1702,7 @@
               "transfer_entropy"
             ],
             "title": "Feature Contributions Type",
-            "description": "Explanation used for forecast feature contributions. Shapley values provide an additive prediction explanation. Intervention values compare the forecast with one feature replaced by its historical baseline. Granger and transfer entropy allocate each series' forecast deviation using historical predictive-relationship weights.",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
             "default": "shapley"
           },
           "multivariate": {
@@ -2218,12 +1990,6 @@
             ],
             "title": "Model Parameters",
             "description": "Optional dictionary of parameters to customize the behavior of the large time model. "
-          },
-          "feature_contributions": {
-            "type": "boolean",
-            "title": "Feature Contributions",
-            "description": "Compute the exogenous features contributions to the forecast.",
-            "default": false
           }
         },
         "type": "object",
@@ -2331,231 +2097,6 @@
           "anomaly_score"
         ],
         "title": "OnlineAnomalyOutput"
-      },
-      "SimulateInput": {
-        "properties": {
-          "series": {
-            "$ref": "#/components/schemas/SeriesWithFutureExogenous"
-          },
-          "freq": {
-            "type": "string",
-            "title": "Freq",
-            "description": "Frequency of the time series."
-          },
-          "h": {
-            "type": "integer",
-            "exclusiveMinimum": 0.0,
-            "title": "H",
-            "description": "Number of future timesteps in every path."
-          },
-          "model": {
-            "type": "string",
-            "title": "Model",
-            "description": "Forecast model to use.",
-            "default": "timegpt-1"
-          },
-          "finetuned_model_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finetuned Model Id",
-            "description": "ID of a previously fine-tuned model."
-          },
-          "clean_ex_first": {
-            "type": "boolean",
-            "title": "Clean Ex First",
-            "description": "Clean exogenous signals before inference.",
-            "default": true
-          },
-          "multivariate": {
-            "type": "boolean",
-            "title": "Multivariate",
-            "description": "Request coherent paths across series. The response reports whether cross-series coupling was applied.",
-            "default": false
-          },
-          "n_paths": {
-            "type": "integer",
-            "minimum": 1.0,
-            "maximum": 10000.0,
-            "title": "N Paths",
-            "description": "Number of paths to return for each series.",
-            "default": 100
-          },
-          "quantiles": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number",
-                  "exclusiveMinimum": 0.0,
-                  "exclusiveMaximum": 1.0
-                },
-                "type": "array",
-                "minItems": 2,
-                "maxItems": 200
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quantiles",
-            "description": "Strictly increasing quantile grid inside (0, 1)."
-          },
-          "seed": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9223372036854775808,
-                "maximum": 18446744073709551615
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Seed",
-            "description": "Random seed for reproducibility. Identical seeded requests return identical paths."
-          }
-        },
-        "type": "object",
-        "required": [
-          "series",
-          "freq",
-          "h"
-        ],
-        "title": "SimulateInput"
-      },
-      "SimulateOutput": {
-        "properties": {
-          "input_tokens": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Input Tokens"
-          },
-          "output_tokens": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Output Tokens"
-          },
-          "finetune_tokens": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Finetune Tokens"
-          },
-          "samples": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Samples",
-            "description": "Flattened path values in sample-major, series-major, and horizon-major order."
-          },
-          "n_paths": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "N Paths"
-          },
-          "h": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "H"
-          },
-          "sizes": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Sizes"
-          },
-          "coupled": {
-            "type": "boolean",
-            "title": "Coupled",
-            "description": "Whether cross-series coupling was applied.",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "input_tokens",
-          "output_tokens",
-          "finetune_tokens",
-          "samples",
-          "n_paths",
-          "h",
-          "sizes"
-        ],
-        "title": "SimulateOutput"
-      },
-      "SeriesWithExogenous": {
-        "properties": {
-          "X": {
-            "anyOf": [
-              {
-                "items": {
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "type": "array"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "X",
-            "description": "Historical feature values. Each feature must contain the same number of values as the target."
-          },
-          "categorical_exog": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer",
-                  "minimum": 0.0
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Categorical Exog",
-            "description": "Zero-based indices of categorical features in X."
-          },
-          "y": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array",
-            "title": "Y",
-            "description": "Historical target values."
-          },
-          "sizes": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Sizes",
-            "description": "Number of observations in each series."
-          }
-        },
-        "type": "object",
-        "required": [
-          "y",
-          "sizes"
-        ],
-        "title": "SeriesWithExogenous"
       },
       "SeriesWithFutureExogenous": {
         "properties": {

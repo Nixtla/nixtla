@@ -1,4 +1,3 @@
-import os
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -8,8 +7,6 @@ import polars as pl
 import pytest
 
 from nixtla import NixtlaClient
-
-_RUN_LIVE_ENDPOINT_TESTS = os.getenv("NIXTLA_RUN_SIMULATE_EXPLAIN_TESTS") == "1"
 
 
 def _client_with_response(response):
@@ -322,10 +319,6 @@ def test_explain_rejects_distributed_or_unknown_dataframe_types():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not _RUN_LIVE_ENDPOINT_TESTS,
-    reason="Set NIXTLA_RUN_SIMULATE_EXPLAIN_TESTS=1 after deploying the endpoints.",
-)
 @pytest.mark.parametrize("method", ["granger", "transfer_entropy"])
 def test_explain_live_endpoint_returns_normalized_weights(nixtla_test_client, method):
     n = 160
@@ -349,6 +342,10 @@ def test_explain_live_endpoint_returns_normalized_weights(nixtla_test_client, me
     assert result["method"].eq(method).all()
     assert result["weight"].ge(0).all()
     assert np.isclose(result["weight"].sum(), 1.0)
+    # `y` is planted to follow the lagged driver, so the driver must be
+    # weighted above the pure-noise feature for either method.
+    weights = result.set_index("feature")["weight"]
+    assert weights["driver"] > weights["noise"]
 
 
 class _OversizedBody:

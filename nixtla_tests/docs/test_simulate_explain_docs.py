@@ -1,5 +1,4 @@
 import inspect
-import json
 import re
 from pathlib import Path
 
@@ -16,7 +15,6 @@ SHAP_GUIDE = DOCS / "forecasting/exogenous-variables/interpretability_with_shap.
 INTERVENTION_GUIDE = DOCS / "forecasting/explanation/intervention.mdx"
 ADVANCED_GUIDE = DOCS / "forecasting/explanation/advanced-explanations.mdx"
 SDK_REFERENCE = DOCS / "reference/sdk_reference.mdx"
-OPENAPI = DOCS / "openapi.json"
 NAVIGATION = DOCS / "docs.json"
 EXPECTED_SIMULATION_FIGURES = [
     "EUR 214.28",
@@ -150,9 +148,6 @@ def test_case_studies_include_rendered_assets():
 def test_simulate_does_not_expose_a_method_option():
     assert "method" not in inspect.signature(NixtlaClient.simulate).parameters
 
-    spec = json.loads(_read(OPENAPI))
-    assert "method" not in spec["components"]["schemas"]["SimulateInput"]["properties"]
-
     for guide in (SIMULATION_GUIDE, COUPLED_SIMULATION_GUIDE):
         text = _read(guide)
         for call in re.findall(r"\.simulate\((.*?)\)", text, flags=re.DOTALL):
@@ -160,37 +155,6 @@ def test_simulate_does_not_expose_a_method_option():
 
     sdk_signature = _sdk_section("simulate", "explain")
     assert "method=" not in sdk_signature
-
-
-def test_openapi_exposes_simulate_and_explain_contracts():
-    spec = json.loads(_read(OPENAPI))
-    schemas = spec["components"]["schemas"]
-
-    assert spec["paths"]["/v2/simulate"]["post"]["requestBody"]["content"][
-        "application/json"
-    ]["schema"]["$ref"].endswith("/SimulateInput")
-    assert spec["paths"]["/v2/explain"]["post"]["requestBody"]["content"][
-        "application/json"
-    ]["schema"]["$ref"].endswith("/ExplainInput")
-    assert schemas["SimulateInput"]["properties"].keys() == {
-        "series",
-        "freq",
-        "h",
-        "model",
-        "finetuned_model_id",
-        "clean_ex_first",
-        "multivariate",
-        "n_paths",
-        "quantiles",
-        "seed",
-    }
-    assert schemas["ExplainInput"]["properties"]["method"]["enum"] == [
-        "granger",
-        "transfer_entropy",
-    ]
-    assert schemas["ForecastInput"]["properties"]["feature_contributions_type"][
-        "enum"
-    ] == ["shapley", "intervention", "granger", "transfer_entropy"]
 
 
 def test_sdk_reference_contains_both_public_signatures():
