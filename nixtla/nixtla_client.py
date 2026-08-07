@@ -20,7 +20,6 @@ from typing import (
     Optional,
     TypeVar,
     Union,
-    get_args,
     overload,
 )
 
@@ -141,14 +140,11 @@ _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 _ThresholdMethod = Literal["univariate", "multivariate"]
 _ExplainMethod = Literal["granger", "transfer_entropy"]
-_EXPLAIN_METHODS = get_args(_ExplainMethod)
 _FeatureContributionsType = Literal[
     "shapley", "intervention", "granger", "transfer_entropy"
 ]
-_FEATURE_CONTRIBUTIONS_TYPES = get_args(_FeatureContributionsType)
-_MAX_N_PATHS = 10_000
-_MIN_QUANTILES = 2
-_MAX_QUANTILES = 200
+# Only used to derive distinct in-range per-partition seeds; the seed's range
+# itself is validated server-side.
 _MIN_SEED = -(2**63)
 _MAX_SEED = 2**64 - 1
 
@@ -2054,11 +2050,6 @@ class NixtlaClient:
                 probabilistic predictions (if level is not None).
         """
         extra_param_checker.validate_python(model_parameters)
-        if feature_contributions_type not in _FEATURE_CONTRIBUTIONS_TYPES:
-            raise ValueError(
-                "`feature_contributions_type` must be one of "
-                f"{', '.join(repr(t) for t in _FEATURE_CONTRIBUTIONS_TYPES)}."
-            )
 
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_forecast(
@@ -2436,8 +2427,6 @@ class NixtlaClient:
         if not isinstance(n_paths, (int, np.integer)) or isinstance(n_paths, bool):
             raise ValueError("`n_paths` must be an integer.")
         n_paths = int(n_paths)
-        if not 1 <= n_paths <= _MAX_N_PATHS:
-            raise ValueError(f"`n_paths` must be between 1 and {_MAX_N_PATHS:,}.")
         if num_partitions is not None:
             if not isinstance(num_partitions, (int, np.integer)) or isinstance(
                 num_partitions, bool
@@ -2453,37 +2442,10 @@ class NixtlaClient:
                     "single request, so partitioning would silently return "
                     "uncoupled paths."
                 )
-        if quantiles is not None:
-            try:
-                quantile_array = np.asarray(quantiles, dtype=np.float64)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("`quantiles` must be a list of numbers.") from exc
-            if quantile_array.ndim != 1:
-                raise ValueError("`quantiles` must be a one-dimensional list.")
-            if not _MIN_QUANTILES <= quantile_array.size <= _MAX_QUANTILES:
-                raise ValueError(
-                    f"`quantiles` must contain between {_MIN_QUANTILES} and "
-                    f"{_MAX_QUANTILES} values, got {quantile_array.size}."
-                )
-            if (
-                not np.all(np.isfinite(quantile_array))
-                or quantile_array[0] <= 0.0
-                or quantile_array[-1] >= 1.0
-            ):
-                raise ValueError(
-                    "`quantiles` must be finite and strictly inside (0, 1)."
-                )
-            if not np.all(np.diff(quantile_array) > 0):
-                raise ValueError("`quantiles` must be strictly increasing.")
-            quantiles = quantile_array.tolist()
         if seed is not None:
             if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):
                 raise ValueError("`seed` must be an integer.")
             seed = int(seed)
-            if not _MIN_SEED <= seed <= _MAX_SEED:
-                raise ValueError(
-                    f"`seed` must be between {_MIN_SEED} and {_MAX_SEED}."
-                )
 
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2725,11 +2687,6 @@ class NixtlaClient:
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             raise ValueError("`explain` only supports pandas and polars dataframes.")
-        if method not in _EXPLAIN_METHODS:
-            raise ValueError(
-                "`method` must be one of "
-                f"{', '.join(repr(m) for m in _EXPLAIN_METHODS)}."
-            )
         df, _, _, freq = self._run_validations(
             df=df,
             X_df=None,

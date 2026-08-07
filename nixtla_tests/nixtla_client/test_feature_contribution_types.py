@@ -1,5 +1,4 @@
 import inspect
-from typing import get_args
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -73,23 +72,6 @@ def test_forecast_sends_feature_contribution_type(contribution_type):
     assert client.feature_contributions["base_value"].tolist() == [9.0, 9.0]
 
 
-def test_forecast_rejects_unknown_feature_contribution_type():
-    client = _client_with_forecast_response()
-    df, X_df = _dataframes()
-
-    with pytest.raises(ValueError, match="feature_contributions_type"):
-        client.forecast(
-            df=df,
-            X_df=X_df,
-            h=2,
-            freq="D",
-            feature_contributions=True,
-            feature_contributions_type="unknown",
-        )
-
-    client._make_request_with_retries.assert_not_called()
-
-
 def test_forecast_omits_contribution_type_when_contributions_are_disabled():
     client = _client_with_forecast_response()
     df, X_df = _dataframes()
@@ -111,24 +93,3 @@ def test_forecast_appends_feature_contribution_type_to_public_signature():
     ]
 
 
-def test_accepted_contribution_types_track_the_type_alias():
-    import nixtla.nixtla_client as client_module
-
-    assert client_module._FEATURE_CONTRIBUTIONS_TYPES == get_args(
-        client_module._FeatureContributionsType
-    )
-    assert client_module._EXPLAIN_METHODS == get_args(client_module._ExplainMethod)
-
-    client = _client_with_forecast_response()
-    df, X_df = _dataframes()
-    with pytest.raises(ValueError) as excinfo:
-        client.forecast(
-            df=df,
-            X_df=X_df,
-            h=2,
-            freq="D",
-            feature_contributions=True,
-            feature_contributions_type="nope",
-        )
-    for accepted in client_module._FEATURE_CONTRIBUTIONS_TYPES:
-        assert repr(accepted) in str(excinfo.value)

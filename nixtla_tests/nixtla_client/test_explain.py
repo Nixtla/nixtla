@@ -145,7 +145,6 @@ def test_explain_polars_output_and_implicit_single_series_id():
 @pytest.mark.parametrize(
     "kwargs,match",
     [
-        ({"method": "unsupported"}, "granger"),
         ({"features": []}, "at least one"),
         ({"features": ["driver", "driver"]}, "duplicates"),
         ({"features": ["missing"]}, "not found"),
