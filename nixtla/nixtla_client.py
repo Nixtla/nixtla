@@ -292,12 +292,30 @@ def _is_numeric_column(df: DataFrame, col: str) -> bool:
     return df[col].dtype.is_numeric()
 
 
+def _features_with_missing_values(df: DataFrame, features: list[str]) -> list[str]:
+    if isinstance(df, pd.DataFrame):
+        missing = df[features].isna().any()
+        return [feature for feature in features if missing[feature]]
+    out = []
+    for feature in features:
+        col = df[feature]
+        n_missing = col.null_count()
+        # polars keeps nulls and NaNs distinct; both break lag computations.
+        if col.dtype.is_float():
+            n_missing += int(col.is_nan().sum())
+        if n_missing:
+            out.append(feature)
+    return out
+
+
 def _numeric_column_array(df: DataFrame, col: str) -> np.ndarray:
     if not isinstance(df, pd.DataFrame):
         return df[col].to_numpy()
     target_dtype = df.dtypes[col].type
     if np.issubdtype(target_dtype, np.floating):
         return df[col].to_numpy(dtype=target_dtype, na_value=np.nan)
+    if df[col].isna().any():
+        return df[col].to_numpy(dtype=np.float64, na_value=np.nan)
     return df[col].to_numpy(dtype=target_dtype)
 
 
@@ -372,14 +390,16 @@ def _dataframe_keys_match(
 ) -> bool:
     if len(actual) != len(expected):
         return False
-    actual_ids = actual[id_col].to_numpy()
+    expected_codes, id_vocabulary = pd.factorize(expected[id_col].to_numpy())
+    actual_codes = pd.Index(id_vocabulary).get_indexer(actual[id_col].to_numpy())
+    if (actual_codes < 0).any():
+        return False
     actual_times = actual[time_col].to_numpy()
-    expected_ids = expected[id_col].to_numpy()
     expected_times = expected[time_col].to_numpy()
-    actual_order = np.lexsort((actual_times, actual_ids))
-    expected_order = np.lexsort((expected_times, expected_ids))
+    actual_order = np.lexsort((actual_times, actual_codes))
+    expected_order = np.lexsort((expected_times, expected_codes))
     return bool(
-        np.array_equal(actual_ids[actual_order], expected_ids[expected_order])
+        np.array_equal(actual_codes[actual_order], expected_codes[expected_order])
         and np.array_equal(actual_times[actual_order], expected_times[expected_order])
     )
 
@@ -814,8 +834,7 @@ def _preprocess(
 
 def _validate_future_exog_keys(
     X_df: Optional[DFType],
-    processed: ufp.ProcessedDF,
-    freq: _Freq,
+    expected: DataFrame,
     h: int,
     id_col: str,
     time_col: str,
@@ -823,14 +842,6 @@ def _validate_future_exog_keys(
     if X_df is None:
         return
     X_df = ensure_time_dtype(X_df, time_col=time_col)
-    expected = ufp.make_future_dataframe(
-        uids=processed.uids,
-        last_times=type(processed.uids)(processed.last_times),
-        freq=freq,
-        h=h,
-        id_col=id_col,
-        time_col=time_col,
-    )
     if not _dataframe_keys_match(
         actual=X_df,
         expected=expected,
@@ -1306,6 +1317,15 @@ class NixtlaClient:
                     "are pooled across all series. Reduce the number of series, "
                     "the length of the history, or the number of features."
                 )
+            if endpoint == "v2/simulate" and payload.get("multivariate"):
+                raise ValueError(
+                    f"The payload is too large ({content_size_mb:.0f}MB, limit "
+                    "200MB). `multivariate=True` cannot be partitioned because "
+                    "cross-series coupling is computed across all series in a "
+                    "single request. Reduce the number of series or the length "
+                    "of the history, or set `multivariate=False` to allow "
+                    "partitioning."
+                )
             raise ValueError(
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
             )
@@ -1367,6 +1387,7 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         payloads: list[dict[str, Any]],
+        transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
     ) -> list[dict[str, Any]]:
         from tqdm.auto import tqdm
 
@@ -1386,7 +1407,8 @@ class NixtlaClient:
             }
             for future in tqdm(as_completed(future2pos), total=len(future2pos)):
                 pos = future2pos[future]
-                results[pos] = future.result()
+                res = future.result()
+                results[pos] = transform(res) if transform is not None else res
         return results
 
     def _make_partitioned_requests(
@@ -1441,7 +1463,18 @@ class NixtlaClient:
         n_paths: int,
         h: int,
     ) -> dict[str, Any]:
-        results = self._dispatch_partitioned_requests(client, "v2/simulate", payloads)
+        def _samples_to_array(res: dict[str, Any]) -> dict[str, Any]:
+            samples = res.get("samples")
+            if samples is not None:
+                try:
+                    res["samples"] = np.asarray(samples, dtype=np.float64)
+                except (TypeError, ValueError):
+                    pass  # the merge loop below raises the descriptive error
+            return res
+
+        results = self._dispatch_partitioned_requests(
+            client, "v2/simulate", payloads, transform=_samples_to_array
+        )
         blocks = []
         sizes = []
         for payload, res in zip(payloads, results):
@@ -1470,13 +1503,17 @@ class NixtlaClient:
                 raise RuntimeError(
                     "Simulation response contains non-numeric sizes."
                 ) from exc
-        coupled = [_coerce_coupled_flag(res.get("coupled")) for res in results]
+        if any(_coerce_coupled_flag(res.get("coupled")) for res in results):
+            raise RuntimeError(
+                "Simulation response reported coupled paths for a partitioned "
+                "request."
+            )
         return {
             "samples": np.concatenate(blocks, axis=1).reshape(-1),
             "sizes": np.hstack(sizes),
             "n_paths": n_paths,
             "h": h,
-            "coupled": all(coupled),
+            "coupled": False,
         }
 
     def _maybe_override_model(self, model: _Model) -> _Model:
@@ -2105,10 +2142,17 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        future_df = ufp.make_future_dataframe(
+            uids=processed.uids,
+            last_times=type(processed.uids)(processed.last_times),
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
         _validate_future_exog_keys(
             X_df=X_df,
-            processed=processed,
-            freq=freq,
+            expected=future_df,
             h=h,
             id_col=id_col,
             time_col=time_col,
@@ -2246,15 +2290,7 @@ class NixtlaClient:
                     )
 
         # assemble result
-        out = ufp.make_future_dataframe(
-            uids=processed.uids,
-            last_times=type(processed.uids)(processed.last_times),
-            freq=freq,
-            h=h,
-            id_col=id_col,
-            time_col=time_col,
-        )
-        out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
+        out = ufp.assign_columns(future_df, "TimeGPT", resp["mean"])
         out = _maybe_add_intervals(out, resp["intervals"])
         if add_history:
             in_sample_df = _parse_in_sample_output(
@@ -2376,9 +2412,11 @@ class NixtlaClient:
                 concurrent requests, which keeps large jobs under the request
                 size limit. Cannot be combined with `multivariate=True`, since
                 coupling is computed across the series in a single request.
-                Because each partition draws its own shuffle templates, a
-                partitioned call returns different paths than an unpartitioned
-                one for the same `seed`. Defaults to None (a single request).
+                Each partition is sent a distinct seed derived from `seed`, so
+                partitions never share their random draws and the call stays
+                reproducible, but a partitioned call returns different paths
+                than an unpartitioned one for the same `seed`. Defaults to
+                None (a single request).
 
         Returns:
             pandas or polars DataFrame: Long-format sample paths with ID, time,
@@ -2499,10 +2537,17 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        future_df = ufp.make_future_dataframe(
+            uids=processed.uids,
+            last_times=type(processed.uids)(processed.last_times),
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
         _validate_future_exog_keys(
             X_df=X_df,
-            processed=processed,
-            freq=freq,
+            expected=future_df,
             h=h,
             id_col=id_col,
             time_col=time_col,
@@ -2581,6 +2626,10 @@ class NixtlaClient:
                 resp = self._make_request_with_retries(client, "v2/simulate", payload)
             else:
                 payloads = _partition_series(payload, num_partitions, h)
+                if seed is not None:
+                    seed_span = _MAX_SEED - _MIN_SEED + 1
+                    for i, part in enumerate(payloads[1:], start=1):
+                        part["seed"] = (seed - _MIN_SEED + i) % seed_span + _MIN_SEED
                 resp = self._make_partitioned_simulate_requests(
                     client, payloads, n_paths=n_paths, h=h
                 )
@@ -2610,22 +2659,12 @@ class NixtlaClient:
             )
         coupled = _coerce_coupled_flag(resp.get("coupled"))
 
-        future_df = ufp.make_future_dataframe(
-            uids=processed.uids,
-            last_times=type(processed.uids)(processed.last_times),
-            freq=freq,
-            h=h,
-            id_col=id_col,
-            time_col=time_col,
-        )
         future_rows = len(future_df)
         out = ufp.take_rows(
             future_df, np.tile(np.arange(future_rows, dtype=np.int32), n_paths)
         )
         if isinstance(out, pd.DataFrame):
             out = out.set_axis(pd.RangeIndex(len(out)), axis=0, copy=False)
-        else:
-            out = ufp.drop_index_if_pandas(out)
         out = ufp.assign_columns(
             out,
             "sample_id",
@@ -2661,7 +2700,9 @@ class NixtlaClient:
                 Defaults to `"granger"`.
             features (list[str], optional): Features to analyze. By default,
                 every column other than the ID, time, and target columns is
-                used.
+                used. Missing feature values are allowed: rows with a missing
+                value in a lagged column are excluded from that feature's
+                weight estimation, which reduces the effective sample.
             freq (str, int or pandas offset, optional): Frequency of the
                 timestamps, used to verify that every series is complete and
                 regularly spaced. Both methods are lag-based, so gaps or
@@ -2738,6 +2779,15 @@ class NixtlaClient:
                 "The following features are not numeric: "
                 f"{undeclared_non_numeric}. Add them to `categorical_exog_list` "
                 "to treat them as categorical, or exclude them via `features`."
+            )
+        numeric_features = [f for f in features if f not in categorical_exog_list]
+        features_with_missing = _features_with_missing_values(df, numeric_features)
+        if features_with_missing:
+            logger.warning(
+                "The following features contain missing values: "
+                f"{features_with_missing}. Rows with a missing value in a "
+                "lagged column are excluded from that feature's weight "
+                "estimation, which reduces the effective sample."
             )
 
         processed = ufp.process_df(

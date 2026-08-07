@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -318,6 +319,55 @@ def test_explain_rejects_distributed_or_unknown_dataframe_types():
     request.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "make_driver",
+    [
+        pytest.param(
+            lambda: pd.Series([np.nan, 20.0, 100.0, 10.0, 300.0, 30.0]),
+            id="pandas-nan",
+        ),
+        pytest.param(
+            lambda: pd.Series([pd.NA, 20, 100, 10, 300, 30], dtype="Int64"),
+            id="pandas-nullable-int",
+        ),
+    ],
+)
+def test_explain_warns_and_ships_nan_for_pandas_missing_values(make_driver, caplog):
+    client, request = _client_with_response(_explain_response)
+    df = _explain_df()
+    df["driver"] = make_driver()
+
+    with caplog.at_level(logging.WARNING, logger="nixtla.nixtla_client"):
+        result = client.explain(df)
+
+    assert "missing values: ['driver']" in caplog.text
+    assert result["feature"].tolist() == ["driver", "noise"]
+    payload = request.call_args.args[2]
+    driver_values = np.asarray(payload["series"]["X"][0], dtype=np.float64)
+    assert np.isnan(driver_values).sum() == 1
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param([None, 20, 100, 10, 300, 30], id="int-null"),
+        pytest.param([float("nan"), 20.0, 100.0, 10.0, 300.0, 30.0], id="nan"),
+    ],
+)
+def test_explain_warns_and_ships_nan_for_polars_missing_values(values, caplog):
+    client, request = _client_with_response(_explain_response)
+    df = pl.from_pandas(_explain_df()).with_columns(pl.Series("driver", values))
+
+    with caplog.at_level(logging.WARNING, logger="nixtla.nixtla_client"):
+        result = client.explain(df, freq="1d")
+
+    assert "missing values: ['driver']" in caplog.text
+    assert result["feature"].to_list() == ["driver", "noise"]
+    payload = request.call_args.args[2]
+    driver_values = np.asarray(payload["series"]["X"][0], dtype=np.float64)
+    assert np.isnan(driver_values).sum() == 1
+
+
 @pytest.mark.integration
 @pytest.mark.parametrize("method", ["granger", "transfer_entropy"])
 def test_explain_live_endpoint_returns_normalized_weights(nixtla_test_client, method):
@@ -354,15 +404,26 @@ class _OversizedBody:
 
 
 @pytest.mark.parametrize(
-    "endpoint,expected,not_expected",
+    "endpoint,payload,expected,not_expected",
     [
-        ("v2/explain", "cannot be partitioned", "num_partitions"),
-        ("v2/forecast", "num_partitions", "cannot be partitioned"),
-        ("v2/simulate", "num_partitions", "cannot be partitioned"),
+        ("v2/explain", {"series": {}}, "cannot be partitioned", "num_partitions"),
+        ("v2/forecast", {"series": {}}, "num_partitions", "cannot be partitioned"),
+        (
+            "v2/simulate",
+            {"series": {}, "multivariate": False},
+            "num_partitions",
+            "cannot be partitioned",
+        ),
+        (
+            "v2/simulate",
+            {"series": {}, "multivariate": True},
+            "cannot be partitioned",
+            "num_partitions",
+        ),
     ],
 )
 def test_oversized_payload_message_is_actionable_per_endpoint(
-    monkeypatch, endpoint, expected, not_expected
+    monkeypatch, endpoint, payload, expected, not_expected
 ):
     import nixtla.nixtla_client as client_module
 
@@ -373,7 +434,7 @@ def test_oversized_payload_message_is_actionable_per_endpoint(
         client._make_request(
             client=MagicMock(),
             endpoint=endpoint,
-            payload={"series": {}},
+            payload=payload,
             multithreaded_compress=False,
         )
 

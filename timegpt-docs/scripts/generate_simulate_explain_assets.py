@@ -404,7 +404,7 @@ def build_explanation_case(client: NixtlaClient) -> dict[str, object]:
         analyses[analysis] = result.set_index("feature")["weight"]
 
     comparison = pd.DataFrame(analyses)
-    labels = ["Price", "Promotion", "Temperature"]
+    labels = [str(feature).capitalize() for feature in comparison.index]
     y = np.arange(len(labels))
     width = 0.34
 

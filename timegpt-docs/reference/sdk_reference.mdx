@@ -147,7 +147,7 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 | date_features_to_one_hot | bool or list[str] | False | Date features to one-hot encode. |
 | model | str | timegpt-2.1 | Model used to generate the forecasts. |
 | multivariate | bool | False | Request coherent paths across series. The returned `coupled` column reports whether cross-series coupling was applied. |
-| num_partitions | int | None | Split the series across this many concurrent requests to keep large jobs under the request size limit. Cannot be combined with `multivariate=True`. A partitioned call returns different paths than an unpartitioned one for the same `seed`. |
+| num_partitions | int | None | Split the series across this many concurrent requests to keep large jobs under the request size limit. Cannot be combined with `multivariate=True`. Each partition receives a distinct seed derived from `seed`, so the call stays reproducible, but a partitioned call returns different paths than an unpartitioned one for the same `seed`. |
 | **Returns** | **pandas or polars DataFrame** |  | **Long-form paths containing the ID and time columns, `sample_id`, `TimeGPT`, and `coupled`. The dataframe contains `n_series * n_paths * h` rows. The ID column is omitted if `df` did not contain one.** |
 
 See [Forecast Simulation](/forecasting/probabilistic/simulation) for complete

@@ -725,3 +725,55 @@ def test_simulate_partitioning_rejects_mismatched_partition_response():
         client.simulate(
             _series_df(n_series=4), h=2, freq="D", n_paths=2, num_partitions=2
         )
+
+
+def test_partitioned_simulate_rejects_coupled_responses():
+    def coupled(endpoint, payload):
+        response = _simulate_response(endpoint, payload)
+        response["coupled"] = True
+        return response
+
+    client, _ = _client_with_response(coupled)
+
+    with pytest.raises(RuntimeError, match="partitioned"):
+        client.simulate(
+            _series_df(n_series=4), h=2, freq="D", n_paths=2, num_partitions=2
+        )
+
+
+def test_partitioned_simulate_sends_distinct_derived_seeds():
+    client, request = _client_with_response(_simulate_response)
+
+    client.simulate(
+        _series_df(n_series=4), h=2, freq="D", n_paths=2, seed=42, num_partitions=4
+    )
+
+    seeds = sorted(_payload_of(call)["seed"] for call in request.call_args_list)
+    assert seeds == [42, 43, 44, 45]
+
+
+def test_partitioned_simulate_derived_seeds_wrap_around_the_valid_range():
+    client, request = _client_with_response(_simulate_response)
+
+    client.simulate(
+        _series_df(n_series=2),
+        h=2,
+        freq="D",
+        n_paths=2,
+        seed=2**64 - 1,
+        num_partitions=2,
+    )
+
+    seeds = sorted(_payload_of(call)["seed"] for call in request.call_args_list)
+    assert seeds == [-(2**63), 2**64 - 1]
+
+
+def test_partitioned_simulate_leaves_unseeded_partitions_unseeded():
+    client, request = _client_with_response(_simulate_response)
+
+    client.simulate(_series_df(n_series=4), h=2, freq="D", n_paths=2, num_partitions=2)
+
+    assert request.call_count == 2
+    assert all(
+        _payload_of(call)["seed"] is None for call in request.call_args_list
+    )

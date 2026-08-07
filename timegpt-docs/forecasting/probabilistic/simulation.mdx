@@ -622,9 +622,10 @@ shape as an unpartitioned call.
 is computed across the series within a single request. Partitioning would
 return uncoupled paths, so the call is rejected instead.
 
-Each partition also draws its own shuffle templates, so a partitioned call
-returns different paths than an unpartitioned one for the same `seed`. Every
-path is still a valid draw; only the specific values differ.
+Each partition is also sent a distinct seed derived from `seed`, so partitions
+never share their random draws and the call stays reproducible. A partitioned
+call still returns different paths than an unpartitioned one for the same
+`seed`. Every path is a valid draw; only the specific values differ.
 </Note>
 
 ### `coupled` is false
