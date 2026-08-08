@@ -51,7 +51,7 @@ statistics **across multiple series at once**.
 
 For a worked walkthrough of all of the above, including the `Combine` /
 `Offset` combinators and how to plug in custom numba-based transforms, see
-the [Lag transformations](docs/how-to-guides/lag_transforms_guide.html)
+the [Lag transformations](./docs/how-to-guides/lag_transforms_guide.html)
 how-to guide.
 
 ## Pooled mode: `global_`, `groupby`, and `partition_by`
@@ -99,7 +99,7 @@ threshold: `RollingMean(window_size=1, min_samples=2, groupby=["brand"])`
 produces a non-null value only at timestamps where at least two series in the
 brand contribute observations.
 
-See the [Pooled lag transforms](docs/how-to-guides/pooled_lag_transforms.html)
+See the [Pooled lag transforms](./docs/how-to-guides/pooled_lag_transforms.html)
 how-to guide for end-to-end examples.
 
 ::: mlforecast.lag_transforms.RollingQuantile
