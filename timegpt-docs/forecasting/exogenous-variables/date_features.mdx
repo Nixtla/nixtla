@@ -123,7 +123,7 @@ patterns. Including these features can help the model make better forecasts.
 
 > NOTE:
 > 1. In order to show how these features are created, we can add the
-`feature_contribution` agrument. This is just for demonstration purposes in this
+`feature_contribution` argument. This is just for demonstration purposes in this
 tutorial and not truly needed to forecast with datetime features.
 > 2. If you have a weekly frequency dataset, you can use
 `date_features = ["week", "month", "year"]` or a subset of these features.
@@ -262,7 +262,7 @@ is very close to 2024-01-01 (week 1). This will ensure that the learned features
 for week 52 will be close to those for week 1. This has also helped us get the
 feature cardinality down from 53 (in case of one hot encoding) to only 2 features.
 
-In our example, we have the hour feature wich has a relatively high cardinality
+In our example, we have the hour feature which has a relatively high cardinality
 after one hot encoding. Let's encode this with sine and cosine features and use
 this instead of the one hot encoding.
 
@@ -301,7 +301,7 @@ features.tail()
 | 2023-01-02 01:00:00 |   0.2588 |   0.9659 |
 
 In order to use this custom datetime feature, we can simply pass an instance of
-the class to the `date_features` argument. Since this is alreay encoded, we do
+the class to the `date_features` argument. Since this is already encoded, we do
 not need to include it in the `date_features_to_one_hot` argument.
 
 ```python
