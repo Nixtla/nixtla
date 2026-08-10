@@ -32,7 +32,7 @@ df.groupby('unique_id').head(1)
 
 Above, we can see that we have four unique series in the dataset, as there are four different values in `unique_id`. Note that each series can start at different dates.
 
-To forecast mutliple series, we can simply call:
+To forecast multiple series, we can simply call:
 
 ```python Multiple Series Forecast Example
 fcst = nixtla_client.forecast(df=df, h=24)
