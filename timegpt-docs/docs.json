@@ -2,7 +2,11 @@
   "$schema": "https://mintlify.com/docs.json",
   "banner": {
     "content": "[Announcement](https://www.nixtla.io/blog/genai-announcement): Nixtla Enterprise now offers top foundation models, MCP, and agentic capabilities: [join the waitlist](https://www.nixtla.io?waitlistSheet=true)",
-    "dismissible": true
+    "dismissible": true,
+    "color": {
+      "light": "#bfd1ff",
+      "dark": "#9187e8"
+    }
   },
   "theme": "mint",
   "name": "TimeGPT Foundational model for time series forecasting and anomaly detection",
@@ -171,7 +175,7 @@
         },
         {
           "anchor": "Get in touch",
-          "href": "https://nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
+          "href": "https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
           "icon": "mail"
         },
         {
@@ -196,7 +200,7 @@
     "primary": {
       "type": "button",
       "label": "Get Started",
-      "href": "https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/docs"
+      "href": "https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/docs"
     }
   },
   "footer": {

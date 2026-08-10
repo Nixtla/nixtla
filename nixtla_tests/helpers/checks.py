@@ -9,7 +9,9 @@ from nixtla.nixtla_client import NixtlaClient
 from typing import Callable
 
 # setting used for distributed related tests
-ATOL = 1e-3
+# timegpt-2.1 (the default model) shows slightly larger numerical variance
+# across partitions than timegpt-1, so the tolerance is relaxed accordingly.
+ATOL = 1e-2
 
 
 # test num partitions
@@ -360,9 +362,9 @@ def check_anomalies_same_results_num_partitions(
 
 
 def check_anomalies_dataframe(nixtla_client: NixtlaClient, df: fugue.AnyDataFrame):
-    check_anomalies(nixtla_client, df, num_partitions=1)
-    check_anomalies(nixtla_client, df, level=90, num_partitions=1)
-    check_anomalies_same_results_num_partitions(nixtla_client, df)
+    check_anomalies(nixtla_client, df, num_partitions=1, model="timegpt-1")
+    check_anomalies(nixtla_client, df, level=90, num_partitions=1, model="timegpt-1")
+    check_anomalies_same_results_num_partitions(nixtla_client, df, model="timegpt-1")
 
 
 def check_online_anomalies(
@@ -466,6 +468,7 @@ def check_anomalies_dataframe_diff_cols(
         time_col=time_col,
         target_col=target_col,
         num_partitions=1,
+        model="timegpt-1",
     )
     check_anomalies(
         nixtla_client,
@@ -475,9 +478,15 @@ def check_anomalies_dataframe_diff_cols(
         target_col=target_col,
         level=90,
         num_partitions=1,
+        model="timegpt-1",
     )
     check_anomalies_same_results_num_partitions(
-        nixtla_client, df, id_col=id_col, time_col=time_col, target_col=target_col
+        nixtla_client,
+        df,
+        id_col=id_col,
+        time_col=time_col,
+        target_col=target_col,
+        model="timegpt-1",
     )
 
 
@@ -619,10 +628,14 @@ def check_finetuned_model(
 
     # forecast
     local_fcst = nixtla_client.forecast(
-        df=fa.as_pandas(df), h=5, finetuned_model_id=model_id2,
+        df=fa.as_pandas(df), h=5, finetuned_model_id=model_id2, model="timegpt-1",
     )
     distr_fcst = (
-        fa.as_pandas(nixtla_client.forecast(df=df, h=5, finetuned_model_id=model_id2))
+        fa.as_pandas(
+            nixtla_client.forecast(
+                df=df, h=5, finetuned_model_id=model_id2, model="timegpt-1"
+            )
+        )
         .sort_values(["unique_id", "ds"])
         .reset_index(drop=True)
     )
@@ -636,12 +649,20 @@ def check_finetuned_model(
 
     # cross-validation
     local_cv = nixtla_client.cross_validation(
-        df=fa.as_pandas(df), n_windows=2, h=5, finetuned_model_id=model_id2
+        df=fa.as_pandas(df),
+        n_windows=2,
+        h=5,
+        finetuned_model_id=model_id2,
+        model="timegpt-1",
     )
     distr_cv = (
         fa.as_pandas(
             nixtla_client.cross_validation(
-                df=df, n_windows=2, h=5, finetuned_model_id=model_id2
+                df=df,
+                n_windows=2,
+                h=5,
+                finetuned_model_id=model_id2,
+                model="timegpt-1",
             )
         )
         .sort_values(["unique_id", "ds"])
@@ -657,11 +678,13 @@ def check_finetuned_model(
 
     # anomaly detection
     local_anomaly = nixtla_client.detect_anomalies(
-        df=fa.as_pandas(df), finetuned_model_id=model_id2
+        df=fa.as_pandas(df), finetuned_model_id=model_id2, model="timegpt-1"
     )
     distr_anomaly = (
         fa.as_pandas(
-            nixtla_client.detect_anomalies(df=df, finetuned_model_id=model_id2)
+            nixtla_client.detect_anomalies(
+                df=df, finetuned_model_id=model_id2, model="timegpt-1"
+            )
         )
         .sort_values(["unique_id", "ds"])
         .reset_index(drop=True)

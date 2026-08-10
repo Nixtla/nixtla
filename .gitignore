@@ -46,5 +46,7 @@ nbs/_extensions
 .quarto
 
 *.png
+# Docs film-grain texture — must be committed so Mintlify can serve /tex_noise.png
+!timegpt-docs/tex_noise.png
 
 .coverage*

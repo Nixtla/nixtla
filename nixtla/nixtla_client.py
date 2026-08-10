@@ -1311,7 +1311,7 @@ class NixtlaClient:
         finetune_loss: _Loss = "default",
         output_model_id: Optional[str] = None,
         finetuned_model_id: Optional[str] = None,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
     ) -> str:
         """Fine-tune TimeGPT to your series.
 
@@ -1357,10 +1357,11 @@ class NixtlaClient:
                 model to use as base. Defaults to None.
             model (str):
                 Model to use as a string. Options are: `timegpt-1`, and
-                `timegpt-1-long-horizon`. We recommend using
+                `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`, `timegpt-2-pro`,
+                `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency
-                of your data. Defaults to 'timegpt-1'.
+                of your data. Defaults to 'timegpt-2.1'.
 
         Returns:
             str: ID of the fine-tuned model
@@ -1587,7 +1588,7 @@ class NixtlaClient:
         add_history: bool = False,
         date_features: Union[bool, list[Union[str, Callable]]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
@@ -1669,10 +1670,11 @@ class NixtlaClient:
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
             model (str): Model to use as a string. Options are: `timegpt-1`,
-                and `timegpt-1-long-horizon`. We recommend using
+                and `timegpt-1-long-horizon`,`timegpt-2`, `timegpt-2-mini`,
+                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-1'.
+                your data. Defaults to 'timegpt-2.1'.
             num_partitions (int):
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
@@ -2033,7 +2035,7 @@ class NixtlaClient:
         validate_api_key: bool = False,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         multivariate: bool = False,
         categorical_exog_list: Optional[list[str]] = None,
@@ -2084,12 +2086,13 @@ class NixtlaClient:
                 encoding to these date features. If
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
-            model (str): str (default='timegpt-1')
+            model (str): str (default='timegpt-2.1')
                 Model to use as a string. Options are: `timegpt-1`, and
-                `timegpt-1-long-horizon`. We recommend using
+                `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`,
+                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to predict
                 more than one seasonal period given the frequency of your data.
-                Defaults to 'timegpt-1'.
+                Defaults to 'timegpt-2.1'.
             num_partitions (int): Number of partitions to use. If None, the
                 number of partitions will be equal to the available parallel
                 resources in distributed environments. Defaults to None.
@@ -2312,7 +2315,7 @@ class NixtlaClient:
         hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
         multivariate: bool = False,
@@ -2382,10 +2385,12 @@ class NixtlaClient:
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
             model (str, optional): Model to use as a string. Options are:
-                `timegpt-1`, and `timegpt-1-long-horizon`. We recommend using
+                `timegpt-1`, and `timegpt-1-long-horizon`, `timegpt-2`,
+                `timegpt-2-mini`, `timegpt-2-pro`, `timegpt-2.1`.
+                We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-1'.
+                your data. Defaults to 'timegpt-2.1'.
             refit (bool, optional): Fine-tune the model in each window. If
                 False, only fine-tunes on the first window. Only used if
                 finetune_steps > 0. Defaults to False.
@@ -2626,7 +2631,7 @@ class NixtlaClient:
         hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-1",
+        model: _Model = "timegpt-2.1",
         num_partitions: Optional[_PositiveInt] = None,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
@@ -2706,10 +2711,11 @@ class NixtlaClient:
                 `date_features=True`, then all date features are
                 one-hot encoded by default. Defaults to False.
             model (str): Model to use as a string. Options are: `timegpt-1`,
-                and `timegpt-1-long-horizon`. We recommend using
+                and `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`,
+                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-1'.
+                your data. Defaults to 'timegpt-2.1'.
             num_partitions (int):
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in

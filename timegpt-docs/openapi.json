@@ -3,7 +3,7 @@
   "info": {
     "title": "Nixtla Forecast API",
     "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-    "version": "0.2.4"
+    "version": "0.3.1"
   },
   "paths": {
     "/v2/forecast": {
@@ -981,12 +981,6 @@
             "title": "Level",
             "description": "Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.",
             "default": 99
-          },
-          "feature_contributions": {
-            "type": "boolean",
-            "title": "Feature Contributions",
-            "description": "Compute the exogenous features contributions to the forecast.",
-            "default": false
           }
         },
         "type": "object",
@@ -1057,23 +1051,6 @@
               }
             ],
             "title": "Weights X"
-          },
-          "feature_contributions": {
-            "anyOf": [
-              {
-                "items": {
-                  "items": {
-                    "type": "number"
-                  },
-                  "type": "array"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Feature Contributions"
           },
           "anomaly": {
             "items": {
@@ -1269,6 +1246,18 @@
             "title": "Feature Contributions",
             "description": "Compute the exogenous features contributions to the forecast.",
             "default": false
+          },
+          "feature_contributions_type": {
+            "type": "string",
+            "enum": [
+              "shapley",
+              "intervention",
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Feature Contributions Type",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
+            "default": "shapley"
           }
         },
         "type": "object",
@@ -1704,6 +1693,18 @@
             "description": "Compute the exogenous features contributions to the forecast.",
             "default": false
           },
+          "feature_contributions_type": {
+            "type": "string",
+            "enum": [
+              "shapley",
+              "intervention",
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Feature Contributions Type",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
+            "default": "shapley"
+          },
           "multivariate": {
             "type": "boolean",
             "title": "Multivariate",
@@ -1989,12 +1990,6 @@
             ],
             "title": "Model Parameters",
             "description": "Optional dictionary of parameters to customize the behavior of the large time model. "
-          },
-          "feature_contributions": {
-            "type": "boolean",
-            "title": "Feature Contributions",
-            "description": "Compute the exogenous features contributions to the forecast.",
-            "default": false
           }
         },
         "type": "object",
