@@ -35,7 +35,7 @@ df.insert(0, 'Country', 'Australia')
 qs = df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True)
 df['ds'] = pd.PeriodIndex(qs, freq='Q').to_timestamp()
 
-# Create hierarchical seires based on geographic levels and purpose
+# Create hierarchical series based on geographic levels and purpose
 # And Convert quarterly ds string to pd.datetime format
 hierarchy_levels = [['Country'],
                     ['Country', 'State'],

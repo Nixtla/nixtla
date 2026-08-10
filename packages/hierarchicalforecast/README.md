@@ -15,7 +15,7 @@
 </div>
 
 ## 📚 Intro
-A vast amount of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include cross-sectional aggregations such as categories, brands, or geographical groupings, or temporal aggregations such as weeks, months or years. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierachical Forecast offers different reconciliation methods that render coherent forecasts across cross-sectional and temporal hierachies.
+A vast number of time series datasets are organized into structures with different levels or hierarchies of aggregation. Examples include cross-sectional aggregations such as categories, brands, or geographical groupings, or temporal aggregations such as weeks, months or years. Coherent forecasts across levels are necessary for consistent decision-making and planning. Hierarchical Forecast offers different reconciliation methods that render coherent forecasts across cross-sectional and temporal hierarchies.
 
 ## 🎊 Features
 
@@ -60,7 +60,7 @@ pip install hierarchicalforecast
 ## 🧬 How to use
 
 The following example needs `statsforecast` and `datasetsforecast` as additional packages. If not installed, install it via your preferred method, e.g. `pip install statsforecast datasetsforecast`.
-The `datasetsforecast` library allows us to download hierarhical datasets and we will use `statsforecast` to compute the base forecasts to be reconciled.
+The `datasetsforecast` library allows us to download hierarchical datasets and we will use `statsforecast` to compute the base forecasts to be reconciled.
 
 You can open a complete example in Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/nixtla/hierarchicalforecast/blob/main/nbs/examples/TourismSmall.ipynb)
 

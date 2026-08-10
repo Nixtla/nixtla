@@ -9,7 +9,7 @@ and visualize hierarchical series datasets. The
 [`aggregate`](https://nixtlaverse.nixtla.io/hierarchicalforecast/utils.html#aggregate)
 function of the module allows you to create a hierarchy from categorical
 variables representing the structure levels, returning also the
-aggregation contraints matrix $\mathbf{S}$.
+aggregation constraints matrix $\mathbf{S}$.
 
 In addition, `HierarchicalForecast` ensures compatibility of its
 reconciliation methods with other popular machine-learning libraries via
