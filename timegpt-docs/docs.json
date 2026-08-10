@@ -326,6 +326,22 @@
     {
       "source": "/exogenous-variables/forecasting/exogenous-variables/data_requirements/multiple_series#exogenous-variables",
       "destination": "/data_requirements/multiple_series#exogenous-variables"
+    },
+    {
+      "source": "/introduction/introduction/faq",
+      "destination": "/introduction/faq"
+    },
+    {
+      "source": "/tutorials-exogenous_variables-tutorials-holidays_and_special_dates",
+      "destination": "/forecasting/exogenous-variables/holiday_and_special_dates"
+    },
+    {
+      "source": "/tutorials-exogenous_variables-tutorials-categorical_variables",
+      "destination": "/forecasting/exogenous-variables/categorical_features"
+    },
+    {
+      "source": "/forecasting/evaluation/forecasting/evaluation/evaluation_metrics",
+      "destination": "/forecasting/evaluation/evaluation_metrics"
     }
   ],
   "contextual": {
