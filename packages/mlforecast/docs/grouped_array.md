@@ -1,6 +1,6 @@
 ---
 title: Grouped Array
-description: Something abou `Grouped Array`
+description: Something about `Grouped Array`
 ---
 
 ##

@@ -198,7 +198,7 @@ eval1
 ```
 
 Now, since these series are hourly, maybe we can try to remove the daily
-seasonality by taking the 168th (24 \* 7) difference, that is, substract
+seasonality by taking the 168th (24 \* 7) difference, that is, subtract
 the value at the same hour from one week ago, thus our target will be
 $z_t = y_{t} - y_{t-168}$. The features will be computed from this
 target and when we predict they will be automatically re-applied.
@@ -287,7 +287,7 @@ eval3
 ```
 
 Nice! mlforecast also supports date features, but in this case our time
-column is made from integers so there aren’t many possibilites here. As
+column is made from integers so there aren’t many possibilities here. As
 you can see this allows you to iterate faster and get better estimates
 of the forecasting performance you can expect from your model.
 
