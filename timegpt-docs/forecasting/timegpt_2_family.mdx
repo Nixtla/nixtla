@@ -14,7 +14,7 @@ icon: "chart-line"
 ### Step 1: Confirm Access and get an API Key
 
 - Confirm with support@nixtla.io that your account has access to these latest models.
-- Get your API key from [dashboard](https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/forecasting/timegpt_2_family). Note that you can also use your existing keys as long as your account has access to these latest models (Step 1 above).
+- Get your API key from [dashboard](https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/forecasting/timegpt_2_family). Note that you can also use your existing keys as long as your account has access to these latest models (Step 1 above).
   - Sign in using Google, GitHub, or your email.
   - Navigate to **API Keys** in the menu and select **Create New API Key**.
   - Your new API key will appear on the screen. Copy this key and save it in a safe place for use later.
@@ -25,13 +25,13 @@ icon: "chart-line"
 
 ### Step 2: Install Nixtla
 
-Install the Nixtla library in your preferred Python environment. In order to use the TimeGPT-2 family of models, the client version must be >= 0.7.0.
+Install the Nixtla library in your preferred Python environment. In order to use the TimeGPT-2 family of models, the client version must be >= 0.7.4.
 
 ```bash
-pip install nixtla>=0.7.0
+pip install nixtla>=0.7.4
 ```
 
-You can verify the client version installed using the following code. It should return a version >= 0.7.0
+You can verify the client version installed using the following code. It should return a version >= 0.7.4
 
 ```python
 from nixtla import __version__
@@ -39,7 +39,7 @@ print(__version__)
 ```
 
 ```bash
-0.7.2
+0.7.4
 ```
 
 ### Step 3: Import the Nixtla TimeGPT client
@@ -50,7 +50,7 @@ Import the Nixtla client and instantiate it with your API key and base URL for T
 from nixtla import NixtlaClient
 
 nixtla_client = NixtlaClient(
-    base_url = 'https://api-preview.nixtla.io',  # Needed for TimeGPT-2 family
+    base_url = 'https://api.nixtla.io',
     api_key='my_api_key_provided_by_nixtla'
 )
 ```
@@ -113,7 +113,7 @@ nixtla_client.plot(df, timegpt_fcst_df, time_col='timestamp', target_col='value'
 
 Using the TimeGPT-2 family of models is similar to using the TimeGPT-1 family with the following changes. In order to use TimeGPT-2 family of models
 - Make sure that your account has access to these models
-- Install the latest Nixtla client (>= 0.7.0)
+- Install the latest Nixtla client (>= 0.7.4)
 - Make sure you use the right `base_url` while instantiating the client along with your API key.
 
 Happy forecasting!

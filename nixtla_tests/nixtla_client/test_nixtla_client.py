@@ -258,6 +258,7 @@ def test_forecast_quantiles_output(
         "time_col": "timestamp",
         "target_col": "value",
         "quantiles": test_qls,
+        "model": "timegpt-1",
         **kwargs,
     }
     if method == "cross_validation":
@@ -306,6 +307,7 @@ def test_num_partitions_same_results_parametrized(
         "method": method,
         "num_partitions": 2,
         "df": df_freq,
+        "model": "timegpt-1",
         **method_kwargs,
     }
 
@@ -345,6 +347,7 @@ def test_num_partitions_hist_exog_no_x_df(
         num_partitions=2,
         df=df,
         hist_exog_list=["hist_exog"],
+        model="timegpt-1",
         **method_kwargs,
     )
 

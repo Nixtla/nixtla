@@ -1534,12 +1534,13 @@ def get_example_test_cases(config: DeploymentConfig) -> list[ExampleTestCase]:
     INPUT_DATA => '{prefix}EXAMPLE_ANOMALY_DATA',
     PARAMS => OBJECT_CONSTRUCT(
         'level', 95,
-        'freq', 'D'
+        'freq', 'D',
+        'model', 'timegpt-1'
     )
 )""",
             input_table="anomaly",
             nixtla_method="detect_anomalies",
-            nixtla_params={"level": 95, "freq": "D"},
+            nixtla_params={"level": 95, "freq": "D", "model": "timegpt-1"},
             compare_columns=["unique_id", "ds", "y", "anomaly"],
         ),
         ExampleTestCase(
