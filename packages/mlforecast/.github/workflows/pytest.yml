@@ -94,4 +94,8 @@ jobs:
       - name: Run pytest
         env:
           RAY_ENABLE_UV_RUN_RUNTIME_ENV: 0
+          # ray >=2.56 converts blocks to pandas with pd.ArrowDtype columns, which
+          # lightgbm rejects ("pandas dtypes must be int, float or bool"). Keep the
+          # pre-2.56 numpy dtypes until the ray models cast the features themselves.
+          RAY_DATA_ENABLE_ARROW_BACKED_PANDAS_CONVERSION: 0
         run: uv run pytest --reruns=2 --reruns-delay=2 --only-rerun="Socket recv error"
