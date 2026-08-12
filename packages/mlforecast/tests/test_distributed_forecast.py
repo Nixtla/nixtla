@@ -1,6 +1,8 @@
 import sys
 import warnings
+from typing import Tuple
 
+import cloudpickle
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,6 +14,7 @@ if sys.platform != "linux":
     )
 
 import dask.dataframe as dd
+import fugue.api as fa
 
 from mlforecast.distributed import DistributedMLForecast
 from mlforecast.distributed.models.dask.lgb import DaskLGBMForecast
@@ -127,6 +130,81 @@ def test_dask_distributed_weight_col_affects_predictions(small_ordered_series):
     preds_skewed = _fit_and_forecast(skewed_weights)
 
     assert not np.allclose(preds_uniform["stub"], preds_skewed["stub"])
+
+
+def _varying_within_series(df: pd.DataFrame) -> np.ndarray:
+    return np.arange(len(df), dtype=float)
+
+
+def _constant_within_series(df: pd.DataFrame) -> np.ndarray:
+    return df.groupby("unique_id", observed=True).ngroup().to_numpy(dtype=float) + 1.0
+
+
+def _preprocess_pandas(
+    df: pd.DataFrame, **kwargs
+) -> Tuple[pd.DataFrame, DistributedMLForecast]:
+    """preprocess `df` through the dask engine, returning the result and the instance."""
+    # no models needed, this only exercises the preprocessing path
+    fcst = DistributedMLForecast(models=[], freq="D", lags=[1])
+    prep = fcst.preprocess(_make_partitioned_series(df, npartitions=2), **kwargs)
+    return (
+        prep.compute().sort_values(["unique_id", "ds"]).reset_index(drop=True),
+        fcst,
+    )
+
+
+@pytest.mark.parametrize(
+    "weight_fn",
+    [_varying_within_series, _constant_within_series],
+    ids=["varying_within_series", "constant_within_series"],
+)
+def test_dask_distributed_preprocess_weight_col_is_not_a_feature(
+    small_ordered_series, weight_fn
+):
+    """preprocess() must forward weight_col, so the weights are carried through
+    untouched and the features come out exactly as if they weren't in the data.
+
+    Without the forwarding the weights reach the static-feature inference, which
+    either errors out (weights that vary within a series) or silently registers
+    them as a static feature (weights that don't).
+    """
+    weighted = small_ordered_series.copy()
+    weighted["weight"] = weight_fn(small_ordered_series)
+
+    baseline, _ = _preprocess_pandas(small_ordered_series)
+    prep, fcst = _preprocess_pandas(weighted, weight_col="weight")
+
+    # declaring a weight column must not add, drop or perturb any feature
+    assert list(prep.columns) == ["unique_id", "ds", "y", "weight", "lag1"]
+    pd.testing.assert_frame_equal(prep.drop(columns="weight"), baseline)
+
+    # the weights survive per row rather than being collapsed to a per-id constant
+    expected_weights = (
+        weighted[weighted.groupby("unique_id", observed=True).cumcount() > 0]
+        .sort_values(["unique_id", "ds"])["weight"]
+        .to_numpy()
+    )
+    np.testing.assert_array_equal(prep["weight"].to_numpy(), expected_weights)
+
+    # preprocess persists the per-partition TimeSeries for predict to reuse, so the
+    # weights must not have been recorded as a feature there either
+    for pickled_ts in fa.as_pandas(fcst._partition_results)["ts"]:
+        ts = cloudpickle.loads(pickled_ts)
+        assert "weight" not in ts.features_order_
+        assert "weight" not in ts.static_features_.columns
+
+
+def test_dask_distributed_preprocess_undeclared_weights_become_static(
+    small_ordered_series,
+):
+    """Counterpart to the test above: this is what the weight_col argument avoids."""
+    weighted = small_ordered_series.copy()
+    weighted["weight"] = _varying_within_series(small_ordered_series)
+    partitioned = _make_partitioned_series(weighted, npartitions=2)
+    fcst = DistributedMLForecast(models=[], freq="D", lags=[1])
+
+    with pytest.raises(ValueError, match="declared as a static feature"):
+        fcst.preprocess(partitioned).compute()
 
 
 def test_dask_distributed_forecast_with_x_df():

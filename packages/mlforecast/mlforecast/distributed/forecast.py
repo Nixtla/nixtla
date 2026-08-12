@@ -350,6 +350,7 @@ class DistributedMLForecast:
         static_features: Optional[List[str]] = None,
         dropna: bool = True,
         keep_last_n: Optional[int] = None,
+        weight_col: str | None = None,
     ) -> fugue.AnyDataFrame:
         """Add the features to `data`.
 
@@ -363,6 +364,7 @@ class DistributedMLForecast:
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
             keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/groupby/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
                 Defaults to None.
+            weight_col (str, optional): Column that contains the sample weights. Defaults to None.
 
         Returns:
             (same type as df): `df` with added features.
@@ -375,6 +377,7 @@ class DistributedMLForecast:
             static_features=static_features,
             dropna=dropna,
             keep_last_n=keep_last_n,
+            weight_col=weight_col,
         )
 
     def _fit(
