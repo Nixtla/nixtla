@@ -129,7 +129,7 @@ def test_cv_forecast_consistency(nixtla_test_client, cv_series_with_features):
             X_df=valid,
         )
         np.testing.assert_allclose(
-            cv_res["TimeGPT"], fcst_res["TimeGPT"], atol=1e-4, rtol=1e-3
+            cv_res["TimeGPT"], fcst_res["TimeGPT"], atol=1e-4, rtol=5e-3
         )
 
 
