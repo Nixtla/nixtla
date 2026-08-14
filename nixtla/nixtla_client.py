@@ -312,6 +312,53 @@ def _tail(proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
     )
 
 
+def _times_to_iso(times: np.ndarray) -> Optional[list[str]]:
+    """Convert an array of per-series start times to ISO 8601 strings.
+
+    Returns None when the values aren't datetimes (e.g. an integer time column),
+    in which case `start_datetime` is omitted from the payload.
+    """
+    if times.size == 0:
+        return None
+    if times.dtype == object:
+        # tz-aware pandas (and polars) yield an object array of Timestamp/datetime.
+        # isoformat keeps the UTC offset, which datetime64 cannot represent.
+        if not isinstance(times[0], (pd.Timestamp, datetime.datetime)):
+            return None
+        return [t.isoformat() for t in times]
+    if np.issubdtype(times.dtype, np.datetime64):
+        return np.datetime_as_string(times, unit="auto").tolist()
+    return None
+
+
+def _series_starts(
+    df: DataFrame,
+    processed: ufp.ProcessedDF,
+    time_col: str,
+    orig_indptr: Optional[np.ndarray] = None,
+    sort_idxs: Optional[np.ndarray] = None,
+) -> Optional[list[str]]:
+    """First timestamp of each series as it appears in the payload's `y`.
+
+    When `processed` has been tail-truncated by `_tail`, its `indptr` no longer
+    indexes `df` and its `sort_idxs` has been reset to None. Callers in that
+    situation must pass the pre-truncation `orig_indptr` and `sort_idxs`; both are
+    taken together, so `sort_idxs` is only read from `processed` when no
+    `orig_indptr` was given.
+    """
+    if orig_indptr is None:
+        sort_idxs = processed.sort_idxs
+    times = df[time_col].to_numpy()
+    if sort_idxs is not None:
+        times = times[sort_idxs]
+    if orig_indptr is None:
+        starts = times[processed.indptr[:-1]]
+    else:
+        # _tail keeps each series' last `size` rows, so the start is `end - size`
+        starts = times[orig_indptr[1:] - np.diff(processed.indptr)]
+    return _times_to_iso(starts)
+
+
 def _partition_series(
     payload: dict[str, Any], n_part: int, h: int
 ) -> list[dict[str, Any]]:
@@ -330,6 +377,11 @@ def _partition_series(
             "y": series["y"][part_idxs],
             "sizes": sizes,
         }
+        if series.get("start_datetime") is not None:
+            # one entry per series, so it slices like `sizes` (not like `y`)
+            part_series["start_datetime"] = series["start_datetime"][
+                i : i + series_per_part
+            ]
         if series["X"] is None:
             part_series["X"] = None
             if h > 0:
@@ -1397,11 +1449,15 @@ class NixtlaClient:
         standard_freq = _standardize_freq(freq, processed)
         _validate_input_size(processed, 1, 1)
         logger.info("Calling Fine-tune Endpoint...")
+        finetune_series: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": np.diff(processed.indptr),
+        }
+        start_datetime = _series_starts(df, processed, time_col)
+        if start_datetime is not None:
+            finetune_series["start_datetime"] = start_datetime
         payload = {
-            "series": {
-                "y": processed.data[:, 0],
-                "sizes": np.diff(processed.indptr),
-            },
+            "series": finetune_series,
             "model": model,
             "freq": standard_freq,
             "finetune_steps": finetune_steps,
@@ -1796,6 +1852,8 @@ class NixtlaClient:
                 "Please consider using a smaller horizon."
             )
         restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list and not add_history
+        orig_indptr: Optional[np.ndarray] = None
+        orig_sort_idxs: Optional[np.ndarray] = None
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -1804,6 +1862,9 @@ class NixtlaClient:
                 model_horizon=model_horizon,
                 h=h,
             )
+            # _tail resets both of these, so keep them to map start times back to `df`
+            orig_indptr = processed.indptr
+            orig_sort_idxs = processed.sort_idxs
             processed = _tail(processed, new_input_size)
 
         n_futr_num = len(futr_cols) if futr_cols is not None else 0
@@ -1851,6 +1912,11 @@ class NixtlaClient:
             "X": X,
             "X_future": X_future,
         }
+        start_datetime = _series_starts(
+            df, processed, time_col, orig_indptr, orig_sort_idxs
+        )
+        if start_datetime is not None:
+            series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
         payload = {
@@ -2189,6 +2255,9 @@ class NixtlaClient:
             "sizes": np.diff(processed.indptr),
             "X": X,
         }
+        start_datetime = _series_starts(df, processed, time_col)
+        if start_datetime is not None:
+            series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
 
@@ -2482,12 +2551,17 @@ class NixtlaClient:
                 "Detection size is large. Using the entire series to compute the anomaly threshold..."
             )
         logger.info("Calling Online Anomaly Detector Endpoint...")
+        online_series: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": sizes,
+            "X": X,
+        }
+        # `times` is already sorted to match the payload row order
+        start_datetime = _times_to_iso(times[processed.indptr[:-1]])
+        if start_datetime is not None:
+            online_series["start_datetime"] = start_datetime
         payload = {
-            "series": {
-                "y": processed.data[:, 0],
-                "sizes": sizes,
-                "X": X,
-            },
+            "series": online_series,
             "h": h,
             "detection_size": detection_size,
             "threshold_method": threshold_method,
@@ -2850,6 +2924,11 @@ class NixtlaClient:
             "sizes": np.diff(processed.indptr),
             "X": X,
         }
+        # `times` is sorted and, when the input was restricted, trimmed alongside
+        # `targets`, so it already matches the payload row order.
+        start_datetime = _times_to_iso(times[processed.indptr[:-1]])
+        if start_datetime is not None:
+            series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
 
