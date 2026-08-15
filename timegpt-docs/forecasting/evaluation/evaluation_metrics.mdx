@@ -18,7 +18,7 @@ The following table summarizes the common evaluation metrics used in forecasting
 | MAPE   | Point forecast         | <ul><li>expressed as a percentage</li><li>easy to interpret</li><li>favors under-forecasts</li></ul>                                                                 | When data has zero values                       |
 | sMAPE  | Point forecast         | <ul><li>robust to over- and under-forecasts</li><li>expressed as a percentage</li><li>easy to interpret</li></ul>                                                    | When data has zero values                       |
 | MASE   | Point forecast         | <ul><li>like the MAE, but scaled by the naive forecast</li><li>inherently compares to a simple benchmark</li><li>requires technical knowledge to interpret</li></ul> | There is only one series to evaluate            |
-| CRPS   | Probabilistic forecast | <ul><li>generalizaed MAE for probabilistic forecasts</li><li>requires technical knowledge to interpret</li></ul>                                                     | When evaluating point forecasts                 |
+| CRPS   | Probabilistic forecast | <ul><li>generalized MAE for probabilistic forecasts</li><li>requires technical knowledge to interpret</li></ul>                                                     | When evaluating point forecasts                 |
 
 In the following sections, we dive deeper into each metric. Note that all of these metrics can be used to evaluate the forecasts of TimeGPT using the _utilsforecast_ library. For more information, read our tutorial on [evaluating TimeGPT with utilsforecast](/forecasting/evaluation/evaluation_utilsforecast).
 
@@ -26,9 +26,9 @@ In the following sections, we dive deeper into each metric. Note that all of the
 
 The mean absolute error simply averages the absolute distance between the forecasts and the actual values.
 
-It is a good evaluation metric that works in the vast majority of forecasting tasks. It is robust to outliers, meaning that it will not magnifiy large errors, and it is expressed as the same units as the data, making it easy to interpret.
+It is a good evaluation metric that works in the vast majority of forecasting tasks. It is robust to outliers, meaning that it will not magnify large errors, and it is expressed as the same units as the data, making it easy to interpret.
 
-Simply be careful when average the MAE over multiple series of different scales, since then a series with smaller values might bring down the MAE, while a series with larger values will bring it up.
+Simply be careful when averaging the MAE over multiple series of different scales, since then a series with smaller values might bring down the MAE, while a series with larger values will bring it up.
 
 ## Mean Squared Error (MSE)
 
@@ -54,7 +54,7 @@ MAPE is excellent for comparing forecast accuracy across different time series w
 
 Avoid MAPE when your data contains zero or near-zero values (causes division by zero) or when you have intermittent demand patterns.
 
-Not that it's also asymmetric, penalizing positive errors (over-forecasts) more heavily than negative errors (under-forecasts).
+Note that it's also asymmetric, penalizing positive errors (over-forecasts) more heavily than negative errors (under-forecasts).
 
 ## Symmetric Mean Absolute Percentage Error (sMAPE)
 
