@@ -109,7 +109,7 @@ def capture(monkeypatch):
 
     client._make_request = _record
     # pre-seed the (model, freq) cache so _get_model_params makes no network call
-    for freq in ("D", "h", "MS", "30min", "1d"):
+    for freq in ("D", "h", "MS", "30min", "1d", "1h"):
         client._model_params[("timegpt-2.1", freq)] = (MODEL_INPUT_SIZE, MODEL_HORIZON)
     return SimpleNamespace(client=client, payloads=payloads, parts=ordered_parts)
 
@@ -406,12 +406,29 @@ def test_integer_time_col_with_partitions(capture, endpoint, integer_freq_series
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_tz_aware_offset_reaches_payload(capture, endpoint):
     """datetime64 cannot hold an offset, so this pins the ISO-string decision."""
-    df = _series(n_series=3, n=40, tz="US/Eastern")
+    df = _series(n_series=3, n=40, tz="Etc/GMT+5")
     kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
     _call(capture.client, endpoint, df, **kw)
     for _, payload in capture.payloads:
         starts = payload["series"]["start_datetime"]
         assert all(s.endswith("-05:00") for s in starts), starts
+
+
+@pytest.mark.parametrize("endpoint", ENDPOINTS)
+def test_dst_timezone_omits_start_datetime(capture, endpoint, caplog):
+    """An offset alone cannot describe an IANA timezone across DST changes."""
+    df = _series(
+        n_series=3,
+        n=40,
+        freq="h",
+        tz="US/Eastern",
+        start="2020-03-07",
+    )
+    kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
+    _call(capture.client, endpoint, df, freq="h", **kw)
+    for _, payload in capture.payloads:
+        assert "start_datetime" not in payload["series"]
+    assert "cannot be represented losslessly" in caplog.text
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
@@ -433,12 +450,31 @@ def test_polars_input_matches_pandas(capture, endpoint):
 def test_polars_tz_aware_offset_reaches_payload(capture, endpoint):
     """polars' to_numpy() drops the tz; the client must restore the offset."""
     pl = pytest.importorskip("polars")
-    df = pl.from_pandas(_series(n_series=3, n=40, tz="US/Eastern"))
+    df = pl.from_pandas(_series(n_series=3, n=40, tz="Etc/GMT+5"))
     kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
     _call(capture.client, endpoint, df, freq="1d", **kw)
     for _, payload in capture.payloads:
         starts = payload["series"]["start_datetime"]
         assert all(s.endswith("-05:00") for s in starts), starts
+
+
+@pytest.mark.parametrize("endpoint", ENDPOINTS)
+def test_polars_dst_timezone_omits_start_datetime(capture, endpoint, caplog):
+    pl = pytest.importorskip("polars")
+    df = pl.from_pandas(
+        _series(
+            n_series=3,
+            n=40,
+            freq="h",
+            tz="US/Eastern",
+            start="2020-03-07",
+        )
+    )
+    kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
+    _call(capture.client, endpoint, df, freq="1h", **kw)
+    for _, payload in capture.payloads:
+        assert "start_datetime" not in payload["series"]
+    assert "cannot be represented losslessly" in caplog.text
 
 
 def test_sub_daily_freq_keeps_time_component(capture):
@@ -452,6 +488,8 @@ def test_payload_is_json_serializable(capture):
     """start_datetime must survive the orjson path used by _make_request."""
     import orjson
 
-    capture.client.forecast(df=_series(n_series=3, n=40, tz="US/Eastern"), h=5, freq="D")
+    capture.client.forecast(
+        df=_series(n_series=3, n=40, tz="Etc/GMT+5"), h=5, freq="D"
+    )
     starts = capture.payloads[0][1]["series"]["start_datetime"]
     assert orjson.loads(orjson.dumps(starts)) == starts

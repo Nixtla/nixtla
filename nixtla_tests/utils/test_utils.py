@@ -261,19 +261,23 @@ def test_series_starts_keeps_time_component():
     assert _series_starts(df, processed, "ds") == ["2020-01-01T09:30"]
 
 
-def test_series_starts_tz_aware_preserves_offset():
-    df = _make_df(tz="US/Eastern", shuffle=True)
+def test_series_starts_fixed_offset_timezone_preserves_offset():
+    df = _make_df(tz="Etc/GMT+5", shuffle=True)
     processed = _process(df)
     starts = _series_starts(df, processed, "ds")
-    # datetime64 cannot hold an offset, which is why we emit strings. Each series
-    # keeps its own real offset, so DST shows up here: June is -04:00, not -05:00.
     assert starts == [
         "2020-01-01T00:00:00-05:00",
         "2020-03-01T00:00:00-05:00",
-        "2020-06-01T00:00:00-04:00",
+        "2020-06-01T00:00:00-05:00",
     ]
     # and the result must survive the orjson serialization used by _make_request
     assert orjson.loads(orjson.dumps(starts)) == starts
+
+
+def test_series_starts_dst_timezone_returns_none(caplog):
+    df = _make_df(tz="US/Eastern", shuffle=True)
+    assert _series_starts(df, _process(df), "ds") is None
+    assert "cannot be represented losslessly" in caplog.text
 
 
 def test_series_starts_tz_aware_array_would_not_serialize():
@@ -294,31 +298,39 @@ def test_series_starts_polars_matches_pandas():
     )
 
 
-def test_series_starts_polars_tz_aware_restores_offset():
+def test_series_starts_polars_fixed_offset_timezone_restores_offset():
     pl = pytest.importorskip("polars")
-    df = pl.from_pandas(_make_df(tz="US/Eastern", shuffle=True))
+    df = pl.from_pandas(_make_df(tz="Etc/GMT+5", shuffle=True))
     # the premise: polars hands numpy naive UTC values, not tz-aware objects
     assert df["ds"].to_numpy().dtype != object
     starts = _series_starts(df, _process(df, freq="1d"), "ds")
-    # identical to the pandas expectation, DST included
     assert starts == [
         "2020-01-01T00:00:00-05:00",
         "2020-03-01T00:00:00-05:00",
-        "2020-06-01T00:00:00-04:00",
+        "2020-06-01T00:00:00-05:00",
     ]
     assert orjson.loads(orjson.dumps(starts)) == starts
 
 
-def test_series_starts_polars_tz_aware_truncated():
+def test_series_starts_polars_dst_timezone_returns_none(caplog):
     pl = pytest.importorskip("polars")
     df = pl.from_pandas(_make_df(tz="US/Eastern", shuffle=True))
+    assert _series_starts(df, _process(df, freq="1d"), "ds") is None
+    assert "cannot be represented losslessly" in caplog.text
+
+
+def test_series_starts_polars_fixed_offset_timezone_truncated():
+    pl = pytest.importorskip("polars")
+    df = pl.from_pandas(_make_df(tz="Etc/GMT+5", shuffle=True))
     processed = _process(df, freq="1d")
     orig_indptr, orig_sort_idxs = processed.indptr, processed.sort_idxs
-    starts = _series_starts(df, _tail(processed, 4), "ds", orig_indptr, orig_sort_idxs)
+    starts = _series_starts(
+        df, _tail(processed, 4), "ds", orig_indptr, orig_sort_idxs
+    )
     assert starts == [
         "2020-01-02T00:00:00-05:00",
         "2020-03-01T00:00:00-05:00",
-        "2020-06-04T00:00:00-04:00",
+        "2020-06-04T00:00:00-05:00",
     ]
 
 
@@ -331,7 +343,15 @@ def test_series_starts_polars_date_dtype():
 
 def test_times_to_iso_tz_restores_offset():
     times = np.array(["2019-12-31T23:00"], dtype="datetime64[ns]")
-    assert _times_to_iso(times, tz="Europe/Amsterdam") == ["2020-01-01T00:00:00+01:00"]
+    assert _times_to_iso(times, tz="Etc/GMT-1") == [
+        "2020-01-01T00:00:00+01:00"
+    ]
+
+
+def test_times_to_iso_dst_timezone_returns_none(caplog):
+    times = np.array(["2019-12-31T23:00"], dtype="datetime64[ns]")
+    assert _times_to_iso(times, tz="Europe/Amsterdam") is None
+    assert "cannot be represented losslessly" in caplog.text
 
 
 def test_series_starts_integer_time_col_returns_none(integer_freq_series):

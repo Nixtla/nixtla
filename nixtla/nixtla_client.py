@@ -324,13 +324,23 @@ def _time_col_tz(df: DataFrame, time_col: str) -> Optional[str]:
     return None
 
 
+def _is_fixed_offset_timezone(tz: Any) -> bool:
+    """Whether a timezone can be represented losslessly by an ISO UTC offset."""
+    if tz is None:
+        return True
+    if isinstance(tz, str):
+        tz = pd.Timestamp("2000-01-01", tz=tz).tzinfo
+    return tz.utcoffset(None) is not None
+
+
 def _times_to_iso(times: np.ndarray, tz: Optional[str] = None) -> Optional[list[str]]:
     """Convert an array of per-series start times to ISO 8601 strings.
 
     `tz` restores the time zone that polars' `to_numpy()` drops (see
     `_time_col_tz`). Returns None when the values aren't datetimes (e.g. an
-    integer time column), in which case `start_datetime` is omitted from the
-    payload.
+    integer time column), or when their timezone has variable offsets that an
+    ISO timestamp cannot preserve. In either case, `start_datetime` is omitted
+    from the payload.
     """
     if times.size == 0:
         return None
@@ -339,9 +349,26 @@ def _times_to_iso(times: np.ndarray, tz: Optional[str] = None) -> Optional[list[
         # isoformat keeps the UTC offset, which datetime64 cannot represent.
         if not isinstance(times[0], (pd.Timestamp, datetime.datetime)):
             return None
+        tzinfo = times[0].tzinfo
+        if not _is_fixed_offset_timezone(tzinfo):
+            logger.warning(
+                "Omitting start_datetime because timezone %r cannot be represented "
+                "losslessly by an ISO 8601 UTC offset. Convert the time column to "
+                "UTC or a fixed-offset timezone to register start_datetime.",
+                str(tzinfo),
+            )
+            return None
         return [t.isoformat() for t in times]
     if np.issubdtype(times.dtype, np.datetime64):
         if tz is not None:
+            if not _is_fixed_offset_timezone(tz):
+                logger.warning(
+                    "Omitting start_datetime because timezone %r cannot be represented "
+                    "losslessly by an ISO 8601 UTC offset. Convert the time column to "
+                    "UTC or a fixed-offset timezone to register start_datetime.",
+                    tz,
+                )
+                return None
             # the values are UTC instants; re-attach the original zone's offset
             return [
                 pd.Timestamp(t, tz="UTC").tz_convert(tz).isoformat() for t in times
