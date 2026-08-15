@@ -2425,8 +2425,10 @@ class NixtlaClient:
         if h < 1:
             raise ValueError("`h` must be a positive integer.")
         if not isinstance(n_paths, (int, np.integer)) or isinstance(n_paths, bool):
-            raise ValueError("`n_paths` must be an integer.")
+            raise ValueError("`n_paths` must be a positive integer.")
         n_paths = int(n_paths)
+        if n_paths < 1:
+            raise ValueError("`n_paths` must be a positive integer.")
         if num_partitions is not None:
             if not isinstance(num_partitions, (int, np.integer)) or isinstance(
                 num_partitions, bool
@@ -2446,6 +2448,7 @@ class NixtlaClient:
             if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):
                 raise ValueError("`seed` must be an integer.")
             seed = int(seed)
+        level, _ = _prepare_level_and_quantiles(None, quantiles)
 
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -2532,7 +2535,7 @@ class NixtlaClient:
         if not x_cols and not categorical_exog_list:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
-                level=None,
+                level=level,
                 input_size=model_input_size,
                 model_horizon=model_horizon,
                 h=h,

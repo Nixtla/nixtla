@@ -326,6 +326,25 @@ def test_simulate_restricts_history_when_there_is_no_exogenous_data():
     assert len(series["y"]) == 2 * input_size
 
 
+def test_simulate_keeps_extra_history_when_quantiles_are_requested():
+    input_size, model_horizon, h = 28, 7, 5
+    client, request = _client_with_response(
+        _simulate_response, model_params=(input_size, model_horizon)
+    )
+
+    client.simulate(
+        _series_df(n_series=2, n=200),
+        h=h,
+        freq="D",
+        n_paths=1,
+        quantiles=[0.1, 0.9],
+    )
+
+    series = _payload_of(request.call_args)["series"]
+    expected = 3 * input_size + max(model_horizon, h)
+    assert series["sizes"].tolist() == [expected, expected]
+
+
 def test_simulate_keeps_at_least_h_observations_when_multivariate():
     input_size, h = 28, 100
     client, request = _client_with_response(
@@ -450,8 +469,11 @@ def test_simulate_leaves_missing_seed_unset_for_server():
     [
         ({"h": 0}, "positive integer"),
         ({"h": 1.5}, "positive integer"),
-        ({"n_paths": 1.5}, "integer"),
+        ({"n_paths": 1.5}, "positive integer"),
+        ({"n_paths": 0}, "positive integer"),
+        ({"n_paths": -1}, "positive integer"),
         ({"seed": 1.5}, "integer"),
+        ({"quantiles": [0.1, 1.5]}, "between 0 and 1"),
         ({"num_partitions": 0}, "positive integer"),
         ({"num_partitions": 1.5}, "positive integer"),
         (
