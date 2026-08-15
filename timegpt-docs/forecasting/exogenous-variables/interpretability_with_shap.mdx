@@ -1,205 +1,165 @@
 ---
-title: "Model Interpretability"
-description: "Learn how to interpret model predictions using SHAP values to understand the impact of exogenous variables."
-icon: "sigma"
+title: "Explain a forecast with SHAP"
+description: "See how each input moves an individual TimeGPT forecast up or down."
+icon: "chart-column"
 ---
 
-## What Are SHAP Values?
+Use SHAP when someone asks:
 
-SHAP (SHapley Additive exPlanation) values use game theory concepts to explain how each feature influences machine learning forecasts. They're particularly useful when working with exogenous (external) variables, letting you understand contributions both at individual prediction steps and across entire forecast horizons.
+> Why did TimeGPT produce this forecast?
 
-SHAP values can be seamlessly combined with visualization methods from the [SHAP](https://shap.readthedocs.io/en/latest/) Python package for powerful plots and insights. Before proceeding, make sure you understand forecasting with exogenous features. For reference, see our [tutorial on exogenous variables](/forecasting/exogenous-variables/numeric_features).
+SHAP starts from a reference forecast and shows how much each input moves the
+prediction up or down.
 
-## How to Use SHAP Values for TimeGPT
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Nixtla/nixtla/blob/main/nbs/docs/tutorials/21_shap_values.ipynb)
-
-## Install SHAP
-
-Install the SHAP library.
-
-```bash
-pip install shap
+```text
+starting value + input contributions = TimeGPT forecast
 ```
 
-For more details, visit the [official SHAP documentation](https://shap.readthedocs.io/en/latest/).
+The values use the same unit as your target. If you forecast product demand, a
+contribution of `+2` means two additional units in the model's forecast.
 
-### Step 1: Import Packages
+## Retail-demand example
 
-Import the necessary libraries and initialize the Nixtla client.
+A store uses its price, promotion plan, and temperature forecast to predict
+demand for the next 14 days.
+
+<Accordion title="Create the example data">
 
 ```python
+import numpy as np
 import pandas as pd
+
 from nixtla import NixtlaClient
 
 nixtla_client = NixtlaClient(
-    api_key='my_api_key_provided_by_nixtla'  # Or use os.environ.get("NIXTLA_API_KEY")
+    # Defaults to os.environ["NIXTLA_API_KEY"]
+    api_key="my_api_key_provided_by_nixtla"
+)
+
+rng = np.random.default_rng(7)
+n = 365
+h = 14
+t = np.arange(n + h)
+
+price = 20 + 1.8 * np.sin(2 * np.pi * t / 90) + rng.normal(0, 0.35, n + h)
+promotion = ((t % 42) >= 35).astype(int)
+temperature = (
+    18
+    + 9 * np.sin(2 * np.pi * (t - 30) / 365)
+    + rng.normal(0, 0.8, n + h)
+)
+weekly = 6 * np.sin(2 * np.pi * t / 7)
+demand = (
+    118
+    - 2.4 * price[:n]
+    + 16 * promotion[:n]
+    + 0.55 * temperature[:n]
+    + weekly[:n]
+    + rng.normal(0, 2.0, n)
+)
+
+dates = pd.date_range("2024-01-01", periods=n + h, freq="D")
+df = pd.DataFrame(
+    {
+        "unique_id": "store-a",
+        "ds": dates[:n],
+        "y": demand,
+        "price": price[:n],
+        "promotion": promotion[:n],
+        "temperature": temperature[:n],
+    }
+)
+X_df = pd.DataFrame(
+    {
+        "unique_id": "store-a",
+        "ds": dates[n:],
+        "price": price[n:],
+        "promotion": promotion[n:],
+        "temperature": temperature[n:],
+    }
 )
 ```
 
-### Step 2: Load Data
+</Accordion>
 
-We'll use exogenous variables (covariates) to enhance electricity market forecasting accuracy. The widely known EPF dataset is available at
-[this link](https://zenodo.org/records/4624805). It contains hourly prices and relevant exogenous factors for five different electricity markets.
+## Make and explain the forecast
 
-For this tutorial, we'll focus on the Belgian electricity market (BE). The data includes:
-- Hourly prices (y)
-- Forecasts for load (Exogenous1) and generation (Exogenous2)
-- Day-of-week indicators (one-hot encoded)
-
-If your data relies on factors such as weather, holiday calendars, marketing, or other elements, ensure they're similarly structured.
+Turn on `feature_contributions` when you call `forecast()`:
 
 ```python
-market = "BE"
-
-df = pd.read_csv(
-    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-with-ex-vars.csv'
-)
-
-df.head()
-```
-
-| unique_id | ds | y | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
-|-----------|----|---|------------|------------|-------|-------|-------|-------|-------|-------|-------|
-| BE        | 2016-10-22 00:00:00 | 70.00 | 57253.0 | 49593.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-10-22 01:00:00 | 37.10 | 51887.0 | 46073.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-10-22 02:00:00 | 37.10 | 51896.0 | 44927.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-10-22 03:00:00 | 44.75 | 48428.0 | 44483.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-10-22 04:00:00 | 37.10 | 46721.0 | 44338.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-
-### Step 3: Forecast with Exogenous Variables
-
-To make forecasts with exogenous variables, you must have future data for these variables available at the time of prediction.
-
-
-Before generating forecasts, ensure you have (or can generate) future exogenous values. Below, we load future exogenous features to obtain 24-step-ahead predictions:
-
-```python
-future_ex_vars_df = pd.read_csv(
-    'https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/electricity-short-future-ex-vars.csv'
-)
-
-future_ex_vars_df.head()
-```
-
-| unique_id | ds | Exogenous1 | Exogenous2 | day_0 | day_1 | day_2 | day_3 | day_4 | day_5 | day_6 |
-|-----------|----|------------|------------|-------|-------|-------|-------|-------|-------|-------|
-| BE        | 2016-12-31 00:00:00 | 70318.0 | 64108.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-12-31 01:00:00 | 67898.0 | 62492.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-12-31 02:00:00 | 68379.0 | 61571.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-12-31 03:00:00 | 64972.0 | 60381.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-| BE        | 2016-12-31 04:00:00 | 62900.0 | 60298.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
-
-Next, create forecasts using the Nixtla API:
-
-```python
-timegpt_fcst_ex_vars_df = nixtla_client.forecast(
+forecast = nixtla_client.forecast(
     df=df,
-    X_df=future_ex_vars_df,
-    h=24,
-    level=[80, 90],
-    feature_contributions=True
+    X_df=X_df,
+    h=h,
+    freq="D",
+    model="timegpt-2.1",
+    feature_contributions=True,
 )
 
-timegpt_fcst_ex_vars_df.head()
+contributions = nixtla_client.feature_contributions
 ```
 
-| unique_id | ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-90 | TimeGPT-lo-80 | TimeGPT-lo-90 |
-|-----------|----|---------|---------------|---------------|---------------|---------------|
-| BE        | 2016-12-31 00:00:00 | 51.632830 | 61.598820 | 66.088295 | 41.666843 | 37.177372 |
-| BE        | 2016-12-31 01:00:00 | 45.750877 | 54.611988 | 60.176445 | 36.889767 | 31.325312 |
-| BE        | 2016-12-31 02:00:00 | 39.650543 | 46.256210 | 52.842808 | 33.044876 | 26.458277 |
-| BE        | 2016-12-31 03:00:00 | 34.000072 | 44.015310 | 47.429000 | 23.984835 | 20.571144 |
-| BE        | 2016-12-31 04:00:00 | 33.785370 | 43.140503 | 48.581240 | 24.430239 | 18.989498 |
-
-
-### Step 4: Extract SHAP Values
-
-After forecasting, you can retrieve SHAP values to see how each feature contributed to the model's predictions.
+The forecast for the first promotion day is:
 
 ```python
-shap_df = nixtla_client.feature_contributions
-shap_df = shap_df.query("unique_id == @market")
-
-shap_df.head()
+promotion_day = X_df.loc[X_df["promotion"].eq(1), "ds"].min()
+contributions.query("ds == @promotion_day")
 ```
 
-### Step 5: Visualization with SHAP
+| unique_id | ds | TimeGPT | price | promotion | temperature | base_value |
+|---|---|---:|---:|---:|---:|---:|
+| store-a | 2025-01-06 | 92.01 | +0.21 | +0.55 | -0.59 | 91.85 |
 
-Visualizing SHAP values helps interpret the impact of exogenous features in detail. Below, we demonstrate three common SHAP plots.
+The frame always has the ID and time columns, `TimeGPT`, one column per
+feature in the order they were sent, and `base_value` last.
 
-#### Bar Plot
+## Read the result
 
-Use a bar plot to see the average impact of each feature across predictions:
+For January 6:
 
-```python
-import shap
-import matplotlib.pyplot as plt
+- The explanation starts at **91.85 units**.
+- Price adds **0.21 units**.
+- The planned promotion adds **0.55 units**.
+- Temperature subtracts **0.59 units**.
+- Together, they produce the **92.01-unit forecast** after rounding.
 
-shap_columns = shap_df.columns.difference(['unique_id', 'ds', 'TimeGPT', 'base_value'])
-
-shap_obj = shap.Explanation(
-    values=shap_df[shap_columns].values,
-    base_values=shap_df['base_value'].values,
-    feature_names=shap_columns
-)
-
-shap.plots.bar(
-    shap_obj,
-    max_display=len(shap_columns),
-    show=False
-)
-
-plt.title(f'SHAP values for {market}')
-plt.show()
-```
-
-<Frame caption="Bar Plot">
-  ![Bar Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/21_shap_values_files/figure-markdown_strict/cell-14-output-1.png)
+<Frame caption="The left panel shows the 14-day forecast. The right panel explains the first promotion day. Results were generated with TimeGPT 2.1.">
+  ![A retail-demand forecast beside a bar chart showing the contribution of price, promotion, and temperature](/images/forecasting/explain-retail-shap.png)
 </Frame>
 
-#### Waterfall Plot
+A positive contribution pushes the forecast above its starting value. A
+negative contribution pushes it below. Neither sign is inherently good or bad;
+it simply describes the direction of the model prediction.
 
-A waterfall plot shows how each feature contributes to a single prediction step. Here, we select the earliest date for illustration:
+## Find the biggest contributors
 
-```python
-selected_ds = shap_df['ds'].min()
-
-filtered_df = shap_df[shap_df['ds'] == selected_ds]
-
-shap_obj = shap.Explanation(
-    values=filtered_df[shap_columns].values.flatten(),
-    base_values=filtered_df['base_value'].values[0],
-    feature_names=shap_columns
-)
-
-shap.plots.waterfall(shap_obj, show=False)
-
-plt.title(f'Waterfall Plot: {market}, date: {selected_ds}')
-plt.show()
-```
-
-<Frame caption="Waterfall Plot">
-  ![Waterfall Plot](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/21_shap_values_files/figure-markdown_strict/cell-15-output-1.png)
-</Frame>
-
-#### Heatmap
-
-Visualize how feature impacts vary across each forecast step. This often reveals time-dependent effects of certain variables.
+To summarize the entire forecast horizon, calculate the average absolute
+contribution:
 
 ```python
-shap_obj = shap.Explanation(
-    values=shap_df[shap_columns].values,
-    feature_names=shap_columns
+features = ["price", "promotion", "temperature"]
+
+average_impact = (
+    contributions[features]
+    .abs()
+    .mean()
+    .sort_values(ascending=False)
 )
-
-shap.plots.heatmap(shap_obj, show=False)
-
-plt.title(f'SHAP Heatmap (Unique ID: {market})')
-plt.show()
+average_impact
 ```
 
-<Frame caption="SHAP Heatmap">
-  ![SHAP Heatmap](https://raw.githubusercontent.com/Nixtla/nixtla/readme_docs/nbs/_docs/docs/tutorials/21_shap_values_files/figure-markdown_strict/cell-16-output-1.png)
-</Frame>
+Use the row-level values when investigating a particular day. Use the average
+when you need a quick view across the complete forecast.
 
+<Info>
+SHAP explains how TimeGPT combined the available inputs for this forecast. Use
+it to investigate surprising predictions, communicate forecasts, and decide
+where to look next.
+</Info>
+
+## Next
+
+- [Test forecast sensitivity](/forecasting/explanation/intervention)
+- [Find predictive signals in
+  history](/forecasting/exogenous-variables/causal-explanations)
+- [Advanced explanations](/forecasting/explanation/advanced-explanations)
