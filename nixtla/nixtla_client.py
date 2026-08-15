@@ -312,21 +312,40 @@ def _tail(proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
     )
 
 
-def _times_to_iso(times: np.ndarray) -> Optional[list[str]]:
+def _time_col_tz(df: DataFrame, time_col: str) -> Optional[str]:
+    """Time zone of a polars datetime column, or None.
+
+    polars' `to_numpy()` UTC-normalizes tz-aware columns into plain datetime64,
+    dropping the zone; tz-aware pandas needs no such handling because it
+    converts to an object array of tz-aware Timestamps.
+    """
+    if isinstance(df, pl_DataFrame):
+        return getattr(df[time_col].dtype, "time_zone", None)
+    return None
+
+
+def _times_to_iso(times: np.ndarray, tz: Optional[str] = None) -> Optional[list[str]]:
     """Convert an array of per-series start times to ISO 8601 strings.
 
-    Returns None when the values aren't datetimes (e.g. an integer time column),
-    in which case `start_datetime` is omitted from the payload.
+    `tz` restores the time zone that polars' `to_numpy()` drops (see
+    `_time_col_tz`). Returns None when the values aren't datetimes (e.g. an
+    integer time column), in which case `start_datetime` is omitted from the
+    payload.
     """
     if times.size == 0:
         return None
     if times.dtype == object:
-        # tz-aware pandas (and polars) yield an object array of Timestamp/datetime.
+        # tz-aware pandas yields an object array of Timestamps.
         # isoformat keeps the UTC offset, which datetime64 cannot represent.
         if not isinstance(times[0], (pd.Timestamp, datetime.datetime)):
             return None
         return [t.isoformat() for t in times]
     if np.issubdtype(times.dtype, np.datetime64):
+        if tz is not None:
+            # the values are UTC instants; re-attach the original zone's offset
+            return [
+                pd.Timestamp(t, tz="UTC").tz_convert(tz).isoformat() for t in times
+            ]
         return np.datetime_as_string(times, unit="auto").tolist()
     return None
 
@@ -348,15 +367,21 @@ def _series_starts(
     """
     if orig_indptr is None:
         sort_idxs = processed.sort_idxs
-    times = df[time_col].to_numpy()
-    if sort_idxs is not None:
-        times = times[sort_idxs]
-    if orig_indptr is None:
-        starts = times[processed.indptr[:-1]]
+        pos = processed.indptr[:-1]
     else:
         # _tail keeps each series' last `size` rows, so the start is `end - size`
-        starts = times[orig_indptr[1:] - np.diff(processed.indptr)]
-    return _times_to_iso(starts)
+        pos = orig_indptr[1:] - np.diff(processed.indptr)
+    if sort_idxs is not None:
+        # map payload positions back to df rows instead of reordering the full
+        # column: only one value per series is ever read
+        pos = sort_idxs[pos]
+    col = df[time_col]
+    if isinstance(df, pd.DataFrame):
+        # select before converting so tz-aware columns only box n_series values
+        starts = col.iloc[pos].to_numpy()
+    else:
+        starts = col.gather(pos).to_numpy()
+    return _times_to_iso(starts, _time_col_tz(df, time_col))
 
 
 def _partition_series(
@@ -2557,7 +2582,9 @@ class NixtlaClient:
             "X": X,
         }
         # `times` is already sorted to match the payload row order
-        start_datetime = _times_to_iso(times[processed.indptr[:-1]])
+        start_datetime = _times_to_iso(
+            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        )
         if start_datetime is not None:
             online_series["start_datetime"] = start_datetime
         payload = {
@@ -2926,7 +2953,9 @@ class NixtlaClient:
         }
         # `times` is sorted and, when the input was restricted, trimmed alongside
         # `targets`, so it already matches the payload row order.
-        start_datetime = _times_to_iso(times[processed.indptr[:-1]])
+        start_datetime = _times_to_iso(
+            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        )
         if start_datetime is not None:
             series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:

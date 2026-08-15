@@ -194,12 +194,12 @@ def _make_df(tz=None, shuffle=True, freq="D"):
     return df.reset_index(drop=True)
 
 
-def _process(df):
+def _process(df, freq="D"):
     processed, *_ = _preprocess(
         df=df,
         X_df=None,
         h=0,
-        freq="D",
+        freq=freq,
         date_features=False,
         date_features_to_one_hot=False,
         id_col="unique_id",
@@ -282,6 +282,56 @@ def test_series_starts_tz_aware_array_would_not_serialize():
     assert times.dtype == object
     with pytest.raises(TypeError):
         orjson.dumps(times, option=orjson.OPT_SERIALIZE_NUMPY)
+
+
+# --- polars inputs ---
+def test_series_starts_polars_matches_pandas():
+    pl = pytest.importorskip("polars")
+    df = _make_df(shuffle=True)
+    pl_df = pl.from_pandas(df)
+    assert _series_starts(pl_df, _process(pl_df, freq="1d"), "ds") == _series_starts(
+        df, _process(df), "ds"
+    )
+
+
+def test_series_starts_polars_tz_aware_restores_offset():
+    pl = pytest.importorskip("polars")
+    df = pl.from_pandas(_make_df(tz="US/Eastern", shuffle=True))
+    # the premise: polars hands numpy naive UTC values, not tz-aware objects
+    assert df["ds"].to_numpy().dtype != object
+    starts = _series_starts(df, _process(df, freq="1d"), "ds")
+    # identical to the pandas expectation, DST included
+    assert starts == [
+        "2020-01-01T00:00:00-05:00",
+        "2020-03-01T00:00:00-05:00",
+        "2020-06-01T00:00:00-04:00",
+    ]
+    assert orjson.loads(orjson.dumps(starts)) == starts
+
+
+def test_series_starts_polars_tz_aware_truncated():
+    pl = pytest.importorskip("polars")
+    df = pl.from_pandas(_make_df(tz="US/Eastern", shuffle=True))
+    processed = _process(df, freq="1d")
+    orig_indptr, orig_sort_idxs = processed.indptr, processed.sort_idxs
+    starts = _series_starts(df, _tail(processed, 4), "ds", orig_indptr, orig_sort_idxs)
+    assert starts == [
+        "2020-01-02T00:00:00-05:00",
+        "2020-03-01T00:00:00-05:00",
+        "2020-06-04T00:00:00-04:00",
+    ]
+
+
+def test_series_starts_polars_date_dtype():
+    pl = pytest.importorskip("polars")
+    df = pl.from_pandas(_make_df(shuffle=False)).with_columns(pl.col("ds").cast(pl.Date))
+    starts = _series_starts(df, _process(df, freq="1d"), "ds")
+    assert starts == ["2020-01-01", "2020-03-01", "2020-06-01"]
+
+
+def test_times_to_iso_tz_restores_offset():
+    times = np.array(["2019-12-31T23:00"], dtype="datetime64[ns]")
+    assert _times_to_iso(times, tz="Europe/Amsterdam") == ["2020-01-01T00:00:00+01:00"]
 
 
 def test_series_starts_integer_time_col_returns_none(integer_freq_series):

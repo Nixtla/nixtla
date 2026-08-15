@@ -109,7 +109,7 @@ def capture(monkeypatch):
 
     client._make_request = _record
     # pre-seed the (model, freq) cache so _get_model_params makes no network call
-    for freq in ("D", "h", "MS", "30min"):
+    for freq in ("D", "h", "MS", "30min", "1d"):
         client._model_params[("timegpt-2.1", freq)] = (MODEL_INPUT_SIZE, MODEL_HORIZON)
     return SimpleNamespace(client=client, payloads=payloads, parts=ordered_parts)
 
@@ -409,6 +409,33 @@ def test_tz_aware_offset_reaches_payload(capture, endpoint):
     df = _series(n_series=3, n=40, tz="US/Eastern")
     kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
     _call(capture.client, endpoint, df, **kw)
+    for _, payload in capture.payloads:
+        starts = payload["series"]["start_datetime"]
+        assert all(s.endswith("-05:00") for s in starts), starts
+
+
+@pytest.mark.parametrize("endpoint", ENDPOINTS)
+def test_polars_input_matches_pandas(capture, endpoint):
+    """The backend must not change the payload: polars emits the same starts."""
+    pl = pytest.importorskip("polars")
+    df = _staggered_series(4)
+    kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
+    _call(capture.client, endpoint, df, **kw)
+    pandas_starts = [p["series"]["start_datetime"] for _, p in capture.payloads]
+    capture.payloads.clear()
+    capture.parts.clear()
+    _call(capture.client, endpoint, pl.from_pandas(df), freq="1d", **kw)
+    polars_starts = [p["series"]["start_datetime"] for _, p in capture.payloads]
+    assert polars_starts == pandas_starts
+
+
+@pytest.mark.parametrize("endpoint", ENDPOINTS)
+def test_polars_tz_aware_offset_reaches_payload(capture, endpoint):
+    """polars' to_numpy() drops the tz; the client must restore the offset."""
+    pl = pytest.importorskip("polars")
+    df = pl.from_pandas(_series(n_series=3, n=40, tz="US/Eastern"))
+    kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
+    _call(capture.client, endpoint, df, freq="1d", **kw)
     for _, payload in capture.payloads:
         starts = payload["series"]["start_datetime"]
         assert all(s.endswith("-05:00") for s in starts), starts
