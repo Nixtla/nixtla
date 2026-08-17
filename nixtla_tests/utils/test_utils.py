@@ -3,6 +3,7 @@ import orjson
 import pandas as pd
 import pytest
 
+from nixtla.nixtla_client import _is_constant_offset_timezone
 from nixtla.nixtla_client import _partition_series
 from nixtla.nixtla_client import _preprocess
 from nixtla.nixtla_client import _series_starts
@@ -277,7 +278,63 @@ def test_series_starts_fixed_offset_timezone_preserves_offset():
 def test_series_starts_dst_timezone_returns_none(caplog):
     df = _make_df(tz="US/Eastern", shuffle=True)
     assert _series_starts(df, _process(df), "ds") is None
-    assert "cannot be represented losslessly" in caplog.text
+    assert "changes its UTC offset" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "tz,offset",
+    [
+        ("Asia/Tokyo", "+09:00"),
+        ("Asia/Shanghai", "+08:00"),
+        ("Asia/Kolkata", "+05:30"),  # half-hour offset
+        ("Asia/Kathmandu", "+05:45"),  # quarter-hour offset
+    ],
+)
+def test_series_starts_named_constant_offset_timezone_is_registered(tz, offset):
+    """Named IANA zones without DST have one constant offset, so they register.
+
+    Regression: pandas models every IANA zone as a pytz DstTzInfo, so asking
+    `tzinfo.utcoffset(None)` reports None even for permanently-fixed zones and
+    used to drop these.
+    """
+    df = _make_df(tz=tz, shuffle=True)
+    starts = _series_starts(df, _process(df), "ds")
+    assert starts == [
+        f"2020-01-01T00:00:00{offset}",
+        f"2020-03-01T00:00:00{offset}",
+        f"2020-06-01T00:00:00{offset}",
+    ]
+    assert orjson.loads(orjson.dumps(starts)) == starts
+
+
+@pytest.mark.parametrize("tz", ["Asia/Tokyo", "Asia/Kolkata"])
+def test_series_starts_constant_offset_reconstructs_exactly(tz):
+    """The point of registering: (start, size, freq) rebuilds the true index."""
+    df = _make_df(tz=tz, shuffle=True)
+    processed = _process(df)
+    starts = _series_starts(df, processed, "ds")
+    sizes = np.diff(processed.indptr)
+    sorted_df = df.sort_values(["unique_id", "ds"])
+    for uid, start, size in zip(processed.uids, starts, sizes):
+        rebuilt = pd.date_range(start=start, periods=int(size), freq="D")
+        truth = sorted_df.loc[sorted_df["unique_id"] == uid, "ds"]
+        assert (rebuilt.tz_convert(tz) == pd.DatetimeIndex(truth)).all()
+
+
+@pytest.mark.parametrize("tz", ["Asia/Tokyo", "Asia/Kolkata", "Etc/GMT+5"])
+def test_is_constant_offset_timezone_accepts(tz):
+    assert _is_constant_offset_timezone(pd.Timestamp("2020-01-01", tz=tz).tzinfo)
+    assert _is_constant_offset_timezone(tz)
+
+
+@pytest.mark.parametrize("tz", ["US/Eastern", "Europe/Amsterdam", "Australia/Sydney"])
+def test_is_constant_offset_timezone_rejects_dst(tz):
+    assert not _is_constant_offset_timezone(pd.Timestamp("2020-01-01", tz=tz).tzinfo)
+    assert not _is_constant_offset_timezone(tz)
+
+
+def test_is_constant_offset_timezone_none_is_naive():
+    assert _is_constant_offset_timezone(None)
 
 
 def test_series_starts_tz_aware_array_would_not_serialize():
@@ -312,11 +369,27 @@ def test_series_starts_polars_fixed_offset_timezone_restores_offset():
     assert orjson.loads(orjson.dumps(starts)) == starts
 
 
+@pytest.mark.parametrize(
+    "tz,offset", [("Asia/Tokyo", "+09:00"), ("Asia/Kolkata", "+05:30")]
+)
+def test_series_starts_polars_named_constant_offset_timezone(tz, offset):
+    """polars drops the zone in to_numpy(); the client restores the real offset."""
+    pl = pytest.importorskip("polars")
+    df = pl.from_pandas(_make_df(tz=tz, shuffle=True))
+    assert df["ds"].to_numpy().dtype != object
+    starts = _series_starts(df, _process(df, freq="1d"), "ds")
+    assert starts == [
+        f"2020-01-01T00:00:00{offset}",
+        f"2020-03-01T00:00:00{offset}",
+        f"2020-06-01T00:00:00{offset}",
+    ]
+
+
 def test_series_starts_polars_dst_timezone_returns_none(caplog):
     pl = pytest.importorskip("polars")
     df = pl.from_pandas(_make_df(tz="US/Eastern", shuffle=True))
     assert _series_starts(df, _process(df, freq="1d"), "ds") is None
-    assert "cannot be represented losslessly" in caplog.text
+    assert "changes its UTC offset" in caplog.text
 
 
 def test_series_starts_polars_fixed_offset_timezone_truncated():
@@ -351,7 +424,7 @@ def test_times_to_iso_tz_restores_offset():
 def test_times_to_iso_dst_timezone_returns_none(caplog):
     times = np.array(["2019-12-31T23:00"], dtype="datetime64[ns]")
     assert _times_to_iso(times, tz="Europe/Amsterdam") is None
-    assert "cannot be represented losslessly" in caplog.text
+    assert "changes its UTC offset" in caplog.text
 
 
 def test_series_starts_integer_time_col_returns_none(integer_freq_series):

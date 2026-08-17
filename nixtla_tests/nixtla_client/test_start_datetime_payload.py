@@ -415,6 +415,26 @@ def test_tz_aware_offset_reaches_payload(capture, endpoint):
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
+@pytest.mark.parametrize(
+    "tz,offset", [("Asia/Tokyo", "+09:00"), ("Asia/Kolkata", "+05:30")]
+)
+def test_named_constant_offset_timezone_is_registered(capture, endpoint, tz, offset):
+    """Named zones without DST keep a constant offset, so they must register.
+
+    Regression: these used to be dropped because pandas models every IANA zone
+    as a pytz DstTzInfo, whose utcoffset(None) is None regardless of DST.
+    """
+    df = _series(n_series=3, n=40, tz=tz)
+    kw = NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}
+    _call(capture.client, endpoint, df, **kw)
+    assert capture.payloads
+    for _, payload in capture.payloads:
+        starts = payload["series"]["start_datetime"]
+        assert len(starts) == len(payload["series"]["sizes"])
+        assert all(s.endswith(offset) for s in starts), starts
+
+
+@pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_dst_timezone_omits_start_datetime(capture, endpoint, caplog):
     """An offset alone cannot describe an IANA timezone across DST changes."""
     df = _series(
@@ -428,7 +448,7 @@ def test_dst_timezone_omits_start_datetime(capture, endpoint, caplog):
     _call(capture.client, endpoint, df, freq="h", **kw)
     for _, payload in capture.payloads:
         assert "start_datetime" not in payload["series"]
-    assert "cannot be represented losslessly" in caplog.text
+    assert "changes its UTC offset" in caplog.text
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
@@ -474,7 +494,7 @@ def test_polars_dst_timezone_omits_start_datetime(capture, endpoint, caplog):
     _call(capture.client, endpoint, df, freq="1h", **kw)
     for _, payload in capture.payloads:
         assert "start_datetime" not in payload["series"]
-    assert "cannot be represented losslessly" in caplog.text
+    assert "changes its UTC offset" in caplog.text
 
 
 def test_sub_daily_freq_keeps_time_component(capture):
