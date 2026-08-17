@@ -73,6 +73,96 @@
         "x-fern-sdk-method-name": "v2/forecast"
       }
     },
+    "/v2/simulate": {
+      "post": {
+        "summary": "Generate temporally correlated forecast sample paths",
+        "description": "Generate temporally correlated sample paths for multiple time series at once. It takes a JSON as an input containing information like the series frequency, historical data, the forecast horizon, and the number of sample paths to generate. With a fixed seed, repeated requests return identical paths. The response contains the flattened sample paths for each series.",
+        "operationId": "v2_simulate_v2_simulate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateOutput"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/simulate"
+      }
+    },
+    "/v2/explain": {
+      "post": {
+        "summary": "Compute model-agnostic feature importance weights",
+        "description": "Compute model-agnostic feature importance weights for the provided exogenous features. It takes a JSON as an input containing the historical data with exogenous features and the attribution method to use. No foundation model is involved. The response contains one normalized weight per feature.",
+        "operationId": "v2_explain_v2_explain_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplainInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplainOutput"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/explain"
+      }
+    },
     "/v2/anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Anomaly Detector",
@@ -1352,6 +1442,63 @@
         ],
         "title": "CrossValidationOutput"
       },
+      "ExplainInput": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithExogenous"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Method",
+            "description": "Model-agnostic causal analysis method used by the /v2/explain endpoint. Options are: 'granger' (default) and 'transfer_entropy'.",
+            "default": "granger"
+          }
+        },
+        "type": "object",
+        "required": [
+          "series"
+        ],
+        "title": "ExplainInput"
+      },
+      "ExplainOutput": {
+        "properties": {
+          "weights": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Weights"
+          },
+          "feature_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Names"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weights",
+          "method"
+        ],
+        "title": "ExplainOutput"
+      },
       "FinetuneInput": {
         "properties": {
           "series": {
@@ -2097,6 +2244,225 @@
           "anomaly_score"
         ],
         "title": "OnlineAnomalyOutput"
+      },
+      "SimulateInput": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithFutureExogenous"
+          },
+          "freq": {
+            "type": "string",
+            "title": "Freq",
+            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+          },
+          "h": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "H",
+            "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "default": "timegpt-1"
+          },
+          "finetuned_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finetuned Model Id",
+            "description": "ID of previously finetuned model"
+          },
+          "clean_ex_first": {
+            "type": "boolean",
+            "title": "Clean Ex First",
+            "description": "A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.",
+            "default": true
+          },
+          "multivariate": {
+            "type": "boolean",
+            "title": "Multivariate",
+            "description": "When True, sample paths are coupled across series via a shared-template Schaake shuffle (path k reflects the same historical period for every series) — this applies to ALL models. Falls back to independent per-series paths when no NaN-free shared history window exists (see `coupled` in the response). Also enables the multivariate marginal forecast for models that support it (timegpt-2.1).",
+            "default": false
+          },
+          "n_paths": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "N Paths",
+            "description": "Number of sample paths to generate per series.",
+            "default": 100
+          },
+          "quantiles": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantiles",
+            "description": "Marginal quantile grid in (0, 1), strictly increasing, length in [2, 200]. Defaults to the model's native grid (native-quantile losses) or a dense grid (point-loss/conformal)."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 18446744073709551615,
+                "minimum": -9223372036854775808
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "Random seed for reproducibility. When omitted, a fresh random seed is drawn, so repeated unseeded requests return different paths."
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "freq",
+          "h"
+        ],
+        "title": "SimulateInput"
+      },
+      "SimulateOutput": {
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Output Tokens"
+          },
+          "finetune_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Finetune Tokens"
+          },
+          "samples": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Samples"
+          },
+          "n_paths": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "N Paths"
+          },
+          "h": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "H"
+          },
+          "sizes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Sizes"
+          },
+          "coupled": {
+            "type": "boolean",
+            "title": "Coupled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "finetune_tokens",
+          "samples",
+          "n_paths",
+          "h",
+          "sizes"
+        ],
+        "title": "SimulateOutput"
+      },
+      "SeriesWithExogenous": {
+        "properties": {
+          "X": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X",
+            "description": "Historic values of the exogenous features. Each feature must be a list of the same size as the target (y)."
+          },
+          "categorical_exog": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categorical Exog",
+            "description": "Zero-based indices of the columns in X that are categorical features."
+          },
+          "y": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Y",
+            "description": "Historic values of the target."
+          },
+          "sizes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Sizes",
+            "description": "Sizes of the individual series."
+          }
+        },
+        "type": "object",
+        "required": [
+          "y",
+          "sizes"
+        ],
+        "title": "SeriesWithExogenous"
       },
       "SeriesWithFutureExogenous": {
         "properties": {
