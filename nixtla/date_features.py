@@ -15,7 +15,7 @@ def _get_holidays_df(dates, categories, holiday_extractor, supported_categories)
     total_holidays = dict()
     for cat in categories:
         if cat not in supported_categories:
-            raise Exception(f"Holidays for {cat} not available, please remove it.")
+            raise ValueError(f"Holidays for {cat} not available, please remove it.")
         dict_holidays = _transform_dict_holidays(holiday_extractor(cat, years=years))
         for key, val in dict_holidays.items():
             total_holidays[f"{cat}_{key}"] = [int(ds.date() in val) for ds in dates]
@@ -31,11 +31,11 @@ class CountryHolidays:
         try:
             from holidays.utils import country_holidays
             from holidays.utils import list_supported_countries
-        except ModuleNotFoundError:
-            raise Exception(
+        except ModuleNotFoundError as e:
+            raise ImportError(
                 "You have to install additional libraries to use holidays, "
                 'please install them using `pip install "nixtla[date_extras]"`'
-            )
+            ) from e
         return _get_holidays_df(
             dates, self.countries, country_holidays, list_supported_countries()
         )
