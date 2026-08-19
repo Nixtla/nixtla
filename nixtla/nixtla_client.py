@@ -1,6 +1,7 @@
 __all__ = ["ApiError", "NixtlaClient"]
 
 import datetime
+import functools
 from http import HTTPStatus
 from importlib.metadata import PackageNotFoundError, version
 import logging
@@ -312,6 +313,121 @@ def _tail(proc: ufp.ProcessedDF, n: int) -> ufp.ProcessedDF:
     )
 
 
+def _time_col_tz(df: DataFrame, time_col: str) -> Optional[str]:
+    """Time zone of a polars datetime column, or None.
+
+    polars' `to_numpy()` UTC-normalizes tz-aware columns into plain datetime64,
+    dropping the zone; tz-aware pandas needs no such handling because it
+    converts to an object array of tz-aware Timestamps.
+    """
+    if isinstance(df, pl_DataFrame):
+        return getattr(df[time_col].dtype, "time_zone", None)
+    return None
+
+
+@functools.lru_cache(maxsize=None)
+def _is_constant_offset_timezone(tz: Any) -> bool:
+    """Whether a timezone keeps one constant UTC offset, so an ISO 8601 offset is
+    a lossless encoding of it.
+
+    Probing actual offsets is necessary: pandas represents *every* IANA zone as a
+    pytz `DstTzInfo`, whose `utcoffset(None)` is None whether or not the zone
+    observes DST. Asking that would reject permanently-fixed zones such as
+    Asia/Tokyo (+09:00) and Asia/Kolkata (+05:30).
+
+    The probe window is fixed rather than relative to today so the result is
+    deterministic and safe to cache.
+    """
+    if tz is None:
+        return True
+    try:
+        probe = pd.date_range(
+            "2010-01-01", "2030-01-01", freq="MS", tz="UTC"
+        ).tz_convert(tz)
+    except Exception:
+        return False
+    return len({t.utcoffset() for t in probe}) == 1
+
+
+def _warn_non_constant_offset(tz: Any) -> None:
+    logger.warning(
+        "Omitting start_datetime because timezone %r changes its UTC offset "
+        "(daylight saving), which a single ISO 8601 offset cannot describe. "
+        "Convert the time column to UTC or a constant-offset timezone to "
+        "register start_datetime.",
+        str(tz),
+    )
+
+
+def _times_to_iso(times: np.ndarray, tz: Optional[str] = None) -> Optional[list[str]]:
+    """Convert an array of per-series start times to ISO 8601 strings.
+
+    `tz` restores the time zone that polars' `to_numpy()` drops (see
+    `_time_col_tz`). Returns None when the values aren't datetimes (e.g. an
+    integer time column), or when their timezone changes offset (DST), because
+    reconstructing a daily-or-coarser index from a single offset would drift
+    across the transition. In either case, `start_datetime` is omitted from the
+    payload.
+    """
+    if times.size == 0:
+        return None
+    if times.dtype == object:
+        # tz-aware pandas yields an object array of Timestamps.
+        # isoformat keeps the UTC offset, which datetime64 cannot represent.
+        if not isinstance(times[0], (pd.Timestamp, datetime.datetime)):
+            return None
+        tzinfo = times[0].tzinfo
+        if not _is_constant_offset_timezone(tzinfo):
+            _warn_non_constant_offset(tzinfo)
+            return None
+        return [t.isoformat() for t in times]
+    if np.issubdtype(times.dtype, np.datetime64):
+        if tz is not None:
+            if not _is_constant_offset_timezone(tz):
+                _warn_non_constant_offset(tz)
+                return None
+            # the values are UTC instants; re-attach the original zone's offset
+            return [
+                pd.Timestamp(t, tz="UTC").tz_convert(tz).isoformat() for t in times
+            ]
+        return np.datetime_as_string(times, unit="auto").tolist()
+    return None
+
+
+def _series_starts(
+    df: DataFrame,
+    processed: ufp.ProcessedDF,
+    time_col: str,
+    orig_indptr: Optional[np.ndarray] = None,
+    sort_idxs: Optional[np.ndarray] = None,
+) -> Optional[list[str]]:
+    """First timestamp of each series as it appears in the payload's `y`.
+
+    When `processed` has been tail-truncated by `_tail`, its `indptr` no longer
+    indexes `df` and its `sort_idxs` has been reset to None. Callers in that
+    situation must pass the pre-truncation `orig_indptr` and `sort_idxs`; both are
+    taken together, so `sort_idxs` is only read from `processed` when no
+    `orig_indptr` was given.
+    """
+    if orig_indptr is None:
+        sort_idxs = processed.sort_idxs
+        pos = processed.indptr[:-1]
+    else:
+        # _tail keeps each series' last `size` rows, so the start is `end - size`
+        pos = orig_indptr[1:] - np.diff(processed.indptr)
+    if sort_idxs is not None:
+        # map payload positions back to df rows instead of reordering the full
+        # column: only one value per series is ever read
+        pos = sort_idxs[pos]
+    col = df[time_col]
+    if isinstance(df, pd.DataFrame):
+        # select before converting so tz-aware columns only box n_series values
+        starts = col.iloc[pos].to_numpy()
+    else:
+        starts = col.gather(pos).to_numpy()
+    return _times_to_iso(starts, _time_col_tz(df, time_col))
+
+
 def _partition_series(
     payload: dict[str, Any], n_part: int, h: int
 ) -> list[dict[str, Any]]:
@@ -330,6 +446,11 @@ def _partition_series(
             "y": series["y"][part_idxs],
             "sizes": sizes,
         }
+        if series.get("start_datetime") is not None:
+            # one entry per series, so it slices like `sizes` (not like `y`)
+            part_series["start_datetime"] = series["start_datetime"][
+                i : i + series_per_part
+            ]
         if series["X"] is None:
             part_series["X"] = None
             if h > 0:
@@ -1397,11 +1518,15 @@ class NixtlaClient:
         standard_freq = _standardize_freq(freq, processed)
         _validate_input_size(processed, 1, 1)
         logger.info("Calling Fine-tune Endpoint...")
+        finetune_series: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": np.diff(processed.indptr),
+        }
+        start_datetime = _series_starts(df, processed, time_col)
+        if start_datetime is not None:
+            finetune_series["start_datetime"] = start_datetime
         payload = {
-            "series": {
-                "y": processed.data[:, 0],
-                "sizes": np.diff(processed.indptr),
-            },
+            "series": finetune_series,
             "model": model,
             "freq": standard_freq,
             "finetune_steps": finetune_steps,
@@ -1796,6 +1921,8 @@ class NixtlaClient:
                 "Please consider using a smaller horizon."
             )
         restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list and not add_history
+        orig_indptr: Optional[np.ndarray] = None
+        orig_sort_idxs: Optional[np.ndarray] = None
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -1804,6 +1931,9 @@ class NixtlaClient:
                 model_horizon=model_horizon,
                 h=h,
             )
+            # _tail resets both of these, so keep them to map start times back to `df`
+            orig_indptr = processed.indptr
+            orig_sort_idxs = processed.sort_idxs
             processed = _tail(processed, new_input_size)
 
         n_futr_num = len(futr_cols) if futr_cols is not None else 0
@@ -1851,6 +1981,11 @@ class NixtlaClient:
             "X": X,
             "X_future": X_future,
         }
+        start_datetime = _series_starts(
+            df, processed, time_col, orig_indptr, orig_sort_idxs
+        )
+        if start_datetime is not None:
+            series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
         payload = {
@@ -2189,6 +2324,9 @@ class NixtlaClient:
             "sizes": np.diff(processed.indptr),
             "X": X,
         }
+        start_datetime = _series_starts(df, processed, time_col)
+        if start_datetime is not None:
+            series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
 
@@ -2482,12 +2620,19 @@ class NixtlaClient:
                 "Detection size is large. Using the entire series to compute the anomaly threshold..."
             )
         logger.info("Calling Online Anomaly Detector Endpoint...")
+        online_series: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": sizes,
+            "X": X,
+        }
+        # `times` is already sorted to match the payload row order
+        start_datetime = _times_to_iso(
+            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        )
+        if start_datetime is not None:
+            online_series["start_datetime"] = start_datetime
         payload = {
-            "series": {
-                "y": processed.data[:, 0],
-                "sizes": sizes,
-                "X": X,
-            },
+            "series": online_series,
             "h": h,
             "detection_size": detection_size,
             "threshold_method": threshold_method,
@@ -2850,6 +2995,13 @@ class NixtlaClient:
             "sizes": np.diff(processed.indptr),
             "X": X,
         }
+        # `times` is sorted and, when the input was restricted, trimmed alongside
+        # `targets`, so it already matches the payload row order.
+        start_datetime = _times_to_iso(
+            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        )
+        if start_datetime is not None:
+            series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
 
