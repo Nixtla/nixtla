@@ -57,7 +57,8 @@ class AsyncJobCancelledError(Exception):
 
 class Job:
     """Handle to a server-side async job submitted via `submit_forecast_job`,
-    `submit_finetune_job`, or `submit_cross_validation_job`.
+    `submit_finetune_job`, `submit_cross_validation_job`, or
+    `submit_execute_step_job`.
 
     `status` queries the server for the job's current status; call `wait()`
     to block until it reaches a terminal state and get its result, or
@@ -74,14 +75,21 @@ class Job:
         client: "NixtlaClient",
         job_id: str,
         endpoint: str,
-        parse_result: Callable[..., Any],
+        get_result: Callable[[dict[str, Any]], Any],
     ):
+        """
+        Args:
+            get_result: Builds the job's result from the terminal job-status response.
+                Tasks whose result is JSON read it out of that response's `result` field;
+                tasks whose result is binary (`execute_step` returns a zip) leave `result`
+                null there and fetch the payload from their own endpoint instead.
+        """
         self.job_id = job_id
         self.result: Any = None
         self._status: Optional[JobStatus] = None
         self._client = client
         self._endpoint = endpoint
-        self._parse_result = parse_result
+        self._get_result = get_result
 
     @property
     def status(self) -> JobStatus:
@@ -117,7 +125,8 @@ class Job:
 
         Returns:
             The job's parsed result (a DataFrame for forecast/cross_validation
-            jobs, a fine-tuned model id string for finetune jobs).
+            jobs, a fine-tuned model id string for finetune jobs, a `StepResult`
+            for execute_step jobs).
 
         Raises:
             AsyncJobError: If the job fails server-side.
@@ -130,8 +139,9 @@ class Job:
             job_data = self._client._poll_job(
                 http_client, self._endpoint, self.job_id, poll_interval, poll_timeout
             )
-        self._status = JobStatus(job_data["status"])
-        self.result = self._parse_result(job_data["result"])
+        # `_poll_job` returns only on success; every other terminal state raises.
+        self._status = JobStatus.SUCCEEDED
+        self.result = self._get_result(job_data)
         return self.result
 
     def cancel(self) -> None:
