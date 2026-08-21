@@ -7,35 +7,43 @@ header is metadata, so there is exactly one place to look for each.
 
 Nothing here understands TSMP semantics. Tables returned by the server carry their resource
 identity in arrow schema metadata, and this module passes that through untouched, which is what
-makes chaining one step's output into the next lossless. That is also why pyarrow is required
-rather than optional: a pandas round-trip drops schema metadata, so a chained call would silently
-misread the previous step's output as an untyped table.
+makes chaining one step's output into the next lossless. That is also why this endpoint needs
+pyarrow at all, and hence the `nixtla[steps]` extra: a pandas round-trip drops schema metadata,
+so a chained call would silently misread the previous step's output as an untyped table.
 """
 
 import io
 import json
+import logging
 import zipfile
+from collections.abc import Iterable, Mapping
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow as pa
 
+__all__ = ["StepResult", "ref"]
+
+logger = logging.getLogger(__name__)
+
 METADATA_HEADER = "nixtla-metadata"
 CONTENT_TYPE = "application/zip"
-PARQUET_SUFFIX = ".parquet"
-REF_KEY = "data_ref"
+_PARQUET_SUFFIX = ".parquet"
+_REF_KEY = "data_ref"
 
 # Tightest common proxy limit (nginx large_client_header_buffers 8k, CloudFront 8k). The server
 # rejects anything larger with 431 and deliberately does not spill metadata into the body, so the
 # client checks the same budget to fail before uploading rather than after.
 HEADER_BUDGET = 8192
 
-_PYARROW_HINT = "submit_execute_step_job requires pyarrow. Install it with: pip install 'nixtla[steps]'"
+_PYARROW_HINT = (
+    "execute_step requires pyarrow. Install it with: pip install 'nixtla[steps]'"
+)
 
 
-def _require_pyarrow():
+def _require_pyarrow() -> tuple[Any, Any]:
     """Import pyarrow on demand so the rest of the SDK stays installable without it."""
     try:
         import pyarrow as pa  # noqa: F401
@@ -54,26 +62,33 @@ def ref(key: str) -> dict[str, str]:
     Returns:
         dict: `{"data_ref": key}`, the envelope `params` uses to reference a table.
     """
-    return {REF_KEY: key}
+    return {_REF_KEY: key}
 
 
-def collect_refs(obj: Any) -> set[str]:
-    """Every `data_ref` in a params tree, so a bad reference is caught before uploading."""
+def _collect_refs(obj: Any) -> set[str]:
+    """Every `data_ref` in a params tree, so a bad reference is caught before uploading.
+
+    An envelope's siblings are still walked: a param can hold both a `data_ref` and nested
+    params that reference further tables, and missing one of those would reject a valid call.
+    """
+    refs: set[str] = set()
     if isinstance(obj, dict):
-        if REF_KEY in obj:
-            key = obj[REF_KEY]
+        if _REF_KEY in obj:
+            key = obj[_REF_KEY]
             if not isinstance(key, str):
                 raise ValueError(
-                    f"{REF_KEY} must be a string, got {type(key).__name__}"
+                    f"{_REF_KEY} must be a string, got {type(key).__name__}"
                 )
-            return {key}
-        return set().union(*(collect_refs(v) for v in obj.values())) if obj else set()
-    if isinstance(obj, (list, tuple)):
-        return set().union(*(collect_refs(v) for v in obj)) if obj else set()
-    return set()
+            refs.add(key)
+        for value in obj.values():
+            refs |= _collect_refs(value)
+    elif isinstance(obj, (list, tuple)):
+        for value in obj:
+            refs |= _collect_refs(value)
+    return refs
 
 
-def validate_member_names(names: Iterable[str]) -> None:
+def _validate_member_names(names: Iterable[str]) -> None:
     """Require every data-map key to be a bare name.
 
     Keys become archive member names, so a nested or absolute path would be a traversal attempt.
@@ -96,8 +111,8 @@ def to_arrow(obj: Any) -> "pa.Table":
     """Coerce a supported table-like object to a `pyarrow.Table`.
 
     A `pa.Table` is returned unchanged so that a table received from a previous step keeps its
-    schema metadata. pandas and polars frames go through narwhals, the compatibility layer the rest
-    of the SDK already uses.
+    schema metadata. pandas and polars frames go through narwhals, which is already a hard
+    dependency and reaches arrow in one hop; the rest of the client converts via utilsforecast.
     """
     pa, _ = _require_pyarrow()
     if isinstance(obj, pa.Table):
@@ -115,7 +130,7 @@ def to_arrow(obj: Any) -> "pa.Table":
     return frame.to_arrow()
 
 
-def pack(tables: dict[str, "pa.Table"]) -> bytes:
+def _pack(tables: dict[str, "pa.Table"]) -> bytes:
     """Serialize each table to a `<key>.parquet` member and zip them.
 
     Members are written in sorted order so the same data map always produces the same bytes.
@@ -126,33 +141,37 @@ def pack(tables: dict[str, "pa.Table"]) -> bytes:
         for key in sorted(tables):
             member = io.BytesIO()
             pq.write_table(tables[key], member)
-            zf.writestr(key + PARQUET_SUFFIX, member.getvalue())
+            zf.writestr(key + _PARQUET_SUFFIX, member.getvalue())
     return buf.getvalue()
 
 
-def unpack(body: bytes) -> dict[str, "pa.Table"]:
+def _unpack(body: bytes) -> dict[str, "pa.Table"]:
     """Parse a response archive back into a data map keyed the way the caller will reference it."""
     _, pq = _require_pyarrow()
     tables: dict[str, "pa.Table"] = {}
     with zipfile.ZipFile(io.BytesIO(body)) as zf:
         for name in zf.namelist():
-            if not name.endswith(PARQUET_SUFFIX):
+            if not name.endswith(_PARQUET_SUFFIX):
+                # Not a table; the archive is documented to hold nothing else, so say so
+                # rather than returning a quietly incomplete result.
+                logger.warning("ignoring unexpected member %r in step result", name)
                 continue
-            tables[name[: -len(PARQUET_SUFFIX)]] = pq.read_table(
+            tables[name[: -len(_PARQUET_SUFFIX)]] = pq.read_table(
                 io.BytesIO(zf.read(name))
             )
     return tables
 
 
-def encode_metadata(metadata: dict[str, Any]) -> str:
+def _encode_metadata(metadata: dict[str, Any]) -> str:
     """Serialize the request metadata, refusing anything that will not fit the header.
 
-    `json.dumps` defaults to `ensure_ascii=True`, so the value is pure ASCII and therefore safe as
-    an HTTP header. Metadata is never moved into the body: the archive holds tables and nothing
-    else, so an oversized header is a bad request rather than something to route around.
+    `json.dumps` defaults to `ensure_ascii=True`, so the value is pure ASCII -- one byte per
+    character, and safe as an HTTP header. Metadata is never moved into the body: the archive
+    holds tables and nothing else, so an oversized header is a bad request rather than
+    something to route around.
     """
     payload = json.dumps(metadata)
-    size = len(payload.encode())
+    size = len(payload)
     if size > HEADER_BUDGET:
         raise ValueError(
             f"{METADATA_HEADER} would be {size} bytes, over the {HEADER_BUDGET}-byte budget. "
@@ -162,16 +181,17 @@ def encode_metadata(metadata: dict[str, Any]) -> str:
     return payload
 
 
-def decode_metadata(headers: Any) -> dict[str, Any]:
-    """Read the response metadata header. HTTP header names are not case-sensitive."""
-    for key, value in dict(headers).items():
-        if key.lower() == METADATA_HEADER:
-            return json.loads(value)
-    return {}
+def _decode_metadata(headers: Mapping[str, str]) -> dict[str, Any]:
+    """Read the response metadata header, or `{}` when the server sent none."""
+    value = headers.get(METADATA_HEADER)
+    return json.loads(value) if value else {}
 
 
-class StepResult:
+class StepResult(Mapping):
     """Result of an `execute_step` job.
+
+    A read-only mapping of table name to `pyarrow.Table`, so `res["result"]`, `len(res)`,
+    iteration and `dict(res)` all work.
 
     Attributes:
         data (dict): Result tables keyed by name, as `pyarrow.Table`. Pass this straight back as
@@ -188,11 +208,11 @@ class StepResult:
     def __getitem__(self, key: str) -> "pa.Table":
         return self.data[key]
 
-    def __contains__(self, key: str) -> bool:
-        return key in self.data
+    def __iter__(self):
+        return iter(self.data)
 
-    def keys(self):
-        return self.data.keys()
+    def __len__(self) -> int:
+        return len(self.data)
 
     def to_pandas(self) -> dict[str, "pd.DataFrame"]:
         """Convert every result table to a pandas DataFrame.
@@ -211,9 +231,9 @@ class StepResult:
         return f"StepResult(func_name={func_name!r}, data={{{shapes}}})"
 
 
-def build_result(headers: Any, body: bytes) -> StepResult:
+def build_result(headers: Mapping[str, str], body: bytes) -> StepResult:
     """Assemble a `StepResult` from a raw `(headers, body)` response pair."""
-    return StepResult(data=unpack(body), metadata=decode_metadata(headers))
+    return StepResult(data=_unpack(body), metadata=_decode_metadata(headers))
 
 
 def build_request(
@@ -225,12 +245,14 @@ def build_request(
     """Validate and encode one execute_step call into `(metadata_header, zip_body)`.
 
     Validation mirrors the server's own checks so a malformed request fails locally rather than
-    after a full upload.
+    after a full upload. A table no param references is only warned about: passing a previous
+    step's whole `.data` map is the intended way to chain calls, and a step can return more
+    tables than the next one consumes.
     """
     tables = {key: to_arrow(value) for key, value in (data or {}).items()}
-    validate_member_names(tables)
+    _validate_member_names(tables)
 
-    refs = collect_refs(params)
+    refs = _collect_refs(params)
     missing = refs - set(tables)
     if missing:
         raise ValueError(
@@ -239,9 +261,9 @@ def build_request(
         )
     unused = set(tables) - refs
     if unused:
-        raise ValueError(
-            f"data contains tables no param references: {sorted(unused)}. "
-            f"They would be uploaded and ignored."
+        logger.warning(
+            "data contains tables no param references: %s; they will be uploaded and ignored",
+            sorted(unused),
         )
 
     metadata: dict[str, Any] = {
@@ -250,4 +272,4 @@ def build_request(
     }
     if job_timeout_seconds is not None:
         metadata["job_options"] = {"timeout_seconds": job_timeout_seconds}
-    return encode_metadata(metadata), pack(tables)
+    return _encode_metadata(metadata), _pack(tables)

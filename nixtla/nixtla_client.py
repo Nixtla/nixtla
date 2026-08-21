@@ -6,6 +6,8 @@ __all__ = [
     "Job",
     "JobStatus",
     "NixtlaClient",
+    "StepResult",
+    "ref",
 ]
 
 import datetime
@@ -69,6 +71,7 @@ from .steps import (
     StepResult,
     build_request as _build_step_request,
     build_result as _build_step_result,
+    ref,
 )
 
 if TYPE_CHECKING:
@@ -412,9 +415,7 @@ def _times_to_iso(times: np.ndarray, tz: Optional[str] = None) -> Optional[list[
                 _warn_non_constant_offset(tz)
                 return None
             # the values are UTC instants; re-attach the original zone's offset
-            return [
-                pd.Timestamp(t, tz="UTC").tz_convert(tz).isoformat() for t in times
-            ]
+            return [pd.Timestamp(t, tz="UTC").tz_convert(tz).isoformat() for t in times]
         return np.datetime_as_string(times, unit="auto").tolist()
     return None
 
@@ -1323,11 +1324,18 @@ class NixtlaClient:
         parse_result: Callable[..., Any],
     ) -> Job:
         if job_timeout_seconds is not None:
-            payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
+            # Don't mutate the caller's dict: `forecast` reuses its payload for add_history.
+            payload = {
+                **payload,
+                "job_options": {"timeout_seconds": job_timeout_seconds},
+            }
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, endpoint, payload)
         return Job(
-            client=self, job_id=job_id, endpoint=endpoint, parse_result=parse_result
+            client=self,
+            job_id=job_id,
+            endpoint=endpoint,
+            get_result=lambda job_data: parse_result(job_data["result"]),
         )
 
     def _submit_binary_job(
@@ -1364,11 +1372,13 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         job_id: str,
-    ) -> tuple[Any, bytes]:
+    ) -> tuple[httpx.Headers, bytes]:
         """Fetch a binary job's result from its dedicated endpoint.
 
         Binary results cannot be inlined into the JSON status response, so they are served
-        separately. The server answers 409 while the job has not yet succeeded.
+        separately. The server answers 409 while the job has not yet succeeded, which
+        `_is_retriable_error` treats as retriable -- callers should go through
+        `_retry_strategy` so that race resolves itself rather than surfacing.
         """
         resp = client.get(f"{endpoint}/jobs/{job_id}/result")
         if resp.status_code != HTTPStatus.OK:
@@ -1391,22 +1401,21 @@ class NixtlaClient:
         the request metadata travels in a header rather than in the body.
         """
 
-        def fetch_result(job_id: str) -> StepResult:
+        def get_result(job_data: dict[str, Any]) -> StepResult:
+            # The status response leaves `result` null for these tasks; the payload is
+            # served from the job's own result endpoint. Retried because that endpoint
+            # answers 409 until the result has materialized.
             with self._make_client(**self._client_kwargs) as client:
-                headers, content = self._get_job_result_bytes(client, endpoint, job_id)
+                headers, content = self._retry_strategy(self._get_job_result_bytes)(
+                    client=client, endpoint=endpoint, job_id=job_id
+                )
             return _build_step_result(headers, content)
 
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._retry_strategy(self._submit_binary_job)(
                 client=client, endpoint=endpoint, metadata=metadata, body=body
             )
-        return Job(
-            client=self,
-            job_id=job_id,
-            endpoint=endpoint,
-            parse_result=lambda resp: resp,
-            fetch_result=fetch_result,
-        )
+        return Job(client=self, job_id=job_id, endpoint=endpoint, get_result=get_result)
 
     def _make_partitioned_requests(
         self,
@@ -2178,7 +2187,12 @@ class NixtlaClient:
                 "this may lead to less accurate forecasts. "
                 "Please consider using a smaller horizon."
             )
-        restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list and not add_history
+        restrict_input = (
+            finetune_steps == 0
+            and not x_cols
+            and not categorical_exog_list
+            and not add_history
+        )
         orig_indptr: Optional[np.ndarray] = None
         orig_sort_idxs: Optional[np.ndarray] = None
         if restrict_input:
@@ -4005,53 +4019,70 @@ class NixtlaClient:
     ) -> Job:
         """Submit a single TSMP step to run asynchronously.
 
-        `execute_step` runs one TSMP top-level API call server-side in a fresh sandbox: nothing
-        is registered and nothing is cached between calls, so every request is self-contained
-        and carries its own data. This does not block; it submits the job and immediately
-        returns a `Job` handle. Call `job.wait()` to poll until it completes and get a
+        `execute_step` runs one TSMP top-level API call server-side in a
+        fresh sandbox: nothing is registered and nothing is cached between
+        calls, so every request is self-contained and carries its own data.
+        This does not block; it submits the job and immediately returns a
+        `Job` handle. Call `job.wait()` to poll until it completes and get a
         `StepResult`, or `job.cancel()` to request that the server stop it.
 
-        Tables are referenced from `params` by name using a `{"data_ref": "<key>"}` envelope,
-        where `<key>` is a key of `data`. Because a step's output tables can be passed straight
-        back in as the next step's `data`, calls chain without any file or byte handling::
+        Tables are referenced from `params` with `nixtla.ref(key)`, naming a
+        key of `data`. Because a step's output tables can be passed straight
+        back in as the next step's `data`, calls chain without any file or
+        byte handling::
+
+            from nixtla import ref
 
             step1 = nc.submit_execute_step_job(
                 "make_forecast_input",
-                {"data": {"data_ref": "panel"}, "freq": "D"},
+                {"data": ref("panel"), "freq": "D"},
                 data={"panel": df},
             ).wait()
 
             step2 = nc.submit_execute_step_job(
                 "forecast",
-                {"resource": {"data_ref": "result"}, "models": ["timegpt-1"], "h": 7},
+                {"resource": ref("result"), "models": ["timegpt-1"], "h": 7},
                 data=step1.data,
             ).wait()
 
-        Requires pyarrow (`pip install 'nixtla[steps]'`). Chaining relies on arrow schema
-        metadata that a pandas round-trip discards, so pass `step.data` between steps rather
-        than `step.to_pandas()`.
+        Requires pyarrow (`pip install 'nixtla[steps]'`). Chaining relies on
+        arrow schema metadata that a pandas round-trip discards, so pass
+        `step.data` between steps rather than `step.to_pandas()`.
 
-        There is no `model` argument: a step names the models it runs inside `params`, and the
-        sandbox reaches them over the API rather than from a checkpoint local to one host.
+        There is no `model` argument: a step names the models it runs inside
+        `params`, and the sandbox reaches them over the API rather than from
+        a checkpoint local to one host.
 
-        Not reachable over this transport: `train` and `optimize_model`. Both require a
-        `tune.Space`, which has no JSON encoding.
+        Not reachable over this transport: `train` and `optimize_model`.
+        Both require a `tune.Space`, which has no JSON encoding.
 
         Args:
             func_name (str): TSMP top-level API to run, e.g. `'forecast'`,
-                `'make_forecast_input'`, `'cross_validate'`, `'preprocess'`, `'select_by_sql'`.
-            params (dict): Arguments for that API. Tables are referenced as
-                `{"data_ref": "<key>"}` envelopes naming a key of `data`; everything else is
-                passed through as-is and must be JSON serializable.
-            data (dict, optional): Tables the params reference, as pyarrow Tables or eager
-                pandas/polars DataFrames, keyed by the name used in the `data_ref` envelopes.
-                Keys must be bare names. Defaults to None.
-            job_timeout_seconds (int, optional): Maximum seconds the server allows this job to
-                run before terminating it server-side. This is separate from `poll_timeout` in
-                `Job.wait()`, which only controls how long the client polls locally. Capped by
-                a server-side per-task maximum; requesting a higher value raises `ApiError`
-                (422) when submitting. Defaults to the server's default for this task type if
-                not specified.
+                `'make_forecast_input'`, `'cross_validate'`, `'preprocess'`,
+                `'select_by_sql'`.
+            params (dict): Arguments for that API. Tables are referenced by
+                `ref(key)` envelopes naming a key of `data`; everything else
+                is passed through as-is and must be JSON serializable.
+            data (dict, optional): Tables the params reference, as pyarrow
+                Tables or eager pandas/polars DataFrames, keyed by the name
+                used in the `ref` envelopes. Keys must be bare names.
+                Defaults to None.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
+
+        Raises:
+            ImportError: If pyarrow is not installed.
+            TypeError: If a `data` value is not a pyarrow Table or an eager
+                pandas/polars DataFrame.
+            ValueError: If a `ref` names a table that `data` does not supply,
+                a `data` key is not a bare name, or the encoded metadata
+                exceeds the header budget. All are raised locally, before
+                anything is uploaded.
 
         Returns:
             Job: Handle to the submitted job. `job.wait()` returns a `StepResult` with `.data`

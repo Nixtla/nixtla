@@ -75,25 +75,21 @@ class Job:
         client: "NixtlaClient",
         job_id: str,
         endpoint: str,
-        parse_result: Callable[..., Any],
-        fetch_result: Optional[Callable[[str], Any]] = None,
+        get_result: Callable[[dict[str, Any]], Any],
     ):
         """
         Args:
-            parse_result: Builds the result from the `result` field of the job-status
-                response, for tasks whose result is JSON.
-            fetch_result: Alternative used by tasks whose result is not JSON and so cannot
-                be inlined into the status response (`execute_step` returns a zip). When
-                given, `wait()` calls this with the job id instead of `parse_result`, and
-                it is responsible for retrieving the result itself.
+            get_result: Builds the job's result from the terminal job-status response.
+                Tasks whose result is JSON read it out of that response's `result` field;
+                tasks whose result is binary (`execute_step` returns a zip) leave `result`
+                null there and fetch the payload from their own endpoint instead.
         """
         self.job_id = job_id
         self.result: Any = None
         self._status: Optional[JobStatus] = None
         self._client = client
         self._endpoint = endpoint
-        self._parse_result = parse_result
-        self._fetch_result = fetch_result
+        self._get_result = get_result
 
     @property
     def status(self) -> JobStatus:
@@ -143,13 +139,9 @@ class Job:
             job_data = self._client._poll_job(
                 http_client, self._endpoint, self.job_id, poll_interval, poll_timeout
             )
-        self._status = JobStatus(job_data["status"])
-        if self._fetch_result is not None:
-            # Binary tasks leave `result` null in the status response and serve the payload
-            # from their own endpoint, so the result is fetched rather than parsed.
-            self.result = self._fetch_result(self.job_id)
-        else:
-            self.result = self._parse_result(job_data["result"])
+        # `_poll_job` returns only on success; every other terminal state raises.
+        self._status = JobStatus.SUCCEEDED
+        self.result = self._get_result(job_data)
         return self.result
 
     def cancel(self) -> None:

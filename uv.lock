@@ -3032,7 +3032,7 @@ requires-dist = [
     { name = "polars", marker = "extra == 'dev'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pyarrow", marker = "extra == 'dev'", specifier = "<24.0.0" },
-    { name = "pyarrow", marker = "extra == 'steps'", specifier = ">=14.0.0" },
+    { name = "pyarrow", marker = "extra == 'steps'", specifier = ">=14.0.0,<24.0.0" },
     { name = "pydantic", specifier = ">=1.10" },
     { name = "pyreadr", marker = "extra == 'dev'", specifier = "<0.5.3" },
     { name = "pyspark", marker = "extra == 'dev'", specifier = "<=4.0.1" },
