@@ -29,6 +29,7 @@ dependencies = [
     "narwhals>=2.11.0",
     "orjson",
     "pandas<3.0.0",
+    "pyarrow>=14.0.0",
     "pydantic>=1.10",
     "tenacity",
     "tqdm",
@@ -36,9 +37,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Needed by submit_execute_step_job: the wire format is parquet, and the resource identity
-# of a table lives in arrow schema metadata that a pandas round-trip would drop.
-steps = ["pyarrow>=14.0.0,<24.0.0"]
 dev = [
     "datasetsforecast",
     "fire",
@@ -61,7 +59,6 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-rerunfailures",
-    "pyarrow<24.0.0",
     "mlforecast",
     "lightgbm",
     "utilsforecast[plotting]",

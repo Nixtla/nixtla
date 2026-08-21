@@ -2940,6 +2940,7 @@ dependencies = [
     { name = "narwhals" },
     { name = "orjson" },
     { name = "pandas" },
+    { name = "pyarrow" },
     { name = "pydantic", version = "2.12.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "pydantic", version = "2.13.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "tenacity" },
@@ -2970,7 +2971,6 @@ dev = [
     { name = "plotly", version = "6.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
     { name = "polars" },
     { name = "pre-commit" },
-    { name = "pyarrow" },
     { name = "pyreadr" },
     { name = "pyspark" },
     { name = "pytest" },
@@ -2997,9 +2997,6 @@ snowflake = [
     { name = "fire" },
     { name = "rich" },
     { name = "snowflake-snowpark-python" },
-]
-steps = [
-    { name = "pyarrow" },
 ]
 
 [package.metadata]
@@ -3031,8 +3028,7 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'dev'" },
     { name = "polars", marker = "extra == 'dev'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "pyarrow", marker = "extra == 'dev'", specifier = "<24.0.0" },
-    { name = "pyarrow", marker = "extra == 'steps'", specifier = ">=14.0.0,<24.0.0" },
+    { name = "pyarrow", specifier = ">=14.0.0" },
     { name = "pydantic", specifier = ">=1.10" },
     { name = "pyreadr", marker = "extra == 'dev'", specifier = "<0.5.3" },
     { name = "pyspark", marker = "extra == 'dev'", specifier = "<=4.0.1" },
@@ -3054,7 +3050,7 @@ requires-dist = [
     { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'dev'" },
     { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'plotting'" },
 ]
-provides-extras = ["steps", "dev", "distributed", "plotting", "date-extras", "snowflake"]
+provides-extras = ["dev", "distributed", "plotting", "date-extras", "snowflake"]
 
 [[package]]
 name = "nodeenv"

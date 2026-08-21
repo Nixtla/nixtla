@@ -4045,9 +4045,9 @@ class NixtlaClient:
                 data=step1.data,
             ).wait()
 
-        Requires pyarrow (`pip install 'nixtla[steps]'`). Chaining relies on
-        arrow schema metadata that a pandas round-trip discards, so pass
-        `step.data` between steps rather than `step.to_pandas()`.
+        Chaining relies on arrow schema metadata that a pandas round-trip
+        discards, so pass `step.data` between steps rather than
+        `step.to_pandas()`.
 
         There is no `model` argument: a step names the models it runs inside
         `params`, and the sandbox reaches them over the API rather than from
@@ -4076,7 +4076,6 @@ class NixtlaClient:
                 server's default for this task type if not specified.
 
         Raises:
-            ImportError: If pyarrow is not installed.
             TypeError: If a `data` value is not a pyarrow Table or an eager
                 pandas/polars DataFrame.
             ValueError: If a `ref` names a table that `data` does not supply,

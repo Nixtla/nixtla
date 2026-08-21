@@ -8,8 +8,8 @@ header is metadata, so there is exactly one place to look for each.
 Nothing here understands TSMP semantics. Tables returned by the server carry their resource
 identity in arrow schema metadata, and this module passes that through untouched, which is what
 makes chaining one step's output into the next lossless. That is also why this endpoint needs
-pyarrow at all, and hence the `nixtla[steps]` extra: a pandas round-trip drops schema metadata,
-so a chained call would silently misread the previous step's output as an untyped table.
+pyarrow: a pandas round-trip drops schema metadata, so a chained call would silently misread
+the previous step's output as an untyped table.
 """
 
 import io
@@ -20,9 +20,12 @@ from collections.abc import Iterable, Mapping
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Optional
 
+import narwhals as nw
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 if TYPE_CHECKING:
     import pandas as pd
-    import pyarrow as pa
 
 __all__ = ["StepResult", "ref"]
 
@@ -37,20 +40,6 @@ _REF_KEY = "data_ref"
 # rejects anything larger with 431 and deliberately does not spill metadata into the body, so the
 # client checks the same budget to fail before uploading rather than after.
 HEADER_BUDGET = 8192
-
-_PYARROW_HINT = (
-    "execute_step requires pyarrow. Install it with: pip install 'nixtla[steps]'"
-)
-
-
-def _require_pyarrow() -> tuple[Any, Any]:
-    """Import pyarrow on demand so the rest of the SDK stays installable without it."""
-    try:
-        import pyarrow as pa  # noqa: F401
-        import pyarrow.parquet as pq  # noqa: F401
-    except ImportError as exc:  # pragma: no cover - exercised via the error path only
-        raise ImportError(_PYARROW_HINT) from exc
-    return pa, pq
 
 
 def ref(key: str) -> dict[str, str]:
@@ -107,18 +96,15 @@ def _validate_member_names(names: Iterable[str]) -> None:
             raise ValueError(f"unsafe data key: {name!r} (must be a bare name)")
 
 
-def to_arrow(obj: Any) -> "pa.Table":
+def to_arrow(obj: Any) -> pa.Table:
     """Coerce a supported table-like object to a `pyarrow.Table`.
 
     A `pa.Table` is returned unchanged so that a table received from a previous step keeps its
     schema metadata. pandas and polars frames go through narwhals, which is already a hard
     dependency and reaches arrow in one hop; the rest of the client converts via utilsforecast.
     """
-    pa, _ = _require_pyarrow()
     if isinstance(obj, pa.Table):
         return obj
-
-    import narwhals as nw
 
     try:
         frame = nw.from_native(obj, eager_only=True)
@@ -130,12 +116,11 @@ def to_arrow(obj: Any) -> "pa.Table":
     return frame.to_arrow()
 
 
-def _pack(tables: dict[str, "pa.Table"]) -> bytes:
+def _pack(tables: dict[str, pa.Table]) -> bytes:
     """Serialize each table to a `<key>.parquet` member and zip them.
 
     Members are written in sorted order so the same data map always produces the same bytes.
     """
-    _, pq = _require_pyarrow()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for key in sorted(tables):
@@ -145,10 +130,9 @@ def _pack(tables: dict[str, "pa.Table"]) -> bytes:
     return buf.getvalue()
 
 
-def _unpack(body: bytes) -> dict[str, "pa.Table"]:
+def _unpack(body: bytes) -> dict[str, pa.Table]:
     """Parse a response archive back into a data map keyed the way the caller will reference it."""
-    _, pq = _require_pyarrow()
-    tables: dict[str, "pa.Table"] = {}
+    tables: dict[str, pa.Table] = {}
     with zipfile.ZipFile(io.BytesIO(body)) as zf:
         for name in zf.namelist():
             if not name.endswith(_PARQUET_SUFFIX):
@@ -201,11 +185,11 @@ class StepResult(Mapping):
             envelope, and a `profile` of the output when the result is a dataframe.
     """
 
-    def __init__(self, *, data: dict[str, "pa.Table"], metadata: dict[str, Any]):
+    def __init__(self, *, data: dict[str, pa.Table], metadata: dict[str, Any]):
         self.data = data
         self.metadata = metadata
 
-    def __getitem__(self, key: str) -> "pa.Table":
+    def __getitem__(self, key: str) -> pa.Table:
         return self.data[key]
 
     def __iter__(self):

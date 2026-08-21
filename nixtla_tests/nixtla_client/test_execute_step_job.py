@@ -19,12 +19,11 @@ from unittest.mock import MagicMock
 import httpx
 import orjson
 import pandas as pd
+import pyarrow as pa
 import pytest
 
-pa = pytest.importorskip("pyarrow")
-
-from nixtla.nixtla_client import ApiError, Job, NixtlaClient  # noqa: E402
-from nixtla.steps import (  # noqa: E402
+from nixtla.nixtla_client import ApiError, Job, NixtlaClient
+from nixtla.steps import (
     CONTENT_TYPE,
     HEADER_BUDGET,
     METADATA_HEADER,
