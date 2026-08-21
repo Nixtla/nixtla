@@ -60,9 +60,28 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "h"
+                      ],
+                      "msg": "Field required",
+                      "type": "missing"
+                    }
+                  ],
+                  "request_id": "Q6CBLFWGR8"
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ModelNotAllowed"
           }
         },
         "security": [
@@ -156,6 +175,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ModelNotAllowed"
           }
         },
         "security": [
@@ -169,7 +194,7 @@
     "/v2/online_anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Online Multi Series Anomaly Detector",
-        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports the associated z-score for each point. Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "This endpoint performs online anomaly detection based on the provided data. It uses cross-validation for more robust detection of anomalies and it supports detection for univariate and multivariate scenarios. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly, it provides the prediction interval used to define if an observation is an anomaly, and it reports an anomaly score for each point (returned as `anomaly_score`). Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_online_anomaly_detection_v2_online_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -536,6 +561,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ModelNotAllowed"
           }
         },
         "security": [
@@ -596,6 +627,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "x-excluded": true
@@ -659,6 +693,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ModelNotAllowed"
           }
         },
         "security": [
@@ -754,6 +794,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ModelNotAllowed"
           }
         },
         "security": [
@@ -779,6 +825,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "security": [
@@ -825,6 +874,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "security": [
@@ -862,6 +914,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "security": [
@@ -883,6 +938,9 @@
                 "schema": {}
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "security": [
@@ -903,12 +961,12 @@
           "freq": {
             "type": "string",
             "title": "Freq",
-            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+            "description": "The frequency of the data as a pandas offset alias, e.g. `D` (daily), `W` (weekly), `MS` (month start), `M` (month end), `H` (hourly), `min` (minutely), `Q` (quarterly). See the pandas documentation on offset aliases: https://pandas.pydata.org/docs/user_guide/timeseries.html#offset-aliases"
           },
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Options include `timegpt-1`, `timegpt-1-long-horizon`, and the TimeGPT-2 family (e.g. `timegpt-2.1`), which requires an eligible paid plan. Use `timegpt-1-long-horizon` if you want to predict more than one seasonal period given the frequency of your data. Note: the API currently requires this field to be set explicitly (a request without it is rejected), despite the declared default. Contact support@nixtla.io for the full list of models available to your plan.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -963,7 +1021,7 @@
               }
             ],
             "title": "Hist Exog",
-            "description": "Zero-based indices of the exogenous features to treat as historical."
+            "description": "Zero-based indices into `series.X` (the list of exogenous feature arrays, not your original dataframe columns) of the features to treat as historical. Note: the Python SDK serializes features future-exogenous first (in `X_df` column order), then historical (in `hist_exog_list` order), so historical features occupy the trailing indices."
           },
           "level": {
             "anyOf": [
@@ -1079,7 +1137,7 @@
           "freq": {
             "type": "string",
             "title": "Freq",
-            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+            "description": "The frequency of the data as a pandas offset alias, e.g. `D` (daily), `W` (weekly), `MS` (month start), `M` (month end), `H` (hourly), `min` (minutely), `Q` (quarterly). See the pandas documentation on offset aliases: https://pandas.pydata.org/docs/user_guide/timeseries.html#offset-aliases"
           },
           "n_windows": {
             "type": "integer",
@@ -1103,7 +1161,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Options include `timegpt-1`, `timegpt-1-long-horizon`, and the TimeGPT-2 family (e.g. `timegpt-2.1`), which requires an eligible paid plan. Use `timegpt-1-long-horizon` if you want to predict more than one seasonal period given the frequency of your data. Note: the API currently requires this field to be set explicitly (a request without it is rejected), despite the declared default. Contact support@nixtla.io for the full list of models available to your plan.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -1214,7 +1272,7 @@
               }
             ],
             "title": "Hist Exog",
-            "description": "Zero-based indices of the exogenous features to treat as historical."
+            "description": "Zero-based indices into `series.X` (the list of exogenous feature arrays, not your original dataframe columns) of the features to treat as historical. Note: the Python SDK serializes features future-exogenous first (in `X_df` column order), then historical (in `hist_exog_list` order), so historical features occupy the trailing indices."
           },
           "refit": {
             "type": "boolean",
@@ -1360,12 +1418,12 @@
           "freq": {
             "type": "string",
             "title": "Freq",
-            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+            "description": "The frequency of the data as a pandas offset alias, e.g. `D` (daily), `W` (weekly), `MS` (month start), `M` (month end), `H` (hourly), `min` (minutely), `Q` (quarterly). See the pandas documentation on offset aliases: https://pandas.pydata.org/docs/user_guide/timeseries.html#offset-aliases"
           },
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Options include `timegpt-1`, `timegpt-1-long-horizon`, and the TimeGPT-2 family (e.g. `timegpt-2.1`), which requires an eligible paid plan. Use `timegpt-1-long-horizon` if you want to predict more than one seasonal period given the frequency of your data. Note: the API currently requires this field to be set explicitly (a request without it is rejected), despite the declared default. Contact support@nixtla.io for the full list of models available to your plan.",
             "default": "timegpt-1"
           },
           "finetune_steps": {
@@ -1443,7 +1501,7 @@
               }
             ],
             "title": "Hist Exog",
-            "description": "Zero-based indices of the exogenous features to treat as historical."
+            "description": "Zero-based indices into `series.X` (the list of exogenous feature arrays, not your original dataframe columns) of the features to treat as historical. Note: the Python SDK serializes features future-exogenous first (in `X_df` column order), then historical (in `hist_exog_list` order), so historical features occupy the trailing indices."
           },
           "multivariate": {
             "type": "boolean",
@@ -1592,7 +1650,7 @@
           "freq": {
             "type": "string",
             "title": "Freq",
-            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+            "description": "The frequency of the data as a pandas offset alias, e.g. `D` (daily), `W` (weekly), `MS` (month start), `M` (month end), `H` (hourly), `min` (minutely), `Q` (quarterly). See the pandas documentation on offset aliases: https://pandas.pydata.org/docs/user_guide/timeseries.html#offset-aliases"
           },
           "h": {
             "type": "integer",
@@ -1603,7 +1661,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Options include `timegpt-1`, `timegpt-1-long-horizon`, and the TimeGPT-2 family (e.g. `timegpt-2.1`), which requires an eligible paid plan. Use `timegpt-1-long-horizon` if you want to predict more than one seasonal period given the frequency of your data. Note: the API currently requires this field to be set explicitly (a request without it is rejected), despite the declared default. Contact support@nixtla.io for the full list of models available to your plan.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -1836,7 +1894,7 @@
           "freq": {
             "type": "string",
             "title": "Freq",
-            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+            "description": "The frequency of the data as a pandas offset alias, e.g. `D` (daily), `W` (weekly), `MS` (month start), `M` (month end), `H` (hourly), `min` (minutely), `Q` (quarterly). See the pandas documentation on offset aliases: https://pandas.pydata.org/docs/user_guide/timeseries.html#offset-aliases"
           },
           "detection_size": {
             "type": "integer",
@@ -1863,7 +1921,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Options include `timegpt-1`, `timegpt-1-long-horizon`, and the TimeGPT-2 family (e.g. `timegpt-2.1`), which requires an eligible paid plan. Use `timegpt-1-long-horizon` if you want to predict more than one seasonal period given the frequency of your data. Note: the API currently requires this field to be set explicitly (a request without it is rejected), despite the declared default. Contact support@nixtla.io for the full list of models available to your plan.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -1964,7 +2022,7 @@
               }
             ],
             "title": "Hist Exog",
-            "description": "Zero-based indices of the exogenous features to treat as historical."
+            "description": "Zero-based indices into `series.X` (the list of exogenous feature arrays, not your original dataframe columns) of the features to treat as historical. Note: the Python SDK serializes features future-exogenous first (in `X_df` column order), then historical (in `hist_exog_list` order), so historical features occupy the trailing indices."
           },
           "refit": {
             "type": "boolean",
@@ -2237,11 +2295,65 @@
         "description": "HTTPBearer",
         "scheme": "bearer"
       }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Authentication failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "detail": {
+                  "type": "string"
+                }
+              }
+            },
+            "examples": {
+              "missing_header": {
+                "summary": "No Authorization header",
+                "value": {
+                  "detail": "Not authenticated"
+                }
+              },
+              "invalid_key": {
+                "summary": "Invalid API key",
+                "value": {
+                  "detail": "Provide a valid api key in the Authorization header in the format of 'Bearer <key>', get yours from https://nixtla.io/dashboard"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ModelNotAllowed": {
+        "description": "The requested model is not included in your subscription plan.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "detail": {
+                  "type": "string"
+                }
+              }
+            },
+            "example": {
+              "detail": "The requested model timegpt-2.1 is not allowed for your subscription plan. Re-confirm the allowed models in your subscription plan or email support@nixtla.io to upgrade your plan"
+            }
+          }
+        }
+      }
     }
   },
   "servers": [
     {
       "url": "https://api.nixtla.io"
+    }
+  ],
+  "security": [
+    {
+      "HTTPBearer": []
     }
   ]
 }

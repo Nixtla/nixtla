@@ -84,11 +84,11 @@ icon: "circle-question-mark"
 
         <Tab title="REST API" icon="server">
           ```bash REST API Forecast Example
-          curl -X POST "https://api.nixtla.io/timegpt" \
+          curl -X POST "https://api.nixtla.io/v2/forecast" \
             -H "accept: application/json" \
-            -H "x-api-key: your_api_key" \
+            -H "Authorization: Bearer $NIXTLA_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"df": [{"ds": "2023-01-01", "y": 100}, ...], "h": 7}'
+            -d '{"model": "timegpt-1", "series": {"y": [10, 12, 13, 11, 14, 15, 13, 12, 16, 17, 15, 14, 18, 19, 17, 16, 20, 21, 19, 18, 22, 23, 21, 20, 24, 25, 23, 22, 26, 27], "sizes": [30]}, "freq": "D", "h": 7}'
           ```
         </Tab>
       </Tabs>
@@ -124,18 +124,18 @@ icon: "circle-question-mark"
 
         <CodeBlock title="REST API Key Usage" icon="server">
           ```bash REST API Key Example
-          curl -X POST "https://api.nixtla.io/timegpt" \
+          curl -X POST "https://api.nixtla.io/v2/forecast" \
             -H "accept: application/json" \
-            -H "x-api-key: your_api_key" \
+            -H "Authorization: Bearer $NIXTLA_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"df": [{"ds": "2023-01-01", "y": 100}, ...], "h": 7}'
+            -d '{"model": "timegpt-1", "series": {"y": [10, 12, 13, 11, 14, 15, 13, 12, 16, 17, 15, 14, 18, 19, 17, 16, 20, 21, 19, 18, 22, 23, 21, 20, 24, 25, 23, 22, 26, 27], "sizes": [30]}, "freq": "D", "h": 7}'
           ```
         </CodeBlock>
       </CodeGroup>
     </Accordion>
 
     <Accordion title="How can I check the status of my API key?">
-      Check your API key status with the [`validate_api_key` method](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-validate-api-key) of the `NixtlaClient` class.
+      Check your API key status with the [`validate_api_key` method](/reference/sdk_reference) of the `NixtlaClient` class.
 
       ```python Validate API Key Example
       from nixtla import NixtlaClient
@@ -189,8 +189,12 @@ icon: "circle-question-mark"
     <h3 className="text-lg font-semibold mb-3">Common errors and warnings</h3>
 
     <Accordion title="Error message: Invalid API key">
-      ```python Invalid API Key Error
-      ApiError: status_code: 401, body: {'data': None, 'message': 'Invalid API key', 'details': 'Key not found', 'code': 'A12', 'requestID': 'E7F2BBTB2P', 'support': 'If you have questions or need support, please email support@nixtla.io'}
+      ```text Invalid API Key Error
+      # Missing Authorization header:
+      {"detail": "Not authenticated"}
+
+      # Invalid API key:
+      {"detail": "Provide a valid api key in the Authorization header in the format of 'Bearer <key>', get yours from https://nixtla.io/dashboard"}
       ```
 
       <Note>
@@ -199,7 +203,7 @@ icon: "circle-question-mark"
     </Accordion>
 
     <Accordion title="Error message: Too many requests">
-      ```python Too Many Requests Error
+      ```text Too Many Requests Error
       ApiError: status_code: 429, body: {'data': None, 'message': 'Too many requests', 'details': 'You need to add a payment method to continue using the API, do so from https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/introduction/faq', 'code': 'A21', 'requestID': 'NCJDK7KSJ6', 'support': 'If you have questions or need support, please email support@nixtla.io'}
       ```
 
@@ -210,7 +214,7 @@ icon: "circle-question-mark"
 
     <Accordion title="Error message: WriteTimeout">
       <Note>
-        A `WriteTimeout` error indicates the request exceeded allowable processing time. This commonly happens with large datasets. To fix this, increase the `num_partitions` parameter in the [`forecast` method](https://nixtlaverse.nixtla.io/nixtla/nixtla_client.html#nixtlaclient-forecast) of the `NixtlaClient` class, or use a distributed backend.
+        A `WriteTimeout` error indicates the request exceeded allowable processing time. This commonly happens with large datasets. To fix this, increase the `num_partitions` parameter in the [`forecast` method](/reference/sdk_reference) of the `NixtlaClient` class, or use a distributed backend.
       </Note>
     </Accordion>
   </Tab>
@@ -407,8 +411,8 @@ icon: "circle-question-mark"
           cv_results = client.cross_validation(
               df,
               h=7,
-              k=3,  # Number of folds
-              test_size=7  # Size of each test fold
+              n_windows=3,  # Number of validation windows
+              step_size=7   # Steps between window start points
           )
           ```
         </CodeBlock>
@@ -467,11 +471,9 @@ icon: "circle-question-mark"
     </Accordion>
 
     <Accordion title="Can TimeGPT handle missing values?">
-      <Warning>
-        TimeGPT cannot handle missing values or series with irregular timestamps.
-      </Warning>
+      Yes, with one condition. Missing target values can be supplied as `NaN`, but the series must have a continuous sequence of timestamps at its frequency — if there are gaps in the timestamp index, fill in the missing dates first.
 
-      For more information, see the [Forecasting Time Series with Irregular Timestamps](/forecasting/special-topics/irregular_timestamps) and [Dealing with Missing Values](/data_requirements/missing_values) tutorials.
+      For more information, see the [Dealing with Missing Values](/data_requirements/missing_values) and [Forecasting Time Series with Irregular Timestamps](/forecasting/special-topics/irregular_timestamps) tutorials.
     </Accordion>
   </Tab>
 
@@ -496,7 +498,7 @@ icon: "circle-question-mark"
     </Accordion>
 
     <Accordion title="Does TimeGPT support polars?">
-      Currently, TimeGPT does not support polars.
+      Yes. The Python SDK accepts both **pandas** and **polars** DataFrames in long format. See the [Data Requirements](/data_requirements/data_requirements) page and the polars example in the [Irregular Timestamps](/forecasting/special-topics/irregular_timestamps) tutorial. When using polars, set the `freq` argument explicitly (it cannot be inferred).
     </Accordion>
 
     <Accordion title="Does TimeGPT produce stable predictions?">
@@ -556,35 +558,24 @@ icon: "circle-question-mark"
       You can fine-tune the TimeGPT model, save it, and reuse it later. For detailed instructions, see our guide on [Re-using Fine-tuned Models](/forecasting/fine-tuning/save_reuse_delete_finetuned_models).
 
       <Tabs>
-        <Tab title="Save Model" icon="save">
-          ```python Save Fine-tuned Model
-          # Fine-tune and save the model
-          fine_tuned_parameters = client.forecast(
+        <Tab title="Fine-tune" icon="save">
+          ```python Fine-tune and Save
+          # Fine-tune the model; the result is stored on Nixtla's servers
+          # and identified by the returned id
+          finetuned_model_id = client.finetune(
               df,
-              h=7,
-              finetune_steps=100,
-              return_model=True  # Return the fine-tuned parameters
+              finetune_steps=100
           )
-
-          # Save to file
-          import pickle
-          with open("fine_tuned_model.pkl", "wb") as f:
-              pickle.dump(fine_tuned_parameters, f)
           ```
         </Tab>
 
-        <Tab title="Load Model" icon="folder-open">
-          ```python Load Fine-tuned Model
-          # Load the fine-tuned parameters
-          import pickle
-          with open("fine_tuned_model.pkl", "rb") as f:
-              fine_tuned_parameters = pickle.load(f)
-
-          # Use the fine-tuned model
+        <Tab title="Reuse" icon="folder-open">
+          ```python Reuse a Fine-tuned Model
+          # Use the fine-tuned model in later forecasts by passing its id
           forecast = client.forecast(
               new_df,
               h=7,
-              model=fine_tuned_parameters
+              finetuned_model_id=finetuned_model_id
           )
           ```
         </Tab>
