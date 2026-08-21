@@ -6,6 +6,7 @@ from .nixtla_client import (
     Job,
     JobStatus,
     NixtlaClient,
+    StepResult,
 )
 
 __version__ = version("nixtla")
@@ -16,4 +17,5 @@ __all__ = [
     "Job",
     "JobStatus",
     "NixtlaClient",
+    "StepResult",
 ]

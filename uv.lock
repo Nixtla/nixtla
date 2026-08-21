@@ -2998,6 +2998,9 @@ snowflake = [
     { name = "rich" },
     { name = "snowflake-snowpark-python" },
 ]
+steps = [
+    { name = "pyarrow" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -3029,6 +3032,7 @@ requires-dist = [
     { name = "polars", marker = "extra == 'dev'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pyarrow", marker = "extra == 'dev'", specifier = "<24.0.0" },
+    { name = "pyarrow", marker = "extra == 'steps'", specifier = ">=14.0.0" },
     { name = "pydantic", specifier = ">=1.10" },
     { name = "pyreadr", marker = "extra == 'dev'", specifier = "<0.5.3" },
     { name = "pyspark", marker = "extra == 'dev'", specifier = "<=4.0.1" },
@@ -3050,7 +3054,7 @@ requires-dist = [
     { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'dev'" },
     { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'plotting'" },
 ]
-provides-extras = ["dev", "distributed", "plotting", "date-extras", "snowflake"]
+provides-extras = ["steps", "dev", "distributed", "plotting", "date-extras", "snowflake"]
 
 [[package]]
 name = "nodeenv"

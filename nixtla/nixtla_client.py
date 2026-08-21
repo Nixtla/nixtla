@@ -63,6 +63,13 @@ from .async_job import (
     Job,
     JobStatus,
 )
+from .steps import (
+    CONTENT_TYPE as _STEP_CONTENT_TYPE,
+    METADATA_HEADER as _STEP_METADATA_HEADER,
+    StepResult,
+    build_request as _build_step_request,
+    build_result as _build_step_result,
+)
 
 if TYPE_CHECKING:
     try:
@@ -476,7 +483,7 @@ def _partition_series(
         else:
             part_series["X"] = [x[part_idxs] for x in series["X"]]
             if h > 0:
-                if series["X_future"] is None: 
+                if series["X_future"] is None:
                     part_series["X_future"] = None
                 else:
                     part_series["X_future"] = [
@@ -663,7 +670,9 @@ def _extract_categorical_exog(
 
     # Extract historical values for all cat cols from df.
     # futr_cat_cols appear in both df (history) and X_df (future); hist_cat_cols only in df.
-    df_cat_vals: dict[str, np.ndarray] = {c: df[c].to_numpy() for c in categorical_exog_list}
+    df_cat_vals: dict[str, np.ndarray] = {
+        c: df[c].to_numpy() for c in categorical_exog_list
+    }
 
     X_df_cat_future: list[list] = []
     if futr_cat_cols and X_df is not None:
@@ -690,7 +699,9 @@ def _validate_input_size(
         )
 
 
-def _ensure_local_dataframe(df: Any, *, method_name: str, sync_method_name: str) -> None:
+def _ensure_local_dataframe(
+    df: Any, *, method_name: str, sync_method_name: str
+) -> None:
     if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
         raise ValueError(
             f"{method_name} only supports pandas or polars dataframes; "
@@ -804,6 +815,7 @@ def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dic
 
     return payload
 
+
 def _get_in_sample_horizon_and_windows(
     sizes: np.ndarray,
     model_horizon: int,
@@ -818,11 +830,14 @@ def _get_in_sample_horizon_and_windows(
     if clean_ex_first:
         n_windows = max((min_size - model_input_size) // model_horizon, 1)
     else:
-        n_windows = max((min_size - (model_input_size + model_horizon + 2 * h)) // model_horizon, 1)
+        n_windows = max(
+            (min_size - (model_input_size + model_horizon + 2 * h)) // model_horizon, 1
+        )
     # In case of multiple windows, we reduce one to avoid errors when running with level argument
     if level is not None and n_windows > 1:
         n_windows -= 1
     return h, n_windows
+
 
 def _maybe_add_intervals(
     df: DFType,
@@ -1311,7 +1326,87 @@ class NixtlaClient:
             payload["job_options"] = {"timeout_seconds": job_timeout_seconds}
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, endpoint, payload)
-        return Job(client=self, job_id=job_id, endpoint=endpoint, parse_result=parse_result)
+        return Job(
+            client=self, job_id=job_id, endpoint=endpoint, parse_result=parse_result
+        )
+
+    def _submit_binary_job(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        metadata: str,
+        body: bytes,
+    ) -> str:
+        """Submit a job whose request body is opaque bytes rather than a JSON payload.
+
+        The body is sent as-is: it is an already-deflated zip, so the zstd compression
+        `_make_request` applies to large JSON payloads would only cost CPU. `content-type` is
+        overridden per-request because the client-level default is `application/json`.
+        """
+        headers = {
+            "content-type": _STEP_CONTENT_TYPE,
+            _STEP_METADATA_HEADER: metadata,
+        }
+        resp = client.post(url=f"{endpoint}/async", content=body, headers=headers)
+        try:
+            resp_body = orjson.loads(resp.content)
+        except orjson.JSONDecodeError:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=f"Could not parse JSON: {resp.content}",
+            )
+        if resp.status_code not in (HTTPStatus.OK, HTTPStatus.ACCEPTED):
+            raise ApiError(status_code=resp.status_code, body=resp_body)
+        return resp_body["job_id"]
+
+    def _get_job_result_bytes(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        job_id: str,
+    ) -> tuple[Any, bytes]:
+        """Fetch a binary job's result from its dedicated endpoint.
+
+        Binary results cannot be inlined into the JSON status response, so they are served
+        separately. The server answers 409 while the job has not yet succeeded.
+        """
+        resp = client.get(f"{endpoint}/jobs/{job_id}/result")
+        if resp.status_code != HTTPStatus.OK:
+            try:
+                body = resp.json()
+            except Exception:
+                body = f"Could not parse JSON: {resp.content}"
+            raise ApiError(status_code=resp.status_code, body=body)
+        return resp.headers, resp.content
+
+    def _submit_and_wrap_binary_job(
+        self,
+        endpoint: str,
+        metadata: str,
+        body: bytes,
+    ) -> Job:
+        """Binary counterpart of `_submit_and_wrap_job`.
+
+        `job_options` is already folded into `metadata` by the caller, because for these tasks
+        the request metadata travels in a header rather than in the body.
+        """
+
+        def fetch_result(job_id: str) -> StepResult:
+            with self._make_client(**self._client_kwargs) as client:
+                headers, content = self._get_job_result_bytes(client, endpoint, job_id)
+            return _build_step_result(headers, content)
+
+        with self._make_client(**self._client_kwargs) as client:
+            job_id = self._retry_strategy(self._submit_binary_job)(
+                client=client, endpoint=endpoint, metadata=metadata, body=body
+            )
+        return Job(
+            client=self,
+            job_id=job_id,
+            endpoint=endpoint,
+            parse_result=lambda resp: resp,
+            fetch_result=fetch_result,
+        )
 
     def _make_partitioned_requests(
         self,
@@ -1808,7 +1903,10 @@ class NixtlaClient:
             model=model,
         )
         return self._submit_and_wrap_job(
-            "v2/finetune", payload, job_timeout_seconds, lambda resp: resp["finetuned_model_id"]
+            "v2/finetune",
+            payload,
+            job_timeout_seconds,
+            lambda resp: resp["finetuned_model_id"],
         )
 
     @overload
@@ -2062,7 +2160,11 @@ class NixtlaClient:
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
             for c, vals in df_cat_vals.items():
-                sorted_df_cat[c] = vals[processed.sort_idxs] if processed.sort_idxs is not None else vals
+                sorted_df_cat[c] = (
+                    vals[processed.sort_idxs]
+                    if processed.sort_idxs is not None
+                    else vals
+                )
 
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
@@ -2111,16 +2213,22 @@ class NixtlaClient:
             if futr_cols is not None:
                 logger.info(f"Using future exogenous features: {futr_cols}")
             if futr_cat_cols:
-                logger.info(f"Using future categorical exogenous features: {futr_cat_cols}")
+                logger.info(
+                    f"Using future categorical exogenous features: {futr_cat_cols}"
+                )
             if hist_exog_list:
                 logger.info(f"Using historical exogenous features: {hist_exog_list}")
             if hist_cat_cols:
-                logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
+                logger.info(
+                    f"Using historical categorical exogenous features: {hist_cat_cols}"
+                )
         else:
             X = None
 
         if X_future is not None or X_df_cat_future:
-            X_future = (list(X_future) if X_future is not None else []) + X_df_cat_future
+            X_future = (
+                list(X_future) if X_future is not None else []
+            ) + X_df_cat_future
 
         categorical_exog_payload: Optional[list[int]] = None
         if categorical_exog_list:
@@ -2161,7 +2269,9 @@ class NixtlaClient:
         if model_parameters is not None:
             payload.update({"model_parameters": model_parameters})
 
-        weights_x_cols = x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
+        weights_x_cols = (
+            x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
+        )
 
         def parse_result(
             resp: dict[str, Any],
@@ -2214,7 +2324,9 @@ class NixtlaClient:
                             self.feature_contributions
                         )
             out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
-            self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=weights_x_cols)
+            self._maybe_assign_weights(
+                weights=resp["weights_x"], df=df, x_cols=weights_x_cols
+            )
             return out
 
         return payload, sizes, model_horizon, model_input_size, parse_result
@@ -2344,7 +2456,7 @@ class NixtlaClient:
                 the behavior of the model. Default is None
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models. 
+                supported for a select set of TimeGPT models.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2653,7 +2765,9 @@ class NixtlaClient:
             model_parameters=model_parameters,
             multivariate=multivariate,
         )
-        return self._submit_and_wrap_job("v2/forecast", payload, job_timeout_seconds, parse_result)
+        return self._submit_and_wrap_job(
+            "v2/forecast", payload, job_timeout_seconds, parse_result
+        )
 
     def _distributed_detect_anomalies(
         self,
@@ -2917,7 +3031,9 @@ class NixtlaClient:
         out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
         out = _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
         weights_x_cols = x_cols + cat_cols
-        self._maybe_assign_weights(weights=resp["weights_x"], df=df, x_cols=weights_x_cols)
+        self._maybe_assign_weights(
+            weights=resp["weights_x"], df=df, x_cols=weights_x_cols
+        )
         return out
 
     def _distributed_detect_anomalies_online(
@@ -3092,10 +3208,10 @@ class NixtlaClient:
                 distributed environments. Defaults to None.
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models. This variable 
+                supported for a select set of TimeGPT models. This variable
                 is different from the `threshold_method` parameter. The latter
                 controls the method used for anomaly detection (univariate vs
-                multivariate) whereas `multivariate` determines how the model 
+                multivariate) whereas `multivariate` determines how the model
                 creates the predictions.
 
         Returns:
@@ -3388,7 +3504,11 @@ class NixtlaClient:
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
             for c, vals in df_cat_vals.items():
-                sorted_df_cat[c] = vals[processed.sort_idxs] if processed.sort_idxs is not None else vals
+                sorted_df_cat[c] = (
+                    vals[processed.sort_idxs]
+                    if processed.sort_idxs is not None
+                    else vals
+                )
 
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
@@ -3397,7 +3517,9 @@ class NixtlaClient:
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
-        restrict_input = finetune_steps == 0 and not x_cols and not categorical_exog_list
+        restrict_input = (
+            finetune_steps == 0 and not x_cols and not categorical_exog_list
+        )
         if restrict_input:
             logger.info("Restricting input...")
             new_input_size = _restrict_input_samples(
@@ -3428,7 +3550,9 @@ class NixtlaClient:
             cat_col_indices = list(range(n_num_cols, n_num_cols + len(hist_cat_cols)))
             categorical_exog_payload = cat_col_indices
             if hist_cat_cols:
-                logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
+                logger.info(
+                    f"Using historical categorical exogenous features: {hist_cat_cols}"
+                )
         else:
             X = list(X_np) if X_np is not None else None
 
@@ -3606,7 +3730,7 @@ class NixtlaClient:
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
             model_parameters (dict): The dictionary settings that determine
-                the behavior of the model. Default is None.            
+                the behavior of the model. Default is None.
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
                 supported for a select set of TimeGPT models.
@@ -3871,6 +3995,76 @@ class NixtlaClient:
         return self._submit_and_wrap_job(
             "v2/cross_validation", payload, job_timeout_seconds, parse_result
         )
+
+    def submit_execute_step_job(
+        self,
+        func_name: str,
+        params: dict[str, Any],
+        data: Optional[dict[str, Any]] = None,
+        job_timeout_seconds: Optional[int] = None,
+    ) -> Job:
+        """Submit a single TSMP step to run asynchronously.
+
+        `execute_step` runs one TSMP top-level API call server-side in a fresh sandbox: nothing
+        is registered and nothing is cached between calls, so every request is self-contained
+        and carries its own data. This does not block; it submits the job and immediately
+        returns a `Job` handle. Call `job.wait()` to poll until it completes and get a
+        `StepResult`, or `job.cancel()` to request that the server stop it.
+
+        Tables are referenced from `params` by name using a `{"data_ref": "<key>"}` envelope,
+        where `<key>` is a key of `data`. Because a step's output tables can be passed straight
+        back in as the next step's `data`, calls chain without any file or byte handling::
+
+            step1 = nc.submit_execute_step_job(
+                "make_forecast_input",
+                {"data": {"data_ref": "panel"}, "freq": "D"},
+                data={"panel": df},
+            ).wait()
+
+            step2 = nc.submit_execute_step_job(
+                "forecast",
+                {"resource": {"data_ref": "result"}, "models": ["timegpt-1"], "h": 7},
+                data=step1.data,
+            ).wait()
+
+        Requires pyarrow (`pip install 'nixtla[steps]'`). Chaining relies on arrow schema
+        metadata that a pandas round-trip discards, so pass `step.data` between steps rather
+        than `step.to_pandas()`.
+
+        There is no `model` argument: a step names the models it runs inside `params`, and the
+        sandbox reaches them over the API rather than from a checkpoint local to one host.
+
+        Not reachable over this transport: `train` and `optimize_model`. Both require a
+        `tune.Space`, which has no JSON encoding.
+
+        Args:
+            func_name (str): TSMP top-level API to run, e.g. `'forecast'`,
+                `'make_forecast_input'`, `'cross_validate'`, `'preprocess'`, `'select_by_sql'`.
+            params (dict): Arguments for that API. Tables are referenced as
+                `{"data_ref": "<key>"}` envelopes naming a key of `data`; everything else is
+                passed through as-is and must be JSON serializable.
+            data (dict, optional): Tables the params reference, as pyarrow Tables or eager
+                pandas/polars DataFrames, keyed by the name used in the `data_ref` envelopes.
+                Keys must be bare names. Defaults to None.
+            job_timeout_seconds (int, optional): Maximum seconds the server allows this job to
+                run before terminating it server-side. This is separate from `poll_timeout` in
+                `Job.wait()`, which only controls how long the client polls locally. Capped by
+                a server-side per-task maximum; requesting a higher value raises `ApiError`
+                (422) when submitting. Defaults to the server's default for this task type if
+                not specified.
+
+        Returns:
+            Job: Handle to the submitted job. `job.wait()` returns a `StepResult` with `.data`
+                (result tables as pyarrow Tables) and `.metadata` (the server's `func_name`,
+                `result` envelope and output `profile`).
+        """
+        metadata, body = _build_step_request(
+            func_name=func_name,
+            params=params,
+            data=data,
+            job_timeout_seconds=job_timeout_seconds,
+        )
+        return self._submit_and_wrap_binary_job("v2/execute_step", metadata, body)
 
     def plot(
         self,
@@ -4235,7 +4429,7 @@ def _forecast_wrapper(
     model: _Model,
     num_partitions: Optional[_PositiveInt],
     feature_contributions: bool,
-    model_parameters:_ExtraParamDataType,
+    model_parameters: _ExtraParamDataType,
     multivariate: bool,
     _is_async_job: bool = False,
     _poll_interval: float = 15,
@@ -4338,7 +4532,7 @@ def _detect_anomalies_online_wrapper(
     model: _Model,
     refit: bool,
     num_partitions: Optional[_PositiveInt],
-    multivariate: bool
+    multivariate: bool,
 ) -> pd.DataFrame:
     return client.detect_anomalies_online(
         df=df,

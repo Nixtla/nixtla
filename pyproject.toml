@@ -36,6 +36,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Needed by submit_execute_step_job: the wire format is parquet, and the resource identity
+# of a table lives in arrow schema metadata that a pandas round-trip would drop.
+steps = ["pyarrow>=14.0.0"]
 dev = [
     "datasetsforecast",
     "fire",

@@ -57,7 +57,8 @@ class AsyncJobCancelledError(Exception):
 
 class Job:
     """Handle to a server-side async job submitted via `submit_forecast_job`,
-    `submit_finetune_job`, or `submit_cross_validation_job`.
+    `submit_finetune_job`, `submit_cross_validation_job`, or
+    `submit_execute_step_job`.
 
     `status` queries the server for the job's current status; call `wait()`
     to block until it reaches a terminal state and get its result, or
@@ -75,13 +76,24 @@ class Job:
         job_id: str,
         endpoint: str,
         parse_result: Callable[..., Any],
+        fetch_result: Optional[Callable[[str], Any]] = None,
     ):
+        """
+        Args:
+            parse_result: Builds the result from the `result` field of the job-status
+                response, for tasks whose result is JSON.
+            fetch_result: Alternative used by tasks whose result is not JSON and so cannot
+                be inlined into the status response (`execute_step` returns a zip). When
+                given, `wait()` calls this with the job id instead of `parse_result`, and
+                it is responsible for retrieving the result itself.
+        """
         self.job_id = job_id
         self.result: Any = None
         self._status: Optional[JobStatus] = None
         self._client = client
         self._endpoint = endpoint
         self._parse_result = parse_result
+        self._fetch_result = fetch_result
 
     @property
     def status(self) -> JobStatus:
@@ -117,7 +129,8 @@ class Job:
 
         Returns:
             The job's parsed result (a DataFrame for forecast/cross_validation
-            jobs, a fine-tuned model id string for finetune jobs).
+            jobs, a fine-tuned model id string for finetune jobs, a `StepResult`
+            for execute_step jobs).
 
         Raises:
             AsyncJobError: If the job fails server-side.
@@ -131,7 +144,12 @@ class Job:
                 http_client, self._endpoint, self.job_id, poll_interval, poll_timeout
             )
         self._status = JobStatus(job_data["status"])
-        self.result = self._parse_result(job_data["result"])
+        if self._fetch_result is not None:
+            # Binary tasks leave `result` null in the status response and serve the payload
+            # from their own endpoint, so the result is fetched rather than parsed.
+            self.result = self._fetch_result(self.job_id)
+        else:
+            self.result = self._parse_result(job_data["result"])
         return self.result
 
     def cancel(self) -> None:
