@@ -3437,6 +3437,13 @@ class NixtlaClient:
             "sizes": np.diff(processed.indptr),
             "X": X,
         }
+        # `times` is sorted and, when the input was restricted, trimmed alongside
+        # `targets`, so it already matches the payload row order.
+        start_datetime = _times_to_iso(
+            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        )
+        if start_datetime is not None:
+            series_payload["start_datetime"] = start_datetime
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
 
