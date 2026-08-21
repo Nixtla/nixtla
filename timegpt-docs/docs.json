@@ -17,7 +17,7 @@
   },
   "seo": {
     "metatags": {
-      "canonical": "https://nixtla.io/docs"
+      "canonical": "https://www.nixtla.io/docs"
     }
   },
   "icons": {
@@ -180,7 +180,7 @@
         },
         {
           "anchor": "Meet with us",
-          "href": "https://nixtla.io/book-a-call?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
+          "href": "https://www.nixtla.io/book-a-call?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
           "icon": "calendar"
         }
       ]
@@ -326,6 +326,22 @@
     {
       "source": "/exogenous-variables/forecasting/exogenous-variables/data_requirements/multiple_series#exogenous-variables",
       "destination": "/data_requirements/multiple_series#exogenous-variables"
+    },
+    {
+      "source": "/introduction/introduction/faq",
+      "destination": "/introduction/faq"
+    },
+    {
+      "source": "/tutorials-exogenous_variables-tutorials-holidays_and_special_dates",
+      "destination": "/forecasting/exogenous-variables/holiday_and_special_dates"
+    },
+    {
+      "source": "/tutorials-exogenous_variables-tutorials-categorical_variables",
+      "destination": "/forecasting/exogenous-variables/categorical_features"
+    },
+    {
+      "source": "/forecasting/evaluation/forecasting/evaluation/evaluation_metrics",
+      "destination": "/forecasting/evaluation/evaluation_metrics"
     }
   ],
   "contextual": {
