@@ -26,6 +26,13 @@ TimeGPT accepts **pandas** and **polars** dataframes in [long format](https://ww
   </Card>
 </CardGroup>
 
+<Note>
+Your columns may have any names — tell the SDK which is which with `time_col`
+(default `ds`), `target_col` (default `y`), and, for multiple series, `id_col`
+(default `unique_id`). Many examples in these docs use `time_col='timestamp',
+target_col='value'`.
+</Note>
+
 <Check>
 TimeGPT also supports distributed dataframe libraries such as **dask**, **spark**, and **ray**.
 </Check>

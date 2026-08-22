@@ -115,11 +115,11 @@ The script will guide you through setting up external access integrations, confi
 
 Dive into our [comprehensive documentation](https://docs.nixtla.io/docs/getting-started-timegpt_quickstart) to discover examples and practical use cases for TimeGPT. Our documentation covers a wide range of topics, including:
 
-- **Getting Started**: Begin with our user-friendly [Quickstart Guide](https://docs.nixtla.io/docs/getting-started-timegpt_quickstart) and learn how to [set up your API key](https://docs.nixtla.io/docs/getting-started-setting_up_your_api_key) effortlessly.
+- **Getting Started**: Begin with our user-friendly [Quickstart Guide](https://docs.nixtla.io/docs/getting-started-timegpt_quickstart) and learn how to [set up your API key](https://www.nixtla.io/docs/setup/setting_up_your_api_key) effortlessly.
 
-- **Advanced Techniques**: Master advanced forecasting methods and learn how to enhance model accuracy with our tutorials on [anomaly detection](https://docs.nixtla.io/docs/tutorials-anomaly_detection), fine-tuning models using specific loss functions, and scaling computations across distributed frameworks such as [Spark, Dask, and Ray](https://docs.nixtla.io/docs/tutorials-computing_at_scale).
+- **Advanced Techniques**: Master advanced forecasting methods and learn how to enhance model accuracy with our tutorials on [anomaly detection](https://www.nixtla.io/docs/anomaly_detection/historical_anomaly_detection), fine-tuning models using specific loss functions, and scaling computations across distributed frameworks such as [Spark, Dask, and Ray](https://docs.nixtla.io/docs/tutorials-computing_at_scale).
 
-- **Specialized Topics**: Explore specialized topics like [handling exogenous variables](https://docs.nixtla.io/docs/tutorials-holidays_and_special_dates), model validation through [cross-validation](https://docs.nixtla.io/docs/tutorials-cross_validation), and strategies for [forecasting under uncertainty](https://docs.nixtla.io/docs/tutorials-uncertainty_quantification).
+- **Specialized Topics**: Explore specialized topics like [handling exogenous variables](https://docs.nixtla.io/docs/tutorials-holidays_and_special_dates), model validation through [cross-validation](https://www.nixtla.io/docs/forecasting/evaluation/cross_validation), and strategies for [forecasting under uncertainty](https://www.nixtla.io/docs/forecasting/probabilistic/introduction).
 
 - **Real World Applications**: Uncover how TimeGPT is applied in real-world scenarios through case studies on [forecasting web traffic](https://docs.nixtla.io/docs/use-cases-forecasting_web_traffic) and [predicting Bitcoin prices](https://docs.nixtla.io/docs/use-cases/bitcoin_price_prediction).
 
