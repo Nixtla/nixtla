@@ -97,7 +97,7 @@ def plot_series(
         seed (int, optional): Seed used for the random number generator. Only
             used if plot_random is True. Defaults to 0.
         resampler_kwargs (dict, optional): Keyword arguments to be passed to
-            plotly-resampler constructor. For further custumization ("show_dash")
+            plotly-resampler constructor. For further customization ("show_dash")
             call the method, store the plotting object and add the extra arguments
             to its `show_dash` method. Defaults to None.
         ax (matplotlib axes, array of matplotlib axes or plotly Figure, optional):
