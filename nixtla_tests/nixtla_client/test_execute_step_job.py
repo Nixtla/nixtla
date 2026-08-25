@@ -22,7 +22,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from nixtla.nixtla_client import ApiError, Job, NixtlaClient
+from nixtla.nixtla_client import ApiError, Job, NixtlaClient, _is_retriable_error
 from nixtla.steps import (
     CONTENT_TYPE,
     HEADER_BUDGET,
@@ -402,16 +402,38 @@ class TestResult:
             _client()._get_job_result_bytes(http_client, "v2/execute_step", "es-1")
         assert exc.value.status_code == 422
 
-    def test_conflict_while_not_ready_is_retried(self, monkeypatch):
-        # The job says succeeded but the zip has not materialized yet: 409 is retriable, and
-        # giving up here would discard work the server has already done and billed.
+    @pytest.mark.parametrize("not_ready_status", [202, 409])
+    def test_a_not_ready_response_raises_a_retriable_error(self, not_ready_status):
+        # Goes through the real status check rather than a hand-made ApiError: the retry above
+        # only helps if `_get_job_result_bytes` actually raises on this status *and*
+        # `_is_retriable_error` accepts what it raised. Together these pin the wire contract.
+        http_client = MagicMock()
+        resp = MagicMock(status_code=not_ready_status, content=b"PK")
+        resp.json.return_value = {"detail": "result not ready, poll again"}
+        http_client.get.return_value = resp
+
+        with pytest.raises(ApiError) as exc:
+            _client()._get_job_result_bytes(http_client, "v2/execute_step", "es-1")
+
+        assert exc.value.status_code == not_ready_status
+        assert _is_retriable_error(exc.value)
+
+    @pytest.mark.parametrize("not_ready_status", [202, 409])
+    def test_not_ready_from_the_result_endpoint_is_retried(
+        self, monkeypatch, not_ready_status
+    ):
+        # The job says succeeded but the zip has not materialized yet: giving up here would
+        # discard work the server has already done and billed. 202 is what current servers
+        # answer, 409 what older ones did, and both must keep the retry going.
         body = _pack({"result": _tagged_table()})
         attempts = []
 
         def flaky_result(self, client, endpoint, job_id):
             attempts.append(job_id)
             if len(attempts) == 1:
-                raise ApiError(status_code=409, body={"detail": "not succeeded"})
+                raise ApiError(
+                    status_code=not_ready_status, body={"detail": "not succeeded"}
+                )
             return {}, body
 
         _stub_submit_binary(monkeypatch)

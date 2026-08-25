@@ -245,6 +245,11 @@ def _is_retriable_error(exc: Exception) -> bool:
     )
     retriable_codes = [
         HTTPStatus.REQUEST_TIMEOUT,
+        # A binary job's result endpoint answers 202 while the zip has not materialized yet, so
+        # "not ready" means poll again rather than give up. 409 stays listed because older servers
+        # used it for that same case; on current ones it means the job ended without a result, and
+        # retrying is merely wasteful rather than wrong.
+        HTTPStatus.ACCEPTED,
         HTTPStatus.CONFLICT,
         HTTPStatus.TOO_MANY_REQUESTS,
         HTTPStatus.BAD_GATEWAY,
@@ -1300,7 +1305,16 @@ class NixtlaClient:
         multithreaded_compress: bool = True,
     ) -> dict[str, Any]:
         job_id = self._submit_job(client, endpoint, payload, multithreaded_compress)
-        job_data = self._poll_job(client, endpoint, job_id, poll_interval, poll_timeout)
+        try:
+            job_data = self._poll_job(
+                client, endpoint, job_id, poll_interval, poll_timeout
+            )
+        except AsyncJobTimeoutError:
+            # This job's id is never surfaced to the caller, so if we don't cancel it
+            # here nobody can -- it would run to its server-side deadline unwatched.
+            # Other terminal states (failed/cancelled) need no cancellation.
+            self._cancel_job_best_effort(client, job_id, "client poll timeout")
+            raise
         return job_data["result"]
 
     def _cancel_job(self, client: httpx.Client, job_id: str) -> None:
@@ -1315,6 +1329,23 @@ class NixtlaClient:
             except Exception:
                 body = f"Could not parse JSON: {resp.content}"
             raise ApiError(status_code=resp.status_code, body=body)
+
+    def _cancel_job_best_effort(
+        self, client: httpx.Client, job_id: str, reason: str
+    ) -> bool:
+        """Request cancellation, swallowing failures. Returns True if accepted.
+
+        Used on cleanup paths where an exception is already propagating: failing to
+        cancel must not mask it.
+        """
+        try:
+            self._cancel_job(client, job_id)
+        except Exception:
+            logger.warning(
+                "Failed to cancel job %s (%s)", job_id, reason, exc_info=True
+            )
+            return False
+        return True
 
     def _submit_and_wrap_job(
         self,
@@ -1376,9 +1407,12 @@ class NixtlaClient:
         """Fetch a binary job's result from its dedicated endpoint.
 
         Binary results cannot be inlined into the JSON status response, so they are served
-        separately. The server answers 409 while the job has not yet succeeded, which
-        `_is_retriable_error` treats as retriable -- callers should go through
-        `_retry_strategy` so that race resolves itself rather than surfacing.
+        separately. The server answers 202 while the job has not yet succeeded (older servers
+        answered 409), and `_is_retriable_error` treats both as retriable -- callers should go
+        through `_retry_strategy` so that race resolves itself rather than surfacing.
+
+        The status check stays exact: anything other than 200 raises rather than returning a
+        body, so a "not ready" JSON payload is never mistaken for the zip.
         """
         resp = client.get(f"{endpoint}/jobs/{job_id}/result")
         if resp.status_code != HTTPStatus.OK:
@@ -1404,7 +1438,7 @@ class NixtlaClient:
         def get_result(job_data: dict[str, Any]) -> StepResult:
             # The status response leaves `result` null for these tasks; the payload is
             # served from the job's own result endpoint. Retried because that endpoint
-            # answers 409 until the result has materialized.
+            # answers 202 until the result has materialized.
             with self._make_client(**self._client_kwargs) as client:
                 headers, content = self._retry_strategy(self._get_job_result_bytes)(
                     client=client, endpoint=endpoint, job_id=job_id
@@ -1433,8 +1467,9 @@ class NixtlaClient:
         max_workers = min(10, num_partitions)
         # NOTE: if one partition's job fails/times out, this still waits for
         # every other in-flight partition to reach a terminal state before the
-        # exception surfaces (ThreadPoolExecutor.__exit__ -> shutdown(wait=True));
-        # there's no cross-partition cancellation here (unlike Job.cancel()).
+        # exception surfaces (ThreadPoolExecutor.__exit__ -> shutdown(wait=True)).
+        # A timed-out partition cancels its own job (see `_run_async_job`), but
+        # there's still no cross-partition cancellation here: the siblings run on.
         with ThreadPoolExecutor(max_workers) as executor:
             if _is_async_job:
                 future2pos = {

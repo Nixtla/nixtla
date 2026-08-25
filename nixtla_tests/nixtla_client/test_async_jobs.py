@@ -141,11 +141,12 @@ def test_run_async_job_unexpected_status():
         )
 
 
-def test_run_async_job_timeout():
+def test_run_async_job_timeout(monkeypatch):
     client = _client()
     fake_make_request, fake_get_request, _ = _polling_stubs([{"status": "running"}])
     client._make_request = fake_make_request
     client._get_request = fake_get_request
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", lambda self, client, job_id: None)
 
     with pytest.raises(AsyncJobTimeoutError) as excinfo:
         client._run_async_job(
@@ -153,6 +154,79 @@ def test_run_async_job_timeout():
         )
 
     assert excinfo.value.job_id == "fc-abc123"
+
+
+def test_run_async_job_cancels_the_job_on_timeout(monkeypatch):
+    """`_run_async_job` never surfaces the job_id, so a client-side timeout must
+    cancel the job here or nobody ever can."""
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs([{"status": "running"}])
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    calls = []
+    monkeypatch.setattr(
+        NixtlaClient, "_cancel_job", lambda self, client, job_id: calls.append(job_id)
+    )
+
+    with pytest.raises(AsyncJobTimeoutError):
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
+        )
+
+    assert calls == ["fc-abc123"]
+
+
+@pytest.mark.parametrize(
+    "statuses, expected_error",
+    [
+        ([{"status": "failed", "error": {"detail": "boom"}}], AsyncJobError),
+        ([{"status": "cancelled"}], AsyncJobCancelledError),
+    ],
+    ids=["failed", "cancelled"],
+)
+def test_run_async_job_does_not_cancel_on_terminal_states(
+    monkeypatch, statuses, expected_error
+):
+    """Failed/cancelled jobs are already terminal -- cancelling them is pointless."""
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs(statuses)
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    calls = []
+    monkeypatch.setattr(
+        NixtlaClient, "_cancel_job", lambda self, client, job_id: calls.append(job_id)
+    )
+
+    with pytest.raises(expected_error):
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        )
+
+    assert calls == []
+
+
+def test_run_async_job_timeout_survives_a_failing_cancel(monkeypatch, caplog):
+    """A failed cancel must be logged, not raised: it would mask the timeout."""
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs([{"status": "running"}])
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    def fake_cancel_job(self, client, job_id):
+        raise ApiError(status_code=500, body={"detail": "boom"})
+
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(AsyncJobTimeoutError) as excinfo:
+            client._run_async_job(
+                MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
+            )
+
+    assert excinfo.value.job_id == "fc-abc123"
+    assert "Failed to cancel job fc-abc123" in caplog.text
 
 
 def test_run_async_job_fails_fast_on_non_retriable_poll_error():
@@ -468,6 +542,99 @@ def test_job_wait_raises_after_cancelled_status(monkeypatch):
         job.wait(poll_interval=1, poll_timeout=2)
 
     assert excinfo.value.job_id == "ft-job-1"
+
+
+def _raise(exc):
+    raise exc
+
+
+def _recording_cancel(calls):
+    """A `_cancel_job` stub that records the job ids it was asked to cancel."""
+
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
+
+    return fake_cancel_job
+
+
+def _timing_out_job(monkeypatch, cancel_job):
+    """A submitted `Job` whose polling always times out, with `_cancel_job` stubbed."""
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_submit_job",
+        lambda self, client, endpoint, payload, multithreaded_compress=True: "ft-job-1",
+    )
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_poll_job",
+        lambda self, client, endpoint, job_id, poll_interval, poll_timeout: _raise(
+            AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
+        ),
+    )
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", cancel_job)
+    return _client().submit_finetune_job(df=_small_df(), freq="D")
+
+
+def test_job_wait_does_not_cancel_on_timeout_by_default(monkeypatch):
+    """`poll_timeout` bounds local polling only, so waiting in short increments
+    and resuming has to leave the job alone."""
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
+
+    for _ in range(2):
+        with pytest.raises(AsyncJobTimeoutError):
+            job.wait(poll_interval=0, poll_timeout=0.01)
+
+    assert calls == []
+    assert job._status is None  # still resumable
+
+
+def test_job_wait_cancels_on_timeout_when_opted_in(monkeypatch):
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
+
+    with pytest.raises(AsyncJobTimeoutError):
+        job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=True)
+
+    assert calls == ["ft-job-1"]
+    assert job.status == "cancelled"
+
+
+def test_job_wait_cancel_on_timeout_leaves_status_unresolved_if_cancel_fails(
+    monkeypatch, caplog
+):
+    """A cancel that the server rejected must not be cached as `cancelled`;
+    `status` should go back to the server for the truth."""
+
+    def fake_cancel_job(self, client, job_id):
+        raise ApiError(status_code=500, body={"detail": "boom"})
+
+    job = _timing_out_job(monkeypatch, fake_cancel_job)
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_get_job_data",
+        lambda self, client, endpoint, job_id: {"status": "running"},
+    )
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(AsyncJobTimeoutError):
+            job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=True)
+
+    assert "Failed to cancel job ft-job-1" in caplog.text
+    assert job._status is None
+    assert job.status == "running"
+
+
+def test_job_wait_cancel_on_timeout_inside_context_manager_cancels_once(monkeypatch):
+    """`wait` marks the status terminal, so `__exit__` must not cancel again."""
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
+
+    with pytest.raises(AsyncJobTimeoutError):
+        with job:
+            job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=True)
+
+    assert calls == ["ft-job-1"]
 
 
 # ---------------------------------------------------------------------------
