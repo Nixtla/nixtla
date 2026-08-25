@@ -1365,7 +1365,8 @@ class NixtlaClient:
             if k in first_res:
                 resp[k] = np.hstack([res[k] for res in results])
         if "idxs" in first_res:
-            offsets = [0] + [sum(p["series"]["sizes"]) for p in payloads[:-1]]
+            part_rows = [sum(p["series"]["sizes"]) for p in payloads]
+            offsets = np.cumsum([0, *part_rows[:-1]])
             resp["idxs"] = np.hstack(
                 [
                     np.array(res["idxs"], dtype=np.int64) + offset
