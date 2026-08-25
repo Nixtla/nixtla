@@ -202,6 +202,22 @@ def _call(client, endpoint, df, freq="D", **kw):
     raise AssertionError(f"unknown endpoint {endpoint}")
 
 
+def _assert_cv_actuals_match_source(df, out):
+    """Parsed CV `y`/`ds` must index the source frame, not another partition."""
+    merged = out[["unique_id", "ds", "y"]].merge(
+        df[["unique_id", "ds", "y"]],
+        on=["unique_id", "ds"],
+        how="left",
+        suffixes=("_cv", "_source"),
+    )
+    assert merged["y_source"].notna().all()
+    pd.testing.assert_series_equal(
+        merged["y_cv"].reset_index(drop=True),
+        merged["y_source"].reset_index(drop=True),
+        check_names=False,
+    )
+
+
 ENDPOINTS = [
     "forecast",
     "cross_validation",
@@ -261,12 +277,15 @@ def test_start_datetime_distinct_per_series(capture, endpoint):
 @pytest.mark.parametrize("num_partitions", [1, 3, 10])
 def test_start_datetime_per_partition(capture, endpoint, num_partitions):
     """Every partition must independently satisfy the server's contract."""
-    _call(capture.client, endpoint, _series(n_series=6, n=60), num_partitions=num_partitions)
+    df = _series(n_series=6, n=60)
+    out = _call(capture.client, endpoint, df, num_partitions=num_partitions)
     assert capture.payloads
     for _, payload in capture.payloads:
         assert_consistent(payload, "D")
     # the parts rejoin into the whole: one entry per series overall
     assert len(_ordered_starts(capture)) == 6
+    if endpoint == "cross_validation":
+        _assert_cv_actuals_match_source(df, out)
 
 
 @pytest.mark.parametrize("endpoint", PARTITIONED)
@@ -278,10 +297,11 @@ def test_start_datetime_partitions_preserve_series_order(
 
     Distinct starts per series mean a mis-slice cannot pass by coincidence.
     """
-    _call(
+    df = _staggered_series(6)
+    out = _call(
         capture.client,
         endpoint,
-        _staggered_series(6),
+        df,
         num_partitions=num_partitions,
         **(NO_TRUNCATE if endpoint in ("forecast", "cross_validation") else {}),
     )
@@ -289,6 +309,8 @@ def test_start_datetime_partitions_preserve_series_order(
     assert _ordered_starts(capture) == expected
     for _, payload in capture.payloads:
         assert_consistent(payload, "D")
+    if endpoint == "cross_validation":
+        _assert_cv_actuals_match_source(df, out)
 
 
 @pytest.mark.parametrize("endpoint", PARTITIONED)
@@ -302,8 +324,10 @@ def test_start_datetime_partitioned_matches_unpartitioned(capture, endpoint):
     capture.payloads.clear()
     capture.parts.clear()
 
-    _call(capture.client, endpoint, df, num_partitions=3, **kw)
+    out = _call(capture.client, endpoint, df, num_partitions=3, **kw)
     assert _ordered_starts(capture) == whole
+    if endpoint == "cross_validation":
+        _assert_cv_actuals_match_source(df, out)
 
 
 # ---------------------------------------------------------------------------
@@ -350,13 +374,15 @@ def test_cross_validation_restrict_input_moves_start_datetime(capture):
 def test_restrict_input_with_partitions(capture, endpoint):
     """Truncation and partitioning compose."""
     df = _series(n_series=6, n=500)
-    _call(capture.client, endpoint, df, num_partitions=3)
+    out = _call(capture.client, endpoint, df, num_partitions=3)
 
     for _, payload in capture.payloads:
         assert_consistent(payload, "D")
         assert np.asarray(payload["series"]["sizes"]).max() < 500
         assert payload["series"]["start_datetime"][0] != "2020-01-01"
     assert len(_ordered_starts(capture)) == 6
+    if endpoint == "cross_validation":
+        _assert_cv_actuals_match_source(df, out)
 
 
 def test_restrict_input_unsorted_and_truncated(capture):
