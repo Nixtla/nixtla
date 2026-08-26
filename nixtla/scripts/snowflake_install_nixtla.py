@@ -1341,25 +1341,19 @@ def create_stored_procedures(
 
 
 def nixtla_finetune_handler(
-    session: "Session",
+    session: Session,
     input_data: str,
-    params: "Optional[dict]" = None,
-    max_series: int = 1000,
+    params: Optional[dict],
+    max_series: int,
 ) -> str:
     """
-    Handler for the NIXTLA_FINETUNE stored procedure.
-
-    Shipped to Snowflake as source (see ``create_finetune_sproc``), so this
-    function must stand alone in the remote module: every import lives in the
-    body, and the annotations are quoted because ``Session`` and ``Optional``
-    are not in scope there. Snowflake resolves the argument defaults from the
-    DDL and always passes all three arguments; the Python defaults exist for
-    local callers and typing only.
+    Finetune TimeGPT on a table and return the finetuned model identifier.
 
     Args:
         session: Snowflake session provided by the stored procedure runtime
         input_data: Fully qualified name of the training table
-        params: Extra keyword arguments forwarded to ``NixtlaClient.finetune``
+        params: Keyword arguments forwarded to ``NixtlaClient.finetune``;
+            NULL when the caller omits the argument
         max_series: Maximum number of series to finetune on
 
     Returns:
@@ -1369,9 +1363,6 @@ def nixtla_finetune_handler(
     from snowflake.snowpark import functions as F
 
     from nixtla import NixtlaClient
-
-    if params is None:
-        params = {}
 
     token = _snowflake.get_generic_secret_string("nixtla_api_key")
     base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
@@ -1394,10 +1385,7 @@ def nixtla_finetune_handler(
 
     train_data.columns = train_data.columns.str.lower()
 
-    if "finetune_steps" not in params:
-        params["finetune_steps"] = train_data["unique_id"].nunique()
-
-    return client.finetune(train_data, **params)
+    return client.finetune(train_data, **(params or {}))
 
 
 def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
@@ -1441,13 +1429,27 @@ PACKAGES = ({packages})
 IMPORTS = ('@{config.stage}/nixtla.zip')
 EXTERNAL_ACCESS_INTEGRATIONS = ({config.integration_name})
 SECRETS = ({secrets})
-HANDLER = 'nixtla_finetune_handler'
+HANDLER = '{nixtla_finetune_handler.__name__}'
 EXECUTE AS OWNER
 AS
 $$
 """
+    source = inspect.getsource(nixtla_finetune_handler)
+
+    # Snowflake execs the body in a bare module, so the annotations need their
+    # names imported there, and the secret names have to be literals inside the
+    # handler -- module constants would not resolve. Assert they still match the
+    # names the SECRETS clause above was built from.
+    assert "$$" not in source, "handler source would terminate the $$ body early"
+    for secret in (SECRET_API_KEY, SECRET_BASE_URL):
+        assert f'"{secret}"' in source, f"handler does not read secret {secret}"
+
+    preamble = (
+        "from typing import Optional\n\nfrom snowflake.snowpark import Session\n\n\n"
+    )
+
     # Concatenated, not formatted: the handler source contains braces.
-    script = header + inspect.getsource(nixtla_finetune_handler) + "$$"
+    script = header + preamble + source + "$$"
 
     session.sql(script).collect()
 
