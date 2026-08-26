@@ -324,7 +324,7 @@ def deployed_with_api_endpoint(
         deploy_package=True,
         deploy_udtfs=True,
         deploy_procedures=True,
-        deploy_finetune=False,  # Skip finetune to speed up tests
+        deploy_finetune=True,
         deploy_examples=False,  # Load examples separately to get DataFrames
         fallback_package_source=_PROJECT_ROOT,
     )
@@ -490,6 +490,7 @@ def verify_procedures_exist(session: Session, config: DeploymentConfig) -> bool:
         ("NIXTLA_EVALUATE", "VARCHAR, ARRAY, NUMBER"),
         ("NIXTLA_DETECT_ANOMALIES", "VARCHAR, OBJECT, NUMBER"),
         ("NIXTLA_EXPLAIN", "VARCHAR, OBJECT, NUMBER"),
+        ("NIXTLA_FINETUNE", "VARCHAR, OBJECT, NUMBER"),
     ]
 
     try:

@@ -20,6 +20,7 @@ Options:
         - https://tsmp.nixtla.io (TimeGPT-2, supports all models)
 """
 
+import inspect
 import os
 import shutil
 import subprocess
@@ -1339,9 +1340,77 @@ def create_stored_procedures(
             print("[green]Stored procedures created![/green]")
 
 
+def nixtla_finetune_handler(
+    session: "Session",
+    input_data: str,
+    params: "Optional[dict]" = None,
+    max_series: int = 1000,
+) -> str:
+    """
+    Handler for the NIXTLA_FINETUNE stored procedure.
+
+    Shipped to Snowflake as source (see ``create_finetune_sproc``), so this
+    function must stand alone in the remote module: every import lives in the
+    body, and the annotations are quoted because ``Session`` and ``Optional``
+    are not in scope there. Snowflake resolves the argument defaults from the
+    DDL and always passes all three arguments; the Python defaults exist for
+    local callers and typing only.
+
+    Args:
+        session: Snowflake session provided by the stored procedure runtime
+        input_data: Fully qualified name of the training table
+        params: Extra keyword arguments forwarded to ``NixtlaClient.finetune``
+        max_series: Maximum number of series to finetune on
+
+    Returns:
+        Identifier of the finetuned model
+    """
+    import _snowflake  # type: ignore
+    from snowflake.snowpark import functions as F
+
+    from nixtla import NixtlaClient
+
+    if params is None:
+        params = {}
+
+    token = _snowflake.get_generic_secret_string("nixtla_api_key")
+    base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
+    client = NixtlaClient(api_key=token, base_url=base_url)
+
+    input_table = session.table(input_data)
+    ids = (
+        input_table.select("unique_id", F.hash("unique_id").alias("_od"))
+        .distinct()
+        .order_by("_od")
+        .limit(max_series)
+    )
+
+    train_data = (
+        input_table.join(ids, on="unique_id", how="inner", rsuffix="_")
+        .select("unique_id", "ds", "y")
+        .order_by("unique_id", "ds")
+        .to_pandas()
+    )
+
+    train_data.columns = train_data.columns.str.lower()
+
+    if "finetune_steps" not in params:
+        params["finetune_steps"] = train_data["unique_id"].nunique()
+
+    return client.finetune(train_data, **params)
+
+
 def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
     """
     Deploy stored procedure for finetuning.
+
+    The DDL is written by hand rather than registered with Snowpark's ``@sproc``
+    decorator. Snowpark renders a Python ``int`` default as a cast
+    (``DEFAULT 1000 :: INT``), which Snowflake rejects with
+    ``000947 invalid default argument expression``; a hand-written signature
+    emits the bare literal that Snowflake accepts, the same way TEMPLATE_SP
+    does for MAX_BATCHES. It also gives the arguments real names, so
+    ``CALL ... (INPUT_DATA => ...)`` works, and needs no cloudpickle round-trip.
 
     Args:
         session: Active Snowflake session
@@ -1351,59 +1420,36 @@ def create_finetune_sproc(session: Session, config: DeploymentConfig) -> None:
     session.use_database(config.database)
     session.use_schema(config.schema)
 
-    from snowflake.snowpark.functions import sproc
-
-    security_params = config.get_security_params()
-
-    @sproc(
-        session=session,
-        name="nixtla_finetune",
-        packages=PACKAGES,  # type: ignore[arg-type]
-        imports=[f"@{config.stage}/nixtla.zip"],
-        replace=True,
-        is_permanent=True,
-        stage_location=config.stage,
-        **security_params,
+    packages = ", ".join(f"'{package}'" for package in PACKAGES)
+    secrets = ", ".join(
+        f"'{secret}' = {config.prefix}{secret}"
+        for secret in (SECRET_API_KEY, SECRET_BASE_URL)
     )
-    def nixtla_finetune(
-        session: Session,
-        input_data: str,
-        params: Optional[dict] = None,
-        max_series: int = 1000,
-    ) -> str:
-        import _snowflake  # type: ignore
-        from snowflake.snowpark import functions as F
+    # Match the runtime Snowpark uses for the UDTFs deployed in the same run.
+    runtime_version = f"{sys.version_info.major}.{sys.version_info.minor}"
 
-        from nixtla import NixtlaClient
+    header = f"""
+CREATE OR REPLACE PROCEDURE {config.prefix}NIXTLA_FINETUNE(
+    "INPUT_DATA" VARCHAR,
+    "PARAMS" OBJECT DEFAULT NULL,
+    "MAX_SERIES" NUMBER(38,0) DEFAULT 1000
+)
+RETURNS VARCHAR
+LANGUAGE PYTHON
+RUNTIME_VERSION = '{runtime_version}'
+PACKAGES = ({packages})
+IMPORTS = ('@{config.stage}/nixtla.zip')
+EXTERNAL_ACCESS_INTEGRATIONS = ({config.integration_name})
+SECRETS = ({secrets})
+HANDLER = 'nixtla_finetune_handler'
+EXECUTE AS OWNER
+AS
+$$
+"""
+    # Concatenated, not formatted: the handler source contains braces.
+    script = header + inspect.getsource(nixtla_finetune_handler) + "$$"
 
-        if params is None:
-            params = {}
-
-        token = _snowflake.get_generic_secret_string("nixtla_api_key")
-        base_url = _snowflake.get_generic_secret_string("nixtla_base_url")
-        client = NixtlaClient(api_key=token, base_url=base_url)
-
-        input_table = session.table(input_data)
-        ids = (
-            input_table.select("unique_id", F.hash("unique_id").alias("_od"))
-            .distinct()
-            .order_by("_od")
-            .limit(max_series)
-        )
-
-        train_data = (
-            input_table.join(ids, on="unique_id", how="inner", rsuffix="_")
-            .select("unique_id", "ds", "y")
-            .order_by("unique_id", "ds")
-            .to_pandas()
-        )
-
-        train_data.columns = train_data.columns.str.lower()
-
-        if "finetune_steps" not in params:
-            params["finetune_steps"] = train_data["unique_id"].nunique()
-
-        return client.finetune(train_data, **params)
+    session.sql(script).collect()
 
     print("[green]Finetune stored procedure created![/green]")
 
