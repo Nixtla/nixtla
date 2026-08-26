@@ -501,3 +501,29 @@ def verify_procedures_exist(session: Session, config: DeploymentConfig) -> bool:
     except Exception as e:
         print(f"Procedure verification failed: {e}")
         return False
+
+
+def verify_finetune_procedure_exists(
+    session: Session, config: DeploymentConfig
+) -> bool:
+    """
+    Verify that the finetune stored procedure exists.
+
+    Args:
+        session: Snowflake session
+        config: Deployment configuration
+
+    Returns:
+        True if the finetune procedure exists
+    """
+    # Resolved on argument types, which are unaffected by how the default
+    # value for MAX_SERIES is rendered.
+    full_name = f"{config.prefix}NIXTLA_FINETUNE"
+    signature = "VARCHAR, OBJECT, NUMBER"
+
+    try:
+        session.sql(f"DESC PROCEDURE {full_name}({signature})").collect()
+        return True
+    except Exception as e:
+        print(f"Finetune procedure verification failed: {e}")
+        return False
