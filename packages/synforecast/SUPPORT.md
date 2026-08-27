@@ -9,7 +9,7 @@ system, and a minimal example when possible.
 
 ## Bugs and feature requests
 
-Use [GitHub Issues](https://github.com/Nixtla/synforecast/issues) for
+Use [GitHub Issues](https://github.com/Nixtla/nixtla/issues) for
 reproducible bugs, documentation problems, and feature requests. The issue
 templates describe the information needed for each report.
 

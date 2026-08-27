@@ -15,7 +15,7 @@ usually explain an interval that looks wrong.
 
 ## Bugs and feature requests
 
-Use [GitHub Issues](https://github.com/Nixtla/conformalforecast/issues) for
+Use [GitHub Issues](https://github.com/Nixtla/nixtla/issues) for
 reproducible bugs, documentation problems, and feature requests.
 
 Coverage that misses its nominal rate is not automatically a bug: conformal

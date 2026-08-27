@@ -6,7 +6,7 @@ authors:
   - name: "Nixtla"
 version: 0.2.0
 license: Apache-2.0
-repository-code: "https://github.com/Nixtla/synforecast"
+repository-code: "https://github.com/Nixtla/nixtla/tree/main/packages/synforecast"
 url: "https://nixtlaverse.nixtla.io/synforecast/"
 abstract: >-
   Fast synthetic time-series generation for testing, augmentation, and

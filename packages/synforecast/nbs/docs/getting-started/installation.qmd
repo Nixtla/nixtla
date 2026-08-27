@@ -69,12 +69,12 @@ For development, clone the repository and use the `devenv` target, which runs
 `uv sync --dev` and installs the pre-commit hooks:
 
 ```bash
-git clone https://github.com/Nixtla/synforecast.git
-cd synforecast
+git clone --recurse-submodules https://github.com/Nixtla/nixtla.git
+cd nixtla/packages/synforecast
 make devenv
 ```
 
-See [CONTRIBUTING](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md)
+See [CONTRIBUTING](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/CONTRIBUTING.md)
 for the test and lint workflow.
 
 ::: {.callout-warning}

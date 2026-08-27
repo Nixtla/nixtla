@@ -1,0 +1,15 @@
+# Root-level, repo-wide rules only.
+# Package-specific ignores live in packages/<pkg>/.gitignore, which git scopes
+# to that directory. Do NOT hoist those here: several of them carry blanket
+# *.png / *.csv / *.parquet rules that would silently swallow sibling packages'
+# committed assets.
+
+.venv/
+__pycache__/
+*.py[cod]
+.coverage*
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.quarto/
+.DS_Store

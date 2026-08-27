@@ -10,7 +10,7 @@ Older releases may not receive patches.
 Please do not open a public issue for a suspected vulnerability. Use either
 private channel:
 
-- GitHub's [private vulnerability reporting](https://github.com/Nixtla/conformalforecast/security/advisories/new),
+- GitHub's [private vulnerability reporting](https://github.com/Nixtla/nixtla/security/advisories/new),
   which keeps the report, the discussion, and the eventual advisory together; or
 - email to `ops@nixtla.io`.
 

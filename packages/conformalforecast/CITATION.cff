@@ -16,7 +16,7 @@ authors:
 # cutting a release; the package version is dynamic and this one is not.
 version: 0.1.0
 license: Apache-2.0
-repository-code: "https://github.com/Nixtla/conformalforecast"
+repository-code: "https://github.com/Nixtla/nixtla/tree/main/packages/conformalforecast"
 url: "https://nixtlaverse.nixtla.io/conformalforecast/"
 abstract: >-
   Adaptive conformal prediction for time series forecasting: distribution-free

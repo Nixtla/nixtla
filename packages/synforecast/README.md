@@ -1,6 +1,6 @@
 # Nixtla
 
-[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Fast%20synthetic%20time%20series%20for%20testing%2C%20augmentation%2C%20and%20pretraining%20by%20Nixtla%20&url=https://github.com/Nixtla/synforecast&via=nixtlainc&hashtags=SyntheticData,TimeSeries,Forecasting)
+[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Fast%20synthetic%20time%20series%20for%20testing%2C%20augmentation%2C%20and%20pretraining%20by%20Nixtla%20&url=https://github.com/Nixtla/nixtla/tree/main/packages/synforecast&via=nixtlainc&hashtags=SyntheticData,TimeSeries,Forecasting)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1pmhan9j5-F54XR20edHk0UtYAPcW4KQ)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://linkedin.com/company/nixtlainc)
 
@@ -9,11 +9,11 @@
 <h1 align="center">Synthetic 🧬 Forecast</h1>
 <h3 align="center">Fast synthetic time series for testing, augmentation, and pretraining</h3>
 
-[![CI](https://github.com/Nixtla/synforecast/actions/workflows/ci.yaml/badge.svg)](https://github.com/Nixtla/synforecast/actions/workflows/ci.yaml)
+[![CI](https://github.com/Nixtla/nixtla/actions/workflows/synforecast-ci.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/synforecast-ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/synforecast)](https://pypi.org/project/synforecast/)
 [![PyPI](https://img.shields.io/pypi/v/synforecast?color=blue)](https://pypi.org/project/synforecast/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/synforecast/blob/main/LICENSE)
-[![Docs](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml/badge.svg)](https://github.com/Nixtla/synforecast/actions/workflows/build-docs.yaml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/LICENSE)
+[![Docs](https://github.com/Nixtla/nixtla/actions/workflows/synforecast-docs.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/synforecast-docs.yml)
 
 **SynForecast** generates synthetic time-series panels with 32
 statistical, stochastic, multivariate, domain-specific, and pretraining
@@ -74,7 +74,7 @@ synthetic_df = generator.generate(n_series=20)
 ```
 
 See the [quick start](https://nixtlaverse.nixtla.io/synforecast/docs/getting-started/quickstart.html)
-and [generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md)
+and [generator reference](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/GENERATORS.md)
 for the complete API.
 
 ## Augment observed series
@@ -194,7 +194,7 @@ data and its output can resemble that data.
 
 SynForecast's native Rust batch path is designed for high-throughput data
 generation. Reproducible scripts and committed result summaries are available in
-[`benchmarks/`](https://github.com/Nixtla/synforecast/tree/main/benchmarks);
+[`benchmarks/`](https://github.com/Nixtla/nixtla/tree/main/packages/synforecast/benchmarks);
 performance depends on generator, series shape, thread count, and hardware.
 
 Synthetic data does not improve every model or dataset. The
@@ -223,13 +223,13 @@ libraries are installed; install the selected dataframe library separately.
 
 - [Getting started](https://nixtlaverse.nixtla.io/synforecast/docs/getting-started/quickstart.html)
 - [Tutorials and capabilities](https://nixtlaverse.nixtla.io/synforecast/)
-- [Generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md)
-- [Contributing](https://github.com/Nixtla/synforecast/blob/main/CONTRIBUTING.md)
-- [Roadmap](https://github.com/Nixtla/synforecast/blob/main/ROADMAP.md)
-- [Changelog](https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md)
-- [Support](https://github.com/Nixtla/synforecast/blob/main/SUPPORT.md)
-- [Security policy](https://github.com/Nixtla/synforecast/security/policy)
-- [Citation](https://github.com/Nixtla/synforecast/blob/main/CITATION.cff)
+- [Generator reference](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/GENERATORS.md)
+- [Contributing](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/CONTRIBUTING.md)
+- [Roadmap](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/ROADMAP.md)
+- [Changelog](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/CHANGELOG.md)
+- [Support](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/SUPPORT.md)
+- [Security policy](https://github.com/Nixtla/nixtla/security/policy)
+- [Citation](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/CITATION.cff)
 
 ## AI disclaimer
 
@@ -240,4 +240,4 @@ licensing, and design.
 
 ## License
 
-SynForecast is licensed under the [Apache License 2.0](https://github.com/Nixtla/synforecast/blob/main/LICENSE).
+SynForecast is licensed under the [Apache License 2.0](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/LICENSE).

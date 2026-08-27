@@ -50,12 +50,12 @@ plotting = ["matplotlib>=3.8.4"]
 all = ["conformalforecast[nixtla,spci,plotting]"]
 
 [project.urls]
-Homepage = "https://github.com/Nixtla/conformalforecast"
+Homepage = "https://github.com/Nixtla/nixtla/tree/main/packages/conformalforecast"
 Documentation = "https://nixtlaverse.nixtla.io/conformalforecast/"
-Repository = "https://github.com/Nixtla/conformalforecast"
-Issues = "https://github.com/Nixtla/conformalforecast/issues"
-Changelog = "https://github.com/Nixtla/conformalforecast/blob/main/CHANGELOG.md"
-Security = "https://github.com/Nixtla/conformalforecast/security/policy"
+Repository = "https://github.com/Nixtla/nixtla/tree/main/packages/conformalforecast"
+Issues = "https://github.com/Nixtla/nixtla/issues"
+Changelog = "https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CHANGELOG.md"
+Security = "https://github.com/Nixtla/nixtla/security/policy"
 
 [dependency-groups]
 dev = [
@@ -107,6 +107,12 @@ integration-docs = [
 # docs never train on GPU, so pull the CPU build everywhere except macOS (which
 # has no separate CPU index).
 torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+# In-repo siblings the integration tests import; dev-only, uv strips sources
+# from the published metadata.
+mlforecast            = { path = "../mlforecast", editable = true }
+neuralforecast        = { path = "../neuralforecast", editable = true }
+statsforecast         = { path = "../statsforecast", editable = true }
+utilsforecast         = { path = "../utilsforecast", editable = true }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

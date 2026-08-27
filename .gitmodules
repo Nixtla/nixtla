@@ -1,0 +1,21 @@
+# Git only reads .gitmodules from the repository root, so every package's
+# submodules are declared here rather than inside packages/<pkg>/.
+#
+# Eigen is checked out once per compiled package on purpose: each one ships it
+# inside its own sdist, so hoisting it to a shared path above the package
+# directories would break source installs from PyPI. A gitlink is 20 bytes.
+[submodule "packages/coreforecast/external_libs/doctest"]
+	path = packages/coreforecast/external_libs/doctest
+	url = https://github.com/doctest/doctest.git
+[submodule "packages/coreforecast/external_libs/skiplist"]
+	path = packages/coreforecast/external_libs/skiplist
+	url = https://github.com/paulross/skiplist.git
+[submodule "packages/coreforecast/external_libs/stl-cpp"]
+	path = packages/coreforecast/external_libs/stl-cpp
+	url = https://github.com/jmoralez/stl-cpp.git
+[submodule "packages/hierarchicalforecast/external_libs/eigen"]
+	path = packages/hierarchicalforecast/external_libs/eigen
+	url = https://gitlab.com/libeigen/eigen
+[submodule "packages/statsforecast/external_libs/eigen"]
+	path = packages/statsforecast/external_libs/eigen
+	url = https://gitlab.com/libeigen/eigen

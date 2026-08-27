@@ -9,11 +9,11 @@
 <h1 align="center">Machine Learning 🤖 Forecast</h1>
 <h3 align="center">Scalable machine learning for time series forecasting</h3>
 
-[![CI](https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml/badge.svg)](https://github.com/Nixtla/mlforecast/actions/workflows/ci.yaml)
+[![CI](https://github.com/Nixtla/nixtla/actions/workflows/mlforecast-ci.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/mlforecast-ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/mlforecast.png)](https://pypi.org/project/mlforecast/)
 [![PyPi](https://img.shields.io/pypi/v/mlforecast?color=blue.png)](https://pypi.org/project/mlforecast/)
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/mlforecast?color=blue.png)](https://anaconda.org/conda-forge/mlforecast)
-[![License](https://img.shields.io/github/license/Nixtla/mlforecast.png)](https://github.com/Nixtla/mlforecast/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/Nixtla/nixtla.png)](https://github.com/Nixtla/nixtla/blob/main/packages/mlforecast/LICENSE)
 
 **mlforecast** is a framework to perform time series forecasting using
 machine learning models, with the option to scale to massive amounts of
@@ -250,4 +250,4 @@ fig = plot_series(series, predictions, max_ids=4, plot_random=False)
 ## How to contribute
 
 See
-[CONTRIBUTING.md](https://github.com/Nixtla/mlforecast/blob/main/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/Nixtla/nixtla/blob/main/packages/mlforecast/CONTRIBUTING.md).

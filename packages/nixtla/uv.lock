@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1010,8 +1010,8 @@ dependencies = [
     { name = "flask" },
     { name = "importlib-metadata" },
     { name = "nest-asyncio" },
-    { name = "plotly", version = "5.24.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
-    { name = "plotly", version = "6.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "plotly", version = "5.24.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.13.*'" },
+    { name = "plotly", version = "6.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version != '3.13.*'" },
     { name = "requests" },
     { name = "retrying" },
     { name = "setuptools" },
@@ -2813,9 +2813,9 @@ requires-dist = [
     { name = "tabulate", marker = "extra == 'dev'" },
     { name = "tenacity" },
     { name = "tqdm" },
-    { name = "utilsforecast", specifier = ">=0.2.15" },
-    { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'dev'" },
-    { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'plotting'" },
+    { name = "utilsforecast", editable = "../utilsforecast" },
+    { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'dev'", editable = "../utilsforecast" },
+    { name = "utilsforecast", extras = ["plotting"], marker = "extra == 'plotting'", editable = "../utilsforecast" },
 ]
 provides-extras = ["dev", "distributed", "plotting", "date-extras", "snowflake"]
 
@@ -3414,7 +3414,6 @@ name = "plotly-resampler"
 version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.14'",
     "python_full_version == '3.13.*'",
 ]
 dependencies = [
@@ -5409,17 +5408,13 @@ wheels = [
 
 [[package]]
 name = "utilsforecast"
-version = "0.2.15"
-source = { registry = "https://pypi.org/simple" }
+version = "0.2.17"
+source = { editable = "../utilsforecast" }
 dependencies = [
     { name = "narwhals" },
     { name = "numpy" },
     { name = "packaging" },
     { name = "pandas" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/55/8a37bb9ce36541fd353466259a07ccfdfaf25c996f3a71d989af4d4c7ba4/utilsforecast-0.2.15.tar.gz", hash = "sha256:c36d65d698a88d0fadc93d2d6737c304c3776397c60ae551ee17aa678caf3659", size = 60609, upload-time = "2025-12-03T16:29:08.652Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/11/6c6ee61958b8e60f634b39e2f9a004f5d1c479cb962a2001fc3c72ceed78/utilsforecast-0.2.15-py3-none-any.whl", hash = "sha256:4b43bf5107e3cba13604cd86e93b5cf4906b57105b1900ccf98b8978aabd4150", size = 40344, upload-time = "2025-12-03T16:29:07.144Z" },
 ]
 
 [package.optional-dependencies]
@@ -5427,8 +5422,40 @@ plotting = [
     { name = "pandas", extra = ["plot"] },
     { name = "plotly", version = "5.24.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "plotly", version = "6.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
-    { name = "plotly-resampler", version = "0.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "plotly-resampler", version = "0.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.13.*'" },
     { name = "plotly-resampler", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "narwhals", specifier = ">=2.0" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pandas", specifier = ">=1.5" },
+    { name = "pandas", extras = ["plot"], marker = "extra == 'plotting'" },
+    { name = "plotly", marker = "extra == 'plotting'" },
+    { name = "plotly-resampler", marker = "python_full_version < '3.14' and extra == 'plotting'" },
+    { name = "polars", extras = ["numpy"], marker = "extra == 'polars'", specifier = ">=1.0,<=1.31" },
+]
+provides-extras = ["plotting", "polars"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "dask" },
+    { name = "fugue", extras = ["dask", "spark"], specifier = ">=0.9.4" },
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser.git?rev=main" },
+    { name = "numba", specifier = ">=0.58.0" },
+    { name = "pandas", extras = ["plot"] },
+    { name = "pip" },
+    { name = "pip-licenses" },
+    { name = "plotly" },
+    { name = "plotly-resampler", marker = "python_full_version < '3.14'" },
+    { name = "polars", extras = ["numpy"], specifier = ">=1.0" },
+    { name = "pre-commit" },
+    { name = "pyarrow" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "scipy" },
 ]
 
 [[package]]

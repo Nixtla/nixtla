@@ -38,12 +38,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Nixtla/synforecast"
+Homepage = "https://github.com/Nixtla/nixtla/tree/main/packages/synforecast"
 Documentation = "https://nixtlaverse.nixtla.io/synforecast/"
-Repository = "https://github.com/Nixtla/synforecast"
-Issues = "https://github.com/Nixtla/synforecast/issues"
-Changelog = "https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md"
-Security = "https://github.com/Nixtla/synforecast/security/policy"
+Repository = "https://github.com/Nixtla/nixtla/tree/main/packages/synforecast"
+Issues = "https://github.com/Nixtla/nixtla/issues"
+Changelog = "https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/CHANGELOG.md"
+Security = "https://github.com/Nixtla/nixtla/security/policy"
 
 [dependency-groups]
 dev = [

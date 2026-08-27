@@ -125,4 +125,4 @@ structure use [TCM](./tcm.html); for Gaussian-process kernel compositions use
 [KernelSynth](./kernel_synth.html).
 
 Full constructor parameters are listed in the
-[generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md).
+[generator reference](https://github.com/Nixtla/nixtla/blob/main/packages/synforecast/GENERATORS.md).

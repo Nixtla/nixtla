@@ -15,7 +15,7 @@
   "navbar": {
     "primary": {
       "type": "github",
-      "href": "https://github.com/Nixtla/conformalforecast"
+      "href": "https://github.com/Nixtla/nixtla/tree/main/packages/conformalforecast"
     }
   },
   "navigation": {

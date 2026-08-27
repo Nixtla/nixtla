@@ -60,12 +60,12 @@ For development, clone the repository and use the `devenv` target, which syncs
 every extra plus the dev group and installs the pre-commit hooks:
 
 ```bash
-git clone https://github.com/Nixtla/conformalforecast.git
-cd conformalforecast
+git clone --recurse-submodules https://github.com/Nixtla/nixtla.git
+cd nixtla/packages/conformalforecast
 make devenv
 ```
 
-See [CONTRIBUTING](https://github.com/Nixtla/conformalforecast/blob/main/CONTRIBUTING.md)
+See [CONTRIBUTING](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CONTRIBUTING.md)
 for the test, lint and documentation workflow.
 
 ::: {.callout-warning}

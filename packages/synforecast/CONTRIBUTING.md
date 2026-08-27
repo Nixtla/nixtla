@@ -7,8 +7,8 @@ Requirements: Python 3.11+, [uv](https://github.com/astral-sh/uv), Git, a
 [cargo-about](https://github.com/EmbarkStudios/cargo-about).
 
 ```bash
-git clone https://github.com/Nixtla/synforecast.git
-cd synforecast
+git clone --recurse-submodules https://github.com/Nixtla/nixtla.git
+cd nixtla/packages/synforecast
 cargo install cargo-about --version 0.9.1 --locked --features cli
 uv sync --all-groups
 uv run pre-commit install  # optional: run repository checks on every commit
@@ -148,7 +148,7 @@ cargo clippy --manifest-path rust/Cargo.toml --all-targets --all-features -- -D 
 3. Update [GENERATORS.md](GENERATORS.md) and the generator count in [README.md](README.md) when adding a generator, and add an entry to [CHANGELOG.md](CHANGELOG.md).
 4. Open a pull request with a clear description and a reference to any related issue.
 
-Report bugs and request features via [GitHub Issues](https://github.com/Nixtla/synforecast/issues).
+Report bugs and request features via [GitHub Issues](https://github.com/Nixtla/nixtla/issues).
 Planned work is listed in [ROADMAP.md](ROADMAP.md); update it when an item ships
 or when a pull request changes what is planned.
 

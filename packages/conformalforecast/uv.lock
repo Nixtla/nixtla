@@ -620,20 +620,20 @@ integration-docs = [
 requires-dist = [
     { name = "matplotlib", marker = "extra == 'all'", specifier = ">=3.8.4" },
     { name = "matplotlib", marker = "extra == 'plotting'", specifier = ">=3.8.4" },
-    { name = "mlforecast", marker = "extra == 'all'", specifier = ">=1.1" },
-    { name = "mlforecast", marker = "extra == 'nixtla'", specifier = ">=1.1" },
+    { name = "mlforecast", marker = "extra == 'all'", editable = "../mlforecast" },
+    { name = "mlforecast", marker = "extra == 'nixtla'", editable = "../mlforecast" },
     { name = "narwhals", specifier = ">=2.9" },
-    { name = "neuralforecast", marker = "extra == 'all'", specifier = ">=3.2.1" },
-    { name = "neuralforecast", marker = "extra == 'nixtla'", specifier = ">=3.2.1" },
+    { name = "neuralforecast", marker = "extra == 'all'", editable = "../neuralforecast" },
+    { name = "neuralforecast", marker = "extra == 'nixtla'", editable = "../neuralforecast" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "quantile-forest", marker = "extra == 'all'", specifier = ">=1.4.2" },
     { name = "quantile-forest", marker = "extra == 'spci'", specifier = ">=1.4.2" },
     { name = "scipy", specifier = ">=1.13" },
-    { name = "statsforecast", marker = "extra == 'all'", specifier = ">=2.1.1" },
-    { name = "statsforecast", marker = "extra == 'nixtla'", specifier = ">=2.1.1" },
-    { name = "utilsforecast", marker = "extra == 'all'", specifier = ">=0.2.16" },
-    { name = "utilsforecast", marker = "extra == 'nixtla'", specifier = ">=0.2.16" },
+    { name = "statsforecast", marker = "extra == 'all'", editable = "../statsforecast" },
+    { name = "statsforecast", marker = "extra == 'nixtla'", editable = "../statsforecast" },
+    { name = "utilsforecast", marker = "extra == 'all'", editable = "../utilsforecast" },
+    { name = "utilsforecast", marker = "extra == 'nixtla'", editable = "../utilsforecast" },
 ]
 provides-extras = ["all", "nixtla", "plotting", "spci"]
 
@@ -655,20 +655,20 @@ docs = [
     { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser?rev=a6f375a052783c18f4ca2599c74814c05ee6d568" },
     { name = "nbclient", specifier = ">=0.11.0" },
     { name = "nbformat", specifier = ">=5.11.0" },
-    { name = "utilsforecast", specifier = ">=0.2.0" },
+    { name = "utilsforecast", editable = "../utilsforecast" },
 ]
 integration-docs = [
     { name = "ipywidgets", specifier = ">=8.1.0" },
     { name = "lightgbm", specifier = ">=4.0" },
-    { name = "mlforecast", specifier = ">=1.1" },
-    { name = "neuralforecast", specifier = ">=3.2.1" },
+    { name = "mlforecast", editable = "../mlforecast" },
+    { name = "neuralforecast", editable = "../neuralforecast" },
     { name = "polars", specifier = ">=1.1" },
     { name = "quantile-forest", specifier = ">=1.4.2" },
     { name = "scikit-learn", specifier = ">=1.4.2" },
-    { name = "statsforecast", specifier = ">=2.1.1" },
+    { name = "statsforecast", editable = "../statsforecast" },
     { name = "torch", marker = "sys_platform != 'darwin'", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform == 'darwin'" },
-    { name = "utilsforecast", specifier = ">=0.2.16" },
+    { name = "utilsforecast", editable = "../utilsforecast" },
 ]
 
 [[package]]
@@ -756,34 +756,27 @@ wheels = [
 
 [[package]]
 name = "coreforecast"
-version = "0.0.17"
-source = { registry = "https://pypi.org/simple" }
+version = "0.0.20"
+source = { editable = "../coreforecast" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/60/9b0393ab1e29fdc8669962824982b6b875551d271e99b50c2e7ebe1eab1d/coreforecast-0.0.17.tar.gz", hash = "sha256:80f85deba12deb6153e36a127c2781eeaa09918de07393428923b537e2f7d259", size = 2815805, upload-time = "2026-02-24T20:49:32.661Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/d0/d54a12847fc1731c127985ad2b53f198355a246c79258df487cd440a8f9a/coreforecast-0.0.17-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:0baec999e923fa0b3bb385f4b3fb793a53f8a517f411e01764e7d649a4982b2c", size = 292540, upload-time = "2026-02-24T20:49:00.756Z" },
-    { url = "https://files.pythonhosted.org/packages/64/98/bd8e890648604250a906d2ffb50ae3c90d8b93c72b995c6962468d2e9cd3/coreforecast-0.0.17-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:acc3db919ea3eae85b1d87d72e7f69c8535766b757265c4e0ec0fffcffa92e24", size = 262104, upload-time = "2026-02-24T20:49:02.153Z" },
-    { url = "https://files.pythonhosted.org/packages/22/92/f9e7ebc0b3d6ba5c0a4a30ce90eb09e554de523605067b0191ee9dcf9f2b/coreforecast-0.0.17-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1f29bf8344ff343e275b494ef2f9bc40bfd0f92c64e26a845663ac499e9c3c5a", size = 312936, upload-time = "2026-02-24T20:49:04.258Z" },
-    { url = "https://files.pythonhosted.org/packages/cc/ed/335de0cd269c80cdd74ec85b71c62814c5c9244ed47f0294ad2cbc440d00/coreforecast-0.0.17-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:597442705caad5bb29bef6d13896a4f49da242bb338151ab2a3f37ca72e6716a", size = 345522, upload-time = "2026-02-24T20:49:05.619Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/71/6e9992cffbfce44dce1c1a62287fd139d9fb546a91d02f9ede30dbb051ec/coreforecast-0.0.17-cp311-cp311-win_amd64.whl", hash = "sha256:ef38951928446dea4214e971b2dc08b083a9b2ba60cbc498a91478e3c13af50c", size = 237367, upload-time = "2026-02-24T20:49:06.994Z" },
-    { url = "https://files.pythonhosted.org/packages/26/3a/15ca47bd01a374289e8e8332d7fb67937cc171ae9ab2b0004361d296c9eb/coreforecast-0.0.17-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:6530eb0c1fc3fdb51697ecded87e72ba34de1b69010a4571dab846ee25e9c8d2", size = 290674, upload-time = "2026-02-24T20:49:08.756Z" },
-    { url = "https://files.pythonhosted.org/packages/ea/68/1e7efca384cd506b5e772a5a7aedd4b2c34aeb10cf7598b03bef6014b7f8/coreforecast-0.0.17-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:eda8ccdf97f9353979c8c69e89352b98dbbf75290bb5a8a43850f08051016537", size = 263486, upload-time = "2026-02-24T20:49:10.085Z" },
-    { url = "https://files.pythonhosted.org/packages/54/40/4c20d7181b4bdbc482889db090d401af7e73b58d120d08b810ef9fa37d88/coreforecast-0.0.17-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:88126b4df1556c349cd99855dfd5380512d0af04b40fdd3d19cf3d58cea99c97", size = 317952, upload-time = "2026-02-24T20:49:11.433Z" },
-    { url = "https://files.pythonhosted.org/packages/86/e6/df4a9bd04479f069f176666da42268dc1ef037fa93724d4e1ca3ac712ba2/coreforecast-0.0.17-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:497ac7ad456ee4daaaf471731c39ee9692af39f760d7ef4b72fe882075643753", size = 348186, upload-time = "2026-02-24T20:49:12.9Z" },
-    { url = "https://files.pythonhosted.org/packages/1a/b9/e0a1f1db8a4e549c5284d59bdbc1052a6848af87878deccf5cda2e8f1829/coreforecast-0.0.17-cp312-cp312-win_amd64.whl", hash = "sha256:61ffbe5df741d830ba1c21f11aae9448659e20c11ba7a663734baf6f910a6e60", size = 239472, upload-time = "2026-02-24T20:49:14.499Z" },
-    { url = "https://files.pythonhosted.org/packages/75/90/2fef87c1515a40dda14f2cb10910eb9a038ea4f790fb8373c6e7fe83e85a/coreforecast-0.0.17-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:131240792aebfbd9c07df8d1eecec8484facb76c04c5c20888300325dc74ea06", size = 290697, upload-time = "2026-02-24T20:49:16.895Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/03/b61dc7ff53e736e1becfb704bf76fa743749b528e471e52a11c7dbd2f1e2/coreforecast-0.0.17-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:3d25881dc4eef1fe6c1958ec6a683476cd82f88fa166bf2b136ccd217dc46ffd", size = 263559, upload-time = "2026-02-24T20:49:18.654Z" },
-    { url = "https://files.pythonhosted.org/packages/d3/23/88dc70dcc483b827e58f0a0ea863d887f4bdcae7e0e5234f06f942555eb2/coreforecast-0.0.17-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e4dcbec6c7a4197103ec0d433f6a7d95b23b226c51909b2161447e53b6da95ab", size = 317948, upload-time = "2026-02-24T20:49:20.401Z" },
-    { url = "https://files.pythonhosted.org/packages/90/3e/5b48c87973a6d3f340b0e8a24fcce38a1e65f6b75ba24e66a3c7472b2281/coreforecast-0.0.17-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:cd47c21c9c5d307518d1e5ac9033422102400ac7f7cc3b2ae2bbd8eab7808b43", size = 348253, upload-time = "2026-02-24T20:49:21.818Z" },
-    { url = "https://files.pythonhosted.org/packages/cf/47/de859c21a3bc5d959bf8af750c03486fb62cb4bb7acb71519dab636ef59e/coreforecast-0.0.17-cp313-cp313-win_amd64.whl", hash = "sha256:4dce06a3dec0e20d6d88a85c506a6ec2f3ac6d317549a878134a16508e0479ba", size = 239473, upload-time = "2026-02-24T20:49:23.454Z" },
-    { url = "https://files.pythonhosted.org/packages/79/c0/6d8e7e5f5307d2863194de598c2567652971107631cb3e9eab72dd834c2c/coreforecast-0.0.17-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:c9396c5d80f8c8d8ba1e89cd7dd7fc904b9b819d009175acd4986e91375fe80f", size = 291608, upload-time = "2026-02-24T20:49:24.872Z" },
-    { url = "https://files.pythonhosted.org/packages/73/69/30af8928b59f0650b4f477a73f8a1045e2fdc470684d308e38b98fd229d6/coreforecast-0.0.17-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:0c7d411333be17519ae30c9386ae9d7015352f93a3fecaa309ae0564179b3b77", size = 264624, upload-time = "2026-02-24T20:49:26.248Z" },
-    { url = "https://files.pythonhosted.org/packages/30/94/71692f9e5ec5801c0cca2946ff49a7ba47c45f793079b9812bf6938b5cf4/coreforecast-0.0.17-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:eefcfdbe7f1ee3af3d1050099815de44243d5e6f23762a4f2f0ba6230e04d4b3", size = 318892, upload-time = "2026-02-24T20:49:27.888Z" },
-    { url = "https://files.pythonhosted.org/packages/9c/12/b59f5b656edf03b03b3157e35195adc68a6396d99555628f80095f1917a9/coreforecast-0.0.17-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7bb5692b58d5c4ac1043ae1b315eaacad9d9387d6cd83fb48cecd2b7779afb98", size = 348623, upload-time = "2026-02-24T20:49:29.696Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/31/aefe4dd70a9e63bf17d159ef76c4a5c2b6242efbc5e4ebfe387a228e389f/coreforecast-0.0.17-cp314-cp314-win_amd64.whl", hash = "sha256:bb2b747857884f350d8a6035d13cf1d4dd826404118f75734df6a44bfd8670bc", size = 246364, upload-time = "2026-02-24T20:49:31.076Z" },
+
+[package.metadata]
+requires-dist = [{ name = "numpy", specifier = ">=1.20.0" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser.git" },
+    { name = "pandas" },
+    { name = "pip-licenses" },
+    { name = "pre-commit" },
+    { name = "pybind11" },
+    { name = "pytest" },
+    { name = "pytest-codspeed" },
+    { name = "pytest-cov" },
+    { name = "pytest-run-parallel", marker = "python_full_version >= '3.13'" },
 ]
 
 [[package]]
@@ -1883,7 +1876,7 @@ dependencies = [
 [[package]]
 name = "mlforecast"
 version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../mlforecast" }
 dependencies = [
     { name = "cloudpickle" },
     { name = "coreforecast" },
@@ -1894,9 +1887,63 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "utilsforecast" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e5/b9/3cda3cc4801b2af842daf6c679b3899029e337ddef79a6f43d52ba5e4958/mlforecast-1.1.0.tar.gz", hash = "sha256:5f0baf178a4017785475db86d56d628a48cf267d5b8ea6ebef798d9ddf396bd8", size = 242838, upload-time = "2026-07-10T00:52:26.286Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b2/9d/bf967c65a035d278302dff82ae739862a773fbd2a2344f258035d2df3136/mlforecast-1.1.0-py3-none-any.whl", hash = "sha256:0043190f540510979c7709bb69267caa9ac325a11fa49298cf3425307200e748", size = 261702, upload-time = "2026-07-10T00:52:25.071Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "cloudpickle" },
+    { name = "coreforecast", editable = "../coreforecast" },
+    { name = "dask", extras = ["complete"], marker = "extra == 'dask'" },
+    { name = "fsspec" },
+    { name = "fsspec", extras = ["adl"], marker = "extra == 'azure'" },
+    { name = "fsspec", extras = ["gcs"], marker = "extra == 'gcp'" },
+    { name = "fsspec", extras = ["s3"], marker = "extra == 'aws'" },
+    { name = "fugue", extras = ["dask"], marker = "extra == 'dask'", specifier = ">=0.9.4" },
+    { name = "fugue", extras = ["ray"], marker = "sys_platform != 'win32' and extra == 'ray'", specifier = ">=0.9.4" },
+    { name = "fugue", extras = ["spark"], marker = "extra == 'spark'", specifier = ">=0.9.4" },
+    { name = "lightgbm", marker = "sys_platform != 'win32' and extra == 'ray'", specifier = ">=4.6" },
+    { name = "lightgbm", marker = "extra == 'dask'" },
+    { name = "lightgbm", marker = "extra == 'spark'" },
+    { name = "narwhals" },
+    { name = "optuna" },
+    { name = "pandas", specifier = "<3.0" },
+    { name = "polars", extras = ["numpy"], marker = "extra == 'polars'" },
+    { name = "pyspark", marker = "extra == 'spark'", specifier = ">=3.3" },
+    { name = "ray", extras = ["data", "train"], marker = "sys_platform != 'win32' and extra == 'ray'", specifier = ">=2.56" },
+    { name = "scikit-learn", specifier = ">=1.3" },
+    { name = "utilsforecast", editable = "../utilsforecast" },
+    { name = "xgboost", marker = "sys_platform != 'win32' and extra == 'ray'", specifier = ">=2.1.4" },
+    { name = "xgboost", marker = "extra == 'dask'" },
+    { name = "xgboost", marker = "extra == 'spark'" },
+]
+provides-extras = ["dask", "ray", "spark", "aws", "gcp", "azure", "polars"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "catboost" },
+    { name = "datasetsforecast", specifier = ">=1" },
+    { name = "gitpython", specifier = ">=3.2.1" },
+    { name = "holidays", specifier = "<0.21" },
+    { name = "lightgbm", specifier = ">=4.6" },
+    { name = "matplotlib" },
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser?rev=main" },
+    { name = "mlflow", specifier = ">=3.17.2" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pip-licenses" },
+    { name = "polars", extras = ["numpy"], specifier = "<=1.31.0" },
+    { name = "pre-commit" },
+    { name = "pyarrow" },
+    { name = "pytest" },
+    { name = "pytest-benchmark" },
+    { name = "pytest-codspeed" },
+    { name = "pytest-cov" },
+    { name = "pytest-rerunfailures" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "setuptools", specifier = ">=84.1.0" },
+    { name = "statsmodels" },
+    { name = "xgboost" },
 ]
 
 [[package]]
@@ -2282,8 +2329,8 @@ wheels = [
 
 [[package]]
 name = "neuralforecast"
-version = "3.3.0"
-source = { registry = "https://pypi.org/simple" }
+version = "3.3.1"
+source = { editable = "../neuralforecast" }
 dependencies = [
     { name = "coreforecast" },
     { name = "fsspec" },
@@ -2301,9 +2348,49 @@ dependencies = [
     { name = "tornado" },
     { name = "utilsforecast" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/35/ac/0c29090dc45e4dac65e04def46e060ee07a20936ed9635cf543313de5b39/neuralforecast-3.3.0.tar.gz", hash = "sha256:73fbb9b8ba194c6f06e64d2f137855c98616af7f2488c7107abb05516a22ebe7", size = 301494, upload-time = "2026-10-07T14:48:17.603Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/40/1c9309b703b889eecf398ea38c4e05909b502209c52d4b37b8d9c16a4b90/neuralforecast-3.3.0-py3-none-any.whl", hash = "sha256:df16b46ec2e3c3a494047ebe1996c6f4456e176daedc01ab508fbc569f722d45", size = 331311, upload-time = "2026-10-07T14:48:15.917Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "coreforecast", editable = "../coreforecast" },
+    { name = "fsspec" },
+    { name = "fugue", marker = "extra == 'spark'" },
+    { name = "numpy", specifier = ">=1.23.2" },
+    { name = "optuna" },
+    { name = "pandas", specifier = ">=2.3.3" },
+    { name = "pyarrow", marker = "extra == 'spark'", specifier = ">=23.0.1" },
+    { name = "pyspark", marker = "extra == 'spark'", specifier = ">=3.5" },
+    { name = "pytorch-lightning", specifier = ">=2.6.6" },
+    { name = "ray", extras = ["train", "tune"], specifier = ">=2.58.0" },
+    { name = "safetensors", specifier = ">=0.8.0" },
+    { name = "scipy" },
+    { name = "torch", specifier = ">=2.9.1" },
+    { name = "tornado", specifier = ">=6.5.5" },
+    { name = "utilsforecast", editable = "../utilsforecast" },
+]
+provides-extras = ["spark"]
+
+[package.metadata.requires-dev]
+aws = [{ name = "fsspec", extras = ["s3"] }]
+dev = [
+    { name = "black", specifier = ">=26.10.1" },
+    { name = "captum" },
+    { name = "gitpython" },
+    { name = "hyperopt" },
+    { name = "ipython", specifier = "<=8.32.0" },
+    { name = "matplotlib" },
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser?rev=main" },
+    { name = "mypy" },
+    { name = "ninja" },
+    { name = "pip-licenses" },
+    { name = "polars" },
+    { name = "pre-commit" },
+    { name = "pyarrow" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "s3fs" },
+    { name = "transformers" },
+    { name = "xlstm" },
 ]
 
 [[package]]
@@ -3424,7 +3511,7 @@ wheels = [
 
 [[package]]
 name = "ray"
-version = "2.56.0"
+version = "2.60.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -3437,20 +3524,22 @@ dependencies = [
     { name = "requests" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/f2/2cbbbef7a67adc6555b141c7a67557bd7ce21cfb85b85772627c6a582e97/ray-2.56.0-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:a9ad4e26941eb2f8dbd494ad07f9f2227143164c6114132b26b23ad4f20b1c6f", size = 66354212, upload-time = "2026-06-29T20:50:37.148Z" },
-    { url = "https://files.pythonhosted.org/packages/d6/69/09c8320519aa4d075bd6ecb1694c28d26b5b07a5b46050703d9ac2c5a9b6/ray-2.56.0-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:aea655831d25084cb343002a8e67a77b6aa552ddb776a65461d49f62884f096a", size = 73299499, upload-time = "2026-06-29T20:50:42.584Z" },
-    { url = "https://files.pythonhosted.org/packages/18/d3/84df370c773a0b853abdba498a6258106cb928d452ff56eec7f86c2f80b4/ray-2.56.0-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:c5bf1a4384c0e2aa4420c95474b734d064cac354b0f00760be02d886afe96ca4", size = 74143858, upload-time = "2026-06-29T20:50:48.228Z" },
-    { url = "https://files.pythonhosted.org/packages/5a/1b/0b4c96879ded375d0b35441c6b3633ccbea7c7c5448335589811fe5f275c/ray-2.56.0-cp311-cp311-win_amd64.whl", hash = "sha256:8e57781685bb4332edf8a7cfb1135ff53d50002b6a0504006e68365bcd26aa7c", size = 28390306, upload-time = "2026-06-29T20:50:53.841Z" },
-    { url = "https://files.pythonhosted.org/packages/05/d2/83777f52c10e04654c162bfa093f4e34cf6decf7a0bb4311e2432bfa8ecb/ray-2.56.0-cp312-cp312-macosx_12_0_arm64.whl", hash = "sha256:684a427c50745989e92a332343f0812c93b8506f71c768b95b1eefc113492699", size = 66344824, upload-time = "2026-06-29T20:50:58.367Z" },
-    { url = "https://files.pythonhosted.org/packages/6e/b2/d610ffe2878dae8ab903cfdded883a054c102b0104670bca7b34b662db51/ray-2.56.0-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:e1fd03c6ecc5fe4c31466569e41ce0a4faf26fb930798c9d1f1eb1f405a687c8", size = 73317367, upload-time = "2026-06-29T20:51:03.893Z" },
-    { url = "https://files.pythonhosted.org/packages/39/d1/8d442116f41e6bebec418d89f1556c67c77d593b55cf59e716503e7a4a17/ray-2.56.0-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:78ef34a71383c1fcf335e531e0e590867857fce9069f06ed351be6ce7a58fc50", size = 74192607, upload-time = "2026-06-29T20:51:09.528Z" },
-    { url = "https://files.pythonhosted.org/packages/b9/9e/cac7454325c79eb32f36f233285d9179858c7073bc27ac91afb74854ff12/ray-2.56.0-cp312-cp312-win_amd64.whl", hash = "sha256:a8fc809dab6fc07cf05d45ea93a776c852c990512eb1fac0e3d15819fe6df10a", size = 28370978, upload-time = "2026-06-29T20:51:14.168Z" },
-    { url = "https://files.pythonhosted.org/packages/65/86/29c9444c9f11f0bf3d4da75d3dc7a27c0fb86f8604beea6513968dc2df26/ray-2.56.0-cp313-cp313-macosx_12_0_arm64.whl", hash = "sha256:992047f50473b5bfea74c8f528f999968e0b4bc735af23ad476a0f4e04741aea", size = 66289930, upload-time = "2026-06-29T20:51:20.79Z" },
-    { url = "https://files.pythonhosted.org/packages/59/59/3c4d533a92e99b12b9d2e8690e41d7ace269d77deecb0aef753df7924b9e/ray-2.56.0-cp313-cp313-manylinux2014_aarch64.whl", hash = "sha256:a0e9cfe92c88ab74abca23923c15a592f49bc7617ffdda4190daca7785a7c4f6", size = 73252460, upload-time = "2026-06-29T20:51:26.216Z" },
-    { url = "https://files.pythonhosted.org/packages/59/ba/285d409253b332af91884daa4b0a3be3ce799682aa2c1e0f8dbbafaf1da4/ray-2.56.0-cp313-cp313-manylinux2014_x86_64.whl", hash = "sha256:54d2725f8b65d9615c933fec5ec62e54a67b8f2e14286026fb014606253670ef", size = 74130685, upload-time = "2026-06-29T20:51:31.59Z" },
-    { url = "https://files.pythonhosted.org/packages/82/a0/07a00091cf002662946ed2a16fe4b27c80be6fce7fc831e41c7e1471e2f7/ray-2.56.0-cp314-cp314-macosx_12_0_arm64.whl", hash = "sha256:f38e03b77c53e3d94091aedb84b14efe7ee5b581d85b7d13925066bcd48c44a2", size = 66298834, upload-time = "2026-06-29T20:51:36.82Z" },
-    { url = "https://files.pythonhosted.org/packages/30/3c/2819cc8b40bf4034ff871c18d04a0422b7b0a51b32260c6f03a06460aaa5/ray-2.56.0-cp314-cp314-manylinux2014_aarch64.whl", hash = "sha256:c3a16d43d75283a3d64fa1d904a3adaf3f526f3f508f447505b8bb8dc70bad6c", size = 73242922, upload-time = "2026-06-29T20:51:42.467Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/5b/33ac5616706d1bc0bd40e22baf12acccd687b505f85d107f549355379d6f/ray-2.56.0-cp314-cp314-manylinux2014_x86_64.whl", hash = "sha256:73edb6fb5fd05481b1f358ac2e8a4c7f6a031d89f9b823d25a587ddb7529070f", size = 74099117, upload-time = "2026-06-29T20:51:48.19Z" },
+    { url = "https://files.pythonhosted.org/packages/33/e7/a6e21fe36aa20767ac63211743ceee7c27c7814d308c9610cb034e685535/ray-2.60.0-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:aa4207cbf40817d0bf4e35aa793b8a3a987008c342c0e8cbcde18a6e31b6b85a", size = 67784796, upload-time = "2026-11-04T01:59:52.493Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/f4/8bdbee2aaef1437cf55d79f91dd43b3c3467741e06c9275eac900d9b9fac/ray-2.60.0-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:d51d623d6af4ef49f5dee7d3340b95b44cdc774b6a7964e8632acdfce8b9efac", size = 78273781, upload-time = "2026-11-04T01:59:58.069Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/36/99ab211a4eb44b1254e6ca8c41d0c9fab23c0bc818f20d3360ccb734fe7a/ray-2.60.0-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:e227f6b2af8ab4626dd9a35a5860b33864325ea137383d57f854d4637ee3fea2", size = 79263560, upload-time = "2026-11-04T02:00:03.947Z" },
+    { url = "https://files.pythonhosted.org/packages/06/67/21980e5a839722389633a4f723b6a50092d24aafd9862ae78f2dfdb3a4d6/ray-2.60.0-cp311-cp311-win_amd64.whl", hash = "sha256:844eb7f6a2425f2f578066d09ce4aa20961b2b6d457379d493e457512db4fb6e", size = 29378639, upload-time = "2026-11-04T02:00:08.61Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/ad/27718e8595b6a7706bfed96371c7ea27e8fa74af8567ee792f5820ed0768/ray-2.60.0-cp312-cp312-macosx_12_0_arm64.whl", hash = "sha256:b9ee3d2bd3210b97e2e253046333a12e08617c6fb3e6a1fac082689d6709660a", size = 67771807, upload-time = "2026-11-04T02:00:13.594Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/2f/ad412121fb12943a81a7e428a5a5d2031f6bc27ba0ec0194e2932191c7b9/ray-2.60.0-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:0f08c7af063583b68be55feab90dd056255d4d689a37e67bc94fcad79800a29e", size = 78297768, upload-time = "2026-11-04T02:00:19.301Z" },
+    { url = "https://files.pythonhosted.org/packages/26/5a/a9c289609e6f401aa94a7c5500fd5c4cd5158113828a9d1b2e9b4ecb7000/ray-2.60.0-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:b951b40965947a63615830916be04f26440d234de1e9a29dbf2155d03fa9ad2a", size = 79321593, upload-time = "2026-11-04T02:00:25.556Z" },
+    { url = "https://files.pythonhosted.org/packages/86/e6/d8daefb8ffa8461bff793a7aba4f625a869ea8f2ad3d2687716bb64f1a75/ray-2.60.0-cp312-cp312-win_amd64.whl", hash = "sha256:897c66d944c908d7c7475a37232dcfb15c1413f8e5cc7aeeaec0784ef101eb59", size = 29356212, upload-time = "2026-11-04T02:00:30.196Z" },
+    { url = "https://files.pythonhosted.org/packages/51/d2/61aac8e95ddb3989a4452e018b593d3289bbeb3fe60912379276e9e9813a/ray-2.60.0-cp313-cp313-macosx_12_0_arm64.whl", hash = "sha256:ccf194ff534cd8294d52b4327d1457a5c0d601f48cc1c849c898f1d4dbc44328", size = 67717618, upload-time = "2026-11-04T02:00:35.101Z" },
+    { url = "https://files.pythonhosted.org/packages/85/91/16c6c315aea532fbdcc81aec3cddbfb91ffb3fb3e1610636c959696c0797/ray-2.60.0-cp313-cp313-manylinux2014_aarch64.whl", hash = "sha256:03b05ce23d309e4c2d1626bf94343e3a3e9e26fa4c0d2ca70b66f86b84c97f26", size = 78210954, upload-time = "2026-11-04T02:00:40.256Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/dd/0078893a61998d17e8cb60628bea759730d5f0426e6ad4dc29857c5f83b1/ray-2.60.0-cp313-cp313-manylinux2014_x86_64.whl", hash = "sha256:7f7fb209a2df375f141e8d0e132e7644b8e8efe3855b70f4844fbfb14ea6672c", size = 79246526, upload-time = "2026-11-04T02:00:46.006Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/b9/a0ce4f5ea245448936086c2361b65512e3104d41d23579b7c4804a28dcda/ray-2.60.0-cp313-cp313-win_amd64.whl", hash = "sha256:45fe3453323a8e1310ff29d56effa7dfb5dd712b3ea7f1dbfd9fc0f455b9803b", size = 29306748, upload-time = "2026-11-04T02:00:50.974Z" },
+    { url = "https://files.pythonhosted.org/packages/35/3b/e8ae1500207316e9a13879514f50fe77820b942b1adcfed5a69b6c22624e/ray-2.60.0-cp314-cp314-macosx_12_0_arm64.whl", hash = "sha256:367d6efe7a15651d75aa0c754853f84ef27d931d49ebc531a307902a8e728811", size = 67723302, upload-time = "2026-11-04T02:00:55.776Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/01/f1b10b2ff373f72c9d9bf4aa9cce9062a375fe5a0a4f26587c3ed769e372/ray-2.60.0-cp314-cp314-manylinux2014_aarch64.whl", hash = "sha256:b20215a57f887b203463d5b8074c8b133bce23ae89c85522b9f932ddc589301f", size = 78204259, upload-time = "2026-11-04T02:01:01.188Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/cc/f1e0d6121540b8235a70c4fa844a8fd95d26606849f1064f69d6a973f023/ray-2.60.0-cp314-cp314-manylinux2014_x86_64.whl", hash = "sha256:0ec3f44af2961d8cad2f8d699b470e2f6843d443ccc6f403948aeeeb77ad35c3", size = 79213605, upload-time = "2026-11-04T02:01:06.808Z" },
+    { url = "https://files.pythonhosted.org/packages/da/3d/c012492ffcc47343b6f366746970fe0e52d0871bc10e9446e95615b9ab08/ray-2.60.0-cp314-cp314-win_amd64.whl", hash = "sha256:2a5ad62b1b00797aed7ac6a6aa8931b7d69eaed5b52e49d705d31f18fdcdbbd3", size = 29897791, upload-time = "2026-11-04T02:01:11.296Z" },
 ]
 
 [package.optional-dependencies]
@@ -3971,7 +4060,7 @@ wheels = [
 [[package]]
 name = "statsforecast"
 version = "2.1.1"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../statsforecast" }
 dependencies = [
     { name = "cloudpickle" },
     { name = "coreforecast" },
@@ -3986,28 +4075,83 @@ dependencies = [
     { name = "tqdm" },
     { name = "utilsforecast" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/6f/25a1874c72d68c84a3cce1920fb29819090d8276ab9d896cbdebdfa68923/statsforecast-2.1.1.tar.gz", hash = "sha256:3b4c91ac4e2a51a614596226df3cb210f99a152601f8235e0459248d05a42045", size = 2903236, upload-time = "2026-07-16T18:20:47.651Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/0e/3cf58ef231ecf7e7a548a44201351bd401c36f77e12db7cd5e0158bc938b/statsforecast-2.1.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:b5212cff88c1cc85461dfc474bf23b7e32151138ee25c6c4a2af998b78406f50", size = 433310, upload-time = "2026-07-16T18:20:13.617Z" },
-    { url = "https://files.pythonhosted.org/packages/37/6d/346203b97c45768884e0bf0992b3748bde590b3ecac7a0ee968862ea3097/statsforecast-2.1.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:b7747a6bfcff8d8c3dfeb137477510f7511cfa7bfd4a25eb68d86d65478099e4", size = 425470, upload-time = "2026-07-16T18:20:15.191Z" },
-    { url = "https://files.pythonhosted.org/packages/ef/88/be9f41668f762d8a9d41a48d433627e31aaf159a7162e52b26f65a34b632/statsforecast-2.1.1-cp311-cp311-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:01dd33b49221d795e467d6824198dee9d8ddc2f15726d208462c0361adb98c83", size = 468774, upload-time = "2026-07-16T18:20:16.9Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/f4/7ef400c588cbcb8023024ffcc3aab9b2a44acfd89a728a90e75394a66c5c/statsforecast-2.1.1-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:dbe3e3e1035fdce505566e2ffd088c7cb72fcc4d87d6f6f07ec2a5eecee9d8fa", size = 499130, upload-time = "2026-07-16T18:20:18.548Z" },
-    { url = "https://files.pythonhosted.org/packages/0a/f9/e2b619a7f8f55cad906dd60082b914e38928210ffadc3a1d8fe9e5b44b40/statsforecast-2.1.1-cp311-cp311-win_amd64.whl", hash = "sha256:ea34924f9b028966520598fbb8a6b6ff009ddfb4c69d2e416e3ea2efc4735c10", size = 586499, upload-time = "2026-07-16T18:20:20.1Z" },
-    { url = "https://files.pythonhosted.org/packages/b8/f3/d586c8fcfa7a846c7e9129a84a8c141668f5fa57953f7fc5184fe393ee92/statsforecast-2.1.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:abc32f921665f882601c574ce42d0efeb8fb1a4f9d1e84bfe404de58bf8fcede", size = 438296, upload-time = "2026-07-16T18:20:21.848Z" },
-    { url = "https://files.pythonhosted.org/packages/6f/d1/5f36465c801048018cc5b03d924997cda4f811b44cbb6242cd8cdb5e69d3/statsforecast-2.1.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:3e3e0f04b02e1bdd0c9ccb0609ca427dfe85b28c84e1c094ea7541ded91d824e", size = 428190, upload-time = "2026-07-16T18:20:23.375Z" },
-    { url = "https://files.pythonhosted.org/packages/00/04/79b4ec9feb8bc8ebc71fd03bd1a41358820ac2a9d1e6022df4bee51be88f/statsforecast-2.1.1-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:7d79fae7b67ab6b18b60cc481fec1428d4519ce7c226fab3929faafdef1b6e87", size = 469340, upload-time = "2026-07-16T18:20:24.886Z" },
-    { url = "https://files.pythonhosted.org/packages/5c/53/361c4c23fc8599e5e0fbd5a195550924b4e7e969d232aa1ac7d2250fa401/statsforecast-2.1.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a7eb73dd44a31c7a117297216a77083c3bafdcd5a97308f64a91f7a6b25b7ea3", size = 500972, upload-time = "2026-07-16T18:20:26.392Z" },
-    { url = "https://files.pythonhosted.org/packages/7b/a8/db1949f53a93b0936fb9569b9bb866440573047abb642bda18a1dfe84b40/statsforecast-2.1.1-cp312-cp312-win_amd64.whl", hash = "sha256:e02982a9ad2d869450db35f5a531be5785ea89fa31e5be7f7af191540c018fe5", size = 588574, upload-time = "2026-07-16T18:20:27.943Z" },
-    { url = "https://files.pythonhosted.org/packages/d4/1b/40c156d34b16d5fb6e0ad777d093ecd7f8196974f0ef394d22d386a09a1f/statsforecast-2.1.1-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:20a08e87dbec02dcdd05842655e70c4d8ba7ee82e168354a51da699a8cf337f5", size = 438157, upload-time = "2026-07-16T18:20:29.412Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/70/5aaafcc4ee5d1eaef0e13caf2d84ea35785c9f2ddf4116bf903612c4b7cd/statsforecast-2.1.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:964e7e6b1ae471972321519caaed6f758e7a841e2f001a1b51ee26ef7cbfb5bc", size = 428054, upload-time = "2026-07-16T18:20:31.123Z" },
-    { url = "https://files.pythonhosted.org/packages/60/b2/ba047837f722c506571846ba4af744fba92bc66ee7b33b40f1a760914ceb/statsforecast-2.1.1-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:2010a8cdfae122164704a6f489c1997cd6526f6f0b751255df7a24902daa32b0", size = 469233, upload-time = "2026-07-16T18:20:32.923Z" },
-    { url = "https://files.pythonhosted.org/packages/82/7f/66e188ae3e8d151356c52faa93bc621f41d55abbdcc8be855a14f3e7ffe8/statsforecast-2.1.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3e160795172f33371d1a5976e817fa7d48c1a2e6aed956a672bb867e95504429", size = 501756, upload-time = "2026-07-16T18:20:34.651Z" },
-    { url = "https://files.pythonhosted.org/packages/ff/16/8552b07cef2326d4f72455de4b3a7defa2ab21943790e416bb60e8afcf4e/statsforecast-2.1.1-cp313-cp313-win_amd64.whl", hash = "sha256:3275a96605ef687a5be73af8423a8499240db54f7c6c173a28c259faf4e99176", size = 588579, upload-time = "2026-07-16T18:20:36.392Z" },
-    { url = "https://files.pythonhosted.org/packages/3f/62/ae74c47e684eba0dc2d6c0a7c161be01957651d07a8a79488ce8682687cc/statsforecast-2.1.1-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:a063096f9403b36f94975e1676be1aff63b620a3e71c91e1dc910813edf80684", size = 439552, upload-time = "2026-07-16T18:20:38.019Z" },
-    { url = "https://files.pythonhosted.org/packages/6c/c8/65f891a745b0496053d34ceb2086be0f61ff575d89ec37e847d9300e95a1/statsforecast-2.1.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:3393ee930dc49a80649869340c6b549bff92c399595071c6bbcb512d44d525c7", size = 428929, upload-time = "2026-07-16T18:20:40.026Z" },
-    { url = "https://files.pythonhosted.org/packages/2a/9d/683e32ded2550ec81e54a2e838965d34ae4a2dbff6b82166ee474b5a1f27/statsforecast-2.1.1-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:2fd5f52d9d396027236af4152317ce3eac7c1c5f4c2b01248da10a74a193e0e2", size = 470454, upload-time = "2026-07-16T18:20:41.984Z" },
-    { url = "https://files.pythonhosted.org/packages/5c/71/b9b3c01c19ebad53d47f0b3be82d18976ab66293445dff4dd1e36ae50418/statsforecast-2.1.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fce69a9ba74adf4ad8b3a48071dae9e50bc8313a30380ad20bc723e31cd6f58c", size = 502587, upload-time = "2026-07-16T18:20:43.761Z" },
-    { url = "https://files.pythonhosted.org/packages/64/3a/feef6d3772b906ec033a914cfae7652f6c3154c1a5ac4cf94905db2d7542/statsforecast-2.1.1-cp314-cp314-win_amd64.whl", hash = "sha256:b00906992bba9c1ac779bf414801ad7f6df59754a1ab12c2869b1bc04de2cd0a", size = 601618, upload-time = "2026-07-16T18:20:45.813Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "cloudpickle" },
+    { name = "coreforecast", editable = "../coreforecast" },
+    { name = "fugue", specifier = ">=0.9.4" },
+    { name = "numpy", specifier = ">=1.21.6" },
+    { name = "pandas" },
+    { name = "scipy", specifier = ">=1.7.3" },
+    { name = "statsmodels", specifier = ">=0.14.5" },
+    { name = "threadpoolctl", specifier = ">=3" },
+    { name = "tqdm" },
+    { name = "utilsforecast", editable = "../utilsforecast" },
+]
+
+[package.metadata.requires-dev]
+all = [
+    { name = "cmake" },
+    { name = "dask" },
+    { name = "datasetsforecast" },
+    { name = "fire" },
+    { name = "fugue", extras = ["dask", "spark"], specifier = ">=0.9.4" },
+    { name = "fugue", extras = ["ray"], marker = "sys_platform != 'win32'", specifier = ">=0.9.4" },
+    { name = "ninja" },
+    { name = "numpy" },
+    { name = "pandas", extras = ["plot"], specifier = "<3.0.0" },
+    { name = "plotly" },
+    { name = "plotly-resampler", marker = "python_full_version < '3.14'" },
+    { name = "polars", extras = ["numpy"] },
+    { name = "pre-commit" },
+    { name = "prophet" },
+    { name = "protobuf", specifier = ">=5.29.6" },
+    { name = "pyarrow", specifier = ">=23.0.1" },
+    { name = "pybind11" },
+    { name = "pyspark", marker = "sys_platform == 'win32'", specifier = "<4.1.0" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ray", marker = "sys_platform != 'win32'", specifier = ">=2.56.0" },
+    { name = "scikit-build-core", specifier = ">=1.0.3" },
+    { name = "scikit-learn" },
+    { name = "supersmoother" },
+    { name = "yfinance" },
+]
+dask = [
+    { name = "dask" },
+    { name = "fugue", extras = ["dask"], specifier = ">=0.9.4" },
+]
+dev = [
+    { name = "cmake" },
+    { name = "datasetsforecast" },
+    { name = "fire" },
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser.git" },
+    { name = "ninja" },
+    { name = "pandas", extras = ["plot"] },
+    { name = "pip-licenses" },
+    { name = "polars", extras = ["numpy"] },
+    { name = "pre-commit" },
+    { name = "prophet" },
+    { name = "pyarrow", specifier = ">=23.0.1" },
+    { name = "pybind11" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "scikit-build-core", specifier = ">=1.0.3" },
+    { name = "scikit-learn" },
+    { name = "setuptools", specifier = "<85" },
+    { name = "supersmoother" },
+    { name = "xlrd" },
+    { name = "yfinance" },
+]
+ray = [
+    { name = "fugue", extras = ["ray"], marker = "sys_platform != 'win32'", specifier = ">=0.9.4" },
+    { name = "protobuf", marker = "python_full_version < '3.12'", specifier = ">=5.29.6" },
+    { name = "ray", marker = "sys_platform != 'win32'", specifier = ">=2.56.0" },
+]
+spark = [
+    { name = "fugue", extras = ["spark"], specifier = ">=0.9.4" },
+    { name = "pyspark", marker = "sys_platform == 'win32'", specifier = "<4.1.0" },
 ]
 
 [[package]]
@@ -4368,7 +4512,7 @@ wheels = [
 [[package]]
 name = "utilsforecast"
 version = "0.2.17"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../utilsforecast" }
 dependencies = [
     { name = "narwhals" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -4376,9 +4520,37 @@ dependencies = [
     { name = "packaging" },
     { name = "pandas" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/c1/3d7bfd3d3171cca9b0e42c6baabe2d6c52b295f5461a0f37c649f6731af7/utilsforecast-0.2.17.tar.gz", hash = "sha256:c501e1d60ea28ff9a0bee83f3e3fff9204da63afe590d83577811f4a95665ce8", size = 80621, upload-time = "2026-10-05T23:09:54.663Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/f8/3c209103cb971d10268dd553095ab8e218372d77fbe1e311a9c059183128/utilsforecast-0.2.17-py3-none-any.whl", hash = "sha256:4bdc005676329cf76d3ef8586da8100f1831ab412bd33f888cd4ed62c7ba1290", size = 50405, upload-time = "2026-10-05T23:09:53.263Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "narwhals", specifier = ">=2.0" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pandas", specifier = ">=1.5" },
+    { name = "pandas", extras = ["plot"], marker = "extra == 'plotting'" },
+    { name = "plotly", marker = "extra == 'plotting'" },
+    { name = "plotly-resampler", marker = "python_full_version < '3.14' and extra == 'plotting'" },
+    { name = "polars", extras = ["numpy"], marker = "extra == 'polars'", specifier = ">=1.0,<=1.31" },
+]
+provides-extras = ["plotting", "polars"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "dask" },
+    { name = "fugue", extras = ["dask", "spark"], specifier = ">=0.9.4" },
+    { name = "mkdocstrings-parser", git = "https://github.com/Nixtla/mkdocstrings-parser.git?rev=main" },
+    { name = "numba", specifier = ">=0.58.0" },
+    { name = "pandas", extras = ["plot"] },
+    { name = "pip" },
+    { name = "pip-licenses" },
+    { name = "plotly" },
+    { name = "plotly-resampler", marker = "python_full_version < '3.14'" },
+    { name = "polars", extras = ["numpy"], specifier = ">=1.0" },
+    { name = "pre-commit" },
+    { name = "pyarrow" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "scipy" },
 ]
 
 [[package]]

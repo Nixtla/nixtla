@@ -1,6 +1,6 @@
 # Nixtla
 
-[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Adaptive%20conformal%20prediction%20intervals%20for%20time%20series%20forecasting%20by%20Nixtla%20&url=https://github.com/Nixtla/conformalforecast&via=nixtlainc&hashtags=ConformalPrediction,TimeSeries,Forecasting)
+[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Adaptive%20conformal%20prediction%20intervals%20for%20time%20series%20forecasting%20by%20Nixtla%20&url=https://github.com/Nixtla/nixtla/tree/main/packages/conformalforecast&via=nixtlainc&hashtags=ConformalPrediction,TimeSeries,Forecasting)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1pmhan9j5-F54XR20edHk0UtYAPcW4KQ)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://linkedin.com/company/nixtlainc)
 
@@ -9,11 +9,11 @@
 <h1 align="center">Conformal 🎯 Forecast</h1>
 <h3 align="center">Adaptive conformal prediction intervals for time series forecasting</h3>
 
-[![CI](https://github.com/Nixtla/conformalforecast/actions/workflows/ci.yml/badge.svg)](https://github.com/Nixtla/conformalforecast/actions/workflows/ci.yml)
+[![CI](https://github.com/Nixtla/nixtla/actions/workflows/conformalforecast-ci.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/conformalforecast-ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/conformalforecast)](https://pypi.org/project/conformalforecast/)
 [![PyPI](https://img.shields.io/pypi/v/conformalforecast?color=blue)](https://pypi.org/project/conformalforecast/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/conformalforecast/blob/main/LICENSE)
-[![Docs](https://github.com/Nixtla/conformalforecast/actions/workflows/build-docs.yaml/badge.svg)](https://github.com/Nixtla/conformalforecast/actions/workflows/build-docs.yaml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/LICENSE)
+[![Docs](https://github.com/Nixtla/nixtla/actions/workflows/conformalforecast-docs.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/conformalforecast-docs.yml)
 
 **ConformalForecast** turns any point forecaster into one that emits calibrated
 prediction intervals. It ships seven conformal methods — split, CQR, ACI, AgACI,
@@ -253,27 +253,27 @@ valid ones.
 
 - [Getting started](https://nixtlaverse.nixtla.io/conformalforecast/docs/getting-started/quickstart.html)
 - [Tutorials and API reference](https://nixtlaverse.nixtla.io/conformalforecast/)
-- [Roadmap](https://github.com/Nixtla/conformalforecast/blob/main/ROADMAP.md) — known gaps and limitations
-- [Contributing](https://github.com/Nixtla/conformalforecast/blob/main/CONTRIBUTING.md)
-- [Changelog](https://github.com/Nixtla/conformalforecast/blob/main/CHANGELOG.md)
-- [Support](https://github.com/Nixtla/conformalforecast/blob/main/SUPPORT.md)
-- [Security policy](https://github.com/Nixtla/conformalforecast/blob/main/SECURITY.md)
-- [Third-party notices](https://github.com/Nixtla/conformalforecast/blob/main/THIRD_PARTY_NOTICES.md)
-- [Code of conduct](https://github.com/Nixtla/conformalforecast/blob/main/CODE_OF_CONDUCT.md)
-- [Citation](https://github.com/Nixtla/conformalforecast/blob/main/CITATION.cff)
+- [Roadmap](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/ROADMAP.md) — known gaps and limitations
+- [Contributing](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CONTRIBUTING.md)
+- [Changelog](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CHANGELOG.md)
+- [Support](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/SUPPORT.md)
+- [Security policy](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/SECURITY.md)
+- [Third-party notices](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/THIRD_PARTY_NOTICES.md)
+- [Code of conduct](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CODE_OF_CONDUCT.md)
+- [Citation](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CITATION.cff)
 
 ## 🤝 How to contribute
 
 Bug reports, method implementations, adapters, and documentation are all
 welcome. Read
-[CONTRIBUTING.md](https://github.com/Nixtla/conformalforecast/blob/main/CONTRIBUTING.md)
+[CONTRIBUTING.md](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CONTRIBUTING.md)
 for the development setup, the one-class-two-surfaces architecture new
 methods have to fit, and the PR expectations. For a new method or adapter, open an issue first — a
 short design discussion up front avoids rework.
 
 ```bash
-git clone https://github.com/Nixtla/conformalforecast.git
-cd conformalforecast
+git clone --recurse-submodules https://github.com/Nixtla/nixtla.git
+cd nixtla/packages/conformalforecast
 uv sync --all-extras --group dev
 uv run pytest tests/unit
 ```
@@ -281,7 +281,7 @@ uv run pytest tests/unit
 ## 🙏 How to cite
 
 If ConformalForecast helps your research, please cite it. The repository ships a
-[CITATION.cff](https://github.com/Nixtla/conformalforecast/blob/main/CITATION.cff),
+[CITATION.cff](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/CITATION.cff),
 so GitHub's "Cite this repository" button gives you BibTeX directly:
 
 ```bibtex
@@ -290,7 +290,7 @@ so GitHub's "Cite this repository" button gives you BibTeX directly:
   title = {{ConformalForecast}: Adaptive conformal prediction for time series forecasting},
   year = {2026},
   license = {Apache-2.0},
-  url = {https://github.com/Nixtla/conformalforecast}
+  url = {https://github.com/Nixtla/nixtla/tree/main/packages/conformalforecast}
 }
 ```
 
@@ -306,4 +306,4 @@ licensing, and design.
 
 ## License
 
-ConformalForecast is licensed under the [Apache License 2.0](https://github.com/Nixtla/conformalforecast/blob/main/LICENSE).
+ConformalForecast is licensed under the [Apache License 2.0](https://github.com/Nixtla/nixtla/blob/main/packages/conformalforecast/LICENSE).

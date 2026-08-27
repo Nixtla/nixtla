@@ -9,8 +9,8 @@ review.
 ## Quick start
 
 ```bash
-git clone https://github.com/Nixtla/conformalforecast
-cd conformalforecast
+git clone --recurse-submodules https://github.com/Nixtla/nixtla.git
+cd nixtla/packages/conformalforecast
 uv sync --all-extras --all-groups
 uv run pre-commit install
 uv run pytest tests/unit
@@ -353,7 +353,7 @@ data with `numpy.random.default_rng(seed)`, or read a committed file from
 
 ## Reporting bugs and requesting features
 
-Open an issue from the [issue chooser](https://github.com/Nixtla/conformalforecast/issues/new/choose):
+Open an issue from the [issue chooser](https://github.com/Nixtla/nixtla/issues/new/choose):
 bug report, feature request, or documentation issue. Bug reports need a minimal
 reproducer, the `conformalforecast` version, your Python version, and the OS.
 Usage questions belong in the
