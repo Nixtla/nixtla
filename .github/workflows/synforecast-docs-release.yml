@@ -1,0 +1,21 @@
+# Production docs deploy, driven by this package's release tag.
+# The pre-monorepo workflows used `release: published`, which in one repo would
+# fire for every package's release, so the tag glob is the gate now.
+name: docs synforecast (release)
+
+on:
+  push:
+    tags: ['synforecast/v*']
+
+jobs:
+  docs:
+    uses: ./.github/workflows/_docs.yml
+    with:
+      package: synforecast
+      python-version: '3.11'
+      sync-args: --group docs --group integration-docs
+      test-command: uv run --no-sync make test_docs
+      environment: production
+    secrets: inherit
+    permissions:
+      contents: write

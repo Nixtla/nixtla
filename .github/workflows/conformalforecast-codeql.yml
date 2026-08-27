@@ -1,0 +1,56 @@
+# From the pre-monorepo codeql.yml, scoped to this package: the analysis is
+# limited to packages/conformalforecast so it reports nothing about siblings
+# that never opted in. The `actions` language is dropped for the same reason;
+# it would scan every workflow in the repository.
+name: CodeQL (conformalforecast)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/conformalforecast/**"
+      - ".github/workflows/conformalforecast-codeql.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/conformalforecast/**"
+      - ".github/workflows/conformalforecast-codeql.yml"
+  schedule:
+    # Weekly, so advisories added to the query pack after a PR merges still get
+    # applied to the code already on main.
+    - cron: "27 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (python)
+    runs-on: ubuntu-latest
+    # A job-level `permissions:` block REPLACES the top-level one -- every scope
+    # not named here is set to `none`, so `contents: read` must be repeated.
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No build step is needed, so the autobuild phase is skipped.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: python
+          queries: security-and-quality
+          config: |
+            paths:
+              - packages/conformalforecast
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:python/conformalforecast"

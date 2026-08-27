@@ -1,0 +1,39 @@
+# One lint job for the whole repo. The merged root .pre-commit-config.yaml
+# scopes every hook to its own package, so this replaces the nine separate
+# lint workflows without changing what any of them checked.
+#
+# Two local hooks need a package environment this job doesn't have, so they are
+# skipped here and run by their package's CI instead: normalize-doc-notebooks
+# (conformalforecast-ci.yml, imports nbformat) and rust-licenses
+# (synforecast-ci.yml, needs cargo-about).
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+
+      - name: Run pre-commit
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        env:
+          SKIP: normalize-doc-notebooks,rust-licenses

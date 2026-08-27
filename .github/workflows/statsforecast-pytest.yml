@@ -1,0 +1,107 @@
+name: pytest (statsforecast)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/statsforecast/**"
+      - ".github/workflows/statsforecast-*.yml"
+      - "packages/coreforecast/python/**"
+      - "packages/coreforecast/src/**"
+      - "packages/coreforecast/include/**"
+      - "packages/coreforecast/external_libs/**"
+      - "packages/coreforecast/CMakeLists.txt"
+      - "packages/coreforecast/pyproject.toml"
+      - "packages/utilsforecast/utilsforecast/**"
+      - "packages/utilsforecast/pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/statsforecast/**"
+      - ".github/workflows/statsforecast-*.yml"
+      - "packages/coreforecast/python/**"
+      - "packages/coreforecast/src/**"
+      - "packages/coreforecast/include/**"
+      - "packages/coreforecast/external_libs/**"
+      - "packages/coreforecast/CMakeLists.txt"
+      - "packages/coreforecast/pyproject.toml"
+      - "packages/utilsforecast/utilsforecast/**"
+      - "packages/utilsforecast/pyproject.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: packages/statsforecast
+
+jobs:
+  all-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/statsforecast/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --group all
+
+      - name: Run pytest
+        run: uv run pytest
+        env:
+          MPLBACKEND: Agg
+          RAY_ENABLE_UV_RUN_RUNTIME_ENV: 0
+
+  pandas3-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.14"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/statsforecast/uv.lock"
+
+      - name: Install dependencies
+        run: |
+          uv sync --group dev
+          uv pip install "pandas>=3"
+
+      - name: Run pytest
+        run: uv run --no-sync pytest --ignore=tests/test_distributed_fugue.py --no-cov
+        env:
+          MPLBACKEND: Agg

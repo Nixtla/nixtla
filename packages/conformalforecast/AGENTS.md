@@ -44,7 +44,7 @@ fails:
   a public docstring.
 - **`CodeQL`** — static analysis; nothing to run locally.
 
-Fill in [the PR template](.github/PULL_REQUEST_TEMPLATE.md).
+Fill in [the PR template](../../.github/pull_request_template.md).
 
 ## Before you commit
 

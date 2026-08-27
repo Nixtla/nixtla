@@ -7,3 +7,85 @@ updates:
     groups:
       ci-dependencies:
         patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/coreforecast
+    schedule:
+      interval: weekly
+    groups:
+      coreforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/utilsforecast
+    schedule:
+      interval: weekly
+    groups:
+      utilsforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/statsforecast
+    schedule:
+      interval: weekly
+    groups:
+      statsforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/neuralforecast
+    schedule:
+      interval: weekly
+    groups:
+      neuralforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/mlforecast
+    schedule:
+      interval: weekly
+    groups:
+      mlforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/hierarchicalforecast
+    schedule:
+      interval: weekly
+    groups:
+      hierarchicalforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/nixtla
+    schedule:
+      interval: weekly
+    groups:
+      nixtla-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/conformalforecast
+    schedule:
+      interval: weekly
+    groups:
+      conformalforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/synforecast
+    schedule:
+      interval: weekly
+    groups:
+      synforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /packages/synforecast/rust
+    schedule:
+      interval: weekly
+    groups:
+      synforecast-rust-dependencies:
+        patterns: ["*"]
+        # Rust's 0.x minor releases may contain breaking changes.
+        update-types: ["patch"]

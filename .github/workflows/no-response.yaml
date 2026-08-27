@@ -1,3 +1,4 @@
+# Shared across all seven packages (was one identical copy per repo).
 name: No Response Bot
 
 on:
@@ -11,6 +12,9 @@ permissions:
 
 jobs:
   noResponse:
+    # the top-level block drops the default write access the bot needs to close and comment
+    permissions:
+      issues: write
     runs-on: ubuntu-latest
     steps:
       - uses: lee-dohm/no-response@9bb0a4b5e6a45046f00353d5de7d90fb8bd773bb # v0.5.0
