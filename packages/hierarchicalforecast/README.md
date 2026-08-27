@@ -5,11 +5,11 @@
 <h1 align="center">Hierarchical Forecast 👑</h1>
 <h3 align="center">Probabilistic hierarchical forecasting with statistical and econometric methods</h3>
 
-[![pytest](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/pytest.yml/badge.svg)](https://github.com/Nixtla/hierarchicalforecast/actions/workflows/pytest.yml)
+[![pytest](https://github.com/Nixtla/nixtla/actions/workflows/hierarchicalforecast-pytest.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/hierarchicalforecast-pytest.yml)
 [![Python](https://img.shields.io/pypi/pyversions/hierarchicalforecast)](https://pypi.org/project/hierarchicalforecast/)
 [![PyPi](https://img.shields.io/pypi/v/hierarchicalforecast?color=blue)](https://pypi.org/project/hierarchicalforecast/)
 [![conda-nixtla](https://img.shields.io/conda/vn/conda-forge/hierarchicalforecast?color=seagreen&label=conda)](https://anaconda.org/conda-forge/hierarchicalforecast)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtla/blob/main/packages/hierarchicalforecast/LICENSE)
 
 **HierarchicalForecast** offers a collection of cross-sectional and temporal reconciliation methods, including `BottomUp`, `TopDown`, `MiddleOut`, `MinTrace` and `ERM`, as well as probabilistic coherent prediction methods such as `Normality`, `Bootstrap`, and `PERMBU`.
 </div>
@@ -124,7 +124,7 @@ evaluation = evaluate(df = df,
 Here is a link to the [documentation](https://nixtlaverse.nixtla.io/hierarchicalforecast/index.html).
 
 ## 📃 License
-This project is licensed under the Apache 2.0 License - see the [LICENSE](https://github.com/Nixtla/hierarchicalforecast/blob/main/LICENSE) file for details.
+This project is licensed under the Apache 2.0 License - see the [LICENSE](https://github.com/Nixtla/nixtla/blob/main/packages/hierarchicalforecast/LICENSE) file for details.
 
 ## 🏟 HTS projects
 In the R ecosystem, we recommend checking out [fable](http://fable.tidyverts.org/), and the now-retired [hts](https://github.com/earowang/hts).

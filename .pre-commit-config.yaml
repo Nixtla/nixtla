@@ -1,0 +1,132 @@
+# Merged from the seven per-package configs. Each package's ruff/mypy rev and
+# hook set is preserved verbatim; every hook is scoped with `files:` to the
+# paths its package's CI linted (the module, or the whole package where CI ran
+# --all-files), so a hook never runs against a sibling with different rules.
+#
+# pre-commit permits the same repo at several revs, which is what lets this
+# merge avoid a mass reformat. Unifying the revs is a separate change.
+#
+# `fail_fast` is deliberately NOT set: six of the seven originals had it on,
+# but across seven packages it would let one package's failure hide the rest.
+
+repos:
+  # ---------------- coreforecast ----------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        name: ruff (coreforecast)
+        files: ^packages/coreforecast/python/coreforecast/
+        args: [--fix]
+      - id: ruff-format
+        name: ruff-format (coreforecast)
+        files: ^packages/coreforecast/python/coreforecast/
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v19.1.1
+    hooks:
+      - id: clang-format
+        name: clang-format (coreforecast)
+        files: ^packages/coreforecast/(include|src)/
+
+  # ---------------- utilsforecast ----------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      - id: ruff-check
+        name: ruff-check (utilsforecast)
+        files: ^packages/utilsforecast/utilsforecast/
+      - id: ruff-format
+        name: ruff-format (utilsforecast)
+        files: ^packages/utilsforecast/utilsforecast/
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy (utilsforecast)
+        files: ^packages/utilsforecast/utilsforecast/
+        args: [--ignore-missing-imports, --config-file=packages/utilsforecast/pyproject.toml]
+
+  # ---------------- statsforecast ----------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      - id: ruff
+        name: ruff (statsforecast)
+        files: ^packages/statsforecast/python/statsforecast/
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy (statsforecast)
+        files: ^packages/statsforecast/python/statsforecast/
+        args: [--ignore-missing-imports]
+
+  # ---------------- neuralforecast ----------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      - id: ruff
+        name: ruff (neuralforecast)
+        files: ^packages/neuralforecast/neuralforecast/
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy (neuralforecast)
+        files: ^packages/neuralforecast/neuralforecast/
+        args: [--ignore-missing-imports, --config-file=packages/neuralforecast/pyproject.toml]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: requirements-txt-fixer
+        name: requirements-txt-fixer (neuralforecast)
+        files: ^packages/neuralforecast/.*(requirements|constraints).*\.txt$
+
+  # ---------------- mlforecast ----------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      - id: ruff-check
+        name: ruff-check (mlforecast)
+        files: ^packages/mlforecast/mlforecast/
+      - id: ruff-format
+        name: ruff-format (mlforecast)
+        files: ^packages/mlforecast/mlforecast/
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy (mlforecast)
+        files: ^packages/mlforecast/mlforecast/
+        args: [--ignore-missing-imports, --config-file=packages/mlforecast/pyproject.toml]
+        additional_dependencies: ['types-PyYAML']
+
+  # ---------------- hierarchicalforecast ----------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      - id: ruff
+        name: ruff (hierarchicalforecast)
+        files: ^packages/hierarchicalforecast/hierarchicalforecast/
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy (hierarchicalforecast)
+        files: ^packages/hierarchicalforecast/hierarchicalforecast/
+        args: [--ignore-missing-imports]
+
+  # ---------------- nixtla ----------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      - id: ruff
+        name: ruff (nixtla)
+        files: ^packages/nixtla/(nixtla|nixtla_tests)/
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.1
+    hooks:
+      - id: mypy
+        name: mypy (nixtla)
+        files: ^packages/nixtla/(nixtla|nixtla_tests)/
+        args: [--ignore-missing-imports]

@@ -1,6 +1,6 @@
 # Nixtla
 
-[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Statistical%20Forecasting%20Algorithms%20by%20Nixtla%20&url=https://github.com/Nixtla/statsforecast&via=nixtlainc&hashtags=StatisticalModels,TimeSeries,Forecasting)
+[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Statistical%20Forecasting%20Algorithms%20by%20Nixtla%20&url=https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast&via=nixtlainc&hashtags=StatisticalModels,TimeSeries,Forecasting)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?&logo=slack&logoColor=white)](https://join.slack.com/t/nixtlacommunity/shared_invite/zt-1pmhan9j5-F54XR20edHk0UtYAPcW4KQ)
 
 [![All Contributors](https://img.shields.io/badge/all_contributors-32-orange.svg?style=flat-square)](#contributors-)
@@ -10,12 +10,12 @@
 <h1 align="center">Statistical ⚡️ Forecast</h1>
 <h3 align="center">Lightning fast forecasting with statistical and econometric models</h3>
 
-[![CI](https://github.com/Nixtla/statsforecast/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/statsforecast/actions/workflows/ci.yaml)
+[![CI](https://github.com/Nixtla/nixtla/actions/workflows/statsforecast-ci.yml/badge.svg?branch=main)](https://github.com/Nixtla/nixtla/actions/workflows/statsforecast-ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/statsforecast)](https://pypi.org/project/statsforecast/)
 [![PyPi](https://img.shields.io/pypi/v/statsforecast?color=blue)](https://pypi.org/project/statsforecast/)
 [![conda-nixtla](https://img.shields.io/conda/vn/conda-forge/statsforecast?color=seagreen&label=conda)](https://anaconda.org/conda-forge/statsforecast)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/statsforecast/blob/main/LICENSE)
-[![docs](https://github.com/Nixtla/statsforecast/actions/workflows/build-docs.yaml/badge.svg)](https://github.com/Nixtla/statsforecast/actions/workflows/build-docs.yaml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/Nixtla/nixtla/blob/main/packages/statsforecast/LICENSE)
+[![docs](https://github.com/Nixtla/nixtla/actions/workflows/statsforecast-docs.yml/badge.svg)](https://github.com/Nixtla/nixtla/actions/workflows/statsforecast-docs.yml)
 [![Downloads](https://pepy.tech/badge/statsforecast)](https://pepy.tech/project/statsforecast)
 
 **StatsForecast** offers a collection of widely used univariate time series forecasting models, including automatic `ARIMA`, `ETS`, `CES`, and `Theta` modeling optimized for high performance. It also includes a large battery of benchmarking models.
@@ -75,13 +75,13 @@ Current Python alternatives for statistical models are slow, inaccurate and don'
 ## Highlights
 
 * Inclusion of `exogenous variables` and `prediction intervals` for ARIMA.
-* 20x [faster](https://github.com/Nixtla/statsforecast/tree/main/experiments/arima) than `pmdarima`.
+* 20x [faster](https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast/experiments/arima) than `pmdarima`.
 * 1.5x faster than `R`.
 * 500x faster than `Prophet`.
-* 4x [faster](https://github.com/Nixtla/statsforecast/tree/main/experiments/ets) than `statsmodels`.
-* 1,000,000 series in [30 min](https://github.com/Nixtla/statsforecast/tree/main/experiments/ray) with [ray](https://github.com/ray-project/ray).
-* Replace FB-Prophet in two lines of code and gain speed and accuracy. Check the experiments [here](https://github.com/Nixtla/statsforecast/tree/main/experiments/arima_prophet_adapter).
-* Fit 10 benchmark models on **1,000,000** series in [under **5 min**](https://github.com/Nixtla/statsforecast/tree/main/experiments/benchmarks_at_scale/).
+* 4x [faster](https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast/experiments/ets) than `statsmodels`.
+* 1,000,000 series in [30 min](https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast/experiments/ray) with [ray](https://github.com/ray-project/ray).
+* Replace FB-Prophet in two lines of code and gain speed and accuracy. Check the experiments [here](https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast/experiments/arima_prophet_adapter).
+* Fit 10 benchmark models on **1,000,000** series in [under **5 min**](https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast/experiments/benchmarks_at_scale/).
 
 Missing something? Please open an issue or write us in [![Slack](https://img.shields.io/badge/Slack-4A154B?&logo=slack&logoColor=white)](https://join.slack.com/t/nixtlaworkspace/shared_invite/zt-135dssye9-fWTzMpv2WBthq8NK0Yvu6A)
 
@@ -196,7 +196,7 @@ Suited for series with very few non-zero observations
 
 ## 🔨 How to contribute
 
-See [CONTRIBUTING.md](https://github.com/Nixtla/statsforecast/blob/main/CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/Nixtla/nixtla/blob/main/packages/statsforecast/CONTRIBUTING.md).
 
 ## Citing
 
@@ -206,7 +206,7 @@ See [CONTRIBUTING.md](https://github.com/Nixtla/statsforecast/blob/main/CONTRIBU
     title = {{StatsForecast}: Lightning fast forecasting with statistical and econometric models},
     year={2022},
     howpublished={{PyCon} Salt Lake City, Utah, US 2022},
-    url={https://github.com/Nixtla/statsforecast}
+    url={https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast}
 }
 ```
 
@@ -217,46 +217,46 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/e
 <table>
   <tbody>
     <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/AzulGarza"><img src="https://avatars.githubusercontent.com/u/10517170?v=4?s=100" width="100px;" alt="azul"/><br /><sub><b>azul</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=AzulGarza" title="Code">💻</a> <a href="#maintenance-AzulGarza" title="Maintenance">🚧</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jmoralez"><img src="https://avatars.githubusercontent.com/u/8473587?v=4?s=100" width="100px;" alt="José Morales"/><br /><sub><b>José Morales</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=jmoralez" title="Code">💻</a> <a href="#maintenance-jmoralez" title="Maintenance">🚧</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/sugatoray/"><img src="https://avatars.githubusercontent.com/u/10201242?v=4?s=100" width="100px;" alt="Sugato Ray"/><br /><sub><b>Sugato Ray</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=sugatoray" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/tackes"><img src="https://avatars.githubusercontent.com/u/9125316?v=4?s=100" width="100px;" alt="Jeff Tackes"/><br /><sub><b>Jeff Tackes</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/issues?q=author%3Atackes" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/AzulGarza"><img src="https://avatars.githubusercontent.com/u/10517170?v=4?s=100" width="100px;" alt="azul"/><br /><sub><b>azul</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=AzulGarza" title="Code">💻</a> <a href="#maintenance-AzulGarza" title="Maintenance">🚧</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jmoralez"><img src="https://avatars.githubusercontent.com/u/8473587?v=4?s=100" width="100px;" alt="José Morales"/><br /><sub><b>José Morales</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=jmoralez" title="Code">💻</a> <a href="#maintenance-jmoralez" title="Maintenance">🚧</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/sugatoray/"><img src="https://avatars.githubusercontent.com/u/10201242?v=4?s=100" width="100px;" alt="Sugato Ray"/><br /><sub><b>Sugato Ray</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=sugatoray" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/tackes"><img src="https://avatars.githubusercontent.com/u/9125316?v=4?s=100" width="100px;" alt="Jeff Tackes"/><br /><sub><b>Jeff Tackes</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/issues?q=author%3Atackes" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/darinkist"><img src="https://avatars.githubusercontent.com/u/62692170?v=4?s=100" width="100px;" alt="darinkist"/><br /><sub><b>darinkist</b></sub></a><br /><a href="#ideas-darinkist" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/alech97"><img src="https://avatars.githubusercontent.com/u/22159405?v=4?s=100" width="100px;" alt="Alec Helyar"/><br /><sub><b>Alec Helyar</b></sub></a><br /><a href="#question-alech97" title="Answering Questions">💬</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://dhirschfeld.github.io"><img src="https://avatars.githubusercontent.com/u/881019?v=4?s=100" width="100px;" alt="Dave Hirschfeld"/><br /><sub><b>Dave Hirschfeld</b></sub></a><br /><a href="#question-dhirschfeld" title="Answering Questions">💬</a></td>
     </tr>
     <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/mergenthaler"><img src="https://avatars.githubusercontent.com/u/4086186?v=4?s=100" width="100px;" alt="mergenthaler"/><br /><sub><b>mergenthaler</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=mergenthaler" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/kdgutier"><img src="https://avatars.githubusercontent.com/u/19935241?v=4?s=100" width="100px;" alt="Kin"/><br /><sub><b>Kin</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=kdgutier" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/mergenthaler"><img src="https://avatars.githubusercontent.com/u/4086186?v=4?s=100" width="100px;" alt="mergenthaler"/><br /><sub><b>mergenthaler</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=mergenthaler" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/kdgutier"><img src="https://avatars.githubusercontent.com/u/19935241?v=4?s=100" width="100px;" alt="Kin"/><br /><sub><b>Kin</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=kdgutier" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/Yasslight90"><img src="https://avatars.githubusercontent.com/u/58293883?v=4?s=100" width="100px;" alt="Yasslight90"/><br /><sub><b>Yasslight90</b></sub></a><br /><a href="#ideas-Yasslight90" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/asinig"><img src="https://avatars.githubusercontent.com/u/99350687?v=4?s=100" width="100px;" alt="asinig"/><br /><sub><b>asinig</b></sub></a><br /><a href="#ideas-asinig" title="Ideas, Planning, & Feedback">🤔</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/guerda"><img src="https://avatars.githubusercontent.com/u/230782?v=4?s=100" width="100px;" alt="Philip Gillißen"/><br /><sub><b>Philip Gillißen</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=guerda" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/shagn"><img src="https://avatars.githubusercontent.com/u/16029092?v=4?s=100" width="100px;" alt="Sebastian Hagn"/><br /><sub><b>Sebastian Hagn</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/issues?q=author%3Ashagn" title="Bug reports">🐛</a> <a href="https://github.com/Nixtla/statsforecast/commits?author=shagn" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/fugue-project/fugue"><img src="https://avatars.githubusercontent.com/u/21092479?v=4?s=100" width="100px;" alt="Han Wang"/><br /><sub><b>Han Wang</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=goodwanghan" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/guerda"><img src="https://avatars.githubusercontent.com/u/230782?v=4?s=100" width="100px;" alt="Philip Gillißen"/><br /><sub><b>Philip Gillißen</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=guerda" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/shagn"><img src="https://avatars.githubusercontent.com/u/16029092?v=4?s=100" width="100px;" alt="Sebastian Hagn"/><br /><sub><b>Sebastian Hagn</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/issues?q=author%3Ashagn" title="Bug reports">🐛</a> <a href="https://github.com/Nixtla/nixtla/commits?author=shagn" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/fugue-project/fugue"><img src="https://avatars.githubusercontent.com/u/21092479?v=4?s=100" width="100px;" alt="Han Wang"/><br /><sub><b>Han Wang</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=goodwanghan" title="Code">💻</a></td>
     </tr>
     <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/benjamin-jeffrey-218548a8/"><img src="https://avatars.githubusercontent.com/u/36240394?v=4?s=100" width="100px;" alt="Ben Jeffrey"/><br /><sub><b>Ben Jeffrey</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/issues?q=author%3Abjeffrey92" title="Bug reports">🐛</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Beliavsky"><img src="https://avatars.githubusercontent.com/u/38887928?v=4?s=100" width="100px;" alt="Beliavsky"/><br /><sub><b>Beliavsky</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=Beliavsky" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/MMenchero"><img src="https://avatars.githubusercontent.com/u/47995617?v=4?s=100" width="100px;" alt="Mariana Menchero García "/><br /><sub><b>Mariana Menchero García </b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=MMenchero" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/guptanick/"><img src="https://avatars.githubusercontent.com/u/33585645?v=4?s=100" width="100px;" alt="Nikhil Gupta"/><br /><sub><b>Nikhil Gupta</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/issues?q=author%3Angupta23" title="Bug reports">🐛</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jdegene"><img src="https://avatars.githubusercontent.com/u/17744939?v=4?s=100" width="100px;" alt="JD"/><br /><sub><b>JD</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/issues?q=author%3Ajdegene" title="Bug reports">🐛</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jattenberg"><img src="https://avatars.githubusercontent.com/u/924185?v=4?s=100" width="100px;" alt="josh attenberg"/><br /><sub><b>josh attenberg</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=jattenberg" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/JeroenPeterBos"><img src="https://avatars.githubusercontent.com/u/15342738?v=4?s=100" width="100px;" alt="JeroenPeterBos"/><br /><sub><b>JeroenPeterBos</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=JeroenPeterBos" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/benjamin-jeffrey-218548a8/"><img src="https://avatars.githubusercontent.com/u/36240394?v=4?s=100" width="100px;" alt="Ben Jeffrey"/><br /><sub><b>Ben Jeffrey</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/issues?q=author%3Abjeffrey92" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Beliavsky"><img src="https://avatars.githubusercontent.com/u/38887928?v=4?s=100" width="100px;" alt="Beliavsky"/><br /><sub><b>Beliavsky</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=Beliavsky" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/MMenchero"><img src="https://avatars.githubusercontent.com/u/47995617?v=4?s=100" width="100px;" alt="Mariana Menchero García "/><br /><sub><b>Mariana Menchero García </b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=MMenchero" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/guptanick/"><img src="https://avatars.githubusercontent.com/u/33585645?v=4?s=100" width="100px;" alt="Nikhil Gupta"/><br /><sub><b>Nikhil Gupta</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/issues?q=author%3Angupta23" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jdegene"><img src="https://avatars.githubusercontent.com/u/17744939?v=4?s=100" width="100px;" alt="JD"/><br /><sub><b>JD</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/issues?q=author%3Ajdegene" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jattenberg"><img src="https://avatars.githubusercontent.com/u/924185?v=4?s=100" width="100px;" alt="josh attenberg"/><br /><sub><b>josh attenberg</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=jattenberg" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/JeroenPeterBos"><img src="https://avatars.githubusercontent.com/u/15342738?v=4?s=100" width="100px;" alt="JeroenPeterBos"/><br /><sub><b>JeroenPeterBos</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=JeroenPeterBos" title="Code">💻</a></td>
     </tr>
     <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jvdd"><img src="https://avatars.githubusercontent.com/u/18898740?v=4?s=100" width="100px;" alt="Jeroen Van Der Donckt"/><br /><sub><b>Jeroen Van Der Donckt</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=jvdd" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Roymprog"><img src="https://avatars.githubusercontent.com/u/4035367?v=4?s=100" width="100px;" alt="Roymprog"/><br /><sub><b>Roymprog</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=Roymprog" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/nelsoncardenas"><img src="https://avatars.githubusercontent.com/u/18086414?v=4?s=100" width="100px;" alt="Nelson Cárdenas Bolaño"/><br /><sub><b>Nelson Cárdenas Bolaño</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=nelsoncardenas" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/kschmaus"><img src="https://avatars.githubusercontent.com/u/6586847?v=4?s=100" width="100px;" alt="Kyle Schmaus"/><br /><sub><b>Kyle Schmaus</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=kschmaus" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/akmal-soliev/"><img src="https://avatars.githubusercontent.com/u/24494206?v=4?s=100" width="100px;" alt="Akmal Soliev"/><br /><sub><b>Akmal Soliev</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=akmalsoliev" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/nickto"><img src="https://avatars.githubusercontent.com/u/11967792?v=4?s=100" width="100px;" alt="Nick To"/><br /><sub><b>Nick To</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=nickto" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/kvnkho/"><img src="https://avatars.githubusercontent.com/u/32503212?v=4?s=100" width="100px;" alt="Kevin Kho"/><br /><sub><b>Kevin Kho</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=kvnkho" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jvdd"><img src="https://avatars.githubusercontent.com/u/18898740?v=4?s=100" width="100px;" alt="Jeroen Van Der Donckt"/><br /><sub><b>Jeroen Van Der Donckt</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=jvdd" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Roymprog"><img src="https://avatars.githubusercontent.com/u/4035367?v=4?s=100" width="100px;" alt="Roymprog"/><br /><sub><b>Roymprog</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=Roymprog" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/nelsoncardenas"><img src="https://avatars.githubusercontent.com/u/18086414?v=4?s=100" width="100px;" alt="Nelson Cárdenas Bolaño"/><br /><sub><b>Nelson Cárdenas Bolaño</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=nelsoncardenas" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/kschmaus"><img src="https://avatars.githubusercontent.com/u/6586847?v=4?s=100" width="100px;" alt="Kyle Schmaus"/><br /><sub><b>Kyle Schmaus</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=kschmaus" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/akmal-soliev/"><img src="https://avatars.githubusercontent.com/u/24494206?v=4?s=100" width="100px;" alt="Akmal Soliev"/><br /><sub><b>Akmal Soliev</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=akmalsoliev" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/nickto"><img src="https://avatars.githubusercontent.com/u/11967792?v=4?s=100" width="100px;" alt="Nick To"/><br /><sub><b>Nick To</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=nickto" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/kvnkho/"><img src="https://avatars.githubusercontent.com/u/32503212?v=4?s=100" width="100px;" alt="Kevin Kho"/><br /><sub><b>Kevin Kho</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=kvnkho" title="Code">💻</a></td>
     </tr>
     <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/yibenhuang"><img src="https://avatars.githubusercontent.com/u/62163340?v=4?s=100" width="100px;" alt="Yiben Huang"/><br /><sub><b>Yiben Huang</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=yibenhuang" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/andrewgross"><img src="https://avatars.githubusercontent.com/u/370118?v=4?s=100" width="100px;" alt="Andrew Gross"/><br /><sub><b>Andrew Gross</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=andrewgross" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/taniishkaaa"><img src="https://avatars.githubusercontent.com/u/109246904?v=4?s=100" width="100px;" alt="taniishkaaa"/><br /><sub><b>taniishkaaa</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=taniishkaaa" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/manuel-calzolari"><img src="https://avatars.githubusercontent.com/u/2764902?v=4?s=100" width="100px;" alt="Manuel Calzolari"/><br /><sub><b>Manuel Calzolari</b></sub></a><br /><a href="https://github.com/Nixtla/statsforecast/commits?author=manuel-calzolari" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/yibenhuang"><img src="https://avatars.githubusercontent.com/u/62163340?v=4?s=100" width="100px;" alt="Yiben Huang"/><br /><sub><b>Yiben Huang</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=yibenhuang" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/andrewgross"><img src="https://avatars.githubusercontent.com/u/370118?v=4?s=100" width="100px;" alt="Andrew Gross"/><br /><sub><b>Andrew Gross</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=andrewgross" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/taniishkaaa"><img src="https://avatars.githubusercontent.com/u/109246904?v=4?s=100" width="100px;" alt="taniishkaaa"/><br /><sub><b>taniishkaaa</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=taniishkaaa" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/manuel-calzolari"><img src="https://avatars.githubusercontent.com/u/2764902?v=4?s=100" width="100px;" alt="Manuel Calzolari"/><br /><sub><b>Manuel Calzolari</b></sub></a><br /><a href="https://github.com/Nixtla/nixtla/commits?author=manuel-calzolari" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>

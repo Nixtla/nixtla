@@ -1,0 +1,26 @@
+# Setup workflow: CircleCI has no native path filter, so this picks which package
+# workflows in continue_config.yml run. A dependent also runs when the source of an
+# in-repo dependency it builds from (uv path source) changes.
+version: 2.1
+setup: true
+orbs:
+  path-filtering: circleci/path-filtering@1
+workflows:
+  setup:
+    jobs:
+      - path-filtering/filter:
+          base-revision: main
+          config-path: .circleci/continue_config.yml
+          mapping: |
+            packages/neuralforecast/.*                                      run-neuralforecast        true
+            packages/coreforecast/(python|src|include|external_libs)/.*     run-neuralforecast        true
+            packages/coreforecast/(CMakeLists.txt|pyproject.toml)           run-neuralforecast        true
+            packages/utilsforecast/utilsforecast/.*                         run-neuralforecast        true
+            packages/utilsforecast/pyproject.toml                           run-neuralforecast        true
+            packages/hierarchicalforecast/.*                                run-hierarchicalforecast  true
+            packages/utilsforecast/utilsforecast/.*                         run-hierarchicalforecast  true
+            packages/utilsforecast/pyproject.toml                           run-hierarchicalforecast  true
+            packages/statsforecast/(python|src|include|external_libs)/.*    run-hierarchicalforecast  true
+            packages/statsforecast/(CMakeLists.txt|pyproject.toml)          run-hierarchicalforecast  true
+            .circleci/.*                                                    run-neuralforecast        true
+            .circleci/.*                                                    run-hierarchicalforecast  true

@@ -1,0 +1,242 @@
+# Merged from neuralforecast's and hierarchicalforecast's .circleci/config.yml.
+# Jobs keep the default working directory (the repo root) and run each step in
+# their package directory: `git clone` refuses a working directory CircleCI has
+# already created inside the checkout path.
+version: 2.1
+
+parameters:
+  run-neuralforecast:
+    type: boolean
+    default: false
+  run-hierarchicalforecast:
+    type: boolean
+    default: false
+
+commands:
+  neuralforecast-setup:
+    steps:
+      - checkout
+      - run:
+          name: Install Git and a C++ compiler
+          command: |
+            apt-get update && apt-get install -y git g++
+      # uv builds coreforecast from source (path source), which needs its vendored libs
+      - run:
+          name: Init coreforecast submodules
+          command: git submodule update --init -- packages/coreforecast/external_libs/stl-cpp packages/coreforecast/external_libs/skiplist packages/coreforecast/external_libs/doctest
+      - run:
+          name: Install uv
+          command: |
+            pip install uv
+  hierarchicalforecast-setup:
+    steps:
+      - checkout
+      - run:
+          name: Install Git and a C++ compiler
+          command: |
+            apt-get update && apt-get install -y git g++
+      # uv builds statsforecast from source (path source), so both Eigen copies are needed
+      - run:
+          name: Init submodules
+          command: git submodule update --init -- packages/hierarchicalforecast/external_libs/eigen packages/statsforecast/external_libs/eigen
+
+jobs:
+  neuralforecast-pytest:
+    resource_class: xlarge
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - neuralforecast-setup
+      - restore_cache:
+          keys:
+            - uv-cache-pytest-{{ checksum "packages/neuralforecast/uv.lock" }}
+            - uv-cache-pytest-
+      - run:
+          name: Run pytest
+          working_directory: packages/neuralforecast
+          no_output_timeout: 20m
+          command: |
+            uv sync --group dev --group aws --extra spark
+            export GIT_PYTHON_REFRESH=quiet
+            uv run pytest -k "not test_autonlinear_longer_horizon" --no-cov
+      - save_cache:
+          key: uv-cache-pytest-{{ checksum "packages/neuralforecast/uv.lock" }}
+          paths:
+            - ~/.cache/uv
+            - packages/neuralforecast/.venv
+  neuralforecast-test-model-performance:
+    resource_class: xlarge
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - neuralforecast-setup
+      - restore_cache:
+          keys:
+            - uv-cache-perf-{{ checksum "packages/neuralforecast/uv.lock" }}
+            - uv-cache-perf-
+      - run:
+          name: Run model performance tests
+          working_directory: packages/neuralforecast
+          command: |
+            uv sync --group dev --group aws --extra spark
+            uv pip install -r ./action_files/test_models/requirements.txt
+            export PYTHONPATH="${PYTHONPATH}:./action_files/test_models"
+            uv run python -m src.models
+            uv run python -m src.evaluation
+      - save_cache:
+          key: uv-cache-perf-{{ checksum "packages/neuralforecast/uv.lock" }}
+          paths:
+            - ~/.cache/uv
+            - packages/neuralforecast/.venv
+      - store_artifacts:
+          path: packages/neuralforecast/action_files/test_models/data/evaluation.csv
+          destination: evaluation.csv
+  neuralforecast-test-model-performance2:
+    resource_class: xlarge
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - neuralforecast-setup
+      - restore_cache:
+          keys:
+            - uv-cache-perf-{{ checksum "packages/neuralforecast/uv.lock" }}
+            - uv-cache-perf-
+      - run:
+          name: Run model performance tests
+          working_directory: packages/neuralforecast
+          command: |
+            uv sync --group dev --group aws --extra spark
+            uv pip install -r ./action_files/test_models/requirements.txt
+            export PYTHONPATH="${PYTHONPATH}:./action_files/test_models"
+            uv run python -m src.models2
+            uv run python -m src.evaluation2
+      - save_cache:
+          key: uv-cache-perf-{{ checksum "packages/neuralforecast/uv.lock" }}
+          paths:
+            - ~/.cache/uv
+            - packages/neuralforecast/.venv
+      - store_artifacts:
+          path: packages/neuralforecast/action_files/test_models/data/evaluation.csv
+          destination: evaluation.csv
+  neuralforecast-test-multivariate-model-performance:
+    resource_class: xlarge
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - neuralforecast-setup
+      - restore_cache:
+          keys:
+            - uv-cache-perf-{{ checksum "packages/neuralforecast/uv.lock" }}
+            - uv-cache-perf-
+      - run:
+          name: Run model performance tests
+          working_directory: packages/neuralforecast
+          command: |
+            uv sync --group dev --group aws --extra spark
+            uv pip install -r ./action_files/test_models/requirements.txt
+            export PYTHONPATH="${PYTHONPATH}:./action_files/test_models"
+            uv run python -m src.multivariate_models
+            uv run python -m src.multivariate_evaluation
+      - save_cache:
+          key: uv-cache-perf-{{ checksum "packages/neuralforecast/uv.lock" }}
+          paths:
+            - ~/.cache/uv
+            - packages/neuralforecast/.venv
+      - store_artifacts:
+          path: packages/neuralforecast/action_files/test_models/data/multi_evaluation.csv
+          destination: multi_evaluation.csv
+
+  hierarchicalforecast-pytest:
+    resource_class: xlarge
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - hierarchicalforecast-setup
+      - run:
+          name: Install dependencies & run tests
+          working_directory: packages/hierarchicalforecast
+          command: |
+            pip install uv && uv sync --group dev
+            uv run pytest
+  hierarchicalforecast-test-model-performance:
+    parameters:
+      hierarchy:
+        type: string
+        default: "strict"
+      forecast_type:
+        type: string
+        default: "point"
+      engine:
+        type: string
+        default: "pandas"
+    resource_class: large
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - hierarchicalforecast-setup
+      - run:
+          name: Install dependencies
+          working_directory: packages/hierarchicalforecast
+          command: |
+            pip install uv
+            uv venv --python 3.10
+      - run:
+          name: Run model performance tests
+          working_directory: packages/hierarchicalforecast
+          command: |
+            source .venv/bin/activate
+            uv sync --group dev
+            cd ./action_files/test_models/
+            uv pip install -r requirements.txt
+            python -m src.models << parameters.hierarchy >> << parameters.forecast_type >> << parameters.engine >>
+            python -m src.evaluation << parameters.forecast_type >>
+            cd ../../
+      - store_artifacts:
+          path: packages/hierarchicalforecast/action_files/test_models/data/evaluation.csv
+          destination: evaluation.csv
+  hierarchicalforecast-test-model-performance-temporal:
+    resource_class: large
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - hierarchicalforecast-setup
+      - run:
+          name: Install dependencies
+          working_directory: packages/hierarchicalforecast
+          command: |
+            pip install uv
+            uv venv --python 3.10
+      - run:
+          name: Run model performance tests
+          working_directory: packages/hierarchicalforecast
+          command: |
+            source .venv/bin/activate
+            uv sync --group dev
+            cd ./action_files/test_models/
+            uv pip install -r requirements.txt
+            python -m src.models_temporal
+            python -m src.evaluation_temporal
+            cd ../../
+      - store_artifacts:
+          path: packages/hierarchicalforecast/action_files/test_models/data/evaluation.csv
+          destination: evaluation.csv
+
+workflows:
+  neuralforecast:
+    when: << pipeline.parameters.run-neuralforecast >>
+    jobs:
+      - neuralforecast-pytest
+      - neuralforecast-test-model-performance
+      - neuralforecast-test-model-performance2
+      - neuralforecast-test-multivariate-model-performance
+  hierarchicalforecast:
+    when: << pipeline.parameters.run-hierarchicalforecast >>
+    jobs:
+      - hierarchicalforecast-pytest
+      - hierarchicalforecast-test-model-performance:
+          matrix:
+            parameters:
+              hierarchy: ["strict", "non-strict"]
+              forecast_type: ["point", "probabilistic"]
+              engine: ["pandas"]
+      - hierarchicalforecast-test-model-performance-temporal

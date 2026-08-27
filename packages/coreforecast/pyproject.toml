@@ -36,7 +36,7 @@ dev = [
 [project.urls]
 homepage = "https://nixtla.github.io/coreforecast"
 documentation = "https://nixtlaverse.nixtla.io/coreforecast"
-repository = "https://github.com/Nixtla/coreforecast"
+repository = "https://github.com/Nixtla/nixtla/tree/main/packages/coreforecast"
 
 [build-system]
 requires = ["scikit-build-core", "pybind11"]

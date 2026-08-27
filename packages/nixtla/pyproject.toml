@@ -126,7 +126,7 @@ markers = [
 ]
 testpaths = ["nixtla_tests"]
 addopts = [
-    "--cov=python/statsforecast",
+    "--cov=nixtla",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-fail-under=80"
@@ -136,3 +136,9 @@ addopts = [
 omit = [
     "nixtla/scripts/snowflake_install_nixtla.py",  # Deployment script, not core library
 ]
+
+# In-repo path sources: dev/test only. The version ranges in [project]
+# dependencies are unchanged and are what gets published; uv strips
+# [tool.uv.sources] from distribution metadata.
+[tool.uv.sources]
+utilsforecast         = { path = "../utilsforecast", editable = true }

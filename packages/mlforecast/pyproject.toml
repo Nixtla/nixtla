@@ -34,8 +34,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Nixtla/mlforecast"
-Repository = "https://github.com/Nixtla/mlforecast"
+Homepage = "https://github.com/Nixtla/nixtla/tree/main/packages/mlforecast"
+Repository = "https://github.com/Nixtla/nixtla/tree/main/packages/mlforecast"
 Documentation = "https://nixtlaverse.nixtla.io/mlforecast/"
 
 [project.optional-dependencies]
@@ -114,3 +114,11 @@ addopts = [
     "--cov-report=html",
     "--cov-fail-under=75", #TODO: adds tests to increase coverage to 80
 ]
+
+# In-repo path sources: dev/test only. The version ranges in [project]
+# dependencies are unchanged and are what gets published; uv strips
+# [tool.uv.sources] from distribution metadata.
+[tool.uv.sources]
+# coreforecast dropped 3.10; on it the published wheel is used, as for any user
+coreforecast          = { path = "../coreforecast", editable = true, marker = "python_version >= '3.11'" }
+utilsforecast         = { path = "../utilsforecast", editable = true }

@@ -65,7 +65,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Nixtla/neuralforecast/"
+Homepage = "https://github.com/Nixtla/nixtla/tree/main/packages/neuralforecast"
 Documentation = "https://nixtlaverse.nixtla.io/neuralforecast/"
 
 [tool.setuptools]
@@ -106,3 +106,11 @@ omit = [
     "*/_ray_pkg_*/*",
     "*/runtime_resources/*",
 ]
+
+# In-repo path sources: dev/test only. The version ranges in [project]
+# dependencies are unchanged and are what gets published; uv strips
+# [tool.uv.sources] from distribution metadata.
+[tool.uv.sources]
+# coreforecast dropped 3.10; on it the published wheel is used, as for any user
+coreforecast          = { path = "../coreforecast", editable = true, marker = "python_version >= '3.11'" }
+utilsforecast         = { path = "../utilsforecast", editable = true }

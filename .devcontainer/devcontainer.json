@@ -1,5 +1,5 @@
 {
-    "name": "Nixtla Development Environment",
+    "name": "Nixtlaverse Development Environment",
     "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11-bookworm",
     "hostRequirements": {
         "cpus": 4,
@@ -11,8 +11,6 @@
             "settings": {
                 "terminal.integrated.shell.linux": "/bin/bash",
                 "python.terminal.activateEnvInCurrentTerminal": true,
-                "python.defaultInterpreterPath": ".venv/bin/python",
-                "python.pythonPath": ".venv/bin/python",
                 "[python]": {
                     "editor.defaultFormatter": "charliermarsh.ruff",
                     "editor.formatOnSave": true,
@@ -21,7 +19,6 @@
                         "source.organizeImports": "explicit"
                     }
                 },
-                "notebook.python.defaultInterpreterPath": ".venv/bin/python",
                 "notebook.codeActionsOnSave": {
                     "source.fixAll": "explicit",
                     "source.organizeImports": "explicit"
@@ -50,9 +47,8 @@
     "containerEnv": {
         "UV_NO_SYNC": "1"
     },
-    "onCreateCommand": "make devenv",
-    "postCreateCommand": "make init_codespace",
-    "waitFor": "postCreateCommand",
+    "onCreateCommand": "uv tool install pre-commit && uv tool run pre-commit install",
+    "waitFor": "onCreateCommand",
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2.12.3": {},
         "ghcr.io/va-h/devcontainers-features/uv:1.1.4": {},

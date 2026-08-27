@@ -31,8 +31,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Nixtla/hierarchicalforecast/"
-Repository = "https://github.com/Nixtla/hierarchicalforecast/"
+Homepage = "https://github.com/Nixtla/nixtla/tree/main/packages/hierarchicalforecast"
+Repository = "https://github.com/Nixtla/nixtla/tree/main/packages/hierarchicalforecast"
 Documentation = "https://nixtlaverse.nixtla.io/hierarchicalforecast/"
 
 [project.optional-dependencies]
@@ -111,3 +111,10 @@ addopts = [
     "--cov-report=html",
     "--cov-fail-under=70", #TODO: Update tests to increase coverage to 80
 ]
+
+# In-repo path sources: dev/test only. The version ranges in [project]
+# dependencies are unchanged and are what gets published; uv strips
+# [tool.uv.sources] from distribution metadata.
+[tool.uv.sources]
+utilsforecast         = { path = "../utilsforecast", editable = true }
+statsforecast         = { path = "../statsforecast", editable = true }
