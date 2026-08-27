@@ -1,0 +1,128 @@
+# Reusable: build a package with a compiled extension. Shared by coreforecast,
+# statsforecast and hierarchicalforecast.
+#
+# Same shape they each had before (wheel matrix + sdist); the per-package
+# differences are the matrix and a handful of CIBW_* knobs, which are inputs.
+#
+# Build only: wheels and sdist are uploaded as `dist-<package>-*` artifacts and
+# the caller publishes them. PyPI trusted publishing matches the
+# job_workflow_ref claim, which names the file the publish step runs in, so that
+# step cannot live here.
+name: _build-wheels
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        type: string
+        required: true
+      python-versions:
+        description: JSON array of cpython tags, e.g. '[310,311,312,313,314]'
+        type: string
+        default: '[310,311,312,313,314]'
+      os-platforms:
+        description: JSON array of [runner, platform-tag] pairs
+        type: string
+        required: true
+      sdist-python-version:
+        type: string
+        default: '3.10'
+      cibw-extras:
+        description: 'Value for the cibuildwheel action''s `extras` input (e.g. "uv")'
+        type: string
+        default: ''
+      cibw-enable:
+        type: string
+        default: ''
+      cibw-test-skip:
+        type: string
+        default: '*'
+      cibw-before-build-macos:
+        type: string
+        default: ''
+      cibw-environment-macos:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    # Preserves the check nixtla's publish workflow had: refuse to release from
+    # a tag that isn't an ancestor of main.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Ensure the tagged commit is on main
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+  build_wheels:
+    needs: [guard]
+    name: wheel cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+    runs-on: ${{ matrix.os-platform[0] }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os-platform: ${{ fromJSON(inputs.os-platforms) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU
+        if: matrix.os-platform[1] == 'manylinux_aarch64' && startsWith(matrix.os-platform[0], 'ubuntu-latest')
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        with:
+          package-dir: packages/${{ inputs.package }}
+          extras: ${{ inputs.cibw-extras }}
+        env:
+          CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          CIBW_ENABLE: ${{ inputs.cibw-enable }}
+          CIBW_TEST_SKIP: ${{ inputs.cibw-test-skip }}
+          CIBW_BEFORE_BUILD_MACOS: ${{ inputs.cibw-before-build-macos }}
+          CIBW_ENVIRONMENT_MACOS: ${{ inputs.cibw-environment-macos }}
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ inputs.package }}-cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          path: wheelhouse/*.whl
+          retention-days: 1
+
+  build_sdist:
+    name: sdist
+    needs: [guard]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.sdist-python-version }}
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --sdist --outdir dist
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ inputs.package }}-sdist
+          path: packages/${{ inputs.package }}/dist/*.tar.gz
+          retention-days: 1

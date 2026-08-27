@@ -1,0 +1,4 @@
+# Nixtla's self-hosted runners, so actionlint doesn't flag them as unknown labels.
+self-hosted-runner:
+  labels:
+    - nixtla-linux-large-public

@@ -1,0 +1,39 @@
+# Tag push -> PyPI, manual dispatch -> TestPyPI dry run (same build path).
+# The publish step lives here, not in the template: PyPI trusted publishing
+# matches the job_workflow_ref claim, which names the file this step runs in,
+# so <pkg>-publish.yml is what gets registered on PyPI and TestPyPI.
+name: publish utilsforecast
+
+on:
+  push:
+    tags: ['utilsforecast/v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/_build-pure.yml
+    with:
+      package: utilsforecast
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'push' && 'release' || 'testpypi' }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          repository-url: ${{ github.event_name == 'workflow_dispatch' && 'https://test.pypi.org/legacy/' || '' }}
+          # the version under test may already be on TestPyPI
+          skip-existing: ${{ github.event_name == 'workflow_dispatch' }}

@@ -1,0 +1,20 @@
+# Production docs deploy, driven by this package's release tag.
+# The pre-monorepo workflows used `release: published`, which in one repo would
+# fire for every package's release, so the tag glob is the gate now.
+name: docs mlforecast (release)
+
+on:
+  push:
+    tags: ['mlforecast/v*']
+
+jobs:
+  docs:
+    uses: ./.github/workflows/_docs.yml
+    with:
+      package: mlforecast
+      python-version: '3.10'
+      sync-args: --group dev --upgrade-package mkdocstrings-parser --extra dask --extra spark
+      environment: production
+    secrets: inherit
+    permissions:
+      contents: write

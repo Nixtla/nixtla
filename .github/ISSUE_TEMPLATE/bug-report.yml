@@ -3,6 +3,22 @@ title: "[<Library component: Model|Core|etc...>] "
 description: Problems and issues with code of the library
 labels: [bug]
 body:
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Which package is this about?
+      options:
+        - coreforecast
+        - utilsforecast
+        - statsforecast
+        - neuralforecast
+        - mlforecast
+        - hierarchicalforecast
+        - nixtla (TimeGPT)
+        - not sure
+    validations:
+      required: true
   - type: markdown
     attributes:
       value: |

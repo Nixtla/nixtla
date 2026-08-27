@@ -1,0 +1,39 @@
+name: docs mlforecast
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/mlforecast/**"
+      - ".github/workflows/mlforecast-docs.yml"
+      - ".github/workflows/_docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/mlforecast/**"
+      - ".github/workflows/mlforecast-docs.yml"
+      - ".github/workflows/_docs.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment to deploy to
+        required: true
+        type: choice
+        default: staging
+        options: [staging, production]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    uses: ./.github/workflows/_docs.yml
+    with:
+      package: mlforecast
+      python-version: '3.10'
+      sync-args: --group dev --upgrade-package mkdocstrings-parser --extra dask --extra spark
+      environment: ${{ github.event.inputs.environment || 'staging' }}
+    secrets: inherit
+    permissions:
+      contents: write

@@ -3,6 +3,22 @@ description: Suggest an idea for a project
 title: "[<Library component: Models|Core|etc...>] "
 labels: [enhancement, feature]
 body:
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Which package is this about?
+      options:
+        - coreforecast
+        - utilsforecast
+        - statsforecast
+        - neuralforecast
+        - mlforecast
+        - hierarchicalforecast
+        - nixtla (TimeGPT)
+        - not sure
+    validations:
+      required: true
   - type: markdown
     attributes:
       value: |

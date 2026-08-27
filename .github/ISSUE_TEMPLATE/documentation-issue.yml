@@ -3,6 +3,22 @@ title: "[<Library component: Models|Core|etc...>] "
 description: Report an issue with the library documentation
 labels: [documentation]
 body:
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Which package is this about?
+      options:
+        - coreforecast
+        - utilsforecast
+        - statsforecast
+        - neuralforecast
+        - mlforecast
+        - hierarchicalforecast
+        - nixtla (TimeGPT)
+        - not sure
+    validations:
+      required: true
   - type: markdown
     attributes:
       value: Thank you for helping us improve the library documentation!

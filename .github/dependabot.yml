@@ -7,3 +7,59 @@ updates:
     groups:
       ci-dependencies:
         patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/coreforecast
+    schedule:
+      interval: weekly
+    groups:
+      coreforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/utilsforecast
+    schedule:
+      interval: weekly
+    groups:
+      utilsforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/statsforecast
+    schedule:
+      interval: weekly
+    groups:
+      statsforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/neuralforecast
+    schedule:
+      interval: weekly
+    groups:
+      neuralforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/mlforecast
+    schedule:
+      interval: weekly
+    groups:
+      mlforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/hierarchicalforecast
+    schedule:
+      interval: weekly
+    groups:
+      hierarchicalforecast-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /packages/nixtla
+    schedule:
+      interval: weekly
+    groups:
+      nixtla-dependencies:
+        patterns: ["*"]

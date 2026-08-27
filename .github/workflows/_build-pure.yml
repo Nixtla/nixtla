@@ -1,0 +1,64 @@
+# Reusable: build a pure-Python package. Shared by utilsforecast, mlforecast,
+# neuralforecast and nixtla.
+#
+# Build only: the sdist and wheel are uploaded as the `dist-<package>` artifact
+# and the caller publishes them. PyPI trusted publishing matches the
+# job_workflow_ref claim, which names the file the publish step runs in, so that
+# step cannot live here.
+name: _build-pure
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Directory name under packages/
+        type: string
+        required: true
+      python-version:
+        type: string
+        default: '3.10'
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    # Preserves the check nixtla's publish workflow had: refuse to release from
+    # a tag that isn't an ancestor of main.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Ensure the tagged commit is on main
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+  build:
+    needs: [guard]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip build
+
+      - name: Build sdist and wheel
+        run: python -m build --sdist --wheel --outdir dist
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ inputs.package }}
+          path: packages/${{ inputs.package }}/dist/*
+          retention-days: 1
