@@ -1390,9 +1390,9 @@ class NixtlaClient:
             client=self,
             job_id=job_id,
             endpoint=endpoint,
-            # A JSON result is inline in the status response, so there is nothing to wait for
-            # and the poll settings are unused.
-            get_result=lambda job_data, poll_interval, poll_timeout: parse_result(
+            # A JSON result is inline in the status response, so there is nothing to wait
+            # for: the poll settings `Job` passes are accepted and ignored.
+            get_result=lambda job_data, *_poll_settings: parse_result(
                 job_data["result"]
             ),
         )
@@ -1443,8 +1443,11 @@ class NixtlaClient:
         """Fetch a binary job's result from its dedicated endpoint, once.
 
         Binary results cannot be inlined into the JSON status response, so they are served
-        separately. Callers go through `_wait_for_job_result_bytes`, which handles the
-        not-ready answer this can raise.
+        separately. A succeeded job's result is not served the instant its status says so:
+        until it is ready the endpoint answers with one of `_RESULT_NOT_READY_CODES`, which
+        this method raises as an `ApiError` like any other non-200. Call
+        `_wait_for_job_result_bytes` rather than this directly -- it recognises those codes
+        as "still being assembled" and keeps polling, instead of reporting a failure.
 
         The status check stays exact: anything other than 200 raises rather than returning a
         body, so a "not ready" JSON payload is never mistaken for the zip.
@@ -4178,15 +4181,17 @@ class NixtlaClient:
         back in as the next step's `data`, calls chain without any file or
         byte handling::
 
-            from nixtla import ref
+            from nixtla import NixtlaClient, ref
 
-            step1 = nc.submit_execute_step_job(
+            nixtla_client = NixtlaClient()
+
+            step1 = nixtla_client.submit_execute_step_job(
                 "make_forecast_input",
                 {"data": ref("panel"), "freq": "D"},
                 data={"panel": df},
             ).wait()
 
-            step2 = nc.submit_execute_step_job(
+            step2 = nixtla_client.submit_execute_step_job(
                 "forecast",
                 {"resource": ref("result"), "models": ["timegpt-1"], "h": 7},
                 data=step1.data,
