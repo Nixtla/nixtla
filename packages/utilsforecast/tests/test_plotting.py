@@ -98,6 +98,21 @@ def test_plot_series(set_series, set_paths):
     fig.savefig(set_paths / "plotting.png", bbox_inches="tight")
 
 
+@pytest.mark.skipif(not PLOTLY_INSTALLED, reason="plotly is not installed")
+def test_plot_series_plotly_many_series():
+    "test that the plotly engine works for multiple series"
+    series = generate_series(15, freq="D", equal_ends=True)
+
+    fig = plot_series(
+        series,
+        plot_random=False,
+        max_ids=15,
+        engine="plotly",
+    )
+
+    assert len(fig.data) == 15
+
+
 @pytest.mark.parametrize(
     "as_polars,ids,plot_anomalies,level,max_insample_length,engine,plot_random,with_forecasts",
     get_plotting_combinations(),
