@@ -26,6 +26,8 @@ from nixtla.nixtla_client import ApiError, Job, NixtlaClient, _is_retriable_erro
 from nixtla.steps import (
     CONTENT_TYPE,
     HEADER_BUDGET,
+    MAX_MEMBERS,
+    MAX_METADATA_DEPTH,
     METADATA_HEADER,
     StepResult,
     _collect_refs,
@@ -134,6 +136,21 @@ class TestCodec:
         with pytest.raises(TypeError, match="pyarrow Tables or eager pandas/polars"):
             to_arrow([1, 2, 3])
 
+    def test_to_arrow_drops_a_positional_pandas_index(self):
+        # Arrow serializes any non-default index as a column, so an ordinary filter would
+        # otherwise upload a phantom `__index_level_0__` that TSMP rebuilds the resource around.
+        filtered = _small_df()[lambda df: df["y"] > 1]
+        assert list(filtered.index) != list(range(len(filtered)))
+        assert to_arrow(filtered).column_names == ["unique_id", "ds", "y"]
+
+    def test_to_arrow_folds_a_named_pandas_index_into_a_column(self):
+        # Dropping it would silently cost the caller the id column they meant to send.
+        indexed = _small_df().set_index("unique_id")
+        assert set(to_arrow(indexed).column_names) == {"unique_id", "ds", "y"}
+
+    def test_to_arrow_leaves_a_default_range_index_alone(self):
+        assert to_arrow(_small_df()).column_names == ["unique_id", "ds", "y"]
+
     def test_collect_refs_finds_every_depth(self):
         params = {
             "resource": ref("a"),
@@ -145,6 +162,23 @@ class TestCodec:
     def test_collect_refs_rejects_non_string(self):
         with pytest.raises(ValueError, match="must be a string"):
             _collect_refs({"data_ref": {"nested": "evil"}})
+
+    def test_collect_refs_stops_at_an_envelope(self):
+        # The server replaces the whole envelope with the one table `data_ref` names, so a step's
+        # own `result` envelope -- which carries `resource`/`schema_expr` siblings -- feeds straight
+        # back in without those being mistaken for anything.
+        envelope = {
+            "data_ref": "result",
+            "resource": "arrowtsi",
+            "schema_expr": {"y": "f64"},
+        }
+        assert _collect_refs({"resource": envelope}) == {"result"}
+
+    def test_collect_refs_rejects_a_ref_nested_under_an_envelope(self):
+        # The server never reads it, so allowing it through would upload `deep` and leave the
+        # param it was meant for unset -- a quietly wrong result rather than an error.
+        with pytest.raises(ValueError, match="never reads a nested reference"):
+            _collect_refs({"data": {**ref("panel"), "opts": ref("deep")}})
 
     def test_build_result_reads_header_case_insensitively(self):
         # HTTP header names are not case-sensitive and proxies rewrite their case freely.
@@ -159,6 +193,19 @@ class TestCodec:
         res = build_result(httpx.Headers({}), _pack({"r": _tagged_table()}))
         assert res.metadata == {}
         assert res["r"].num_rows == 3
+
+    @pytest.mark.parametrize("value", ["not json at all", '["a", "list"]'])
+    def test_build_result_tolerates_an_unusable_metadata_header(self, value, caplog):
+        # A result whose tables came back intact should not be discarded because the metadata
+        # describing it is unusable -- the caller can still read everything from `.data`.
+        with caplog.at_level(logging.WARNING, logger="nixtla.steps"):
+            res = build_result(
+                httpx.Headers({METADATA_HEADER: value}), _pack({"r": _tagged_table()})
+            )
+
+        assert res.metadata == {}
+        assert res["r"].num_rows == 3
+        assert METADATA_HEADER in caplog.text
 
     def test_unpack_warns_about_a_member_that_is_not_a_table(self, caplog):
         packed = _pack({"result": pa.table({"x": [1]})})
@@ -206,15 +253,51 @@ class TestValidation:
                 **_call_kwargs(params={"data": ref("absent")})
             )
 
-    def test_rejects_a_ref_alongside_a_nested_one(self):
-        # A param can hold both a data_ref and nested params referencing further tables;
-        # missing the sibling would reject this valid call as "unsupplied".
+    def test_rejects_a_ref_nested_under_an_envelope(self):
+        # `decode` replaces the envelope with the table `data_ref` names and never recurses into
+        # its siblings, so accepting this would upload `deep` and leave `opts` unset server-side.
         with pytest.raises(ValueError, match=r"\['deep'\]"):
             _client().submit_execute_step_job(
                 **_call_kwargs(
                     params={"data": {**ref("panel"), "opts": ref("deep")}},
+                    data={"panel": _small_df(), "deep": _small_df()},
                 )
             )
+
+    @pytest.mark.parametrize("func_name", ["", "f" * 129])
+    def test_rejects_a_func_name_outside_the_servers_bounds(self, func_name):
+        with pytest.raises(ValueError, match="func_name must be a string"):
+            _client().submit_execute_step_job(**_call_kwargs(func_name=func_name))
+
+    @pytest.mark.parametrize("timeout", [0, -1])
+    def test_rejects_a_non_positive_job_timeout(self, timeout):
+        with pytest.raises(ValueError, match="job_timeout_seconds must be positive"):
+            _client().submit_execute_step_job(
+                **_call_kwargs(job_timeout_seconds=timeout)
+            )
+
+    def test_rejects_more_tables_than_the_server_accepts(self):
+        data = {f"t{i}": _small_df(1) for i in range(MAX_MEMBERS + 1)}
+        with pytest.raises(ValueError, match=f"over the {MAX_MEMBERS}"):
+            _client().submit_execute_step_job(
+                **_call_kwargs(params={"data": ref("t0")}, data=data)
+            )
+
+    def test_rejects_metadata_nested_deeper_than_the_server_parses(self):
+        deep = inner = {}
+        for _ in range(MAX_METADATA_DEPTH + 2):
+            inner["k"] = inner = {}
+        with pytest.raises(ValueError, match=f"deeper than {MAX_METADATA_DEPTH}"):
+            _client().submit_execute_step_job(
+                **_call_kwargs(params={"data": ref("panel"), "deep": deep})
+            )
+
+    def test_rejects_a_body_over_the_server_limit(self, monkeypatch):
+        # Without this the request is accepted and only reported as a failed job later, so the
+        # error would surface long after the call that caused it.
+        monkeypatch.setattr("nixtla.steps.MAX_BODY_BYTES", 128)
+        with pytest.raises(ValueError, match="over the 128-byte limit"):
+            _client().submit_execute_step_job(**_call_kwargs())
 
     @pytest.mark.parametrize("key", ["../evil", "/abs", "nested/path", "", " lead"])
     def test_rejects_unsafe_data_keys(self, key):

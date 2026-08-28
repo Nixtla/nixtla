@@ -145,6 +145,11 @@ class Job:
                 reaches a terminal state. `poll_timeout` only bounds the
                 client's polling, so unless `cancel_on_timeout` is set the job
                 keeps running server-side until its own deadline.
+
+        Note:
+            `poll_timeout` bounds the status polling only. A task whose result
+            is fetched separately (`execute_step`) then spends up to the
+            client's `max_wait_time` retrieving it, on top of `poll_timeout`.
         """
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             try:

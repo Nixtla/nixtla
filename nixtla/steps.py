@@ -1,9 +1,9 @@
 """Client-side codec for the `execute_step` endpoint.
 
-`execute_step` runs one TSMP top-level API call server-side in a fresh sandbox. Unlike the other
-endpoints it does not exchange JSON: the request body is a zip of `<key>.parquet` members and all
-of its metadata rides in a `nixtla-metadata` header. The invariant is that the zip is data and the
-header is metadata, so there is exactly one place to look for each.
+`execute_step` runs one TSMP top-level API call server-side. Unlike the other endpoints it does not
+exchange JSON: the request body is a zip of `<key>.parquet` members and all of its metadata rides in
+a `nixtla-metadata` header. The invariant is that the zip is data and the header is metadata, so
+there is exactly one place to look for each.
 
 Nothing here understands TSMP semantics. Tables returned by the server carry their resource
 identity in arrow schema metadata, and this module passes that through untouched, which is what
@@ -36,10 +36,18 @@ CONTENT_TYPE = "application/zip"
 _PARQUET_SUFFIX = ".parquet"
 _REF_KEY = "data_ref"
 
-# Tightest common proxy limit (nginx large_client_header_buffers 8k, CloudFront 8k). The server
-# rejects anything larger with 431 and deliberately does not spill metadata into the body, so the
-# client checks the same budget to fail before uploading rather than after.
+# The largest metadata header the API accepts. Metadata is never moved into the body -- the archive
+# holds tables and nothing else -- so an oversized header is a bad request rather than something to
+# route around. Checked here to fail before uploading rather than after.
 HEADER_BUDGET = 8192
+
+# The other limits the API places on a request. Exceeding one of these is reported as a failed job
+# rather than as an error when the job is submitted, so it would otherwise surface long after the
+# call that caused it. Checking locally turns that back into an immediate ValueError.
+MAX_BODY_BYTES = 32 * 1024 * 1024
+MAX_MEMBERS = 512
+MAX_METADATA_DEPTH = 32
+MAX_FUNC_NAME_LENGTH = 128
 
 
 def ref(key: str) -> dict[str, str]:
@@ -57,10 +65,13 @@ def ref(key: str) -> dict[str, str]:
 def _collect_refs(obj: Any) -> set[str]:
     """Every `data_ref` in a params tree, so a bad reference is caught before uploading.
 
-    An envelope's siblings are still walked: a param can hold both a `data_ref` and nested
-    params that reference further tables, and missing one of those would reject a valid call.
+    An envelope terminates the walk, exactly as it does server-side: the server replaces the whole
+    dict with the one table `data_ref` names and never looks at its siblings. A ref nested under an
+    envelope would therefore be silently ignored -- the table gets uploaded and the param it was
+    meant for stays unset -- so it is rejected here rather than left to produce a quietly wrong
+    result. Siblings that are not refs (the `resource`/`schema_expr` a step's own `result` envelope
+    carries) are passed through untouched, so a result envelope can be fed straight back in.
     """
-    refs: set[str] = set()
     if isinstance(obj, dict):
         if _REF_KEY in obj:
             key = obj[_REF_KEY]
@@ -68,13 +79,21 @@ def _collect_refs(obj: Any) -> set[str]:
                 raise ValueError(
                     f"{_REF_KEY} must be a string, got {type(key).__name__}"
                 )
-            refs.add(key)
-        for value in obj.values():
-            refs |= _collect_refs(value)
-    elif isinstance(obj, (list, tuple)):
-        for value in obj:
-            refs |= _collect_refs(value)
-    return refs
+            ignored: set[str] = set()
+            for name, value in obj.items():
+                if name != _REF_KEY:
+                    ignored |= _collect_refs(value)
+            if ignored:
+                raise ValueError(
+                    f"the {_REF_KEY} envelope naming {key!r} also nests {sorted(ignored)}; the "
+                    f"server replaces the whole envelope with that one table and never reads a "
+                    f"nested reference. Pass the nested table as its own param instead."
+                )
+            return {key}
+        return {r for value in obj.values() for r in _collect_refs(value)}
+    if isinstance(obj, (list, tuple)):
+        return {r for value in obj for r in _collect_refs(value)}
+    return set()
 
 
 def _validate_member_names(names: Iterable[str]) -> None:
@@ -96,18 +115,44 @@ def _validate_member_names(names: Iterable[str]) -> None:
             raise ValueError(f"unsafe data key: {name!r} (must be a bare name)")
 
 
+def _normalize_pandas_index(obj: Any) -> Any:
+    """Fold a pandas index into columns, or drop it, so it never reaches arrow as one.
+
+    Arrow serializes any non-default index as a column, which is how an ordinary filtered frame
+    (`df[df.y > 1]` leaves a non-contiguous index) grows a phantom `__index_level_0__` that TSMP
+    then rebuilds the resource around. A named index is folded into a real column instead of being
+    discarded: it usually holds the id or timestamp the caller means to send, and dropping it
+    silently would cost them the column. Anything else is positional bookkeeping and is dropped.
+
+    A no-op for non-pandas input, so polars and arrow reach `to_arrow` untouched.
+    """
+    # Imported here rather than at module scope only to keep pandas out of this module's import
+    # graph; it is a hard dependency of the SDK, so this always resolves.
+    import pandas as pd
+
+    if not isinstance(obj, pd.DataFrame):
+        return obj
+    index = obj.index
+    if isinstance(index, pd.RangeIndex) and index.start == 0 and index.step == 1:
+        # What arrow already stores as metadata rather than as a column; nothing to do.
+        return obj
+    return obj.reset_index(drop=all(name is None for name in index.names))
+
+
 def to_arrow(obj: Any) -> pa.Table:
     """Coerce a supported table-like object to a `pyarrow.Table`.
 
     A `pa.Table` is returned unchanged so that a table received from a previous step keeps its
     schema metadata. pandas and polars frames go through narwhals, which is already a hard
     dependency and reaches arrow in one hop; the rest of the client converts via utilsforecast.
+
+    A pandas index is never sent as data -- see `_normalize_pandas_index`.
     """
     if isinstance(obj, pa.Table):
         return obj
 
     try:
-        frame = nw.from_native(obj, eager_only=True)
+        frame = nw.from_native(_normalize_pandas_index(obj), eager_only=True)
     except TypeError as exc:
         raise TypeError(
             "execute_step data values must be pyarrow Tables or eager pandas/polars DataFrames, "
@@ -146,14 +191,34 @@ def _unpack(body: bytes) -> dict[str, pa.Table]:
     return tables
 
 
+def _check_metadata_depth(obj: Any) -> None:
+    """Reject metadata nested deeper than the server will parse.
+
+    Iterative on purpose: a recursive walk would hit the very limit it exists to enforce.
+    """
+    stack: list[tuple[Any, int]] = [(obj, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > MAX_METADATA_DEPTH:
+            raise ValueError(
+                f"{METADATA_HEADER} nests deeper than {MAX_METADATA_DEPTH} levels; flatten the "
+                f"params."
+            )
+        if isinstance(node, dict):
+            stack.extend((v, depth + 1) for v in node.values())
+        elif isinstance(node, (list, tuple)):
+            stack.extend((x, depth + 1) for x in node)
+
+
 def _encode_metadata(metadata: dict[str, Any]) -> str:
-    """Serialize the request metadata, refusing anything that will not fit the header.
+    """Serialize the request metadata, refusing anything the server would not parse.
 
     `json.dumps` defaults to `ensure_ascii=True`, so the value is pure ASCII -- one byte per
     character, and safe as an HTTP header. Metadata is never moved into the body: the archive
     holds tables and nothing else, so an oversized header is a bad request rather than
     something to route around.
     """
+    _check_metadata_depth(metadata)
     payload = json.dumps(metadata)
     size = len(payload)
     if size > HEADER_BUDGET:
@@ -166,9 +231,30 @@ def _encode_metadata(metadata: dict[str, Any]) -> str:
 
 
 def _decode_metadata(headers: Mapping[str, str]) -> dict[str, Any]:
-    """Read the response metadata header, or `{}` when the server sent none."""
+    """Read the response metadata header, or `{}` when the server sent none.
+
+    A header that will not parse is warned about rather than raised on: a result whose tables came
+    back intact should not be discarded because the metadata describing it is unusable. The tables
+    are in `.data` either way.
+    """
     value = headers.get(METADATA_HEADER)
-    return json.loads(value) if value else {}
+    if not value:
+        return {}
+    try:
+        metadata = json.loads(value)
+    except json.JSONDecodeError:
+        logger.warning(
+            "ignoring unparseable %s header on step result: %r", METADATA_HEADER, value
+        )
+        return {}
+    if not isinstance(metadata, dict):
+        logger.warning(
+            "ignoring %s header on step result: expected a JSON object, got %s",
+            METADATA_HEADER,
+            type(metadata).__name__,
+        )
+        return {}
+    return metadata
 
 
 class StepResult(Mapping):
@@ -228,13 +314,31 @@ def build_request(
 ) -> tuple[str, bytes]:
     """Validate and encode one execute_step call into `(metadata_header, zip_body)`.
 
-    Validation mirrors the server's own checks so a malformed request fails locally rather than
+    Validation mirrors the limits the API enforces so a malformed request fails locally rather than
     after a full upload. A table no param references is only warned about: passing a previous
     step's whole `.data` map is the intended way to chain calls, and a step can return more
     tables than the next one consumes.
     """
+    if (
+        not isinstance(func_name, str)
+        or not 1 <= len(func_name) <= MAX_FUNC_NAME_LENGTH
+    ):
+        raise ValueError(
+            f"func_name must be a string of 1 to {MAX_FUNC_NAME_LENGTH} characters, got "
+            f"{func_name!r}"
+        )
+    if job_timeout_seconds is not None and job_timeout_seconds <= 0:
+        raise ValueError(
+            f"job_timeout_seconds must be positive, got {job_timeout_seconds!r}"
+        )
+
     tables = {key: to_arrow(value) for key, value in (data or {}).items()}
     _validate_member_names(tables)
+    if len(tables) > MAX_MEMBERS:
+        raise ValueError(
+            f"data holds {len(tables)} tables, over the {MAX_MEMBERS} the server accepts. Send "
+            f"fewer tables per request."
+        )
 
     refs = _collect_refs(params)
     missing = refs - set(tables)
@@ -256,4 +360,13 @@ def build_request(
     }
     if job_timeout_seconds is not None:
         metadata["job_options"] = {"timeout_seconds": job_timeout_seconds}
-    return _encode_metadata(metadata), _pack(tables)
+    header = _encode_metadata(metadata)
+
+    body = _pack(tables)
+    if len(body) > MAX_BODY_BYTES:
+        raise ValueError(
+            f"the request body is {len(body)} bytes, over the {MAX_BODY_BYTES}-byte limit the "
+            f"server accepts. Split the request into smaller batches (fewer ids, a shorter "
+            f"history)."
+        )
+    return header, body

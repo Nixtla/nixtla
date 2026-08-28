@@ -246,9 +246,9 @@ def _is_retriable_error(exc: Exception) -> bool:
     retriable_codes = [
         HTTPStatus.REQUEST_TIMEOUT,
         # A binary job's result endpoint answers 202 while the zip has not materialized yet, so
-        # "not ready" means poll again rather than give up. 409 stays listed because older servers
-        # used it for that same case; on current ones it means the job ended without a result, and
-        # retrying is merely wasteful rather than wrong.
+        # "not ready" means poll again rather than give up. 409 is listed alongside it for
+        # compatibility; where it instead means the job ended without a result, retrying is
+        # merely wasteful rather than wrong.
         HTTPStatus.ACCEPTED,
         HTTPStatus.CONFLICT,
         HTTPStatus.TOO_MANY_REQUESTS,
@@ -1407,9 +1407,9 @@ class NixtlaClient:
         """Fetch a binary job's result from its dedicated endpoint.
 
         Binary results cannot be inlined into the JSON status response, so they are served
-        separately. The server answers 202 while the job has not yet succeeded (older servers
-        answered 409), and `_is_retriable_error` treats both as retriable -- callers should go
-        through `_retry_strategy` so that race resolves itself rather than surfacing.
+        separately. The API answers 202 while the job has not yet succeeded, and 409 is treated
+        the same way; `_is_retriable_error` covers both -- callers should go through
+        `_retry_strategy` so that race resolves itself rather than surfacing.
 
         The status check stays exact: anything other than 200 raises rather than returning a
         body, so a "not ready" JSON payload is never mistaken for the zip.
@@ -4055,9 +4055,9 @@ class NixtlaClient:
     ) -> Job:
         """Submit a single TSMP step to run asynchronously.
 
-        `execute_step` runs one TSMP top-level API call server-side in a
-        fresh sandbox: nothing is registered and nothing is cached between
-        calls, so every request is self-contained and carries its own data.
+        `execute_step` runs one TSMP top-level API call server-side. Each
+        call is independent: no state carries over from one to the next, so
+        every request is self-contained and carries its own data.
         This does not block; it submits the job and immediately returns a
         `Job` handle. Call `job.wait()` to poll until it completes and get a
         `StepResult`, or `job.cancel()` to request that the server stop it.
@@ -4086,11 +4086,11 @@ class NixtlaClient:
         `step.to_pandas()`.
 
         There is no `model` argument: a step names the models it runs inside
-        `params`, and the sandbox reaches them over the API rather than from
-        a checkpoint local to one host.
+        `params`.
 
-        Not reachable over this transport: `train` and `optimize_model`.
-        Both require a `tune.Space`, which has no JSON encoding.
+        Not reachable over this transport: `optimize_model`, which requires a
+        `tune.Space` that has no JSON encoding. A pandas index is never sent
+        as data; a named one is folded into a column, anything else dropped.
 
         Args:
             func_name (str): TSMP top-level API to run, e.g. `'forecast'`,
@@ -4115,9 +4115,12 @@ class NixtlaClient:
             TypeError: If a `data` value is not a pyarrow Table or an eager
                 pandas/polars DataFrame.
             ValueError: If a `ref` names a table that `data` does not supply,
-                a `data` key is not a bare name, or the encoded metadata
-                exceeds the header budget. All are raised locally, before
-                anything is uploaded.
+                a `ref` envelope nests another `ref` (the server would ignore
+                it), a `data` key is not a bare name, `func_name` is empty or
+                over 128 characters, `job_timeout_seconds` is not positive, or
+                the request is over one of the server's budgets (metadata
+                header size or nesting, table count, body size). All are
+                raised locally, before anything is uploaded.
 
         Returns:
             Job: Handle to the submitted job. `job.wait()` returns a `StepResult` with `.data`
