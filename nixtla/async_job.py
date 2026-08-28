@@ -114,7 +114,7 @@ class Job:
         self,
         poll_interval: float = 15,
         poll_timeout: float = 3600,
-        cancel_on_timeout: bool = False,
+        cancel_on_timeout: bool = True,
     ) -> Any:
         """Poll the job until it reaches a terminal state and return its result.
 
@@ -125,10 +125,10 @@ class Job:
                 reach a terminal state before raising `AsyncJobTimeoutError`.
                 Defaults to 3600.
             cancel_on_timeout (bool): Whether to request cancellation of the
-                job when `poll_timeout` elapses. Defaults to False, so that
-                polling in short increments (calling `wait()` again to resume)
-                leaves the job running. Set to True to stop the job from
-                consuming server-side compute once you have given up on it.
+                job when `poll_timeout` elapses. Defaults to True, so that a
+                job you have given up on stops consuming server-side compute.
+                Set to False to poll in short increments -- calling `wait()`
+                again to resume -- which requires the job to still be running.
                 Cancellation is best-effort: if the request fails it is logged
                 as a warning and `AsyncJobTimeoutError` is raised regardless.
 
@@ -143,7 +143,7 @@ class Job:
                 terminal state (e.g. after a successful `cancel()`).
             AsyncJobTimeoutError: If `poll_timeout` elapses before the job
                 reaches a terminal state. `poll_timeout` only bounds the
-                client's polling, so unless `cancel_on_timeout` is set the job
+                client's polling, so with `cancel_on_timeout=False` the job
                 keeps running server-side until its own deadline.
 
         Note:

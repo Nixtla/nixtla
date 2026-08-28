@@ -575,21 +575,33 @@ def _timing_out_job(monkeypatch, cancel_job):
     return _client().submit_finetune_job(df=_small_df(), freq="D")
 
 
-def test_job_wait_does_not_cancel_on_timeout_by_default(monkeypatch):
-    """`poll_timeout` bounds local polling only, so waiting in short increments
-    and resuming has to leave the job alone."""
+def test_job_wait_cancels_on_timeout_by_default(monkeypatch):
+    """Giving up on a job should stop it consuming server-side compute."""
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
+
+    with pytest.raises(AsyncJobTimeoutError):
+        job.wait(poll_interval=0, poll_timeout=0.01)
+
+    assert calls == ["ft-job-1"]
+    assert job.status == "cancelled"
+
+
+def test_job_wait_leaves_the_job_running_when_opted_out(monkeypatch):
+    """`poll_timeout` bounds local polling only, so `cancel_on_timeout=False`
+    supports waiting in short increments and resuming."""
     calls = []
     job = _timing_out_job(monkeypatch, _recording_cancel(calls))
 
     for _ in range(2):
         with pytest.raises(AsyncJobTimeoutError):
-            job.wait(poll_interval=0, poll_timeout=0.01)
+            job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=False)
 
     assert calls == []
     assert job._status is None  # still resumable
 
 
-def test_job_wait_cancels_on_timeout_when_opted_in(monkeypatch):
+def test_job_wait_cancels_on_timeout_when_set_explicitly(monkeypatch):
     calls = []
     job = _timing_out_job(monkeypatch, _recording_cancel(calls))
 
