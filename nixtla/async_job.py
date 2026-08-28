@@ -72,14 +72,15 @@ class Job:
         client: "NixtlaClient",
         job_id: str,
         endpoint: str,
-        get_result: Callable[[dict[str, Any]], Any],
+        get_result: Callable[[dict[str, Any], float, float], Any],
     ):
         """
         Args:
-            get_result: Builds the job's result from the terminal job-status response.
-                Tasks whose result is JSON read it out of that response's `result` field;
-                tasks whose result is binary (`execute_step` returns a zip) leave `result`
-                null there and fetch the payload from their own endpoint instead.
+            get_result: Builds the job's result, called as
+                `get_result(job_data, poll_interval, poll_timeout)`. Tasks whose result is JSON
+                read it out of the job-status response's `result` field and ignore the poll
+                settings; tasks whose result is binary (`execute_step` returns a zip) leave
+                `result` null there and use them to poll their own result endpoint.
         """
         self.job_id = job_id
         self.result: Any = None
@@ -147,10 +148,9 @@ class Job:
                 keeps running server-side until its own deadline.
 
         Note:
-            `poll_timeout` bounds the status polling only. A task whose result
-            is fetched separately (`execute_step`) then spends up to
-            `max_retries` attempts `retry_interval` apart retrieving it, on
-            top of `poll_timeout`.
+            A task whose result is fetched separately (`execute_step`) polls
+            for it after the status turns terminal, using these same settings
+            again -- so the total wait can reach twice `poll_timeout`.
         """
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             try:
@@ -167,7 +167,7 @@ class Job:
                 raise
         # `_poll_job` returns only on success; every other terminal state raises.
         self._status = JobStatus.SUCCEEDED
-        self.result = self._get_result(job_data)
+        self.result = self._get_result(job_data, poll_interval, poll_timeout)
         return self.result
 
     def cancel(self) -> None:

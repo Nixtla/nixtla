@@ -230,6 +230,12 @@ _date_features_by_freq = {
 }
 
 
+# What a binary job's result endpoint answers while the payload has not been served yet. 202 is
+# what it returns today; 409 is kept for compatibility, and where it instead means the job ended
+# without a result, waiting is merely wasteful rather than wrong.
+_RESULT_NOT_READY_CODES = (HTTPStatus.ACCEPTED, HTTPStatus.CONFLICT)
+
+
 def _is_retriable_error(exc: Exception) -> bool:
     retriable_exceptions = (
         ConnectionResetError,
@@ -245,11 +251,6 @@ def _is_retriable_error(exc: Exception) -> bool:
     )
     retriable_codes = [
         HTTPStatus.REQUEST_TIMEOUT,
-        # A binary job's result endpoint answers 202 while the zip has not materialized yet, so
-        # "not ready" means poll again rather than give up. 409 is listed alongside it for
-        # compatibility; where it instead means the job ended without a result, retrying is
-        # merely wasteful rather than wrong.
-        HTTPStatus.ACCEPTED,
         HTTPStatus.CONFLICT,
         HTTPStatus.TOO_MANY_REQUESTS,
         HTTPStatus.BAD_GATEWAY,
@@ -1389,7 +1390,11 @@ class NixtlaClient:
             client=self,
             job_id=job_id,
             endpoint=endpoint,
-            get_result=lambda job_data: parse_result(job_data["result"]),
+            # A JSON result is inline in the status response, so there is nothing to wait for
+            # and the poll settings are unused.
+            get_result=lambda job_data, poll_interval, poll_timeout: parse_result(
+                job_data["result"]
+            ),
         )
 
     def _submit_binary_job(
@@ -1435,12 +1440,11 @@ class NixtlaClient:
         endpoint: str,
         job_id: str,
     ) -> tuple[httpx.Headers, bytes]:
-        """Fetch a binary job's result from its dedicated endpoint.
+        """Fetch a binary job's result from its dedicated endpoint, once.
 
         Binary results cannot be inlined into the JSON status response, so they are served
-        separately. The API answers 202 while the job has not yet succeeded, and 409 is treated
-        the same way; `_is_retriable_error` covers both -- callers should go through
-        `_retry_strategy` so that race resolves itself rather than surfacing.
+        separately. Callers go through `_wait_for_job_result_bytes`, which handles the
+        not-ready answer this can raise.
 
         The status check stays exact: anything other than 200 raises rather than returning a
         body, so a "not ready" JSON payload is never mistaken for the zip.
@@ -1454,6 +1458,44 @@ class NixtlaClient:
             raise ApiError(status_code=resp.status_code, body=body)
         return resp.headers, resp.content
 
+    def _wait_for_job_result_bytes(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        job_id: str,
+        poll_interval: float,
+        poll_timeout: float,
+    ) -> tuple[httpx.Headers, bytes]:
+        """Poll a binary job's result endpoint until the payload is served.
+
+        A succeeded job's result is not necessarily available the instant its status says so, and
+        the endpoint answers `_RESULT_NOT_READY_CODES` until it is. That is a polling state, not a
+        failure, so it gets its own bounded loop here rather than going through `_retry_strategy`:
+        waiting is not an error to log as one, and it should not spend the budget reserved for
+        transient network failures. Those are still retried, by the same loop.
+        """
+        deadline = time.monotonic() + poll_timeout
+        announced = False
+        while True:
+            try:
+                return self._get_job_result_bytes(client, endpoint, job_id)
+            except Exception as e:
+                not_ready = (
+                    isinstance(e, ApiError) and e.status_code in _RESULT_NOT_READY_CODES
+                )
+                if not not_ready and not _is_retriable_error(e):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AsyncJobTimeoutError(
+                        job_id=job_id, poll_timeout=poll_timeout
+                    ) from e
+                if not announced:
+                    # Once per wait, not once per attempt: `poll_interval` may be small.
+                    logger.info("Waiting for the result of job %s...", job_id)
+                    announced = True
+                time.sleep(min(poll_interval, remaining))
+
     def _submit_and_wrap_binary_job(
         self,
         endpoint: str,
@@ -1466,13 +1508,15 @@ class NixtlaClient:
         the request metadata travels in a header rather than in the body.
         """
 
-        def get_result(job_data: dict[str, Any]) -> StepResult:
-            # The status response leaves `result` null for these tasks; the payload is
-            # served from the job's own result endpoint. Retried because that endpoint
-            # answers 202 until the result has materialized.
+        def get_result(
+            job_data: dict[str, Any], poll_interval: float, poll_timeout: float
+        ) -> StepResult:
+            # The status response leaves `result` null for these tasks; the payload is served
+            # from the job's own result endpoint, which may not have it the instant the status
+            # says succeeded.
             with self._make_client(**self._client_kwargs) as client:
-                headers, content = self._retry_strategy(self._get_job_result_bytes)(
-                    client=client, endpoint=endpoint, job_id=job_id
+                headers, content = self._wait_for_job_result_bytes(
+                    client, endpoint, job_id, poll_interval, poll_timeout
                 )
             return _build_step_result(headers, content)
 

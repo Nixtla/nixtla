@@ -22,7 +22,13 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from nixtla.nixtla_client import ApiError, Job, NixtlaClient, _is_retriable_error
+from nixtla.nixtla_client import (
+    ApiError,
+    AsyncJobTimeoutError,
+    Job,
+    NixtlaClient,
+    _is_retriable_error,
+)
 from nixtla.steps import (
     CONTENT_TYPE,
     HEADER_BUDGET,
@@ -600,10 +606,9 @@ class TestResult:
         assert exc.value.status_code == 422
 
     @pytest.mark.parametrize("not_ready_status", [202, 409])
-    def test_a_not_ready_response_raises_a_retriable_error(self, not_ready_status):
-        # Goes through the real status check rather than a hand-made ApiError: the retry above
-        # only helps if `_get_job_result_bytes` actually raises on this status *and*
-        # `_is_retriable_error` accepts what it raised. Together these pin the wire contract.
+    def test_a_not_ready_response_raises_with_that_status(self, not_ready_status):
+        # Goes through the real status check rather than a hand-made ApiError, so this pins the
+        # wire contract the waiting loop below is written against.
         http_client = MagicMock()
         resp = MagicMock(status_code=not_ready_status, content=b"PK")
         resp.json.return_value = {"detail": "result not ready, poll again"}
@@ -613,15 +618,20 @@ class TestResult:
             _client()._get_job_result_bytes(http_client, "v2/execute_step", "es-1")
 
         assert exc.value.status_code == not_ready_status
-        assert _is_retriable_error(exc.value)
+
+    def test_not_ready_is_not_classified_as_a_retriable_failure(self):
+        # 202 is a success status: waiting for a result is a polling state, not a failure, so it
+        # must not go through the machinery that logs every attempt as an error.
+        assert not _is_retriable_error(ApiError(status_code=202, body={}))
+        # 409 predates this and still serves other endpoints.
+        assert _is_retriable_error(ApiError(status_code=409, body={}))
 
     @pytest.mark.parametrize("not_ready_status", [202, 409])
-    def test_not_ready_from_the_result_endpoint_is_retried(
+    def test_not_ready_from_the_result_endpoint_is_waited_out(
         self, monkeypatch, not_ready_status
     ):
-        # The job says succeeded but the zip has not materialized yet: giving up here would
-        # discard work the server has already done and billed. 202 is what current servers
-        # answer, 409 what older ones did, and both must keep the retry going.
+        # The job says succeeded but the payload has not been served yet: giving up here would
+        # discard work the server has already done and billed.
         body = _pack({"result": _tagged_table()})
         attempts = []
 
@@ -641,12 +651,103 @@ class TestResult:
         )
         monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky_result)
 
-        res = (
-            _client(retry_interval=0)
-            .submit_execute_step_job(**_call_kwargs())
-            .wait(poll_interval=0)
-        )
+        res = _client().submit_execute_step_job(**_call_kwargs()).wait(poll_interval=0)
 
+        assert len(attempts) == 2
+        assert res["result"].num_rows == 3
+
+    def test_waiting_for_a_result_logs_no_errors(self, monkeypatch, caplog):
+        """A successful wait must not report errors just because it had to wait.
+
+        The regression this guards: routing "not ready" through `_retry_strategy` made its
+        `after_retry` hook log `Attempt N failed with error: status_code: 202` on the happy path.
+        """
+        body = _pack({"result": _tagged_table()})
+        attempts = []
+
+        def flaky_result(self, client, endpoint, job_id):
+            attempts.append(job_id)
+            if len(attempts) < 3:
+                raise ApiError(status_code=202, body={"detail": "not ready"})
+            return {}, body
+
+        _stub_submit_binary(monkeypatch)
+        monkeypatch.setattr(
+            NixtlaClient,
+            "_poll_job",
+            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+        )
+        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky_result)
+
+        with caplog.at_level(logging.ERROR):
+            res = (
+                _client().submit_execute_step_job(**_call_kwargs()).wait(poll_interval=0)
+            )
+
+        assert res["result"].num_rows == 3
+        assert len(attempts) == 3
+        assert caplog.records == []
+
+    def test_a_result_that_never_arrives_times_out(self, monkeypatch):
+        # Surfacing a bare ApiError(202) would read like a bug rather than "still processing".
+        def never_ready(self, client, endpoint, job_id):
+            raise ApiError(status_code=202, body={"detail": "not ready"})
+
+        _stub_submit_binary(monkeypatch)
+        monkeypatch.setattr(
+            NixtlaClient,
+            "_poll_job",
+            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+        )
+        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", never_ready)
+
+        job = _client().submit_execute_step_job(**_call_kwargs())
+        with pytest.raises(AsyncJobTimeoutError) as exc:
+            job.wait(poll_interval=0, poll_timeout=0.05)
+        assert exc.value.job_id == "es-1"
+
+    def test_a_non_retriable_result_error_surfaces_immediately(self, monkeypatch):
+        attempts = []
+
+        def boom(self, client, endpoint, job_id):
+            attempts.append(job_id)
+            raise ApiError(status_code=500, body={"detail": "boom"})
+
+        _stub_submit_binary(monkeypatch)
+        monkeypatch.setattr(
+            NixtlaClient,
+            "_poll_job",
+            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+        )
+        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", boom)
+
+        job = _client().submit_execute_step_job(**_call_kwargs())
+        with pytest.raises(ApiError) as exc:
+            job.wait(poll_interval=0)
+        assert exc.value.status_code == 500
+        assert len(attempts) == 1
+
+    def test_a_transient_error_while_fetching_is_still_retried(self, monkeypatch):
+        # The same loop covers genuine network failures, so dropping 202 from retriable_codes
+        # must not stop those from being retried.
+        body = _pack({"result": _tagged_table()})
+        attempts = []
+
+        def flaky(self, client, endpoint, job_id):
+            attempts.append(job_id)
+            if len(attempts) == 1:
+                raise httpx.ReadTimeout("timed out")
+            return {}, body
+
+        _stub_submit_binary(monkeypatch)
+        monkeypatch.setattr(
+            NixtlaClient,
+            "_poll_job",
+            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+        )
+        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky)
+
+        res = _client().submit_execute_step_job(**_call_kwargs()).wait(poll_interval=0)
         assert len(attempts) == 2
         assert res["result"].num_rows == 3
 
