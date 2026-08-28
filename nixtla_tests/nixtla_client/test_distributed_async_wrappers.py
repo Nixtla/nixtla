@@ -44,7 +44,7 @@ def test_forecast_wrapper_forwards_async_kwargs():
         feature_contributions=False,
         model_parameters=None,
         multivariate=False,
-        job_timeout_seconds=300,
+        _job_timeout_seconds=300,
         _is_async_job=True,
         _poll_interval=7,
         _poll_timeout=42,
@@ -55,7 +55,7 @@ def test_forecast_wrapper_forwards_async_kwargs():
     assert kwargs["_is_async_job"] is True
     assert kwargs["_poll_interval"] == 7
     assert kwargs["_poll_timeout"] == 42
-    assert kwargs["job_timeout_seconds"] == 300
+    assert kwargs["_job_timeout_seconds"] == 300
 
 
 def test_forecast_wrapper_defaults_are_sync():
@@ -123,7 +123,7 @@ def test_cross_validation_wrapper_forwards_async_kwargs():
         model_parameters=None,
         multivariate=False,
         categorical_exog_list=None,
-        job_timeout_seconds=300,
+        _job_timeout_seconds=300,
         _is_async_job=True,
         _poll_interval=7,
         _poll_timeout=42,
@@ -134,4 +134,4 @@ def test_cross_validation_wrapper_forwards_async_kwargs():
     assert kwargs["_is_async_job"] is True
     assert kwargs["_poll_interval"] == 7
     assert kwargs["_poll_timeout"] == 42
-    assert kwargs["job_timeout_seconds"] == 300
+    assert kwargs["_job_timeout_seconds"] == 300

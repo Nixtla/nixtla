@@ -49,6 +49,10 @@ MAX_MEMBERS = 512
 MAX_METADATA_DEPTH = 32
 MAX_FUNC_NAME_LENGTH = 128
 
+# The zip format's minimum timestamp, stamped on every member so one data map always serializes to
+# the same bytes. See `_pack`.
+_ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+
 
 def ref(key: str) -> dict[str, str]:
     """Build the params envelope naming a table in the data map.
@@ -115,19 +119,20 @@ def _validate_member_names(names: Iterable[str]) -> None:
             raise ValueError(f"unsafe data key: {name!r} (must be a bare name)")
 
 
-def _normalize_pandas_index(obj: Any) -> Any:
-    """Fold a pandas index into columns, or drop it, so it never reaches arrow as one.
+def _normalize_pandas_index(obj: Any, key: Optional[str] = None) -> Any:
+    """Drop a pandas index that carries no meaning, and refuse one whose meaning is ambiguous.
 
-    Arrow serializes any non-default index as a column, which is how an ordinary filtered frame
-    (`df[df.y > 1]` leaves a non-contiguous index) grows a phantom `__index_level_0__` that TSMP
-    then rebuilds the resource around. A named index is folded into a real column instead of being
-    discarded: it usually holds the id or timestamp the caller means to send, and dropping it
-    silently would cost them the column. Anything else is positional bookkeeping and is dropped.
+    Arrow serializes any non-default index as a column, so a filtered frame would otherwise send a
+    phantom `__index_level_0__`. This endpoint serializes the whole frame, so the exact column set
+    is what the step runs on.
 
-    A no-op for non-pandas input, so polars and arrow reach `to_arrow` untouched.
+    A named level is therefore rejected rather than guessed at: the name says the values matter but
+    not whether they should travel as a column, and guessing either fabricates one or loses one. An
+    unnamed index makes no such claim and is dropped.
+
+    A no-op for non-pandas input.
     """
-    # Imported here rather than at module scope only to keep pandas out of this module's import
-    # graph; it is a hard dependency of the SDK, so this always resolves.
+    # Local import to keep pandas out of this module's import graph; it is a hard SDK dependency.
     import pandas as pd
 
     if not isinstance(obj, pd.DataFrame):
@@ -136,23 +141,36 @@ def _normalize_pandas_index(obj: Any) -> Any:
     if isinstance(index, pd.RangeIndex) and index.start == 0 and index.step == 1:
         # What arrow already stores as metadata rather than as a column; nothing to do.
         return obj
-    return obj.reset_index(drop=all(name is None for name in index.names))
+    named = [name for name in index.names if name is not None]
+    if named:
+        where = f"data[{key!r}]" if key is not None else "a data value"
+        raise ValueError(
+            f"{where} has a named index level {named[0]!r}, so it is unclear whether those values "
+            f"should be sent as a column. Call .reset_index() to send them, or "
+            f".reset_index(drop=True) to discard them."
+        )
+    return obj.reset_index(drop=True)
 
 
-def to_arrow(obj: Any) -> pa.Table:
+def to_arrow(obj: Any, key: Optional[str] = None) -> pa.Table:
     """Coerce a supported table-like object to a `pyarrow.Table`.
 
     A `pa.Table` is returned unchanged so that a table received from a previous step keeps its
     schema metadata. pandas and polars frames go through narwhals, which is already a hard
-    dependency and reaches arrow in one hop; the rest of the client converts via utilsforecast.
+    dependency and reaches arrow in one hop.
 
     A pandas index is never sent as data -- see `_normalize_pandas_index`.
+
+    Args:
+        obj: The table-like object to convert.
+        key (str, optional): The `data` key `obj` came from, used only to point error messages at
+            the offending entry. Defaults to None.
     """
     if isinstance(obj, pa.Table):
         return obj
 
     try:
-        frame = nw.from_native(_normalize_pandas_index(obj), eager_only=True)
+        frame = nw.from_native(_normalize_pandas_index(obj, key), eager_only=True)
     except TypeError as exc:
         raise TypeError(
             "execute_step data values must be pyarrow Tables or eager pandas/polars DataFrames, "
@@ -164,14 +182,19 @@ def to_arrow(obj: Any) -> pa.Table:
 def _pack(tables: dict[str, pa.Table]) -> bytes:
     """Serialize each table to a `<key>.parquet` member and zip them.
 
-    Members are written in sorted order so the same data map always produces the same bytes.
+    Byte-for-byte reproducible: members are written in sorted order, and each carries `_ZIP_EPOCH`.
+    A bare name would make `writestr` stamp `time.localtime()` into the member header, so one data
+    map would serialize differently from one second to the next.
     """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for key in sorted(tables):
             member = io.BytesIO()
             pq.write_table(tables[key], member)
-            zf.writestr(key + _PARQUET_SUFFIX, member.getvalue())
+            info = zipfile.ZipInfo(key + _PARQUET_SUFFIX, date_time=_ZIP_EPOCH)
+            # Not inherited from the ZipFile when a ZipInfo is passed.
+            info.compress_type = zipfile.ZIP_DEFLATED
+            zf.writestr(info, member.getvalue())
     return buf.getvalue()
 
 
@@ -315,9 +338,12 @@ def build_request(
     """Validate and encode one execute_step call into `(metadata_header, zip_body)`.
 
     Validation mirrors the limits the API enforces so a malformed request fails locally rather than
-    after a full upload. A table no param references is only warned about: passing a previous
-    step's whole `.data` map is the intended way to chain calls, and a step can return more
-    tables than the next one consumes.
+    after a full upload, and runs cheapest-first: whatever `params` alone decides is settled before
+    any table is converted, so a bad reference costs no arrow work.
+
+    Only referenced tables are packed. The API ignores the rest, so uploading them would spend
+    bandwidth and body-size budget for nothing -- which makes chaining on a previous step's whole
+    `.data` map free.
     """
     if (
         not isinstance(func_name, str)
@@ -332,27 +358,26 @@ def build_request(
             f"job_timeout_seconds must be positive, got {job_timeout_seconds!r}"
         )
 
-    tables = {key: to_arrow(value) for key, value in (data or {}).items()}
-    _validate_member_names(tables)
-    if len(tables) > MAX_MEMBERS:
+    # Bounds the recursive `_collect_refs` below, so params nested past the limit (or referring to
+    # themselves) raise a ValueError rather than a RecursionError.
+    _check_metadata_depth(params)
+    refs = _collect_refs(params)
+
+    supplied = data or {}
+    _validate_member_names(supplied)
+    if len(supplied) > MAX_MEMBERS:
         raise ValueError(
-            f"data holds {len(tables)} tables, over the {MAX_MEMBERS} the server accepts. Send "
+            f"data holds {len(supplied)} tables, over the {MAX_MEMBERS} the server accepts. Send "
             f"fewer tables per request."
         )
-
-    refs = _collect_refs(params)
-    missing = refs - set(tables)
+    missing = refs - set(supplied)
     if missing:
         raise ValueError(
             f"params reference data keys that were not supplied: {sorted(missing)}; "
-            f"supplied: {sorted(tables)}"
+            f"supplied: {sorted(supplied)}"
         )
-    unused = set(tables) - refs
-    if unused:
-        logger.warning(
-            "data contains tables no param references: %s; they will be uploaded and ignored",
-            sorted(unused),
-        )
+
+    tables = {key: to_arrow(supplied[key], key) for key in refs}
 
     metadata: dict[str, Any] = {
         "func_name": func_name,

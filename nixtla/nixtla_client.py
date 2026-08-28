@@ -1419,6 +1419,14 @@ class NixtlaClient:
             )
         if resp.status_code not in (HTTPStatus.OK, HTTPStatus.ACCEPTED):
             raise ApiError(status_code=resp.status_code, body=resp_body)
+        # Same envelope unwrap `_make_request` applies, so a wrapped body doesn't become a KeyError.
+        if "data" in resp_body:
+            resp_body = resp_body["data"]
+        if "job_id" not in resp_body:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=f"Response has no job_id: {resp_body}",
+            )
         return resp_body["job_id"]
 
     def _get_job_result_bytes(
@@ -2063,7 +2071,7 @@ class NixtlaClient:
         feature_contributions: bool,
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
-        job_timeout_seconds: Optional[int] = None,
+        _job_timeout_seconds: Optional[int] = None,
         # Internal-only params used for the num_partitions/distributed async
         # fan-out; not part of the public API. NOTE: when _is_async_job=True,
         # each Fugue partition submits and polls its own async job
@@ -2137,7 +2145,7 @@ class NixtlaClient:
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
-                job_timeout_seconds=job_timeout_seconds,
+                _job_timeout_seconds=_job_timeout_seconds,
                 _is_async_job=_is_async_job,
                 _poll_interval=_poll_interval,
                 _poll_timeout=_poll_timeout,
@@ -2435,12 +2443,14 @@ class NixtlaClient:
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
-        job_timeout_seconds: Optional[int] = None,
         # Internal-only params used by the num_partitions/distributed async fan-out.
         *,
         _is_async_job: bool = False,
         _poll_interval: float = 15,
         _poll_timeout: float = 3600,
+        # Per-job server-side time limit, applied to each job this call submits. Only valid with
+        # _is_async_job.
+        _job_timeout_seconds: Optional[int] = None,
     ) -> AnyDFType:
         """Forecast your time series using TimeGPT.
 
@@ -2535,18 +2545,6 @@ class NixtlaClient:
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
                 supported for a select set of TimeGPT models.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows each async job this call submits to run before
-                terminating it server-side. Only meaningful when this call
-                runs its work as async jobs; passing it otherwise raises
-                `ValueError`, since a synchronous request creates no job.
-                The budget is per job, not per call: with `num_partitions=N`
-                every partition is its own job and each gets the full value,
-                and `add_history=True` submits a second job whose server-side
-                maximum may differ from the forecast one, so a value accepted
-                by one can be rejected (422) by the other. Distinct from
-                `NixtlaClient(timeout=...)`, which bounds a single HTTP
-                request. Defaults to the server's default for the task.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2554,11 +2552,11 @@ class NixtlaClient:
                 probabilistic predictions (if level is not None).
         """
         extra_param_checker.validate_python(model_parameters)
-        _validate_job_timeout_seconds(job_timeout_seconds)
-        if job_timeout_seconds is not None and not _is_async_job:
+        _validate_job_timeout_seconds(_job_timeout_seconds)
+        if _job_timeout_seconds is not None and not _is_async_job:
             raise ValueError(
-                "job_timeout_seconds only applies when this call runs its work as async "
-                "jobs; a synchronous request creates no job for it to bound."
+                "_job_timeout_seconds requires _is_async_job; a synchronous request "
+                "creates no job for it to bound."
             )
 
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
@@ -2588,7 +2586,7 @@ class NixtlaClient:
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
-                job_timeout_seconds=job_timeout_seconds,
+                _job_timeout_seconds=_job_timeout_seconds,
                 _is_async_job=_is_async_job,
                 _poll_interval=_poll_interval,
                 _poll_timeout=_poll_timeout,
@@ -2633,7 +2631,7 @@ class NixtlaClient:
                         payload,
                         _poll_interval,
                         _poll_timeout,
-                        job_timeout_seconds=job_timeout_seconds,
+                        job_timeout_seconds=_job_timeout_seconds,
                     )
                 else:
                     resp = self._make_request_with_retries(
@@ -2658,7 +2656,7 @@ class NixtlaClient:
                             in_sample_payload,
                             _poll_interval,
                             _poll_timeout,
-                            job_timeout_seconds=job_timeout_seconds,
+                            job_timeout_seconds=_job_timeout_seconds,
                         )
                     else:
                         in_sample_resp = self._make_request_with_retries(
@@ -2676,7 +2674,7 @@ class NixtlaClient:
                     _is_async_job=_is_async_job,
                     _poll_interval=_poll_interval,
                     _poll_timeout=_poll_timeout,
-                    _job_timeout_seconds=job_timeout_seconds,
+                    _job_timeout_seconds=_job_timeout_seconds,
                 )
                 if add_history:
                     insample_h, n_windows = _get_in_sample_horizon_and_windows(
@@ -2698,7 +2696,7 @@ class NixtlaClient:
                         _is_async_job=_is_async_job,
                         _poll_interval=_poll_interval,
                         _poll_timeout=_poll_timeout,
-                        _job_timeout_seconds=job_timeout_seconds,
+                        _job_timeout_seconds=_job_timeout_seconds,
                     )
                     insample_feat_contributions = in_sample_resp.get(
                         "feature_contributions", None
@@ -3480,7 +3478,7 @@ class NixtlaClient:
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
         categorical_exog_list: Optional[list[str]] = None,
-        job_timeout_seconds: Optional[int] = None,
+        _job_timeout_seconds: Optional[int] = None,
         # Internal-only params used for the num_partitions/distributed async
         # fan-out; not part of the public API. NOTE: when _is_async_job=True,
         # each Fugue partition submits and polls its own async job
@@ -3535,7 +3533,7 @@ class NixtlaClient:
                 model_parameters=model_parameters,
                 multivariate=multivariate,
                 categorical_exog_list=categorical_exog_list,
-                job_timeout_seconds=job_timeout_seconds,
+                _job_timeout_seconds=_job_timeout_seconds,
                 _is_async_job=_is_async_job,
                 _poll_interval=_poll_interval,
                 _poll_timeout=_poll_timeout,
@@ -3747,12 +3745,14 @@ class NixtlaClient:
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
         categorical_exog_list: Optional[list[str]] = None,
-        job_timeout_seconds: Optional[int] = None,
         # Internal-only params used by the num_partitions/distributed async fan-out.
         *,
         _is_async_job: bool = False,
         _poll_interval: float = 15,
         _poll_timeout: float = 3600,
+        # Per-job server-side time limit, applied to each job this call submits. Only valid with
+        # _is_async_job.
+        _job_timeout_seconds: Optional[int] = None,
     ) -> AnyDFType:
         """Perform cross validation in your time series using TimeGPT.
 
@@ -3845,27 +3845,17 @@ class NixtlaClient:
             categorical_exog_list (list[str], optional): Column names of
                 categorical exogenous features in (can be strings or
                 numbers). Defaults to None.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows each async job this call submits to run before
-                terminating it server-side. Only meaningful when this call
-                runs its work as async jobs; passing it otherwise raises
-                `ValueError`, since a synchronous request creates no job.
-                The budget is per job, not per call: with `num_partitions=N`
-                every partition is its own job and each gets the full value.
-                Distinct from `NixtlaClient(timeout=...)`, which bounds a
-                single HTTP request. Defaults to the server's default for
-                the task.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with cross validation forecasts.
         """
         extra_param_checker.validate_python(model_parameters)
-        _validate_job_timeout_seconds(job_timeout_seconds)
-        if job_timeout_seconds is not None and not _is_async_job:
+        _validate_job_timeout_seconds(_job_timeout_seconds)
+        if _job_timeout_seconds is not None and not _is_async_job:
             raise ValueError(
-                "job_timeout_seconds only applies when this call runs its work as async "
-                "jobs; a synchronous request creates no job for it to bound."
+                "_job_timeout_seconds requires _is_async_job; a synchronous request "
+                "creates no job for it to bound."
             )
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_cross_validation(
@@ -3894,7 +3884,7 @@ class NixtlaClient:
                 model_parameters=model_parameters,
                 multivariate=multivariate,
                 categorical_exog_list=categorical_exog_list,
-                job_timeout_seconds=job_timeout_seconds,
+                _job_timeout_seconds=_job_timeout_seconds,
                 _is_async_job=_is_async_job,
                 _poll_interval=_poll_interval,
                 _poll_timeout=_poll_timeout,
@@ -3934,7 +3924,7 @@ class NixtlaClient:
                         payload,
                         _poll_interval,
                         _poll_timeout,
-                        job_timeout_seconds=job_timeout_seconds,
+                        job_timeout_seconds=_job_timeout_seconds,
                     )
                 else:
                     resp = self._make_request_with_retries(
@@ -3949,7 +3939,7 @@ class NixtlaClient:
                     _is_async_job=_is_async_job,
                     _poll_interval=_poll_interval,
                     _poll_timeout=_poll_timeout,
-                    _job_timeout_seconds=job_timeout_seconds,
+                    _job_timeout_seconds=_job_timeout_seconds,
                 )
 
         return parse_result(resp)
@@ -4577,10 +4567,10 @@ def _forecast_wrapper(
     feature_contributions: bool,
     model_parameters: _ExtraParamDataType,
     multivariate: bool,
-    job_timeout_seconds: Optional[int] = None,
     _is_async_job: bool = False,
     _poll_interval: float = 15,
     _poll_timeout: float = 3600,
+    _job_timeout_seconds: Optional[int] = None,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
         in_sample_mask = df["_in_sample"]
@@ -4614,10 +4604,10 @@ def _forecast_wrapper(
         feature_contributions=feature_contributions,
         model_parameters=model_parameters,
         multivariate=multivariate,
-        job_timeout_seconds=job_timeout_seconds,
         _is_async_job=_is_async_job,
         _poll_interval=_poll_interval,
         _poll_timeout=_poll_timeout,
+        _job_timeout_seconds=_job_timeout_seconds,
     )
 
 
@@ -4734,10 +4724,10 @@ def _cross_validation_wrapper(
     model_parameters: _ExtraParamDataType,
     multivariate: bool,
     categorical_exog_list: Optional[list[str]] = None,
-    job_timeout_seconds: Optional[int] = None,
     _is_async_job: bool = False,
     _poll_interval: float = 15,
     _poll_timeout: float = 3600,
+    _job_timeout_seconds: Optional[int] = None,
 ) -> pd.DataFrame:
     return client.cross_validation(
         df=df,
@@ -4765,10 +4755,10 @@ def _cross_validation_wrapper(
         model_parameters=model_parameters,
         multivariate=multivariate,
         categorical_exog_list=categorical_exog_list,
-        job_timeout_seconds=job_timeout_seconds,
         _is_async_job=_is_async_job,
         _poll_interval=_poll_interval,
         _poll_timeout=_poll_timeout,
+        _job_timeout_seconds=_job_timeout_seconds,
     )
 
 

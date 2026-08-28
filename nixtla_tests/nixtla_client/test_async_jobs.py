@@ -912,7 +912,7 @@ def test_make_partitioned_requests_forwards_the_job_timeout():
 def test_forecast_async_job_carries_the_job_timeout(monkeypatch):
     payloads = _capture_submitted_payloads(monkeypatch)
 
-    _client().forecast(df=_small_df(), h=5, job_timeout_seconds=300, _is_async_job=True)
+    _client().forecast(df=_small_df(), h=5, _job_timeout_seconds=300, _is_async_job=True)
 
     assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
 
@@ -924,7 +924,7 @@ def test_forecast_add_history_applies_the_timeout_to_both_jobs(monkeypatch):
         df=_small_df(),
         h=5,
         add_history=True,
-        job_timeout_seconds=300,
+        _job_timeout_seconds=300,
         _is_async_job=True,
     )
 
@@ -943,7 +943,7 @@ def test_forecast_partitioned_async_job_carries_the_job_timeout(monkeypatch):
         df=_multi_series_df(n_series=2),
         h=5,
         num_partitions=2,
-        job_timeout_seconds=300,
+        _job_timeout_seconds=300,
         _is_async_job=True,
     )
 
@@ -955,7 +955,7 @@ def test_cross_validation_async_job_carries_the_job_timeout(monkeypatch):
     payloads = _capture_submitted_payloads(monkeypatch)
 
     _client().cross_validation(
-        df=_small_df(), h=5, job_timeout_seconds=300, _is_async_job=True
+        df=_small_df(), h=5, _job_timeout_seconds=300, _is_async_job=True
     )
 
     assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
@@ -964,8 +964,8 @@ def test_cross_validation_async_job_carries_the_job_timeout(monkeypatch):
 @pytest.mark.parametrize("method_name", ["forecast", "cross_validation"])
 def test_job_timeout_without_async_job_raises(method_name):
     # A synchronous request creates no job, so silently ignoring the value would be worse.
-    with pytest.raises(ValueError, match="only applies when this call runs its work"):
-        getattr(_client(), method_name)(df=_small_df(), h=5, job_timeout_seconds=300)
+    with pytest.raises(ValueError, match="requires _is_async_job"):
+        getattr(_client(), method_name)(df=_small_df(), h=5, _job_timeout_seconds=300)
 
 
 @pytest.mark.parametrize("method_name", ["forecast", "cross_validation"])
@@ -973,7 +973,7 @@ def test_job_timeout_without_async_job_raises(method_name):
 def test_forecast_and_cv_reject_a_non_positive_job_timeout(method_name, bad_timeout):
     with pytest.raises(ValueError, match="job_timeout_seconds must be positive"):
         getattr(_client(), method_name)(
-            df=_small_df(), h=5, job_timeout_seconds=bad_timeout, _is_async_job=True
+            df=_small_df(), h=5, _job_timeout_seconds=bad_timeout, _is_async_job=True
         )
 
 

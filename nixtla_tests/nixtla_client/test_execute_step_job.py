@@ -118,6 +118,13 @@ class TestCodec:
         tables = {"b": pa.table({"x": [1]}), "a": pa.table({"y": [2]})}
         assert _pack(tables) == _pack({"a": tables["a"], "b": tables["b"]})
 
+    def test_pack_does_not_stamp_the_clock(self):
+        # Without a fixed epoch `test_layout_is_deterministic` only passes when both calls land
+        # in the same 2-second timestamp bucket, so it would flake at a boundary.
+        tables = {"a": pa.table({"x": [1]})}
+        with zipfile.ZipFile(BytesIO(_pack(tables))) as zf:
+            assert zf.getinfo("a.parquet").date_time == (1980, 1, 1, 0, 0, 0)
+
     def test_empty_data_map(self):
         assert _unpack(_pack({})) == {}
 
@@ -143,13 +150,58 @@ class TestCodec:
         assert list(filtered.index) != list(range(len(filtered)))
         assert to_arrow(filtered).column_names == ["unique_id", "ds", "y"]
 
-    def test_to_arrow_folds_a_named_pandas_index_into_a_column(self):
-        # Dropping it would silently cost the caller the id column they meant to send.
-        indexed = _small_df().set_index("unique_id")
-        assert set(to_arrow(indexed).column_names) == {"unique_id", "ds", "y"}
-
     def test_to_arrow_leaves_a_default_range_index_alone(self):
         assert to_arrow(_small_df()).column_names == ["unique_id", "ds", "y"]
+
+    def test_to_arrow_drops_a_fully_unnamed_multiindex(self):
+        df = _small_df()
+        df.index = pd.MultiIndex.from_arrays(
+            [range(len(df)), range(len(df))], names=[None, None]
+        )
+        assert to_arrow(df).column_names == ["unique_id", "ds", "y"]
+
+    @pytest.mark.parametrize(
+        "make_index",
+        [
+            pytest.param(lambda df: df.set_index("unique_id"), id="named-single"),
+            pytest.param(
+                lambda df: df.set_index(["unique_id", "ds"]), id="named-multi"
+            ),
+        ],
+    )
+    def test_to_arrow_rejects_a_named_index(self, make_index):
+        # The name says the values matter but not whether they should be a column.
+        with pytest.raises(ValueError, match="named index level"):
+            to_arrow(make_index(_small_df()))
+
+    def test_to_arrow_rejects_a_partially_named_multiindex(self):
+        # What `groupby(key).apply(...)` produces. Promoting it injects a junk `level_1` column.
+        df = _small_df()
+        df.index = pd.MultiIndex.from_arrays(
+            [df["unique_id"], range(len(df))], names=["uid", None]
+        )
+        with pytest.raises(ValueError, match="named index level 'uid'"):
+            to_arrow(df)
+
+    def test_to_arrow_names_the_offending_data_key(self):
+        # A call passing several tables is otherwise very hard to debug.
+        with pytest.raises(ValueError, match=r"data\['panel'\]"):
+            to_arrow(_small_df().set_index("unique_id"), "panel")
+
+    def test_to_arrow_rejects_an_index_colliding_with_a_column(self):
+        # Previously surfaced as a bare pandas "cannot insert unique_id, already exists".
+        # A list (not a range) so this is a materialized index rather than a RangeIndex.
+        df = _small_df()
+        df.index = pd.Index(list(range(len(df))), name="unique_id")
+        with pytest.raises(ValueError, match="named index level"):
+            to_arrow(df, "panel")
+
+    def test_to_arrow_allows_a_named_default_range_index(self):
+        # A RangeIndex is stored as arrow metadata whatever its name, so no column can leak and
+        # there is nothing ambiguous to reject.
+        df = _small_df()
+        df.index = pd.RangeIndex(len(df), name="row")
+        assert to_arrow(df).column_names == ["unique_id", "ds", "y"]
 
     def test_collect_refs_finds_every_depth(self):
         params = {
@@ -292,6 +344,34 @@ class TestValidation:
                 **_call_kwargs(params={"data": ref("panel"), "deep": deep})
             )
 
+    def test_deep_nesting_raises_before_the_recursive_ref_walk(self):
+        # The depth guard must run before the recursive ref walk, or the caller sees a
+        # RecursionError instead of the actionable limit message.
+        deep = inner = {}
+        for _ in range(3000):
+            inner["k"] = inner = {}
+        with pytest.raises(ValueError, match=f"deeper than {MAX_METADATA_DEPTH}"):
+            _client().submit_execute_step_job(
+                **_call_kwargs(params={"data": ref("panel"), "deep": deep})
+            )
+
+    def test_self_referential_params_raise_rather_than_recursing_forever(self):
+        params = {"data": ref("panel")}
+        params["me"] = params
+        with pytest.raises(ValueError, match=f"deeper than {MAX_METADATA_DEPTH}"):
+            _client().submit_execute_step_job(**_call_kwargs(params=params))
+
+    def test_a_bad_ref_raises_before_any_table_is_converted(self, monkeypatch):
+        # Cheapest-first: a bad reference should cost no arrow conversion.
+        def boom(*args, **kwargs):
+            raise AssertionError("no table should be converted")
+
+        monkeypatch.setattr("nixtla.steps.to_arrow", boom)
+        with pytest.raises(ValueError, match="not supplied"):
+            _client().submit_execute_step_job(
+                **_call_kwargs(params={"data": ref("absent")})
+            )
+
     def test_rejects_a_body_over_the_server_limit(self, monkeypatch):
         # Without this the request is accepted and only reported as a failed job later, so the
         # error would surface long after the call that caused it.
@@ -391,16 +471,35 @@ class TestSubmit:
         }
         assert sent[0]["body"][:2] == b"PK"
 
-    def test_an_unreferenced_table_warns_and_is_still_sent(self, monkeypatch, caplog):
-        # Chaining passes a whole `.data` map, and a step can return more tables than the
-        # next one consumes -- warn, don't reject the call.
-        _stub_submit_binary(monkeypatch)
+    def test_an_unreferenced_table_is_accepted_but_not_uploaded(
+        self, monkeypatch, caplog
+    ):
+        # Chaining passes a whole `.data` map and a step can return more tables than the next one
+        # consumes, so this must be accepted -- but the extra is ignored, so shipping it would
+        # spend bandwidth for nothing.
+        sent = []
+        _stub_submit_binary(monkeypatch, capture=sent)
         with caplog.at_level(logging.WARNING, logger="nixtla.steps"):
             job = _client().submit_execute_step_job(
                 **_call_kwargs(data={"panel": _small_df(), "spare": _small_df()})
             )
+
         assert job.job_id == "es-1"
-        assert "spare" in caplog.text
+        with zipfile.ZipFile(BytesIO(sent[0]["body"])) as zf:
+            assert zf.namelist() == ["panel.parquet"]
+        # The pattern is free now, so it should not nag.
+        assert caplog.text == ""
+
+    def test_an_unreferenced_table_does_not_count_against_the_body_budget(
+        self, monkeypatch
+    ):
+        # Previously a big spare table could push a chained call over MAX_BODY_BYTES on its own.
+        _stub_submit_binary(monkeypatch)
+        monkeypatch.setattr("nixtla.steps.MAX_BODY_BYTES", 4096)
+        job = _client().submit_execute_step_job(
+            **_call_kwargs(data={"panel": _small_df(), "spare": _small_df(n=50_000)})
+        )
+        assert job.job_id == "es-1"
 
     def test_raises_api_error_on_a_bad_status(self):
         http_client = MagicMock()
@@ -408,6 +507,21 @@ class TestSubmit:
         with pytest.raises(ApiError) as exc:
             _client()._submit_binary_job(http_client, "v2/execute_step", "{}", b"PK")
         assert exc.value.status_code == 422
+
+    def test_unwraps_a_data_envelope(self):
+        http_client = MagicMock()
+        http_client.post.return_value = _mock_json_response(200, {"data": {"job_id": "es-9"}})
+        job_id = _client()._submit_binary_job(
+            http_client, "v2/execute_step", "{}", b"PK"
+        )
+        assert job_id == "es-9"
+
+    def test_raises_api_error_when_the_response_has_no_job_id(self):
+        # Otherwise this surfaces as a bare KeyError rather than something callers can handle.
+        http_client = MagicMock()
+        http_client.post.return_value = _mock_json_response(200, {"unexpected": 1})
+        with pytest.raises(ApiError, match="no job_id"):
+            _client()._submit_binary_job(http_client, "v2/execute_step", "{}", b"PK")
 
 
 # ---------------------------------------------------------------------------
