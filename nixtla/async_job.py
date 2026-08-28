@@ -1,11 +1,8 @@
-import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
     from .nixtla_client import NixtlaClient
-
-logger = logging.getLogger(__name__)
 
 
 class JobStatus(str, Enum):
@@ -57,7 +54,8 @@ class AsyncJobCancelledError(Exception):
 
 class Job:
     """Handle to a server-side async job submitted via `submit_forecast_job`,
-    `submit_finetune_job`, or `submit_cross_validation_job`.
+    `submit_finetune_job`, `submit_cross_validation_job`, or
+    `submit_execute_step_job`.
 
     `status` queries the server for the job's current status; call `wait()`
     to block until it reaches a terminal state and get its result, or
@@ -74,14 +72,22 @@ class Job:
         client: "NixtlaClient",
         job_id: str,
         endpoint: str,
-        parse_result: Callable[..., Any],
+        get_result: Callable[[dict[str, Any], float, float], Any],
     ):
+        """
+        Args:
+            get_result: Builds the job's result, called as
+                `get_result(job_data, poll_interval, poll_timeout)`. Tasks whose result is JSON
+                read it out of the job-status response's `result` field and ignore the poll
+                settings; tasks whose result is binary (`execute_step` returns a zip) leave
+                `result` null there and use them to poll their own result endpoint.
+        """
         self.job_id = job_id
         self.result: Any = None
         self._status: Optional[JobStatus] = None
         self._client = client
         self._endpoint = endpoint
-        self._parse_result = parse_result
+        self._get_result = get_result
 
     @property
     def status(self) -> JobStatus:
@@ -105,7 +111,12 @@ class Job:
             self._status = status
         return status
 
-    def wait(self, poll_interval: float = 15, poll_timeout: float = 3600) -> Any:
+    def wait(
+        self,
+        poll_interval: float = 15,
+        poll_timeout: float = 3600,
+        cancel_on_timeout: bool = True,
+    ) -> Any:
         """Poll the job until it reaches a terminal state and return its result.
 
         Args:
@@ -114,24 +125,49 @@ class Job:
             poll_timeout (float): Maximum seconds to wait for the job to
                 reach a terminal state before raising `AsyncJobTimeoutError`.
                 Defaults to 3600.
+            cancel_on_timeout (bool): Whether to request cancellation of the
+                job when `poll_timeout` elapses. Defaults to True, so that a
+                job you have given up on stops consuming server-side compute.
+                Set to False to poll in short increments -- calling `wait()`
+                again to resume -- which requires the job to still be running.
+                Cancellation is best-effort: if the request fails it is logged
+                as a warning and `AsyncJobTimeoutError` is raised regardless.
 
         Returns:
             The job's parsed result (a DataFrame for forecast/cross_validation
-            jobs, a fine-tuned model id string for finetune jobs).
+            jobs, a fine-tuned model id string for finetune jobs, a `StepResult`
+            for execute_step jobs).
 
         Raises:
             AsyncJobError: If the job fails server-side.
             AsyncJobCancelledError: If the job reaches the `"cancelled"`
                 terminal state (e.g. after a successful `cancel()`).
             AsyncJobTimeoutError: If `poll_timeout` elapses before the job
-                reaches a terminal state.
+                reaches a terminal state. `poll_timeout` only bounds the
+                client's polling, so with `cancel_on_timeout=False` the job
+                keeps running server-side until its own deadline.
+
+        Note:
+            A task whose result is fetched separately (`execute_step`) polls
+            for it after the status turns terminal, using these same settings
+            again -- so the total wait can reach twice `poll_timeout`.
         """
         with self._client._make_client(**self._client._client_kwargs) as http_client:
-            job_data = self._client._poll_job(
-                http_client, self._endpoint, self.job_id, poll_interval, poll_timeout
-            )
-        self._status = JobStatus(job_data["status"])
-        self.result = self._parse_result(job_data["result"])
+            try:
+                job_data = self._client._poll_job(
+                    http_client,
+                    self._endpoint,
+                    self.job_id,
+                    poll_interval,
+                    poll_timeout,
+                )
+            except AsyncJobTimeoutError:
+                if cancel_on_timeout:
+                    self._cancel_best_effort("client poll timeout")
+                raise
+        # `_poll_job` returns only on success; every other terminal state raises.
+        self._status = JobStatus.SUCCEEDED
+        self.result = self._get_result(job_data, poll_interval, poll_timeout)
         return self.result
 
     def cancel(self) -> None:
@@ -139,6 +175,18 @@ class Job:
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             self._client._cancel_job(http_client, self.job_id)
         self._status = JobStatus.CANCELLED
+
+    def _cancel_best_effort(self, reason: str) -> None:
+        """Request cancellation without letting a failure mask the exception
+        that is already propagating.
+
+        `_status` is only marked terminal when the server accepted the request,
+        so after a failed cancel `status` re-queries instead of reporting an
+        optimistic `"cancelled"`.
+        """
+        with self._client._make_client(**self._client._client_kwargs) as http_client:
+            if self._client._cancel_job_best_effort(http_client, self.job_id, reason):
+                self._status = JobStatus.CANCELLED
 
     def __enter__(self) -> "Job":
         return self
@@ -148,11 +196,4 @@ class Job:
             return
         if self._status is not None and self._status.is_terminal:
             return
-        try:
-            self.cancel()
-        except Exception:
-            logger.warning(
-                "Failed to cancel job %s during exception cleanup",
-                self.job_id,
-                exc_info=True,
-            )
+        self._cancel_best_effort("exception cleanup")
