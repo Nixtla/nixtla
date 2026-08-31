@@ -3,7 +3,7 @@
 __all__ = ["generate_series"]
 
 
-from typing import List, Literal, Optional, overload
+from typing import List, Literal, Optional, Tuple, Union, overload
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,10 @@ def generate_series(
     n_models: int = 0,
     level: Optional[List[float]] = None,
     engine: Literal["pandas"] = "pandas",
+    seed: int = 0,
+    n_hist_exog: int = 0,
+    n_futr_exog: Literal[0] = 0,
+    h: int = 0,
 ) -> pd.DataFrame: ...
 
 
@@ -40,7 +44,51 @@ def generate_series(
     n_models: int = 0,
     level: Optional[List[float]] = None,
     engine: Literal["polars"] = "polars",
+    seed: int = 0,
+    n_hist_exog: int = 0,
+    n_futr_exog: Literal[0] = 0,
+    h: int = 0,
 ) -> pl_DataFrame: ...
+
+
+@overload
+def generate_series(
+    n_series: int,
+    freq: str = "D",
+    min_length: int = 50,
+    max_length: int = 500,
+    n_static_features: int = 0,
+    equal_ends: bool = False,
+    with_trend: bool = False,
+    static_as_categorical: bool = True,
+    n_models: int = 0,
+    level: Optional[List[float]] = None,
+    engine: Literal["pandas"] = "pandas",
+    seed: int = 0,
+    n_hist_exog: int = 0,
+    n_futr_exog: int = 0,
+    h: int = 0,
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]: ...
+
+
+@overload
+def generate_series(
+    n_series: int,
+    freq: str = "D",
+    min_length: int = 50,
+    max_length: int = 500,
+    n_static_features: int = 0,
+    equal_ends: bool = False,
+    with_trend: bool = False,
+    static_as_categorical: bool = True,
+    n_models: int = 0,
+    level: Optional[List[float]] = None,
+    engine: Literal["polars"] = "polars",
+    seed: int = 0,
+    n_hist_exog: int = 0,
+    n_futr_exog: int = 0,
+    h: int = 0,
+) -> Union[pl_DataFrame, Tuple[pl_DataFrame, pl_DataFrame]]: ...
 
 
 def generate_series(
@@ -56,7 +104,10 @@ def generate_series(
     level: Optional[List[float]] = None,
     engine: Literal["pandas", "polars"] = "pandas",
     seed: int = 0,
-) -> DataFrame:
+    n_hist_exog: int = 0,
+    n_futr_exog: int = 0,
+    h: int = 0,
+) -> Union[DataFrame, Tuple[DataFrame, DataFrame]]:
     """Generate Synthetic Panel Series.
 
     Args:
@@ -76,6 +127,15 @@ def generate_series(
             Defaults to False.
         static_as_categorical (bool, optional): Static features should have a
             categorical data type. Defaults to True.
+        n_hist_exog (int, optional): Number of historic exogenous variables.
+            Must be non-negative. Creates columns named `hist_exog_{i}` only in
+            the historic dataframe. Defaults to 0.
+        n_futr_exog (int, optional): Number of future exogenous variables.
+            Must be non-negative. Each variable is generated once and split
+            between the historic and future dataframes. Creates columns named
+            `futr_exog_{i}` in both dataframes. Defaults to 0.
+        h (int, optional): Number of future periods to generate per series when
+            `n_futr_exog` is greater than 0. Defaults to 0.
         n_models (int, optional): Number of models predictions to simulate.
             Defaults to 0.
         level (list of float, optional): Confidence level for intervals to
@@ -85,8 +145,10 @@ def generate_series(
             Defaults to 0.
 
     Returns:
-        pandas or polars DataFrame: Synthetic panel with columns [`unique_id`,
-            `ds`, `y`] and exogenous features.
+        pandas or polars DataFrame, or tuple of DataFrames: Synthetic panel with
+            columns [`unique_id`, `ds`, `y`] and exogenous features. When
+            `n_futr_exog` is greater than 0, returns `(df, futr_df)`, where
+            `futr_df` has `h` future timestamps per series.
     """
     available_engines = ["pandas", "polars"]
     engine = engine.lower()  # type: ignore
@@ -94,6 +156,12 @@ def generate_series(
         raise ValueError(
             f"{engine} is not a correct engine; available options: {available_engines}"
         )
+    if n_hist_exog < 0:
+        raise ValueError("n_hist_exog must be non-negative")
+    if n_futr_exog < 0:
+        raise ValueError("n_futr_exog must be non-negative")
+    if n_futr_exog and h < 1:
+        raise ValueError("h must be at least 1 when n_futr_exog is greater than 0")
     seasonalities = {
         pd.offsets.Hour(): 24,
         pd.offsets.Day(): 7,
@@ -117,6 +185,14 @@ def generate_series(
     vals_dict["ds"] = np.concatenate(series_dates)
 
     vals_dict["y"] = np.arange(total_length) % season + rng.rand(total_length) * 0.5
+
+    for i in range(n_hist_exog):
+        vals_dict[f"hist_exog_{i}"] = rng.rand(total_length)
+    futr_exog_vals = {}
+    for i in range(n_futr_exog):
+        exog = rng.rand(total_length + n_series * h)
+        vals_dict[f"futr_exog_{i}"] = exog[:total_length]
+        futr_exog_vals[f"futr_exog_{i}"] = exog[total_length:]
 
     for i in range(n_static_features):
         static_values = np.repeat(rng.randint(0, 100, n_series), series_lengths)
@@ -152,4 +228,27 @@ def generate_series(
             df = df.with_columns(
                 *[pl.col(col).cast(str).cast(pl.Categorical) for col in cat_cols]
             )
-    return df
+    if not n_futr_exog:
+        return df
+
+    futr_vals = {
+        "unique_id": np.repeat(np.arange(n_series), h),
+        "ds": np.concatenate(
+            [
+                pd.date_range(start=series_date[-1], periods=h + 1, freq=freq)[1:]
+                for series_date in series_dates
+            ]
+        ),
+    }
+    futr_vals.update(futr_exog_vals)
+    if engine == "pandas":
+        futr_df = pd.DataFrame(futr_vals)
+        if static_as_categorical:
+            futr_df["unique_id"] = futr_df["unique_id"].astype(df["unique_id"].dtype)
+    else:
+        futr_df = pl.DataFrame(futr_vals).with_columns(pl.col("unique_id").sort())
+        if static_as_categorical:
+            futr_df = futr_df.with_columns(
+                pl.col("unique_id").cast(str).cast(pl.Categorical)
+            )
+    return df, futr_df
