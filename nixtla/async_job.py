@@ -54,8 +54,8 @@ class AsyncJobCancelledError(Exception):
 
 class Job:
     """Handle to a server-side async job submitted via `submit_forecast_job`,
-    `submit_finetune_job`, `submit_cross_validation_job`, or
-    `submit_execute_step_job`.
+    `submit_finetune_job`, `submit_cross_validation_job`,
+    `submit_detect_anomalies_job`, or `submit_execute_step_job`.
 
     `status` queries the server for the job's current status; call `wait()`
     to block until it reaches a terminal state and get its result, or
@@ -134,9 +134,9 @@ class Job:
                 as a warning and `AsyncJobTimeoutError` is raised regardless.
 
         Returns:
-            The job's parsed result (a DataFrame for forecast/cross_validation
-            jobs, a fine-tuned model id string for finetune jobs, a `StepResult`
-            for execute_step jobs).
+            The job's parsed result (a DataFrame for forecast, cross_validation
+            and anomaly-detection jobs, a fine-tuned model id string for
+            finetune jobs, a `StepResult` for execute_step jobs).
 
         Raises:
             AsyncJobError: If the job fails server-side.

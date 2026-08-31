@@ -2,7 +2,11 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from nixtla.nixtla_client import _cross_validation_wrapper, _forecast_wrapper
+from nixtla.nixtla_client import (
+    _cross_validation_wrapper,
+    _detect_anomalies_online_wrapper,
+    _forecast_wrapper,
+)
 
 
 def _small_df(n=20):
@@ -135,3 +139,64 @@ def test_cross_validation_wrapper_forwards_async_kwargs():
     assert kwargs["_poll_interval"] == 7
     assert kwargs["_poll_timeout"] == 42
     assert kwargs["_job_timeout_seconds"] == 300
+
+
+def _online_anomaly_kwargs(**overrides):
+    kwargs = dict(
+        h=5,
+        detection_size=5,
+        threshold_method="univariate",
+        freq="D",
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        level=99,
+        clean_ex_first=True,
+        step_size=None,
+        finetune_steps=0,
+        finetune_depth=1,
+        finetune_loss="default",
+        hist_exog_list=None,
+        date_features=False,
+        date_features_to_one_hot=False,
+        model="timegpt-2.1",
+        refit=False,
+        num_partitions=None,
+        multivariate=False,
+    )
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_detect_anomalies_online_wrapper_forwards_async_kwargs():
+    mock_client = MagicMock()
+
+    _detect_anomalies_online_wrapper(
+        df=_small_df(),
+        client=mock_client,
+        **_online_anomaly_kwargs(
+            _job_timeout_seconds=300,
+            _is_async_job=True,
+            _poll_interval=7,
+            _poll_timeout=42,
+        ),
+    )
+
+    mock_client.detect_anomalies_online.assert_called_once()
+    kwargs = mock_client.detect_anomalies_online.call_args.kwargs
+    assert kwargs["_is_async_job"] is True
+    assert kwargs["_poll_interval"] == 7
+    assert kwargs["_poll_timeout"] == 42
+    assert kwargs["_job_timeout_seconds"] == 300
+
+
+def test_detect_anomalies_online_wrapper_defaults_are_sync():
+    mock_client = MagicMock()
+
+    _detect_anomalies_online_wrapper(
+        df=_small_df(), client=mock_client, **_online_anomaly_kwargs()
+    )
+
+    kwargs = mock_client.detect_anomalies_online.call_args.kwargs
+    assert kwargs["_is_async_job"] is False
+    assert kwargs["_job_timeout_seconds"] is None

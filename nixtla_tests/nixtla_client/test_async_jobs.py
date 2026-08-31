@@ -1,3 +1,4 @@
+import threading
 from unittest.mock import MagicMock
 
 import httpx
@@ -350,6 +351,16 @@ SUBMIT_JOB_CASES = [
         (10_000, 12),
         id="cross_validation",
     ),
+    pytest.param(
+        "submit_detect_anomalies_job",
+        # Deliberately NOT "v2/online_anomaly_detection": the async job base differs from the
+        # sync route. See `_ONLINE_ANOMALY_ASYNC_ENDPOINT` in nixtla_client.py.
+        "v2/anomaly_detection",
+        lambda: {"df": _small_df(), "h": 5, "detection_size": 5},
+        # The online detector never calls `_get_model_params`, so nothing to stub.
+        None,
+        id="detect_anomalies",
+    ),
 ]
 
 
@@ -413,8 +424,31 @@ def _cross_validation_poll_response():
     }
 
 
+def _detect_anomalies_poll_response(n=20, detection_size=5, multivariate=False):
+    result = {
+        "idxs": list(range(n - detection_size, n)),
+        "sizes": [detection_size],
+        "mean": list(range(detection_size)),
+        "anomaly": [False] * detection_size,
+        "anomaly_score": [0.0] * detection_size,
+        "intervals": None,
+    }
+    if multivariate:
+        result["accumulated_anomaly_score"] = [0.0] * detection_size
+    return {"status": "succeeded", "result": result}
+
+
 def _check_finetune_result(result):
     assert result == "abc123"
+
+
+def _check_online_anomaly_df(result):
+    assert len(result) == 5
+    assert result["TimeGPT"].tolist() == list(range(5))
+    assert result["anomaly"].tolist() == [False] * 5
+    assert "anomaly_score" in result.columns
+    # multivariate-only column must not leak into a univariate run
+    assert "accumulated_anomaly_score" not in result.columns
 
 
 def _check_point_forecast_df(result):
@@ -446,6 +480,14 @@ WAIT_JOB_CASES = [
         _cross_validation_poll_response,
         _check_point_forecast_df,
         id="cross_validation",
+    ),
+    pytest.param(
+        "submit_detect_anomalies_job",
+        lambda: {"df": _small_df(n=20), "h": 5, "detection_size": 5},
+        None,
+        _detect_anomalies_poll_response,
+        _check_online_anomaly_df,
+        id="detect_anomalies",
     ),
 ]
 
@@ -827,23 +869,49 @@ def test_submit_job_rejects_a_non_positive_job_timeout(
 def _capture_submitted_payloads(monkeypatch, h=5):
     """Record every payload reaching `_submit_job`, with polling stubbed out.
 
-    The stubbed result is shaped per endpoint because forecast and cross_validation parse their
-    responses differently; these tests only assert on what was *sent*, but the call still has to
-    return without blowing up in `parse_result`.
+    The stubbed result is shaped per endpoint because forecast, cross_validation and the online
+    anomaly detector parse their responses differently; these tests only assert on what was
+    *sent*, but the call still has to return without blowing up in `parse_result`.
+
+    Each submission gets its own job id so that `fake_poll_job` can shape its response from
+    *that* job's payload. The partitioned fan-out submits concurrently from a thread pool, so
+    shaping from "the most recent payload" would race and size one partition's response from a
+    sibling's payload -- which only happens to work when every partition is the same length.
     """
     payloads = []
+    lock = threading.Lock()
 
     def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
-        payloads.append((endpoint, payload))
-        return "job-1"
+        with lock:
+            payloads.append((endpoint, payload))
+            idx = len(payloads) - 1
+        return f"job-{idx}"
 
     def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        _, this_payload = payloads[int(job_id.rsplit("-", 1)[1])]
+
+        # Only the response shapes built from the request need the row count, and some callers
+        # submit a bare sentinel payload with no "series" at all.
+        def n_rows():
+            return len(this_payload["series"]["y"])
+
         if endpoint == "v2/cross_validation":
-            n = len(payloads[-1][1]["series"]["y"])
+            n = n_rows()
             result = {
                 "idxs": list(range(n - h, n)),
                 "sizes": [h],
                 "mean": list(range(h)),
+                "intervals": None,
+            }
+        elif endpoint == "v2/anomaly_detection":
+            # The online detector returns one row per detected point.
+            n = n_rows()
+            result = {
+                "idxs": list(range(n)),
+                "sizes": [n],
+                "mean": [0.0] * n,
+                "anomaly": [False] * n,
+                "anomaly_score": [0.0] * n,
                 "intervals": None,
             }
         else:
@@ -961,20 +1029,165 @@ def test_cross_validation_async_job_carries_the_job_timeout(monkeypatch):
     assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
 
 
-@pytest.mark.parametrize("method_name", ["forecast", "cross_validation"])
-def test_job_timeout_without_async_job_raises(method_name):
+# (method_name, extra required kwargs) for every sync method that accepts the private async
+# params. `detect_anomalies_online` additionally requires `detection_size`.
+ASYNC_CAPABLE_SYNC_METHODS = [
+    pytest.param("forecast", {}, id="forecast"),
+    pytest.param("cross_validation", {}, id="cross_validation"),
+    pytest.param(
+        "detect_anomalies_online", {"detection_size": 5}, id="detect_anomalies_online"
+    ),
+]
+
+
+@pytest.mark.parametrize("method_name, extra_kwargs", ASYNC_CAPABLE_SYNC_METHODS)
+def test_job_timeout_without_async_job_raises(method_name, extra_kwargs):
     # A synchronous request creates no job, so silently ignoring the value would be worse.
     with pytest.raises(ValueError, match="requires _is_async_job"):
-        getattr(_client(), method_name)(df=_small_df(), h=5, _job_timeout_seconds=300)
+        getattr(_client(), method_name)(
+            df=_small_df(), h=5, _job_timeout_seconds=300, **extra_kwargs
+        )
 
 
-@pytest.mark.parametrize("method_name", ["forecast", "cross_validation"])
+@pytest.mark.parametrize("method_name, extra_kwargs", ASYNC_CAPABLE_SYNC_METHODS)
 @pytest.mark.parametrize("bad_timeout", [0, -1])
-def test_forecast_and_cv_reject_a_non_positive_job_timeout(method_name, bad_timeout):
+def test_async_capable_methods_reject_a_non_positive_job_timeout(
+    method_name, extra_kwargs, bad_timeout
+):
     with pytest.raises(ValueError, match="job_timeout_seconds must be positive"):
         getattr(_client(), method_name)(
-            df=_small_df(), h=5, _job_timeout_seconds=bad_timeout, _is_async_job=True
+            df=_small_df(),
+            h=5,
+            _job_timeout_seconds=bad_timeout,
+            _is_async_job=True,
+            **extra_kwargs,
         )
+
+
+def test_detect_anomalies_online_async_job_carries_the_job_timeout(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
+
+    _client().detect_anomalies_online(
+        df=_small_df(),
+        h=5,
+        detection_size=5,
+        _job_timeout_seconds=300,
+        _is_async_job=True,
+    )
+
+    assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
+
+
+def test_detect_anomalies_online_async_job_uses_the_anomaly_detection_endpoint(monkeypatch):
+    # The async job base is `v2/anomaly_detection`, NOT `v2/online_anomaly_detection/async` --
+    # that route does not exist server-side. Despite the name, the `anomaly_detection` job runs
+    # the online detector. Unifying these two strings for "consistency" is a 404 in production.
+    payloads = _capture_submitted_payloads(monkeypatch)
+
+    _client().detect_anomalies_online(
+        df=_small_df(), h=5, detection_size=5, _is_async_job=True
+    )
+
+    assert [endpoint for endpoint, _ in payloads] == ["v2/anomaly_detection"]
+
+
+def test_detect_anomalies_online_sync_still_uses_the_online_endpoint(monkeypatch):
+    # The counterpart of the test above: the synchronous route must not drift onto the job base.
+    endpoints = []
+
+    def fake_request(self, client, endpoint, payload, multithreaded_compress=True):
+        endpoints.append(endpoint)
+        n = len(payload["series"]["y"])
+        return {
+            "idxs": list(range(n)),
+            "sizes": [n],
+            "mean": [0.0] * n,
+            "anomaly": [False] * n,
+            "anomaly_score": [0.0] * n,
+            "intervals": None,
+        }
+
+    monkeypatch.setattr(NixtlaClient, "_make_request_with_retries", fake_request)
+
+    _client().detect_anomalies_online(df=_small_df(), h=5, detection_size=5)
+
+    assert endpoints == ["v2/online_anomaly_detection"]
+
+
+def test_submit_detect_anomalies_job_polls_the_anomaly_detection_jobs_route(monkeypatch):
+    # `Job._endpoint` is what `_get_job_data` turns into GET {endpoint}/jobs/{job_id}, so it has
+    # to be the async base too, not just the submit path.
+    status_endpoints = []
+
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_submit_job",
+        lambda self, client, endpoint, payload, multithreaded_compress=True: "ad-1",
+    )
+
+    def fake_get_job_data(self, client, endpoint, job_id):
+        status_endpoints.append(endpoint)
+        return {"status": "pending"}
+
+    monkeypatch.setattr(NixtlaClient, "_get_job_data", fake_get_job_data)
+
+    job = _client().submit_detect_anomalies_job(df=_small_df(), h=5, detection_size=5)
+
+    assert job._endpoint == "v2/anomaly_detection"
+    assert job.status == "pending"
+    assert status_endpoints == ["v2/anomaly_detection"]
+
+
+def test_submit_detect_anomalies_job_multivariate_adds_accumulated_score(monkeypatch):
+    # `threshold_method` is captured by the parse_result closure; if the extraction dropped it,
+    # this column would silently go missing.
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_submit_job",
+        lambda self, client, endpoint, payload, multithreaded_compress=True: "ad-1",
+    )
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_poll_job",
+        lambda self, client, endpoint, job_id, poll_interval, poll_timeout: (
+            _detect_anomalies_poll_response(multivariate=True)
+        ),
+    )
+
+    job = _client().submit_detect_anomalies_job(
+        df=_small_df(n=20), h=5, detection_size=5, threshold_method="multivariate"
+    )
+    result = job.wait(poll_interval=0, poll_timeout=1)
+
+    assert "accumulated_anomaly_score" in result.columns
+
+
+def test_submit_detect_anomalies_job_returns_polars_for_polars_input(monkeypatch):
+    # `parse_result` rebuilds the frame with `type(df)`, so the backend must survive the closure.
+    pl = pytest.importorskip("polars")
+
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_submit_job",
+        lambda self, client, endpoint, payload, multithreaded_compress=True: "ad-1",
+    )
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_poll_job",
+        lambda self, client, endpoint, job_id, poll_interval, poll_timeout: (
+            _detect_anomalies_poll_response()
+        ),
+    )
+
+    df = pl.from_pandas(_small_df(n=20))
+    # polars frequency can't be inferred, so it must be given explicitly.
+    job = _client().submit_detect_anomalies_job(
+        df=df, h=5, detection_size=5, freq="1d"
+    )
+    result = job.wait(poll_interval=0, poll_timeout=1)
+
+    assert isinstance(result, pl.DataFrame)
+    assert len(result) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -1127,11 +1340,114 @@ def test_cross_validation_num_partitions_with_async_job(monkeypatch):
     assert len(out) == h * 2
 
 
-@pytest.mark.parametrize("method_name", ["submit_forecast_job", "submit_cross_validation_job"])
-def test_submit_job_with_unrecognized_df_type_still_raises(method_name):
-    # submit_forecast_job/submit_cross_validation_job don't support distributed
-    # (dask/spark/ray) dataframes in this version — an arbitrary non-pandas/polars
-    # object should raise a clear ValueError rather than doing something undefined.
+def test_detect_anomalies_online_num_partitions_with_async_job(monkeypatch):
+    n = 20
+    calls = []
+
+    def fake_run_async_job(
+        self,
+        client,
+        endpoint,
+        payload,
+        poll_interval,
+        poll_timeout,
+        multithreaded_compress=True,
+        job_timeout_seconds=None,
+    ):
+        calls.append(endpoint)
+        rows = int(sum(payload["series"]["sizes"]))
+        # Partition-local idxs; `_make_partitioned_requests` re-offsets them.
+        return {
+            "idxs": list(range(rows)),
+            "sizes": [rows],
+            "mean": [0.0] * rows,
+            "anomaly": [False] * rows,
+            "anomaly_score": [0.0] * rows,
+            "intervals": None,
+        }
+
+    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
+
+    out = _client().detect_anomalies_online(
+        df=_multi_series_df(n_series=2, n=n),
+        h=5,
+        detection_size=5,
+        num_partitions=2,
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+    )
+
+    # Each partition is its own job, and both must hit the async base.
+    assert calls == ["v2/anomaly_detection", "v2/anomaly_detection"]
+    assert len(out) == n * 2
+
+
+def test_detect_anomalies_online_partitioned_async_job_carries_the_job_timeout(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
+
+    # Deliberately UNEQUAL series lengths: each partition's stubbed response must be sized from
+    # its own payload, not from whichever sibling was submitted last.
+    df = pd.concat(
+        [_small_df(n=20).assign(unique_id="id_0"), _small_df(n=13).assign(unique_id="id_1")],
+        ignore_index=True,
+    )
+
+    out = _client().detect_anomalies_online(
+        df=df,
+        h=5,
+        detection_size=5,
+        num_partitions=2,
+        _job_timeout_seconds=300,
+        _is_async_job=True,
+    )
+
+    assert len(payloads) == 2
+    assert all(p["job_options"] == {"timeout_seconds": 300} for _, p in payloads)
+    # Each partition carried its own series, so the two row counts must differ.
+    assert sorted(len(p["series"]["y"]) for _, p in payloads) == [13, 20]
+    # And each partition's response was sized from its own payload, so the reassembled frame
+    # keeps every input row. A stub that shaped both responses from one payload lands here.
+    assert len(out) == 33
+    assert out.groupby("unique_id").size().to_dict() == {"id_0": 20, "id_1": 13}
+
+
+def test_detect_anomalies_online_multivariate_partitions_rejected_even_as_async_job(
+    monkeypatch,
+):
+    # The multivariate/num_partitions rejection is statistical (a global threshold can't be
+    # computed per partition), not about transport, so running as a job must not relax it.
+    def explode(*args, **kwargs):
+        raise AssertionError("should be rejected before any request")
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", explode)
+    monkeypatch.setattr(NixtlaClient, "_run_async_job", explode)
+
+    with pytest.raises(ValueError, match="Cannot use more than 1 partition"):
+        _client().detect_anomalies_online(
+            df=_multi_series_df(n_series=2),
+            h=5,
+            detection_size=5,
+            threshold_method="multivariate",
+            num_partitions=2,
+            _is_async_job=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "method_name, extra_kwargs",
+    [
+        pytest.param("submit_forecast_job", {}, id="forecast"),
+        pytest.param("submit_cross_validation_job", {}, id="cross_validation"),
+        pytest.param(
+            "submit_detect_anomalies_job", {"detection_size": 5}, id="detect_anomalies"
+        ),
+    ],
+)
+def test_submit_job_with_unrecognized_df_type_still_raises(method_name, extra_kwargs):
+    # The submit_*_job methods don't support distributed (dask/spark/ray) dataframes in this
+    # version — an arbitrary non-pandas/polars object should raise a clear ValueError rather
+    # than doing something undefined.
     client = _client()
     with pytest.raises(ValueError, match=f"{method_name} only supports"):
-        getattr(client, method_name)(df=[1, 2, 3], h=5)
+        getattr(client, method_name)(df=[1, 2, 3], h=5, **extra_kwargs)

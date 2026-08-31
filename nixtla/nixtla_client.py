@@ -235,6 +235,15 @@ _date_features_by_freq = {
 # without a result, waiting is merely wasteful rather than wrong.
 _RESULT_NOT_READY_CODES = (HTTPStatus.ACCEPTED, HTTPStatus.CONFLICT)
 
+# The online anomaly detector is reachable at two different paths. Synchronously it is
+# `v2/online_anomaly_detection`; as a job it is `v2/anomaly_detection/async`, because the async
+# route is named for the server-side task rather than the endpoint it dispatches to (see
+# nixtla-engine `nixtla_compute/tasks/run_anomaly_detection.py`, which runs the *online* detector).
+# There is no async route for the historical in-sample detector, and no sync route under the
+# `v2/anomaly_detection` job name.
+_ONLINE_ANOMALY_ENDPOINT = "v2/online_anomaly_detection"
+_ONLINE_ANOMALY_ASYNC_ENDPOINT = "v2/anomaly_detection"
+
 
 def _is_retriable_error(exc: Exception) -> bool:
     retriable_exceptions = (
@@ -3059,6 +3068,12 @@ class NixtlaClient:
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with anomalies flagged by TimeGPT.
+
+        Note:
+            This historical (in-sample) detector has no asynchronous variant.
+            The server exposes a single anomaly job type and it runs the online
+            detector, so use `detect_anomalies_online()` or
+            `submit_detect_anomalies_job()` if you need an async job.
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_detect_anomalies(
@@ -3148,6 +3163,9 @@ class NixtlaClient:
         if categorical_exog_payload is not None:
             series_payload["categorical_exog"] = categorical_exog_payload
 
+        # NOTE: `v2/anomaly_detection` here is the SYNC HISTORICAL detector. It happens to spell
+        # the same string as the async job base (`_ONLINE_ANOMALY_ASYNC_ENDPOINT`), but that job
+        # runs the ONLINE detector, so this call has no async sibling -- do not merge the two.
         logger.info("Calling Anomaly Detector Endpoint...")
         payload = {
             "series": series_payload,
@@ -3209,6 +3227,18 @@ class NixtlaClient:
         refit: bool,
         num_partitions: Optional[int],
         multivariate: bool,
+        _job_timeout_seconds: Optional[int] = None,
+        # Internal-only params used for the num_partitions/distributed async
+        # fan-out; not part of the public API. NOTE: when _is_async_job=True,
+        # each Fugue partition submits and polls its own async job
+        # independently on whichever worker executes it, so if poll_timeout
+        # exceeds the underlying compute engine's own task/worker timeout, the
+        # worker task can be killed by the compute framework before the async
+        # job completes, independent of poll_timeout.
+        *,
+        _is_async_job: bool = False,
+        _poll_interval: float = 15,
+        _poll_timeout: float = 3600,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -3248,11 +3278,129 @@ class NixtlaClient:
                 refit=refit,
                 num_partitions=None,
                 multivariate=multivariate,
+                _is_async_job=_is_async_job,
+                _poll_interval=_poll_interval,
+                _poll_timeout=_poll_timeout,
+                _job_timeout_seconds=_job_timeout_seconds,
             ),
             partition=partition_config,
             as_fugue=True,
         )
         return fa.get_native_as_df(result_df)
+
+    def _prepare_detect_anomalies_online(
+        self,
+        df: DFType,
+        h: _PositiveInt,
+        detection_size: _PositiveInt,
+        threshold_method: _ThresholdMethod,
+        freq: Optional[_Freq],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        level: Union[int, float],
+        clean_ex_first: bool,
+        step_size: Optional[_PositiveInt],
+        finetune_steps: _NonNegativeInt,
+        finetune_depth: _FinetuneDepth,
+        finetune_loss: _Loss,
+        hist_exog_list: Optional[list[str]],
+        date_features: Union[bool, list[str]],
+        date_features_to_one_hot: Union[bool, list[str]],
+        model: _Model,
+        refit: bool,
+        multivariate: bool,
+    ) -> tuple[dict[str, Any], Callable[[dict[str, Any]], Any]]:
+        self.__dict__.pop("weights_x", None)
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
+        # The online detector never drops the synthetic id column, unlike `detect_anomalies`,
+        # so `_run_validations`' drop_id is deliberately discarded here.
+        df, _, _, freq = self._run_validations(
+            df=df,
+            X_df=None,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=False,
+            model=model,
+            freq=freq,
+        )
+        logger.info("Preprocessing dataframes...")
+        processed, _, x_cols, _ = _preprocess(
+            df=df,
+            X_df=None,
+            h=0,
+            freq=freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        standard_freq = _standardize_freq(freq, processed)
+        targets = _extract_target_array(df, target_col)
+        times = df[time_col].to_numpy()
+        if processed.sort_idxs is not None:
+            targets = targets[processed.sort_idxs]
+            times = times[processed.sort_idxs]
+        X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
+        sizes = np.diff(processed.indptr)
+        if np.all(sizes <= 6 * detection_size):
+            logger.warn(
+                "Detection size is large. Using the entire series to compute the anomaly threshold..."
+            )
+        logger.info("Calling Online Anomaly Detector Endpoint...")
+        online_series: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": sizes,
+            "X": X,
+        }
+        # `times` is already sorted to match the payload row order
+        start_datetime = _times_to_iso(
+            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        )
+        if start_datetime is not None:
+            online_series["start_datetime"] = start_datetime
+        payload = {
+            "series": online_series,
+            "h": h,
+            "detection_size": detection_size,
+            "threshold_method": threshold_method,
+            "model": model,
+            "freq": standard_freq,
+            "clean_ex_first": clean_ex_first,
+            "level": level,
+            "step_size": step_size,
+            "finetune_steps": finetune_steps,
+            "finetune_loss": finetune_loss,
+            "finetune_depth": finetune_depth,
+            "refit": refit,
+            "hist_exog": hist_exog,
+            "multivariate": multivariate,
+        }
+
+        def parse_result(resp: dict[str, Any]) -> Any:
+            # assemble result
+            idxs = np.array(resp["idxs"], dtype=np.int64)
+            out_sizes = np.array(resp["sizes"], dtype=np.int64)
+            out = type(df)(
+                {
+                    id_col: ufp.repeat(processed.uids, out_sizes),
+                    time_col: times[idxs],
+                    target_col: targets[idxs],
+                }
+            )
+            out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
+            out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
+            out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
+            if threshold_method == "multivariate":
+                out = ufp.assign_columns(
+                    out, "accumulated_anomaly_score", resp["accumulated_anomaly_score"]
+                )
+            return _maybe_add_intervals(out, resp["intervals"])
+
+        return payload, parse_result
 
     def detect_anomalies_online(
         self,
@@ -3277,6 +3425,14 @@ class NixtlaClient:
         refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
         multivariate: bool = False,
+        # Internal-only params used by the num_partitions/distributed async fan-out.
+        *,
+        _is_async_job: bool = False,
+        _poll_interval: float = 15,
+        _poll_timeout: float = 3600,
+        # Per-job server-side time limit, applied to each job this call submits. Only valid with
+        # _is_async_job.
+        _job_timeout_seconds: Optional[int] = None,
     ) -> AnyDFType:
         """
         Online anomaly detection in your time series using TimeGPT.
@@ -3368,6 +3524,12 @@ class NixtlaClient:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with anomalies flagged by TimeGPT.
         """
+        _validate_job_timeout_seconds(_job_timeout_seconds)
+        if _job_timeout_seconds is not None and not _is_async_job:
+            raise ValueError(
+                "_job_timeout_seconds requires _is_async_job; a synchronous request "
+                "creates no job for it to bound."
+            )
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_detect_anomalies_online(
                 df=df,
@@ -3391,6 +3553,10 @@ class NixtlaClient:
                 refit=refit,
                 num_partitions=num_partitions,
                 multivariate=multivariate,
+                _is_async_job=_is_async_job,
+                _poll_interval=_poll_interval,
+                _poll_timeout=_poll_timeout,
+                _job_timeout_seconds=_job_timeout_seconds,
             )
         if (
             threshold_method == "multivariate"
@@ -3402,101 +3568,222 @@ class NixtlaClient:
                 "Either set threshold_method to univariate "
                 "or set num_partitions to None."
             )
-        self.__dict__.pop("weights_x", None)
-        model = self._maybe_override_model(model)
-        logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        payload, parse_result = self._prepare_detect_anomalies_online(
             df=df,
-            X_df=None,
+            h=h,
+            detection_size=detection_size,
+            threshold_method=threshold_method,
+            freq=freq,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-            validate_api_key=False,
-            model=model,
-            freq=freq,
-        )
-        logger.info("Preprocessing dataframes...")
-        processed, _, x_cols, _ = _preprocess(
-            df=df,
-            X_df=None,
-            h=0,
-            freq=freq,
+            level=level,
+            clean_ex_first=clean_ex_first,
+            step_size=step_size,
+            finetune_steps=finetune_steps,
+            finetune_depth=finetune_depth,
+            finetune_loss=finetune_loss,
+            hist_exog_list=hist_exog_list,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
+            model=model,
+            refit=refit,
+            multivariate=multivariate,
         )
-        standard_freq = _standardize_freq(freq, processed)
-        targets = _extract_target_array(df, target_col)
-        times = df[time_col].to_numpy()
-        if processed.sort_idxs is not None:
-            targets = targets[processed.sort_idxs]
-            times = times[processed.sort_idxs]
-        X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
-        sizes = np.diff(processed.indptr)
-        if np.all(sizes <= 6 * detection_size):
-            logger.warn(
-                "Detection size is large. Using the entire series to compute the anomaly threshold..."
-            )
-        logger.info("Calling Online Anomaly Detector Endpoint...")
-        online_series: dict[str, Any] = {
-            "y": processed.data[:, 0],
-            "sizes": sizes,
-            "X": X,
-        }
-        # `times` is already sorted to match the payload row order
-        start_datetime = _times_to_iso(
-            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        # The async job for this task lives under a different path than the sync endpoint; see
+        # `_ONLINE_ANOMALY_ASYNC_ENDPOINT`.
+        endpoint = (
+            _ONLINE_ANOMALY_ASYNC_ENDPOINT
+            if _is_async_job
+            else _ONLINE_ANOMALY_ENDPOINT
         )
-        if start_datetime is not None:
-            online_series["start_datetime"] = start_datetime
-        payload = {
-            "series": online_series,
-            "h": h,
-            "detection_size": detection_size,
-            "threshold_method": threshold_method,
-            "model": model,
-            "freq": standard_freq,
-            "clean_ex_first": clean_ex_first,
-            "level": level,
-            "step_size": step_size,
-            "finetune_steps": finetune_steps,
-            "finetune_loss": finetune_loss,
-            "finetune_depth": finetune_depth,
-            "refit": refit,
-            "hist_exog": hist_exog,
-            "multivariate": multivariate,
-        }
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
-                resp = self._make_request_with_retries(
-                    client, "v2/online_anomaly_detection", payload
-                )
+                if _is_async_job:
+                    resp = self._run_async_job(
+                        client,
+                        endpoint,
+                        payload,
+                        _poll_interval,
+                        _poll_timeout,
+                        job_timeout_seconds=_job_timeout_seconds,
+                    )
+                else:
+                    resp = self._make_request_with_retries(client, endpoint, payload)
             else:
                 payloads = _partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
-                    client, "v2/online_anomaly_detection", payloads
+                    client,
+                    endpoint,
+                    payloads,
+                    _is_async_job=_is_async_job,
+                    _poll_interval=_poll_interval,
+                    _poll_timeout=_poll_timeout,
+                    _job_timeout_seconds=_job_timeout_seconds,
                 )
 
-        # assemble result
-        idxs = np.array(resp["idxs"], dtype=np.int64)
-        sizes = np.array(resp["sizes"], dtype=np.int64)
-        out = type(df)(
-            {
-                id_col: ufp.repeat(processed.uids, sizes),
-                time_col: times[idxs],
-                target_col: targets[idxs],
-            }
+        return parse_result(resp)
+
+    def submit_detect_anomalies_job(
+        self,
+        df: DFType,
+        h: _PositiveInt,
+        detection_size: _PositiveInt,
+        threshold_method: _ThresholdMethod = "univariate",
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Union[int, float] = 99,
+        clean_ex_first: bool = True,
+        step_size: Optional[_PositiveInt] = None,
+        finetune_steps: _NonNegativeInt = 0,
+        finetune_depth: _FinetuneDepth = 1,
+        finetune_loss: _Loss = "default",
+        hist_exog_list: Optional[list[str]] = None,
+        date_features: Union[bool, list[str]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
+        model: _Model = "timegpt-2.1",
+        refit: bool = False,
+        multivariate: bool = False,
+        job_timeout_seconds: Optional[int] = None,
+    ) -> Job:
+        """Submit an online anomaly detection job to run asynchronously.
+
+        This is the asynchronous counterpart of `detect_anomalies_online()`,
+        not of `detect_anomalies()`. The name follows the server-side task
+        name (`v2/anomaly_detection/async`), which runs the online detector;
+        the historical (in-sample) detector `detect_anomalies()` has no async
+        endpoint.
+
+        Unlike `detect_anomalies_online()`, this does not block until the job
+        finishes. It submits the job and immediately returns a `Job` handle;
+        call `job.wait()` to poll until it completes and get the resulting
+        DataFrame, or `job.cancel()` to request that the server stop it.
+
+        Not supported in this version: `num_partitions` (distributed/threaded
+        fan-out). Use `detect_anomalies_online()` for that.
+
+        Args:
+            df (pandas or polars DataFrame):
+                The DataFrame on which the function will operate. Expected
+                to contain at least the following columns:
+                - time_col:
+                    Column name in `df` that contains the time indices of the
+                    time series. This is typically a datetime column with
+                    regular intervals, e.g., hourly, daily, monthly data
+                    points.
+                - target_col:
+                    Column name in `df` that contains the target variable of
+                    the time series, i.e., the variable we wish to predict or
+                    analyze.
+                - id_col:
+                    Column name in `df` that identifies unique time series.
+                    Each unique value in this column corresponds to a unique
+                    time series.
+
+            h (int): Forecast horizon.
+            detection_size (int): The length of the sequence where anomalies
+                will be detected starting from the end of the dataset.
+            threshold_method (str, optional): The method used to calculate the
+                intervals for anomaly detection. Use `univariate` to flag
+                anomalies independently for each series in the dataset.
+                Use `multivariate` to have a global threshold across all series
+                in the dataset. For this method, all series must have the same
+                length. Defaults to 'univariate'.
+            freq (str, optional): Frequency of the data. By default, the freq
+                will be inferred automatically. See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+            id_col (str, optional): Column that identifies each series.
+                Defaults to 'unique_id'
+            time_col (str, optional): Column that identifies each timestep,
+                its values can be timestamps or integers. Defaults to 'ds'.
+            target_col (str, optional): Column that contains the target.
+                Defaults to 'y'.
+            level (float, optional):
+                Confidence level between 0 and 100 for detecting the anomalies.
+                Defaults to 99.
+            clean_ex_first (bool, optional): Clean exogenous signal before
+                making forecasts using TimeGPT. Defaults to True.
+            step_size (int, optional): Step size between each cross validation
+                window. If None it will be equal to `h`. Defaults to None.
+            finetune_steps (int): Number of steps used to finetune TimeGPT in
+                the new data. Defaults to 0.
+            finetune_depth (int): The depth of the finetuning. Uses a scale
+                from 1 to 5, where 1 means little finetuning, and 5 means that
+                the entire model is finetuned. Defaults to 1.
+            finetune_loss (str): Loss function to use for finetuning.
+                Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and
+                `smape`. Defaults to 'default'.
+            hist_exog_list (list[str], optional): Column names of the historical
+                exogenous features. Defaults to None.
+            date_features (bool or list[str] or callable, optional): Features
+                computed from the dates. Can be pandas date attributes
+                or functions that will take the dates as input. If True
+                automatically adds most used date features for the
+                frequency of `df`. Defaults to False.
+            date_features_to_one_hot (bool or list[str]): Apply one-hot
+                encoding to these date features. If
+                `date_features=True`, then all date features are
+                one-hot encoded by default. Defaults to False.
+            model (str, optional): Model to use as a string. Options are:
+                `timegpt-1`, and `timegpt-1-long-horizon`, `timegpt-2`,
+                `timegpt-2-mini`, `timegpt-2-pro`, `timegpt-2.1`.
+                We recommend using
+                `timegpt-1-long-horizon` for forecasting if you want to
+                predict more than one seasonal period given the frequency of
+                your data. Defaults to 'timegpt-2.1'.
+            refit (bool, optional): Fine-tune the model in each window. If
+                False, only fine-tunes on the first window. Only used if
+                finetune_steps > 0. Defaults to False.
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. This variable
+                is different from the `threshold_method` parameter. The latter
+                controls the method used for anomaly detection (univariate vs
+                multivariate) whereas `multivariate` determines how the model
+                creates the predictions.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
+
+        Returns:
+            Job: Handle to the submitted job. `job.wait()` returns a pandas
+                or polars DataFrame with anomalies flagged by TimeGPT.
+        """
+        _ensure_local_dataframe(
+            df,
+            method_name="submit_detect_anomalies_job",
+            sync_method_name="detect_anomalies_online()",
         )
-        out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
-        out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
-        out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
-        if threshold_method == "multivariate":
-            out = ufp.assign_columns(
-                out, "accumulated_anomaly_score", resp["accumulated_anomaly_score"]
-            )
-        return _maybe_add_intervals(out, resp["intervals"])
+        payload, parse_result = self._prepare_detect_anomalies_online(
+            df=df,
+            h=h,
+            detection_size=detection_size,
+            threshold_method=threshold_method,
+            freq=freq,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            level=level,
+            clean_ex_first=clean_ex_first,
+            step_size=step_size,
+            finetune_steps=finetune_steps,
+            finetune_depth=finetune_depth,
+            finetune_loss=finetune_loss,
+            hist_exog_list=hist_exog_list,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
+            refit=refit,
+            multivariate=multivariate,
+        )
+        return self._submit_and_wrap_job(
+            _ONLINE_ANOMALY_ASYNC_ENDPOINT, payload, job_timeout_seconds, parse_result
+        )
 
     def _distributed_cross_validation(
         self,
@@ -4720,6 +5007,10 @@ def _detect_anomalies_online_wrapper(
     refit: bool,
     num_partitions: Optional[_PositiveInt],
     multivariate: bool,
+    _is_async_job: bool = False,
+    _poll_interval: float = 15,
+    _poll_timeout: float = 3600,
+    _job_timeout_seconds: Optional[int] = None,
 ) -> pd.DataFrame:
     return client.detect_anomalies_online(
         df=df,
@@ -4743,6 +5034,10 @@ def _detect_anomalies_online_wrapper(
         refit=refit,
         num_partitions=num_partitions,
         multivariate=multivariate,
+        _is_async_job=_is_async_job,
+        _poll_interval=_poll_interval,
+        _poll_timeout=_poll_timeout,
+        _job_timeout_seconds=_job_timeout_seconds,
     )
 
 
