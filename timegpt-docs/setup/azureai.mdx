@@ -65,7 +65,7 @@ icon: "rocket"
     ```
   </Step>
   <Step title="Step 4: Load your time series data">
-    In this example, we'll use the classic **AirPassengers** dataset to demonstrate forecasting. The dataset shows monthly passenger counts in Australia between 1949 and 1960.
+    In this example, we'll use the classic **AirPassengers** dataset to demonstrate forecasting. The dataset shows monthly totals of international airline passengers between 1949 and 1960.
 
     ```python Load AirPassengers dataset
     import pandas as pd
@@ -153,6 +153,11 @@ icon: "rocket"
     | 2 | 1961-03-01 | 463.116547 |
     | 3 | 1961-04-01 | 478.244507 |
     | 4 | 1961-05-01 | 505.646484 |
+
+    <Note>
+      The forecast column is always named `TimeGPT`, regardless of which model
+      you requested — including TimeGEN-1 on Azure.
+    </Note>
 
     Visualize the forecast results:
 
