@@ -97,7 +97,7 @@ def _create_train_with_cutoffs(
 
     if cutoff_col in group_cols:
         cutoffs_df = nw.from_native(df).select(*group_cols).unique()
-        train_df = train_df.join(cutoffs_df, on="unique_id", how="inner").filter(
+        train_df = train_df.join(cutoffs_df, on=id_col, how="inner").filter(
             nw.col(time_col) <= nw.col(cutoff_col)
         )
 
