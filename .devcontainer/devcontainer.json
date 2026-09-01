@@ -40,7 +40,7 @@
                 "charliermarsh.ruff@2025.22.0",
                 "GitHub.copilot",
                 "tamasfe.even-better-toml",
-                "anthropic.claude-code@1.0.127"
+                "anthropic.claude-code"
             ]
         }
     },
