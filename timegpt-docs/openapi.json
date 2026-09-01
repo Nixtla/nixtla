@@ -3,7 +3,7 @@
   "info": {
     "title": "Nixtla Forecast API",
     "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-    "version": "0.3.1"
+    "version": "0.4.0"
   },
   "paths": {
     "/v2/forecast": {
@@ -73,10 +73,55 @@
         "x-fern-sdk-method-name": "v2/forecast"
       }
     },
+    "/v2/explain": {
+      "post": {
+        "summary": "Compute model-agnostic feature importance weights",
+        "description": "Compute model-agnostic feature importance weights for the provided exogenous features. It takes a JSON as an input containing the historical data with exogenous features and the attribution method to use. No foundation model is involved. The response contains one normalized weight per feature.",
+        "operationId": "v2_explain_v2_explain_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplainInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplainOutput"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/explain"
+      }
+    },
     "/v2/anomaly_detection": {
       "post": {
         "summary": "Foundational Time Series Model Multi Series Anomaly Detector",
-        "description": "Based on the provided data, this endpoint detects the anomalies in the historical period of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly. Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
+        "description": "Based on the provided data, this endpoint detects the anomalies in the historical period of multiple time series at once. It takes a JSON as an input containing information like the series frequency and historical data. (See below for a full description of the parameters.) The response contains a flag indicating if the date has an anomaly and also provides the prediction interval used to define if an observation is an anomaly.Get your token at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/api-reference.",
         "operationId": "v2_anomaly_detection_v2_anomaly_detection_post",
         "requestBody": {
           "content": {
@@ -908,7 +953,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -1103,7 +1148,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -1158,7 +1203,7 @@
               "poisson"
             ],
             "title": "Finetune Loss",
-            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
             "default": "default"
           },
           "finetune_depth": {
@@ -1171,7 +1216,7 @@
               5
             ],
             "title": "Finetune Depth",
-            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models, meanwhile it has no effect on the other models. By default, the value is set to 1.",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
             "default": 1
           },
           "finetuned_model_id": {
@@ -1352,6 +1397,63 @@
         ],
         "title": "CrossValidationOutput"
       },
+      "ExplainInput": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithExogenous"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Method",
+            "description": "Model-agnostic causal analysis method used by the /v2/explain endpoint. Options are: 'granger' (default) and 'transfer_entropy'.",
+            "default": "granger"
+          }
+        },
+        "type": "object",
+        "required": [
+          "series"
+        ],
+        "title": "ExplainInput"
+      },
+      "ExplainOutput": {
+        "properties": {
+          "weights": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Weights"
+          },
+          "feature_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Names"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weights",
+          "method"
+        ],
+        "title": "ExplainOutput"
+      },
       "FinetuneInput": {
         "properties": {
           "series": {
@@ -1365,7 +1467,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
             "default": "timegpt-1"
           },
           "finetune_steps": {
@@ -1387,7 +1489,7 @@
               "poisson"
             ],
             "title": "Finetune Loss",
-            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
             "default": "default"
           },
           "finetune_depth": {
@@ -1400,7 +1502,7 @@
               5
             ],
             "title": "Finetune Depth",
-            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models, meanwhile it has no effect on the other models. By default, the value is set to 1.",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
             "default": 1
           },
           "output_model_id": {
@@ -1603,7 +1705,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -1658,7 +1760,7 @@
               "poisson"
             ],
             "title": "Finetune Loss",
-            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
             "default": "default"
           },
           "finetune_depth": {
@@ -1671,7 +1773,7 @@
               5
             ],
             "title": "Finetune Depth",
-            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models, meanwhile it has no effect on the other models. By default, the value is set to 1.",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
             "default": 1
           },
           "finetuned_model_id": {
@@ -1842,7 +1944,7 @@
             "type": "integer",
             "exclusiveMinimum": 0.0,
             "title": "Detection Size",
-            "description": "Window over which to detect anomalies starting from the end of the series. This window is not considered when calculating the anomaly threshold to avoid bias from abnormal samples, unless there are less than 6 * detection_size forecasted samples."
+            "description": "Window over which to detect anomalies starting from the end of the series. This window is not considered when calculating the anomaly threshold to avoid bias from abnormal samples, unless there are fewer than 6 * detection_size forecasted samples."
           },
           "threshold_method": {
             "type": "string",
@@ -1863,7 +1965,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon.` Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
             "default": "timegpt-1"
           },
           "clean_ex_first": {
@@ -1908,7 +2010,7 @@
               "poisson"
             ],
             "title": "Finetune Loss",
-            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
             "default": "default"
           },
           "finetune_depth": {
@@ -1921,7 +2023,7 @@
               5
             ],
             "title": "Finetune Depth",
-            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models, meanwhile it has no effect on the other models. By default, the value is set to 1.",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
             "default": 1
           },
           "finetuned_model_id": {
@@ -2098,6 +2200,88 @@
         ],
         "title": "OnlineAnomalyOutput"
       },
+      "SeriesWithExogenous": {
+        "properties": {
+          "X": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X",
+            "description": "Historic values of the exogenous features. Each feature must be a list of the same size as the target (y)."
+          },
+          "categorical_exog": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categorical Exog",
+            "description": "Zero-based indices of the columns in X that are categorical features."
+          },
+          "y": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Y",
+            "description": "Historic values of the target."
+          },
+          "sizes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Sizes",
+            "description": "Sizes of the individual series."
+          },
+          "start_datetime": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Datetime",
+            "description": "Starting timestamp of each individual series, as ISO 8601 strings (for example '2021-01-01' or '2021-01-01T09:30:00'). One entry per series, so it must have the same length as `sizes`. Together with `sizes` and `freq` this recovers the timestamps of every series."
+          }
+        },
+        "type": "object",
+        "required": [
+          "y",
+          "sizes"
+        ],
+        "title": "SeriesWithExogenous"
+      },
       "SeriesWithFutureExogenous": {
         "properties": {
           "X_future": {
@@ -2181,6 +2365,21 @@
             "type": "array",
             "title": "Sizes",
             "description": "Sizes of the individual series."
+          },
+          "start_datetime": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Datetime",
+            "description": "Starting timestamp of each individual series, as ISO 8601 strings (for example '2021-01-01' or '2021-01-01T09:30:00'). One entry per series, so it must have the same length as `sizes`. Together with `sizes` and `freq` this recovers the timestamps of every series."
           }
         },
         "type": "object",

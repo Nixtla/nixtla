@@ -1,12 +1,14 @@
 from importlib.metadata import version
-from .nixtla_client import (
+
+from .async_job import (
     AsyncJobCancelledError,
     AsyncJobError,
     AsyncJobTimeoutError,
     Job,
     JobStatus,
-    NixtlaClient,
 )
+from .nixtla_client import NixtlaClient
+from .steps import StepResult, ref
 
 __version__ = version("nixtla")
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     "Job",
     "JobStatus",
     "NixtlaClient",
+    "StepResult",
+    "ref",
 ]

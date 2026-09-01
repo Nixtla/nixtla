@@ -50,6 +50,7 @@ PACKAGES = [
     "httpcore",
     "orjson",
     "pandas",
+    "pyarrow",
     "tenacity",
     "tqdm",
     "numpy",
