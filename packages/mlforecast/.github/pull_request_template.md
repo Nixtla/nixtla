@@ -8,7 +8,7 @@ Please make sure to provide a meaningful description and let us know that you've
 <!-- What this PR does. If this work is related to a specific issue please reference it here. -->
 
 Checklist:
-- [ ] This PR has a meaningful title and a clear description.
+- [ ] This PR title follows the [Conventional Commits format](../CONTRIBUTING.md#pr-title-format) (e.g. `feat: ...`, `fix: ...`) and has a clear description.
 - [ ] The tests pass.
 - [ ] All linting tasks pass.
 - [ ] The notebooks are clean.

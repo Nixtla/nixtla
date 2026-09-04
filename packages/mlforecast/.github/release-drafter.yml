@@ -7,12 +7,35 @@ categories:
     label: 'breaking change'
   - title: 'Bug Fixes'
     label: 'fix'
+  - title: 'Performance'
+    label: 'performance'
   - title: 'Documentation'
     label: 'documentation'
+  - title: 'Maintenance'
+    label: 'chore'
   - title: 'Dependencies'
     label: 'dependencies'
   - title: 'Enhancement'
     label: 'enhancement'
+autolabeler:
+  - label: 'breaking change'
+    title:
+      - '/^\w+(\(.+\))?!:/'
+  - label: 'feature'
+    title:
+      - '/^feat(\(.+\))?:/'
+  - label: 'fix'
+    title:
+      - '/^fix(\(.+\))?:/'
+  - label: 'performance'
+    title:
+      - '/^perf(\(.+\))?:/'
+  - label: 'documentation'
+    title:
+      - '/^docs(\(.+\))?:/'
+  - label: 'chore'
+    title:
+      - '/^(chore|refactor|style|test|build|ci)(\(.+\))?:/'
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 template: |
   ## Changes

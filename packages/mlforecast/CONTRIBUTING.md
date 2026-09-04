@@ -132,6 +132,30 @@ Note: Ray tests are excluded from `uv run pytest` due to incompatibility between
 
 ## PR submission guidelines
 
+### PR title format
+
+PR titles must follow [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, where `scope` is optional. This is enforced by CI and used to automatically categorize release notes. Allowed types:
+
+* `feat` — a new feature
+* `fix` — a bug fix
+* `docs` — documentation only changes
+* `perf` — a performance improvement
+* `refactor`, `style`, `test`, `build`, `ci`, `chore` — maintenance work that doesn't change behavior for end users
+* `revert` — reverts a previous commit
+
+Add a `!` right after the type/scope (e.g. `feat!:` or `feat(api)!:`) to flag a breaking change.
+
+Examples:
+
+```
+feat(lag_transforms): add pooled rolling mean
+fix: handle empty series in cross_validation
+perf(core): vectorize lag computation
+docs: fix broken link in quickstart
+chore: bump ruff to 0.9
+feat(api)!: drop support for Python 3.9
+```
+
 * Keep each PR focused. While it's more convenient, do not combine several unrelated fixes together. Create as many branches as needing to keep each PR focused.
 * Ensure that your PR includes a test that fails without your patch, and passes with it.
 * Ensure the PR description clearly describes the problem and solution. Include the relevant issue number if applicable.

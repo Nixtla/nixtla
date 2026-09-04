@@ -7,3 +7,10 @@ updates:
     groups:
       ci-dependencies:
         patterns: ["*"]
+  - package-ecosystem: "uv"
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
