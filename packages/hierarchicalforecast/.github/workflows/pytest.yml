@@ -46,7 +46,7 @@ jobs:
           version: "latest"
 
       - name: Build wheels and run tests
-        uses: pypa/cibuildwheel@v4.1.0
+        uses: pypa/cibuildwheel@v4.2.0
         env:
           CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
           CIBW_BUILD_FRONTEND: build[uv]
