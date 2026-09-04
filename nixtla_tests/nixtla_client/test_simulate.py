@@ -15,13 +15,20 @@ def _client_with_response(response, model_params=(28, 7)):
     client._make_client = MagicMock()
     client._get_model_params = MagicMock(return_value=model_params)
 
-    # Mirrors NixtlaClient._make_request_with_retries: the single-request path
-    # calls it positionally, the partitioned path by keyword.
-    def respond(client=None, endpoint=None, payload=None, multithreaded_compress=True):
-        return response(endpoint, payload) if callable(response) else response
+    # Mirrors NixtlaClient._run_async_job: both the single-request and the
+    # partitioned path call it with positional client, task and payload.
+    def respond(
+        client=None,
+        task=None,
+        payload=None,
+        multithreaded_compress=True,
+        timeout_seconds=None,
+        cancellation_event=None,
+    ):
+        return response(task, payload) if callable(response) else response
 
     request = MagicMock(side_effect=respond)
-    client._make_request_with_retries = request
+    client._run_async_job = request
     return client, request
 
 
@@ -41,8 +48,8 @@ def _series_df(n_series=1, n=4):
     )
 
 
-def _simulate_response(endpoint, payload):
-    assert endpoint == "v2/simulate"
+def _simulate_response(task, payload):
+    assert task == "simulate"
     n_series = len(payload["series"]["sizes"])
     n_values = payload["n_paths"] * n_series * payload["h"]
     return {
@@ -98,8 +105,8 @@ def test_simulate_builds_sample_major_pandas_output_and_payload():
     assert result["coupled"].tolist() == [True] * 8
     assert result.groupby(["sample_id", "unique_id"], observed=True).size().eq(2).all()
 
-    _, endpoint, payload = request.call_args.args
-    assert endpoint == "v2/simulate"
+    _, task, payload = request.call_args.args
+    assert task == "simulate"
     assert "method" not in payload
     assert payload["model"] == "timegpt-1"
     assert payload["h"] == 2
@@ -258,7 +265,7 @@ def test_simulate_polars_categorical_and_future_exog():
 
 def test_simulate_mirrors_server_coupled_false_for_multivariate_request():
     client, request = _client_with_response(
-        lambda _endpoint, payload: {
+        lambda _task, payload: {
             "samples": [1.0] * (payload["n_paths"] * 2 * payload["h"]),
             "n_paths": payload["n_paths"],
             "h": payload["h"],
@@ -277,7 +284,7 @@ def test_simulate_mirrors_server_coupled_false_for_multivariate_request():
 
 @pytest.mark.parametrize("coupled", [None, "missing"])
 def test_simulate_treats_absent_coupled_flag_as_not_coupled(coupled):
-    def respond(_endpoint, payload):
+    def respond(_task, payload):
         response = {
             "samples": [1.0] * (payload["n_paths"] * payload["h"]),
             "n_paths": payload["n_paths"],
@@ -297,7 +304,7 @@ def test_simulate_treats_absent_coupled_flag_as_not_coupled(coupled):
 
 def test_simulate_partitioned_rejects_non_numeric_sizes():
     client, _ = _client_with_response(
-        lambda _endpoint, payload: {
+        lambda _task, payload: {
             "samples": [1.0]
             * (payload["n_paths"] * len(payload["series"]["sizes"]) * 2),
             "n_paths": payload["n_paths"],
@@ -638,8 +645,8 @@ def _addressable_simulate_response(n_hist):
     the returned values rather than only in the row count.
     """
 
-    def respond(endpoint, payload):
-        assert endpoint == "v2/simulate"
+    def respond(task, payload):
+        assert task == "simulate"
         sizes = payload["series"]["sizes"]
         n_series = len(sizes)
         first_global = int(np.asarray(payload["series"]["y"])[0] // n_hist)
@@ -721,8 +728,8 @@ def test_simulate_partitioning_preserves_exogenous_features():
 
 
 def test_simulate_partitioning_rejects_mismatched_partition_response():
-    def bad(endpoint, payload):
-        response = _simulate_response(endpoint, payload)
+    def bad(task, payload):
+        response = _simulate_response(task, payload)
         response["samples"] = response["samples"][:-1]
         return response
 
@@ -735,8 +742,8 @@ def test_simulate_partitioning_rejects_mismatched_partition_response():
 
 
 def test_partitioned_simulate_rejects_coupled_responses():
-    def coupled(endpoint, payload):
-        response = _simulate_response(endpoint, payload)
+    def coupled(task, payload):
+        response = _simulate_response(task, payload)
         response["coupled"] = True
         return response
 

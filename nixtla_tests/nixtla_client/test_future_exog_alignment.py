@@ -53,7 +53,7 @@ def _simulate_client(h=2, n_series=2, n_paths=1):
     client = NixtlaClient(api_key="test", max_retries=1)
     client._get_model_params = MagicMock(return_value=(28, 7))
     client._make_client = MagicMock()
-    client._make_request_with_retries = MagicMock(
+    client._run_async_job = MagicMock(
         return_value={
             "samples": [0.0] * (n_paths * n_series * h),
             "sizes": [h] * n_series,
@@ -62,6 +62,7 @@ def _simulate_client(h=2, n_series=2, n_paths=1):
             "coupled": False,
         }
     )
+    client._make_request_with_retries = client._run_async_job
     return client
 
 

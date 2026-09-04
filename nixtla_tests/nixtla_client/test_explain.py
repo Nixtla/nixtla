@@ -14,16 +14,16 @@ def _client_with_response(response):
     client = NixtlaClient(api_key="test", max_retries=1)
     client._make_client = MagicMock()
     request = MagicMock(
-        side_effect=lambda _http, endpoint, payload: (
-            response(endpoint, payload) if callable(response) else response
+        side_effect=lambda _http, task, payload, **_kwargs: (
+            response(task, payload) if callable(response) else response
         )
     )
-    client._make_request_with_retries = request
+    client._run_async_job = request
     return client, request
 
 
-def _explain_response(endpoint, payload):
-    assert endpoint == "v2/explain"
+def _explain_response(task, payload):
+    assert task == "explain"
     n_features = len(payload["series"]["X"])
     weights = np.arange(n_features, 0, -1, dtype=float)
     weights /= weights.sum()
@@ -74,8 +74,8 @@ def test_explain_preserves_feature_order_and_sorts_observations():
             }
         ),
     )
-    _, endpoint, payload = request.call_args.args
-    assert endpoint == "v2/explain"
+    _, task, payload = request.call_args.args
+    assert task == "explain"
     assert "model" not in payload
     assert payload["method"] == "transfer_entropy"
     assert payload["series"]["sizes"].tolist() == [3, 3]
@@ -229,6 +229,26 @@ def test_explain_accepts_non_numeric_feature_declared_as_categorical():
 
     assert result["feature"].tolist() == ["driver", "label"]
     request.assert_called_once()
+
+
+def test_explain_serializes_missing_pandas_categorical_values_as_json_null(caplog):
+    client, request = _client_with_response(_explain_response)
+    df = _explain_df()
+    df["label"] = pd.Series(
+        ["x", pd.NA, "x", "y", "x", "y"], dtype="string"
+    )
+
+    with caplog.at_level(logging.WARNING, logger="nixtla.nixtla_client"):
+        client.explain(
+            df,
+            features=["label"],
+            categorical_exog_list=["label"],
+        )
+
+    payload = request.call_args.args[2]
+    assert payload["series"]["X"][0] == ["y", None, "y", "x", "x", "x"]
+    assert "missing values: ['label']" in caplog.text
+    orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
 
 
 @pytest.mark.parametrize(

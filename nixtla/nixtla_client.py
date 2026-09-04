@@ -1,4 +1,4 @@
-__all__ = ["ApiError", "NixtlaClient"]
+__all__ = ["ApiError", "AsyncJobError", "NixtlaClient"]
 
 import datetime
 from http import HTTPStatus
@@ -6,10 +6,14 @@ from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
+import random
+import time
 import warnings
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from enum import Enum
+from functools import partial
+from threading import Event
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -17,6 +21,7 @@ from typing import (
     Callable,
     Dict,
     Literal,
+    NoReturn,
     Optional,
     TypeVar,
     Union,
@@ -245,6 +250,148 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
         wait=wait_fixed(retry_interval),
         after=after_retry,
         stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
+        reraise=True,
+    )
+
+
+# Asynchronous jobs (simulate, explain). The API accepts the request, returns a
+# job id and runs the work in a sandbox; the client polls the job until it
+# reaches a terminal status.
+_AsyncJobTask = Literal["simulate", "explain"]
+_ASYNC_JOB_ID_PREFIXES: dict[str, str] = {"simulate": "sm", "explain": "ex"}
+_ASYNC_JOB_PENDING_STATUSES = frozenset({"pending", "running"})
+_ASYNC_JOB_TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+_ASYNC_JOB_MAX_POLL_INTERVAL = 10.0
+_ASYNC_JOB_POLL_JITTER = 0.25
+# Concurrent partitions submitted at once. Deployments cap the number of jobs a
+# team may have pending or running; staying below it avoids a 429 storm.
+_MAX_CONCURRENT_ASYNC_JOBS = 5
+_ASYNC_JOBS_UNAVAILABLE_MARKER = "not available in this deployment"
+
+
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def _wait_for_poll(seconds: float, cancellation_event: Optional[Event]) -> bool:
+    """Wait for the next poll, returning whether cancellation was requested."""
+    if cancellation_event is None:
+        _sleep(seconds)
+        return False
+    return cancellation_event.wait(seconds)
+
+
+def _parse_retry_after(headers: Any) -> Optional[float]:
+    """Return the `Retry-After` delay in seconds, if the header is present."""
+    try:
+        raw = headers.get("retry-after")
+    except AttributeError:
+        return None
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(seconds, 0.0)
+
+
+def _submit_retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
+    """Retry policy for submitting an async job.
+
+    A submission that reached the server may already have created a job even
+    when the response was lost, so only failures that are known to precede
+    acceptance are retried: refusals because of the in-flight job cap (429) and
+    errors while connecting. Read timeouts and gateway errors are not retried.
+    """
+
+    def should_retry(exc: Exception) -> bool:
+        connect_exceptions = (
+            httpcore.ConnectError,
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+        )
+        return isinstance(exc, connect_exceptions) or (
+            isinstance(exc, ApiError)
+            and exc.status_code == HTTPStatus.TOO_MANY_REQUESTS
+        )
+
+    def wait_for(retry_state: RetryCallState) -> float:
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        if isinstance(exc, ApiError) and exc.retry_after is not None:
+            return exc.retry_after
+        return float(retry_interval)
+
+    def after_retry(retry_state: RetryCallState) -> None:
+        error = retry_state.outcome.exception()
+        logger.error(
+            f"Submission attempt {retry_state.attempt_number} failed with error: {error}"
+        )
+
+    return retry(
+        retry=retry_if_exception(should_retry),
+        wait=wait_for,
+        after=after_retry,
+        stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
+        reraise=True,
+    )
+
+
+def _poll_retry_strategy(
+    max_retries: int,
+    retry_interval: int,
+    max_wait_time: int,
+    deadline: Optional[float],
+):
+    """Retry status requests without sleeping beyond the job wait deadline."""
+
+    def should_retry(exc: Exception) -> bool:
+        retriable_exceptions = (
+            httpcore.TimeoutException,
+            httpx.TimeoutException,
+            httpcore.NetworkError,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+        )
+        retriable_codes = {
+            HTTPStatus.REQUEST_TIMEOUT,
+            HTTPStatus.CONFLICT,
+            HTTPStatus.TOO_MANY_REQUESTS,
+            HTTPStatus.BAD_GATEWAY,
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            HTTPStatus.GATEWAY_TIMEOUT,
+        }
+        return isinstance(exc, retriable_exceptions) or (
+            isinstance(exc, ApiError) and exc.status_code in retriable_codes
+        )
+
+    def wait_for(_: RetryCallState) -> float:
+        wait = float(retry_interval)
+        if deadline is not None:
+            wait = min(wait, max(deadline - time.monotonic(), 0.0))
+        return wait
+
+    def should_stop(retry_state: RetryCallState) -> bool:
+        if retry_state.attempt_number >= max_retries:
+            return True
+        if (
+            retry_state.seconds_since_start is not None
+            and retry_state.seconds_since_start >= max_wait_time
+        ):
+            return True
+        return deadline is not None and time.monotonic() >= deadline
+
+    def after_retry(retry_state: RetryCallState) -> None:
+        error = retry_state.outcome.exception()
+        logger.error(
+            f"Polling attempt {retry_state.attempt_number} failed with error: {error}"
+        )
+
+    return retry(
+        retry=retry_if_exception(should_retry),
+        wait=wait_for,
+        after=after_retry,
+        stop=should_stop,
         reraise=True,
     )
 
@@ -1192,15 +1339,48 @@ def _audit_negative_values(
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
+    retry_after: Optional[float]
 
     def __init__(
-        self, *, status_code: Optional[int] = None, body: Optional[Any] = None
+        self,
+        *,
+        status_code: Optional[int] = None,
+        body: Optional[Any] = None,
+        retry_after: Optional[float] = None,
     ):
         self.status_code = status_code
         self.body = body
+        self.retry_after = retry_after
 
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
+
+
+class AsyncJobError(RuntimeError):
+    """An asynchronous job (simulate, explain) ended without a result.
+
+    Attributes:
+        job_id (str): Identifier of the job on the server.
+        task (str): Task the job ran, e.g. `"simulate"`.
+        status (str): Terminal status reported by the server, `"failed"` or
+            `"cancelled"`.
+        error (str, optional): Error message reported by the server.
+    """
+
+    def __init__(
+        self,
+        *,
+        job_id: str,
+        task: str,
+        status: str,
+        error: Optional[str] = None,
+    ):
+        self.job_id = job_id
+        self.task = task
+        self.status = status
+        self.error = error
+        detail = error if error else "no error message was reported"
+        super().__init__(f"{task} job '{job_id}' {status}: {detail}")
 
 
 class NixtlaClient:
@@ -1212,6 +1392,8 @@ class NixtlaClient:
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 6 * 60,
+        async_job_wait_timeout: Optional[int] = 10 * 60,
+        async_job_poll_interval: float = 1.0,
     ):
         """
         Client to interact with the Nixtla API.
@@ -1246,7 +1428,22 @@ class NixtlaClient:
                 exceeds 360 seconds. The client throws a ReadTimeout error
                 after 60 seconds of inactivity. If you want to catch these
                 errors, use max_wait_time >> 60. Defaults to 360.
+            async_job_wait_timeout (int, optional): Maximum time in seconds to
+                wait for an asynchronous job (`simulate`, `explain`) to
+                finish, counted from its submission and including the time it
+                spends queued. When exceeded, the client requests the job's
+                cancellation and raises a `TimeoutError`. Set to `None` to
+                wait until the server reports a terminal status. Defaults
+                to 600.
+            async_job_poll_interval (float, optional): Initial interval in
+                seconds between two status checks of an asynchronous job. The
+                interval doubles after every check, up to 10 seconds.
+                Defaults to 1.
         """
+        if async_job_wait_timeout is not None and async_job_wait_timeout <= 0:
+            raise ValueError("`async_job_wait_timeout` must be positive or None.")
+        if async_job_poll_interval <= 0:
+            raise ValueError("`async_job_poll_interval` must be positive.")
         if api_key is None:
             api_key = os.environ["NIXTLA_API_KEY"]
         if base_url is None:
@@ -1263,21 +1460,30 @@ class NixtlaClient:
             "headers": headers,
             "timeout": timeout,
         }
-        self._retry_strategy = _retry_strategy(
-            max_retries=max_retries,
-            retry_interval=retry_interval,
-            max_wait_time=max_wait_time,
-        )
+        self._retry_settings = {
+            "max_retries": max_retries,
+            "retry_interval": retry_interval,
+            "max_wait_time": max_wait_time,
+        }
+        self._retry_strategy = _retry_strategy(**self._retry_settings)
+        self._async_job_wait_timeout = async_job_wait_timeout
+        self._async_job_poll_interval = float(async_job_poll_interval)
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
 
-    def _make_request(
+    def _encode_payload(
         self,
-        client: httpx.Client,
-        endpoint: str,
         payload: dict[str, Any],
         multithreaded_compress: bool,
-    ) -> dict[str, Any]:
+        *,
+        task: str,
+    ) -> tuple[bytes, dict[str, str]]:
+        """Serialize `payload` and return the request body and headers.
+
+        `task` is the logical operation (`"forecast"`, `"simulate"`, ...) and
+        only drives the guidance given when the body exceeds the size limit.
+        """
+
         def ensure_contiguous_if_array(x):
             if not isinstance(x, np.ndarray):
                 return x
@@ -1306,14 +1512,14 @@ class NixtlaClient:
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
         content_size_mb = len(content) / 2**20
         if content_size_mb > 200:
-            if endpoint == "v2/explain":
+            if task == "explain":
                 raise ValueError(
                     f"The payload is too large ({content_size_mb:.0f}MB, limit "
                     "200MB). `explain` cannot be partitioned because the weights "
                     "are pooled across all series. Reduce the number of series, "
                     "the length of the history, or the number of features."
                 )
-            if endpoint == "v2/simulate" and payload.get("multivariate"):
+            if task == "simulate" and payload.get("multivariate"):
                 raise ValueError(
                     f"The payload is too large ({content_size_mb:.0f}MB, limit "
                     "200MB). `multivariate=True` cannot be partitioned because "
@@ -1332,16 +1538,40 @@ class NixtlaClient:
             threads = -1 if multithreaded_compress else 0
             content = zstd.ZstdCompressor(level=1, threads=threads).compress(content)
             headers["content-encoding"] = "zstd"
-        resp = client.post(url=endpoint, content=content, headers=headers)
+        return content, headers
+
+    @staticmethod
+    def _parse_json_response(
+        resp: httpx.Response, expected_status: int = HTTPStatus.OK
+    ) -> Any:
         try:
             resp_body = orjson.loads(resp.content)
         except orjson.JSONDecodeError:
             raise ApiError(
                 status_code=resp.status_code,
                 body=f"Could not parse JSON: {resp.content}",
+                retry_after=_parse_retry_after(resp.headers),
             )
-        if resp.status_code != 200:
-            raise ApiError(status_code=resp.status_code, body=resp_body)
+        if resp.status_code != expected_status:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=resp_body,
+                retry_after=_parse_retry_after(resp.headers),
+            )
+        return resp_body
+
+    def _make_request(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        payload: dict[str, Any],
+        multithreaded_compress: bool,
+    ) -> dict[str, Any]:
+        content, headers = self._encode_payload(
+            payload, multithreaded_compress, task=endpoint.removeprefix("v2/")
+        )
+        resp = client.post(url=endpoint, content=content, headers=headers)
+        resp_body = self._parse_json_response(resp)
         if "data" in resp_body:
             resp_body = resp_body["data"]
         return resp_body
@@ -1365,18 +1595,231 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         params: Optional[dict[str, Any]] = None,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
-        resp = client.get(endpoint, params=params)
-        try:
-            resp_body = resp.json()
-        except Exception:
-            raise ApiError(
-                status_code=resp.status_code,
-                body=f"Could not parse JSON: {resp.content}",
+        request_kwargs: dict[str, Any] = {"params": params}
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+        resp = client.get(endpoint, **request_kwargs)
+        return self._parse_json_response(resp)
+
+    @staticmethod
+    def _validate_job_timeout(timeout_seconds: Optional[int]) -> None:
+        if timeout_seconds is None:
+            return
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, int)
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("`timeout_seconds` must be a positive integer or None.")
+
+    def _submit_async_job(
+        self,
+        client: httpx.Client,
+        task: _AsyncJobTask,
+        payload: dict[str, Any],
+        *,
+        multithreaded_compress: bool = True,
+        timeout_seconds: Optional[int] = None,
+    ) -> str:
+        """Submit `payload` as an asynchronous `task` and return the job id."""
+        self._validate_job_timeout(timeout_seconds)
+        if timeout_seconds is not None:
+            payload = {**payload, "job_options": {"timeout_seconds": timeout_seconds}}
+        content, headers = self._encode_payload(
+            payload, multithreaded_compress, task=task
+        )
+        endpoint = f"v2/{task}/async"
+
+        def submit() -> Any:
+            resp = client.post(url=endpoint, content=content, headers=headers)
+            return self._parse_json_response(
+                resp, expected_status=HTTPStatus.ACCEPTED
             )
-        if resp.status_code != 200:
-            raise ApiError(status_code=resp.status_code, body=resp_body)
-        return resp_body
+
+        try:
+            body = _submit_retry_strategy(**self._retry_settings)(submit)()
+        except ApiError as exc:
+            if (
+                exc.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+                and _ASYNC_JOBS_UNAVAILABLE_MARKER in str(exc.body)
+            ):
+                raise ApiError(
+                    status_code=exc.status_code,
+                    body=(
+                        f"`{task}` runs as an asynchronous job, which this "
+                        f"deployment does not support: {exc.body}"
+                    ),
+                ) from exc
+            raise
+        job_id = body.get("job_id") if isinstance(body, dict) else None
+        prefix = f"{_ASYNC_JOB_ID_PREFIXES[task]}-"
+        if not isinstance(job_id, str) or not job_id.startswith(prefix):
+            raise RuntimeError(
+                f"Unexpected response when submitting the {task} job: {body}"
+            )
+        logger.info(f"Submitted {task} job {job_id}. Waiting for it to finish...")
+        return job_id
+
+    def _cancel_async_job(self, client: httpx.Client, job_id: str) -> None:
+        """Best-effort cancellation; never raises."""
+        try:
+            resp = client.post(url=f"v2/async/jobs/{job_id}/cancel")
+        except Exception as exc:  # noqa: BLE001 - cleanup must not mask the cause
+            logger.warning(f"Could not cancel job {job_id}: {exc}")
+            return
+        if resp.status_code not in (
+            HTTPStatus.ACCEPTED,
+            HTTPStatus.NOT_FOUND,  # unknown to the server, nothing to cancel
+            HTTPStatus.CONFLICT,  # already terminal
+        ):
+            logger.warning(
+                f"Could not cancel job {job_id}: status_code: {resp.status_code}, "
+                f"body: {resp.text}"
+            )
+
+    def _poll_async_job(
+        self,
+        client: httpx.Client,
+        task: _AsyncJobTask,
+        job_id: str,
+        *,
+        deadline: Optional[float],
+        cancellation_event: Optional[Event] = None,
+    ) -> dict[str, Any]:
+        """Poll `job_id` until it succeeds and return its result.
+
+        Raises `AsyncJobError` when the job fails or is cancelled and
+        `TimeoutError` when `deadline` (a `time.monotonic()` value) passes
+        first; in that case the job's cancellation is requested.
+        """
+        endpoint = f"v2/{task}/jobs/{job_id}"
+        interval = self._async_job_poll_interval
+
+        def raise_timeout() -> NoReturn:
+            self._cancel_async_job(client, job_id)
+            raise TimeoutError(
+                f"{task} job '{job_id}' did not finish within "
+                f"{self._async_job_wait_timeout} seconds; its cancellation "
+                "was requested. Increase `async_job_wait_timeout` or "
+                "reduce the size of the request."
+            )
+
+        def get_status() -> dict[str, Any]:
+            timeout = None
+            if deadline is not None:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0:
+                    raise TimeoutError
+            return self._get_request(client, endpoint, timeout=timeout)
+
+        get_status_with_retries = _poll_retry_strategy(
+            **self._retry_settings, deadline=deadline
+        )(get_status)
+        try:
+            while True:
+                if cancellation_event is not None and cancellation_event.is_set():
+                    self._cancel_async_job(client, job_id)
+                    raise CancelledError
+                try:
+                    envelope = get_status_with_retries()
+                except TimeoutError:
+                    raise_timeout()
+                except Exception:
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise_timeout()
+                    raise
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise_timeout()
+                status = envelope.get("status") if isinstance(envelope, dict) else None
+                if status == "succeeded":
+                    result = envelope.get("result")
+                    if not isinstance(result, dict):
+                        raise RuntimeError(
+                            f"{task} job '{job_id}' succeeded but returned no result."
+                        )
+                    return result
+                if status in _ASYNC_JOB_TERMINAL_STATUSES:
+                    error = envelope.get("error")
+                    raise AsyncJobError(
+                        job_id=job_id,
+                        task=task,
+                        status=status,
+                        error=str(error) if error is not None else None,
+                    )
+                if status not in _ASYNC_JOB_PENDING_STATUSES:
+                    raise RuntimeError(
+                        f"Unexpected status for {task} job '{job_id}': {envelope}"
+                    )
+                now = time.monotonic()
+                if deadline is not None and now >= deadline:
+                    raise_timeout()
+                sleep_for = interval * (1 + random.uniform(0, _ASYNC_JOB_POLL_JITTER))
+                if deadline is not None:
+                    sleep_for = min(sleep_for, max(deadline - now, 0.0))
+                if _wait_for_poll(sleep_for, cancellation_event):
+                    self._cancel_async_job(client, job_id)
+                    raise CancelledError
+                interval = min(interval * 2, _ASYNC_JOB_MAX_POLL_INTERVAL)
+        except KeyboardInterrupt:
+            self._cancel_async_job(client, job_id)
+            raise
+
+    def _run_async_job(
+        self,
+        client: httpx.Client,
+        task: _AsyncJobTask,
+        payload: dict[str, Any],
+        *,
+        multithreaded_compress: bool = True,
+        timeout_seconds: Optional[int] = None,
+        cancellation_event: Optional[Event] = None,
+    ) -> dict[str, Any]:
+        """Submit an asynchronous `task`, wait for it and return its result."""
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise CancelledError
+        job_id = self._submit_async_job(
+            client,
+            task,
+            payload,
+            multithreaded_compress=multithreaded_compress,
+            timeout_seconds=timeout_seconds,
+        )
+        if cancellation_event is not None and cancellation_event.is_set():
+            self._cancel_async_job(client, job_id)
+            raise CancelledError
+        deadline = (
+            None
+            if self._async_job_wait_timeout is None
+            else time.monotonic() + self._async_job_wait_timeout
+        )
+        return self._poll_async_job(
+            client,
+            task,
+            job_id,
+            deadline=deadline,
+            cancellation_event=cancellation_event,
+        )
+
+    def _collect_concurrent_results(
+        self,
+        requests: Sequence[Callable[[], dict[str, Any]]],
+        max_workers: int,
+        transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
+    ) -> list[dict[str, Any]]:
+        from tqdm.auto import tqdm
+
+        results: list[dict[str, Any]] = [{} for _ in requests]
+        with ThreadPoolExecutor(max_workers) as executor:
+            future2pos = {
+                executor.submit(request): i for i, request in enumerate(requests)
+            }
+            for future in tqdm(as_completed(future2pos), total=len(future2pos)):
+                pos = future2pos[future]
+                res = future.result()
+                results[pos] = transform(res) if transform is not None else res
+        return results
 
     def _dispatch_partitioned_requests(
         self,
@@ -1385,26 +1828,65 @@ class NixtlaClient:
         payloads: list[dict[str, Any]],
         transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
     ) -> list[dict[str, Any]]:
+        requests = [
+            partial(
+                self._make_request_with_retries,
+                client=client,
+                endpoint=endpoint,
+                payload=payload,
+                multithreaded_compress=False,
+            )
+            for payload in payloads
+        ]
+        return self._collect_concurrent_results(
+            requests, max_workers=min(10, len(payloads)), transform=transform
+        )
+
+    def _dispatch_async_jobs(
+        self,
+        client: httpx.Client,
+        task: _AsyncJobTask,
+        payloads: list[dict[str, Any]],
+        transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
+        timeout_seconds: Optional[int] = None,
+    ) -> list[dict[str, Any]]:
+        # Every worker runs one job to completion before submitting the next,
+        # so at most `max_workers` jobs are in flight at any time. If one job
+        # fails, signal the other workers to cancel their server jobs and stop
+        # queued workers before they submit anything.
         from tqdm.auto import tqdm
 
-        num_partitions = len(payloads)
-        results: list[dict[str, Any]] = [{} for _ in range(num_partitions)]
-        max_workers = min(10, num_partitions)
-        with ThreadPoolExecutor(max_workers) as executor:
-            future2pos = {
-                executor.submit(
-                    self._make_request_with_retries,
-                    client=client,
-                    endpoint=endpoint,
-                    payload=payload,
-                    multithreaded_compress=False,
-                ): i
-                for i, payload in enumerate(payloads)
-            }
+        cancellation_event = Event()
+        results: list[dict[str, Any]] = [{} for _ in payloads]
+
+        def run(payload: dict[str, Any]) -> dict[str, Any]:
+            return self._run_async_job(
+                client,
+                task,
+                payload,
+                multithreaded_compress=False,
+                timeout_seconds=timeout_seconds,
+                cancellation_event=cancellation_event,
+            )
+
+        executor = ThreadPoolExecutor(
+            max_workers=min(_MAX_CONCURRENT_ASYNC_JOBS, len(payloads))
+        )
+        future2pos = {
+            executor.submit(run, payload): i for i, payload in enumerate(payloads)
+        }
+        try:
             for future in tqdm(as_completed(future2pos), total=len(future2pos)):
                 pos = future2pos[future]
                 res = future.result()
                 results[pos] = transform(res) if transform is not None else res
+        except BaseException:
+            cancellation_event.set()
+            for future in future2pos:
+                future.cancel()
+            raise
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
         return results
 
     def _make_partitioned_requests(
@@ -1458,6 +1940,7 @@ class NixtlaClient:
         payloads: list[dict[str, Any]],
         n_paths: int,
         h: int,
+        timeout_seconds: Optional[int] = None,
     ) -> dict[str, Any]:
         def _samples_to_array(res: dict[str, Any]) -> dict[str, Any]:
             samples = res.get("samples")
@@ -1468,8 +1951,12 @@ class NixtlaClient:
                     pass  # the merge loop below raises the descriptive error
             return res
 
-        results = self._dispatch_partitioned_requests(
-            client, "v2/simulate", payloads, transform=_samples_to_array
+        results = self._dispatch_async_jobs(
+            client,
+            "simulate",
+            payloads,
+            transform=_samples_to_array,
+            timeout_seconds=timeout_seconds,
         )
         blocks = []
         sizes = []
@@ -2344,8 +2831,14 @@ class NixtlaClient:
         model: _Model = "timegpt-2.1",
         multivariate: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
+        timeout_seconds: Optional[int] = None,
     ) -> DataFrame:
         """Generate temporally correlated forecast sample paths.
+
+        The request runs as an asynchronous job on the server: it is submitted,
+        then polled until it finishes, so this call blocks until the paths are
+        available. See `async_job_wait_timeout` and `async_job_poll_interval`
+        on `NixtlaClient` to control the waiting behavior.
 
         Args:
             df (pandas or polars DataFrame): Historical time series data.
@@ -2408,13 +2901,23 @@ class NixtlaClient:
                 reproducible, but a partitioned call returns different paths
                 than an unpartitioned one for the same `seed`. Defaults to
                 None (a single request).
+            timeout_seconds (int, optional): Maximum time in seconds the
+                server may spend on the job (on each partition when
+                `num_partitions` is set). It may not exceed the limit of the
+                deployment. Defaults to None (the deployment's limit).
 
         Returns:
             pandas or polars DataFrame: Long-format sample paths with ID, time,
                 `sample_id`, `TimeGPT`, and `coupled` columns. It contains
                 `n_series * n_paths * h` rows. The ID column is omitted if `df`
                 did not contain one.
+
+        Raises:
+            AsyncJobError: The job failed or was cancelled on the server.
+            TimeoutError: The job did not finish within
+                `async_job_wait_timeout` seconds.
         """
+        self._validate_job_timeout(timeout_seconds)
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             raise ValueError("`simulate` only supports pandas and polars dataframes.")
         if X_df is not None and not isinstance(X_df, (pd.DataFrame, pl_DataFrame)):
@@ -2588,7 +3091,9 @@ class NixtlaClient:
         logger.info("Calling Simulate Endpoint...")
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
-                resp = self._make_request_with_retries(client, "v2/simulate", payload)
+                resp = self._run_async_job(
+                    client, "simulate", payload, timeout_seconds=timeout_seconds
+                )
             else:
                 payloads = _partition_series(payload, num_partitions, h)
                 if seed is not None:
@@ -2596,7 +3101,11 @@ class NixtlaClient:
                     for i, part in enumerate(payloads[1:], start=1):
                         part["seed"] = (seed - _MIN_SEED + i) % seed_span + _MIN_SEED
                 resp = self._make_partitioned_simulate_requests(
-                    client, payloads, n_paths=n_paths, h=h
+                    client,
+                    payloads,
+                    n_paths=n_paths,
+                    h=h,
+                    timeout_seconds=timeout_seconds,
                 )
 
         response_n_paths = resp.get("n_paths")
@@ -2650,12 +3159,19 @@ class NixtlaClient:
         target_col: str = "y",
         categorical_exog_list: Optional[list[str]] = None,
         validate_api_key: bool = False,
+        timeout_seconds: Optional[int] = None,
     ) -> DataFrame:
         """Compute model-independent historical feature importance weights.
 
         The returned weights describe lagged predictive relationships in the
         supplied data. They do not establish that changing a feature will cause
         the target to change.
+
+        The request runs as an asynchronous job on the server: it is submitted,
+        then polled until it finishes, so this call blocks until the weights
+        are available. See `async_job_wait_timeout` and
+        `async_job_poll_interval` on `NixtlaClient` to control the waiting
+        behavior.
 
         Args:
             df (pandas or polars DataFrame): Historical time series containing
@@ -2683,13 +3199,22 @@ class NixtlaClient:
                 should be treated as categorical.
             validate_api_key (bool): Validate the API key before the request.
                 Defaults to False.
+            timeout_seconds (int, optional): Maximum time in seconds the
+                server may spend on the job. It may not exceed the limit of
+                the deployment. Defaults to None (the deployment's limit).
 
         Returns:
             pandas or polars DataFrame: One row per feature with `feature`,
                 `weight`, and `method` columns.
+
+        Raises:
+            AsyncJobError: The job failed or was cancelled on the server.
+            TimeoutError: The job did not finish within
+                `async_job_wait_timeout` seconds.
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             raise ValueError("`explain` only supports pandas and polars dataframes.")
+        self._validate_job_timeout(timeout_seconds)
         df, _, _, freq = self._run_validations(
             df=df,
             X_df=None,
@@ -2740,8 +3265,7 @@ class NixtlaClient:
                 f"{undeclared_non_numeric}. Add them to `categorical_exog_list` "
                 "to treat them as categorical, or exclude them via `features`."
             )
-        numeric_features = [f for f in features if f not in categorical_exog_list]
-        features_with_missing = _features_with_missing_values(df, numeric_features)
+        features_with_missing = _features_with_missing_values(df, features)
         if features_with_missing:
             logger.warning(
                 "The following features contain missing values: "
@@ -2759,11 +3283,15 @@ class NixtlaClient:
         feature_rows: list[Any] = []
         for feature in features:
             is_categorical = feature in categorical_exog_list
-            values = (
-                df[feature].to_numpy()
-                if is_categorical
-                else _numeric_column_array(df, feature)
-            )
+            if is_categorical:
+                values = df[feature].to_numpy()
+                if isinstance(df, pd.DataFrame):
+                    missing = pd.isna(values)
+                    if missing.any():
+                        values = values.astype(object, copy=True)
+                        values[missing] = None
+            else:
+                values = _numeric_column_array(df, feature)
             if processed.sort_idxs is not None:
                 values = values[processed.sort_idxs]
             feature_rows.append(values.tolist() if is_categorical else values)
@@ -2783,7 +3311,9 @@ class NixtlaClient:
 
         logger.info("Calling Explain Endpoint...")
         with self._make_client(**self._client_kwargs) as client:
-            resp = self._make_request_with_retries(client, "v2/explain", payload)
+            resp = self._run_async_job(
+                client, "explain", payload, timeout_seconds=timeout_seconds
+            )
 
         try:
             weights = np.asarray(resp.get("weights"), dtype=np.float64)

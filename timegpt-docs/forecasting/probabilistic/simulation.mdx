@@ -13,6 +13,15 @@ sequence.
 
 Use `NixtlaClient.simulate()` to generate these paths.
 
+<Note>
+Simulation runs as an asynchronous job on the server. `NixtlaClient.simulate()`
+submits the job and polls its status until the paths are ready, so the call
+blocks like any other client method. By default the client waits up to 10
+minutes per job; adjust `async_job_wait_timeout` and `async_job_poll_interval`
+when creating the `NixtlaClient` if you need a different behavior. A job that
+fails on the server raises `nixtla.AsyncJobError` with the server's message.
+</Note>
+
 ## Why Use Forecast Simulation
 
 Simulated paths let you estimate quantities that no single forecast, and no

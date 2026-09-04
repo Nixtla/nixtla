@@ -11,6 +11,15 @@ Use `NixtlaClient.explain()` when someone asks:
 The result ranks your features using their past relationship with the target.
 You do not need to make a forecast or provide future feature values.
 
+<Note>
+The analysis runs as an asynchronous job on the server. `NixtlaClient.explain()`
+submits the job and polls its status until the weights are ready, so the call
+blocks like any other client method. By default the client waits up to 10
+minutes; adjust `async_job_wait_timeout` and `async_job_poll_interval` when
+creating the `NixtlaClient` if you need a different behavior. A job that fails
+on the server raises `nixtla.AsyncJobError` with the server's message.
+</Note>
+
 <Warning>
 These weights are **not** causal. They measure whether a feature's past values
 help predict the target, which is a statement about correlation over time, not
